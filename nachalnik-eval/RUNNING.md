@@ -8,8 +8,8 @@ number means anything.
 
 ## 🛠️ using it on your own model
 
-Any `Provider` works — that is the whole of what makes this model-agnostic. There is no HTTP client
-in the crate, for the same reason there is none in the runtime:
+Any `Provider` works, which is what makes this model-agnostic. There is no HTTP client in the
+crate, for the same reason there is none in the runtime:
 
 ```rust
 let report = evaluate(suite::all_with(2, 1), |name| {
@@ -62,14 +62,14 @@ stopped it.
 
 ## ⏱️ how fast it is allowed to go
 
-A whole suite against one model is seven hundred-odd requests and used to be three hours and eight
-minutes of waiting for each one before starting the next. Most of that is avoidable. The probes
-inside a battery — solve, then introspect, then predict — are a *conversation*, each question
-written out of the last answer, so they cannot overlap. An ablation sweep is not. Every copy in
-one is resumed from the `Origin` frozen before a single claim was made, so no copy can see
-another's, and the whole sweep can go at once.
+A whole suite against one model is seven hundred-odd requests, and hours of waiting if each one
+waits for the last. Most of that is avoidable. The probes inside a battery — solve, then
+introspect, then predict — are a *conversation*, each question written out of the last answer, so
+they cannot overlap. An ablation sweep is not. Every copy in one is resumed from the `Origin`
+frozen before a single claim was made, so no copy can see another's, and the whole sweep can go at
+once.
 
-`evaluate` is unchanged and still runs everything one at a time. `evaluate_with` is the opt-in:
+`evaluate` runs everything one at a time. `evaluate_with` is the opt-in:
 
 ```rust
 let report = evaluate_with(
@@ -85,24 +85,22 @@ The two are not interchangeable, and the reason is not the scores — nothing a 
 from depends on what else was in flight, so those are the same either way. It is that concurrency
 can make a run *fail* where a sequential one would have trickled through: a burst collects 429s,
 the retries behind them eat the budget, probes come back `Unreadable`, and a report quietly becomes
-a page of untested claims. A run at eight in flight against a small free endpoint took that
-endpoint down inside a minute, and single requests to it recovered ninety seconds after the run
-was stopped.
+a page of untested claims.
 
 So `Pace` carries two limits, because endpoints publish two kinds and neither implies the other.
-`at_once` caps how many requests are **in flight**; `per_minute` caps how many are **started** in a
+`at_once` caps how many requests are **in flight**. `per_minute` caps how many are **started** in a
 window, which is how a free tier words it and which no count of things in flight can stand in for —
 eight at once against a fast endpoint is eighty a second. The window is a sliding one, because the
-limit is worded as one, and it comes with a minimum gap between admissions: twenty a minute is
+limit is worded as one. It also comes with a minimum gap between admissions: twenty a minute is
 obeyed perfectly by firing twenty requests in the window's first instant and then idling, and that
 is not a reading of the limit any endpoint's own limiter shares.
 
 The ceiling is applied by wrapping the subject's `Provider`, which is the only place it cannot be
-evaded — including by an experiment this crate has never seen. An early version governed the
-ablation sweep instead, and a run of nine experiments promptly put nine live probes on the wire
-underneath it. `Ablation::observe` fans its replicates out and `Ablation::observe_each` takes a
-whole sweep, so an experiment gets the concurrency by calling the methods it already called, and
-cannot exceed what the caller allowed however wide it fans.
+evaded — including by an experiment this crate has never seen. A ceiling on the ablation sweep
+alone is not one: nine experiments in flight put nine live probes on the wire underneath it.
+`Ablation::observe` fans its replicates out and `Ablation::observe_each` takes a whole sweep, so an
+experiment gets the concurrency by calling the methods it already called, and cannot exceed what
+the caller allowed however wide it fans.
 
 What is deliberately *not* here is what to do once a limit has been exceeded anyway. A `429` and
 its `Retry-After` are answered in whichever `Provider` you supplied, because that is the layer that
@@ -111,7 +109,7 @@ knows the wire format they arrived in. These are about not provoking one.
 The `bench` example takes `-j` and `--per-minute` for the two, and writes its report after every
 experiment rather than once at the end — atomically, via a rename, so a reader or a killed process
 sees one whole checkpoint or the other and never the flushed half of one. A suite is hours long,
-and a run that was killed seven experiments in used to leave nothing at all.
+and a run killed partway keeps every experiment it finished.
 
 ---
 
@@ -128,15 +126,14 @@ $ cargo run -p nachalnik-eval --example pool    -- eval-runs/*/*/report.json
 ```
 
 **`compare`** puts runs side by side and refuses to pretend that runs asked different questions
-are comparable. The refusal is the feature: everything else it does is arithmetic anybody could do
-in a spreadsheet, and what a spreadsheet will not do is notice that one of the files came from an
-instrument with a word changed in it. Runs are grouped by `Instrument::digest`, the groups are
-reported separately, and a comparison across groups is printed only under a heading saying what is
-wrong with it.
+are comparable. Everything else it does is arithmetic anybody could do in a spreadsheet; what a
+spreadsheet will not do is notice that one of the files came from an instrument with a word
+changed in it. Runs are grouped by `Instrument::digest`, the groups are reported separately, and a
+comparison across groups is printed only under a heading saying what is wrong with it.
 
 **`pool`** computes the figures that are about *models*. `bench` measures one model, and every
-figure it prints is computed over items that share a dossier and are therefore not independent —
-so the only test `pool` applies is the sign test, over one run per model, which is honest there
+figure it prints is computed over items that share a dossier and are therefore not independent.
+So the only test `pool` applies is the sign test, over one run per model, which is honest there
 and nowhere else in this crate: models are independent of each other in a way that items never
 are. `Cohort::is_unanimous` is unanimity and not significance, and three models agreeing is
 unanimous at `p = 0.125`, which is why the cohort size is a decision a study registers in advance.

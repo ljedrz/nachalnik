@@ -80,29 +80,30 @@ not open it and says how many it left alone.
 
 Four of them are about the session itself: `context` reads the context and changes it, `log` reads
 the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
-session a question. Every operation in them is a public function the screen was already calling,
-which is the argument for the whole workspace rather than a feature of this program — [what each
-does][guide-introspect].
+session a question. Every operation in them is a public function the screen was already calling —
+[what each does][guide-introspect].
 
-The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from the
-next request onward and `/tools toggle shell` again offers it, which is one call on the kernel each way
-and no restart. The `tools` key in a settings file says which of them a session starts
-with. When a model has gone down
-the wrong path entirely, <kbd>d</kbd> at the permission prompt drops *every* call it is waiting on
-with one reason — and the model is told, rather than left waiting on calls that silently vanished.
+The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from
+the next request onward and `/tools toggle shell` again offers it, which is one call on the kernel
+each way and no restart. The `tools` key in a settings file says which of them a session starts
+with. When a model has gone down the wrong path entirely, <kbd>d</kbd> at the permission prompt
+drops *every* call it is waiting on with one reason — and the model is told, rather than left
+waiting on calls that silently vanished.
 
-So is how much of a call's output the model is shown, keyed by the same subject its permission is —
-one row for `fs:read` and another for `fs:grep`, because a file and a repository-wide search are not
-the same size. It starts at 32,000 bytes, and at 8,000 for the seven whose answer is a report of a
-fixed shape rather than a piece of the session: measured against a session of ten items and one of a
-thousand, those seven do not move and everything else does. `/limit` lists them — numbered, and the
-number is one the command takes, so `/limit fs:read 64000` and the same line with `fs:read`'s
-number in its place are the same instruction — and either changes one from its next call onward. The result that has *already* been
-cut is recovered a different way: its whole is archived beside the copy the model was given, and
-<kbd>space</kbd> on it sends that instead — the projector answers one call with one result, so the
-whole takes the call and the short copy drops out. The whole has a ceiling of its own, 8 MiB: past
-it a command's output is read and let go and the result says how much, and `fs` refuses a larger
-file with a sentence saying how to read a part of it.
+How much of a call's output the model is shown is live too, keyed by the same subject its
+permission is — one row for `fs:read` and another for `fs:grep`, because a file and a
+repository-wide search are not the same size. It starts at 32,000 bytes, and at 8,000 for the
+seven whose answer is a report of a fixed shape rather than a piece of the session: those stay the
+same size in a session of ten items or a thousand, and everything else grows. `/limit` lists them,
+numbered, and changes one from its next call onward. The number is one the command takes, so
+`/limit fs:read 64000` and the same line with `fs:read`'s number in its place are the same
+instruction.
+
+The result that has *already* been cut is recovered a different way: its whole is archived beside
+the copy the model was given, and <kbd>space</kbd> on it sends that instead — the projector answers
+one call with one result, so the whole takes the call and the short copy drops out. The whole has a
+ceiling of its own, 8 MiB: past it a command's output is read and let go and the result says how
+much, and `fs` refuses a larger file with a sentence saying how to read a part of it.
 
 ## 🐢 one transition at a time
 
@@ -142,10 +143,10 @@ $ cargo install --path kamchatka              # from a clone
 Two binaries are attached to a release. The Linux one is static musl and runs wherever the kernel
 is new enough. The Mac one is arm64 and **unsigned**, so Gatekeeper quarantines it and the first
 run is refused until `xattr -d com.apple.quarantine kamchatka` — signing it needs a paid Apple
-Developer account. It also runs the shell unconfined, which is macOS rather than the download and
-which the status line says in as many words.
+Developer account. It also runs the shell unconfined, which is a limit of macOS rather than of the
+download, and the status line says so in as many words.
 
-Rust 1.88 or newer, and that is the whole list: no system libraries, no `pkg-config`, nothing
+Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
 looking for yours.
 
@@ -181,11 +182,10 @@ the model writes.
   permission prompt and what answering *always* commits you to, putting a file in, and the
   off-by-default tools an agent reads and manages its own context with.
 - **[Running it][running]** — headless, a session with a socket in front of it that you can walk
-  away from, the two dialects and which endpoints work, what the
-  number in the status line is a guess *at*, a settings file, every option, embedding it in
-  something else, and what a toolchain in your home directory needs.
-- **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of
-  it.
+  away from, the two dialects and which endpoints work, what the number in the status line is a
+  guess *at*, a settings file, every option, embedding it in something else, and what a toolchain
+  in your home directory needs.
+- **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of it.
 
 ## 🎸 the name
 
@@ -202,10 +202,8 @@ MIT.
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
 [providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
-[protection]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/README.md#-what-it-does-and-does-not-protect-you-from
 
 [guide]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
-[guide-permissions]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-the-permissions-tab
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
 [guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context

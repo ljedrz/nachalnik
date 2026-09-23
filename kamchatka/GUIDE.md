@@ -19,9 +19,9 @@ is the way back to it from any of them.
 
 While the runtime is working, three dots move under the word for what it is doing, and after five
 seconds they are joined by how long it has been. Which dot is lit comes from the clock rather than
-from a frame counter, so it stops where it is if the screen stops being drawn — `asking` on its
-own is the same word whether a request is in flight or the program is wedged, and the marker is
-there to tell the two apart. It is absent while the runtime is resting, including when it is
+from a frame counter, so it stops where it is if the screen stops being drawn. `asking` on its
+own is the same word whether a request is in flight or the program is wedged; the marker is there
+to tell the two apart. It is absent while the runtime is resting, including when it is
 waiting on **you**: nothing should suggest work is happening while a question sits unanswered.
 
 Next along is the model and the address it is at, both of them, because the same name at a
@@ -38,7 +38,9 @@ command reported success, **red** where it reported a failure, and **yellow** wh
 to report — stopped at your request, killed, or a status that could not be read at all. What a
 `1` from `grep` means is not guessed at: telling *no match* from a fault means knowing what the
 command was. The output under the line stays quiet, which is what makes the line worth looking
-at. **context** is why this exists:
+at.
+
+**context** is why this exists:
 
 ```text
 ┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
@@ -46,8 +48,8 @@ at. **context** is why this exists:
 │  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                     │
 │  2 ▪ q3.pdf        reference                6+        [application/pdf, 292.47kB]                            │
 │  3 · user          user_message             6         what does the kernel do?                               │
-│  4 · assistant     assistant_message        7         asked for read                                         │
-│  5 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`              │
+│  4 · assistant     assistant_message        7         asked for fs                                           │
+│  5 - fs            tool_result              0     15  excluded: at the terminal, by `tool:fs`                │
 │  6 · assistant     assistant_message        7         asked for shell                                        │
 │  7 … shell         tool_result             11  8,993  compaction: compacted to make room                     │
 │  8 · assistant     assistant_message       62  4,102  The kernel is a state machine with five states. …      │
@@ -59,20 +61,19 @@ That is not a summary and not a debug view. It is the list of items the runtime 
 order, with what each one costs, whether it is going into the next request — and the column that
 matters most, what the model will actually read of it.
 
-Row 2 is the other thing this column is for. `6+` is not six tokens: the `+` says the counter
-would not put a figure on part of that item, so six is a **floor**. Nothing here has a
-tokenizer for a PDF, and a bare `0` would have made the largest thing in the request read as the
-cheapest row in the pane you opened to decide what to delete.
+Row 2's `6+` is not six tokens: the `+` says the counter would not put a figure on part of that
+item, so six is a **floor**. Nothing here has a tokenizer for a PDF, and a bare `0` would have made
+the largest thing in the request read as the cheapest row in the pane you opened to decide what to
+delete.
 
 **sending** is what an item puts into the next request; **held** is what it is keeping out of one.
 For most rows the first is everything and the second is blank. The rows where they differ are the
 ones worth finding: item 7 holds nine thousand tokens and spends eleven of them on the marker that
 replaced it, item 5 spends nothing at all, and item 8 sends what it said while holding what it
-thought. The `sending` column adds up to the figure on the status line, and the `held` column to
-the `held back` beside it — which they did not, when the row reported what an item held under a
-heading that said what it cost. Item 5 is marked `-` and says on its own
-row why it is out, in the projector's words. Item 1 is `▪`, pinned, so the compactor will be
-refused if it comes for it. Nothing disappeared: things changed state, and the state is on screen.
+thought. The `sending` column adds up to the figure on the status line, and the `held` column to the
+`held back` beside it. Item 5 is marked `-` and says on its own row why it is out, in the
+projector's words. Item 1 is `▪`, pinned, so the compactor will be refused if it comes for it.
+Nothing disappeared: things changed state, and the state is on screen.
 
 A pin is worth most *before* a pass rather than after one, which is what `/compact` is for: it
 lists every item the compactor would take and waits, in the prompt's place, for <kbd>y</kbd> or
@@ -83,27 +84,24 @@ again, so what you just kept is not in it.
 Item 7 is `…`, **elided**, which is the third answer between in and out. It is still in the
 request — as the one line the row shows, saying it was compacted away — so the call on row 6 still
 has an answer, and the model reads a conversation in which it asked for something and can no
-longer see what came back. That is the truth. Dropping the result outright would have forced the
-projector to drop the call with it, since a call with no result is a request most providers
-reject, and the model would then be reading a conversation in which it never asked at all. What
-an elided item holds beyond its marker is counted as held back rather than spent, and
-<kbd>space</kbd> spends it again.
+longer see what came back. Dropping the result outright would have forced the projector to drop
+the call with it, since a call with no result is a request most providers reject, and the model
+would then be reading a conversation in which it never asked at all. What an elided item holds
+beyond its marker is counted as held back rather than spent, and <kbd>space</kbd> spends it again.
 
-The marker the model reads says one more thing than the row has room for, and it was bought with a
-live run: *reading it again would put the same tokens back into a context that had no room for
-them — ask for the part you need instead*. Without that half, a model that wanted the file back
-simply read it again, the compactor took it again, and the two of them did that three times in one
-turn. A refusal that does not say the next attempt ends the same way is read as an invitation to
-make it — which is the lesson the `~` refusal in `Reach` had already learnt, one file over. Asked
-the same question twice with the same model, the marker that only reports costs ten reads of one
-file; the one that closes the retry costs one, and the model narrows to a search instead.
+The marker the model reads says one more thing than the row has room for: *reading it again
+would put the same tokens back into a context that had no room for them — ask for the part you
+need instead*. Without that half, a model that wants the file back simply reads it again and the
+compactor takes it again, over and over. A refusal that does not say the next attempt ends the
+same way is read as an invitation to make it; with the second half, the model narrows to a search
+instead.
 
-Item 8 is the last way the two columns come apart, and the one a session is full of rather than
-the one it has once: most endpoints have no field for an assistant turn's thinking, so the projector does not
-carry it back. The turn is `active`, every word it said is going, and the four thousand tokens it
-*thought* are in the record, on this pane and in nothing that goes out. That belongs in the `held`
-column rather than nowhere — it is what sending the whole of that turn would add, and on a
-reasoning model it is most of what a session weighs. Switch to a provider that does take thinking
+Item 8 is the last way the two columns come apart, and the one a session is full of rather than the
+one it has once: most endpoints have no field for an assistant turn's thinking, so the projector
+does not carry it back. The turn is `active`, every word it said is going, and the four thousand
+tokens it *thought* are in the record, on this pane and in nothing that goes out. That belongs in
+the `held` column rather than nowhere — it is what sending the whole of that turn would add, and on
+a reasoning model it is most of what a session weighs. Switch to a provider that does take thinking
 back and the same context reports it as spent, without a byte of it moving.
 
 <kbd>tab</kbd> moves the keys between the prompt and the table:
@@ -163,9 +161,11 @@ so, with the reason. That last one is not always visible from the row: a tool re
 has been taken out reads as `· active` and costs what it costs, and the projector drops it anyway,
 because a result answering nothing is a request most providers reject. Its page says
 `nothing: this item is not in the request`, and the box opens on that page rather than on the
-text, since the projection rather than the state decides which of the two is the surprise. **`as stored`** is what the item itself holds, which for an elided or
-excluded one is not the same thing at all; that gap is the reason the pages exist, and it is why
-an item the model does not read in full opens on the first page instead of the second.
+text, since the projection rather than the state decides which of the two is the surprise.
+
+**`as stored`** is what the item itself holds, which for an elided or excluded one is not the same
+thing at all. That gap is the reason the pages exist, and it is why an item the model does not
+read in full opens on the first page instead of the second.
 
 **`v1`**, **`v2`** and so on are what it said before somebody rewrote it, newest first. Both hands
 that rewrite an item — <kbd>e</kbd> here and `context`'s `revise` — **replace it in place**, which
@@ -231,8 +231,8 @@ subscribes before any of it happens.
 Every event says what it carries, rather than just naming itself. `context.replaced` shows the
 first line of what an item used to say, which is the one thing nothing else can recover.
 `tool.repaired` names the identifier a provider reused, and what was wrong with it.
-`tools.changed` lists the tools rather than counting them. There is a test that the tab draws every event the session recorded, and another
-that none of them is a name with an empty line beside it.
+`tools.changed` lists the tools rather than counting them. The tab draws every event the session
+recorded, and none of them as a name with an empty line beside it; both are tested.
 
 **Two clocks, because neither answers the other's question.** The second column is the gap since
 the line above, blank under a tenth of a second. Nearly everything in a session happens between one
@@ -241,10 +241,10 @@ running — *which step was slow*, answered without subtracting a column of time
 
 **What it never shows is how long you took.** A session spends most of its wall time in two places
 where nothing is stepping at all: a permission question nobody has answered yet, and the wait
-between one turn and the next thing somebody types. Those gaps used to be drawn like any other, so
-the largest figure in the column was routinely a measure of how long a person had been reading —
-which is the one number in there nobody should act on, and the one the eye goes to first. The line
-that ends such a wait keeps its clock and is given no gap.
+between one turn and the next thing somebody types. Drawn like any other gap, those would make the
+largest figure in the column a measure of how long a person had been reading — the one number in
+there nobody should act on, and the one the eye goes to first. The line that ends such a wait
+keeps its clock and is given no gap.
 
 The first column is when it happened, which no amount of adding up deltas will give you. Matching
 the pane against a server log, a provider's dashboard, a ticket, or a memory of what happened
@@ -262,20 +262,17 @@ with.
 
 The one thing it does not draw a line per is a *fragment*. The model's streamed text and a running
 command's output arrive dozens of times a second, and a line each would push the rest of the trace
-off the screen before anybody could read it — a `cat` of a thousand lines really did erase the
-whole of it.
+off the screen before anybody could read it. So tool output is one line that counts up
+(`tool.output  shell, 12,004 bytes so far`), and the model's text is on the chat tab as it arrives.
+The pane keeps the last few hundred lines. `/save` keeps every event there was, including the one
+line no subscriber can ever catch: the kernel's own `session.started`, emitted while it is still
+being constructed.
 
-So tool output is one line that counts up (`tool.output  shell, 12,004 bytes so far`), and the
-model's text is on the chat tab as it arrives. The pane keeps the last few hundred lines. `/save`
-keeps every event there was, including the one line no subscriber can ever catch: the kernel's own
-`session.started`, emitted while it is still being constructed.
-
-**<kbd>/</kbd> filters either of those two panes.** Eight hundred events is not a log anybody
-reads; it is a log somebody scrolls past looking for one line, and the way to find it used to be
-<kbd>g</kbd> and a lot of <kbd>pgdn</kbd>. <kbd>/</kbd> opens a one-row box where the prompt would
-be — these panes are read and operated rather than typed into, so it is not taking anything — and
-what you type filters the rows, fuzzily, counting what it found beside the query. It is
-[`nucleo-matcher`](https://crates.io/crates/nucleo-matcher), which is Helix's, because that is
+**<kbd>/</kbd> filters either of those two panes.** Eight hundred events is not a log anybody reads;
+it is a log somebody scrolls past looking for one line. <kbd>/</kbd> opens a one-row box where the
+prompt would be — these panes are read and operated rather than typed into, so it is not taking
+anything — and what you type filters the rows, fuzzily, counting what it found beside the query. It
+is [`nucleo-matcher`](https://crates.io/crates/nucleo-matcher), which is Helix's, because that is
 where the expectation of what fuzzy *feels* like comes from: `mreq` finds `model.requested`.
 
 A context row matches on the whole of what the item holds rather than the one line the row has
@@ -293,9 +290,9 @@ deliberately: the point of filtering eight hundred events down to nine is to rea
 box that swallowed the scroll keys would mean closing the search, and so losing the filter, to look
 at what it found. So <kbd>↑</kbd> <kbd>↓</kbd> and the paging still move between the rows
 underneath, and so do <kbd>home</kbd> and <kbd>end</kbd> — which are all that is left of
-<kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it, and closing
-clears it — a filter that outlived its box would leave a window quietly showing four rows of eight
-hundred with nothing on screen saying why. Changing tabs clears it for the same reason.
+<kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it,
+and closing clears it: a filter that outlived its box would leave a window quietly showing four rows
+of eight hundred with nothing on screen saying why. Changing tabs clears it for the same reason.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, with a header naming everything the projector left out and
@@ -322,8 +319,8 @@ A fenced block gets a rule down its left rather than a slab of background — a 
 thing a terminal cannot draw without knowing what colour the theme is.
 
 Tables are drawn here rather than by the renderer, and for the same reason as the fenced blocks:
-the renderer lays one out at whatever width its contents want, and a row wider than the window was
-then wrapped like a sentence — so half a border arrived on the next line and the table came apart.
+the renderer lays one out at whatever width its contents want, and a row wider than the window
+would then be wrapped like a sentence — half a border on the next line, and the table apart.
 A table is a fixed shape. What gives when it does not fit is the columns, widest first, and the
 cells wrap inside them with their inline styling intact; the colons in the delimiter row decide
 which end of its column a cell sits at.
@@ -359,14 +356,12 @@ trace's own, not with every key in the program and four fifths of them about som
 rest is one key away rather than hidden. A seventh appears while a tool is waiting to run, and is
 the one it opens at, because that is what you are being stopped by.
 
-Where you leave the conversation is where it stays. A turn that writes four hundred lines used to
-pull the window down to the newest of them on every fragment, so anything it had said thirty
-seconds earlier was unreadable until the turn ended; now nothing but your own message moves it,
-and the line along the bottom says how much has arrived underneath. <kbd>ctrl+e</kbd> goes back to
-following, and so does scrolling down to the end. <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> are
-the two ends of it in one key; control is held because <kbd>home</kbd> and <kbd>end</kbd> belong to
-the prompt, and a line editor whose <kbd>home</kbd> moved something else
-would be a trap.
+Where you leave the conversation is where it stays. Nothing but your own message moves it, so
+what a long turn said thirty seconds ago stays readable while it goes on writing, and the line
+along the bottom says how much has arrived underneath. <kbd>ctrl+e</kbd> goes back to following,
+and so does scrolling down to the end. <kbd>ctrl+home</kbd> and <kbd>ctrl+end</kbd> are the two
+ends of it in one key; control is held because <kbd>home</kbd> and <kbd>end</kbd> belong to the
+prompt, and a line editor whose <kbd>home</kbd> moved something else would be a trap.
 
 **Nothing said is shortened to fit.** However long an answer is, the whole of it is on the chat tab
 and can be scrolled back through. A tool's output while it is still running is the one exception,
@@ -385,8 +380,8 @@ in the context, and that is the one moment those two disagree.
 
 It cannot go in any earlier. The answer the model is still writing would land after it, leaving
 the next request ending with the model talking rather than with your question — and mid-loop it
-would land between a tool call and that call's result, where a request cannot have a user message. So a message typed to steer a turn is answered after that turn rather than during
-it.
+would land between a tool call and that call's result, where a request cannot have a user
+message. So a message typed to steer a turn is answered after that turn rather than during it.
 
 While it waits, <kbd>up</kbd> takes it back. In an empty prompt that key puts the last message
 back where you can change it: the one still waiting if there is one, and otherwise a copy of the
@@ -453,18 +448,19 @@ a decision back looks like.
 
 A rule about a whole domain is one row too. `--allow log` decides `log:read`, and the `log` row
 names it in the column beside it rather than the operation getting a row that says the same answer
-back — `--allow context` would otherwise put a row on the screen for every one of its operations. An operation is a row of its
-own when somebody has answered about it separately: `--allow fs --deny fs:write` is two decisions.
+back — `--allow context` would otherwise put a row on the screen for every one of its operations.
+An operation is a row of its own when somebody has answered about it separately:
+`--allow fs --deny fs:write` is two decisions.
 
 **What it covers** is said in the terms the rule is written in, and is never wider than the rule: a
 domain names the operations in it, an operation names itself, and a server or a path rule names the
-tools it binds. `fs:glob  allow  fs` was one operation reading as an answer about the whole tool.
-Where nothing here is judged by a rule the column says that instead, so a flag that reaches nothing
-looks like one — which is what `--allow mcp` is beside a server this program spawned, since a call
-to one of its tools is judged as the server it came from.
+tools it binds; `fs:glob  allow  fs` would be one operation reading as an answer about the whole
+tool. Where nothing here is judged by a rule the column says that instead, so a flag that reaches
+nothing looks like one — which is what `--allow mcp` is beside a server this program spawned, since
+a call to one of its tools is judged as the server it came from.
 
-What that costs is worth saying plainly: you cannot refuse something here that has never come up.
-Deciding in advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
+What that costs is that you cannot refuse something here that has never come up. Deciding in
+advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
 
 The line along the bottom comes first because it is the one thing on this tab that is not
 negotiable. A registered `shell` that is not refused can read, write and reach the network whatever
@@ -544,15 +540,14 @@ the screen:
 ```
 
 The prompt is not underneath it: the box holding the keys is the box on the screen. Stacked, the
-two disagreed on any window shorter than about fifteen rows — the question needs the room, so the
-prompt gave way, and went on holding the keys and whatever had been typed
-into it from *off* the screen. A session waiting on an answer nobody can give it without first
-pressing a key nothing mentions.
+two would disagree on any window shorter than about fifteen rows: the question needs the room, so
+the prompt would give way and go on holding the keys, and whatever had been typed into it, from
+*off* the screen — a session waiting on an answer nobody can give without first pressing a key
+nothing mentions.
 
-**A question you cannot investigate is a question you cannot answer.** It used to be a box over the
-middle of the screen, and while it was up nothing else worked — so being asked whether `context` may
-elide item 22 meant deciding about item 22 with the list saying what item 22 *is* underneath the
-box asking. Here it takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the item,
+**A question you cannot investigate is a question you cannot answer.** Being asked whether
+`context` may elide item 22 means deciding about item 22, and what item 22 *is* is on the context
+tab. The question takes none of that away: <kbd>ctrl+t</kbd> to the context tab, read the item,
 come back, answer. The **chat** tab goes red on the strip while one is waiting, so the other three
 tabs say what the session is waiting for.
 
@@ -565,6 +560,10 @@ message the question interrupted, starting a turn on the way to answering. What 
 before <kbd>tab</kbd> is what scrolls the conversation, because reading is not answering. Whatever
 was in the prompt is there again when the question has gone, with the keys back on it and no second
 <kbd>tab</kbd> to press.
+
+Coming *back* to the chat tab while a question is waiting does put the keys on it — that is what
+the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing, <kbd>alt+1</kbd>,
+<kbd>y</kbd>.
 
 It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
 answers for all of it. That includes any calls already queued behind this one: a model that asks
@@ -579,10 +578,10 @@ been pushed off the bottom of the screen is one nobody can answer.
 
 A shell command is drawn as code — the rule down the left, the colours a fenced block gets on the
 chat tab — with its own joints picked out: the `|`, `&&`, `||` and `;` that join one stage to the
-next are coloured, because they are what you are scanning for. Wrapped as prose it was folded
-wherever the space ran out and the continuation went back to the margin, so the second half of a
-pipeline sat under `cmd:` looking exactly like the next argument; the rule settles that, and it
-wraps at a space rather than cutting mid-word the way a block of code does.
+next are coloured, because they are what you are scanning for. Wrapped as prose it would be folded
+wherever the space ran out and the continuation would go back to the margin, so the second half of a
+pipeline would sit under `cmd:` looking exactly like the next argument; the rule settles that, and
+it wraps at a space rather than cutting mid-word the way a block of code does.
 
 The joints are read off the command rather than off the highlighter, which calls every flag's
 hyphen an operator and does not tokenise `|` at all. A separator inside a quote is not a joint and
@@ -600,34 +599,22 @@ above the arguments and inside the part that does not scroll:
 ```
 
 Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
-changed that could be put back; it destroys something that cannot be got back or sends something
-off this machine. It
-decides nothing: the verdict is the same one the rules would have given, and an advisor that is
-down costs the line and nothing else. A rating nobody was sure of is never drawn green, which is
-why the percentage is on the line — a yellow you cannot explain is a yellow the advisor could not
-place. [RUNNING.md](RUNNING.md) has what it sends out, which is more than `--advise` alone does.
+changed that could be put back; it destroys something that cannot be got back or sends something off
+this machine. It decides nothing: the verdict is the same one the rules would have given, and an
+advisor that is down costs the line and nothing else. A rating nobody was sure of is never drawn
+green, which is why the percentage is on the line — a yellow you cannot explain is a yellow the
+advisor could not place. [RUNNING.md](RUNNING.md) has what it sends out, which is more than
+`--advise` alone does.
 
 An `edit` is drawn as a diff, since it is the call where two blocks of near-identical text sit one
 above the other and the whole question is which of them is on its way out: the value of `old` is
 red and the value of `new` is green. The names stay in the panel's own colour, so what is green is
 exactly the text that would end up in the file.
 
-Typing does not answer it, and it never takes the keys off you. A question arrives on its own
-schedule, in the middle of whatever you happen to be typing, and its keys are ordinary letters —
-`a` grants a capability for the rest of the session and is also the third letter of "what", which
-is how one live session granted `shell` for good. So the question appears without asking for the
-keys, and <kbd>tab</kbd> is how it gets them. Your letters go where you aimed them: into the
-prompt. <kbd>enter</kbd> sends what is in the prompt, and it waits, exactly like a message sent
-into a running turn does.
-
-Coming *back* to the chat tab while a question is waiting does put the keys on it — that is what
-the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing, <kbd>alt+1</kbd>,
-<kbd>y</kbd>.
-
 ## 🔦 finding things without a shell
 
 `fs`'s `grep` and `glob` are what the model reaches for to find its way around, and the reason
-they exist is the *capability* they ride. Finding a symbol used to mean `shell`, which subsumes
+they exist is the *capability* they ride. Finding a symbol used to mean `exec:run`, which subsumes
 every other capability — so a session that only wanted to be asked about a repository had to hand
 over the one permission that answers for everything. These declare `fs:grep` and `fs:glob`, and
 the path rules that bind a read bind them too.
@@ -650,11 +637,11 @@ hundred characters with a `…`, and when either fires the first line says so an
 about it.
 
 **`files_only` is the first thing it suggests**, and it is what `grep -l` is for: the files that
-matched and how many each has, most first, instead of the lines. Measured against this repository,
-`tools` as a pattern costs 3,223 tokens of lines — and because the walk is alphabetical and the cap
-fires early, all hundred of them come from files beginning with `.github/`, never reaching the one
-the question was about. The same search with `files_only` costs 894 tokens, sees all 205 files, and
-puts `kernel/mod.rs` and `command.rs` near the top where they can be read properly:
+matched and how many each has, most first, instead of the lines. A common word fills the cap
+early, and because the walk is alphabetical all hundred lines can come from the first directory it
+reaches, never getting to the file the question was about. The same search with `files_only`
+costs a fraction of the tokens, sees every file, and puts the ones with most matches near the top
+where they can be read properly:
 
 ```text
 119 file(s) match, 689 match(es) in all · 205 file(s) searched
@@ -690,15 +677,15 @@ go out as one request:
 /attach ~/reports/q3.pdf what is the headline number, and what is it compared against?
 ```
 
-What goes in depends on what the file is. Source, markdown, logs, CSV — anything this program has
-no media type for — goes in as **text**, which is countable, readable on the context tab and
+What goes in depends on what the file is. Source, markdown, logs, CSV — anything this program has no
+media type for — goes in as **text**, which is countable, readable on the context tab and
 compactable like everything else. A PDF, an image or a recording goes in as **bytes**, and the
-endpoint is told what they are. The extension decides, and only for the ten types in the table;
-sniffing the content instead gets the interesting case wrong, because an uncompressed PDF is valid
-UTF-8 for pages at a time and would be sent to the model as PDF source. A file that is neither a
-listed type nor readable as text is refused rather than guessed at — a media type is a claim about
-what the bytes are, and inventing one buys you an error message about a shape instead of one about
-a file.
+endpoint is told what they are. The extension decides, and only for the ten types this program has a
+name for; sniffing the content instead gets the interesting case wrong, because an uncompressed PDF
+is valid UTF-8 for pages at a time and would be sent to the model as PDF source. A file that is
+neither a listed type nor readable as text is refused rather than guessed at — a media type is a
+claim about what the bytes are, and inventing one buys you an error message about a shape instead of
+one about a file.
 
 `-f` at startup is the same thing at a different moment — one function, so `kamchatka -f
 diagram.png` works the same way — and with no question after the path, `/attach` just puts it in.
@@ -710,10 +697,10 @@ diagram.png` works the same way — and with no question after the path, `/attac
 ```
 
 Everything else a person can say to a model goes in as a message, and a message starts a turn — so
-telling it a fact it will need in four turns' time cost a request, an answer, and an "understood"
-nobody wanted. Saying it *with* the next question buries it; saying it afterwards is too late.
-A note goes into the context and stops there: nothing is sent, and it is carried by the next
-request like everything else on that tab.
+telling it a fact it will need in four turns' time costs a request, an answer, and an "understood"
+nobody wanted. Saying it *with* the next question buries it; saying it afterwards is too late. A
+note goes into the context and stops there: nothing is sent, and it is carried by the next request
+like everything else on that tab.
 
 It arrives as a **reference**, not as a message, and the model reads it with its label in front:
 
@@ -729,11 +716,11 @@ row says where it came from, and the chat draws it as what went in rather than a
 Like an attachment it is **not** pinned: <kbd>p</kbd> on the row is how you say this one should
 survive compaction.
 
-The one difference between them is the pin, and it follows from what the two acts are. A file
-named on the command line is part of how the session was set up and is meant to still be there at
-the end, so `-f` pins it. One attached at the prompt is something brought into a conversation, as
-ordinary as a message, and it gets old the same way — so `/attach` does not, and <kbd>p</kbd> on
-the context tab is there for the one that is meant to last.
+The one difference between `-f` and `/attach` is the pin, and it follows from what the two acts are.
+A file named on the command line is part of how the session was set up and is meant to still be
+there at the end, so `-f` pins it. One attached at the prompt is something brought into a
+conversation, as ordinary as a message, and it gets old the same way — so `/attach` does not, and
+<kbd>p</kbd> on the context tab is there for the one that is meant to last.
 
 Nothing here has a tokenizer for a picture, and it says so rather than putting a `0` where a
 number should be:
@@ -743,16 +730,15 @@ number should be:
 ```
 
 That is not a rounding. In the live test that pins this, a 535-byte one-page PDF goes to Gemini
-through OpenRouter: the counter puts the whole request at **19 tokens** and says one piece of it
-has no number on it, and the provider charges **540**. Dividing the base64 by four — the thing the
-counter refuses to do — would have said 179, which is not the answer either. The row on the
-context tab reads
-`0+` for the same reason, `/budget` counts how many pieces are in that state, and the figure in
-the corner stops being a floor the moment the request has gone out once — because from then on
-the provider's own number has the document inside it. If you want the estimate to be right
+through OpenRouter: the counter puts the whole request at **19 tokens** and says one piece of it has
+no number on it, and the provider charges **540**. Dividing the base64 by four — the thing the
+counter refuses to do — would have said 179, which is not the answer either. The row on the context
+tab reads `0+` for the same reason, `/budget` counts how many pieces are in that state, and the
+figure in the corner stops being a floor the moment the request has gone out once — because from
+then on the provider's own number has the document inside it. If you want the estimate to be right
 *before* that, `Kernel::set_counter` takes a counter that knows your vendor's formula, and
-[`pricing_a_picture.rs`][pricing] in the runtime is one written out, beside the same context
-counted by a counter that has no formula and says so.
+[`pricing_a_picture.rs`][pricing] in the runtime is one written out, beside the same context counted
+by a counter that has no formula and says so.
 
 [pricing]: https://github.com/ljedrz/nachalnik/blob/master/nachalnik/examples/pricing_a_picture.rs
 
@@ -761,33 +747,31 @@ counted by a counter that has no formula and says so.
 Four of the tools are about the session itself, and they are offered like the rest of them.
 `/tools toggle context` takes one away and `/tools toggle context` again gives it back, and the
 `tools` key in a settings file says which of them a session starts with — which is where a project
-that does not want its agent buying extra requests leaves `fork` out. There are
-[write-ups](https://ljedrz.github.io/nachalnik/) of three sessions driven from the two tools that
-existed when they were recorded — `context` (called `introspect` then) for reading and `amend` for
-changing, which are one tool now:
-one where an agent found a false note in its own context and corrected it, one where it took back
-a hallucination of its own by rewriting the two turns it had made things up in, and one where it
-answered *why do you think that* by forking itself and running the ablation rather than by
-introspecting. Two more transcripts are up there in which I do the editing instead, through the
-keys rather than through these.
+that does not want its agent buying extra requests leaves `fork` out.
 
-One rule runs through all of them and through `fs`. **An argument the action a call named does not
-read is refused, not ignored.** `fs {action: "read", …, old: "…"}` is a session asking for the
-part of a file around some text; `old` is a real `fs` argument and `edit` is whose, so before this
-the read ignored it and answered with the whole file — a real answer, to a
-call nobody made, with nothing in it saying so. The refusal names the action the argument belongs
-to when exactly one does, because that is the whole of what a session in that position needs to
-know. The same is true of `context {action: "note", ids: […]}`, which two different models tried in
-one evening: `note` writes a new item and has nothing to do with an id.
+There are [write-ups](https://ljedrz.github.io/nachalnik/) of three sessions: one where an agent
+found a false note in its own context and corrected it, one where it took back a hallucination of
+its own by rewriting the two turns it had made things up in, and one where it answered *why do you
+think that* by forking itself and running the ablation rather than by introspecting. They were
+driven from the two tools that existed when they were recorded — `context` (called `introspect`
+then) for reading and `amend` for changing, which are one tool now. Two more transcripts are up
+there in which I do the editing instead, through the keys rather than through these.
+
+One rule runs through all of them and through `fs`. **An argument that the named action does not
+read is refused, not ignored.** `fs {action: "read", …, old: "…"}` is a session asking for the part
+of a file around some text; `old` is a real `fs` argument and `edit` is whose, so a read that
+ignored it would answer with the whole file — a real answer, to a call nobody made, with nothing in
+it saying so. The refusal names the action the argument belongs to when exactly one does, which is
+what a session in that position needs to know. The same is true of
+`context {action: "note", ids: […]}`: `note` writes a new item and has nothing to do with an id.
 
 **`context`** reads. `look` lists every item it is carrying — what each one is, what it puts into
-the next request and what it is holding out of one, and why it is out if it is out — and reads any of them back,
-block by block, including what it was thinking when it produced them. A long one comes back as its
-start and its end: reading an item copies it into the context, so seeing all of a 9,000-token tool
-result in order to decide whether to keep it costs about what keeping it costs. `whole: true` asks
-for it anyway. `request` shows the
-request about to go out, message by message, with what the projector left out and what it had to
-repair.
+the next request and what it is holding out of one, and why it is out if it is out — and reads any
+of them back, block by block, including what it was thinking when it produced them. A long one
+comes back as its start and its end: reading an item copies it into the context, so seeing all of
+a 9,000-token tool result in order to decide whether to keep it costs about what keeping it costs.
+`whole: true` asks for it anyway. `request` shows the request about to go out, message by message,
+with what the projector left out and what it had to repair.
 
 `request` says which rule left each item out, which is two different answers in one list until it
 is split: an item left out by **its own state** is one `restore` puts straight back, while one the
@@ -829,12 +813,12 @@ a thousand tokens under a heading promising twenty-five. So the list ranks on wh
 the column the decision is actually made from — and says what it is holding beside it, because an
 agent that cannot see the difference cannot tell a context it could shrink from one it cannot.
 
-`search` is the one that reaches the archive. An archived item is kept in full and never sent,
-and until now the only way to see inside one was to read it back — which copies it into the
-context, so a session that had put eleven megabytes away could not look at any of it without
-undoing the saving it had just made. That made the archive write-only from the agent's side, which
-is not what *nothing is destroyed* is supposed to mean. Same rule as `log`: the count and the price
-first, the lines on request, never the item.
+`search` is the one that reaches the archive. An archived item is kept in full and never sent, and
+reading one back copies it into the context, so without `search` a session that had put eleven
+megabytes away could not look at any of it without undoing the saving it had just made. That would
+make the archive write-only from the agent's side, which is not what *nothing is destroyed* is
+supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
+item.
 
 ```text
 ⟩ context({"call":{"action":"search","text":"landlock"}})
@@ -917,11 +901,10 @@ astray:
 ```
 
 Leaving nothing out is said just as plainly, because *"on 9 of your items"* cannot be read as
-*"on all of them"*. A live session asked a copy what it would conclude **without knowing my
-earlier statement**, passed no `without` at all, got the matching answer back and reported it as
-an ablation — it had asked the copy to pretend, which is not a test of anything, because the copy
-is still reading the thing it is being told to disregard. A fork that took nothing away now says
-so in as many words.
+*"on all of them"*. A model that asks a copy what it would conclude **without knowing my earlier
+statement** and passes no `without` has asked the copy to pretend, which is not a test of anything,
+because the copy is still reading the thing it is being told to disregard. A fork that took nothing
+away says so in as many words, so its answer is not mistaken for an ablation.
 
 A fork can think; it cannot act, and it cannot go on thinking after it has answered once. Nothing
 it does reaches this session's context or its log. Forking needed no change to the runtime at all
@@ -980,8 +963,8 @@ itself:
   answer — *"this conversation started here"* — sitting in its own context, true when it was
   written and false now.
 - **`tools`** — every tool on offer, what each declares it needs, and how much of its output
-  reaches the model. Nothing anywhere let an agent enumerate its own toolset, so a `shell` removed
-  between two turns was something it could only keep asking for, or confabulate a reason for not
+  reaches the model. Without it an agent cannot enumerate its own toolset, so a `shell` removed
+  between two turns is something it can only keep asking for, or confabulate a reason for not
   using. With `log`'s `tools.changed` beside it, the pair answers both halves: what there is, and
   when the other thing went.
 - **`permissions`** — what the policy allows, refuses, or will stop and ask about, so a thing that
@@ -994,6 +977,6 @@ itself:
   request; it has never said what decided that, and a model that can read the verdict but not the
   rule cannot argue with either.
 
-Any tool can be taken *away* mid-session with `/tools toggle ID`, and that is deliberate
-rather than incidental. An agent whose ability to check the record is revoked half way through a
-run is a thing this program can set up, and a thing worth watching a model in.
+Any tool can be taken *away* mid-session with `/tools toggle ID`, and that is deliberate rather
+than incidental. An agent whose ability to check the record is revoked half way through a run is a
+thing this program can set up, and a thing worth watching a model in.

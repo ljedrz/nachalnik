@@ -16,7 +16,7 @@ its own context, ablates an item, sees what the copy says, and answers from a me
 of a theory. The difference between those two answers is what it is worth for a context to be
 state rather than a wall of text.
 
-> A model's account of what its answer depends on is not self-knowledge - it is task reasoning
+> A model's account of what its answer depends on is not self-knowledge — it is task reasoning
 > in the first person. So stop asking for the report and give it the experiment.
 
 **This branch holds the instrument, not a study.** A study adds its own material, its
@@ -43,8 +43,7 @@ recursion
   depth 3:        1/1 right (100%)
 ```
 
-In that last block it named the note its answer was made of and could not say where the note was,
-which is the opposite way round from what anybody expects.
+In that run it named the note its answer was made of and could not say where the note was.
 
 ---
 
@@ -78,13 +77,13 @@ second model's opinion of a first model's prose.
 **The control is a copy too, and the question says so.** "Did the answer change?" compares treated
 copies against copies of the same context with nothing moved — not against what the subject said
 in the live session, which it said with tools, at a different point in a different conversation.
-`Intervention::Nothing` is the most important variant in that enum.
+`Intervention::Nothing` is that control.
 
 Which is why every counterfactual in the suite asks about *two copies* — "one with your context as
 it stands, one with that note excluded: will they answer differently?" — rather than "would your
 answer change". The two are not the same question whenever the live session and a copy of it
-disagree, and they do disagree: `gemini-3.7-flash` answered a dossier correctly while a copy of
-the identical context followed the false note in it. Every record says which happened, in a line
+disagree, and they do disagree: a session has answered a dossier correctly while a copy of the
+identical context followed the false note in it. Every record says which happened, in a line
 that begins `the session answered`.
 
 And both copies are blinded to the exchange in which the subject already answered
@@ -177,11 +176,10 @@ already committed to which.
 
 They live in `suite`, which is the only module in the crate with prompt text in it — including the
 two tool descriptions in `suite::handles`, which are prompt text a model reads and are hashed into
-the instrument like everything else. A study's own methods, runbook and threats to validity travel
-with it on its branch. A benchmark
-*is* its questions, and questions go stale: a model that has seen the material in a training set
-is a model this suite can no longer measure, and replacing the suite must not mean replacing the
-harness.
+the instrument like everything else. A benchmark *is* its questions, and questions go stale: a
+model that has seen the material in a training set is a model this suite can no longer measure,
+and replacing the suite must not mean replacing the harness. A study's own methods, runbook and
+threats to validity travel with it on its branch.
 
 | experiment | the claim | the check | ~requests |
 | --- | --- | --- | --- |
@@ -226,12 +224,11 @@ the shape of the curve rather than any point on it.
 ### 🏃 running it
 
 Pointing it at your own model, the rate limiting, reading a sweep back and how the harness is
-itself checked are in [RUNNING.md][running] — operating instructions rather than part of the
-argument.
+itself checked are in [RUNNING.md][running].
 
 ### 🙈 what it does not measure
 
-Worth saying plainly, because the word *introspection* invites more than this delivers.
+The word *introspection* invites more than this delivers.
 
 - **Whether an ablation is clean.** Excluding a tool result takes its call down with it — the
   projector has no choice — so removing one item can remove two messages. It is reported in

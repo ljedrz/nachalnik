@@ -8,8 +8,8 @@ how to start; this is what to read before building something that leans on it.
 
 ## 🔍 context as a data structure
 
-Items are public data - an id, a kind, a source, a label, content, a size, a state, a note and
-whatever metadata you attach - so a client can render `/context` however it likes. One method
+Items are public data — an id, a kind, a source, a label, content, a size, a state, a note and
+whatever metadata you attach — so a client can render `/context` however it likes. One method
 covers every state change, and each call is one undoable operation:
 
 ```rust
@@ -23,7 +23,7 @@ kernel.undo();
 kernel.redo();
 ```
 
-`set_state` says what it did to each identifier - `changed`, `unchanged`, `unknown` - because
+`set_state` says what it did to each identifier — `changed`, `unchanged`, `unknown` — because
 "there is no item 12" and "item 12 was already pruned" are different things to tell somebody.
 
 Excluding an item removes it from the *projection*, not from the record. It keeps its identifier,
@@ -31,9 +31,9 @@ stays listed and inspectable, and comes back with another `set_state`, an `undo`
 `Elided` is the third answer between in and out: the item stays in the request as a one-line
 marker, so a tool result can stop costing what it holds without the call that asked for it having
 to come down too. The default projector drops the other half of a call/result pair when one side
-is gone, so pruning cannot produce a request the provider will reject - and says so in
-`Projection::repairs` *and* in the session log, a request the kernel quietly adjusted being exactly
-the one you want to be able to ask about afterwards.
+is gone, so pruning cannot produce a request the provider will reject. It says so in
+`Projection::repairs` *and* in the session log, because a request the kernel quietly adjusted is
+exactly the one you want to be able to ask about afterwards.
 
 **Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
 the whole of it, archived, and the truncated copy the model is shown. Putting the whole thing back
@@ -46,18 +46,18 @@ on holding; the truncation is still reported either way.
 
 One agent is one kernel, and a fleet of them shares nothing but whatever you hand to both, so
 running sixteen at once needs no coordination at all. Within a single turn, the tools a model
-asks for run one at a time in the order it asked - which is something you can build on, since two
+asks for run one at a time in the order it asked — which is something you can build on, since two
 edits to the same file then apply in sequence. `Config::parallel_tool_calls` gives that up for
 speed, on purpose and never by default: nothing in the kernel can tell whether a model's calls are
 independent, so the judgement is yours. Either way the results are recorded in the order the model
-asked for them. Several threads on a *single* kernel are fine too - reading is cheap and every
+asked for them. Several threads on a *single* kernel are fine too — reading is cheap and every
 mutation is atomic, so a client can render, prune and preview while a turn is in flight. The one
 thing two threads cannot do is drive the loop at the same time, which is `Error::Busy` rather than
 a second request.
 
 Automatic management is allowed, invisible management is not. A `Compactor` gets the budget and
 the items and returns a plan; the kernel refuses to remove anything pinned, applies the rest,
-and broadcasts a report of exactly what it did - which the user can then disagree with.
+and broadcasts a report of exactly what it did — which the user can then disagree with.
 
 ---
 
@@ -97,14 +97,14 @@ in `Projection::repairs` rather than doing it quietly.
 ## 🎯 a budget that corrects itself, and admits what it cannot reach
 
 Every token figure the kernel reports comes from a `TokenCounter`, and the estimate underneath the
-default one - `bytes / 4` - is admittedly that. How wrong it is depends on the shape of what you
+default one — `bytes / 4` — is admittedly that. How wrong it is depends on the shape of what you
 are sending: measured against a real API, about a third low on a short chat carrying four tool
 definitions, and a steady 7% low once the conversation is a few thousand tokens. It cannot see
 per-message framing and never sees the tokens a reasoning model spends thinking. Embedding a
 tokenizer would mean embedding a model-specific assumption, which this crate will not do.
 
 So it does the other thing. After every response, the provider has said what the request actually
-cost, and the kernel knows what it estimated for the very same bytes - so it hands both numbers to
+cost, and the kernel knows what it estimated for the very same bytes — so it hands both numbers to
 the counter, and a `Kernel::new` is already holding one that acts on them:
 
 ```rust
@@ -115,7 +115,7 @@ Calibrating::new(BytesPerToken::default())
 kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
-`Calibrating` converges on the first response worth learning from and settles there - measured over
+`Calibrating` converges on the first response worth learning from and settles there — measured over
 a growing conversation, it took that steady 7% error to within 1%. What it learned is a number you
 can look at (`calibration()`), not a fudge factor buried in the kernel. It ignores requests too
 small to have a systematic error in them, because a percentage drawn from a handful of tokens is
@@ -150,7 +150,7 @@ That counts one context three ways — the default counter, one applying a vendo
 from `meta`, and that same formula handed a blob nobody measured. Knowing a formula does not help
 if the payload has no dimensions on it, so the third abstains exactly as the default one does.
 
-One rule follows and it is load-bearing: a request carrying anything unpriced never reaches
+One rule follows: a request carrying anything unpriced never reaches
 `observe`. `Calibrating` corrects with a single multiplier, so a gap it cannot see would be spread
 over the bytes it can — prose beside one screenshot ends up reading 50% high while the screenshot
 still reads nothing.
@@ -168,14 +168,14 @@ little more cooperation than the last:
 | during a request | a provider that checks `DeltaSink::is_interrupted` stops reading and hands back what it has | the provider |
 | during tool calls | the kernel does not start the serial calls that had not begun; a tool that checks `OutputSink::is_interrupted` can stop the one that had | the tool |
 
-The kernel cannot reach into a `Provider` and stop it - it does not own the socket, the runtime or
-the future - so it offers the fact and lets the provider decide. One that ignores it is not broken,
+The kernel cannot reach into a `Provider` and stop it — it does not own the socket, the runtime or
+the future — so it offers the fact and lets the provider decide. One that ignores it is not broken,
 only slower to stop.
 
 What stopping never does is discard work. A half-finished answer and a tool that returned early are
 recorded as ordinary items, because the point of a context you can see is that *you* decide what to
-do with them. The blunt instrument is still there - drop the future driving `step` and the request
-is abandoned mid-flight, the kernel returns to `Idle` rather than wedging - but it costs you
+do with them. The blunt instrument is still there — drop the future driving `step` and the request
+is abandoned mid-flight and the kernel returns to `Idle` rather than wedging — but it costs you
 whatever had been streamed.
 
 ---
@@ -206,7 +206,7 @@ persisting a session is one line per event.
 
 The log stays small by *naming* things rather than copying them: `model.requested` records the
 context ids a request was projected from, not the messages. The one event that carries content is
-`context.replaced`, and it follows the rule that makes the rest work - the log records what nothing
+`context.replaced`, and it follows the rule that makes the rest work — the log records what nothing
 else can recover. An added item is still in the context; overwritten text is nowhere. The log is
 unbounded on purpose (a capped append-only log is not one), and `drain_history` is how a
 long-running session stays affordable: you take the records, you write them somewhere, the kernel
@@ -216,9 +216,9 @@ lets go. Nothing disappears behind your back.
 
 ## 💾 sessions outlive processes
 
-The log and a snapshot answer different questions, and you want both. The log says what happened;
-it stays small because an event *names* an item rather than carrying its contents - which is
-exactly why it cannot rebuild a context. A `Snapshot` can:
+The log and a snapshot answer different questions, and you want both. The log says what happened
+and stays small, because an event *names* an item rather than carrying its contents — which is
+also why it cannot rebuild a context. A `Snapshot` can:
 
 ```rust
 let snapshot = kernel.snapshot();          // items, ids, states, notes, params, used call ids
@@ -229,7 +229,7 @@ let kernel = Kernel::resume(Config::default(), snapshot);
 ```
 
 Everything that is easy to lose comes back: a pin, the reason something was pruned, a turn's
-reasoning, the signature attached to a tool call, and the identifiers already handed out - so a
+reasoning, the signature attached to a tool call, and the identifiers already handed out — so a
 resumed session cannot reuse one. A provider, a policy and the tools are yours to supply again,
-because they were never the session's to remember. Naming the config resumes under a new name,
-which is how a session gets forked rather than continued.
+because they were never the session's to remember. Setting `Config::session_name` resumes under a
+new name, which is how a session gets forked rather than continued.

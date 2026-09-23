@@ -1,6 +1,6 @@
 # running kamchatka
 
-Without a screen, against which endpoint, configured how, embedded in something else - and
+Without a screen, against which endpoint, configured how, embedded in something else — and
 what the number in the status line actually means. [The readme](README.md) says what the
 program is and [GUIDE.md](GUIDE.md) covers the screen and the keys.
 
@@ -43,10 +43,9 @@ with a slash after it, which is about that directory wherever it sits in a path.
 glob language `fs`'s own `glob` argument takes, and a pattern that reads like one — `src/**` —
 stops the session rather than going onto the permissions tab as a rule no path can match.
 
-`--on-ask deny` rather than `allow` is the one default worth arguing about, and it is deliberate:
-a run nobody is watching should not be able to do a thing nobody has allowed. The model is told,
-and told that it was *this call* rather than a standing rule — so it works around it rather than
-retrying:
+`--on-ask deny` rather than `allow` is deliberate: a run nobody is watching should not be able to
+do a thing nobody has allowed. The model is told, and told that it was *this call* rather than a
+standing rule — so it works around it rather than retrying:
 
 ```text
 ⟩ shell({"cmd":"echo hello"})
@@ -56,49 +55,51 @@ I’m not able to execute shell commands directly, but the command you asked abo
 straightforward. …
 ```
 
-Somebody else's tools are given the same way, and where a tool came from is a subject of its own:
-`--mcp files=… --allow-server files` is the whole of granting one server — the same subject the
+Somebody else's tools are given the same way, and where a tool came from is a subject of its own.
+`--mcp files=… --allow-server files` is the whole of granting one server: the same subject the
 permissions tab writes when somebody answers **always** at the prompt, given before the server has
 been spawned or said what it offers. Without it the tools are there and every call is refused,
-which is the right way round: a server named on a command line is not thereby trusted to run. It
-is its own argument rather than a spelling of `--allow` because a server's name and a domain are
-both bare words and nothing in either says which it is.
+because a server named on a command line is not thereby trusted to run. It is its own argument
+rather than a spelling of `--allow` because a server's name and a domain are both bare words and
+nothing in either says which it is.
 
-Nothing else can stop a run nobody is watching, so three things can. `--deadline 300` interrupts
+A run nobody is watching has to be told when to stop. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
 written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same once, and leaves
 at once if pressed again.
 
-`--spend 50000` is the third, and it is there because time is not the only thing one of these can
-spend: a model that has found a loop — a tool that fails the same way, a question it keeps
-re-asking — will stay inside any deadline you were willing to give it. The unit is tokens, `input
-+ output` as the provider reports them, because nothing here carries a price list and a figure in
-money would be one. It is a stopping rule rather than a cap, since what a response cost is known
-only once it has arrived:
+`--spend 50000` stops one too, because time is not the only thing one of these can spend: a model
+that has found a loop — a tool that fails the same way, a question it keeps re-asking — will stay
+inside any deadline you were willing to give it. The unit is tokens, `input + output` as the
+provider reports them, because nothing here carries a price list and a figure in money would be one.
+It is a stopping rule rather than a cap, since what a response cost is known only once it has
+arrived:
 
 ```text
 · spent 2,264 tokens of 2,000; stopping. `/spend N` raises the ceiling
 ```
 
 It belongs to the *session* rather than to this loop, which is why it is on
-[`wiring::Setup`](#-embedding-it) and not on the headless driver: what stops the turn that crossed
-the line is `App`, and so is what refuses the next one — so a screen session, a piped script and a
-host with a loop of its own are held to the same number, and none of them can get round it by not
+[`wiring::Setup`](#-embedding-it) and not on the headless driver. What stops the turn that crossed
+the line is `App`, and so is what refuses the next one, so a screen session, a piped script and a
+host with a loop of its own are held to the same number and none of them can get round it by not
 asking. `/spend` says what has been spent and against what, `/spend N` raises it, and `/spend 0`
 takes it away, which is the way back for whoever set it too low.
 
 An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
-reading the run as bounded. `--deadline` is the one that needs nobody's cooperation - of the
-model, at least. What it cannot cut short is a command of your own that is waiting on the endpoint:
-`/models` fetches a list, and `/model` and `/provider` finish their switch before the next line is
-read, so a deadline that falls during one of those is served when it returns.
+reading the run as bounded.
+
+`--deadline` is the one that needs nobody's cooperation — of the model, at least. What it cannot
+cut short is a command of your own that is waiting on the endpoint: `/models` fetches a list, and
+`/model` and `/provider` finish their switch before the next line is read, so a deadline that
+falls during one of those is served when it returns.
 
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script
 cannot overtake the turns they belong to. `--no-default-features --features mcp` builds this and
-nothing else — no screen compiled in, 88 crates lighter, and the same `--headless` behaviour
-whether or not the flag is given.
+nothing else — no screen compiled in, and the same `--headless` behaviour whether or not the flag
+is given.
 
 ## 🔌 a session you can walk away from
 
@@ -151,9 +152,8 @@ whatever reaches the port runs the `shell` tool as you. Listen on `tcp:127.0.0.1
 is the usual one
 ```
 
-So reaching a session from another machine is a tunnel, and that is a recommendation rather than a
-consolation: SSH already has the key management, so the session gets an authenticated, encrypted
-transport without this program growing either.
+So reaching a session from another machine is a tunnel: SSH already has the key management, so the
+session gets an authenticated, encrypted transport without this program growing either.
 
 ```console
 host$  kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2
@@ -161,14 +161,13 @@ other$ ssh -N -L 7878:127.0.0.1:7878 host &
 other$ kamchatka --connect tcp:127.0.0.1:7878
 ```
 
-A port and a socket file are not the same thing to write a protocol over, and the difference is
-three settings rather than any of the above. Frames here are small — a line somebody typed, a
-fragment of a sentence — so `TCP_NODELAY` is on, because Nagle would hold each one back waiting for
-the last to be acknowledged. Keepalive is on, because a peer whose machine slept sends no `FIN` and
-a read on the other side would wait for ever. And a dropped connection is picked back up for a
-minute, backing off, rather than five times in a second and a quarter: that is right for a socket
-file, where the host either comes back at once or is not coming back, and wrong for a laptop
-changing access points.
+A port and a socket file are not the same thing to write a protocol over. Frames here are small —
+a line somebody typed, a fragment of a sentence — so `TCP_NODELAY` is on, because Nagle would hold
+each one back waiting for the last to be acknowledged. Keepalive is on, because a peer whose machine
+slept sends no `FIN` and a read on the other side would wait for ever. And a dropped connection is
+picked back up for a minute, backing off: a socket file's host either comes back at once or is not
+coming back, but over a port the ordinary reason to lose a connection is a laptop changing access
+points, and getting it back takes seconds.
 
 Several clients can watch one session, and they see the same thing: the program has one voice, so
 what a command answers and what the runtime says about a turn reach all of them. What it is *not*
@@ -190,8 +189,8 @@ and the module documentation is where the argument is: why the records are the h
 lost and the fragments are the half that can, and why attaching answers with a projection rather
 than with a snapshot.
 
-`examples/attached.rs` is a client of a served session in about a hundred lines — attach, ask,
-follow the turn, refuse a permission question, read back the item the answer was recorded as:
+`examples/attached.rs` is a client of a served session — attach, ask, follow the turn, refuse a
+permission question, read back the item the answer was recorded as:
 
 ```console
 $ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
@@ -360,26 +359,23 @@ printed is where:
 `kamchatka -r /tmp/kamchatka/2026-09-02T18-25-10Z.json` carries on from it
 ```
 
-A session's name is when it started, in UTC, and it is also the name of its two files. It used to
-be `kamchatka-1788373510`, which repeated the directory it was about to be written into and then
-said nothing whatever to somebody reading a list of them.
+A session's name is when it started, in UTC, so that a list of them says something to whoever is
+reading it, and it is also the name of its two files.
 
-The condition used to be "somebody typed `/save`", which is exactly backwards: a session that
-ended badly is the one worth reading afterwards, and it was the one that left nothing. Nine runs
-against a provider that timed out left empty files and no way to see how far any of them had got.
-A resumed session keeps its name, so carrying on writes back to the same pair rather than
-scattering a lineage across files. It is a temporary directory because this is a safety net and
-not an archive — `/save PATH` is still how a session goes somewhere it will be next week — and
-`--no-record` turns it off for anyone who would rather a transcript did not outlive the terminal.
-The directory is `0700`: what goes in it is a whole conversation and every byte every tool
+Nobody has to type `/save` for any of this, because a session that ended badly is the one worth
+reading afterwards. A resumed session keeps its name, so carrying on writes back to the same pair
+rather than scattering a lineage across files. It is a temporary directory because this is a
+safety net and not an archive — `/save PATH` is still how a session goes somewhere it will be next
+week — and `--no-record` turns it off for anyone who would rather a transcript did not outlive the
+terminal. The directory is `0700`: what goes in it is a whole conversation and every byte every tool
 produced, written without anybody asking, and under an ordinary umask that would be a
 world-readable file on a shared machine.
 
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
-`gemini-3.5-flash` at another, and after a `/provider` there was no way to find out which without
-guessing. It asks the endpoint, marks the one you are on with `▸`, and takes a filter because a
-list of fifty-four is not an answer:
+`gemini-3.5-flash` at another, and after a `/provider` there is no other way to find out which
+without guessing. It asks the endpoint, marks the one you are on with `▸`, and takes a filter
+because a list of everything an endpoint serves is not an answer:
 
 ```text
 ┌  6 of 54 matching `flash-lite` · /model ID switches  ────────────────┐
@@ -397,17 +393,16 @@ key typed at a prompt would be a key in the transcript — so `/provider` is for
 need no key or take the same one: a local model, a proxy, another base URL on the same account.
 
 What is not switched either way is the context. The same items go to whatever answers next, which
-is the whole of what makes the answers comparable. `/seams` names the six replaceable parts and
-what is in each of them right now, asked of the kernel rather than restated from what this program
-set up at startup.
+is what makes the answers comparable. `/seams` names the six replaceable parts and what is in each
+of them right now, asked of the kernel rather than restated from what this program set up at
+startup.
 
 `/params KEY JSON` sets one model parameter and `/params` shows them — with what else this model
-takes, where the endpoint publishes it. The reason it does the second thing is that a parameter a
-model does *not* take is not refused: it is sent, ignored, and nothing anywhere says so, which
-makes a `seed` set for a reproducible run buy no reproducibility and look exactly like one that
-worked. Two models one session apart differed by eight of these. The runtime invents none of them
-— only what you set is sent — and a listing that publishes nothing is read as silence rather than
-as a prohibition, because ollama and a bare proxy both say nothing here:
+takes, where the endpoint publishes it. It shows the second because a parameter a model does *not*
+take is not refused: it is sent, ignored, and nothing anywhere says so, which makes a `seed` set
+for a reproducible run buy no reproducibility and look exactly like one that worked. The runtime
+invents none of them — only what you set is sent — and a listing that publishes nothing is read as
+silence rather than as a prohibition, because ollama and a bare proxy both say nothing here:
 
 ```text
 parameters: {"seed":42}
@@ -454,7 +449,7 @@ cannot put a number on is inside the provider's figure the moment it has gone ou
 
 That correction on the last line is the runtime's `Calibrating` counter: every response tells it
 what the request it just estimated really cost, and it adjusts. Over a real session against Gemini
-it went from 13% low to within 0.3%. A budget nobody can check is a decoration.
+it went from 13% low to within 0.3%.
 
 So does every request the model refuses for being too long, and that one is worth more than a
 response. What an endpoint charges for is a bill, and an aggregator in front of a model may quote
@@ -464,12 +459,11 @@ under a limit the model is already over — so a refusal corrects the counter, a
 what the request really came to and how much has to go before the next one is sent.
 
 A refusal is only read when it names the limit this session already knows, which is the one thing
-that says it is counting in the same units. The same model id at the same address refuses in two
-voices: the aggregator's own, which quoted a 65,536-token window against a request it put at
-71,311 where the counter had said 71,231, and the model behind it, which quoted a 131,072-token
-window in its native tokenizer against bytes the aggregator had counted as fitting. Reading the
-second would have named tens of thousands of tokens that were never there. It is left as the
-sentence it arrived as, which says the problem in words.
+that says it is counting in the same units. The same model id at the same address can refuse in
+two voices: the aggregator's own, quoting the window this session knows, and the model behind it,
+quoting a larger window in its native tokenizer against bytes the aggregator had counted as
+fitting. Reading the second would name tens of thousands of tokens that were never there, so it is
+left as the sentence it arrived as, which says the problem in words.
 
 Before any response, on an endpoint that reports no usage, and after a change of model until the
 next answer, the corner falls back to the plain estimate. And where something in the context has
@@ -488,8 +482,7 @@ marked `…`, still holding every byte it held, one <kbd>space</kbd> from coming
 
 A marker costs something too — it is a line of text where the content was — so the compactor
 counts what each elision actually recovers and leaves alone any result no bigger than the marker
-that would replace it. Eliding a `wrote 412 bytes to …` makes the request *bigger*, and a pass
-that took twenty of them is how that was found.
+that would replace it: eliding a `wrote 412 bytes to …` would make the request *bigger*.
 
 `/compact` asks that same compactor by hand, and shows its answer before anything happens: every
 item it would take, with the identifier, what it is and what it is holding. It then waits, in the
@@ -512,15 +505,13 @@ holding itself to the smaller number refuses requests that would have been answe
 costs a round trip and buys the endpoint's own count, which is worth more than any guess made
 here.
 
-Down a pipe there are no keys, so `--headless` prints the same list to stderr and takes it. That is
-the opposite of what `--on-ask` does with a tool's question, and they are different questions: a
-tool's is the model asking to do something nobody vouched for, and this one is a line the operator
-typed.
+Down a pipe there are no keys, so `--headless` prints the `/compact` list to stderr and takes it.
+That is the opposite of what `--on-ask` does with a tool's question, and they are different
+questions: a tool's is the model asking to do something nobody vouched for, and this one is a line
+the operator typed.
 
-It is also the way out of a session too big to send. The tools that prune a context are the
-*model's* — `context` — and reaching it costs a request, which is the thing that is
-failing. A context nothing will accept had, until this, only one way out, and it went through the
-request that no longer works.
+`/compact` is also the way out of a session too big to send. The tool that prunes a context is the
+*model's* — `context` — and reaching it costs a request, which is the thing that is failing.
 
 ## 🧩 embedding it
 
@@ -555,12 +546,11 @@ let reply = wired.app.submit("/budget").await;
 event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event`, and
 hands in a line whenever it has one.
 
-`spend` above is the one thing a host gets whether it asks or not, which is why it is here rather
-than on the headless driver where it started. `on_event` is the door every loop comes through, so
-that is where the provider's own figures are added up; once they pass the ceiling the turn in
-flight is interrupted and `App::start_turn` refuses the next one, so a host that keeps handing in
-lines is told rather than quietly billed. `App::spent`, `App::spend` and `App::set_spend` are the
-figure, the ceiling and the way to move it.
+`spend` above is the one thing a host gets whether it asks or not. `on_event` is the door every
+loop comes through, so that is where the provider's own figures are added up; once they pass the
+ceiling the turn in flight is interrupted and `App::start_turn` refuses the next one, so a host
+that keeps handing in lines is told rather than quietly billed. `App::spent`, `App::spend` and
+`App::set_spend` are the figure, the ceiling and the way to move it.
 
 ## 🗂️ a settings file
 
@@ -580,14 +570,13 @@ parser for that in the tree already:
 }
 ```
 
-Every key is optional, every one is named after the argument it stands in for — with one
-exception, below — and **anything given on the command line wins**, including a value that happens
+Every key is optional, every one is named after the argument it stands in for — with two
+exceptions, below — and **anything given on the command line wins**, including a value that happens
 to be the default, because `--requests 8` is somebody saying eight rather than somebody saying
-nothing. A list on the command
-line *replaces* the file's rather than adding to it: one rule for every key is the only kind worth
-predicting, and the other way round there is no way to ask for fewer. `--model` is the one setting
-with a variable behind it, so the order there is command line, then `KAMCHATKA_MODEL`, then the
-file.
+nothing. A list on the command line *replaces* the file's rather than adding to it: one rule for
+every key is the only kind worth predicting, and the other way round there is no way to ask for
+fewer. `--model` is the one setting with a variable behind it, so the order there is command line,
+then `KAMCHATKA_MODEL`, then the file.
 
 **`border` and `tools` are the exceptions**, the two settings with no argument behind them:
 
@@ -619,25 +608,24 @@ everywhere, rather than one that works until somebody opens it on a terminal.
 { "tools": ["fs", "shell", "context", "log", "setup"] }
 ```
 
-Left out, or `null`, every tool is offered — that list is the whole set minus `fork`, which is how
-a project says *do not go buying extra requests*. An empty list offers none
-of them, which is a session with whatever an MCP server brought and nothing else. A name that is
+Left out, or `null`, every tool is offered. The list above is the whole set minus `fork`, which is
+how a project says *do not go buying extra requests*. An empty list offers none of them, which is
+a session with whatever an MCP server brought and nothing else. A name that is
 not a tool stops the program and says which ones there are, for the same reason an unknown key
 does: a file asking for `contxt` and quietly getting a session with no context tool is worse than
 one that does not start.
 
 There is no argument behind it because which tools a project wants its agent to have is settled
-once and then not thought about again — and because the *other* thing it was used for, turning one
-off for a while, is `/tools toggle ID` at the prompt, at the moment somebody wants it rather than before
-the session starts. `/tools toggle` works on every tool, including the ones a server brought, and a tool
-turned off this way is kept rather than thrown away: `/tools toggle` again offers the same one back,
-still holding whatever it was remembering.
+once and then not thought about again — and because the *other* thing it could be for, turning one
+off for a while, is `/tools toggle ID` at the prompt, at the moment somebody wants it rather than
+before the session starts. `/tools toggle` works on every tool, including the ones a server
+brought, and a tool turned off this way is kept rather than thrown away: `/tools toggle` again
+offers the same one back, still holding whatever it was remembering.
 
 A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
-this program expands one, and the exception is narrower than it looks: every other way of giving
-those paths has a shell in front of it that expanded `~` before the program saw anything, and a
-file has nothing in front of it. The tools still refuse a leading `~` rather than expanding it,
-because those paths are written by a *model*.
+this program expands one, because every other way of giving those paths has a shell in front of it
+that expanded `~` before the program saw anything, and a file has nothing in front of it. The tools
+still refuse a leading `~` rather than expanding it, because those paths are written by a *model*.
 
 A key nothing reads is an error naming it, not a line that quietly does nothing:
 
@@ -668,17 +656,16 @@ A path you typed is not announced: you already know which file it was.
 archive a release attaches, beside the binary: every setting there is, so you edit rather than
 remember, and every one of them at the program's own default. `cargo install` copies no files, so
 the binary carries a copy too — `kamchatka --print-config > kamchatka.json` is the same bytes,
-wherever you installed from. Copying it wholesale changes
-nothing at all: it is the program you already have, written down. It grants nothing — `allow` is
+wherever you installed from. Copying it wholesale changes nothing at all: it is the program you
+already have, written down. It grants nothing — `allow` is
 empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
 default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
 program deciding on your behalf the one kind of thing it exists not to decide on your behalf —
 and `~/.cargo` holds a registry token.
 
-It narrows nothing either, which took a second pass to get right: the file used to set a spend
-ceiling of 200,000 tokens, on the reasoning that a tightening is the one thing a file adopted
-sight-unseen can safely offer. What that actually buys is a session that stops for a reason
-nobody chose, out of a file whose whole claim is that it is the defaults. `spend` is here at
+It narrows nothing either. A spend ceiling can look like the one thing a file adopted sight-unseen
+can safely offer, but what it buys is a session that stops for a reason nobody chose, out of a
+file whose whole claim is that it is the defaults. `spend` is here at
 `null` with the rest, and `--spend`, `/spend` or one edit is how it stops being. The suite holds
 the file to naming every key and to leaving the two that bound a session unset, so neither a
 setting added later nor a number added here can go unnoticed.
@@ -765,7 +752,7 @@ The advisor, which is only ever asked when --advise is given:
                               typesafe/jev-1.13 through OpenRouter
 ```
 
-That is `--help`, which lists the environment too rather than leaving three settings for the
+That is `--help`, which lists the environment too rather than leaving its variables for the
 readme alone to mention. The advisor's block is printed by a build that has an `--advise` to use
 it and by no other, which is why it is the one part of the above you may not see.
 
@@ -782,8 +769,8 @@ $ kamchatka --advise --allow exec:run "tidy up the build artifacts"
 ```
 
 `--allow exec:run` is the setting this is for. Answering *always* to one shell command answers for
-every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and `rm
--rf /` are the same capability. The advisor reads the next one.
+every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and
+`rm -rf /` are the same capability. The advisor reads the next one.
 
 **Without a dedicated key it can borrow yours, in one case.** `jev` is served through OpenRouter as
 well as by TypeSafe, so a session whose requests *already go to OpenRouter* can have an advisor
@@ -794,8 +781,8 @@ too.
 Any other session is refused and told why. A key is an OpenRouter key because it is being sent to
 OpenRouter, not because of the variable it was read from — so a session pointed at ollama, at
 Google with `--gemini`, or at a gateway of your own holds a key that service issued, and spending
-it here would hand a third party a credential with no business with them. Those still need
-`KAMCHATKA_SYSTEM1_API_KEY`, exactly as before:
+it here would hand a third party a credential with no business with them. Those need
+`KAMCHATKA_SYSTEM1_API_KEY`:
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
@@ -813,127 +800,6 @@ the address without moving the account — pointing it at the other service mean
 service's model with `KAMCHATKA_SYSTEM1_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
 version is current; OpenRouter serves versions under their own names, which is why the identifier
 this program sends there names one.
-
-### an advisor on this machine
-
-`SYSTEM1_ADVISOR_COMMAND` points at a System One engine running here, and it is checked **before**
-the key — set it and the three variables below are not read at all. The point is not that it is
-free, though it is: **nothing leaves the machine**. Everything the advisor section above says
-about a third party reading a tool's arguments stops applying, because the arguments go to a
-process you started, under your own user, and come back as numbers.
-
-```console
-$ pip install laya
-$ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
-$ kamchatka --advise -m qwen/qwen3-coder
-```
-
-[`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no
-CLI, nothing to point a base URL at — so the command is an interpreter and a script, and
-`contrib/laya_advisor.py` is the script. Most of it is comments, and
-the protocol is one JSON object per line in and one per line out, in the body kamchatka already
-builds for the hosted engine, because laya's question dicts and answers use the same three types
-under the same names.
-
-The process is started once and kept, because a 421M-parameter checkpoint costs seconds to load
-and milliseconds to run — loading it per question would put that wait in front of you every time
-you were asked to press `y`. It is killed when the session ends.
-
-The shim is an adapter and not a pipe. The two engines agree on the *question* shape and not on
-the answer: laya keys its answers by the primitive with no `type`, and its `confidence` is its own
-quantity rather than how concentrated the distribution is. Passed through, that is what turns `ls`
-into a yellow line at 1% — kamchatka will not draw a reading nobody is sure of green, so a number
-that is not a confidence makes every command yellow whatever it scored. The shim computes the
-field the caller means and stamps the type from the question it asked.
-
-If your `laya` answers under keys this does not expect, `--probe` says so without guessing:
-
-```console
-$ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
---- the state kamchatka sends ---
-...
---- the gate: what laya answered, verbatim ---
-...
---- the gate: what this shim would send on ---
-...
---- the rubric: what laya answered, verbatim ---
-...
-```
-
-It asks the program's questions, word for word, of the state the program sends — a probe that
-makes up its own measures something nobody runs, which is a mistake this made twice: once with a
-rubric of its own, and once with the rubric copied and a bare command line where the program
-sends the whole call. The second one matters more than it sounds, because the gap between the two
-answers is wide enough to be mistaken for a fact about the rubric. Both blocks now come from the
-same constants the program sends, and a test fails if either drifts.
-
-Both requests are shown because the program makes two: the gate's pair, which decides whether a
-call runs, and the rubric, which is only ever drawn. An advisor can be useless at one and fine at
-the other. An empty second block is the translation not recognising what laya sent; a `score` in
-the right place under a flat distribution is the engine finding the question hard, which is a
-different problem and not one this file can fix. `--selftest` checks the translation against a
-recorded answer and needs no checkpoint; `cargo test` runs it.
-
-**Three of laya's own settings are not the ones it ships with**, because its model card says so:
-
-- **The temperatures are refitted.** The card is explicit that the checkpoint ships over-confident
-  and that one temperature per question type and option count has to be refitted on your own data
-  before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
-  one. `contrib/laya_fit.json` is sixty labelled commands and `--fit` is what recomputes them from
-  it, printing the working. Point it at a file of your own traffic if you have one:
-
-  ```console
-  $ python3 laya_advisor.py --fit           # or --fit path/to/your-own.json
-  bucket                     T     NLL     gap  accuracy  misfires
-  choice:3-5   shipped    1.76   0.721   0.448     0.717         0
-               fitted     0.76   0.603   0.347     0.717         0
-  ```
-
-  A temperature moves confidence and never the answer — accuracy is identical at every value — so
-  what this changes is only whether the gate is allowed to act on what the model already said.
-  Only one of the three went the way you would guess: `choice` was too flat, `noul` was too
-  *sharp* and the fit pushes it the other way, and the rubric barely moved.
-- **The token budget is raised** to 512 for the question and 1024 for the whole sequence. A stage
-  of a command line travels in the question rather than in the state, and at the shipped 192 a
-  long one is cut there — silently, unlike the `(cut; …)` the state's own cap leaves.
-- **The checkpoint is chosen by script alone.** laya's router also guesses the language of Latin
-  text from stopwords, which its card calls best-effort and which is meaningless on a command
-  line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
-  and goes to a checkpoint the card's own table rates worse on English.
-
-None of it makes laya good at this. Against sixty labelled commands the gate answers `deny` to
-half the destructive ones and reaches an actual refusal on nine of thirty, where the hosted model
-answers `deny` to twenty-eight and refuses eighteen. The colour is worse: 21 of 30 destructive
-commands come out red, but *nothing* comes out green — laya cannot bring itself to say a command
-is safe, so 37 of 60 sit on the middle band. The card's own summary is the one to read — *a fast
-base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
-typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
-an advisor that can refuse something at all; what would buy more is fine-tuning, which is what
-laya's notebook is for.
-
-**Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
-matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
-sharing your terminal would be writing over the screen ratatui is drawing. What the session is told instead is two lines
-and no more — that the advisor is not ready yet, and then that it is:
-
-```text
-· the advisor `…/python` is not ready yet; you will be told when it is
-· the advisor is ready
-```
-
-The second one means it answered a question, not that it printed a word: the advisor is asked
-one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
-answer is found before a permission question depends on it, rather than at the first `y` — which
-is the startup check the hosted advisor gets from `Jev::probe` and a local one had none of.
-
-The last twenty lines of whatever the engine wrote are kept and hung on the end of whatever
-failure they explain, so a traceback shows up in the permission panel that went unanswered
-rather than having scrolled past.
-
-If it fails — the command is not there, it stops answering, a line does not parse, a question
-takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
-rather than risking an answer being paired with the question before it. The standing rules decide
-alone from then on, which is what happens when the hosted one is unreachable too.
 
 Those two are also the whole of what a *third* service takes. The variables say `SYSTEM1` rather
 than naming a company because the three question types are the category's — a claim to weigh, a
@@ -963,6 +829,125 @@ other, which is the invariant *nothing in a model's output reaches the policy* s
 agent under judgement cannot address the judge. That disclosure is the reason this is behind both
 a feature and a flag rather than on for anyone with a key in their environment.
 
+### an advisor on this machine
+
+`SYSTEM1_ADVISOR_COMMAND` points at a System One engine running here, and it is checked **before**
+the key — set it and the three `KAMCHATKA_SYSTEM1_` variables are not read at all. The point is not
+that it is free, though it is: **nothing leaves the machine**. Everything the advisor section above
+says about a third party reading a tool's arguments stops applying, because the arguments go to a
+process you started, under your own user, and come back as numbers.
+
+```console
+$ pip install laya
+$ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
+$ kamchatka --advise -m qwen/qwen3-coder
+```
+
+[`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no
+CLI, nothing to point a base URL at — so the command is an interpreter and a script, and
+`contrib/laya_advisor.py` is the script. Most of it is comments, and the protocol is one JSON
+object per line in and one per line out, in the body kamchatka already builds for the hosted
+engine, because laya's question dicts and answers use the same three types under the same names.
+
+The process is started once and kept, because a 421M-parameter checkpoint costs seconds to load
+and milliseconds to run — loading it per question would put that wait in front of you every time
+you were asked to press `y`. It is killed when the session ends.
+
+The shim is an adapter and not a pipe. The two engines agree on the *question* shape and not on
+the answer: laya keys its answers by the primitive with no `type`, and its `confidence` is its own
+quantity rather than how concentrated the distribution is. Passed through, that is what turns `ls`
+into a yellow line at 1% — kamchatka will not draw a reading nobody is sure of green, so a number
+that is not a confidence makes every command yellow whatever it scored. The shim computes the
+field the caller means and stamps the type from the question it asked.
+
+If your `laya` answers under keys this does not expect, `--probe` says so without guessing:
+
+```console
+$ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
+--- the state kamchatka sends ---
+...
+--- the gate: what laya answered, verbatim ---
+...
+--- the gate: what this shim would send on ---
+...
+--- the rubric: what laya answered, verbatim ---
+...
+```
+
+It asks the program's questions, word for word, of the state the program sends: a probe that
+makes up its own measures something nobody runs. That goes for the state as much as the rubric —
+a bare command line where the program sends the whole call answers differently enough to be
+mistaken for a fact about the rubric. Both blocks come from the same constants the program sends,
+and a test fails if either drifts.
+
+Both requests are shown because the program makes two: the gate's pair, which decides whether a
+call runs, and the rubric, which is only ever drawn. An advisor can be useless at one and fine at
+the other. An empty second block is the translation not recognising what laya sent; a `score` in
+the right place under a flat distribution is the engine finding the question hard, which is a
+different problem and not one this file can fix. `--selftest` checks the translation against a
+recorded answer and needs no checkpoint; `cargo test` runs it.
+
+**Three of laya's own settings are not the ones it ships with**, because its model card says so:
+
+- **The temperatures are refitted.** The card is explicit that the checkpoint ships over-confident
+  and that one temperature per question type and option count has to be refitted on your own data
+  before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
+  one. `contrib/laya_fit.json` is sixty labelled commands and `--fit` is what recomputes them from
+  it, printing the working. Point it at a file of your own traffic if you have one:
+
+  ```console
+  $ python3 laya_advisor.py --fit           # or --fit path/to/your-own.json
+  bucket                     T     NLL     gap  accuracy  misfires
+  choice:3-5   shipped    1.76   0.721   0.448     0.717         0
+               fitted     0.76   0.603   0.347     0.717         0
+  ```
+
+  A temperature moves confidence and never the answer — accuracy is identical at every value — so
+  what this changes is only whether the gate is allowed to act on what the model already said.
+  `choice` was too flat, `noul` was too *sharp* and the fit pushes it the other way, and the rubric
+  barely moved.
+- **The token budget is raised** to 512 for the question and 1024 for the whole sequence. A stage
+  of a command line travels in the question rather than in the state, and at the shipped 192 a
+  long one is cut there — silently, unlike the `(cut; …)` the state's own cap leaves.
+- **The checkpoint is chosen by script alone.** laya's router also guesses the language of Latin
+  text from stopwords, which its card calls best-effort and which is meaningless on a command
+  line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
+  and goes to a checkpoint the card's own table rates worse on English.
+
+None of it makes laya good at this. Against sixty labelled commands the gate answers `deny` to
+half the destructive ones and reaches an actual refusal on nine of thirty, where the hosted model
+answers `deny` to twenty-eight and refuses eighteen. The colour is worse: 21 of 30 destructive
+commands come out red, but *nothing* comes out green — laya cannot bring itself to say a command
+is safe, so 37 of 60 sit on the middle band. The card's own summary is the one to read — *a fast
+base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
+typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
+an advisor that can refuse something at all; what would buy more is fine-tuning, which is what
+laya's notebook is for.
+
+**Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
+matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
+sharing your terminal would be writing over the screen ratatui is drawing. What the session is
+told instead is two lines and no more — that the advisor is not ready yet, and then that it is:
+
+```text
+· the advisor `…/python` is not ready yet; you will be told when it is
+· the advisor is ready
+```
+
+The second one means it answered a question, not that it printed a word: the advisor is asked
+one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
+answer is found before a permission question depends on it, rather than at the first `y` — the
+same startup check the hosted advisor gets from `Jev::probe`.
+
+The last twenty lines of whatever the engine wrote are kept and hung on the end of whatever
+failure they explain, so a traceback shows up in the permission panel that went unanswered
+rather than having scrolled past.
+
+If it fails — the command is not there, it stops answering, a line does not parse, a question
+takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
+rather than risking an answer being paired with the question before it. The standing rules decide
+alone from then on, which is what happens when the hosted one is unreachable too.
+
 ### a colour on the question
 
 `--features shell-advisor` adds one more question, and it is the only part of the advisor a
@@ -978,10 +963,9 @@ $ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
 $ kamchatka --advise "tidy up the build artifacts"
 ```
 
-Note there is no `--allow exec:run` here, and that is the difference from the section above. The
-verdict is asked about calls that would otherwise **run**; a rating is asked about the ones you
-are going to be **asked** about, which in a default session is every command. The answer is drawn
-in the question, above the arguments:
+There is no `--allow exec:run` here. The verdict is asked about calls that would otherwise
+**run**; a rating is asked about the ones you are going to be **asked** about, which in a default
+session is every command. The answer is drawn in the question, above the arguments:
 
 ```text
 ┌ a tool wants to run · tab ───────────────────────────────────────────────────┐
@@ -996,10 +980,9 @@ in the question, above the arguments:
 
 Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
 changed that could be put back; it destroys something that cannot be got back, or sends something
-off this machine. You
-still have to read the command, which is what the panel under it is for. What the colour buys is
-the half-second before that: whether this is the fifteenth `cargo test` of the afternoon or the
-one call in fifty worth stopping on.
+off this machine. You still have to read the command, which is what the panel under it is for. What
+the colour buys is the half-second before that: whether this is the fifteenth `cargo test` of the
+afternoon or the one call in fifty worth stopping on.
 
 **The top of that rubric is asked a second time, as a claim rather than as a position**, and the
 worse of the two answers is what gets drawn. The two engines are good at different halves of it:
@@ -1034,12 +1017,11 @@ context. The snapshot has two ways back in.
 the model parameters and what the token counter had learned all come back exactly as they were,
 because `Kernel::resume` is a constructor and builds the session around them. It also reads the
 `.jsonl` of the same name, if it is still beside the snapshot, for the one thing a snapshot
-cannot carry: what an item said before somebody rewrote it is an *event*, so a resumed session
-that read only the `.json` had an empty `v1` page while the words sat in the file next to the one
-it was reading. A record that is missing or was cut off mid-line costs those pages and nothing
-else. What it cannot do is carry the lineage on: the resumed session's log starts where the
-resume did, so a `/save` of it writes a record without the earlier rewrites in it — the way two
-hops back is the `.jsonl` you kept.
+cannot carry: what an item said before somebody rewrote it is an *event*, and without the record
+a resumed session's `v1` pages would be empty. A record that is missing or was cut off mid-line
+costs those pages and nothing else. What it cannot do is carry the lineage on: the resumed session's
+log starts where the resume did, so a `/save` of it writes a record without the earlier rewrites in
+it — the way two hops back is the `.jsonl` you kept.
 
 `/load PATH` brings it into the session you are already in, which is the useful one. It is a
 context operation and it plays by the same rule as the rest of them — nothing is destroyed. What
@@ -1048,9 +1030,9 @@ stays where it is, because a pin is you saying so and `--system` is pinned; the 
 in as new items with new numbers, and the conversation they were is read back onto the chat tab.
 <kbd>u</kbd> twice puts the whole thing back.
 
-That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless, `/load
-good`, and carry on from where it was still working — without losing the detour, which is sitting
-in the context marked `▫` if you want to read it.
+That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless,
+`/load good`, and carry on from where it was still working — without losing the detour, which is
+sitting in the context marked `▫` if you want to read it.
 
 ### starting again
 
@@ -1106,10 +1088,10 @@ at.
 The other half is the program, and it is tested without a screen at all: the policy's own
 questions, real commands under a real Landlock ruleset, the introspection tools through the
 real loop, a whole session driven by lines, the same session driven through a socket by two
-clients at once, somebody else's MCP server spawned as a child process,
-and the settings file. `cargo test -p kamchatka --no-default-features --features mcp` runs those
-and nothing else — which is also the check that the screen really is optional, since a suite that
-only ever compiled with it could not tell you.
+clients at once, somebody else's MCP server spawned as a child process, and the settings file.
+`cargo test -p kamchatka --no-default-features --features mcp` runs those and nothing else — which
+is also the check that the screen really is optional, since a suite that only ever compiled with
+it could not tell you.
 
 `cargo test -p kamchatka --test live` is the third kind and wants a key: it asks whether a request
 these keys produced is one a real API accepts, and whether the sentences these tools write are ones
@@ -1138,8 +1120,8 @@ checkout elsewhere and a scratch directory are one flag: `--sandbox-allow /srv/r
 
 **A daemon you talk to over a socket needs one too**, on Linux 7.1 and up. A confined command may
 connect to a unix socket only where it could have written one, so the session bus, the compositor
-and a container daemon all come back `Permission denied` — which is the point, because each of them
-runs what it is asked outside the confinement. Hand over the socket rather than the directory it
+and a container daemon all come back `Permission denied`, because each of them runs what it is
+asked outside the confinement. Hand over the socket rather than the directory it
 sits in:
 
 ```console
@@ -1150,12 +1132,12 @@ $ kamchatka --sandbox-allow /run/docker.sock -m …
 what comes back from a socket is whatever the process behind it was willing to do. On an older
 kernel there is no such right and every one of them was reachable all along.
 
-**Git needs no flag.** It used to: under Landlock `access(2)` still answers from the file's own
-permissions, so git asked whether `~/.gitconfig` was readable, was told yes, opened it, got
-`EACCES` and took the *unreadable configuration* branch — `fatal: unknown error occurred while
-reading the configuration files`, and every git command in the session dead. A confined command is
-now handed `GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out of reach, so git
-gets the *no configuration* case, which it handles. Pass `--sandbox-read ~/.gitconfig` if you want
+**Git needs no flag.** Under Landlock `access(2)` still answers from the file's own permissions, so
+git would ask whether `~/.gitconfig` is readable, be told yes, open it, get `EACCES` and take the
+*unreadable configuration* branch — `fatal: unknown error occurred while reading the configuration
+files`, and every git command in the session dead. So a confined command is handed
+`GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out of reach, and git gets the
+*no configuration* case, which it handles. Pass `--sandbox-read ~/.gitconfig` if you want
 your identity and aliases in there too.
 
 **A permission error says where it came from.** When a confined command is refused a path outside
@@ -1171,10 +1153,10 @@ A refusal that names only paths the command *can* reach gets no such line: `cat 
 refused with or without a sandbox, and hedging about it would send a model looking for a boundary
 that had nothing to do with it.
 
-**And it says where the session does reach**, which is the other half and was missing from the
-tools that run in process: their refusal named the working directory and called it as far as
-this session goes, so a path opened up with `--sandbox-allow` was one the model then never tried.
-It names all of it now, in the same words the `shell` tool's description uses:
+**And it says where the session does reach**, in the tools that run in process too, in the same
+words the `shell` tool's description uses. A refusal that named only the working directory would
+read as the whole boundary, and a path opened up with `--sandbox-allow` would be one the model
+never tried:
 
 ```text
 /home/you/.ssh/id_rsa: outside what this session reaches, which is /home/you/proj read-write,

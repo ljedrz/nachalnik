@@ -20,25 +20,25 @@ to show that it can be.
 
 | crate | what it is |
 | --- | --- |
-| **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. Five dependencies, no `unsafe`, no network, no prompt. This is the part that matters, and it is meant to stay boring. |
-| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime - the thing you actually run, and the demonstration that the seams hold up under one. Also where the sandbox lives, because it is the program that spawns processes. |
+| **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. |
+| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, and the demonstration that the seams hold up under one. Also where the sandbox lives, because it is the program that spawns processes. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
-| **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared - so *"why do you think that?"* stops being unfalsifiable. |
-| **[`nachalnik-providers`](nachalnik-providers)** | the two dialects - OpenAI chat-completions and Google's own - streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
-| `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask - so that scaffolding is written once rather than four times. A *dev*-dependency with no version: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
+| **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
+| **[`nachalnik-providers`](nachalnik-providers)** | the two dialects — OpenAI chat-completions and Google's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
+| `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask — so that scaffolding is written once rather than four times. A *dev*-dependency with no version: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 ### 📖 the docs
 
 | file | what it holds |
 | --- | --- |
-| [AGENTS.md](AGENTS.md) | orientation for whoever - person or model - is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
-| [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there - break one and something in `tests/` should go red. |
+| [AGENTS.md](AGENTS.md) | orientation for whoever — person or model — is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
+| [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there — break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full with the mistake each came from, and the two gotchas that cost an afternoon each. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
 | [POSTPONED.md](POSTPONED.md) | known, decided against *for now*, each entry saying what would unblock it. |
 
-Each crate's own readme says what it is and how to start; the longer material sits beside it -
+Each crate's own readme says what it is and how to start; the longer material sits beside it —
 [`kamchatka`'s guide](kamchatka/GUIDE.md) and [running it](kamchatka/RUNNING.md),
 [`nachalnik`'s concepts](nachalnik/CONCEPTS.md), and
 [`nachalnik-eval`'s running notes](nachalnik-eval/RUNNING.md).
@@ -56,8 +56,8 @@ $ cargo run -p kamchatka -- -f src/kernel.rs "what does the kernel do?"
 │  id  label         kind               sending   held  what it says, or why it is not being sent              │
 │  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                     │
 │  2 · user          user_message             6         what does the kernel do?                               │
-│  3 · assistant     assistant_message        7         asked for read                                         │
-│  4 - read          tool_result              0     15  excluded: at the terminal, by `tool:read`              │
+│  3 · assistant     assistant_message        7         asked for fs                                           │
+│  4 - fs            tool_result              0     15  excluded: at the terminal, by `tool:fs`                │
 │  5 · assistant     assistant_message        7         asked for shell                                        │
 │  6 … shell         tool_result             11  9,004  compaction: compacted to make room                     │
 │  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …      │
@@ -70,15 +70,15 @@ $ cargo run -p kamchatka -- -f src/kernel.rs "what does the kernel do?"
 ```
 
 That second tab is the runtime: every item the context holds, what it costs, whether it is going
-into the next request, and - for the ones that are not - why, on their own row, in the projector's
+into the next request, and — for the ones that are not — why, on their own row, in the projector's
 words. `space` cycles how much of an item the model gets, `p` pins it, `e` changes what it says,
 `u` undoes. `/step` performs exactly one transition of the state machine, which is the only way to
 stand in `Ready`: the model has said what it wants to do, and none of it has run yet.
 
-Ordinary user code on top of the crate, and nothing else: two providers, six tools - four of them
-about the session itself - a policy, a compactor and the drawing. Not one of them is a privileged
-feature of the runtime. See
-[its readme](kamchatka/README.md) for the sandbox, the keys, and the rest.
+Ordinary user code on top of the crate, and nothing else: two providers, six tools — four of them
+about the session itself — a policy, a compactor and the drawing. Not one of them is a privileged
+feature of the runtime. See [its readme](kamchatka/README.md) for the sandbox, the keys, and the
+rest.
 
 **The screen is a feature, and the program without it is the same program.** `--headless` drives a
 session from lines on stdin instead of keys — the session log to stdout, one JSON record a line,
@@ -98,23 +98,23 @@ change to the runtime to exist.
 
 **[`nachalnik-mcp`](nachalnik-mcp)** is deliberately *not* in the core: speaking MCP means spawning
 processes, opening sockets and reading notifications in the background, and the runtime promises to
-do none of those. Writing it needed nothing added - an MCP tool is a `Tool` that forwards to a
+do none of those. Writing it needed nothing added — an MCP tool is a `Tool` that forwards to a
 server, tools arriving and leaving are `add_tool` and `remove_tool`, a structured result is
-`Content::Json`. It pushed back on exactly one thing: MCP tool annotations are
-*hints*, and the specification says a client should never make tool-use decisions on hints from an
-untrusted server, so the bridge believes none of them by default. Its tests include a server
+`Content::Json`. It pushed back on exactly one thing: MCP tool annotations are *hints*, and the
+specification says a client should never make tool-use decisions on hints from an untrusted
+server, so the bridge believes none of them by default. Its tests include a server
 offering a tool called `delete_everything` that claims to be read-only.
 
 **[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every operation
 in them is a public function a user interface was already calling. `context` is the context:
-`look`, `budget`, `request` and `search` read it, and eight more - `elide`, `exclude`, `pin`,
-`restore`, `revise`, `note`, `undo`, `redo` - change it, touching nothing a person pinned. `fork` answers on a throwaway copy,
-either carrying the conversation on or putting a question with some items taken away. `log` reads
-the append-only record kept beside the context. `setup` says what the session is running with:
-which model, which tools, what the policy will refuse, and whether this context was resumed from
-somebody else's. Given a 10,000-token limit and a mundane question, one model's first move
-was `budget`; eight requests later it elided eight tool results in one call and got two thousand
-tokens back, with nothing destroyed.
+`look`, `budget`, `request` and `search` read it, and eight more — `elide`, `exclude`, `pin`,
+`restore`, `revise`, `note`, `undo`, `redo` — change it, touching nothing a person pinned. `fork`
+answers on a throwaway copy, either carrying the conversation on or putting a question with some
+items taken away. `log` reads the append-only record kept beside the context. `setup` says what
+the session is running with: which model, which tools, what the policy will refuse, and whether
+this context was resumed from somebody else's. Given a 10,000-token limit and a mundane question,
+one model's first move was `budget`; eight requests later it elided eight tool results in one
+call and got two thousand tokens back, with nothing destroyed.
 
 **[`nachalnik-eval`](nachalnik-eval)** is the furthest from anything the runtime was designed for:
 it turns those handles around and uses them to *test* a model rather than to serve one. Forking a
@@ -129,22 +129,22 @@ Five transcripts, at **<https://ljedrz.github.io/nachalnik/>**, quoted verbatim 
 they describe. They read in order, and the machinery turns around halfway through: in the first
 three the model is the one editing its context, and from the fourth on it is not.
 
-1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** - two
+1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** — two
    notes go in labelled as carried over from an earlier session, one of them false. It lists what
    it is carrying, checks the notes against the repository, and rewrites the wrong one in place.
-2. **[retracting a hallucination](https://ljedrz.github.io/nachalnik/retracting-a-hallucination/)** -
+2. **[retracting a hallucination](https://ljedrz.github.io/nachalnik/retracting-a-hallucination/)** —
    asked about a crate that did not exist when it was trained, it invents one twice. Told so, it
    finds both of its own turns and replaces them. Nothing is planted here, which is the caveat the
    first one carries.
-3. **[an experiment on itself](https://ljedrz.github.io/nachalnik/an-experiment-on-itself/)** -
+3. **[an experiment on itself](https://ljedrz.github.io/nachalnik/an-experiment-on-itself/)** —
    asked which item its answer rested on, it went and checked, by asking a copy of itself the same
    question with that item taken out. Right about its own reasoning, wrong about where the item was
    filed.
-4. **[putting words in its mouth](https://ljedrz.github.io/nachalnik/putting-words-in-its-mouth/)** -
+4. **[putting words in its mouth](https://ljedrz.github.io/nachalnik/putting-words-in-its-mouth/)** —
    I replace two of its answers with confident falsehoods. By the third turn it is inventing a
    claim more specific than either of mine, with nobody editing that turn. Both real answers are
    still in the session, which is the only reason you can read them.
-5. **[taking away the receipt](https://ljedrz.github.io/nachalnik/taking-away-the-receipt/)** - a
+5. **[taking away the receipt](https://ljedrz.github.io/nachalnik/taking-away-the-receipt/)** — a
    shell command really runs, and then I hide its output, which takes down the turn that made the
    call as well. Asked how it knew, it answers correctly, and then retracts a true statement when I
    say I do not recall any command.
@@ -165,12 +165,12 @@ themselves when there is no API key. [CONTRIBUTING.md](CONTRIBUTING.md) has the 
 what CI runs, and how to measure whether a test is worth keeping.
 
 Among them is the provider conformance suite. What a provider makes of a stream is not tested one
-provider at a time, because the questions would be the same each time. They share the *questions*
-instead: every provider in the workspace is asked the same ones through a real socket, each
-question is a bug that actually happened to one of them, and a question added applies to all of
-them without any being edited.
+provider at a time, because the questions would be the same each time. Every provider in the
+workspace is asked the same ones through a real socket instead: each question is a bug that
+actually happened to one of them, and a question added applies to all of them without any being
+edited.
 
-The live suites are the only way to check the things a mock cannot - that the requests this
+The live suites are the only way to check the things a mock cannot — that the requests this
 workspace builds are accepted by a real API, and that a real model's answers survive the round trip
 through a context:
 
@@ -178,11 +178,10 @@ through a context:
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
 ```
 
-The figures in these readmes are measurements - what a request really cost, what a counter guessed
-against what a provider charged, what a session did - taken against a real API where they say so.
-What they are deliberately not is a tally of the repository itself. A test count and a line count
-go stale on the next commit, nothing checks them, and a reader who wants either has a better
-answer than a page: `cargo test --workspace`, and the tree.
+The figures in these readmes are measurements — what a request really cost, what a counter guessed
+against what a provider charged, what a session did — taken against a real API where they say so.
+There is no tally of the repository itself: `cargo test --workspace` and the tree have one that
+stays current.
 
 ---
 
@@ -199,7 +198,7 @@ The crates follow [semver](https://semver.org/), and API breakage is to be expec
 
 ### 🎸 the name
 
-*Nachalnik Kamchatki* - "the boss of Kamchatka" - is a 1984 KINO album, named for the boiler room
+*Nachalnik Kamchatki* — "the boss of Kamchatka" — is a 1984 KINO album, named for the boiler room
 where Viktor Tsoi shovelled coal while making it. A `nachalnik` is a boss, which is the joke: the
 agent is not the boss, you are. `kamchatka` is the boiler room the work actually happens in.
 
