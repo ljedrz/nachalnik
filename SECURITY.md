@@ -34,9 +34,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   exposes them. The `fs` tool, which is not a process - it opens a file, or walks a directory of
   them - is held to the same boundary by its own code, which is weaker in kind and said to be: a
   path is resolved, links followed, and checked, and then opened beneath the directory it was
-  allowed under. On Linux that open is `openat2` with `RESOLVE_BENEATH`, so a component swapped for
-  a link between the check and the open is refused by the kernel; elsewhere, and on a kernel older
-  than 5.6, it is an ordinary open and the swap is not caught. A directory swapped in the middle of
+  allowed under - and a write makes its new file and renames it in a directory opened the same
+  way. On Linux that open is `openat2` with `RESOLVE_BENEATH`, so a component swapped for a link
+  between the check and the open is refused by the kernel; elsewhere, and on a kernel older than
+  5.6, it is an ordinary open and the swap is not caught. A directory swapped in the middle of
   a walk is only caught at the files opened under it: `glob` lists names, and a name is not
   refused.
 - **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads

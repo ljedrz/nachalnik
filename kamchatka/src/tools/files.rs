@@ -13,7 +13,7 @@ use std::{path::Path, sync::Arc};
 
 use nachalnik::{BoxError, OutputSink, ToolOutput};
 use serde_json::Value;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 
 use crate::sandbox::{Access, Reach};
 
@@ -91,11 +91,13 @@ async fn read(reach: &Reach, path: &Path) -> std::io::Result<String> {
     })
 }
 
-/// Replaces the whole of a file `allows` answered for, creating it if it is not there.
-async fn write(reach: &Reach, path: &Path, content: &str) -> std::io::Result<()> {
-    let mut file = tokio::fs::File::from_std(reach.open(path, Access::Writing)?);
-    file.write_all(content.as_bytes()).await?;
-    file.flush().await
+/// Replaces the whole of a file `allows` answered for, creating it if it is not there; see
+/// [`Reach::replace`] for why that is not an open that empties it.
+async fn write(reach: &Arc<Reach>, path: &Path, content: &str) -> std::io::Result<()> {
+    let (reach, path, content) = (reach.clone(), path.to_path_buf(), content.to_owned());
+    tokio::task::spawn_blocking(move || reach.replace(&path, content.as_bytes()))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 pub(super) struct Write(pub(super) Arc<Reach>);

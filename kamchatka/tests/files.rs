@@ -219,3 +219,93 @@ async fn a_file_past_what_is_kept_is_refused_with_a_way_to_read_part_of_it() {
         "{refused}"
     );
 }
+
+/// `write` and `edit` put a new file where the old one was rather than emptying it first, and the
+/// new one has the old one's permissions; nothing is left beside it.
+///
+/// note: a new inode is what a rename leaves and an open that truncates does not, which is how
+/// the test can see that the file was never short: a full disk or a killed process between the
+/// truncation and the last byte is not something a test can arrange.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_write_replaces_the_file_rather_than_emptying_it_first() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let dir = scratch("files-replaced");
+    let file = dir.join("run.sh");
+    std::fs::write(&file, "echo one\n").expect("a file");
+    std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o750)).expect("its mode");
+    let before = std::fs::metadata(&file).expect("it is there").ino();
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "run.sh", "content": "echo two\n" }),
+    )
+    .await;
+    assert!(said.contains("wrote 9 bytes"), "{said}");
+    let written = std::fs::metadata(&file).expect("it is there");
+    assert_ne!(written.ino(), before, "a new file stands at the path");
+    assert_eq!(
+        written.permissions().mode() & 0o777,
+        0o750,
+        "with the old one's mode"
+    );
+    assert_eq!(held(&dir, "run.sh"), "echo two\n");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "run.sh", "old": "two", "new": "three" }),
+    )
+    .await;
+    assert!(said.contains("replaced one occurrence"), "{said}");
+    assert_ne!(
+        std::fs::metadata(&file).expect("it is there").ino(),
+        written.ino(),
+        "and an edit is the same"
+    );
+    assert_eq!(held(&dir, "run.sh"), "echo three\n");
+
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .expect("the directory")
+        .map(|entry| entry.expect("an entry").file_name())
+        .collect();
+    assert_eq!(left, ["run.sh"], "nothing is left beside it");
+}
+
+/// A file another hard link shares is written where it is, so both names still show one file.
+///
+/// note: a rename would give this name a new file and leave the other name holding the old
+/// contents, which reads as the write not having happened to whoever looks there.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_file_with_another_link_is_written_where_it_is() {
+    use std::os::unix::fs::MetadataExt;
+
+    let dir = scratch("files-linked");
+    std::fs::write(dir.join("a.txt"), "old\n").expect("a file");
+    std::fs::hard_link(dir.join("a.txt"), dir.join("b.txt")).expect("a second name for it");
+    let before = std::fs::metadata(dir.join("a.txt"))
+        .expect("it is there")
+        .ino();
+
+    ask(
+        &dir,
+        "write",
+        json!({ "path": "a.txt", "content": "new\n" }),
+    )
+    .await;
+
+    assert_eq!(
+        std::fs::metadata(dir.join("a.txt"))
+            .expect("it is there")
+            .ino(),
+        before
+    );
+    assert_eq!(
+        held(&dir, "b.txt"),
+        "new\n",
+        "the other name shows the write"
+    );
+}

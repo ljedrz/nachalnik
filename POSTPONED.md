@@ -431,13 +431,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   ceiling is reached - which one is a decision about whether a draft is part of the session's
   spend, and it is money either way.
 
-- **`fs write` and `fs edit` empty a file before they write it.** The open truncates, so a full
-  disk or a killed process midway leaves a file shorter than either version of it. The fix is a
-  temporary file beside it and a rename over it, and what makes it a decision rather than a
-  change is what a rename does that a write does not: it gives the file a new inode, so another
-  hard link to it keeps the old contents, and the owner and extended attributes are the new file's
-  unless something copies them across.
-
 - **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
   take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with
   no `context.recounted` to say so, and lists every item as changed. Whether a recount is an

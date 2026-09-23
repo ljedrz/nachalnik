@@ -142,6 +142,15 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **`fs write` and `fs edit` no longer empty a file before writing it.** The open truncated, so a
+  full disk or a killed process midway left a file shorter than either version of it. The new
+  contents go into a file beside it, which is renamed over it, and the directory both happen in is
+  opened beneath what it was allowed under, as `Reach::open` does. A rename puts a different file
+  at the path, so the permission bits are copied across, and the file is written in place as before
+  where a rename would change more than its contents: another hard link shares it, the new file
+  would not have its owner and group, or the directory will not take a new file. Extended
+  attributes are not carried. `Reach::replace` is the operation.
+
 - **The file tools open what they checked.** `read`, `write`, `edit` and `grep` resolved a path,
   checked it against the reach and then opened it by name, so a directory replaced by a link
   between the two - by a background command the model had left running, say - was followed out.

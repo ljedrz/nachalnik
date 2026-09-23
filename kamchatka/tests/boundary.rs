@@ -219,6 +219,12 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     reach
         .open(&read, Access::Writing)
         .expect_err("and writing over one that is there");
+    reach
+        .replace(&written, b"yours now")
+        .expect_err("and replacing, which makes its file in the directory");
+    reach
+        .replace(&read, b"yours now")
+        .expect_err("over one that is there as well");
     assert!(
         !outside.join("new.txt").exists(),
         "nothing was created out there"

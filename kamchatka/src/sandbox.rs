@@ -602,25 +602,199 @@ impl Reach {
             return options.open(path);
         }
 
-        let readable = matches!(doing, Access::Reading);
-        let Some(root) = std::iter::once(&self.workdir)
-            .chain(self.extra.iter())
-            .chain(self.readable.iter().filter(|_| readable))
-            .filter_map(|allowed| allowed.canonicalize().ok())
-            .find(|allowed| path.starts_with(allowed))
-        else {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                "outside what this session reaches",
-            ));
-        };
-
-        if let Some(opened) = beneath(&root, path, doing) {
+        if let Some(opened) = beneath(&self.root(path, doing)?, path, doing) {
             return opened;
         }
 
         options.open(path)
     }
+
+    /// Replaces the whole of a file [`Reach::allows`] answered for with `content`, creating it if
+    /// it is not there.
+    ///
+    /// note: written into a new file beside it and renamed over it, so that a full disk or a
+    /// process killed halfway leaves the file as it was rather than shorter than either version.
+    /// The new file and the rename go through the directory as it was opened, beneath what it was
+    /// allowed under, for the reason [`Reach::open`] gives.
+    ///
+    /// note: a rename puts a different file at the path, and where that would show the file is
+    /// written in place instead, as it was before: when another hard link shares it, since the link
+    /// would keep the old contents; when the new file would not carry the old one's owner and group,
+    /// which only root could set; when the directory will not take a new file; and when what is
+    /// there is not a regular file. The permission bits are copied across. Extended attributes are
+    /// not.
+    pub fn replace(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {
+        let was = std::fs::symlink_metadata(path).ok();
+        let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+            return self.overwrite(path, content);
+        };
+        if was
+            .as_ref()
+            .is_some_and(|was| !was.is_file() || linked(was))
+        {
+            return self.overwrite(path, content);
+        }
+
+        let beside = self.beside(dir, path)?;
+        let (temporary, mut file) = match beside.create(name) {
+            Ok(created) => created,
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+                return self.overwrite(path, content);
+            }
+            Err(e) => return Err(e),
+        };
+        let renamed = (|| {
+            if let Some(was) = &was {
+                if !owned_alike(was, &file.metadata()?) {
+                    return Ok(false);
+                }
+                file.set_permissions(was.permissions())?;
+            }
+            std::io::Write::write_all(&mut file, content)?;
+            file.sync_all()?;
+            beside.rename(&temporary, name)?;
+            Ok(true)
+        })();
+
+        match renamed {
+            Ok(true) => Ok(()),
+            Ok(false) => {
+                beside.remove(&temporary);
+                self.overwrite(path, content)
+            }
+            Err(e) => {
+                beside.remove(&temporary);
+                Err(e)
+            }
+        }
+    }
+
+    /// Writes over a file where it is, which is what [`Reach::replace`] does when a rename would
+    /// change more than the contents.
+    fn overwrite(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {
+        let mut file = self.open(path, Access::Writing)?;
+        std::io::Write::write_all(&mut file, content)?;
+        std::io::Write::flush(&mut file)
+    }
+
+    /// The directory `path` is replaced in, opened beneath where it was allowed when that can be
+    /// done.
+    fn beside(&self, dir: &Path, path: &Path) -> std::io::Result<Beside> {
+        let named = Beside::Named(dir.to_path_buf());
+        if !self.confined {
+            return Ok(named);
+        }
+
+        match directory_beneath(&self.root(path, Access::Writing)?, dir) {
+            Some(held) => held,
+            None => Ok(named),
+        }
+    }
+
+    /// The allowed directory `path` is under, as `open` and `replace` start from it.
+    fn root(&self, path: &Path, doing: Access) -> std::io::Result<PathBuf> {
+        let readable = matches!(doing, Access::Reading);
+        std::iter::once(&self.workdir)
+            .chain(self.extra.iter())
+            .chain(self.readable.iter().filter(|_| readable))
+            .filter_map(|allowed| allowed.canonicalize().ok())
+            .find(|allowed| path.starts_with(allowed))
+            .ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "outside what this session reaches",
+                )
+            })
+    }
+}
+
+/// Where the file [`Reach::replace`] writes is made, and renamed from.
+enum Beside {
+    /// The directory, opened beneath what it was allowed under.
+    #[cfg(target_os = "linux")]
+    Held(rustix::fd::OwnedFd),
+    /// The directory by name, where nothing opens beneath a directory.
+    Named(PathBuf),
+}
+
+impl Beside {
+    /// Makes a file nobody else has, named after `name` so that one left behind says whose it was.
+    fn create(&self, name: &std::ffi::OsStr) -> std::io::Result<(OsString, std::fs::File)> {
+        static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        loop {
+            let mut temporary = OsString::from(".");
+            temporary.push(name);
+            temporary.push(format!(
+                ".{}.{}.kamchatka",
+                std::process::id(),
+                MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ));
+            let created = match self {
+                #[cfg(target_os = "linux")]
+                Self::Held(dir) => {
+                    use rustix::fs::{Mode, OFlags};
+                    rustix::fs::openat(
+                        dir,
+                        temporary.as_os_str(),
+                        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::CLOEXEC,
+                        Mode::from_raw_mode(0o666),
+                    )
+                    .map(std::fs::File::from)
+                    .map_err(std::io::Error::from)
+                }
+                Self::Named(dir) => std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(dir.join(&temporary)),
+            };
+            match created {
+                Ok(file) => return Ok((temporary, file)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    fn rename(&self, from: &std::ffi::OsStr, to: &std::ffi::OsStr) -> std::io::Result<()> {
+        match self {
+            #[cfg(target_os = "linux")]
+            Self::Held(dir) => Ok(rustix::fs::renameat(dir, from, dir, to)?),
+            Self::Named(dir) => std::fs::rename(dir.join(from), dir.join(to)),
+        }
+    }
+
+    /// Takes away a file `create` made; one that cannot be is left, and its name says what it is.
+    fn remove(&self, name: &std::ffi::OsStr) {
+        let _ = match self {
+            #[cfg(target_os = "linux")]
+            Self::Held(dir) => rustix::fs::unlinkat(dir, name, rustix::fs::AtFlags::empty())
+                .map_err(std::io::Error::from),
+            Self::Named(dir) => std::fs::remove_file(dir.join(name)),
+        };
+    }
+}
+
+/// Whether another name shares this file, so that renaming over one would part them.
+#[cfg(unix)]
+fn linked(was: &std::fs::Metadata) -> bool {
+    std::os::unix::fs::MetadataExt::nlink(was) > 1
+}
+
+#[cfg(not(unix))]
+fn linked(_: &std::fs::Metadata) -> bool {
+    false
+}
+
+/// Whether a new file has the owner and group of the one it would stand in for.
+#[cfg(unix)]
+fn owned_alike(was: &std::fs::Metadata, new: &std::fs::Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    (was.uid(), was.gid()) == (new.uid(), new.gid())
+}
+
+#[cfg(not(unix))]
+fn owned_alike(_: &std::fs::Metadata, _: &std::fs::Metadata) -> bool {
+    true
 }
 
 /// Opens `path` without leaving `root`, or `None` where the kernel will not do that.
@@ -631,6 +805,46 @@ impl Reach {
 /// is one.
 #[cfg(target_os = "linux")]
 fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
+    use rustix::fs::{Mode, OFlags};
+
+    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it
+    let (flags, mode) = match doing {
+        Access::Reading => (OFlags::RDONLY, Mode::empty()),
+        Access::Writing => (
+            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC,
+            Mode::from_raw_mode(0o666),
+        ),
+    };
+    opened_beneath(root, path, flags, mode).map(|opened| opened.map(std::fs::File::from))
+}
+
+/// Nowhere else has an open that stays beneath a directory, so the ordinary one is all there is.
+#[cfg(not(target_os = "linux"))]
+fn beneath(_: &Path, _: &Path, _: Access) -> Option<std::io::Result<std::fs::File>> {
+    None
+}
+
+/// Opens the directory `dir` without leaving `root`, to make files in; `None` as for [`beneath`].
+#[cfg(target_os = "linux")]
+fn directory_beneath(root: &Path, dir: &Path) -> Option<std::io::Result<Beside>> {
+    use rustix::fs::{Mode, OFlags};
+
+    opened_beneath(root, dir, OFlags::PATH | OFlags::DIRECTORY, Mode::empty())
+        .map(|opened| opened.map(Beside::Held))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn directory_beneath(_: &Path, _: &Path) -> Option<std::io::Result<Beside>> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn opened_beneath(
+    root: &Path,
+    path: &Path,
+    flags: rustix::fs::OFlags,
+    mode: rustix::fs::Mode,
+) -> Option<std::io::Result<rustix::fd::OwnedFd>> {
     use rustix::{
         fs::{Mode, OFlags, ResolveFlags},
         io::Errno,
@@ -648,14 +862,6 @@ fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<st
         Ok(relative) if !relative.as_os_str().is_empty() => relative,
         _ => Path::new("."),
     };
-    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it
-    let (flags, mode) = match doing {
-        Access::Reading => (OFlags::RDONLY, Mode::empty()),
-        Access::Writing => (
-            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC,
-            Mode::from_raw_mode(0o666),
-        ),
-    };
 
     match rustix::fs::openat2(
         &dir,
@@ -664,7 +870,7 @@ fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<st
         mode,
         ResolveFlags::BENEATH | ResolveFlags::NO_MAGICLINKS,
     ) {
-        Ok(file) => Some(Ok(file.into())),
+        Ok(opened) => Some(Ok(opened)),
         Err(Errno::NOSYS | Errno::PERM) => None,
         Err(Errno::XDEV) => Some(Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
@@ -673,12 +879,6 @@ fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<st
         ))),
         Err(e) => Some(Err(e.into())),
     }
-}
-
-/// Nowhere else has an open that stays beneath a directory, so the ordinary one is all there is.
-#[cfg(not(target_os = "linux"))]
-fn beneath(_: &Path, _: &Path, _: Access) -> Option<std::io::Result<std::fs::File>> {
-    None
 }
 
 /// How much of a [`Sandbox`] the kernel actually agreed to.
