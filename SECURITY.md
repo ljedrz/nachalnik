@@ -155,7 +155,10 @@ what stands in the way, and what does not.
   stops that, and nothing can - it is what asking a model is.
 - **Other people on the machine.** The automatic record is written under a `0700` directory in the
   temporary directory, and not at all if what holds that name is anything but a directory nobody
-  else can read; a served unix socket is `0600` from the moment it exists.
+  else can read; a served unix socket is `0600` from the moment it exists. A served loopback port
+  is not: every account on the machine can connect to one, and a connection is the `shell` tool
+  running as the person serving - so where other people share the machine, `--serve unix:PATH` is
+  the one that keeps them out.
 - **Size.** What a tool keeps of one call stops at `tools::KEPT`, so a command that writes without
   end, or a file larger than anybody meant to read, cannot fill the process, the archive or a save.
   What a tool from an MCP server returns is that server's to bound.

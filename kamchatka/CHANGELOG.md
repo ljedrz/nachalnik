@@ -147,6 +147,11 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A great many refused paths are accounted for in a moment.** `Sandbox::note_for` compared every
+  path in a command's standard error against every one kept so far, each costing a dozen
+  `canonicalize` calls, before keeping three - minutes of work on a large standard error, after the
+  command had ended, with nothing to interrupt it. It stops at the three it names.
+
 - **A path rule matches every name that opens its file.** Rules were compared byte for byte, so
   on macOS and Windows `fs read .ENV` opened `.env` without the question `.env*` asks, and on
   Windows `key.pem.` and `key.pem::$DATA` opened `key.pem` past `*.pem`. Names are compared as the

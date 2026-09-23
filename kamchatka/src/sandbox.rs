@@ -211,18 +211,25 @@ impl Sandbox {
             return None;
         }
 
-        let mentioned: Vec<String> = refusals.iter().flat_map(|line| paths_in(line)).collect();
         // `Vec::dedup` drops only neighbours, and a path is usually named by two lines that are
-        // not next to each other - a warning and the failure it led to
-        let mut named: Vec<&String> = Vec::new();
-        for path in &mentioned {
-            if !self.reaches(Path::new(path)) && !named.contains(&path) {
+        // not next to each other - a warning and the failure it led to.
+        //
+        // note: and it stops at the three it will name. A command's standard error can be the
+        // whole of what `KEPT` holds, and every path in it compared against every one kept so far,
+        // each costing a dozen `canonicalize` calls, was minutes of work after the command had
+        // already ended, with nothing to interrupt it
+        let (mut named, mut mentioned): (Vec<String>, bool) = (Vec::new(), false);
+        for path in refusals.iter().flat_map(|line| paths_in(line)) {
+            mentioned = true;
+            if !named.contains(&path) && !self.reaches(Path::new(&path)) {
                 named.push(path);
+                if named.len() == 3 {
+                    break;
+                }
             }
         }
-        named.truncate(3);
 
-        match (named.is_empty(), mentioned.is_empty()) {
+        match (named.is_empty(), !mentioned) {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
             (true, true) => Some(format!(

@@ -552,3 +552,34 @@ fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
     std::fs::create_dir_all(dir.join("w").join("here")).expect("a directory");
     assert!(reach.allows("here/../notes.txt", Access::Writing).is_ok());
 }
+
+/// A standard error of a great many refused paths is accounted for in a moment, naming three.
+///
+/// note: every path was compared against every one kept so far, each costing a dozen
+/// `canonicalize` calls, before three were kept - minutes of work on a large standard error, after
+/// the command had ended, with nothing to interrupt it.
+#[test]
+fn a_great_many_refusals_are_accounted_for_in_a_moment() {
+    use kamchatka::sandbox::Sandbox;
+
+    let confined = Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: false,
+    };
+    let stderr: String = (0..300_000)
+        .map(|nth| format!("/x/{nth}: Permission denied\n"))
+        .collect();
+
+    let started = std::time::Instant::now();
+    let note = confined.note_for(&stderr).expect("they are out of reach");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(note.contains("/x/0") && note.contains("/x/2"), "{note}");
+    assert!(!note.contains("/x/3"), "three are named: {note}");
+}
