@@ -194,16 +194,12 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
             }
             one
         }
-        // note: `type` beside `anyOf`, though every branch already says `object` and a reader
-        // that resolves the union learns it there. It is the property's own declaration that
-        // decides what a model writes into it: without one, `xiaomi/mimo-v2.6-flash` writes the
-        // arguments as a *string* of JSON - `{"call": "{\"action\": ...}"}` - on every call to a
-        // tool with several branches, and on none to a tool whose single branch is the wrapper
-        // and carries a `type` of its own. The two assertions cannot disagree - a branch is an
-        // object either way - so this costs a keyword and settles a question the model should not
-        // have had to guess at
+        // note: no `type` beside `anyOf`; every branch says `object` already. With one there,
+        // `nex-agi/nex-n2.5-mini` and `nvidia/nemotron-3-super-120b-a12b` write the operation's
+        // name into the wrapper - `{"call": "read", "path": ...}` - which names no operation and is
+        // judged against all of them. Without it, `xiaomi/mimo-v2.6-flash` writes the call as a
+        // string of JSON, and `inner` reads that
         several => json!({
-            "type": "object",
             "description": ABOUT,
             "anyOf": several.iter().map(branch).collect::<Vec<_>>(),
         }),
@@ -667,20 +663,19 @@ mod tests {
         }
     }
 
-    /// The wrapper says it is an object, whether it holds one shape or several.
+    /// The wrapper is typed where it is one shape, and a union of several says nothing beside
+    /// its branches.
     ///
-    /// note: the case that matters is the `anyOf` one: without a `type` there, a model can write
-    /// the whole call as a string into a property that never said what it was. Both arms are
-    /// asserted because the single-branch arm gets its `type` from `branch` by accident of
-    /// construction rather than on purpose, and an accident is a thing to pin.
+    /// note: the single-branch arm gets its `type` from `branch` by accident of construction, and
+    /// an accident is a thing to pin. The union's absence is pinned for the reason in `schema`.
     #[test]
-    fn the_wrapper_says_it_is_an_object() {
+    fn the_wrapper_is_typed_only_where_it_is_one_shape() {
         let several = schema(&ops());
-        assert_eq!(several["properties"][WRAPPER]["type"], json!("object"));
         assert!(
-            several["properties"][WRAPPER]["anyOf"].is_array(),
-            "the case this is about is the union"
+            several["properties"][WRAPPER].get("type").is_none(),
+            "a `type` beside the union has models write an operation's name there"
         );
+        assert!(several["properties"][WRAPPER]["anyOf"].is_array());
 
         let one = schema(&[Op::new(
             "run",
