@@ -2190,3 +2190,54 @@ async fn a_network_grant_for_one_call_is_in_the_record() {
         ruled(&harness)
     );
 }
+
+/// A chord is not its letter: `ctrl+a` at a question does not answer *always*.
+///
+/// note: the answers are bare letters, and a key with `ctrl` or `alt` held reached them as its
+/// letter - so readline's `ctrl+a`, pressed out of habit with a question focused, allowed the call
+/// and wrote the standing rule that answers every one like it, and `ctrl+y` allowed it once.
+#[tokio::test]
+async fn a_chord_at_a_question_is_not_the_letter_it_carries() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+            ModelResponse::text("as you wish"),
+        ],
+        Config::default(),
+    );
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.send("tidy up").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some());
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.focus, Focus::Body);
+
+    for (code, held) in [
+        ('a', KeyModifiers::CONTROL),
+        ('a', KeyModifiers::ALT),
+        ('y', KeyModifiers::CONTROL),
+    ] {
+        harness
+            .app
+            .on_key(KeyEvent::new(KeyCode::Char(code), held))
+            .await;
+        assert!(
+            harness.app.asked().is_some(),
+            "{held:?}+{code} answered the question"
+        );
+    }
+    assert_ne!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::exec("run"))),
+        Verdict::Allow,
+        "and wrote no rule"
+    );
+
+    // the letter on its own still answers
+    harness.press(KeyCode::Char('a')).await;
+    assert!(harness.app.asked().is_none());
+}

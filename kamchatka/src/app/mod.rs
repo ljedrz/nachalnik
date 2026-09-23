@@ -1830,6 +1830,14 @@ impl App {
                 _ => self.show(Tab::Chat),
             },
             _ => match (self.tab, self.focus) {
+                // a chord nothing above took is somebody reaching for a key that works somewhere
+                // else - readline's `ctrl+a`, a terminal's `ctrl+y` - and not for the letter, the
+                // reasoning the search box already follows. Where a letter is an answer or a rule,
+                // reading one as its letter had `ctrl+a` at a question answer *always*, and write
+                // the rule that goes with it
+                _ if (ctrl || alt)
+                    && self.focus == Focus::Body
+                    && matches!(key.code, KeyCode::Char(_)) => {}
                 // the pinned question, which is what `Focus::Body` means on the chat tab
                 (Tab::Chat, Focus::Body) => self.question_key(key).await,
                 // a question is on the screen and has not been given the keys, so the prompt is

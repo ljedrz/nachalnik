@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A chord is not its letter.** A key with `ctrl` or `alt` held reached the panels as the letter
+  it carries, so readline's `ctrl+a` pressed at a focused question answered *always* and wrote the
+  standing rule, `ctrl+y` allowed the call, and the same chords reached the permissions tab's
+  letters. On the panels whose keys are letters, a chord nothing else takes now does nothing.
+
 - **A path rule of `.` or `..` is refused where it is given.** A rule without a slash is about a
   path's last name, and none is ever either, so `--deny ..` was taken and refused nothing. `../`,
   a directory rule, matches every path that climbs out and is kept.
