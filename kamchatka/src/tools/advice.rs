@@ -592,7 +592,15 @@ fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
 /// note: an object rather than a sentence built out of these. The endpoint takes one, the shape
 /// says which part is the tool and which part is its arguments without a phrasing having to carry
 /// that, and a path with a newline in it cannot rearrange the question it is inside of.
+///
+/// note: the arguments inside the `call` wrapper, read through `inner` as `Advised::placed`
+/// reads the command. Every question here says the command is in `cmd`, and the probe in
+/// `contrib/laya_advisor.py` and the temperatures fitted with it put it at `arguments.cmd`; sent
+/// wrapped, it was at `arguments.call.cmd`, a different question from the one measured.
 pub(crate) fn state(request: &PermissionRequest) -> Value {
+    let args = crate::tools::ops::inner(&request.args)
+        .unwrap_or(std::borrow::Cow::Borrowed(&request.args));
+
     json!({
         "tool": request.tool,
         "capabilities": request
@@ -600,7 +608,7 @@ pub(crate) fn state(request: &PermissionRequest) -> Value {
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>(),
-        "arguments": capped(&request.args),
+        "arguments": capped(&args),
     })
 }
 
@@ -1039,6 +1047,24 @@ mod tests {
         // instruction, or what the model said outside its own arguments
         let keys: Vec<&String> = state.as_object().expect("an object").keys().collect();
         assert_eq!(keys, ["arguments", "capabilities", "tool"]);
+    }
+
+    /// A shell call as the tool really receives it puts the command where the questions say it is.
+    ///
+    /// note: every other test here builds its arguments bare, and every shell call arrives
+    /// wrapped - `{"call": {"action": "run", "cmd": ...}}` - so the state they checked was never
+    /// the state sent.
+    #[test]
+    fn a_wrapped_call_is_shown_with_the_command_in_cmd() {
+        let request = PermissionRequest {
+            id: PermissionId(1),
+            call: ToolCallId::from("call-1"),
+            tool: "shell".to_owned(),
+            capabilities: vec![Capability::exec("run")],
+            args: Arc::new(json!({ "call": { "action": "run", "cmd": "rm -rf target" } })),
+        };
+
+        assert_eq!(state(&request)["arguments"]["cmd"], "rm -rf target");
     }
 
     /// A payload larger than [`ROOM`] is cut, says so, and does not panic on the way.

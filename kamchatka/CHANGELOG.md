@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`--advise` shows the advisor the command where its questions say it is.** Every shell call
+  arrives as `{"call": {"action": "run", "cmd": ...}}`, and the state sent carried it that way, at
+  `arguments.call.cmd`, while every question names `cmd` and the probe in
+  `contrib/laya_advisor.py` - which the temperatures are fitted with - puts it at `arguments.cmd`.
+  The state now carries what is inside the wrapper, as the panel reads it.
+
 - **A refusal asked to be remembered is refused, rather than written down as an allow.**
   `App::decide` with `remember` on wrote every subject the policy consulted as allowed, whatever
   the answer - so a `decide` over the socket that said `deny` and `remember` installed the rules
