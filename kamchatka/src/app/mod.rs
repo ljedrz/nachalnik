@@ -1387,6 +1387,12 @@ impl App {
     ) -> Option<String> {
         use tokio::sync::broadcast::error::RecvError;
 
+        // a `/model` or `/provider` still settling first, for the reason the turn is waited for:
+        // its change is a record, and a script whose last line is the switch reaches the end of
+        // its input with no next line to wait for it. Under the same bound, and left the same way
+        if let Some(settling) = self.settling.take() {
+            let _ = tokio::time::timeout(LEAVING, settling).await;
+        }
         if !self.busy {
             return None;
         }

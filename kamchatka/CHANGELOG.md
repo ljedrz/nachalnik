@@ -14,6 +14,11 @@ minor bump may break you.
   `--spend` ceiling that was read as an endpoint reporting nothing - so a session against one that
   reports usage on every other response was told that only a deadline could stop it now.
 
+- **A `/model` or `/provider` on a script's last line is in the record.** The line after a switch
+  is what waited for it, and at the end of the input there is none: the session was ended and
+  written while the switch was still asking the endpoint, and the change never reached the record.
+  The way out now waits for it, under the same five-second bound as a running turn.
+
 - **`/tools toggle` is a word.** `/tools togglefs` toggled `fs`, and `/tools toggleable` went
   looking for a tool called `able`; a verb run into its argument is now answered with how the
   command is written.

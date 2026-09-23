@@ -2897,6 +2897,66 @@ async fn a_switch_of_model_is_in_the_record() {
     assert!(changes.contains(&named("second", "third")), "{changes:?}");
 }
 
+/// A switch on a script's last line is in the record before the session ends.
+///
+/// note: the line after a switch is what waits for it, and at the end of the input there is none.
+/// The endpoint here takes a moment to fail, so the switch is still settling when the input
+/// closes; without waiting for it, `session.finished` was written first and the change landed in
+/// a record already ended - or never, once the program had gone.
+#[tokio::test]
+async fn a_switch_on_the_last_line_is_recorded_before_the_session_ends() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                drop(socket);
+            });
+        }
+    });
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "first",
+        format!("http://{address}"),
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            &b"/model second\n"[..],
+        )
+        .await
+        .expect("the run failed");
+
+    let names: Vec<&str> = app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::ModelChanged { to: Some(to), .. } if to.model == "second" => {
+                Some("switched")
+            }
+            nachalnik::Event::SessionFinished => Some("finished"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(names, ["switched", "finished"]);
+}
+
 /// A rule given at the start - a flag or a settings file - is at the start of the record.
 #[tokio::test]
 async fn a_rule_given_at_the_start_is_in_the_record() {
