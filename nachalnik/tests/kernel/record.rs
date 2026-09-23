@@ -352,3 +352,24 @@ fn an_items_metadata_is_in_the_record_from_the_start() {
         }
     ));
 }
+
+/// A `model.changed` written before a model said what parameters it takes still reads.
+#[test]
+fn a_model_change_recorded_before_parameters_were_carried_still_reads() {
+    let older: Record = serde_json::from_value(json!({
+        "seq": 1, "at": 0, "event": {
+            "event": "model.changed",
+            "from": null,
+            "to": {
+                "provider": "openrouter", "model": "m", "context_limit": null,
+                "max_output_tokens": null, "tool_calling": true, "reasoning": false
+            }
+        }
+    }))
+    .unwrap_or_else(|e| panic!("an older record reads: {e}"));
+
+    assert!(matches!(
+        older.event,
+        Event::ModelChanged { to: Some(info), .. } if info.parameters.is_empty()
+    ));
+}

@@ -1159,6 +1159,10 @@ pub struct ModelInfo {
     /// prohibition would be inventing a restriction the provider never stated. What it is for is
     /// the opposite mistake: a parameter set for a model that does not take it is accepted, sent
     /// and ignored in silence, and this is the only thing that can say so.
+    ///
+    /// note: `serde(default)`, so a record written before this existed still reads - as "not
+    /// published", which is what it was.
+    #[serde(default)]
     pub parameters: Vec<String>,
 }
 

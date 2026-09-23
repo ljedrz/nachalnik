@@ -16,6 +16,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A `model.changed` recorded before `ModelInfo::parameters` existed reads.** The field came in
+  0.3.0 without `serde(default)`, so a log from before it was a parse error at its first model.
+
 - **A snapshot written before items carried `uncounted` or `included_because` resumes.** The
   fields came in 0.3.2 and 0.4.0 without `serde(default)`, where every field added to `Snapshot`
   itself has one so that an older file still loads; one without them was a parse error.
