@@ -19,10 +19,11 @@ state rather than a wall of text.
 > A model's account of what its answer depends on is not self-knowledge — it is task reasoning
 > in the first person. So stop asking for the report and give it the experiment.
 
-**This branch holds the instrument, not a study.** A study adds its own material, its
-preregistration, its results and its write-up on a branch of its own; `master` keeps the machinery
-that every study shares, so that a second one starts from a working harness rather than from a copy
-of the first. A study lives in its own repository.
+**This crate is the instrument, not a study.** A study keeps its own material, its
+preregistration, its results and its write-up in a repository of its own —
+[deleting-a-memory](https://github.com/ljedrz/deleting-a-memory) is one — and this crate keeps the
+machinery every study shares, so that a second study starts from a working harness rather than
+from a copy of the first.
 
 ```console
 $ export NACHALNIK_API_KEY=sk-or-...
@@ -179,7 +180,7 @@ two tool descriptions in `suite::handles`, which are prompt text a model reads a
 the instrument like everything else. A benchmark *is* its questions, and questions go stale: a
 model that has seen the material in a training set is a model this suite can no longer measure,
 and replacing the suite must not mean replacing the harness. A study's own methods, runbook and
-threats to validity travel with it on its branch.
+threats to validity travel with it, in its repository.
 
 | experiment | the claim | the check | ~requests |
 | --- | --- | --- | --- |
