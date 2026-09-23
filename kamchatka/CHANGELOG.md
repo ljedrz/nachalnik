@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A path rule of `.` or `..` is refused where it is given.** A rule without a slash is about a
+  path's last name, and none is ever either, so `--deny ..` was taken and refused nothing. `../`,
+  a directory rule, matches every path that climbs out and is kept.
+
 - **`--deny mcp:call` and `--deny mcp` hold against `--allow-server`.** A server this program
   spawned is judged by its name in place of `mcp:call`, so that `--allow-server files` grants what
   it says without a second flag - and the substitution dropped a refusal of `mcp:call` along with

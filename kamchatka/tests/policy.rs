@@ -143,6 +143,8 @@ fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
         ("id_rsa*", "/home/x/.ssh/id_rsa"),
         ("secrets/", "/srv/secrets/token"),
         (".ssh/", "/home/x/.ssh/config"),
+        // a directory rule, which the bare `..` refused below is not
+        ("../", "../outside"),
     ] {
         assert_eq!(
             objection_to(pattern),
@@ -163,7 +165,15 @@ fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
         "/",
         "",
         "secrets*/",
+        ".",
+        "..",
     ] {
+        for path in [".", "..", "./x", "../x", "a/../b", "a/./b", "./", "../"] {
+            assert!(
+                !path_matches(pattern, path),
+                "`{pattern}` matches `{path}`, so refusing it takes a rule away"
+            );
+        }
         let objection = objection_to(pattern)
             .unwrap_or_else(|| panic!("`{pattern}` was taken and nothing can match it"));
         assert!(

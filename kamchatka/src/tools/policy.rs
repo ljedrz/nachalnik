@@ -239,6 +239,12 @@ pub fn objection_to(pattern: &str) -> Option<String> {
     if pattern.is_empty() {
         return objection("is not a rule at all");
     }
+    // a rule without a slash is about the last name in a path, and no path's last name is either
+    // of these. With the slash they are directory rules and do match - `../` is every path that
+    // climbs out - so it is only the bare two that are refused
+    if matches!(pattern, "." | "..") {
+        return objection("cannot match: no file is called that");
+    }
     if pattern.contains('\\') {
         return objection(
             "cannot match: a path is read with `/` between its names, whatever was typed",
