@@ -23,9 +23,9 @@
 //! compare [-m MODEL].. [-f FILE].. [-s SYSTEM] [--seq] [--payload] [--save DIR] [-i] [prompt...]
 //! ```
 //!
-//! With no prompt on the command line it asks for one, and keeps asking - which makes the second
-//! round the interesting one, because from then on each context also holds that model's own
-//! answers, and the tool says so rather than quietly comparing different things.
+//! With no prompt on the command line it asks for one, and keeps asking. From the second round
+//! on, each context also holds that model's own answers, and the tool says so rather than
+//! quietly comparing different things.
 
 use std::{
     collections::HashMap,
@@ -39,7 +39,7 @@ use nachalnik::{
     BoxError, Config, ContextItem, Kernel, ModelResponse, StopReason, Usage, selectors::Selector,
 };
 
-// the OpenAI-compatible HTTP provider, shared with the `panel` example
+// the formatting helpers and the environment, shared with the `panel` example
 #[path = "common/mod.rs"]
 mod common;
 
@@ -130,11 +130,11 @@ fn prompt(text: &str) -> Option<String> {
 
 /// Reports what each model is about to be sent, and whether it is the same thing.
 ///
-/// note: The claim is checked twice over, and neither check is the runtime's word for it: the
-/// fingerprint runs over the serialized messages of [`Kernel::preview_request`], which is the
-/// projection the next request is built from, and the second one runs over only the items the
-/// user put there. The first stops matching as soon as the models have said anything, because by
-/// then the contexts genuinely differ - and that is worth being told rather than hidden.
+/// note: The claim is checked twice, and neither check takes the runtime's word for it: the
+/// first fingerprint runs over the serialized messages of [`Kernel::preview_request`], which are
+/// the messages of the next request, and the second over only the items the user put there. The
+/// first stops matching as soon as the models have said anything, because by then the contexts
+/// differ, and the report says so rather than hiding it.
 fn report_inputs(contenders: &[Contender], payloads: bool) -> Result<(), BoxError> {
     heading("INPUTS · what each model is about to be sent");
     println!(
@@ -258,9 +258,8 @@ async fn ask(contenders: &[Contender], sequential: bool) -> Vec<Answer> {
 /// Prints the table, then the answers in full.
 ///
 /// note: `EST` is the kernel's own estimate, taken before the request went out, and `IN` is what
-/// the provider then charged for. Showing both is the only way to find out how wrong a token
-/// counter that does not have the model's tokenizer is - and the models disagree with each other
-/// about the very same bytes, which is worth seeing once.
+/// the provider then charged for. Side by side they show how wrong a token counter without the
+/// model's tokenizer is, and whether the models agree with each other about the same bytes.
 fn report(contenders: &[Contender], answers: &[Answer], estimates: &[usize], width: usize) {
     heading("ANSWERS");
     println!(
@@ -409,9 +408,8 @@ async fn main() -> Result<(), BoxError> {
         });
     }
 
-    // the same items, pushed into every context. This is the whole trick, and it is worth
-    // noticing that it is not a feature of the runtime: a context is a list the caller owns, so
-    // "give them all the same one" is a `for` loop
+    // the same items, pushed into every context. That is not a feature of the runtime: a context
+    // is a list the caller owns, so "give them all the same one" is a `for` loop
     let mut shared = Vec::new();
     if let Some(text) = system {
         shared.push(ContextItem::instruction("system", text));

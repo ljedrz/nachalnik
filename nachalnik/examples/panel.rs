@@ -5,7 +5,7 @@
 //! cargo run --example panel -- -m openai/gpt-4o-mini -m qwen/qwen3-coder "is this API sound?"
 //! ```
 //!
-//! Or entirely on your own machine, which is also the honest way to find out how small a model
+//! Or entirely on your own machine, which is also the cheapest way to find out how small a model
 //! can be and still hold a position:
 //!
 //! ```text
@@ -16,17 +16,17 @@
 //! Round one is independent: nobody has read anybody. From round two on, every panelist gets the
 //! others' positions as [`ContextItem`]s of its own - labelled, attributed, and counted - and
 //! each new round *supersedes* the last one's, so a five-round panel carries one item per peer
-//! rather than five. Every panelist also states a position through a tool each round, so what
+//! rather than four. Every panelist also states a position through a tool each round, so what
 //! comes out at the end is not a vibe but a tally, with the movement between rounds visible.
 //!
 //! ```text
 //! panel [-m MODEL].. [-r ROUNDS] [-f FILE].. [--chair MODEL] [--words N] [--seq] [--save DIR] question...
 //! ```
 //!
-//! What this is really showing is that "what did each participant know, and when?" is a question
-//! with an exact answer here. `CONTEXTS`, at the end, prints it: every peer statement each model
-//! read, in the order it read them, with the superseded ones still listed. A multi-model
-//! evaluation whose inputs you cannot reconstruct is an anecdote.
+//! "What did each participant know, and when?" has an exact answer here. `CONTEXTS`, at the end,
+//! prints it: every item each model read, peer statements included, in the order it read them,
+//! with the superseded ones still listed. A multi-model evaluation whose inputs you cannot
+//! reconstruct is an anecdote.
 
 use std::{
     collections::HashMap,
@@ -43,7 +43,7 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::json;
 
-// the OpenAI-compatible HTTP provider, shared with the `compare_models` example
+// the formatting helpers and the environment, shared with the `compare_models` example
 #[path = "common/mod.rs"]
 mod common;
 
@@ -126,8 +126,8 @@ impl Tool for Ballot {
             .as_str()
             .filter(|v| !v.trim().is_empty())
         else {
-            // the panelist reads this at the start of the next round, and the tally records an
-            // abstention for this one; nothing is invented on its behalf
+            // the panelist reads this at the start of the next round, and this round shows no
+            // position for it; nothing is invented on its behalf
             return Ok(ToolOutput::error("`verdict` is required, and was missing"));
         };
 
@@ -141,8 +141,8 @@ impl Tool for Ballot {
     }
 }
 
-/// The ballot needs nothing from the world, so it is allowed. Anything else would have to be
-/// asked about, and there is nobody at the terminal to ask.
+/// The ballot needs nothing from the world, so it is allowed. Anything else is denied rather
+/// than asked about, because there is nobody at the terminal to ask.
 struct AllowTheBallot;
 
 #[async_trait]
@@ -176,12 +176,13 @@ struct Panelist {
 }
 
 impl Panelist {
-    /// Takes one turn: one request, in which the model answers and casts its ballot.
+    /// Speaks once: one request, in which the model answers and casts its ballot, and the step
+    /// that runs the ballot.
     ///
     /// note: `step` rather than `turn`, because a turn would go back to the model with the
     /// ballot's result, and there is nothing for it to do with that. The tool result stays in the
-    /// context and the next round's request carries it, which is exactly right - the panelist can
-    /// see that its ballot was accepted, or that it was rejected for want of a verdict.
+    /// context and the next round's request carries it, so the panelist can see that its ballot
+    /// was accepted, or that it was rejected for want of a verdict.
     async fn speak(&self) -> Turn {
         let state = match self.kernel.step().await {
             Ok(state) => state,
@@ -302,9 +303,10 @@ fn report_positions(panel: &[Panelist], rounds: usize) {
 
 /// Groups the final positions, keeping abstentions apart from disagreement.
 ///
-/// note: The grouping is by exact text, deliberately: a tally that decides for itself that two
-/// differently-worded verdicts meant the same thing is a tally that can be wrong without anyone
-/// noticing. The ballot's schema asks for the same words each round for the same reason.
+/// note: The grouping is by the text, ignoring only case, deliberately: a tally that decides for
+/// itself that two differently-worded verdicts meant the same thing is a tally that can be wrong
+/// without anyone noticing. The ballot's schema asks for the same words each round for the same
+/// reason.
 fn tally(panel: &[Panelist]) -> (Vec<(String, Vec<String>)>, Vec<String>) {
     let mut counted: Vec<(String, Vec<String>)> = Vec::new();
     let mut abstained = Vec::new();
@@ -339,7 +341,7 @@ fn report_contexts(panel: &[Panelist]) {
             .count();
 
         println!(
-            "\n  \x1b[1m{}\x1b[0m — {} items, {superseded} superseded, ~{} tokens",
+            "\n  \x1b[1m{}\x1b[0m - {} items, {superseded} superseded, ~{} tokens",
             panelist.model,
             items.len(),
             thousands(budget.context_tokens),
@@ -403,7 +405,7 @@ fn save(panel: &[Panelist], dir: &str) -> Result<(), BoxError> {
 
 // ------------------------------------------------------------------------------------- the run
 
-/// Runs one round: everybody answers, nobody waits for anybody.
+/// Runs one round: everybody answers, and nobody waits for anybody unless `--seq` says so.
 async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
     async fn one(panel: &[Panelist], index: usize) -> Duration {
         let started = Instant::now();
@@ -444,11 +446,11 @@ async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
 /// Gives every panelist the others' opinions from the round just finished, superseding the ones
 /// they replace.
 ///
-/// note: This is the point of the example. A peer's opinion is an item like any other - it has a
-/// source, a label, a size and a state - and when it is replaced, the kernel is told that it was
-/// replaced rather than being handed a longer list. The old one is still there, still listed,
-/// still restorable; it is simply not in the next request. Without it, the last round of a
-/// five-model panel would carry twenty stale opinions.
+/// note: A peer's opinion is an item like any other - it has a source, a label, a size and a
+/// state - and when it is replaced, the kernel is told that it was replaced rather than being
+/// handed a longer list. The old one is still there, still listed, still restorable; it is simply
+/// not in the next request. Without that, every round would add another stale opinion per peer
+/// to every panelist's request.
 fn circulate(panel: &[Panelist], previous: usize) -> usize {
     let mut carried = 0;
 

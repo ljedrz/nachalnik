@@ -45,12 +45,12 @@ impl Provider for Script {
     }
 }
 
-/// Summarizes the largest tool results once the context passes a threshold.
+/// Summarizes the largest tool results once the context reaches a threshold.
 struct Summarizer {
     provider: Arc<dyn Provider>,
     /// How full the context has to be before this bothers.
     threshold: f64,
-    /// How empty it is trying to get it.
+    /// How full it is trying to get it back down to.
     target: f64,
 }
 
@@ -66,8 +66,8 @@ impl Compactor for Summarizer {
         let target = (budget.limit? as f64 * self.target) as usize;
 
         // note: this deliberately does *not* filter out pinned items. It could - they arrive with
-        // their states - but a promise you keep only because everyone remembers to is not a
-        // promise. The kernel refuses them, and says which ones it refused
+        // their states - but a promise kept only because everyone remembers to is not a promise.
+        // The kernel refuses them, and says which ones it refused.
         let mut candidates: Vec<_> = items
             .iter()
             .filter(|item| {
@@ -332,7 +332,7 @@ async fn main() -> Result<(), BoxError> {
     for line in textwrap(
         "A compactor is ordinary user code. It decides when the context is too full and what \
          should go; the kernel refuses to touch anything pinned, applies the rest, and reports \
-         every single thing it did. None of what follows is a decision the kernel made.",
+         everything it did.",
         WIDTH,
     ) {
         println!("{line}");

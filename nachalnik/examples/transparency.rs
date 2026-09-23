@@ -1,11 +1,11 @@
 //! A walk through everything the kernel promises, with no network and no API key involved.
 //!
-//! It ends up in the situation the design document calls the canonical one: a tool produces an
+//! It ends in the situation every agent runtime meets sooner or later: a tool produces an
 //! enormous, useless output, and instead of silently summarizing it, the runtime shows what it
 //! costs and lets the user throw it out.
 //!
 //! Note what is *not* imported from the library: the permission policy and the `/context`
-//! renderer are both written here, in about forty lines, because neither belongs in a kernel.
+//! renderer are both written here, because neither belongs in a kernel.
 //!
 //! ```text
 //! cargo run --example transparency --features selectors
@@ -53,8 +53,8 @@ impl Provider for Script {
     }
 }
 
-/// Reading is cheap and reversible; anything with a side effect gets a question. This is the
-/// entire permission story, and it is here rather than in the library on purpose.
+/// Reading is cheap and reversible; anything with a side effect gets a question. That is the
+/// whole policy, and it is here because a permission table is not the library's to ship.
 struct AskAboutSideEffects;
 
 #[async_trait]
@@ -72,7 +72,7 @@ impl PermissionPolicy for AskAboutSideEffects {
     }
 }
 
-/// A tool that hands back a canned file, and needs permission to read.
+/// A tool that hands back a canned file, and declares that it reads the filesystem.
 struct ReadFile;
 
 #[async_trait]
@@ -96,7 +96,7 @@ impl Tool for ReadFile {
     }
 }
 
-/// A tool that runs a command - here, one that produces a wall of useless output.
+/// A tool that says it runs a command, and always hands back the same wall of useless output.
 struct CargoTest;
 
 #[async_trait]
@@ -258,7 +258,8 @@ fn events(receiver: &mut Receiver<Event>) {
                 Delta::ToolArgs { call, fragment } => {
                     format!("arguments for {call}, {} bytes", fragment.len())
                 }
-                // `Delta` is `#[non_exhaustive]`, so a new kind of fragment is a recompile
+                // `Delta` is `#[non_exhaustive]`, so a kind added later lands here rather than
+                // breaking the build
                 other => format!("{other:?}"),
             },
             Event::ModelFinished { stop, .. } => format!("{stop:?}"),
@@ -332,9 +333,8 @@ async fn main() -> Result<(), BoxError> {
     println!("{}", "═".repeat(WIDTH));
     for line in textwrap(
         "A scripted model, two tools and a permission policy - no network and no API key. \
-         Nothing below is a decision the kernel made: the policy, the prompt and the rendering \
-         are all in this file, in about four hundred lines, because none of them belong in a \
-         runtime.",
+         The policy, the script and the rendering are all in this file, because none of them \
+         belongs in a runtime.",
         WIDTH,
     ) {
         println!("{line}");
@@ -375,9 +375,9 @@ async fn main() -> Result<(), BoxError> {
     stage(
         2,
         "THE CONTEXT, ITEM BY ITEM",
-        "Every item has an identity, a source, a label, a size and a state. The kernel put none \
-         of them there - this file did, one call each - and the first one is pinned, which means \
-         no compactor may drop it.",
+        "Every item has an identity, a source, a label, a size and a state. The kernel added \
+         none of these items - this file did, one call each - and the first one is pinned, which \
+         means no compactor may drop it.",
     );
     kernel.push(
         ContextItem::instruction("AGENTS.md", "This project uses no unsafe code.")
@@ -477,8 +477,8 @@ async fn main() -> Result<(), BoxError> {
     stage(
         7,
         "STEP FOUR · RUN IT, AND GET A WALL OF NOISE BACK",
-        "The shell tool returns six hundred lines of passing tests. This is the situation every \
-         agent runtime ends up in, and the only question that matters is what happens next.",
+        "The shell tool returns six hundred lines of passing tests, and they all go into the \
+         context.",
     );
     let state = kernel.step().await?;
     events(&mut stream);
@@ -488,8 +488,9 @@ async fn main() -> Result<(), BoxError> {
     stage(
         8,
         "NOTHING IS SACRED",
-        "That tool result is 13,000 tokens of nothing. A client offers to remove it; the user \
-         says yes; it goes. There is no negotiation with the agent about whether it is relevant.",
+        "That tool result is nearly all of the request, and there is nothing in it. A client \
+         offers to remove it; the user says yes; it goes. There is no negotiation with the agent \
+         about whether it is relevant.",
     );
     let noisy = "tool:shell:latest"
         .parse::<Selector>()?

@@ -6,7 +6,7 @@
 //! near full. What a picture really costs is a formula over its *dimensions*, every vendor
 //! publishes one, and each publishes a different one - so the runtime carries none of them.
 //!
-//! What it carries instead is the two halves that let you supply one:
+//! What it carries instead are the two halves that let you supply one:
 //!
 //! - [`Blob::meta`], a free-form value the kernel never reads, for whatever a counter would need
 //!   in order to price the payload. The caller who encoded the PNG had it decoded a moment
@@ -14,9 +14,9 @@
 //! - [`TokenCounter::uncounted`], so that a counter which *cannot* price something says so out
 //!   loud instead of returning `0` and letting it read as free.
 //!
-//! This is the program that uses them. It counts the same context three ways - with the default
-//! counter, with one that knows a vendor formula, and with one that knows the formula but is
-//! handed a blob nobody measured - and prints what each of them makes of it.
+//! This program uses them. It counts the same context three ways - with the default counter,
+//! with one that knows a vendor formula, and with one that knows the formula but is handed a
+//! blob nobody measured - and prints what each of them makes of it.
 //!
 //! ```text
 //! cargo run --example pricing_a_picture
@@ -37,8 +37,8 @@ const WIDTH: usize = 78;
 /// lives in an example instead of in the crate.
 ///
 /// note: it wraps `BytesPerToken` rather than replacing it. Everything that is not a picture is
-/// somebody else's problem already solved, and a counter that reimplemented text counting to add
-/// image counting would be two decisions in one type.
+/// a problem the default counter already solves, and a counter that reimplemented text counting
+/// to add image counting would be two decisions in one type.
 struct Tiled {
     /// What the vendor charges just for being shown an image.
     base: usize,
@@ -111,14 +111,15 @@ impl TokenCounter for Tiled {
     }
 }
 
-/// A 48x48 PNG, base64, as a caller would hand one over.
+/// A 48x48 PNG, base64, as a caller would hand one over. It stands in for the screenshot: the
+/// counter prices the dimensions recorded in `meta`, and never decodes the payload to check them.
 const SQUARE: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAPElEQVR42u3OsQkAAAgEsd9/ad1BLAQ\
                       DVx9JJacKEBAQEBAQEBAQEBAQ0Gy0dQICAgICAgICAgICAvoFamNX93l2WWcMAAAAAElFTkSuQmCC";
 
 /// The same conversation every time: a sentence, and a picture of a screen.
 fn context(measured: bool) -> Vec<ContextItem> {
     let blob = Blob::new("image/png", SQUARE);
-    // 1024x768, which this vendor cuts into two tiles across and two down:
+    // recorded as 1024x768, which this vendor cuts into two tiles across and two down:
     // 85 + 170 * 4 = 765 tokens
     let blob = match measured {
         true => blob.with_meta(json!({ "w": 1024, "h": 768 })),
@@ -166,9 +167,9 @@ fn measure(what: &str, counter: Arc<dyn TokenCounter>, measured: bool) {
 fn main() {
     println!("\n{}\n", "─".repeat(WIDTH));
     println!(
-        "The same context, counted three ways. The picture is a 1024x768 screenshot;\n\
-         the vendor being modelled charges 85 to look at one and 170 for each\n\
-         512-pixel tile, so two tiles across and two down come to 765 tokens.\n"
+        "The same context, counted three ways. The picture is recorded as a 1024x768\n\
+         screenshot; the vendor being modelled charges 85 to look at one and 170 for\n\
+         each 512-pixel tile, so two tiles across and two down come to 765 tokens.\n"
     );
     println!("{}\n", "─".repeat(WIDTH));
 
@@ -190,12 +191,12 @@ fn main() {
 
     println!("{}\n", "─".repeat(WIDTH));
     println!(
-        "The first is honest and useless: it prices the prose, declines the picture,\n\
-         and says so. The second is the whole point - the runtime learned no vendor's\n\
-         arithmetic, the caller supplied it, and the budget is now a number worth\n\
-         acting on. The third is the one to notice: a counter that knows a formula\n\
-         still cannot apply it to a payload nobody measured, so it abstains exactly\n\
-         as the default one does. That is the difference between a floor and a\n\
-         fiction, and it is the reason `uncounted` is a count rather than a flag.\n"
+        "The first prices the prose, declines the picture, and says so. In the second\n\
+         the runtime learned no vendor's arithmetic, the caller supplied it, and the\n\
+         budget is a number worth acting on. The third knows the formula but cannot\n\
+         apply it to a payload nobody measured, so it abstains exactly as the default\n\
+         one does, and its figure is a floor rather than a fiction. The second and\n\
+         the third each hold one blob and only the third reports it unpriced, which\n\
+         is why `uncounted` is the counter's to answer rather than a count of blobs.\n"
     );
 }
