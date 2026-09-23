@@ -26,6 +26,10 @@ minor bump may break you.
 
 ### added
 
+- **The readme shows the program.** Two screenshots, of the chat and context tabs, are woven into
+  what it says about the tools a session manages itself with. They are linked by address and kept
+  out of the published crate.
+
 - **`sandbox::confines_unix_sockets`** answers whether this kernel refuses a confined command a
   connection to a unix socket outside what it may write. Landlock grew the right for it in ABI 9,
   which is Linux 7.1, and below that there is none to ask for. It is a question rather than an

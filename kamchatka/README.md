@@ -59,7 +59,19 @@ not open it and says how many it left alone.
 Four of them are about the session itself: `context` reads the context and changes it, `log` reads
 the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
 session a question. Every operation in them is a public function the screen was already calling —
-[what each does][guide-introspect].
+[what each does][guide-introspect]. Asked to pin a budget and a deadline, the model writes the note
+itself, and the result it reads back says what the note did to its next request:
+
+![The chat tab. Asked to pin a budget and a deadline, the model calls `context` to write a note;
+the result says the note is pinned, goes into every request from then on, and what the next request
+now costs.][shot-chat]
+
+The context tab is the same session from your side: every item, what it puts into the next request
+and what it holds back, and one opened on the page that says why it is there — in the model's
+words, since the model put it there — and that it is pinned:
+
+![The context tab. Five items with what each sends and holds back; the pinned note is selected and
+open, showing why it is there and what it says.][shot-context]
 
 The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from
 the next request onward and `/tools toggle shell` again offers it, which is one call on the kernel
@@ -176,3 +188,5 @@ MIT.
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
 [guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context
+[shot-chat]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/chat.jpg
+[shot-context]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/context.jpg

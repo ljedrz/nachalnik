@@ -422,11 +422,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   whether `meta` is content the log should copy on an overwrite, as it copies replaced text, and
   then the next minor of `nachalnik`.
 
-- **Screenshots of the program.** The documents carry no pictures of `kamchatka`, only prose
-  about what it shows. A capture pasted in as text is a copy of one session's output: the
-  program's words move on and the copy does not, and one edited by hand is a picture of no session
-  at all. What unblocks it is real screenshots, saved as images and taken from a session of a
-  named version, in the readmes and the guide where the prose now says what a screen holds.
+- **Screenshots in the guide.** `kamchatka`'s readme shows the chat and context tabs, from
+  `kamchatka/assets/`; the guide still carries no pictures, only prose about what each screen
+  holds. A capture pasted in as text is a copy of one session's output: the program's words move
+  on and the copy does not, and one edited by hand is a picture of no session at all. What
+  unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
+  says what a screen holds.
 
 - **A table of what runs cost, out of date.** The `~requests` column of `nachalnik-eval`'s readme
   counts requests per experiment from before six dossiers. It is a copy of a real run, so what
