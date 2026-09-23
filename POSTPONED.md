@@ -337,6 +337,36 @@ Referenced from [AGENTS.md](AGENTS.md).
   those apart is what a bound would have to do, and nothing on the wire carries a client identifier
   to do it with - which is the same thing the arbitration entry above needs first.
 
+- **Knowing a command wants the network from its trying, rather than from its name.** Whether a
+  shell command is judged against `net:reach` is decided by `reaches_the_network`, which looks the
+  program up in `NETWORKED` - a list of names. It is a lexicon to maintain, it is wrong both ways
+  (`git status` is asked about, a script that opens a socket is not), and it is the only reason a
+  session with `exec:run` allowed is still asked about a command that never goes near the network.
+  Reading subcommands would make the list longer and no less of a guess, so it is not the fix.
+
+  What would be is the attempt itself. The sandbox already cuts TCP from a confined command with
+  Landlock, but a refused `connect` is invisible from outside - Landlock denies it and tells nobody
+  unprivileged. Seccomp user notification is the mechanism that sees it: the confined child, which
+  already re-executes this program before running the command, installs a filter that holds any
+  `socket()` for `AF_INET` or `AF_INET6` - the first thing any use of the network does, a DNS
+  lookup included - and hands the listener to the parent. The parent asks the person once per
+  command, then lets that call and every later one through, or refuses them all with `EACCES`. The
+  filter reads only the call's integer arguments, so there is no address a command could change
+  after the answer, and nothing is decided per destination. With it, `NETWORKED` goes on Linux: an
+  allowed `exec:run` runs unasked, and the question comes only if the command actually reaches out.
+
+  What it costs, and why it waits:
+  - raw system calls for the filter and the notification `ioctl`s, which `#![deny(unsafe_code)]`
+    in this crate rules out - so a small crate of its own, or a dependency that does it;
+  - the listener passed from child to parent over a unix socket, since it is created in the child;
+  - a question *during* a call, which nothing has today. Every permission question is asked in
+    `Deciding`, before the call runs; this one arrives while the tool is executing, so the shell
+    tool needs its own way to reach whoever answers, and a headless run answers it by `--on-ask`;
+  - `io_uring_setup` refused by the same filter, since `io_uring` can open a socket without
+    calling `socket()`;
+  - and Linux only. Off Linux the shell already runs unconfined and nothing equivalent exists, so
+    the list stays there - or the question is dropped there, since it guards nothing.
+
 - **Saying that a refused `connect` was the confinement.** `Sandbox::note_for` accounts for a
   permission error a confined command hit, and it says nothing where every path the error names is
   one the session reaches - because such a refusal is normally the file's own permissions, and a
