@@ -37,7 +37,7 @@ pub struct Headless<'a> {
     /// The session log, one JSON record per line: the same bytes `/save` writes.
     records: &'a mut dyn Write,
     /// The model's own words, and what the program has to say about the run.
-    prose: &'a mut dyn Write,
+    prose: Printable<&'a mut dyn Write>,
     /// How long the whole run may take, if anything says.
     deadline: Option<Duration>,
     /// Whether a `ctrl+c` stops the run rather than killing the process.
@@ -59,7 +59,7 @@ impl<'a> Headless<'a> {
         Self {
             on_ask,
             records,
-            prose,
+            prose: Printable(prose),
             deadline: None,
             ctrl_c: false,
             terminated: false,
@@ -560,6 +560,44 @@ impl<'a> Headless<'a> {
             _ => Ok(()),
         }
         .map_err(|e| e.to_string())
+    }
+}
+
+/// A person's half of the output with the control characters taken out, bar the newline and the
+/// tab.
+///
+/// note: the prose is somebody's terminal, and most of what goes into it is not this program's to
+/// vouch for - the model's words, a provider's error, an item's content read back. An escape
+/// sequence among them is the terminal's to act on: clear the screen, retitle the window, set the
+/// clipboard, draw a line that looks like one of this program's. The screen never had the problem,
+/// because the drawing library drops them, and this drops the same ones, the same way.
+///
+/// note: over the bytes as they come, which is safe because a C0 byte never occurs inside a
+/// multi-byte character. The C1 set is two bytes in UTF-8 and is taken out where the bytes are
+/// text, which is every write here: each is a formatted string, whole.
+pub(crate) struct Printable<W>(pub(crate) W);
+
+impl<W: Write> Write for Printable<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let kept: Vec<u8> = match std::str::from_utf8(bytes) {
+            Ok(text) => text
+                .chars()
+                .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+                .collect::<String>()
+                .into_bytes(),
+            Err(_) => bytes
+                .iter()
+                .copied()
+                .filter(|b| !b.is_ascii_control() || matches!(b, b'\n' | b'\t'))
+                .collect(),
+        };
+        self.0.write_all(&kept)?;
+
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
     }
 }
 

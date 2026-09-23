@@ -3040,3 +3040,32 @@ async fn a_rule_given_at_the_start_is_in_the_record() {
         ]
     );
 }
+
+/// What a person reads is text: an escape sequence in the model's words is not handed to their
+/// terminal.
+///
+/// note: the prose is somebody's terminal and most of what reaches it is not this program's to
+/// vouch for. The screen drops control characters because its drawing library does; this wrote
+/// them through, so a model that had read a file carrying a sequence could set the clipboard,
+/// clear the screen, or overwrite a line with one that looks like this program's.
+#[tokio::test]
+async fn an_escape_sequence_in_the_answer_does_not_reach_the_terminal() {
+    let script = vec![ModelResponse::text(
+        "first\x1b]52;c;aGk=\x07 then\x1b[2J\r\u{9b}31m last\tcolumn\nnext line",
+    )];
+    let run = run("go\n", script, |_| {}).await;
+
+    // the sequences' printable remains stay, as they do on the screen: inert without the byte
+    // that made them a sequence
+    assert!(
+        run.prose
+            .contains("first]52;c;aGk= then[2J31m last\tcolumn\nnext line"),
+        "{:?}",
+        run.prose
+    );
+    assert!(
+        !run.prose.contains(['\x1b', '\x07', '\r', '\u{9b}']),
+        "{:?}",
+        run.prose
+    );
+}

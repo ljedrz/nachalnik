@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### fixed
 
+- **What a person reads headless, or through `--connect`, carries no control characters but the
+  newline and the tab.** The model's words, a provider's error and an item's content went to
+  stderr as they came, so an escape sequence among them - read by the model out of a file, say -
+  was the terminal's to act on: set the clipboard, clear the screen, retitle the window, overwrite
+  a line with one that looks like this program's. The screen never had the problem, because the
+  drawing library drops them, and both writers now drop the same ones.
+
 - **A chord is not its letter.** A key with `ctrl` or `alt` held reached the panels as the letter
   it carries, so readline's `ctrl+a` pressed at a focused question answered *always* and wrote the
   standing rule, `ctrl+y` allowed the call, and the same chords reached the permissions tab's

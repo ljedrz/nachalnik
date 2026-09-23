@@ -52,7 +52,7 @@ pub struct Client<'a> {
     /// The record stream, one JSON object per line: the same bytes `/save` writes.
     records: &'a mut dyn Write,
     /// What a person reads: the model's own words, and what the session had to say about the run.
-    prose: &'a mut dyn Write,
+    prose: crate::headless::Printable<&'a mut dyn Write>,
     /// Whether the prose is part-way through a line somebody else would finish.
     mid_line: bool,
     /// The last record this client is sure it has.
@@ -121,7 +121,7 @@ impl<'a> Client<'a> {
         Self {
             on_ask,
             records,
-            prose,
+            prose: crate::headless::Printable(prose),
             mid_line: false,
             last: 0,
             session: None,
