@@ -194,7 +194,11 @@ pub struct Snapshot {
     /// against, and would accept one it had used before the snapshot - the reuse
     /// [`Event::ToolCallRepaired`] exists to catch.
     pub used_calls: Vec<ToolCallId>,
-    /// The sequence number of the last record in the session's log.
+    /// The sequence number of the last record in the session's log, as the items were read.
+    ///
+    /// note: read under the same lock as the items, so the records up to it are exactly the ones
+    /// whose changes the items show. A caller writing a log beside a snapshot writes those, and
+    /// the two agree.
     ///
     /// note: so that a resumed log carries on from it rather than starting again at 1. A client
     /// keeping a [`Kernel::history_since`](crate::Kernel::history_since) cursor across a resume

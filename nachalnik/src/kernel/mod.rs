@@ -435,11 +435,16 @@ impl Kernel {
         let params = self.params();
         let counter = self.counter();
 
-        let (items, next_item) = {
+        // `last_seq` under the context lock, because every change to the context is announced
+        // while holding it: every record numbered up to it describes a change these items already
+        // show, and every one after it a change they do not. That is what lets a caller write the
+        // log out to exactly this point and have the pair agree
+        let (items, next_item, last_seq) = {
             let context = self.0.context.read();
             (
                 context.items().iter().map(|i| (**i).clone()).collect(),
                 context.next_id(),
+                self.last_seq(),
             )
         };
         let mut used_calls: Vec<_> = self.0.seen_calls.lock().iter().cloned().collect();
@@ -451,7 +456,7 @@ impl Kernel {
             params,
             next_item,
             used_calls,
-            last_seq: self.last_seq(),
+            last_seq,
             next_permission: self.0.next_permission.load(SeqCst),
             calibration: counter.calibration(),
         }

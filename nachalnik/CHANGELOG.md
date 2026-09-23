@@ -57,7 +57,9 @@ minor bump may break you.
   `Kernel::resume` read nothing until the new log passed the old number, and a log kept across the
   resume had two records under each number and two questions under one `PermissionId`.
   `Snapshot::last_seq` and `Snapshot::next_permission` carry them, and `session.resumed` is the
-  record after the last one. Both are `serde(default)`, so a snapshot written before them resumes
+  record after the last one. `last_seq` is read under the lock the items are, so the records up to
+  it are exactly those whose changes the items show, which is what lets a log written beside a
+  snapshot agree with it. Both are `serde(default)`, so a snapshot written before them resumes
   and numbers from 1, as it did.
 
 - **`interrupt` sets and announces the flag under the machine lock**, where every step reads and
