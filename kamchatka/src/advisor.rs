@@ -32,17 +32,17 @@
 //! command, and not doing that is what the model was chosen for.
 //!
 //! note: the protocol is the body [`Jev`](nachalnik_providers::system1::Jev) already sends, one
-//! JSON object per line, answered by one JSON object per line. Not a new format: each question
-//! goes out through the `Question::to_wire` that `Jev::render` uses, and
-//! [`Answers`](nachalnik_providers::system1::Answers) reads the reply the way the HTTP path does -
-//! so a shim is a loop around `predict`, and the two engines cannot drift into two request
+//! JSON object per line, answered by one JSON object per line. Not a new format: the body is
+//! [`system1::render`](nachalnik_providers::system1::render)'s, the function `Jev::render` calls,
+//! and [`Answers`](nachalnik_providers::system1::Answers) reads the reply the way the HTTP path
+//! does - so a shim is a loop around `predict`, and the two engines cannot drift into two request
 //! shapes. What a local engine does with `model` is its own business; `laya`'s router picks a
 //! checkpoint.
 
 use std::{collections::VecDeque, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::BoxError;
-use nachalnik_providers::system1::{Answers, Question, SystemOne};
+use nachalnik_providers::system1::{self, Answers, Question, SystemOne};
 use parking_lot::Mutex as Sync;
 use serde_json::{Value, json};
 use tokio::{
@@ -135,11 +135,11 @@ fn warm(
     said: Arc<Sync<VecDeque<String>>>,
 ) {
     tokio::spawn(async move {
-        let body = json!({
-            "model": MODEL,
-            "state": { "cmd": "true" },
-            "questions": { "ready": Question::noul("Is this a command?").to_wire() },
-        });
+        let body = system1::render(
+            MODEL,
+            &json!({ "cmd": "true" }),
+            &[("ready".to_owned(), Question::noul("Is this a command?"))],
+        );
 
         // note: nothing is done with the answer. What is being checked is that one came back at
         // all, which is what readiness means here; a `ready` that also had to be
@@ -367,18 +367,9 @@ impl SystemOne for Local {
             return Err("no questions to ask".into());
         }
 
-        // note: built here rather than by asking `Jev` to render one, because a `Jev` is an HTTP
-        // client with a key in it and there may not be one. What keeps the two bodies the same
-        // is that this is the documented request shape, with each question put through the
-        // `to_wire` that `Jev::render` uses
-        let body = json!({
-            "model": MODEL,
-            "state": state,
-            "questions": questions
-                .iter()
-                .map(|(name, question)| (name.clone(), question.to_wire()))
-                .collect::<serde_json::Map<_, _>>(),
-        });
+        // note: `system1::render` rather than a `Jev`'s, because a `Jev` is an HTTP client with a
+        // key in it and there may not be one; it is the same function `Jev::render` calls
+        let body = system1::render(MODEL, &state, &questions);
 
         Ok(Answers::read(self.asked(&body).await?))
     }

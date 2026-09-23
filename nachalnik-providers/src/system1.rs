@@ -143,6 +143,22 @@ impl Service {
     }
 }
 
+/// The documented request body: a model, a state, and the questions put to it by name.
+///
+/// note: public, and the one place the body is written, because not every engine that answers it
+/// is reached through a [`Jev`]. A local engine spoken to over a pipe takes the same body, and a
+/// second copy of it is a second place for the shape to drift.
+pub fn render(model: &str, state: &Value, questions: &[(String, Question)]) -> Value {
+    json!({
+        "model": model,
+        "state": state,
+        "questions": questions
+            .iter()
+            .map(|(name, question)| (name.clone(), question.to_wire()))
+            .collect::<serde_json::Map<_, _>>(),
+    })
+}
+
 /// How long the first retry waits, doubling from there.
 const BACKOFF: Duration = Duration::from_millis(500);
 
@@ -674,14 +690,7 @@ impl Jev {
     /// [`nachalnik::Provider::render`] gives: two code paths that are supposed to agree
     /// eventually do not, and a preview that has quietly stopped matching is worse than none.
     pub fn render(&self, state: &Value, questions: &[(String, Question)]) -> Value {
-        json!({
-            "model": self.model(),
-            "state": state,
-            "questions": questions
-                .iter()
-                .map(|(name, question)| (name.clone(), question.to_wire()))
-                .collect::<serde_json::Map<_, _>>(),
-        })
+        render(&self.model(), state, questions)
     }
 
     /// Puts the questions to the state, and answers all of them in one request.

@@ -24,6 +24,12 @@ minor bump may break you.
   `Question::choice` and `Question::score`, and `Attribution` is assembled by
   `OpenAiCompatible::on_behalf_of` and read by nobody.
 
+### added
+
+- **`system1::render`**, the documented request body for a model, a state and its questions,
+  without a `Jev` to render it. `Jev::render` calls it, and so does an engine reached some other
+  way - `kamchatka`'s local advisor, over a pipe - so the body is written once.
+
 ### fixed
 
 - **`jev` is sent a busy request as often as a dialect is, and no more.** `system1` had a
