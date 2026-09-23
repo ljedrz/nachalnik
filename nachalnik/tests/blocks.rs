@@ -239,12 +239,16 @@ async fn a_repaired_identifier_is_repaired_where_the_call_actually_lives() {
     let unique: std::collections::BTreeSet<_> = ids.iter().collect();
     assert_eq!(unique.len(), 3, "{ids:?}");
 
-    // every result answers a call that is really there
+    // every result answers a call that is really there - and there are results, or the loop
+    // checks nothing
+    let mut answered = 0;
     for item in kernel.items() {
         if let ContextKind::ToolResult { call, .. } = &item.kind {
             assert!(turn.calls().any(|asked| &asked.id == call), "{call}");
+            answered += 1;
         }
     }
+    assert_eq!(answered, 3, "one result for each call");
 }
 
 // ---------------------------------------------------------------------------- the projection
