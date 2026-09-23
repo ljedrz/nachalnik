@@ -444,6 +444,12 @@ for, so there is nothing for it to agree with.
   recorded session, what a run of the eval suite spends. Those were taken against something real,
   they are dated by the commit they were written for, and they do not change when somebody adds a
   test. Anyone who wants a count has `cargo test --workspace` and the tree.
+- **No captures of the program's output.** A screen, a status line, a listing or a tool's reply
+  pasted into a document as text is a copy of one session, and the program's words move on while
+  the copy does not; one corrected by hand is a picture of no session at all. Say what the screen
+  holds and what each part means, checked against the code that draws it. A block a person types
+  is not a capture and stays, and so are settings, code and a diagram of the design. Pictures of
+  the program are screenshots, and those are in [POSTPONED.md](POSTPONED.md).
 - **The prose argues.** Headings are lowercase, sentences are sentences, and a paragraph that
   merely lists what a thing has is not finished. Spelling leans British (`behaviour`, `defence`,
   `optimisation`, `honouring`) with `-ize` endings for `summarize`. Rust source uses hyphens; the

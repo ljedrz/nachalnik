@@ -184,6 +184,8 @@ the mistake it came from - which is the half that makes them stick.
 - **Commit messages** are `crate: what changed, in one lowercase line`, followed by prose.
 - **No counting the repository.** No test counts, line counts or percentages in prose that will
   outlive them.
+- **No captures of the program's output.** Say what a screen holds instead; what a person types,
+  code and design diagrams stay.
 - **The prose argues.** Lowercase headings, sentences that are sentences, and a paragraph that
   earns its place rather than restating the signature above it.
 - **And it argues plainly.** In every document here, including doc comments and `note:`
