@@ -1,7 +1,8 @@
 //! The experiments, and the material they are run on.
 //!
 //! note: This module is where the prompt text is, and it is the only place in the crate that has
-//! any. Everything above it is machinery that does not know what a question is about; everything
+//! any but the two lines the machinery says itself: [`PREAMBLE`](crate::PREAMBLE) and
+//! [`Reading::instructions`](crate::Reading::instructions). Everything above it is machinery that does not know what a question is about; everything
 //! in here is a question, a planted note, or a sentence explaining to a copy that it has no
 //! tools. The line between them is worth keeping: a benchmark is its questions, and questions go
 //! stale - a model that has seen [`DEPOT`] in a training set is a model this suite can no longer

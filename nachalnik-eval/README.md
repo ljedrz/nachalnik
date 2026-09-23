@@ -167,16 +167,17 @@ already committed to which.
 
 ### 🧪 the nine experiments
 
-They live in `suite`, which is the only module in the crate with prompt text in it — including the
-two tool descriptions in `suite::handles`, which are prompt text a model reads and are hashed into
-the instrument like everything else. A benchmark *is* its questions, and questions go stale: a
+They live in `suite`, which holds all of the crate's prompt text but two lines the harness says
+itself — the preamble every copy is told, and the line saying what shape to answer in — including
+the two tool descriptions in `suite::handles`, which are prompt text a model reads and are hashed
+into the instrument like everything else. A benchmark *is* its questions, and questions go stale: a
 model that has seen the material in a training set is a model this suite can no longer measure,
 and replacing the suite must not mean replacing the harness. A study's own methods, runbook and
 threats to validity travel with it, in its repository.
 
 | experiment | the claim | the check | ~requests |
 | --- | --- | --- | --- |
-| `attribution` | "this note is what my answer is made of", and where it is, and whether two copies differ over it | every note ablated, one at a time | 14 |
+| `attribution` | "this note is what my answer is made of", and whether two copies differ over it; where it is only with `locating` on | every note ablated, one at a time | 14 |
 | `recursion` | its own next answer, then a copy's prediction of that, then a copy's of the copy's | a copy actually run at every level | 8 |
 | `lie` | which note in its context contradicts the records | the harness wrote the false note, *and* corrects it on a copy | 8 |
 | `conflict` | that two of its notes cannot both be true, which two, and which of them its answer took | each side ablated in turn, and the same question put to copies with nothing left to disagree | 11 |
