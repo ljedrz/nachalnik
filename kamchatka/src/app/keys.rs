@@ -68,9 +68,13 @@ impl App {
             }
             // an empty prompt has nothing to move a cursor around in and nothing to lose, so
             // `up` there puts the last line back rather than scrolling the conversation by one.
-            // Anywhere else it is still the key that moves the cursor and scrolls at the top, and
-            // `pgup` scrolls from an empty prompt as it does from any other
-            KeyCode::Up if self.input.lines().iter().all(|line| line.is_empty()) => self.put_back(),
+            // With nothing to put back it falls through and scrolls, as at the top of any prompt,
+            // rather than being a key that does nothing
+            KeyCode::Up
+                if self.input.lines().iter().all(|line| line.is_empty()) && self.recallable() =>
+            {
+                self.put_back()
+            }
             // and `down` undoes it, while the prompt still holds exactly what `up` put there.
             // Typed over, it is a message somebody is writing and not a recall any more, so the
             // key goes back to being the one that moves the cursor
@@ -126,6 +130,11 @@ impl App {
                 "taken back out of the queue; nothing is waiting now, and `enter` sends it again",
             );
         }
+    }
+
+    /// Whether there is a line for `up` to put back.
+    fn recallable(&self) -> bool {
+        self.typed_ahead.is_some() || self.last_sent.is_some()
     }
 
     /// Empties the prompt, wherever what was in it has just gone.

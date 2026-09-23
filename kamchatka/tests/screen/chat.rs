@@ -653,9 +653,9 @@ async fn down_clears_a_recalled_line_and_leaves_a_typed_one_alone() {
 
 /// And it does not take a half-written message away to do it.
 ///
-/// note: the guard is "the prompt is empty" rather than "the cursor is on the first line", which
-/// is what keeps this from being a gesture taken away: `up` on a line somebody is typing still
-/// moves the cursor, and at the top of the box it still scrolls the conversation.
+/// note: the guard is "the prompt is empty" rather than "the cursor is on the first line": `up` on
+/// a line somebody is typing still moves the cursor, and at the top of the box it still scrolls
+/// the conversation.
 #[tokio::test]
 async fn up_with_something_typed_leaves_it_alone() {
     let mut harness = Harness::new([ModelResponse::text("answered")]);
@@ -668,6 +668,29 @@ async fn up_with_something_typed_leaves_it_alone() {
 
     harness.press(KeyCode::Up).await;
     assert_eq!(harness.app.input.lines(), ["half a thought"]);
+}
+
+/// And with nothing to put back, it is the key that scrolls, as it is at the top of any prompt.
+#[tokio::test]
+async fn up_with_nothing_to_recall_scrolls_the_conversation() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+    harness.screen();
+    assert!(
+        harness.app.follow,
+        "a fresh conversation follows the bottom"
+    );
+
+    harness.press(KeyCode::Up).await;
+    assert!(
+        !harness.app.follow,
+        "up on an empty prompt with nothing sent did nothing"
+    );
+    assert_eq!(harness.app.input.lines(), [""]);
 }
 
 #[tokio::test]

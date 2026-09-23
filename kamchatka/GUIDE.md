@@ -355,11 +355,12 @@ and a message you take back and never send again simply does not go in at all. T
 one waiting message, which is why one key reaches it; everything else you have sent is on the
 context tab, with more said about each of them than a prompt could show.
 
-<kbd>up</kbd> does this only from an empty prompt. With anything typed it still moves the cursor,
-and at the top line it still scrolls the conversation, so nothing that already did something does
-something else now. <kbd>down</kbd> puts a recalled line away again — but only while the prompt
-still says exactly what came back, since a word typed onto the end makes it a message somebody is
-writing, and a key that emptied the box then would be the worst kind of shortcut.
+<kbd>up</kbd> does this only from an empty prompt, and only when there is something to put back;
+before anything has been sent it scrolls the conversation, as it does at the top of any prompt.
+With anything typed it still moves the cursor, and at the top line it still scrolls.
+<kbd>down</kbd> puts a recalled line away again — but only while the prompt still says exactly
+what came back, since a word typed onto the end makes it a message somebody is writing, and a key
+that emptied the box then would be the worst kind of shortcut.
 
 **<kbd>ctrl+l</kbd> takes this program's own lines off the chat.** The `·` notes about what it
 just did, and the answers it gave a key you pressed — a session that excludes eleven items one at

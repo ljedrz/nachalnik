@@ -73,6 +73,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`up` in an empty prompt scrolls when there is nothing to put back.** It recalls the last
+  message, and before one had been sent it did nothing at all - the one prompt from which the key
+  that scrolls at the top of any other did not. It scrolls there now.
+
 - **`log` refuses an `ids` entry that is not an item number.** It kept the numbers it could read
   and dropped the rest, so `ids: [12, -1]` answered as a filter on item 12 alone; only a list with
   no number in it at all was refused. It reads `ids` the way `context` does now, refusing the call
