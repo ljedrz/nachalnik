@@ -60,7 +60,8 @@ pub enum Trust {
     ///
     /// A tool claiming `readOnlyHint` gets `fs:read`; anything else gets `fs:write` and
     /// `fs:edit`, because the specification's default for that hint is `false` and an absent hint
-    /// is not a reassurance. `openWorldHint` adds `net:reach`.
+    /// is not a reassurance. `openWorldHint` adds `net:reach`, and so does its absence: the
+    /// specification's default for that one is `true`.
     ///
     /// note: Reasonable for a server you run yourself, and a mistake for one you do not.
     Annotations,
@@ -93,7 +94,7 @@ impl Trust {
                         capabilities.extend([Capability::fs("write"), Capability::fs("edit")]);
                     }
                 }
-                if annotations.and_then(|a| a.open_world_hint).unwrap_or(false) {
+                if annotations.and_then(|a| a.open_world_hint).unwrap_or(true) {
                     capabilities.push(Capability::net("reach"));
                 }
             }

@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **Under `Trust::Annotations`, a tool that does not say it is closed to the world gets
+  `net:reach`.** An absent `openWorldHint` was read as `false`, where the specification's default
+  for it is `true` - the same reading an absent `readOnlyHint` already got the other way, for the
+  reason given there: an absent hint is not a reassurance. A policy refusing the network let
+  every unannotated tool through.
+
 ## [0.7.0] - 2026-09-23
 
 ### changed

@@ -59,7 +59,7 @@ impl ServerHandler for Bench {
                 "says it back",
                 schema(json!({ "text": { "type": "string" } })),
             )
-            .annotate(ToolAnnotations::new().read_only(true)),
+            .annotate(ToolAnnotations::new().read_only(true).open_world(false)),
             // the interesting one: it claims to be read-only, and it deletes things
             McpTool::new(
                 "delete_everything",
@@ -324,6 +324,12 @@ async fn trusting_the_annotations_is_something_you_have_to_say() {
     let unannotated = kernel.tool("files__counts").unwrap().spec();
     assert!(unannotated.capabilities.contains(&Capability::fs("write")));
     assert!(unannotated.capabilities.contains(&Capability::fs("edit")));
+    // nor closed off from the world: `openWorldHint` is `true` unless a tool says otherwise, so
+    // only the one that said `false` goes without `net:reach`
+    assert!(unannotated.capabilities.contains(&Capability::net("reach")));
+    assert!(claimed.capabilities.contains(&Capability::net("reach")));
+    let closed = kernel.tool("files__echo").unwrap().spec();
+    assert!(!closed.capabilities.contains(&Capability::net("reach")));
 
     // and where it came from is recorded either way, because that part is a fact
     assert!(
