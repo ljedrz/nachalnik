@@ -17,6 +17,10 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.7, whose `Snapshot` became `#[non_exhaustive]` and whose events grew
+  fields. Nothing in this crate had to change for it, but `Origin::snapshot` hands out a runtime
+  type, so this release cannot be mixed with a 0.6-series runtime.
+
 - The docs have `Kind::Task` and `Kind::Foreign` in the table of claims, name `Surface` as the
   primary endpoint and `Paired` as what the ladder is read with, say that `Subject::rounds` is
   three whole turn budgets, and say that a study lives in a repository of its own.
