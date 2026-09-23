@@ -273,7 +273,7 @@ because its result is not in the projection.
 
 "why is that not in there?" is the question this whole runtime is for, and the JSON on its own can
 only answer the other one. `/payload` goes one further and prints what the provider will put on
-the wire, byte for byte.
+the wire, field for field - laid out to be read, where the wire has it on one line.
 
 ## ✍️ what the model writes
 

@@ -259,7 +259,7 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         ctrl+c where there are keys to press; typing it is how
                         a client with no keys - a browser - reaches the same act
     /request            the request that would go next
-    /payload            the provider's own rendering of it, byte for byte
+    /payload            the provider's own rendering of it, field for field
     /raw                the provider's own last answer
     /attach PATH [TEXT] put a file in the context and ask about it in the same
                         breath. Source and markdown go in as text; a PDF, an
