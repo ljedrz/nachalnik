@@ -147,6 +147,12 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A pipe is refused by the file tools rather than waited on.** Opening one blocks until somebody
+  writes to it, and the open is not where an interrupt reaches, so `mkfifo p` and `fs read p` - or
+  `grep` over a directory holding it - was a turn nobody could stop. Anything that is not a regular
+  file is refused with a sentence; on Linux the open does not block either, and what it opened is
+  looked at again. The walks skip such entries, and links to them.
+
 - **A session asked to end from outside is recorded.** `SIGTERM` and `SIGHUP` - a closed terminal,
   an ssh drop, `timeout`, `docker stop` - were left to their default, which ended the process with
   no `session.finished` and no record, and a `shell` command, in a process group of its own, went

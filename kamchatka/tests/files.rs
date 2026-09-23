@@ -340,3 +340,49 @@ async fn a_read_only_file_is_refused_and_a_long_name_is_written() {
     assert!(said.contains("wrote 4 bytes"), "{said}");
     assert_eq!(held(&dir, &long), "one\n");
 }
+
+/// A pipe is refused by every operation that would open it, rather than waited on for ever.
+///
+/// note: an open of a pipe blocks until somebody writes to it, and the open is not a place the
+/// interrupt reaches - so `mkfifo p` and `fs read p` was a turn nobody could stop. `grep` over a
+/// directory holding one opened it the same way.
+///
+/// note: each call on a thread and a runtime of its own, because what is being tested for blocks a
+/// thread rather than awaiting: a timeout on the same runtime would never get to fire, and the
+/// failure would be a suite that hangs rather than a test that says so.
+#[cfg(unix)]
+#[test]
+fn a_pipe_is_refused_rather_than_waited_on() {
+    let dir = scratch("files-pipe");
+    let made = std::process::Command::new("mkfifo")
+        .arg(dir.join("p"))
+        .status()
+        .expect("`mkfifo` is on the path");
+    assert!(made.success());
+    std::fs::write(dir.join("a.txt"), "needle\n").expect("a file beside it");
+
+    let asked = |action: &'static str, args: Value| {
+        let (sent, heard) = std::sync::mpsc::channel();
+        let dir = dir.clone();
+        std::thread::spawn(move || {
+            let said = tokio::runtime::Runtime::new()
+                .expect("a runtime")
+                .block_on(ask(&dir, action, args));
+            let _ = sent.send(said);
+        });
+        heard
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .unwrap_or_else(|_| panic!("`{action}` waited on the pipe"))
+    };
+
+    for (action, args) in [
+        ("read", json!({ "path": "p" })),
+        ("write", json!({ "path": "p", "content": "x" })),
+        ("edit", json!({ "path": "p", "old": "a", "new": "b" })),
+    ] {
+        let said = asked(action, args);
+        assert!(said.contains("not a regular file"), "{action}: {said}");
+    }
+    let found = asked("grep", json!({ "pattern": "needle", "path": "." }));
+    assert!(found.contains("a.txt"), "{found}");
+}

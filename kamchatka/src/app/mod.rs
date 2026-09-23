@@ -348,7 +348,8 @@ pub struct App {
     /// note: awaited in [`App::submit`] rather than anywhere the provider is read, which is the
     /// narrower door and the right one: a frame drawn mid-switch showing the old name for a
     /// moment is a frame, and the next one corrects it. A *line* acting on the old name is an
-    /// answer. The provider's client carries its own timeout, so this cannot wait forever.
+    /// answer. Every question a switch asks the endpoint is bounded by the provider, so this
+    /// cannot wait for ever.
     pub settling: Option<tokio::task::JoinHandle<()>>,
     /// How much of each tool's output the model is shown, which `/limit` changes.
     ///

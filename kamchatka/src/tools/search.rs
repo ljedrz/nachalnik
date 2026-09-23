@@ -187,7 +187,8 @@ fn walk(root: &Path) -> ignore::Walk {
 enum Link {
     /// A file with a second name: search it, by its first.
     Read(PathBuf),
-    /// A directory the walk reaches by its own name: nothing to do and nothing to say.
+    /// A directory the walk reaches by its own name, or something that is not a file at all:
+    /// nothing to do and nothing to say.
     Skip,
     /// Somewhere this session does not reach: count it and say so.
     Refuse,
@@ -196,9 +197,10 @@ enum Link {
 fn followed(reach: &Reach, path: &Path) -> Link {
     match reach.allows(&path.to_string_lossy(), Access::Reading) {
         Err(_) => Link::Refuse,
-        Ok(resolved) => match path.is_dir() {
-            true => Link::Skip,
-            false => Link::Read(resolved),
+        // a link to a directory, a pipe or a device is skipped as the thing itself would be
+        Ok(resolved) => match path.is_file() {
+            false => Link::Skip,
+            true => Link::Read(resolved),
         },
     }
 }
@@ -442,7 +444,8 @@ impl Grep {
                 let Some(kind) = entry.file_type() else {
                     continue;
                 };
-                if kind.is_dir() {
+                // a pipe or a device is not a file to search, and opening a pipe waits for a writer
+                if !kind.is_file() && !kind.is_symlink() {
                     continue;
                 }
                 // opened by the name it was checked under: a link by what it resolved to, since an

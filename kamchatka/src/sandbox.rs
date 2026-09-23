@@ -592,21 +592,40 @@ impl Reach {
     /// note: `path` is what `allows` returned, which is resolved, so a link met on the way is one
     /// that was not there when the path was checked, and refusing it refuses nothing that was
     /// allowed.
+    ///
+    /// note: and only a regular file. A pipe blocks an open until somebody writes to it, which
+    /// nobody will, and the open is not a place an interrupt reaches - so `mkfifo p` and `fs read p`
+    /// was a turn nobody could stop. The path is looked at first, which is what gives every
+    /// platform the same sentence; on Linux the open does not block either, whatever is there by
+    /// then, and what it opened is looked at again before anything reads it. Elsewhere the window
+    /// between the look and the open is the one SECURITY.md describes.
     pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
+        if std::fs::metadata(path).is_ok_and(|meta| !meta.is_file()) {
+            return Err(irregular());
+        }
+
         let mut options = std::fs::OpenOptions::new();
         match doing {
             Access::Reading => options.read(true),
             Access::Writing => options.write(true).create(true).truncate(true),
         };
-        if !self.confined {
-            return options.open(path);
-        }
+        #[cfg(target_os = "linux")]
+        std::os::unix::fs::OpenOptionsExt::custom_flags(
+            &mut options,
+            rustix::fs::OFlags::NONBLOCK.bits() as i32,
+        );
+        let opened = match self.confined {
+            false => options.open(path)?,
+            true => match beneath(&self.root(path, doing)?, path, doing) {
+                Some(opened) => opened?,
+                None => options.open(path)?,
+            },
+        };
 
-        if let Some(opened) = beneath(&self.root(path, doing)?, path, doing) {
-            return opened;
+        match opened.metadata()?.is_file() {
+            true => Ok(opened),
+            false => Err(irregular()),
         }
-
-        options.open(path)
     }
 
     /// Replaces the whole of a file [`Reach::allows`] answered for with `content`, creating it if
@@ -714,6 +733,15 @@ impl Reach {
                 )
             })
     }
+}
+
+/// What opening something that is not a regular file comes to.
+fn irregular() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "not a regular file - a directory, a pipe or a device - so it was not opened; `shell` \
+         can read one that is meant to be read",
+    )
 }
 
 /// Where the file [`Reach::replace`] writes is made, and renamed from.
@@ -826,11 +854,12 @@ fn owned_alike(_: &std::fs::Metadata, _: &std::fs::Metadata) -> bool {
 fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
     use rustix::fs::{Mode, OFlags};
 
-    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it
+    // a mode only beside `CREATE`: `openat2` refuses one anywhere else, where `open` ignores it.
+    // `NONBLOCK` so that a pipe is opened and refused rather than waited on; see `Reach::open`
     let (flags, mode) = match doing {
-        Access::Reading => (OFlags::RDONLY, Mode::empty()),
+        Access::Reading => (OFlags::RDONLY | OFlags::NONBLOCK, Mode::empty()),
         Access::Writing => (
-            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC,
+            OFlags::WRONLY | OFlags::CREATE | OFlags::TRUNC | OFlags::NONBLOCK,
             Mode::from_raw_mode(0o666),
         ),
     };
