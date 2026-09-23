@@ -116,6 +116,9 @@ pub struct Projection {
 pub trait Projector: Send + Sync {
     /// Projects the items - all of them, in insertion order, whatever their state - into the
     /// messages of a request.
+    ///
+    /// note: called with the context locked, so it must not call back into the kernel it is
+    /// installed in: the items it needs are the ones it is handed.
     fn project(&self, items: &[Arc<ContextItem>]) -> Projection;
 
     /// What this is, for a client that wants to say which one is installed.

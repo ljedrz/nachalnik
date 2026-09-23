@@ -308,8 +308,11 @@ impl Kernel {
 
     /// Renames whatever needs renaming, returning whether anything did.
     fn rename_calls(&self, calls: &mut [ToolCall]) -> bool {
-        let mut repairs = Vec::new();
+        let mut repaired = false;
         {
+            // held until each repair has been announced, as `Kernel::reserve_calls` holds it: a
+            // reservation made in between would otherwise be recorded ahead of a change to the
+            // set that was made before it
             let mut seen = self.0.seen_calls.lock();
             let mut in_response: HashSet<ToolCallId> = HashSet::with_capacity(calls.len());
 
@@ -341,17 +344,13 @@ impl Kernel {
                 seen.insert(call.id.clone());
                 in_response.insert(call.id.clone());
 
-                repairs.push(Event::ToolCallRepaired {
+                repaired = true;
+                self.emit(Event::ToolCallRepaired {
                     call: call.id.clone(),
                     was,
                     reason: reason.to_owned(),
                 });
             }
-        }
-
-        let repaired = !repairs.is_empty();
-        for repair in repairs {
-            self.emit(repair);
         }
 
         repaired

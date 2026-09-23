@@ -125,6 +125,9 @@ pub trait Tool: Send + Sync {
     /// note: This is called every time a request is built, so it should be cheap. A tool whose
     /// spec changes between calls is legal (and visible in [`Kernel::preview_request`]), but the
     /// `id` is expected to be stable.
+    ///
+    /// note: called with the kernel's tool registry locked, so it must not call back into the
+    /// [`Kernel`] it is registered with. [`Tool::invoke`] runs with no lock held and may.
     fn spec(&self) -> ToolSpec;
 
     /// What *this* call needs, which is at most what the spec declares.

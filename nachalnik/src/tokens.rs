@@ -24,6 +24,9 @@ use crate::{
 /// comes from this trait, and the default implementation is an admitted estimate; swap in a
 /// real tokenizer with [`Kernel::set_counter`](crate::Kernel::set_counter) when the numbers
 /// need to be exact.
+///
+/// note: the counting methods are called with the context locked - counting an item is part of
+/// adding it - so they must not call back into the [`Kernel`] the counter is installed in.
 pub trait TokenCounter: Send + Sync {
     /// Returns the number of tokens `content` is expected to occupy.
     fn count(&self, content: &Content) -> usize;

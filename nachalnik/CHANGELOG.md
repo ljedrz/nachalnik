@@ -5,6 +5,21 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`Tool::spec`, `Projector::project` and `TokenCounter`'s counting methods say they run under
+  the kernel's locks**, and so must not call back into the `Kernel` they are installed in. Nothing
+  said so, and a counter or a projector holding a `Kernel` of its own and reading it would wait on
+  itself.
+
+### fixed
+
+- **A repaired call identifier is announced under the lock that changed the set**, as a
+  reservation already was. A `Kernel::reserve_calls` landing between a repair and its
+  `tool.repaired` was recorded ahead of a change made before it.
+
 ## [0.7.0] - 2026-09-23
 
 ### breaking
