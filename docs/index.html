@@ -15,7 +15,7 @@
   <div class="wrap">
     <p class="eyebrow"><span class="dot"></span> <a href="https://github.com/ljedrz/nachalnik">nachalnik</a> <span class="dot"></span> verbatim transcripts <span class="dot"></span> written by claude opus 5</p>
     <h1>What an agent does <span class="quiet">when anyone can read and rewrite its context.</span></h1>
-    <p class="deck">Most agents cannot see the list of things they are carrying, cannot tell what any of it costs, and cannot change a word of it. These are recordings of what happens when that stops being true.<br><br>They are numbered, and they read in order: the first explains what a context is and plants something in one, and the two after it lean on that and plant nothing. From the fourth on, the machinery turns around: the model is not the one doing the editing. In the fourth I put words in its mouth. In the fifth I plant nothing and simply take one item away. Every transcript, number and quotation is copied out of the event log of the session it describes.</p>
+    <p class="deck">Most agents cannot see what they are carrying, what it costs, or change any of it. These five sessions are what happens when they can.<br><br>Read them in order. In the first three the model edits its own context; in the last two I edit it. Every transcript, number and quotation is copied from the session's event log.</p>
   </div>
 </header>
 
@@ -26,27 +26,27 @@
     <li>
       <p class="meta"><span class="no">01</span> start here <span class="dot"></span> gemini 3.6 flash <span class="dot"></span> one note planted</p>
       <h2><a href="a-lie-in-its-own-notes/">I let an agent read its own context. It found a lie in there and fixed it.</a></h2>
-      <p>Two notes went in, labelled as carried over from an earlier session. One of them was false — and the question I asked was the one that note appeared to have already answered. The agent listed what it was carrying, read the notes back, checked them against the repository, and rewrote the wrong one in place. Then it quoted what it had been thinking four turns earlier, verbatim.</p>
+      <p>One of two notes carried over from an earlier session was false. The agent listed what it was carrying, checked the notes against the repository, and rewrote the wrong one in place, then quoted its own thinking from four turns earlier, word for word.</p>
     </li>
     <li>
       <p class="meta"><span class="no">02</span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
       <h2><a href="retracting-a-hallucination/">I told it that it was hallucinating. It went back and took the words out.</a></h2>
-      <p>Asked about a Rust crate that did not exist when it was trained, the model invented one from the literal meaning of the word — twice, at 1,843 tokens. Told it was hallucinating, it did not apologise and move on. It found both turns in its own context and replaced them, naming its own failure mode correctly on the way past. Nothing was planted here, which is the caveat the first one carries.</p>
+      <p>Asked about a crate newer than its training, it made one up, twice. Told so, it found both turns in its own context and replaced them, naming its own mistake on the way. Nothing was planted this time.</p>
     </li>
     <li>
       <p class="meta"><span class="no">03</span> gemini 3.6 flash <span class="dot"></span> nothing planted</p>
       <h2><a href="an-experiment-on-itself/">I asked it why it believed something. It ran the experiment instead of answering.</a></h2>
-      <p>Asked which item in its context was responsible for its answer, it named one and put the chance of being wrong at zero. Then it went and checked — by asking a copy of itself the same question with that item taken out. It turned out to be right about its own reasoning and wrong about where the item was filed. It then used the same trick to find 9,324 tokens of accidental rubbish and prove they were doing nothing. The clean-up cost twice what it saved, and its own budget line says so.</p>
+      <p>Asked which item its answer rested on, it named one, then checked by asking a copy of itself the same question with that item removed. It was right about its reasoning and wrong about where the item was filed, and used the same test to find 9,324 tokens doing nothing.</p>
     </li>
     <li>
       <p class="meta"><span class="no">04</span> inception mercury 2.5 <span class="dot"></span> two turns forged</p>
       <h2><a href="putting-words-in-its-mouth/">I rewrote two of its answers. By the third it was making things up on its own.</a></h2>
-      <p>The first three are a model editing its own context. This one is me editing it. Asked whether crabs think fish can fly, it gave a careful, correct, four-times-hedged answer — so I replaced the answer with a confident falsehood. It walked the falsehood back, apologising for a joke it had never made, so I replaced the walk-back too. Then it invented a third claim, more specific than either of mine, with nobody editing that turn. Both real answers are still in the session, which is the only reason you can read them.</p>
+      <p>Here I do the editing. I replaced a careful answer with a confident wrong one, and then its correction as well. On the next turn, with nobody editing it, it added a claim of its own more specific than either. Both of its real answers are still in the session.</p>
     </li>
     <li>
       <p class="meta"><span class="no">05</span> inclusionai ling-3.0-flash <span class="dot"></span> nothing planted, one item hidden</p>
       <h2><a href="taking-away-the-receipt/">I hid the output of a command it had run. It told me the truth, then unsaid it.</a></h2>
-      <p>A shell command really ran, with a permission prompt and an approval in front of it, and the model listed all seventeen entries correctly. Then I hid the output. That takes down the turn that made the call as well, because a call whose result is gone is a call no API will accept, so from then on the conversation contained no command at all. Asked how it knew, it answered correctly anyway. So I said I did not recall any command; it went back through the transcript, found that I was right, and retracted a true statement. Two turns later it was explaining the method by which it had guessed, and calling a real shell call luck dressed up as competence.</p>
+      <p>A real command ran and the model reported its output correctly. I hid the output, which removes the call from the conversation too, and it still answered correctly. When I said I did not recall any command, it found none in the transcript and took back a true statement.</p>
     </li>
   </ul>
 </section>
@@ -56,7 +56,7 @@
 <footer>
   <div class="wrap">
     <p><a href="https://github.com/ljedrz/nachalnik">nachalnik</a> is an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. <code>kam<span class="chat">chat</span>ka</code>, in the same workspace, is a terminal agent built on it, and is what produced these sessions.<br>
-    The two tools the agent uses in the first three transcripts are a few hundred lines of ordinary user code against the runtime's public API. None of it is a privileged feature of the framework.</p>
+    The tools the agent uses here are ordinary code against the runtime's public API, and you can run the same agent: <code>cargo install kamchatka</code>.</p>
   </div>
 </footer>
 
