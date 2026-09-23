@@ -534,8 +534,7 @@ leaves something changed that could be put back; it destroys something that cann
 sends something off this machine. It decides nothing: the verdict is the same one the rules would
 have given, and an advisor that is down costs the line and nothing else. A rating nobody was sure
 of is never drawn green, which is why the percentage is on the line — a yellow you cannot explain
-is a yellow the advisor could not place. [RUNNING.md](RUNNING.md) has what it sends out, which
-is more than `--advise` alone does.
+is a yellow the advisor could not place. [RUNNING.md](RUNNING.md) has what it sends out.
 
 An `edit` is drawn as a diff, since it is the call where two blocks of near-identical text sit one
 above the other and the whole question is which of them is on its way out: the value of `old` is

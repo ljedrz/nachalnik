@@ -487,8 +487,6 @@ mod tests {
         let shim = include_str!("../contrib/laya_advisor.py");
 
         let sent = advice::LEVELS.iter().copied().chain([
-            advice::DECIDE,
-            advice::DESTROYS,
             advice::PLACE,
             advice::RUIN,
             advice::RUINED,

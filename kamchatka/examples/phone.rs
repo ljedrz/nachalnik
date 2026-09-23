@@ -112,7 +112,7 @@ async fn main() -> Result<(), String> {
     let provider = args.provider().await.map_err(|e| format!("{e:#}"))?;
     let setup = args.setup().map_err(|e| format!("{e:#}"))?;
     setup.check()?;
-    #[cfg(feature = "advise")]
+    #[cfg(feature = "shell-advisor")]
     let setup = args.advised(setup).await.map_err(|e| format!("{e:#}"))?;
 
     let mut server = remote::Server::bind(SESSION).await?;

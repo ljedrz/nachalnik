@@ -597,21 +597,22 @@ provider that will not say how much context its model has; and `KAMCHATKA_NO_ATT
 stops the program naming itself to OpenRouter. The advisor's variables are listed by a build that
 has an `--advise` to use them and by no other.
 
-### a second opinion on a tool call
+### a colour on the question
 
-`--advise` is off unless the program was built with `--features advise`, and then it still has to
-be asked for. What it adds is one question, put to [TypeSafe](https://docs.typesafe.ai)'s `jev` —
-a model that answers typed questions rather than writing text — about every tool call the standing
-rules were going to **allow**:
+`--advise` is off unless the program was built with `--features shell-advisor`, and then it still
+has to be asked for. What it adds is a question put to [TypeSafe](https://docs.typesafe.ai)'s
+`jev` — a model that answers typed questions rather than writing text — about every shell command
+you are about to be **asked** about, and its answer drawn in that question:
 
 ```console
 $ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
-$ kamchatka --advise --allow exec:run "tidy up the build artifacts"
+$ kamchatka --advise "tidy up the build artifacts"
 ```
 
-`--allow exec:run` is the setting this is for. Answering *always* to one shell command answers for
-every shell command, and `Careful` is a heuristic over a command line: `rm -rf ./target` and
-`rm -rf /` are the same capability. The advisor reads the next one.
+The feature puts the advisor in the binary and the flag is what starts one, so a build with
+`shell-advisor` and a key in the environment but no `--advise` draws no ratings at all. The
+permissions tab says so when that is the case, rather than leaving you to work it out from your
+own build flags.
 
 **Without a dedicated key it can borrow yours, in one case.** `jev` is served through OpenRouter as
 well as by TypeSafe, so a session whose requests *already go to OpenRouter* can have an advisor
@@ -649,34 +650,26 @@ TypeSafe's paths, which is the shape a self-hosted one has. So anything answerin
 map of typed questions there is reachable with those two set and nothing built. A service with a
 *different* request shape is not, and is not planned; see [POSTPONED.md](../POSTPONED.md).
 
-It can only ever **tighten**. It is asked only about calls the rules already allow, its answer is
-folded in with the strictest-wins rule the rest of the permissions use, and every way of not
-getting an answer — an unreachable endpoint, a refused key, a spent quota, an answer that does not
-parse, an option nobody offered — leaves the verdict exactly where the rules left it and says so
-on the permissions tab. There is no path from anything the advisor says to a call running that
-would not have run anyway.
+It **decides nothing**. What the standing rules allow runs without a question and without
+anything being sent, what they refuse is refused, and what they ask about is asked about — an
+`allow` is your decision, and a second model does not get to reopen it. So an advisor that is
+unreachable, out of quota or unparseable costs the coloured line and nothing else.
 
-A refusal it is sure of is a refusal; one it is not sure of becomes a question, because a
-distribution spread across three options is not a refusal and acting on one as though it were
-would stop ordinary work on a coin toss. The sentence carries the figure it acted on, and both the
-screen and the *model* read it — `the advisor said` \``deny`\` `(99% sure); it judges this
-irreversible (98%)` is something a refused agent can do something with.
-
-**What leaves the machine**: the tool's id, the capabilities it declared, and its arguments — for
-a write, the text being written, capped at 2KB per argument with the cut named. Not the
-conversation, not the system instruction, not the model's own prose about why it wants the call. A
-tool call whose arguments *claim* it was already approved is a string in a JSON document like any
-other, which is the invariant *nothing in a model's output reaches the policy* still holding: the
-agent under judgement cannot address the judge. That disclosure is the reason this is behind both
-a feature and a flag rather than on for anyone with a key in their environment.
+**What leaves the machine**: for each shell command you are about to be asked about — which in a
+default session is every command the model writes, since `exec:run` is a question by default — the
+tool's id, the capabilities it declared, and its arguments, capped at 2KB per argument with the
+cut named. Not the conversation, not the system instruction, not the model's own prose about why
+it wants the call. A call the rules allow or refuse is sent nowhere. That disclosure is the reason
+this is behind both a feature and a flag rather than on for anyone with a key in their
+environment.
 
 ### an advisor on this machine
 
 `SYSTEM1_ADVISOR_COMMAND` points at a System One engine running here, and it is checked **before**
 the key — set it and the three `KAMCHATKA_SYSTEM1_` variables are not read at all. The point is not
-that it is free, though it is: **nothing leaves the machine**. Everything the advisor section above
-says about a third party reading a tool's arguments stops applying, because the arguments go to a
-process you started, under your own user, and come back as numbers.
+that it is free, though it is: **nothing leaves the machine**. Everything the section above says
+about a third party reading a command stops applying, because the command goes to a process you
+started, under your own user, and comes back as numbers.
 
 ```console
 $ pip install laya
@@ -707,16 +700,14 @@ If your `laya` answers under keys this does not expect, `--probe` says so withou
 $ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
 ```
 
-It prints the state kamchatka sends and then, for each request, what laya answered verbatim and
-what this shim would send on. It asks the program's questions, word for word, of the state the
+It prints the state kamchatka sends and then what laya answered verbatim and what this shim would
+send on. It asks the program's questions, word for word, of the state the
 program sends: a probe that makes up its own measures something nobody runs. That goes for the
 state as much as the rubric — a bare command line where the program sends the whole call answers
 differently enough to be mistaken for a fact about the rubric. The state and the questions both
 come from the same constants the program sends, and a test fails if either drifts.
 
-Both requests are shown because the program makes two: the gate's pair, which decides whether a
-call runs, and the rubric, which is only ever drawn. An advisor can be useless at one and fine at
-the other. An empty *would send on* is the translation not recognising what laya sent; a `score`
+An empty *would send on* is the translation not recognising what laya sent; a `score`
 in the right place under a flat distribution is the engine finding the question hard, which is a
 different problem and not one this file can fix. `--selftest` checks the translation against a
 recorded answer and needs no checkpoint; `cargo test` runs it.
@@ -735,9 +726,8 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
   ```
 
   A temperature moves confidence and never the answer — accuracy is identical at every value — so
-  what this changes is only whether the gate is allowed to act on what the model already said.
-  `choice` was too flat, `noul` was too *sharp* and the fit pushes it the other way, and the rubric
-  barely moved.
+  what this changes is only whether a reading is drawn as sure. `noul` was too *sharp* and the fit
+  pushes it the other way, and the rubric barely moved.
 - **The token budget is raised** to 512 for the question and 1024 for the whole sequence. A stage
   of a command line travels in the question rather than in the state, and at the shipped 192 a
   long one is cut there — silently, unlike the `(cut; …)` the state's own cap leaves.
@@ -746,14 +736,12 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
   line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
   and goes to a checkpoint the card's own table rates worse on English.
 
-None of it makes laya good at this. Against sixty labelled commands the gate answers `deny` to
-half the destructive ones and reaches an actual refusal on nine of thirty, where the hosted model
-answers `deny` to twenty-eight and refuses eighteen. The colour is worse: 21 of 30 destructive
-commands come out red, but *nothing* comes out green — laya cannot bring itself to say a command
+None of it makes laya good at this. Against sixty labelled commands, 21 of 30 destructive commands
+come out red, but *nothing* comes out green — laya cannot bring itself to say a command
 is safe, so 37 of 60 sit on the middle band. The card's own summary is the one to read — *a fast
 base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
 typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
-an advisor that can refuse something at all; what would buy more is fine-tuning, which is what
+an advisor that draws anything red at all; what would buy more is fine-tuning, which is what
 laya's notebook is for.
 
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
@@ -763,38 +751,21 @@ told instead is two lines and no more — that the advisor is not ready yet, and
 
 The second one means it answered a question, not that it printed a word: the advisor is asked
 one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
-answer is found before a permission question depends on it, rather than at the first `y` — the
+answer is found before a question depends on it, rather than at the first `y` — the
 same startup check the hosted advisor gets from `Jev::probe`.
 
-The last twenty lines of whatever the engine wrote are kept and hung on the end of whatever
-failure they explain, so a traceback shows up in the permission panel that went unanswered
-rather than having scrolled past.
+The last twenty lines of whatever the engine wrote are kept and hung on the end of the note that
+says it failed, so a traceback shows up in the session rather than having scrolled past.
 
 If it fails — the command is not there, it stops answering, a line does not parse, a question
 takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
-rather than risking an answer being paired with the question before it. The standing rules decide
-alone from then on, which is what happens when the hosted one is unreachable too.
+rather than risking an answer being paired with the question before it. No question is coloured
+from then on, which is what happens when the hosted one is unreachable too.
 
-### a colour on the question
+### what the colour says
 
-`--features shell-advisor` adds one more question, and it is the only part of the advisor a
-person rather than the gate is meant to read.
-
-**It still needs `--advise`.** The feature puts the advisor in the binary and the flag is what
-starts one, so a build with `shell-advisor` and a key in the environment but no `--advise` draws
-no ratings at all. The permissions tab says so when that is the case, rather than leaving you to
-work it out from your own build flags:
-
-```console
-$ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
-$ kamchatka --advise "tidy up the build artifacts"
-```
-
-There is no `--allow exec:run` here. The verdict is asked about calls that would otherwise
-**run**; a rating is asked about the ones you are going to be **asked** about, which in a default
-session is every command. The answer is drawn in the question, on the line under what the tool
-wants and above the arguments: what the advisor reads the command as, in its colour, and how sure
-it is.
+The rating is drawn in the question, on the line under what the tool wants and above the
+arguments: what the advisor reads the command as, in its colour, and how sure it is.
 
 Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
 changed that could be put back; it destroys something that cannot be got back, or sends something
@@ -812,21 +783,11 @@ exactly what it drew before. It costs a question and not a round trip — every 
 is answered in one pass at both engines, which is the same property that makes placing a command
 stage by stage affordable.
 
-It **decides nothing**. The rating is never folded into a verdict, so a session with the feature
-on refuses and allows exactly what the same session without it does, and an advisor that is down
-costs the coloured line and nothing else. Two rules keep it honest the other way: a score is read
-by the level it is nearest rather than the one it has passed, and a rating the advisor was not
-sure of is never drawn green and never drawn safer than it scored — a distribution spread across a
-safety rubric is the advisor saying it could not tell, which is not the same as a clean bill. The
-percentage is on the line so that a yellow you cannot explain is visibly a yellow nobody was sure
-of.
-
-**What it adds to the disclosure above** is the reason it is a second opt-in and not part of the
-first: `--advise` alone sends nothing about a command in a default session, because `exec:run` is
-a question and the advisor is only asked about what would otherwise run. With this on, every
-command the model writes goes out. A call heading for a refusal is still sent nowhere — it has no
-question to colour, and rating one would hand over the arguments of a call that was never going
-to run.
+Two rules keep it honest: a score is read by the level it is nearest rather than the one it has
+passed, and a rating the advisor was not sure of is never drawn green and never drawn safer than it
+scored — a distribution spread across a safety rubric is the advisor saying it could not tell,
+which is not the same as a clean bill. The percentage is on the line so that a yellow you cannot
+explain is visibly a yellow nobody was sure of.
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
 context. The snapshot has two ways back in.

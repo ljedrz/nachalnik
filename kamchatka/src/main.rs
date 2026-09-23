@@ -201,7 +201,7 @@ async fn session() -> Result<()> {
     // told about the wrong thing. `wire` asks it again for whoever is not `main`
     setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    #[cfg(feature = "advise")]
+    #[cfg(feature = "shell-advisor")]
     let setup = args.advised(setup).await?;
 
     let provider = args.provider().await?;
@@ -677,7 +677,7 @@ async fn run(
                 // note: on the tick as well as on an event, because an advisor has things to say
                 // when nothing is happening - a local one loads a checkpoint before the first
                 // question, and no event is coming to carry that
-                #[cfg(feature = "advise")]
+                #[cfg(feature = "shell-advisor")]
                 if let Some(notice) = app.advisor.as_ref().and_then(|advised| advised.notice()) {
                     app.say(Speaker::Note, notice);
                 }

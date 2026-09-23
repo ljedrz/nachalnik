@@ -35,7 +35,7 @@ use crate::{
 pub fn environment() -> String {
     /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
     /// not.
-    #[cfg(feature = "advise")]
+    #[cfg(feature = "shell-advisor")]
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
@@ -50,7 +50,7 @@ The advisor, which is only ever asked when --advise is given:
                               answers the same typed questions
   KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
                               typesafe/jev-1.13 through OpenRouter";
-    #[cfg(not(feature = "advise"))]
+    #[cfg(not(feature = "shell-advisor"))]
     const ADVISOR: &str = "";
 
     format!(
@@ -86,19 +86,13 @@ pub struct Args {
     #[arg(long)]
     pub gemini: bool,
 
-    /// Ask a second model about every tool call the rules were going to allow, and take the
-    /// stricter of the two answers. It can refuse a call and never permit one. Sends the call's
-    /// tool name, capabilities and arguments to the advisor; see SYSTEM1_ADVISOR_COMMAND for one
-    /// on this machine, and KAMCHATKA_SYSTEM1_API_KEY for the hosted default.
-    #[cfg(all(feature = "advise", not(feature = "shell-advisor")))]
-    #[arg(long)]
-    pub advise: bool,
-
-    /// The same, and this build also asks it where each command a question is about lands on a
-    /// three-level rubric, and colours the question by the answer - a command joined at its `|`,
-    /// `&&` or `;` is asked about stage by stage and rated by its worst one, which is underlined.
-    /// The rating decides nothing. Where the advisor is a hosted one that sends every command
-    /// the model writes, and not only the allowed ones; where it is local, nothing is sent.
+    /// Ask a second model where each shell command a question is about lands on a three-level
+    /// rubric, and colour the question by the answer - a command joined at its `|`, `&&` or `;`
+    /// is asked about stage by stage and rated by its worst one, which is underlined. The rating
+    /// decides nothing: what the rules allow runs and what they refuse is refused. Sends the
+    /// call's tool name, capabilities and arguments to the advisor; see SYSTEM1_ADVISOR_COMMAND
+    /// for one on this machine, where nothing is sent, and KAMCHATKA_SYSTEM1_API_KEY for the
+    /// hosted default.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
     pub advise: bool,
@@ -340,13 +334,12 @@ impl Args {
             _ => {}
         }
 
-        // the same rule for the same reason, and it matters more here: a settings file that asked
-        // for a second opinion on every tool call, in a build with no advisor in it, would run
-        // the session with its permissions decided by the heuristic alone and say nothing
+        // the same rule for the same reason: a settings file that asked for its commands rated, in
+        // a build with no advisor in it, would run every question uncoloured and say nothing
         match settings.advise {
-            #[cfg(feature = "advise")]
+            #[cfg(feature = "shell-advisor")]
             Some(advise) if !typed("advise") => self.advise = advise,
-            #[cfg(not(feature = "advise"))]
+            #[cfg(not(feature = "shell-advisor"))]
             Some(true) => anyhow::bail!(
                 "this build has no advisor in it, so `advise` in the settings file cannot be \
                  honoured"
@@ -474,7 +467,7 @@ impl Args {
             tools: self.tools.clone(),
             system: self.system.clone(),
             files: self.file.clone(),
-            #[cfg(feature = "advise")]
+            #[cfg(feature = "shell-advisor")]
             advisor: None,
         })
     }
@@ -484,14 +477,14 @@ impl Args {
     /// note: after [`Setup::check`] and before the provider. A missing advisor key is a fact about
     /// the arguments and should not cost a round trip to the *other* endpoint to find out about;
     /// and a session that was asked for with `--advise` and could not reach an advisor is refused
-    /// rather than quietly run with its permissions decided by the heuristic alone. Somebody who
-    /// turned this on is entitled to have it on or be told it is not.
+    /// rather than quietly run with every question uncoloured. Somebody who turned this on is
+    /// entitled to have it on or be told it is not.
     ///
     /// note: nothing the advisor has to say is drained here. The session reports all of it,
     /// through `App::on_event` and the drawn loop's tick, and a queue somebody else popped is a
     /// queue missing its first line - for a local advisor, that it is not ready yet. Printing it
     /// to stderr here would not help either: the screen arrives immediately and clears it.
-    #[cfg(feature = "advise")]
+    #[cfg(feature = "shell-advisor")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
         if !self.advise {
             return Ok(setup);

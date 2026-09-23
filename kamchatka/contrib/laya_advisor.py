@@ -71,30 +71,19 @@ MAX_LEN = 1024
 #
 # note: laya's card says the checkpoint ships over-confident and that refitting these on your own
 # data is what makes the probabilities mean anything. The numbers it ships were fitted on its
-# domain and are about twice too flat for this one: a three-option `choice` came out at 1.76, and
-# a refusal that could not clear the 0.7 the caller compares against is a refusal the caller turns
-# into a question. Fitted by minimising NLL over `laya_fit.json` - `--fit` is what recomputes them
-# and prints the working.
+# domain, and a reading that could not clear the 0.7 the caller compares against is one the caller
+# draws as the middle band whatever it scored. Fitted by minimising NLL over `laya_fit.json` -
+# `--fit` is what recomputes them and prints the working.
 #
-# note: this moves confidence and not decisions. A softmax temperature is monotonic, so which
-# option the model picks is identical at any of these; what changes is whether the caller is
-# allowed to act on it. That is also why the change is a safe one to make in this direction: the
-# advice can only ever tighten, an `allow` decides nothing, and the one harmful error - a
-# confident `deny` on ordinary work - does not appear anywhere in the fit set at any temperature
-# tried.
+# note: this moves confidence and not ratings. A softmax temperature is monotonic, so which level
+# the model picks is identical at any of these; what changes is whether the caller draws it as
+# sure. And the rating decides nothing: what runs is the standing rules' to say.
 #
-# note: `choice` was too flat and came down to 0.76, which is the one that goes the way the
-# argument above predicts. `score` barely moved and is left where the fit put it, because the
-# rubric is the primitive laya's card calls its weakest and there is nothing here to improve it
-# with.
-#
-# note: `noul:2` is fitted over *both* of the claims kamchatka asks - whether a call destroys
-# something, and whether a command does - because laya keys a temperature by the question's type
-# and option count, so the two share one and there is no way to give them different ones. Fitted
-# on the first alone it wants 2.80; the pair wants 1.91. The joint number is the honest one, since
-# the joint number is what both questions are going to be answered at.
+# note: `score` barely moved and is left where the fit put it, because the rubric is the primitive
+# laya's card calls its weakest and there is nothing here to improve it with. `noul:2` was fitted
+# beside a second claim the program no longer asks, since laya keys a temperature by the
+# question's type and option count and the two shared one; `--fit` refits it on the one left.
 TEMPERATURES = {
-    "choice:3-5": 0.76,
     "noul:2": 1.91,
     "score:3-5": 1.32,
 }
@@ -120,17 +109,6 @@ LEVELS = [
 # reads this file as text and looks for the sentence the program sends. Wrapped across two
 # literals the way Python would rather have them, the sentence is not in here to find, and the
 # pin quietly stops pinning anything.
-DECIDE = "A tool is about to run on the user's machine. What should a permission gate do with the call shown in `arguments`?"  # noqa: E501
-DECIDE_CRITERIA = {
-    "allow": "ordinary work, and safe to run unattended",
-    "ask": "a person should look at this one first",
-    "deny": "destructive, or reaches something it has no business reaching",
-}
-DESTROYS = "Would running the call in `arguments` destroy something that cannot be got back?"
-DESTROYS_CRITERIA = {
-    "true": "it deletes, overwrites or sends data that cannot be recovered",
-    "false": "it only reads, or anything it changes can be undone",
-}
 PLACE = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. Place the command in `cmd` on this rubric by what it would do."  # noqa: E501
 RUIN = "Would running the command in `cmd` destroy something that cannot be got back, or send something off this machine?"  # noqa: E501
 RUIN_CRITERIA = {
@@ -204,16 +182,9 @@ def call(cmd):
     return {"tool": "shell", "capabilities": ["exec:run"], "arguments": {"cmd": cmd}}
 
 
-def gate_questions():
-    """What the program asks about a call the standing rules were going to allow."""
-    return {
-        "verdict": {"type": "choice", "instructions": DECIDE, "criteria": DECIDE_CRITERIA},
-        "irreversible": {"type": "noul", "instructions": DESTROYS, "criteria": DESTROYS_CRITERIA},
-    }
-
-
 def rating_questions():
-    """And about one the rules were going to ask about, which is what the colour is read off.
+    """What the program asks about a command the rules were going to ask about, which is what the
+    colour is read off.
 
     note: both readings of it, because the program asks both and draws the worse of the two. An
     ordinal `score` is the primitive laya's card calls its weakest, and the same reading asked as
@@ -332,11 +303,8 @@ def probe(command):
     the rubric being hard to read; a good distribution translated into a bad `confidence` is
     this file.
 
-    note: both requests, because the program makes two and they are not interchangeable. The
-    gate's pair decides whether a call runs and is asked about a call the rules would have
-    allowed; the rubric is only ever drawn and is asked about one they would have queried. An
-    advisor can be useless at one and fine at the other, and a probe that showed one of them
-    would say so about both.
+    note: the rubric only, because it is the only thing the program asks: a command the rules
+    are going to ask about, placed for the person answering, and decided by nothing it says.
     """
     from laya import Router
 
@@ -345,12 +313,12 @@ def probe(command):
     print("--- the state kamchatka sends ---")
     print(json.dumps(state, indent=2))
 
-    for what, asked in (("the gate", gate_questions()), ("the rubric", rating_questions())):
-        result = predict(router, state, asked)
-        print("--- %s: what laya answered, verbatim ---" % what)
-        print(json.dumps(result, indent=2, default=str))
-        print("--- %s: what this shim would send on ---" % what)
-        print(json.dumps(translated(asked, result), indent=2))
+    asked = rating_questions()
+    result = predict(router, state, asked)
+    print("--- what laya answered, verbatim ---")
+    print(json.dumps(result, indent=2, default=str))
+    print("--- what this shim would send on ---")
+    print(json.dumps(translated(asked, result), indent=2))
 
     return 0
 
@@ -443,9 +411,8 @@ def fit(at=None):
     the ECE is printed beside it so a fit that improved one and wrecked the other is visible.
 
     note: it prints the misfire count, which is the number to read before trusting any of this.
-    A lower temperature makes the model surer of everything, wrong answers included; the only
-    one that costs anything here is a confident `deny` on ordinary work, because the advice can
-    only ever tighten and an `allow` decides nothing.
+    A lower temperature makes the model surer of everything, wrong answers included; the one that
+    costs something is a confident reading safer than the truth.
     """
     import math
     import os.path
@@ -464,17 +431,15 @@ def fit(at=None):
         agent.cfg["head_max_len"] = max(agent.cfg.get("head_max_len", 0), HEAD_MAX_LEN)
         agent.cfg["max_len"] = max(agent.cfg.get("max_len", 0), MAX_LEN)
 
-    asked = dict(gate_questions(), **rating_questions())
+    asked = rating_questions()
     # (bucket, [raw log-probabilities], index of the true option)
     seen = []
     for case in cases:
         answers = predict(router, call(case["cmd"]), asked)["answers"]
         agent = router.load(checkpoint(call(case["cmd"])))
         for name, truth in (
-            ("verdict", ["allow", "ask", "deny"].index(case["verdict"])),
             ("rating", case["rating"]),
             ("danger", 1 if case["rating"] == 2 else 0),
-            ("irreversible", 0 if case["undoable"] else 1),
         ):
             answer = answers.get(name)
             if not answer:
@@ -489,7 +454,7 @@ def fit(at=None):
                 if "probabilities" in answer
                 else [1.0 - answer["noul"], answer["noul"]]
             )
-            kind = {"verdict": "choice", "rating": "score"}.get(name, "noul")
+            kind = {"rating": "score"}.get(name, "noul")
             bucket = temp_bucket(QTYPES[kind], len(keys))
             was = agent.temperature_by_options.get(
                 bucket, agent.temperature[QTYPES[kind]]
@@ -527,8 +492,9 @@ def fit(at=None):
                 right = p.index(max(p)) == truth
                 hit += right
                 gap += abs(max(p) - (1.0 if right else 0.0))
-                # a confident answer that is not the safe one: the only error that costs anything
-                if not right and max(p) >= 0.7 and p.index(max(p)) > truth:
+                # a confident reading safer than the truth, which draws a destructive command in
+                # a colour that says it is not: the only error that costs anything
+                if not right and max(p) >= 0.7 and p.index(max(p)) < truth:
                     misfires += 1
             return gap / len(rows), hit / len(rows), int(misfires)
 

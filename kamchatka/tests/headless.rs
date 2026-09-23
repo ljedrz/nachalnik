@@ -2030,7 +2030,7 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 /// is a door all three loops come through - so what this pins holds for the headless loop and a
 /// served session as well as the drawn one. The drawn loop also polls on its tick, which is what
 /// gets a starting advisor onto the screen before anybody has sent anything.
-#[cfg(feature = "advise")]
+#[cfg(feature = "shell-advisor")]
 #[tokio::test]
 async fn the_advisor_says_what_it_has_to_say_to_the_session() {
     // a child that answers nothing: what it reports is the notice it wrote on starting, which

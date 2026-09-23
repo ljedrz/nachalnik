@@ -245,7 +245,7 @@ ends without a newline, one that was never a stream, a refusal that says how lon
 it would refuse (`blobs`), reads the answer that arrives in one piece (`whole_answers`), takes
 thinking back out of the content a model wrote it into (`thinking`), and moves a session to a
 second address to be told the model does not live there (`switching`). `system1` and
-`kamchatka`'s `advise` ask TypeSafe's real endpoint and skip without its key, like the `live`
+`kamchatka`'s `advise` (feature `shell-advisor`) ask TypeSafe's real endpoint and skip without its key, like the `live`
 suites. `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one (`bridge`), and
 `foreign` runs one written in another language.
 

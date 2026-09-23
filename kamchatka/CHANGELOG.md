@@ -9,6 +9,16 @@ minor bump may break you.
 
 ### breaking
 
+- **`--advise` rates commands and decides nothing, and it is `shell-advisor`'s.** The advisor was
+  asked about every call the rules were going to allow, and could refuse it or turn it into a
+  question: a `setup` call in a session started with `--allow setup` went to a person, and
+  answering `always` added a `setup:policy` row that changed nothing. An `allow` is the user's
+  decision, so nothing reopens it now - what the rules allow runs unasked and nothing about it is
+  sent. The advisor is asked only where each shell command a question is about lands on the
+  rubric, which is drawn in the question. Feature `advise` is the System One client alone and no
+  longer adds `--advise`; `shell-advisor` does. `Advised::said` is gone with the sentences it
+  returned.
+
 - **`remote::Serving::last` takes the `Serving` and hands back a future to await.** It says the
   last lines, as before, and the future is the session waiting up to two seconds for its
   connections to write what they still owe and close. A loop of its own that ends a served

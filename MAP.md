@@ -82,10 +82,10 @@ the refusal and `unread` all made out of it. `mod.rs` holds `Limits`, the domain
 own tools act in, and the argument readers every tool here shares - `arg`, `whole` and `truth`,
 which `introspect/` reaches for too.
 
-`tools/advice.rs` is the two things a model is asked about a call, and the one file where what
-leaves this machine is written down. Feature `advise` is the verdict, which is folded into the
-gate. Feature `shell-advisor` is `Rating`, which is drawn in the question and folded into nothing;
-it is a second opt-in because it is asked on far more calls. A command with joints in it is placed
+`tools/advice.rs` (feature `shell-advisor`) is what a model is asked about a command somebody is
+about to be asked about, and the one file where what leaves this machine is written down. The
+answer is `Rating`, which is drawn in the question and folded into nothing: the verdict is the
+standing rules' alone. A command with joints in it is placed
 stage by stage, every stage a question in the one request, and rated by `Rated::worst_of`. That
 folds what each stage is *shown* as rather than what it scored, because the unsure rule is what
 keeps a coin toss off green and folding the scores first loses it.

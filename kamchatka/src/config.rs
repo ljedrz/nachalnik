@@ -41,13 +41,11 @@ pub struct Settings {
     pub model: Option<String>,
     /// Whether to speak Google's own dialect rather than an OpenAI-compatible one.
     pub gemini: Option<bool>,
-    /// Whether to ask a second model about tool calls the standing rules were going to allow.
+    /// Whether to ask a second model to rate the shell commands a question is about.
     ///
-    /// note: not behind the `advise` feature, for the reason `mcp` is not: one file works for
-    /// every build of this program, and a build without it refuses the key rather than ignoring
-    /// it - see `Args::under`. A setting that silently did nothing is worse here than almost
-    /// anywhere else in this file, because what it would silently not be doing is checking
-    /// permissions.
+    /// note: not behind the `shell-advisor` feature, for the reason `mcp` is not: one file works
+    /// for every build of this program, and a build without it refuses the key rather than
+    /// ignoring it - see `Args::under`.
     pub advise: Option<bool>,
     /// A system instruction, pinned, for a session that is starting - a resumed one already has
     /// the one it started with.

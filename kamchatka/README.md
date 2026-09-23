@@ -129,27 +129,21 @@ Four features, two of them on by default. `--no-default-features --features tui`
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
 keys: without it you get the same program, headless, 88 crates lighter.
 
-`advise` is the third and is **off**. It adds `--advise`, which asks a second model — TypeSafe's
-`jev`, which answers typed questions rather than writing text — about every tool call the standing
-rules were going to allow, and takes the stricter of the two answers. It can refuse a call and it
-can never permit one: an advisor that is unreachable, out of quota or unparseable leaves the
-verdict exactly where the rules left it. It is off by default and behind a flag as well as a
-feature because it is the one thing in this program that sends a tool's *arguments* to a third
-party — for a write, that is the text being written — and that is a decision to make rather than
-inherit. `KAMCHATKA_SYSTEM1_API_KEY` is its key; a session whose requests already go to OpenRouter
-can borrow the one paying for the conversation instead, since `jev` is served there too. Any other
-session still needs the dedicated key — a key belongs to the endpoint that issued it, and one
-pointed at ollama or at Google is not OpenRouter's to spend.
+`advise` is the third and is **off**. It is the client for a System One model — TypeSafe's `jev`,
+which answers typed questions rather than writing text, or an engine on this machine — and nothing
+in the program asks it anything unless the fourth is on too.
 
-`shell-advisor` is the fourth, also **off**, and sits on top of `advise` — it needs `--advise`
-at runtime too, and the permissions tab says so when it has not got it. It asks the same model
-where each command you are being asked about lands on a three-level rubric, and colours the
+`shell-advisor` is the fourth, also **off**, and it adds `--advise`. It asks the advisor where each
+shell command you are about to be asked about lands on a three-level rubric, and colours the
 question green, yellow or red by the answer, so that the fifteenth `cargo test` of the afternoon
-and the one call in fifty worth stopping on do not look alike. The rating decides nothing — it is
-never folded into a verdict — and a rating the advisor was not sure of is never drawn green. It is
-a separate opt-in because it widens what leaves the machine: `advise` sends only the calls the
-rules were going to allow, which in a default session is not one command; this sends every command
-the model writes.
+and the one call in fifty worth stopping on do not look alike. The rating decides nothing: what the
+rules allow runs unasked, what they refuse is refused, and a rating the advisor was not sure of is
+never drawn green. It is off by default and behind a flag as well as a feature because it sends a
+command line to a third party — in a default session, every command the model writes — and that is
+a decision to make rather than inherit. `KAMCHATKA_SYSTEM1_API_KEY` is its key; a session whose
+requests already go to OpenRouter can borrow the one paying for the conversation instead, since
+`jev` is served there too. Any other session still needs the dedicated key — a key belongs to the
+endpoint that issued it, and one pointed at ollama or at Google is not OpenRouter's to spend.
 
 ## 📚 the rest of it
 

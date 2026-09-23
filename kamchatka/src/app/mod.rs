@@ -324,12 +324,7 @@ pub struct App {
     /// it for.
     ///
     /// note: `None` in a session started without `--advise`, which is the default.
-    ///
-    /// note: `advise` rather than `shell-advisor`, though the rating is the older reason to hold
-    /// one. Whether the advisor is *working* is not a rating concern - a build that only folds
-    /// verdicts still has an engine that can be starting, backing off or gone - and gating the
-    /// field on the rubric would leave that build with no way to say so.
-    #[cfg(feature = "advise")]
+    #[cfg(feature = "shell-advisor")]
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
@@ -658,7 +653,7 @@ impl App {
         Self {
             kernel,
             policy,
-            #[cfg(feature = "advise")]
+            #[cfg(feature = "shell-advisor")]
             advisor: None,
             provider,
             limits,
@@ -827,7 +822,7 @@ impl App {
         }
         // note: the advisor's beside the provider's, for the same reason and in the same place.
         // It is a second thing this session depends on and cannot see
-        #[cfg(feature = "advise")]
+        #[cfg(feature = "shell-advisor")]
         if let Some(notice) = self.advisor.as_ref().and_then(|advised| advised.notice()) {
             self.say(Speaker::Note, notice);
         }

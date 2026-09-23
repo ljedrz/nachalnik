@@ -130,7 +130,8 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
     Ok(provider)
 }
 
-/// The advisor: a second model, asked about tool calls rather than about turns.
+/// The advisor: a second model, asked about tool calls rather than about turns - see
+/// `tools::advice` for what the program asks it, and `jev_assisted_compaction` for another use.
 ///
 /// note: its own key under its own name first, and this program's own only where there is no
 /// second one and the session is already talking to OpenRouter. That second condition is the whole
@@ -144,9 +145,9 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
 /// to OpenRouter. A dedicated key is checked first, so a session holding both pays TypeSafe.
 ///
 /// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
-/// `--advise` already sends a tool's arguments off the machine; without a dedicated key they go to
-/// OpenRouter as well as to the model behind it. Nothing in here is read unless `--advise` was
-/// asked for - the flag is what decides whether they leave at all, and a key sitting in the
+/// `--advise` already sends a command's arguments off the machine; without a dedicated key they
+/// go to OpenRouter as well as to the model behind it. Nothing in here is read unless `--advise`
+/// was asked for - the flag is what decides whether they leave at all, and a key sitting in the
 /// environment is not a decision to send them.
 #[cfg(feature = "advise")]
 pub mod advise {
@@ -266,10 +267,9 @@ pub mod advise {
 
     /// Which of the two keys may pay, and whether either may.
     ///
-    /// note: split out from [`account`] so the rule can be checked without the environment, the
-    /// way `tools::advice::advised` is split out of `evaluate` - what is left above reads the
-    /// environment and decides nothing. The rule is the one thing here that can leak a
-    /// credential, so it is the one thing that wants a test with no key in it.
+    /// note: split out from [`account`] so the rule can be checked without the environment - what
+    /// is left above reads the environment and decides nothing. The rule is the one thing here
+    /// that can leak a credential, so it is the one thing that wants a test with no key in it.
     fn chosen(
         dedicated: Option<String>,
         own: Option<String>,
