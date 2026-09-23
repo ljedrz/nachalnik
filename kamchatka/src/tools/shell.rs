@@ -468,7 +468,15 @@ impl Tool for Shell {
             // the timeout is what makes a command that says nothing at all interruptible; without
             // it this would sit in `read_until` until the child felt like talking. A timed-out
             // read keeps what it had in `line`, and the next one carries on from there
-            match tokio::time::timeout(HEARTBEAT, stdout.read_until(b'\n', &mut line)).await {
+            //
+            // note: and a read takes no more than would put `line` one byte past the ceiling. A
+            // command writing without newlines never ends a line, and the heartbeat is all that
+            // stopped the read - a tenth of a second at the speed of a pipe, which held hundreds
+            // of megabytes against a ceiling of eight. A line that stops there is over it, and
+            // is dropped as one
+            let room = (KEPT + 1).saturating_sub(line.len()) as u64;
+            let mut bounded = (&mut stdout).take(room);
+            match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
                 Ok(Ok(0)) => break,
                 Ok(Ok(_)) if full || collected.len() + line.len() > KEPT => {
                     full = true;

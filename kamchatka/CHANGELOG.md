@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` holds output with no newlines to its ceiling while reading it.** The 8 MiB ceiling was
+  checked when a read returned, and a read of a line that never ends returned only when the
+  heartbeat stopped it: two gigabytes of zeros held hundreds of megabytes before the check could
+  run. Each read now stops one byte past the ceiling.
+
 - **`--advise` shows the advisor the command where its questions say it is.** Every shell call
   arrives as `{"call": {"action": "run", "cmd": ...}}`, and the state sent carried it that way, at
   `arguments.call.cmd`, while every question names `cmd` and the probe in
