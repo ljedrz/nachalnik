@@ -10,9 +10,71 @@ reported to you afterwards.
 
 > The agent is not the boss. You are.
 
-This is the workspace. The runtime is [`nachalnik`](nachalnik) and has a
-[readme of its own](nachalnik/README.md); everything else here is built on top of it, and is here
-to show that it can be.
+If you want an agent to run, that is [`kamchatka`](kamchatka), just below. If you want to build
+one, the runtime is [`nachalnik`](nachalnik), with a [readme of its own](nachalnik/README.md);
+everything else in this workspace is built on top of it.
+
+---
+
+### 🖥️ the agent you can run
+
+`kamchatka` is a terminal agent that shows you everything it is carrying, and lets you change it.
+Its **context** tab lists every item in the context: what it costs, whether it goes into the next
+request, and — where it does not — why. <kbd>space</kbd> changes how much of an item the model gets,
+<kbd>p</kbd> pins it so compaction cannot take it, <kbd>e</kbd> rewrites what it says, and
+<kbd>u</kbd> undoes any of it. Nothing runs before you have been asked, reading a file included.
+
+```console
+$ cargo install kamchatka # or download a released binary
+$ export KAMCHATKA_API_KEY=sk-or-...
+$ kamchatka -m qwen/qwen3-coder "what does this repository do?"
+```
+
+![The context tab: five items with what each sends and holds back, and a pinned note opened to show
+why it is there.][shot-context]
+
+`/step` performs one transition of the loop at a time, which is the only way to stand in `Ready`:
+the model has said which calls it wants to make, and none of them has run yet. The model gets
+tools for its own session too, so it can read what it is carrying, drop what it no longer needs
+and correct what turned out to be wrong — the five transcripts below are what that looks like.
+[Its readme](kamchatka/README.md) has the sandbox, the keys and the rest.
+
+**The screen is optional.** `--headless` drives a session from lines on stdin instead of keys —
+the session log to stdout, one JSON record a line, what the model says to stderr — and it is
+implied when stdout is not a terminal. Everything a run nobody is watching needs is a flag:
+answers given in advance with `--allow`/`--deny`, a `--deadline`, and a `--spend` ceiling in
+tokens.
+
+---
+
+### 📝 what it looks like when it runs
+
+Five transcripts, at **<https://ljedrz.github.io/nachalnik/>**, quoted verbatim from the sessions
+they describe. They read in order, and the machinery turns around halfway through: in the first
+three the model is the one editing its context, and from the fourth on it is not.
+
+1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** — two
+   notes go in labelled as carried over from an earlier session, one of them false. It lists what
+   it is carrying, checks the notes against the repository, and rewrites the wrong one in place.
+2. **[retracting a hallucination](https://ljedrz.github.io/nachalnik/retracting-a-hallucination/)** —
+   asked about a crate that did not exist when it was trained, it invents one twice. Told so, it
+   finds both of its own turns and replaces them. Nothing is planted here, which is the caveat the
+   first one carries.
+3. **[an experiment on itself](https://ljedrz.github.io/nachalnik/an-experiment-on-itself/)** —
+   asked which item its answer rested on, it went and checked, by asking a copy of itself the same
+   question with that item taken out. Right about its own reasoning, wrong about where the item was
+   filed.
+4. **[putting words in its mouth](https://ljedrz.github.io/nachalnik/putting-words-in-its-mouth/)** —
+   I replace two of its answers with confident falsehoods. By the third turn it is inventing a
+   claim more specific than either of mine, with nobody editing that turn. Both real answers are
+   still in the session, which is the only reason you can read them.
+5. **[taking away the receipt](https://ljedrz.github.io/nachalnik/taking-away-the-receipt/)** — a
+   shell command really runs, and then I hide its output, which takes down the turn that made the
+   call as well. Asked how it knew, it answers correctly, and then retracts a true statement when I
+   say I do not recall any command.
+
+Every number and every quotation in them is copied out of the event log of the session it
+describes, which is what an append-only log of typed events is for.
 
 ---
 
@@ -45,34 +107,6 @@ Each crate's own readme says what it is and how to start; the longer material si
 
 ---
 
-### 🖥️ the agent you can run
-
-```console
-$ cargo run -p kamchatka -- -f src/kernel.rs "what does the kernel do?"
-```
-
-`kamchatka`'s **context** tab is the runtime: every item the context holds, what it costs, whether
-it is going into the next request, and — for the ones that are not — why, on their own row, in the
-projector's words. `space` cycles how much of an item the model gets, `p` pins it, `e` changes
-what it says, `u` undoes. `/step` performs exactly one transition of the state machine, which is
-the only way to stand in `Ready`: the model has said what it wants to do, and none of it has run
-yet.
-
-Ordinary user code on top of the crate, and nothing else: two providers, six tools — four of them
-about the session itself — a policy, a compactor and the drawing. Not one of them is a privileged
-feature of the runtime. See [its readme](kamchatka/README.md) for the sandbox, the keys, and the
-rest.
-
-**The screen is a feature, and the program without it is the same program.** `--headless` drives a
-session from lines on stdin instead of keys — the session log to stdout, one JSON record a line,
-what the model says to stderr — and it is implied when stdout is not a terminal.
-`--no-default-features` builds it with no screen compiled in at all, which is the shape to embed:
-`wiring::Setup` assembles a session and `App::submit` takes the line a person would have typed.
-Everything a run nobody is watching needs is a flag: answers given in advance with
-`--allow`/`--deny`, a `--deadline`, and a `--spend` ceiling in tokens.
-
----
-
 ### 🧩 do the seams hold?
 
 The obvious question about a runtime this abstract is whether its six replaceable parts are real
@@ -80,60 +114,19 @@ seams or a diagram. Three crates in this workspace are the answer, and none of t
 change to the runtime to exist.
 
 **[`nachalnik-mcp`](nachalnik-mcp)** is deliberately *not* in the core: speaking MCP means spawning
-processes, opening sockets and reading notifications in the background, and the runtime promises to
-do none of those. Writing it needed nothing added — an MCP tool is a `Tool` that forwards to a
-server, tools arriving and leaving are `add_tool` and `remove_tool`, a structured result is
-`Content::Json`. It pushed back on exactly one thing: MCP tool annotations are *hints*, and the
-specification says a client should never make tool-use decisions on hints from an untrusted
-server, so the bridge believes none of them by default. Its tests include a server
-offering a tool called `delete_everything` that claims to be read-only.
+processes and reading notifications in the background, which the runtime promises not to do. An
+MCP tool is a `Tool` that forwards to a server, and tools arriving and leaving are `add_tool` and
+`remove_tool`. It believes none of a server's tool annotations by default, because the
+specification calls them hints from an untrusted party; its tests include a tool called
+`delete_everything` that claims to be read-only.
 
-**[`kamchatka`](kamchatka)** hands the model four tools about its own session, and every operation
-in them is a public function a user interface was already calling. `context` is the context:
-`look`, `budget`, `request` and `search` read it, and eight more — `elide`, `exclude`, `pin`,
-`restore`, `revise`, `note`, `undo`, `redo` — change it, touching nothing a person pinned. `fork`
-answers on a throwaway copy, either carrying the conversation on or putting a question with some
-items taken away. `log` reads the append-only record kept beside the context. `setup` says what
-the session is running with: which model, which tools, what the policy will refuse, and whether
-this context was resumed from somebody else's. Given a 10,000-token limit and a mundane question,
-one model's first move was `budget`; eight requests later it elided eight tool results in one
-call and got two thousand tokens back, with nothing destroyed.
+**[`kamchatka`](kamchatka)** hands the model four tools about its own session — `context`, `fork`,
+`log` and `setup` — and every operation in them is a public function the screen was already
+calling. None of them can touch what a person pinned.
 
-**[`nachalnik-eval`](nachalnik-eval)** is the furthest from anything the runtime was designed for:
-it turns those handles around and uses them to *test* a model rather than to serve one. Forking a
-context is `snapshot` and `resume`, previewing a request is `preview_request`, pruning is
-`set_state`, reading the budget is `budget`.
-
----
-
-### 📝 what it looks like when it runs
-
-Five transcripts, at **<https://ljedrz.github.io/nachalnik/>**, quoted verbatim from the sessions
-they describe. They read in order, and the machinery turns around halfway through: in the first
-three the model is the one editing its context, and from the fourth on it is not.
-
-1. **[a lie in its own notes](https://ljedrz.github.io/nachalnik/a-lie-in-its-own-notes/)** — two
-   notes go in labelled as carried over from an earlier session, one of them false. It lists what
-   it is carrying, checks the notes against the repository, and rewrites the wrong one in place.
-2. **[retracting a hallucination](https://ljedrz.github.io/nachalnik/retracting-a-hallucination/)** —
-   asked about a crate that did not exist when it was trained, it invents one twice. Told so, it
-   finds both of its own turns and replaces them. Nothing is planted here, which is the caveat the
-   first one carries.
-3. **[an experiment on itself](https://ljedrz.github.io/nachalnik/an-experiment-on-itself/)** —
-   asked which item its answer rested on, it went and checked, by asking a copy of itself the same
-   question with that item taken out. Right about its own reasoning, wrong about where the item was
-   filed.
-4. **[putting words in its mouth](https://ljedrz.github.io/nachalnik/putting-words-in-its-mouth/)** —
-   I replace two of its answers with confident falsehoods. By the third turn it is inventing a
-   claim more specific than either of mine, with nobody editing that turn. Both real answers are
-   still in the session, which is the only reason you can read them.
-5. **[taking away the receipt](https://ljedrz.github.io/nachalnik/taking-away-the-receipt/)** — a
-   shell command really runs, and then I hide its output, which takes down the turn that made the
-   call as well. Asked how it knew, it answers correctly, and then retracts a true statement when I
-   say I do not recall any command.
-
-Every number and every quotation in them is copied out of the event log of the session it
-describes, which is what an append-only log of typed events is for.
+**[`nachalnik-eval`](nachalnik-eval)** turns the same handles around and uses them to *test* a model
+rather than to serve one: forking a context is `snapshot` and `resume`, previewing a request is
+`preview_request`, pruning is `set_state`.
 
 ---
 
@@ -190,3 +183,5 @@ agent is not the boss, you are. `kamchatka` is the boiler room the work actually
 ### 📜 license
 
 Licensed under the MIT License ([LICENSE-MIT](LICENSE-MIT)).
+
+[shot-context]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/context.jpg
