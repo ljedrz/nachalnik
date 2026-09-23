@@ -198,7 +198,7 @@ pub struct Outcome {
     /// The same, by stage of the experiment, where it has stages.
     #[serde(default)]
     pub stages: Vec<Stage>,
-    /// The same, by stage, paired item by item - the primary endpoint.
+    /// The same, by stage, paired item by item - what the ladder is read with.
     ///
     /// note: every ordered pair of stages, because the interesting contrast is not always the
     /// adjacent one: `reported` to `retested` is what a handle bought the subject that had

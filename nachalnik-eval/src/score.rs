@@ -638,7 +638,8 @@ impl Family {
 
 /// The same claims at two stages, paired item by item.
 ///
-/// note: The primary endpoint of the whole crate, and it has to be paired. `reported` and
+/// note: what the ladder is read with, and it has to be paired. The primary endpoint is
+/// [`Surface`]; this is how one stage is compared with another. `reported` and
 /// `retested` are the same subject answering the same questions about the same notes, so treating
 /// them as two independent samples throws away the pairing and asks a weaker question than the
 /// data can answer. What matters is not that one accuracy is higher: it is *which items moved,
