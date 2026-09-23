@@ -493,8 +493,8 @@ impl LinearProjector {
 }
 
 /// What a turn recorded as ordered blocks loses by going out in three slots, where it loses
-/// anything: two thinking blocks joined into one is a signature destroyed, and a sentence that
-/// came after a call arrives before it.
+/// anything: two thinking blocks joined into one is a signature destroyed, a sentence that came
+/// after a call arrives before it, and thinking that came after a sentence arrives before that.
 ///
 /// note: asked of a turn that *was* recorded as blocks and of no other, because a conventional
 /// one is being put back into the shape it arrived in - there is nothing to lose and nothing to
@@ -512,11 +512,16 @@ fn flattening_lost(item: &ContextItem, kept: &[Block], spoke: usize) -> Option<S
         .iter()
         .skip_while(|block| block.call().is_none())
         .any(|block| block.call().is_none());
+    // the reasoning slot is read first, so thinking recorded after a sentence is moved ahead of it
+    let rethought = kept
+        .iter()
+        .skip_while(|block| block.said().is_none())
+        .any(|block| block.thought().is_some());
     let signed = kept
         .iter()
         .filter_map(Block::part)
         .any(|part| !part.extra.is_null());
-    if !(interleaved || spoke > 1 || thoughts > 1 || signed) {
+    if !(interleaved || rethought || spoke > 1 || thoughts > 1 || signed) {
         return None;
     }
 

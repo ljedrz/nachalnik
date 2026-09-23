@@ -16,6 +16,11 @@ minor bump may break you.
 
 ### fixed
 
+- **Flattening says when it moves thinking ahead of a sentence.** A turn recorded as a sentence
+  and then thinking goes out with the reasoning slot first, and `LinearProjector` reported a
+  flattened order only for a sentence after a call, several sentences, several thoughts or a
+  signature - so this one was moved and `Projection::repairs` said nothing.
+
 - **A repaired call identifier is announced under the lock that changed the set**, as a
   reservation already was. A `Kernel::reserve_calls` landing between a repair and its
   `tool.repaired` was recorded ahead of a change made before it.

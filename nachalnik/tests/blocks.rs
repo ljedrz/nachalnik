@@ -290,6 +290,41 @@ async fn flattening_produces_the_conventional_message_and_says_what_it_cost() {
     );
 }
 
+/// Thinking recorded after a sentence is moved ahead of it by flattening, and that is said too.
+///
+/// note: one of each block, so neither the count of sentences nor the count of thoughts gives it
+/// away, and no call comes before anything else - the order of the two is the whole loss.
+#[tokio::test]
+async fn thinking_after_a_sentence_is_a_loss_when_flattened() {
+    let flattened = |blocks: Vec<Block>| async {
+        let kernel = kernel_with(blocks);
+        kernel.turn().await.expect("the turn ran");
+        project(&kernel, LinearProjector::default()).repairs
+    };
+
+    let repairs = flattened(vec![
+        Block::text(Content::text("Checking Warsaw.")),
+        Block::reasoning(Content::text("the user wants the weather")),
+        Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+    ])
+    .await;
+    assert!(
+        repairs
+            .iter()
+            .any(|repair| repair.contains("flattened item")),
+        "{repairs:?}"
+    );
+
+    // and in the order the slots are in, nothing is lost and nothing is said
+    let repairs = flattened(vec![
+        Block::reasoning(Content::text("the user wants the weather")),
+        Block::text(Content::text("Checking Warsaw.")),
+        Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+    ])
+    .await;
+    assert!(repairs.is_empty(), "{repairs:?}");
+}
+
 #[tokio::test]
 async fn a_conventional_turn_flattens_to_exactly_what_it_was() {
     let (kernel, _) = permissive([
