@@ -7,6 +7,11 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **Built against `nachalnik` 0.7.** The runtime's minor moved, and the bridge's tools and servers
+  are that runtime's types, so a caller on 0.6 and a bridge on 0.7 are two runtimes in one build.
+
 ### fixed
 
 - **A server's standard error is held a line's worth at a time.** The tail kept twenty lines and
