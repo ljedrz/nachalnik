@@ -2280,6 +2280,53 @@ async fn a_swept_question_is_granted_the_network_the_way_an_answered_one_is() {
     );
 }
 
+/// A refusal is not remembered, and asking for one does not write the rules that allow the call.
+///
+/// note: `always` remembers every subject the policy consulted, as allowed, and it did so whatever
+/// the answer was. No client here sends a refusal with `remember` on, and the protocol takes one:
+/// a client of its own asking never to allow this wrote the rules that allow it, and the sweep
+/// behind it let the next such call through.
+#[tokio::test]
+async fn a_refusal_asked_to_be_remembered_is_refused_rather_than_allowed() {
+    let curl = |id: &str, host: &str| {
+        ToolCall::new(
+            id,
+            "shell",
+            json!({ "call": { "action": "run", "cmd": format!("curl https://{host}") } }),
+        )
+    };
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![
+        ModelResponse::tool_calls(vec![curl("c1", "example.com"), curl("c2", "example.org")]),
+        ModelResponse::text("done"),
+    ]);
+    app.kernel.add_tool(Arc::new(Watchful {
+        policy: app.policy.clone(),
+        seen: Arc::new(std::sync::Mutex::new(Vec::new())),
+    }));
+
+    app.ask("fetch both");
+    app.start_turn();
+    let outcome = finished
+        .recv()
+        .await
+        .expect("the turn never stopped to ask");
+    while let Ok(event) = events.try_recv() {
+        app.on_event(event);
+    }
+    app.on_outcome(outcome);
+    let waiting = app.kernel.pending_permissions();
+    assert_eq!(waiting.len(), 2, "two calls did not raise two questions");
+
+    assert!(app.decide(waiting[0].id, Grant::Deny, true).is_err());
+    // nothing was allowed on the strength of it, and nothing was swept
+    assert_ne!(app.policy.verdict(&waiting[1]), Verdict::Allow);
+    assert_eq!(app.kernel.pending_permissions().len(), 2);
+}
+
 /// Every call in a batch keeps the answer it was given, however many of them there are.
 ///
 /// note: the grants were bounded at sixty-four and the oldest went, on the reasoning that one

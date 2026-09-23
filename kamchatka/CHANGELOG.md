@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal asked to be remembered is refused, rather than written down as an allow.**
+  `App::decide` with `remember` on wrote every subject the policy consulted as allowed, whatever
+  the answer - so a `decide` over the socket that said `deny` and `remember` installed the rules
+  that let the call through, and the sweep behind it allowed the next one. No client in this
+  repository sends that; the protocol took it. It is now answered `failed`, and a standing refusal
+  is a rule, on the permissions tab or `--deny`.
+
 - **An interrupted response no longer says the endpoint reports no usage.** A stream cut short by
   ctrl+c, `--deadline` or a signal never reaches the chunk its figures ride on, and under a
   `--spend` ceiling that was read as an endpoint reporting nothing - so a session against one that

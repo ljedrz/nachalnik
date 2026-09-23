@@ -126,6 +126,9 @@ pub enum Command {
         /// The answer.
         grant: Grant,
         /// Whether to remember it, so the policy stops asking. This is the `a` key.
+        ///
+        /// note: with an allow only. What is remembered is every subject the policy consulted,
+        /// as allowed, and a refusal with this on is answered `failed` rather than taken.
         remember: bool,
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.

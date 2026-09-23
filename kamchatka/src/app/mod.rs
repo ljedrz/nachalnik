@@ -1555,6 +1555,17 @@ impl App {
         else {
             return Err(format!("there is no question {id} waiting to be answered"));
         };
+        // `always` is an allow. What it remembers is every subject the policy consulted, because
+        // that is what it takes to let such a call through; a refusal has no such set, and
+        // refusing every one of them would refuse every call sharing any. Taken as it came, a
+        // client asking never to allow this wrote the rules that allow it
+        if remember && grant != Grant::Allow {
+            return Err(
+                "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
+                 or `--deny`"
+                    .to_owned(),
+            );
+        }
 
         if remember {
             // everything the policy actually consulted, not just what the tool declared - and
