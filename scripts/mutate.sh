@@ -38,8 +38,10 @@ fi
 
 # a mutation is applied to the working tree and taken back out of it, so anything already in
 # there is at risk. Refusing is the only safe answer: the alternative is a script that can eat
-# an afternoon's uncommitted work to measure a test
-if [ -n "$(git status --porcelain)" ]; then
+# an afternoon's uncommitted work to measure a test. Untracked files are left out of it: nothing
+# here touches them, and the patch itself is one - `git diff > m.patch` makes the tree it was made
+# from dirty by the file it wrote
+if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
     echo "the working tree is not clean; commit or stash first" >&2
     exit 2
 fi
