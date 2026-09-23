@@ -767,9 +767,9 @@ from then on, which is what happens when the hosted one is unreachable too.
 The rating is drawn in the question, on the line under what the tool wants and above the
 arguments: what the advisor reads the command as, in its colour, and how sure it is.
 
-Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
-changed that could be put back; it destroys something that cannot be got back, or sends something
-off this machine. You still have to read the command, which is what the panel under it is for. What
+Green, yellow or red, off a three-level rubric — it only reads, lists, searches or changes
+directory; it leaves a file, a setting or installed software changed in a way that could be put
+back; it destroys something that cannot be got back, or sends something off this machine. You still have to read the command, which is what the panel under it is for. What
 the colour buys is the half-second before that: whether this is the fifteenth `cargo test` of the
 afternoon or the one call in fifty worth stopping on.
 

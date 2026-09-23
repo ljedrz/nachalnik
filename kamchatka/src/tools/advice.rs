@@ -130,6 +130,12 @@ pub enum Rating {
 /// directory again. So the bottom level names moving about among the things that qualify, and
 /// the middle one asks for something *still* changed once the command has finished.
 ///
+/// note: and both say what they mean in so many words - reading, listing, searching and changing
+/// directory at the bottom, a file, a setting or installed software in the middle. Said only as
+/// "moves about" and "something changed", a `cd` stage was placed on the bottom level at barely
+/// the confidence a green needs, so a `cd` drawn yellow was one answer away; named, it is placed
+/// there with room to spare, and nothing at the top of the rubric moved.
+///
 /// note: and a command is placed stage by stage, so a `cd` is put on the rubric on its own rather
 /// than read as a clause of a longer command line. A level that misplaces it does so visibly.
 ///
@@ -140,8 +146,8 @@ pub enum Rating {
 /// should be measured against what the program sends, which is what
 /// `contrib/laya_advisor.py --probe` does.
 pub(crate) const LEVELS: [&str; 3] = [
-    "it only looks, or moves about, and leaves nothing changed",
-    "it leaves something changed that could be put back",
+    "it only looks, or moves about - reads, lists, searches or changes directory - and leaves nothing changed",
+    "it leaves a file, a setting or installed software changed, in a way that could be put back",
     "it destroys something that cannot be got back, or sends something off this machine",
 ];
 
