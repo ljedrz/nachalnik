@@ -21,6 +21,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
 scripts/references.sh                       # every file and test the prose names still exists
+scripts/windows.sh                          # the configurations CI builds on Windows, checked from here
 ```
 
 These are pre-commit checks and not just CI steps, and the `cargo doc` one is the one that gets
@@ -34,6 +35,13 @@ name it never had - `Shell::call`, where the method is `invoke` and arrives thro
 there is nothing on the type to read the name off and nothing but rustdoc to say so. And a public
 comment linking to a `pub(super)` item, which resolves for everyone in the module and for nobody on
 docs.rs.
+
+`scripts/windows.sh` checks for Windows from here, in the configurations CI's Windows job builds,
+with `cargo xwin` supplying the Microsoft CRT and SDK that `ring`'s C needs. It catches what the
+compiler sees: a helper whose only callers are `#[cfg(unix)]` is dead code there, and under
+`-D warnings` a failed build. It cannot catch what Windows does differently at run time - a
+refused connection to a closed local port takes about two seconds there rather than nothing - so a
+test that waits on the operating system waits for the thing it is about, not for a fixed time.
 
 `scripts/references.sh` is the same net for the prose rustdoc does not read: a plain backticked
 name in a comment or a document. A file has to be in the repository, and a test's name, or a path
