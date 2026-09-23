@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### security
+
+- **A chain of links too long to follow is refused by `fs`, not taken for a file to be made.**
+  The path check follows links up to a bound, and a chain dangling past it had its last link read
+  as a file about to be created in the directory it sits in - allowed, and then followed out of
+  the directory by the open, on a platform with no `openat2` to stop it there (macOS, Windows, and
+  Linux older than 5.6).
+
 ### added
 
 - **`wiring::Flagged`**: where a provider was pointed when the session began, and `restore` to put

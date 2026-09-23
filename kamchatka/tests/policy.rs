@@ -668,3 +668,40 @@ fn a_file_allowed_on_its_own_can_be_opened() {
             .is_err()
     );
 }
+
+/// A chain of links longer than the resolver follows is refused, not taken for a file to be made.
+///
+/// note: dangling all the way, because that is the chain the bound is reached on: a chain that
+/// ends at something that exists is resolved by the system once what is left of it is short
+/// enough. At the bound the last link in hand was read as a file not yet made in the directory it
+/// sits in, and allowed - and the open follows the rest of it out, where there is no `openat2`.
+#[cfg(unix)]
+#[test]
+fn a_chain_of_links_too_long_to_follow_is_refused() {
+    let work = common::scratch("chain-work");
+    let outside = common::scratch("chain-outside");
+    let reach = Reach {
+        workdir: work.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    let links = 42;
+    for n in 0..links {
+        let target = match n + 1 {
+            last if last == links => outside.join("made.txt"),
+            next => work.join(format!("l{next}")),
+        };
+        std::os::unix::fs::symlink(target, work.join(format!("l{n}"))).expect("a link");
+    }
+    assert!(
+        reach.allows("l0", Access::Writing).is_err(),
+        "a link chain out of the directory was allowed"
+    );
+
+    // and a short one that stays inside is still a file about to be made there
+    std::os::unix::fs::symlink(work.join("s1"), work.join("s0")).expect("a link");
+    std::os::unix::fs::symlink(work.join("made.txt"), work.join("s1")).expect("a link");
+    assert!(reach.allows("s0", Access::Writing).is_ok());
+}

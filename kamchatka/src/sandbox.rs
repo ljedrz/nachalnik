@@ -167,7 +167,9 @@ impl Sandbox {
     /// common case, since a command that named a file it could not open often could not `stat`
     /// its directory either.
     fn reaches(&self, path: &Path) -> bool {
-        let resolved = resolve(path);
+        let Some(resolved) = resolve(path) else {
+            return false;
+        };
 
         SYSTEM
             .iter()
@@ -300,12 +302,20 @@ impl Sandbox {
 /// followed, the way the open will follow it, rather than stepped past as though it were a name
 /// with nothing behind it - which would let `write` create a file outside the directory through a
 /// link made inside it. `LINKS` bounds the following, because two links can point at each other.
-fn resolve(path: &Path) -> PathBuf {
+///
+/// note: `None` where that bound runs out with a link still in hand and no link seen twice. Taken
+/// for a name with nothing behind it, the last link was allowed as a file about to be made in the
+/// directory it sits in, and the open then followed the rest of the chain wherever it went - out
+/// of the directory, on a platform with no `openat2` to stop it there. A loop is not that: every
+/// link in it has been seen, it leads nowhere, and the open refuses it, so it is answered where it
+/// is - inside or outside, like any other name.
+fn resolve(path: &Path) -> Option<PathBuf> {
     const LINKS: usize = 40;
 
     let mut existing = path.to_path_buf();
     let mut rest = PathBuf::new();
     let mut followed = 0;
+    let mut seen = std::collections::HashSet::new();
     let joined = |base: PathBuf, rest: &Path| match rest.as_os_str().is_empty() {
         // note: joined only when there is something to join. `Path::join("")` appends a
         // separator, and `/w/local.txt/` is a directory that is not there, so a plain
@@ -315,15 +325,20 @@ fn resolve(path: &Path) -> PathBuf {
     };
     loop {
         match existing.canonicalize() {
-            Ok(resolved) => break joined(resolved, &rest),
+            Ok(resolved) => break Some(joined(resolved, &rest)),
             Err(_)
-                if followed < LINKS
-                    && existing
-                        .symlink_metadata()
-                        .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+                if existing
+                    .symlink_metadata()
+                    .is_ok_and(|meta| meta.file_type().is_symlink()) =>
             {
+                if !seen.insert(existing.clone()) {
+                    break Some(joined(existing, &rest));
+                }
+                if followed == LINKS {
+                    break None;
+                }
                 let Ok(target) = existing.read_link() else {
-                    break joined(existing, &rest);
+                    break Some(joined(existing, &rest));
                 };
                 followed += 1;
                 // a relative target is relative to the directory the link is in, and an absolute
@@ -348,7 +363,7 @@ fn resolve(path: &Path) -> PathBuf {
                 }
                 // what is left, rather than the path as it was handed in: after a link has been
                 // followed those are different paths, and only this one is where the open goes
-                _ => break joined(existing, &rest),
+                _ => break Some(joined(existing, &rest)),
             },
         }
     }
@@ -540,7 +555,13 @@ impl Reach {
             true => path.clone(),
             false => self.workdir.join(&path),
         };
-        let resolved = resolve(&absolute);
+        let Some(resolved) = resolve(&absolute) else {
+            return Err(format!(
+                "{}: a chain of links too long to follow to its end, so where it leads cannot be \
+                 checked",
+                path.display()
+            ));
+        };
         // note: what `resolve` cannot resolve it leaves as it was, and a `..` after a directory
         // that is not there is one of those: `nope/../../../etc/passwd` came back with its `..`s
         // still in it, and a comparison by components found the working directory at the front of
