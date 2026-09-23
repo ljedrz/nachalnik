@@ -73,6 +73,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`log` refuses an `ids` entry that is not an item number.** It kept the numbers it could read
+  and dropped the rest, so `ids: [12, -1]` answered as a filter on item 12 alone; only a list with
+  no number in it at all was refused. It reads `ids` the way `context` does now, refusing the call
+  and naming the entry.
+
 - **A client that ends a served session is told it did.** The connections were tasks nobody
   waited for, so a host that exited on a `/quit` could take the answer to it and `session.finished`
   with it. The client that typed `/quit` read the closed socket as a drop and went looking for a

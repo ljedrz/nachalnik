@@ -635,7 +635,8 @@ async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
 /// anything" wrote `{ids: [], kinds: [], since: 0, take: 20}` and was refused, which cost it a
 /// turn and taught it nothing - an empty list constrains nothing, and reading it as "no filter" is
 /// the only thing it can mean. A list with entries that are not item numbers is a different thing
-/// and still worth reporting.
+/// and still worth reporting - one bad entry among good ones included, since dropping it would
+/// answer a filter on the rest as though that were what was asked.
 #[tokio::test]
 async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -645,6 +646,7 @@ async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
             json!({ "action": "read", "ids": [], "kinds": [], "since": 0, "take": 2, "whole": false }),
         ),
         call("c2", "log", json!({ "action": "read", "ids": ["two"] })),
+        call("c3", "log", json!({ "action": "read", "ids": [12, -1] })),
     ]));
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
@@ -658,7 +660,12 @@ async fn an_empty_filter_list_is_no_filter_rather_than_a_refusal() {
     );
     assert!(said[0].contains("Showing the 2 most recent"), "{}", said[0]);
     // and a list of the wrong thing still says so, naming what it was given
-    assert!(said[1].contains("none of [\"two\"] is one"), "{}", said[1]);
+    assert!(said[1].contains("holds `\"two\"`"), "{}", said[1]);
+    assert!(
+        said[2].contains("holds `-1`"),
+        "an entry that is not an item number was dropped: {}",
+        said[2]
+    );
 }
 
 /// A compaction pass says why it ran, because the record it came from says why.

@@ -273,29 +273,10 @@ impl Query {
         if !args["since"].is_null() {
             query.since = Some(counted(&args["since"], "since")?);
         }
-        if !args["ids"].is_null() {
-            let Some(ids) = args["ids"].as_array() else {
-                return Err(
-                    "`ids` is a list of context item numbers, as `ids: [12, 13]`".to_owned(),
-                );
-            };
-            // note: an *empty* array constrains nothing and is how a model spells "no id filter"
-            // while passing every argument the schema lists, so refusing it would spend a turn.
-            // An array with entries in it none of which is a number is a different thing and is
-            // still a mistake worth reporting.
-            query.ids = ids
-                .iter()
-                .filter_map(|id| id.as_u64())
-                .map(ContextId)
-                .collect();
-            if query.ids.is_empty() && !ids.is_empty() {
-                return Err(format!(
-                    "`ids` is a list of item numbers and none of {} is one; `context` with `look` \
-                     lists what there is",
-                    serde_json::Value::Array(ids.clone()),
-                ));
-            }
-        }
+        // note: the reader every tool here shares, so an entry that is not an item number is
+        // refused rather than dropped. An *empty* list is no filter, which is how a model passing
+        // every argument the schema lists spells one
+        query.ids = super::ids(args, "ids")?;
         if !args["kinds"].is_null() {
             let Some(kinds) = args["kinds"].as_array() else {
                 return Err(
