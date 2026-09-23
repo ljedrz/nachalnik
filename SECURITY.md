@@ -50,7 +50,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
   The confinement holds a command to its directory and says nothing about what the command was
   handed when it started, so a key left in the environment is the one secret a confined command
-  could always print, and what it prints goes into the context, the request and the record. MCP
+  could always print, and what it prints goes into the context, the request and the record. The
+  keys are still in this program's own environment, and on Linux `/proc/PID/environ` is how a
+  process reads another's: confined, a command is refused its parent's, because Landlock denies a
+  process in a domain any look into one outside it; with `--no-sandbox` it is not, and stripping
+  the variables keeps them out of the command's environment and no further. MCP
   servers and a local advisor keep them: those are programs the person chose, running unconfined
   with everything the person can read, and stripping their environment would be a nuisance rather
   than a boundary.

@@ -232,6 +232,26 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
     assert!(!wrote, "a system directory is not writable: {said}");
 }
 
+/// `/proc` is readable, and the environment of the process that spawned a command is not.
+///
+/// note: the keys are taken out of a command's own environment, and `/proc/$PPID/environ` would
+/// hand them straight back - `/proc` is in `SYSTEM`, and the parent is the program holding them.
+/// What refuses it is Landlock rather than the file's mode: a confined process may not look into
+/// one outside its domain, which is the access a process's environment is read under. Unconfined,
+/// the same command reads it, and SECURITY.md says so.
+#[test]
+fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
+    if !enforced() {
+        return;
+    }
+    let (ok, said) = run(
+        &sandbox(workdir("environ"), true, false),
+        "cat /proc/self/environ > /dev/null && echo own && cat /proc/$PPID/environ > /dev/null",
+    );
+    assert!(said.contains("own"), "its own is readable: {said}");
+    assert!(!ok, "the parent's environment was read: {said}");
+}
+
 #[test]
 fn a_command_cannot_read_private_files_outside_it() {
     if !enforced() {
