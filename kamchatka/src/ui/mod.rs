@@ -304,9 +304,6 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                     },
                 );
             }
-            if app.busy {
-                parts.push("esc stops it".to_owned());
-            }
             if parts.is_empty() {
                 parts.push("alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions".into());
             }
@@ -563,8 +560,8 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     }
     // note: `esc stops it` and nothing in its place when idle. `F1` is said on the first screen by
     // `GREETING` and again by every `there is no /x`, and this line's right-hand end is the first
-    // thing a narrow terminal loses. What a running turn can be stopped with is said nowhere else
-    // on three of the four tabs, so that half stays
+    // thing a narrow terminal loses. This is the one place a running turn says how to stop it,
+    // and it is on every tab, so the chat's footer does not say it again
     if app.busy {
         add("esc stops it".to_owned(), dim);
     }

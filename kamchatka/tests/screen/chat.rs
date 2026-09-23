@@ -670,6 +670,16 @@ async fn up_with_something_typed_leaves_it_alone() {
     assert_eq!(harness.app.input.lines(), ["half a thought"]);
 }
 
+/// A running turn says how to stop it once, on the status line, rather than twice on the chat tab.
+#[tokio::test]
+async fn a_running_turn_says_how_to_stop_it_once() {
+    let mut harness = Harness::new([]);
+    harness.app.busy = true;
+
+    let screen = harness.screen();
+    assert_eq!(screen.matches("esc stops it").count(), 1, "{screen}");
+}
+
 /// And with nothing to put back, it is the key that scrolls, as it is at the top of any prompt.
 #[tokio::test]
 async fn up_with_nothing_to_recall_scrolls_the_conversation() {

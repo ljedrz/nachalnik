@@ -73,6 +73,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A running turn says `esc stops it` once.** The chat tab said it in its footer and on the
+  status line beneath; the status line is on every tab, so it says it there alone.
+
 - **`up` in an empty prompt scrolls when there is nothing to put back.** It recalls the last
   message, and before one had been sent it did nothing at all - the one prompt from which the key
   that scrolls at the top of any other did not. It scrolls there now.
