@@ -124,7 +124,7 @@ async fn a_whole_session_survives_a_round_trip() {
 
     let results: Vec<_> = tool_results(&kernel).iter().map(|i| i.id).collect();
     kernel.set_state(results, ContextState::Excluded, Some("noise".into()));
-    kernel.undo();
+    kernel.undo().unwrap();
     let mut params = Params::new();
     params.insert("temperature".into(), json!(0.0));
     kernel.set_params(params);

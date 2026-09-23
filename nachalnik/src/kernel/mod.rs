@@ -180,6 +180,14 @@ impl StateChange {
     }
 }
 
+/// A run of recorded items that one [`Kernel::undo`] takes back whole; see [`Context::fold_since`].
+///
+/// note: `None` until the first of them is added, which takes the checkpoint the rest belong to.
+/// A batch that joins a checkpoint already taken - the turn a call nobody can run answers - starts
+/// with that one's number.
+#[derive(Default)]
+struct Batch(Option<u64>);
+
 /// A tool call that has been matched to a tool and is waiting for a decision, or for its turn.
 struct PreparedCall {
     call: ToolCall,
@@ -1086,16 +1094,31 @@ impl Kernel {
         }
     }
 
-    /// Reverts the most recent context operation, returning whether there was one.
+    /// Reverts the most recent context operation, returning whether there was one - or
+    /// [`Error::Busy`] while a turn holds calls.
     ///
     /// note: The granularity is one operation, not one item: undoing a [`Kernel::set_state`]
     /// that excluded eight items puts all eight back. Model responses and tool results are
     /// operations too, so undo can also walk back a turn's worth of additions.
-    pub fn undo(&self) -> bool {
+    ///
+    /// note: refused from [`State::Requesting`] until the machine is resting with nothing to
+    /// run, which takes in [`State::Deciding`], [`State::Ready`] and [`State::Executing`], because
+    /// what it would rewind is the context the machine is acting on. Undoing the turn that asked
+    /// for a call did not stop the call: it ran, its result was recorded against a turn no longer
+    /// there and never reached the model, and recording it took a checkpoint that made the undone
+    /// turn unreachable. Decide the calls, or cancel them with [`Kernel::cancel_pending_calls`],
+    /// first.
+    pub fn undo(&self) -> Result<bool> {
+        // the machine first, for the lock order, and held with the context so that no turn starts
+        // between the look and the undo
+        let machine = self.0.machine.lock();
+        if Self::holds_calls(&machine.state) {
+            return Err(Error::Busy);
+        }
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
         let Some(diff) = context.undo().then(|| Self::diff(&before, context.items())) else {
-            return false;
+            return Ok(false);
         };
 
         self.emit(Event::ContextUndone {
@@ -1104,7 +1127,18 @@ impl Kernel {
             changed: diff.changed,
         });
 
-        true
+        Ok(true)
+    }
+
+    /// Whether the machine is part-way through a turn that has, or will have, calls of its own.
+    fn holds_calls(state: &State) -> bool {
+        matches!(
+            state,
+            State::Requesting
+                | State::Deciding { .. }
+                | State::Ready { .. }
+                | State::Executing { .. }
+        )
     }
 
     /// Puts back what the last [`Kernel::undo`] took away, returning whether there was any.
@@ -1113,11 +1147,17 @@ impl Kernel {
     /// back, in order. Any new context operation makes what was undone unreachable, because a
     /// redo that reached across work done since would be overwriting it rather than restoring
     /// anything.
-    pub fn redo(&self) -> bool {
+    ///
+    /// note: [`Error::Busy`] while a turn holds calls, for the reason [`Kernel::undo`] gives.
+    pub fn redo(&self) -> Result<bool> {
+        let machine = self.0.machine.lock();
+        if Self::holds_calls(&machine.state) {
+            return Err(Error::Busy);
+        }
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
         let Some(diff) = context.redo().then(|| Self::diff(&before, context.items())) else {
-            return false;
+            return Ok(false);
         };
 
         self.emit(Event::ContextRedone {
@@ -1126,7 +1166,7 @@ impl Kernel {
             changed: diff.changed,
         });
 
-        true
+        Ok(true)
     }
 
     /// Recounts every item's tokens with the active [`TokenCounter`].
@@ -1498,13 +1538,14 @@ impl Kernel {
         };
         let mut restore = Restore::new(self, State::Idle);
 
-        for (nth, call) in prepared.iter().enumerate() {
+        let mut batch = Batch::default();
+        for call in &prepared {
             self.record_tool_result(
                 &call.call,
                 ToolOutput::error(format!("the call was cancelled: {reason}")),
                 None,
                 None,
-                nth == 0,
+                &mut batch,
             );
         }
 
@@ -1685,6 +1726,22 @@ impl Kernel {
         let mut context = self.0.context.write();
         if checkpoint {
             context.checkpoint();
+        }
+
+        self.added(&mut context, item, &*counter)
+    }
+
+    /// Adds an item as part of a batch that is one operation for [`Kernel::undo`]: the first of
+    /// them takes the checkpoint, and every later one folds whatever was checkpointed since into it.
+    fn add_in(&self, item: ContextItem, batch: &mut Batch) -> ContextId {
+        let counter = self.counter();
+        let mut context = self.0.context.write();
+        match batch.0 {
+            None => {
+                context.checkpoint();
+                batch.0 = Some(context.taken());
+            }
+            Some(taken) => context.fold_since(taken),
         }
 
         self.added(&mut context, item, &*counter)

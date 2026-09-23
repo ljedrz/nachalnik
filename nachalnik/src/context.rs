@@ -469,6 +469,8 @@ pub struct Context {
     redo: Vec<Vec<Arc<ContextItem>>>,
     undo_depth: usize,
     next_id: u64,
+    /// How many checkpoints have been taken, so that a run of them can be named and folded.
+    taken: u64,
 }
 
 impl Default for Context {
@@ -486,6 +488,7 @@ impl Context {
             redo: Vec::new(),
             undo_depth,
             next_id: 1,
+            taken: 0,
         }
     }
 
@@ -729,6 +732,7 @@ impl Context {
         // whatever was undone is now a future that did not happen, and keeping it reachable
         // would let a redo silently overwrite work done since
         self.redo.clear();
+        self.taken += 1;
 
         if self.undo_depth == 0 {
             return;
@@ -737,6 +741,34 @@ impl Context {
             self.undo.pop_front();
         }
         self.undo.push_back(self.items.clone());
+    }
+}
+
+impl Context {
+    /// How many checkpoints have been taken; see [`Context::fold_since`].
+    pub(crate) fn taken(&self) -> u64 {
+        self.taken
+    }
+
+    /// Makes every checkpoint taken after the one numbered `taken` part of that one, so that one
+    /// undo takes back all of what happened since.
+    ///
+    /// note: what a batch of results is for when something else lands between two of them - a
+    /// tool that changed the context while it ran, or a client that did. Left as checkpoints of
+    /// their own, the first undo took back the change and the results recorded after it, and left
+    /// the ones before: a turn half answered. The kernel refuses an undo while a batch runs, so
+    /// nothing is popped between the two numbers but what was pushed.
+    ///
+    /// note: where more was checkpointed than the undo depth holds, the batch's own checkpoint went
+    /// with the oldest of them, and folding leaves nothing of the batch to undo to rather than a
+    /// point in the middle of it.
+    pub(crate) fn fold_since(&mut self, taken: u64) {
+        for _ in 0..self.taken.saturating_sub(taken) {
+            if self.undo.pop_back().is_none() {
+                break;
+            }
+        }
+        self.taken = taken;
     }
 }
 

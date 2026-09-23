@@ -14,6 +14,11 @@ use super::{
     text::{beyond_a_prompt, projected, stored, whole},
 };
 
+/// What `u` and `U` say while a turn is under way, which the kernel refuses to rewind; see
+/// `nachalnik::Kernel::undo`.
+const BUSY_UNDOING: &str =
+    "not while a turn is under way: answer or cancel its calls, or let it finish, and try again";
+
 /// How many lines `pgup` and `pgdn` move an overlay.
 const PAGE: usize = 20;
 
@@ -198,15 +203,17 @@ impl App {
                 KeyCode::Char('f') => self.sending_only = false,
                 KeyCode::Char('u') => {
                     let note = match self.kernel.undo() {
-                        true => "undone",
-                        false => "there is nothing to undo",
+                        Ok(true) => "undone",
+                        Ok(false) => "there is nothing to undo",
+                        Err(_) => BUSY_UNDOING,
                     };
                     self.say(Speaker::Note, note);
                 }
                 KeyCode::Char('U') => {
                     let note = match self.kernel.redo() {
-                        true => "redone",
-                        false => "there is nothing to redo",
+                        Ok(true) => "redone",
+                        Ok(false) => "there is nothing to redo",
+                        Err(_) => BUSY_UNDOING,
                     };
                     self.say(Speaker::Note, note);
                 }
@@ -335,15 +342,17 @@ impl App {
             }
             KeyCode::Char('u') => {
                 let note = match self.kernel.undo() {
-                    true => "undone",
-                    false => "there is nothing to undo",
+                    Ok(true) => "undone",
+                    Ok(false) => "there is nothing to undo",
+                    Err(_) => BUSY_UNDOING,
                 };
                 self.say(Speaker::Note, note);
             }
             KeyCode::Char('U') => {
                 let note = match self.kernel.redo() {
-                    true => "redone",
-                    false => "there is nothing to redo",
+                    Ok(true) => "redone",
+                    Ok(false) => "there is nothing to redo",
+                    Err(_) => BUSY_UNDOING,
                 };
                 self.say(Speaker::Note, note);
             }

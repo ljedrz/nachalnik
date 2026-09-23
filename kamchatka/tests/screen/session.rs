@@ -353,8 +353,8 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
     assert!(screen.contains("loaded"), "{screen}");
 
     // and nothing was destroyed to get here: two undos and it is as it was
-    assert!(second.app.kernel.undo());
-    assert!(second.app.kernel.undo());
+    assert!(second.app.kernel.undo().unwrap());
+    assert!(second.app.kernel.undo().unwrap());
     for id in mine.iter().filter(|id| **id != pinned) {
         let item = second.app.kernel.item(*id).expect("still there");
         assert_eq!(item.state, ContextState::Active, "[{id}] did not come back");

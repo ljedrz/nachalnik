@@ -213,10 +213,10 @@ impl World {
                 }
             }
             Op::Undo => {
-                self.kernel.undo();
+                self.kernel.undo().unwrap();
             }
             Op::Redo => {
-                self.kernel.redo();
+                self.kernel.redo().unwrap();
             }
             Op::Reserve(n) => {
                 let claimed = (0..n % 3 + 1).map(|k| ToolCallId::from(format!("r{k}").as_str()));
@@ -499,11 +499,11 @@ proptest! {
 
         let before = world.kernel.items();
         let mut depth = 0;
-        while world.kernel.undo() {
+        while world.kernel.undo().unwrap() {
             depth += 1;
         }
         for _ in 0..depth {
-            prop_assert!(world.kernel.redo(), "the stack ran out before it was refilled");
+            prop_assert!(world.kernel.redo().unwrap(), "the stack ran out before it was refilled");
         }
 
         prop_assert_eq!(world.kernel.items(), before, "a round trip through the undo stack");

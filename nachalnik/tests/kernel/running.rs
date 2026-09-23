@@ -361,8 +361,8 @@ async fn output_limits_are_enforced_and_admitted() {
     );
 
     // one undo takes the pair back together, rather than leaving half a tool call behind
-    assert!(kernel.undo());
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.item(whole.id).unwrap().state, ContextState::Archived);
     assert!(kernel.item(shown.id).unwrap().is_projected());
 }

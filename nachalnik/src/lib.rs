@@ -141,7 +141,7 @@
 //!
 //! // and the context remains yours
 //! kernel.set_state([file], ContextState::Excluded, Some("too big".into()));
-//! assert!(kernel.undo());
+//! assert!(kernel.undo().unwrap());
 //! # Ok(())
 //! # }
 //! ```

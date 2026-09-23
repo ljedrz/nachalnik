@@ -71,7 +71,7 @@ fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
     // and the redo the person still had is still theirs. This is the sharper half: `checkpoint`
     // discards the redo stack, so a pass that did nothing used to make an undone change
     // unreachable - before every request, for the rest of the session
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.with_context(|c| c.redo_len()), 1);
     kernel.apply_compaction(CompactionPlan {
         reason: "still nothing to do".into(),
@@ -82,7 +82,7 @@ fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
         1,
         "an empty pass threw away the redo"
     );
-    assert!(kernel.redo());
+    assert!(kernel.redo().unwrap());
 }
 
 /// A pass may only take what the request is carrying, and the projection is what knows. An item
@@ -165,7 +165,7 @@ fn a_compaction_that_moves_something_is_one_undo() {
     assert!(report.summary.is_some());
     assert_eq!(kernel.with_context(|c| c.undo_len()), depth + 1);
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
     assert_eq!(kernel.item(b).unwrap().state, ContextState::Active);
     assert_eq!(kernel.items().len(), 2, "the summary went with them");

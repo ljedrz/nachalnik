@@ -628,7 +628,7 @@ async fn walking_back_one_move_is_one_undo_for_the_person() {
         kernel.turn().await.expect("the second turn failed");
 
         let mut depth = 0;
-        while kernel.undo() {
+        while kernel.undo().unwrap() {
             depth += 1;
         }
 

@@ -321,7 +321,10 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
     // note: and an undo is why the count is not simply how many are kept. Putting an old content
     // back makes the newest remembered version the current one as well, and a client offering
     // both would be offering the same words twice under two labels
-    assert!(session.kernel.undo(), "there was something to undo");
+    assert!(
+        session.kernel.undo().unwrap(),
+        "there was something to undo"
+    );
     peer.until_record("context.undone").await;
     peer.send(Command::Project).await;
     let heard = peer

@@ -37,7 +37,7 @@ of passing tests:
 let ids = Selector::parse("tool:cargo_test:latest")?.matches(&kernel.items());
 kernel.set_state(ids, ContextState::Excluded, Some("13k tokens of nothing".into()));
 assert_eq!(kernel.budget().used(), 126);   // it was 13,173
-kernel.undo();                             // and it is back, with its note and its identifier
+kernel.undo()?;                            // and it is back, with its note and its identifier
 ```
 
 **Stop between transitions, not between functions.** `Ready` is the state in which the model has
@@ -153,7 +153,7 @@ match kernel.turn().await? {
 
 // and the context remains yours
 kernel.set_state([file], ContextState::Excluded, Some("too big".into()));
-kernel.undo();
+kernel.undo()?;
 ```
 
 ---

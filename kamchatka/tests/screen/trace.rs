@@ -161,7 +161,7 @@ async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
         .kernel
         .replace(id, "dig, please")
         .expect("the item is there");
-    assert!(harness.app.kernel.undo());
+    assert!(harness.app.kernel.undo().unwrap());
     harness.drain();
 
     harness.tab(Tab::Trace);

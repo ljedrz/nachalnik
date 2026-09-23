@@ -33,7 +33,7 @@ fn undo_reverts_a_whole_operation() {
     );
     assert_eq!(kernel.with_context(|c| c.projected().count()), 0);
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(
         kernel.with_context(|c| c.projected().count()),
         3,
@@ -41,7 +41,7 @@ fn undo_reverts_a_whole_operation() {
     );
 
     // undo walks back the additions, too
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.items().len(), 2);
 }
 
@@ -53,7 +53,7 @@ fn undo_depth_is_configurable() {
     });
     kernel.push(ContextItem::user("hi"));
 
-    assert!(!kernel.undo());
+    assert!(!kernel.undo().unwrap());
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn an_operation_that_does_nothing_does_not_spend_an_undo() {
     );
 
     // so the one undo available still reverts the exclusion, as the user would expect
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
 }
 
@@ -99,7 +99,7 @@ fn an_undo_says_what_it_did() {
     let mut events = kernel.subscribe();
 
     // undoing the exclusion reverts two items and removes none
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     let Some(Event::ContextUndone {
         items,
         removed,
@@ -117,7 +117,7 @@ fn an_undo_says_what_it_did() {
     );
 
     // undoing the addition takes an item back out of existence, and says so
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     let Some(Event::ContextUndone {
         items,
         removed,
@@ -131,7 +131,7 @@ fn an_undo_says_what_it_did() {
     assert!(changed.is_empty());
 
     // and an undo with nothing to undo is not an event
-    while kernel.undo() {
+    while kernel.undo().unwrap() {
         let _ = events.try_recv();
     }
     assert!(events.try_recv().is_err());
@@ -163,7 +163,7 @@ fn a_redo_puts_back_what_an_undo_took() {
 
     let mut events = kernel.subscribe();
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert!(
         kernel.item(a).unwrap().is_projected(),
         "the exclusion is off"
@@ -171,7 +171,7 @@ fn a_redo_puts_back_what_an_undo_took() {
     let _ = events.try_recv();
 
     assert!(
-        kernel.redo(),
+        kernel.redo().unwrap(),
         "and losing work to a mis-click is not control"
     );
     let Some(Event::ContextRedone {
@@ -189,12 +189,12 @@ fn a_redo_puts_back_what_an_undo_took() {
     assert_eq!(kernel.item(a).unwrap().note.as_deref(), Some("too big"));
 
     // undoing the addition and redoing it brings the item itself back
-    assert!(kernel.undo());
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.items().len(), 1);
     let _ = drain(&mut events);
 
-    assert!(kernel.redo());
+    assert!(kernel.redo().unwrap());
     let Some(Event::ContextRedone { restored, .. }) = events.try_recv().ok() else {
         panic!()
     };
@@ -208,13 +208,13 @@ fn doing_something_new_makes_the_undone_future_unreachable() {
     kernel.push(ContextItem::file("src/a.rs", "a"));
     kernel.push(ContextItem::file("src/b.rs", "b"));
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.with_context(|c| c.redo_len()), 1);
 
     // a redo that reached across this would be overwriting it, not restoring anything
     kernel.push(ContextItem::file("src/c.rs", "c"));
     assert_eq!(kernel.with_context(|c| c.redo_len()), 0);
-    assert!(!kernel.redo());
+    assert!(!kernel.redo().unwrap());
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn a_set_of_files_is_one_thing_the_user_did() {
         1,
         "three pushes would have spent three of the sixteen the user has"
     );
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert!(kernel.items().is_empty());
 
     assert!(kernel.push_all([]).is_empty());
@@ -268,7 +268,7 @@ async fn cancelling_a_turn_s_calls_is_one_thing_the_user_did() {
         "three refusals would have spent three of the sixteen the user has"
     );
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert!(
         !kernel
             .items()
@@ -318,13 +318,13 @@ async fn running_a_turn_s_calls_is_one_thing_that_happened() {
         "two results would have spent two of the sixteen the user has"
     );
 
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(
         results(&kernel),
         1,
         "one undo left part of the batch behind"
     );
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(
         kernel.items().len(),
         1,
@@ -339,10 +339,13 @@ fn an_annotation_is_not_overwritten_by_a_redo() {
     let kernel = kernel();
     let a = kernel.push(ContextItem::file("src/a.rs", "a"));
     kernel.push(ContextItem::file("src/b.rs", "b"));
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
 
     kernel.annotate(a, json!({ "expendable": true })).unwrap();
-    assert!(!kernel.redo(), "the redone future outlived an annotation");
+    assert!(
+        !kernel.redo().unwrap(),
+        "the redone future outlived an annotation"
+    );
     assert_eq!(kernel.item(a).unwrap().meta, json!({ "expendable": true }));
 }
 
@@ -378,4 +381,116 @@ fn a_replacement_is_the_one_thing_that_would_otherwise_be_lost() {
     };
     assert!(!Arc::ptr_eq(now, before));
     assert_eq!(before.len(), 18);
+}
+
+/// An undo is refused while a turn holds calls, and the calls run against the turn that asked.
+///
+/// note: the undo took the turn back and left the calls: the tool ran anyway, its result was
+/// recorded against a turn no longer there - so the projector dropped it and the model never
+/// learned the command had run - and recording it took a checkpoint, so `redo` could not bring
+/// the turn back either. Deciding and ready are the resting states that hold calls, and the
+/// refusal covers both.
+#[tokio::test]
+async fn an_undo_is_refused_while_a_turn_holds_calls() {
+    let kernel = kernel();
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    kernel.push(ContextItem::user("look"));
+
+    let asking = kernel.step().await.unwrap();
+    assert!(
+        matches!(asking, nachalnik::State::Deciding { .. }),
+        "{asking:?}"
+    );
+    let before = kernel.items();
+    assert!(matches!(kernel.undo(), Err(nachalnik::Error::Busy)));
+    assert!(matches!(kernel.redo(), Err(nachalnik::Error::Busy)));
+    assert_eq!(kernel.items(), before, "nothing was undone");
+
+    let request = kernel.pending_permissions()[0].id;
+    let ready = kernel.decide(request, nachalnik::Grant::Allow).unwrap();
+    assert!(matches!(ready, nachalnik::State::Ready { .. }), "{ready:?}");
+    assert!(matches!(kernel.undo(), Err(nachalnik::Error::Busy)));
+
+    kernel.step().await.unwrap();
+    let projected = kernel.project();
+    assert!(
+        projected.skipped.is_empty(),
+        "the result went out with the turn that asked for it: {:?}",
+        projected.skipped
+    );
+    assert!(
+        kernel.undo().unwrap(),
+        "and at rest an undo is an undo again"
+    );
+}
+
+/// A tool that writes into the context while it runs, the way `kamchatka`'s `context` tool does.
+struct Notes(std::sync::OnceLock<Kernel>);
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Notes {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("note", "writes a note into the context")
+    }
+
+    async fn invoke(
+        &self,
+        _call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        self.0
+            .get()
+            .expect("the kernel was handed over")
+            .push(ContextItem::file("notes.md", "noted"));
+
+        Ok(nachalnik::ToolOutput::new("noted"))
+    }
+}
+
+/// A batch of results is one undo even when something changed the context between two of them.
+///
+/// note: each result joined the checkpoint the first took, which assumed nothing else took one in
+/// between - and a tool that edits the context while it runs does exactly that. One undo then took
+/// back the note and the results recorded after it, and kept the one before: a turn with one call
+/// answered and two not, repaired out of the next request.
+#[tokio::test]
+async fn a_batch_is_one_undo_whatever_happened_between_its_results() {
+    let kernel = kernel();
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "echo", json!({})),
+            call("c2", "note", json!({})),
+            call("c3", "echo", json!({})),
+        ]),
+        ModelResponse::text("done"),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "said")));
+    let notes = Arc::new(Notes(std::sync::OnceLock::new()));
+    let _ = notes.0.set(kernel.clone());
+    kernel.add_tool(notes);
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.unwrap();
+
+    // the closing answer, and then the batch
+    assert!(kernel.undo().unwrap());
+    assert!(kernel.undo().unwrap());
+    let left: Vec<_> = kernel.items().iter().map(|item| item.kind.name()).collect();
+    assert_eq!(
+        left,
+        ["user_message", "assistant_message"],
+        "the batch went whole, the note it wrote included"
+    );
+    // and it comes back whole
+    assert!(kernel.redo().unwrap());
+    let results = kernel
+        .items()
+        .iter()
+        .filter(|item| item.kind.name() == "tool_result")
+        .count();
+    assert_eq!(results, 3);
 }

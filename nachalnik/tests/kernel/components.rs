@@ -144,7 +144,7 @@ async fn a_pin_is_a_promise() {
     assert_eq!(report.removed[0].id, doomed);
     assert!(kernel.item(pinned).unwrap().is_projected());
 
-    assert!(kernel.undo(), "and even that is one operation");
+    assert!(kernel.undo().unwrap(), "and even that is one operation");
     assert!(kernel.item(doomed).unwrap().is_projected());
 }
 

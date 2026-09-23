@@ -16,7 +16,7 @@ use crate::{
     tool::{Tool, ToolOutput},
 };
 
-use super::{Kernel, PreparedCall, Restore, State};
+use super::{Batch, Kernel, PreparedCall, Restore, State};
 
 impl Kernel {
     /// Matches the model's calls to tools, asks the policy about each, and queues them.
@@ -31,6 +31,9 @@ impl Kernel {
     pub(super) async fn prepare_calls(&self, calls: &[ToolCall]) -> State {
         let mut prepared = Vec::with_capacity(calls.len());
         let mut announcements = Vec::with_capacity(calls.len());
+        // the checkpoint the turn was recorded under, a moment ago, which an answer to a call
+        // nobody can run joins
+        let mut turn = Batch(Some(self.0.context.read().taken()));
 
         for call in calls {
             self.emit(Event::ToolRequested {
@@ -52,7 +55,7 @@ impl Kernel {
                     ToolOutput::error(unknown_tool(&call.tool, &self.tool_ids())),
                     None,
                     None,
-                    false,
+                    &mut turn,
                 );
                 continue;
             };
@@ -113,13 +116,15 @@ impl Kernel {
             // whatever order they finished in, they are recorded in the order the model asked
             // for them, so that a context does not depend on which tool happened to be quick
             let outputs = self.invoke_together(&prepared).await;
-            for (nth, (prepared, output)) in prepared.iter().zip(outputs).enumerate() {
-                self.record_output(prepared, output, nth == 0);
+            let mut batch = Batch::default();
+            for (prepared, output) in prepared.iter().zip(outputs) {
+                self.record_output(prepared, output, &mut batch);
             }
         } else {
             // one at a time, and each one recorded before the next begins, so that a client
             // watching the stream sees a call finish rather than a batch of them
-            for (nth, prepared) in prepared.iter().enumerate() {
+            let mut batch = Batch::default();
+            for prepared in &prepared {
                 // an interrupt stops the ones that have not started. They are still recorded,
                 // and recorded as not having run, because a call with no result at all would
                 // leave the model looking at a question nobody answered
@@ -135,7 +140,7 @@ impl Kernel {
                         .await
                     }
                 };
-                self.record_output(prepared, output, nth == 0);
+                self.record_output(prepared, output, &mut batch);
             }
         }
 
@@ -211,11 +216,12 @@ impl Kernel {
 
     /// Records what a call produced, keeping the whole of it when a limit shortened it.
     ///
-    /// note: `checkpoint` is true for the first call of a batch and false for the rest - the shape
+    /// note: every call of a batch is recorded into one [`Batch`] - the shape
     /// [`Kernel::cancel_pending_calls`] uses, for the reason it gives. Running the calls a turn
     /// asked for is one thing that happened, and a checkpoint each would let one `undo` leave
-    /// some of them answered and the last one never mentioned.
-    fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput, checkpoint: bool) {
+    /// some of them answered and the last one never mentioned - which is also what a checkpoint
+    /// of somebody else's, landing between two of them, would do if it were not folded in.
+    fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput, batch: &mut Batch) {
         // an output limit decides what the *model* is shown. It is not permission to throw the
         // rest away, so unless the user has said otherwise the whole of it goes into the context
         // too - archived, listed, inspectable, and restorable like anything else
@@ -246,19 +252,12 @@ impl Kernel {
             item.included_because =
                 Some("the whole of a tool output an output limit shortened".to_owned());
 
-            // the pair is one thing that happened, so the checkpoint, if this call takes one, is
-            // taken here
-            self.add_item(item, checkpoint)
+            // the pair is one thing that happened, so it goes into the batch first
+            self.add_in(item, batch)
         });
 
         let truncated = limit.and_then(|limit| output.content.truncate_to(limit));
-        self.record_tool_result(
-            &prepared.call,
-            output,
-            truncated,
-            whole,
-            checkpoint && whole.is_none(),
-        );
+        self.record_tool_result(&prepared.call, output, truncated, whole, batch);
     }
 
     /// What a result of this call is called: the tool's name and the operation the call named,
@@ -300,17 +299,17 @@ impl Kernel {
 
     /// Records a tool result in the context and broadcasts [`Event::ToolFinished`].
     ///
-    /// note: `checkpoint` is false when the caller has already taken one this result belongs to -
-    /// the turn it answers, the first call of its batch, or the whole of a truncated output, which
-    /// is recorded as a second item - so that one [`Kernel::undo`] takes back the whole of what
-    /// happened rather than leaving half a tool call behind.
+    /// note: into a [`Batch`] the caller holds - the turn it answers, the calls of one turn, or the
+    /// whole of a truncated output, which is recorded as a second item - so that one
+    /// [`Kernel::undo`] takes back the whole of what happened rather than leaving half a tool call
+    /// behind.
     pub(super) fn record_tool_result(
         &self,
         call: &ToolCall,
         output: ToolOutput,
         truncated: Option<usize>,
         whole: Option<ContextId>,
-        checkpoint: bool,
+        batch: &mut Batch,
     ) -> ContextId {
         let is_error = output.is_error;
         let mut item =
@@ -335,7 +334,7 @@ impl Kernel {
             (None, _) => None,
         };
 
-        let id = self.add_item(item, checkpoint);
+        let id = self.add_in(item, batch);
         let tokens = self.item(id).map(|i| i.tokens).unwrap_or(0);
         self.emit(Event::ToolFinished {
             call: call.id.clone(),

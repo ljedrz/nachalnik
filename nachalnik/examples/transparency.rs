@@ -522,7 +522,7 @@ async fn main() -> Result<(), BoxError> {
     }
 
     println!("\n   > \"wait, no, I needed that\"\n");
-    kernel.undo();
+    kernel.undo().unwrap();
     events(&mut stream);
     note(&format!(
         "back to {} tokens, in one call - the item was never destroyed, only withheld",

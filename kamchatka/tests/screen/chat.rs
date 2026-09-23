@@ -1338,7 +1338,7 @@ async fn a_turn_rewritten_in_place_reads_as_it_is_now() {
     );
 
     // and it is not a copy written into the transcript: undo takes it back and the screen agrees
-    harness.app.kernel.undo();
+    harness.app.kernel.undo().unwrap();
     let undone = harness.screen();
     assert!(
         undone.contains("the words that streamed in"),
@@ -1529,12 +1529,12 @@ fn the_chat_is_the_conversation_the_model_is_in() {
                     let mut tally = reached.borrow_mut();
                     match *move_ {
                         Move::Undo => {
-                            if kernel.undo() {
+                            if kernel.undo().unwrap() {
                                 tally.undid_something += 1;
                             }
                         }
                         Move::Redo => {
-                            kernel.redo();
+                            kernel.redo().unwrap();
                         }
                         // enough undos take back both questions and both answers, and then
                         // the context tab has no row to press a key on: a move aimed at an

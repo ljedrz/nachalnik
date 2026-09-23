@@ -19,8 +19,8 @@ kernel.replace(id, "a shorter version")?;                 // new contents, same 
 kernel.supersede(old, ContextItem::file(path, reread))?;  // this one replaces that one
 kernel.annotate(id, json!({ "expendable": true }))?;      // a hint for your compactor
 kernel.push_all(files);                                   // one operation, so one undo
-kernel.undo();
-kernel.redo();
+kernel.undo()?;                                           // refused while a turn holds calls
+kernel.redo()?;
 ```
 
 `set_state` says what it did to each identifier — `changed`, `unchanged`, `unknown` — because

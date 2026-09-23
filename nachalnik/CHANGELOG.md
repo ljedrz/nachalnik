@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### breaking
 
+- **`Kernel::undo` and `Kernel::redo` return `Result<bool>`, and refuse while a turn holds
+  calls.** From `Requesting` until the machine is resting with nothing to run - through
+  `Deciding`, `Ready` and `Executing` - they answer `Error::Busy`. Undoing the turn that asked for
+  a call did not stop the call: it ran, its result was recorded against a turn no longer there and
+  never reached the model, and recording it took a checkpoint that made the undone turn
+  unreachable by `redo`. A caller that wrote `kernel.undo()` as a statement handles the `Result`;
+  `Ok(false)` is what `false` was.
+
 - **`Snapshot` and `SelectorError` are `#[non_exhaustive]`.** Nothing outside the crate builds
   either - `Kernel::snapshot` makes the one and `Selector::parse` the other - which is the
   convention's test, and it makes the next field on a snapshot a patch. A struct literal of either
@@ -51,6 +59,13 @@ minor bump may break you.
   provider's identifiers against.
 
 ### fixed
+
+- **A batch of tool results is one undo whatever lands between two of them.** Each result joined
+  the checkpoint the first took, assuming nothing else took one in between - and a tool that
+  changes the context while it runs, or a client that does, did. One undo then took back that
+  change and the results after it, and kept the ones before: a turn half answered, repaired out of
+  the next request. A checkpoint taken while a batch runs is folded into the batch's own now, for
+  the calls of a turn, their cancellation, and the answer to a call nobody can run.
 
 - **A resumed session numbers its records and its permission questions on from the one it
   carries on from.** Both started again at 1, so a client keeping a `history_since` cursor across

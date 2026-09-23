@@ -725,7 +725,7 @@ async fn an_undone_rewrite_does_not_leave_the_same_text_on_two_pages() {
         .replace(id, "what it says instead")
         .expect("the item is there");
     harness.drain();
-    assert!(harness.app.kernel.undo());
+    assert!(harness.app.kernel.undo().unwrap());
     harness.drain();
 
     // the version that was put back is now the current one, and a page saying so twice says

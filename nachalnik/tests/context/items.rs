@@ -108,7 +108,7 @@ fn content_can_be_replaced_in_place() {
     kernel.replace(a, "a").unwrap();
     assert_eq!(kernel.item(a).unwrap().tokens, 1);
     assert_eq!(kernel.item(a).unwrap().content.to_text(), "a");
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert_eq!(kernel.item(a).unwrap().tokens, 25);
 
     assert!(kernel.replace(ContextId(999), "x").is_err());
@@ -250,7 +250,7 @@ fn superseding_is_explicit_and_reversible() {
     );
 
     // and it is one operation
-    assert!(kernel.undo());
+    assert!(kernel.undo().unwrap());
     assert!(kernel.item(old).unwrap().is_projected());
     assert!(kernel.item(new).is_none());
 
