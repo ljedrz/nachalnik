@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **The conformance check for a body that is not a stream wants the page in the error.** It passed
+  on any error at all, so a provider that never reached the fixture passed it; it now asks for the
+  server's own words, as the check for a failure inside a 200 already did.
+
 ## [0.6.0] - 2026-09-23
 
 ### breaking

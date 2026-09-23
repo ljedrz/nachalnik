@@ -793,6 +793,10 @@ impl Conformance {
     }
 
     /// A body that is not a stream at all is an error rather than an empty answer.
+    ///
+    /// note: an error that says what came back, as for a failure inside a 200. Any error at all
+    /// would pass a provider that never reached the fixture, and one that says nothing of the page
+    /// leaves whoever reads it looking for a fault in their own request.
     async fn not_a_stream(&self) -> Outcome {
         match self
             .ask("<html>502 Bad Gateway</html>", Delivery::Whole)
@@ -802,7 +806,8 @@ impl Conformance {
                 "a page of HTML was read as an answer: {:?}",
                 text_of(&response)
             )),
-            Err(_) => Outcome::Passed,
+            Err(e) if e.contains("502 Bad Gateway") => Outcome::Passed,
+            Err(e) => Outcome::Failed(format!("what came back is not in the error: {e}")),
         }
     }
 
