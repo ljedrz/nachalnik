@@ -534,6 +534,21 @@ impl Reach {
             false => self.workdir.join(&path),
         };
         let resolved = resolve(&absolute);
+        // note: what `resolve` cannot resolve it leaves as it was, and a `..` after a directory
+        // that is not there is one of those: `nope/../../../etc/passwd` came back with its `..`s
+        // still in it, and a comparison by components found the working directory at the front of
+        // it. Where such a path ends up depends on a directory that does not exist yet, so it is
+        // not checked, it is refused
+        if resolved
+            .components()
+            .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            return Err(format!(
+                "{}: goes up with `..` out of a directory that is not there, so where it ends up \
+                 cannot be checked; say the path without the `..`",
+                path.display()
+            ));
+        }
 
         let readable = matches!(doing, Access::Reading);
         match std::iter::once(&self.workdir)

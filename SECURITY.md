@@ -22,7 +22,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   (`context: allow` is reasonable for a `note` and not for an `exclude`). Both only ever tighten -
   the strictest of everything consulted wins - so neither can reopen what a capability refused,
   and that is the property that makes adding one safe. An operation rule is consulted only where one
-  exists, so a tool nobody has written a rule about is judged exactly as before.
+  exists, so a tool nobody has written a rule about is judged exactly as before. A path rule
+  compares names the way the filesystem does - case-blind on macOS and Windows, and on Windows
+  without a trailing dot or a `:stream` - since `.ENV` opens `.env` there; and a rule about a
+  domain or an operation no call is judged under is refused where it is given rather than kept.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.

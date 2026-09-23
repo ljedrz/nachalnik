@@ -706,3 +706,43 @@ fn a_session_the_runtime_would_have_to_repair_is_not_carried_on_from() {
     assert!(said.contains("will not carry on from"), "{said}");
     assert!(said.contains("`last_seq`"), "it says which: {said}");
 }
+
+/// A rule about something no call here is judged under is refused where it is given, and says
+/// what there is.
+///
+/// note: `--deny shell` parsed as a domain called `shell`, and the shell is judged as `exec:run`, so
+/// it refused nothing - a headless run given `--on-ask allow` then ran every command unasked, under
+/// a rule that read as given. A typo in an operation was the same silence.
+#[test]
+fn a_rule_nothing_is_judged_under_is_refused() {
+    use kamchatka::{tools::Subject, wiring::Setup};
+
+    let checked = |rule: &str| {
+        Setup {
+            deny: vec![Subject::parse(rule)],
+            ..Setup::default()
+        }
+        .check()
+    };
+
+    let tool = checked("shell").expect_err("a tool's name is not what it is judged as");
+    assert!(tool.contains("`exec:run`"), "{tool}");
+    let typo = checked("fs:writ").expect_err("an operation nothing does");
+    assert!(typo.contains("write"), "{typo}");
+    let nowhere = checked("network").expect_err("a domain nothing is judged under");
+    assert!(nowhere.contains("exec"), "{nowhere}");
+
+    for rule in [
+        "exec",
+        "exec:run",
+        "fs:write",
+        "net:reach",
+        "mcp:call",
+        "*.pem",
+    ] {
+        assert!(
+            checked(rule).is_ok(),
+            "`{rule}` is a rule something is judged under"
+        );
+    }
+}

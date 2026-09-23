@@ -521,3 +521,34 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         None,
     );
 }
+
+/// A path that climbs with `..` out of a directory that is not there is refused, rather than
+/// checked as though it were still inside.
+///
+/// note: `resolve` peels off what does not exist and stops at a `..` it cannot peel, so the path
+/// came back with its `..`s in it and the working directory at its front - which a comparison by
+/// components passes. On Linux the open that follows refuses it; anywhere that open is an
+/// ordinary one, creating the missing directory in between was a way out.
+#[test]
+fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let dir = common::scratch("climb").canonicalize().expect("it exists");
+    let reach = Reach {
+        workdir: dir.join("w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+    std::fs::create_dir_all(dir.join("w")).expect("the working directory");
+
+    for doing in [Access::Reading, Access::Writing] {
+        let refused = reach
+            .allows("nope/../../../etc/passwd", doing)
+            .expect_err("it climbs out through a directory that is not there");
+        assert!(refused.contains("`..`"), "{refused}");
+    }
+    // and a `..` through a directory that is there is resolved as it always was
+    std::fs::create_dir_all(dir.join("w").join("here")).expect("a directory");
+    assert!(reach.allows("here/../notes.txt", Access::Writing).is_ok());
+}

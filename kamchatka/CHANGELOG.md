@@ -147,6 +147,24 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A path rule matches every name that opens its file.** Rules were compared byte for byte, so
+  on macOS and Windows `fs read .ENV` opened `.env` without the question `.env*` asks, and on
+  Windows `key.pem.` and `key.pem::$DATA` opened `key.pem` past `*.pem`. Names are compared as the
+  filesystem here compares them: case-blind on macOS and Windows, and on Windows without trailing
+  dots and spaces or a stream. Linux is unchanged, since a name differing in case is a different
+  file there and folding would widen an `allow`.
+
+- **A rule nothing is judged under is refused where it is given.** `--deny shell` parsed as a
+  domain called `shell`, and the shell is judged as `exec:run`, so it refused nothing - and a run
+  with `--on-ask allow` ran every command unasked under it. A rule naming one of this program's
+  tools says what the tool is judged as; one naming an operation or a domain no call can be judged
+  under says what there is.
+
+- **A path that climbs out of a directory that is not there is refused.** `nope/../../../x` kept
+  its `..`s through resolution, since what does not exist is not resolved, and a comparison by
+  components found the working directory at its front. On Linux the open refused it anyway; where
+  that open is an ordinary one, creating `nope` in between was a way out.
+
 - **`-r` and `/load` refuse a snapshot the runtime would have to repair**, and say what is wrong
   with it (`nachalnik::Snapshot::problems`). A session carried on from a record that had to be
   changed to be read is one whose record no longer says what happened.

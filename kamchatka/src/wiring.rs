@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 
-use nachalnik::{Config, ContextItem, Event, Kernel, Snapshot};
+use nachalnik::{Capability, Config, ContextItem, Event, Kernel, Snapshot};
 use nachalnik_providers::Dialect;
 use tokio::sync::{broadcast, mpsc};
 
@@ -198,6 +198,12 @@ pub struct Wired {
 /// `Setup::check` is about - a name that is not a tool. Building them costs six schemas and
 /// happens once.
 fn offered_ids() -> Vec<String> {
+    offered().into_iter().map(|it| it.id).collect()
+}
+
+/// Everything this program's own tools declare, for [`offered_ids`] and the rules checked against
+/// what the tools do.
+fn offered() -> Vec<nachalnik::ToolSpec> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
     for tool in tools::builtin(
@@ -221,7 +227,72 @@ fn offered_ids() -> Vec<String> {
     }
     let _anchor = introspect::install(&kernel, policy, Limits::default());
 
-    kernel.tool_specs().into_iter().map(|it| it.id).collect()
+    kernel.tool_specs()
+}
+
+/// What is wrong with a rule about a capability or a domain no tool here has, where something is.
+///
+/// note: the path rules' objection, for the other two kinds. `--deny shell` parsed as a domain
+/// called `shell`, and the shell is judged as `exec:run` - so it refused nothing, and a headless
+/// run given `--on-ask allow` ran every command unasked under a rule that read as given. So did a
+/// typo like `fs:writ`. The domains a call here can be judged under are the ones this program's
+/// tools declare, `net:reach`, which `shell` asks about per command, and `mcp:call`, which every
+/// tool from a server declares; anything else can match nothing.
+fn unreached(subject: &Subject) -> Option<String> {
+    let (domain, op) = match subject {
+        Subject::Capability(capability) => (capability.domain.to_string(), Some(&capability.op)),
+        Subject::Domain(domain) => (domain.to_string(), None),
+        Subject::Path(_) | Subject::Server(_) => return None,
+    };
+    let specs = offered();
+    let mut declared: Vec<Capability> = specs
+        .iter()
+        .flat_map(|spec| spec.capabilities.iter().cloned())
+        .collect();
+    declared.push(Capability::net("reach"));
+    declared.extend(Capability::parse("mcp:call").ok());
+
+    let ops: Vec<&str> = declared
+        .iter()
+        .filter(|it| it.domain.to_string() == domain)
+        .map(|it| it.op.as_str())
+        .collect();
+    if ops.is_empty() {
+        return Some(match specs.iter().find(|spec| spec.id == domain) {
+            Some(tool) => format!(
+                "`{subject}` names a tool, and a rule names what a call needs: `{domain}` is judged \
+                 as {}",
+                tool.capabilities
+                    .iter()
+                    .map(|it| format!("`{it}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            None => {
+                let mut domains: Vec<String> =
+                    declared.iter().map(|it| it.domain.to_string()).collect();
+                domains.sort();
+                domains.dedup();
+                format!(
+                    "`{subject}` is about `{domain}`, which no call here is judged under: the \
+                     domains are {}",
+                    domains.join(", ")
+                )
+            }
+        });
+    }
+    match op {
+        Some(op) if !ops.contains(&op.as_str()) => {
+            let mut ops = ops;
+            ops.sort();
+            ops.dedup();
+            Some(format!(
+                "`{subject}` is not something a call here does: `{domain}` is {}",
+                ops.join(", ")
+            ))
+        }
+        _ => None,
+    }
 }
 
 impl Setup {
@@ -242,6 +313,15 @@ impl Setup {
             {
                 return Err(objection);
             }
+        }
+
+        if let Some(objection) = self
+            .allow
+            .iter()
+            .chain(self.deny.iter())
+            .find_map(unreached)
+        {
+            return Err(objection);
         }
 
         // note: a name that is not a tool stops the session rather than being skipped, for the
