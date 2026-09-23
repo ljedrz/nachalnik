@@ -76,6 +76,17 @@ mod endpoint;
 /// does and is built without either of them.
 #[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
 pub(crate) const RETRIES: usize = 4;
+
+/// How long a question *about* an endpoint is given: a listing of its models, or a probe for a
+/// model's context limit.
+///
+/// note: its own bound, because none of these is a turn. A turn is watched for silence and stopped
+/// by an interrupt; these are awaited by a startup, a `/model` or a `/models` with nothing watching,
+/// on a client that may have no timeout - and an endpoint that takes the connection and never
+/// answers would hold whatever is waiting on it for ever. What a question that times out answers
+/// is what it answers when the endpoint cannot say: nothing, or no limit.
+#[cfg(any(feature = "openai", feature = "gemini"))]
+pub(crate) const ASKING: std::time::Duration = std::time::Duration::from_secs(15);
 #[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
 mod markup;
 

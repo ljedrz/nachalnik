@@ -459,7 +459,7 @@ impl OpenAiCompatible {
             true => self.client.get(url).bearer_auth(&self.api_key),
             false => self.client.get(url).header("x-goog-api-key", &self.api_key),
         };
-        let Ok(response) = request.send().await else {
+        let Ok(response) = request.timeout(crate::ASKING).send().await else {
             return Vec::new();
         };
         let Ok(body) = response.json::<Value>().await else {
@@ -549,9 +549,13 @@ impl OpenAiCompatible {
         // only a *loaded* model reports one, and this one is cold. Asking for it with an empty
         // prompt loads it and generates nothing, which is a side effect worth having: it is the
         // model this session is about to talk to anyway
+        //
+        // note: given longer than a listing, because loading is what it is for and a large model
+        // takes a while to load - but a bound all the same, for the reason `ASKING` has one
         self.client
             .post(format!("{root}/api/generate"))
             .json(&json!({ "model": *self.model.lock(), "prompt": "" }))
+            .timeout(crate::ASKING * 8)
             .send()
             .await
             .ok()?;
@@ -565,6 +569,7 @@ impl OpenAiCompatible {
         let body = self
             .client
             .get(format!("{root}/api/ps"))
+            .timeout(crate::ASKING)
             .send()
             .await
             .ok()?
@@ -590,7 +595,14 @@ impl OpenAiCompatible {
             true => self.client.get(url).bearer_auth(&self.api_key),
             false => self.client.get(url).header("x-goog-api-key", &self.api_key),
         };
-        let body = request.send().await.ok()?.json::<Value>().await.ok()?;
+        let body = request
+            .timeout(crate::ASKING)
+            .send()
+            .await
+            .ok()?
+            .json::<Value>()
+            .await
+            .ok()?;
 
         // `data` is the OpenAI shape, `models` the native Google one
         let entries = body["data"]

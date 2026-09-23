@@ -13,7 +13,9 @@ use serde_json::Value;
 use crate::{
     markup::unmarked,
     refused,
-    waiting::{Asking, HEARTBEAT, PATIENCE, Silence, Vigil, gone_quiet, stalled},
+    waiting::{
+        Asking, HEARTBEAT, LARGEST, PATIENCE, Silence, Vigil, gone_quiet, stalled, too_large,
+    },
 };
 
 /// What one dialect makes of the events in a stream.
@@ -79,6 +81,9 @@ pub(crate) async fn read(
                     asking.say(format!("{} is answering again", asking.model));
                 }
                 if seen.is_empty() {
+                    if unstreamed.len() + bytes.len() > LARGEST {
+                        return Err(too_large(asking.model));
+                    }
                     unstreamed.extend_from_slice(&bytes);
                 }
                 buffer.extend_from_slice(&bytes);
@@ -156,6 +161,25 @@ pub(crate) async fn read(
             seen.push(event);
         }
 
+        // what is left is a line not yet ended, and one that never ends is not read for ever: what
+        // arrived before it is kept, as for a stream cut off
+        if buffer.len() > LARGEST {
+            if seen.is_empty() {
+                return Err(too_large(asking.model));
+            }
+            asking.say(format!(
+                "{} sent more than {} MiB without ending a line; what had arrived is kept",
+                asking.model,
+                LARGEST >> 20
+            ));
+            stopped = Stopped::CutOff;
+            break;
+        }
+        // and asked after every chunk as well as in the quiet and between lines, since a body
+        // that trickles without ending a line is none of those
+        if asking.deltas.is_interrupted() {
+            stopped = Stopped::Interrupted;
+        }
         if ended || stopped == Stopped::Interrupted {
             break;
         }

@@ -39,6 +39,25 @@ minor bump may break you.
 
 ### fixed
 
+- **A question about an endpoint gives up rather than waiting for ever.** A listing of models and
+  the probes for a context limit ran on a client with no timeout and outside any turn, so nothing
+  watched them and no interrupt reached them: an endpoint that took the connection and never
+  answered held a startup, a model switch or a listing for ever. Each is bounded now - fifteen
+  seconds, and two minutes for the request that makes ollama load a model - and answers what it
+  answers when the endpoint cannot say.
+
+- **A whole answer still being written is not asked for again.** With `streaming(false)`, the
+  headers come with the last token, so no answer yet is a model still generating - which was taken
+  for a busy server and sent again up to three more times, each one billed, before failing anyway.
+  Only a request whose connection was never made is retried there now.
+
+- **A stream that trickles can be stopped, and nothing one response sends is held without limit.**
+  The interrupt was asked in the quiet and between lines, and a body arriving a byte at a time with
+  no newline is neither, so escape did nothing for as long as it trickled; it is asked after every
+  chunk now. A line, a body that was never a stream, and a whole answer are each read to 64 MiB
+  and no further: past it a stream that has said something keeps it, as a stream cut off does, and
+  one that has not is refused with a sentence.
+
 - **A System One refusal that is a web page says what the page says.** A firewall in front of the
   service answers some requests with an HTML page, and the error quoted its first characters - a
   doctype and a stylesheet. It carries the page's words now, with the markup taken off, the way

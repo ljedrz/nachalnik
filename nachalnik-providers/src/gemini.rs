@@ -127,6 +127,7 @@ impl Gemini {
             .client
             .get(format!("{base}/models/{model}"))
             .header("x-goog-api-key", &self.api_key)
+            .timeout(crate::ASKING)
             .send()
             .await
         else {
@@ -675,6 +676,7 @@ impl Endpoint for Gemini {
             .client
             .get(format!("{base}/models?pageSize=200"))
             .header("x-goog-api-key", &self.api_key)
+            .timeout(crate::ASKING)
             .send()
             .await
         else {

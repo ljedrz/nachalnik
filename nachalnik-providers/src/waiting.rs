@@ -8,8 +8,12 @@
 use std::{
     future::Future,
     sync::atomic::{AtomicUsize, Ordering},
-    time::{Duration, Instant},
+    time::Duration,
 };
+
+// tokio's rather than `std`'s, so that the silences are counted on the clock the waits between
+// them are slept on - which is the same clock at run time, and one a test can pause
+use tokio::time::Instant;
 
 use nachalnik::{BoxError, DeltaSink, ModelResponse, StopReason};
 use parking_lot::Mutex;
@@ -48,6 +52,23 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(150);
 /// as long as it takes to write one, and there is no fragment to reset the watch. A stream is
 /// different, and 150s of silence in the middle of one really is a stall.
 pub(crate) const WHOLE_ANSWER: Duration = Duration::from_secs(600);
+
+/// The most of one response this reads before it stops: a line of a stream with no end to it, or a
+/// whole body.
+///
+/// note: a bound because nothing else is one. The silence watch is reset by every byte, so a body
+/// that trickles without ever ending a line is read for as long as it trickles, and all of it is
+/// held. Far past anything a model answers with, and near nothing to a machine.
+pub(crate) const LARGEST: usize = 64 << 20;
+
+/// The error for a response past [`LARGEST`].
+pub(crate) fn too_large(model: &str) -> BoxError {
+    format!(
+        "{model} sent more than {} MiB without finishing what it was sending; this reads no further",
+        LARGEST >> 20
+    )
+    .into()
+}
 
 /// What a stream's silence has come to mean.
 pub(crate) enum Silence {
@@ -147,6 +168,18 @@ impl Unsent {
             Self::Transport(e) => worth_waiting_out(e),
             // the same thing the transport's own timeout means, arrived at by counting rather
             // than by being told: a server that took the connection and went quiet is busy
+            Self::Silent(_) => true,
+            Self::Interrupted => false,
+        }
+    }
+
+    /// Whether the server may have started on it, so that sending it again could pay for it twice.
+    ///
+    /// note: only a connection that was never made is certain not to have reached anybody. A
+    /// silence, or a timeout after connecting, is a request the server may be working on.
+    fn may_have_been_heard(&self) -> bool {
+        match self {
+            Self::Transport(e) => !e.is_connect(),
             Self::Silent(_) => true,
             Self::Interrupted => false,
         }
@@ -301,7 +334,16 @@ pub(crate) async fn sent(
             // a connection that timed out is a busy server wearing different clothes. A refused
             // connection is *not* this - it is a definite answer, usually an address with nothing
             // behind it, and making a typo take four doublings to report helps nobody
-            Err(reason) if reason.worth_waiting_out() => Busy::Unsent(reason),
+            //
+            // note: and a whole answer that has not arrived is not this either, unless it never
+            // reached the server. Its headers come with its last token, so no answer yet means the
+            // model is still writing it - and sending it again would pay for it again, four times
+            // over, and fail anyway once the last attempt ran as long as the first
+            Err(reason)
+                if reason.worth_waiting_out() && (streaming || !reason.may_have_been_heard()) =>
+            {
+                Busy::Unsent(reason)
+            }
             Err(reason) => return Err(reason.giving_up(asking.model)),
             Ok(response) if streaming && response.status().is_success() => {
                 return Ok(Sent::Streaming(response));
@@ -418,7 +460,15 @@ async fn body(
         match tokio::time::timeout(HEARTBEAT, response.chunk()).await {
             Ok(Ok(Some(bytes))) => {
                 vigil.heard();
+                if body.len() + bytes.len() > LARGEST {
+                    return Err(too_large(asking.model));
+                }
                 body.extend_from_slice(&bytes);
+                // checked on every chunk as well as in the quiet: a body that never goes quiet
+                // would otherwise never be asked
+                if asking.deltas.is_interrupted() {
+                    return Ok(None);
+                }
             }
             Ok(Ok(None)) => return Ok(Some(String::from_utf8_lossy(&body).into_owned())),
             Ok(Err(e)) => return Err(e.into()),

@@ -48,5 +48,7 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
 # `net` and `io-util` for the tests that need a real socket: a server that answers and then says
-# nothing, and one that breaks a stream at a chosen byte. Neither shape can be mocked
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }
+# nothing, and one that breaks a stream at a chosen byte. Neither shape can be mocked. `test-util`
+# for the paused clock the bounded questions are waited out on, rather than their real fifteen
+# seconds
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "test-util"] }

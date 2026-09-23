@@ -164,6 +164,46 @@ async fn the_other_dialect_is_watched_the_same_way() {
         .expect("an interrupted request is not a failed one");
 }
 
+/// A question about an endpoint that never answers gives up, in either dialect, rather than
+/// holding whatever asked it.
+///
+/// note: a listing and a probe are not turns - nothing watches them for silence and no interrupt
+/// reaches them - and they ran on a client with no timeout, so an endpoint that took the connection
+/// and said nothing held a startup, a `/model` or a `/models` for ever. On a paused clock, so that
+/// the bound is waited out without its real fifteen seconds; the guard around each is the same
+/// clock, and without a bound the guard is what fires.
+#[tokio::test(start_paused = true)]
+async fn a_question_nobody_answers_gives_up() {
+    #[cfg(feature = "openai")]
+    use nachalnik::Provider as _;
+    #[cfg(feature = "gemini")]
+    use nachalnik_providers::Endpoint as _;
+
+    #[cfg(feature = "openai")]
+    {
+        let asked = nachalnik_providers::OpenAiCompatible::new("deaf", deaf_server().await, "k");
+        let listed = tokio::time::timeout(Duration::from_secs(60), asked.models())
+            .await
+            .expect("the listing waited for ever");
+        assert!(listed.is_empty(), "{listed:?}");
+        tokio::time::timeout(Duration::from_secs(600), asked.probe())
+            .await
+            .expect("the probe waited for ever");
+        assert_eq!(asked.info().context_limit, None);
+    }
+    #[cfg(feature = "gemini")]
+    {
+        let asked = nachalnik_providers::Gemini::new("deaf", deaf_server().await, "k");
+        let listed = tokio::time::timeout(Duration::from_secs(60), asked.models())
+            .await
+            .expect("the listing waited for ever");
+        assert!(listed.is_empty(), "{listed:?}");
+        tokio::time::timeout(Duration::from_secs(60), asked.probe())
+            .await
+            .expect("the probe waited for ever");
+    }
+}
+
 /// Accepts one request and sends the headers of a whole answer, and then nothing of its body.
 #[cfg(feature = "openai")]
 async fn headers_only() -> String {
@@ -288,4 +328,200 @@ async fn a_stop_pressed_during_a_backoff_is_not_sent_again() {
         1,
         "a stopped request was sent again"
     );
+}
+
+/// Takes every request, counts it, and never answers any.
+#[cfg(feature = "openai")]
+async fn counting_deaf_server(requests: Arc<std::sync::atomic::AtomicUsize>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((mut socket, _)) = listener.accept().await {
+            requests.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut discard = [0u8; 4096];
+            let _ = socket.read(&mut discard).await;
+            held.push(socket);
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A whole answer that has not arrived is not asked for again: its headers come with its last
+/// token, so no answer yet is a model still writing one.
+///
+/// note: it was taken for a busy server and sent again three times, each a whole generation
+/// billed, and failed anyway once the last had waited as long as the first. On a paused clock,
+/// since what is waited out is `WHOLE_ANSWER`, ten minutes a try.
+#[cfg(feature = "openai")]
+#[tokio::test(start_paused = true)]
+async fn a_whole_answer_still_being_written_is_asked_for_once() {
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        nachalnik_providers::OpenAiCompatible::new(
+            "thinking",
+            counting_deaf_server(requests.clone()).await,
+            "no key needed",
+        )
+        .streaming(false),
+    ));
+    kernel.push(ContextItem::user("think hard"));
+
+    let failed = tokio::time::timeout(Duration::from_secs(3600), kernel.turn())
+        .await
+        .expect("it gave up");
+    assert!(failed.is_err(), "an answer that never came is a failure");
+    assert_eq!(
+        requests.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "it was asked for again"
+    );
+}
+
+/// Sends a stream's headers, and then a byte at a time with no newline for as long as it is read.
+#[cfg(feature = "openai")]
+async fn trickling_server() -> String {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 4096];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                  Transfer-Encoding: chunked\r\n\r\n",
+            )
+            .await;
+        while socket.write_all(b"1\r\nx\r\n").await.is_ok() {
+            let _ = socket.flush().await;
+            tokio::time::sleep(Duration::from_millis(30)).await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A stream that trickles without ever ending a line can still be stopped.
+///
+/// note: the interrupt was asked in the quiet and between lines, and this is neither: every byte
+/// resets the silence watch and none of them ends a line, so escape did nothing for as long as the
+/// server went on trickling.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_stream_that_never_ends_a_line_can_still_be_stopped() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "trickle",
+        trickling_server().await,
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("are you there?"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    kernel.interrupt();
+
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should reach a stream that trickles")
+        .expect("the turn is not a panic")
+        .expect("an interrupted request is not a failed one");
+}
+
+/// Sends a stream's headers, one event if asked for, and then more than this crate reads of one
+/// line without ending it.
+#[cfg(feature = "openai")]
+async fn endless_line(first: bool) -> String {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 4096];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket
+            .write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                  Transfer-Encoding: chunked\r\n\r\n",
+            )
+            .await;
+        if first {
+            let event = b"data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n";
+            let framed = [
+                format!("{:x}\r\n", event.len()).into_bytes(),
+                event.to_vec(),
+                b"\r\n".to_vec(),
+            ]
+            .concat();
+            let _ = socket.write_all(&framed).await;
+        }
+        let chunk = vec![b'x'; 1 << 20];
+        let framed = [
+            format!("{:x}\r\n", chunk.len()).into_bytes(),
+            chunk,
+            b"\r\n".to_vec(),
+        ]
+        .concat();
+        // a little past the ceiling and then held open, so that a reader with no ceiling waits
+        // rather than reading until the machine runs out
+        for _ in 0..80 {
+            if socket.write_all(&framed).await.is_err() {
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(600)).await;
+    });
+
+    format!("http://{address}")
+}
+
+/// A line that never ends is not held for ever: past the ceiling, a stream that has said nothing
+/// is refused with a sentence, and one that has keeps what it said, as a stream cut off does.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_line_that_never_ends_is_not_read_for_ever() {
+    for first in [false, true] {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "endless",
+            endless_line(first).await,
+            "no key needed",
+        )));
+        kernel.push(ContextItem::user("are you there?"));
+
+        let ended = tokio::time::timeout(Duration::from_secs(60), kernel.turn())
+            .await
+            .unwrap_or_else(|_| panic!("it read for ever, with an event first: {first}"));
+        match first {
+            false => {
+                let said = ended
+                    .expect_err("nothing but a line is a failure")
+                    .to_string();
+                assert!(said.contains("MiB"), "{said}");
+            }
+            true => {
+                ended.expect("what arrived before the line is kept");
+                let kept = kernel.last_response().expect("a response");
+                assert_eq!(
+                    kept.content
+                        .as_ref()
+                        .map(|it| it.to_text().into_owned())
+                        .as_deref(),
+                    Some("hi")
+                );
+            }
+        }
+    }
 }
