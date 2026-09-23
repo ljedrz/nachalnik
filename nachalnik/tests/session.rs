@@ -421,6 +421,25 @@ async fn a_snapshot_written_before_the_numbering_was_kept_still_resumes() {
     assert_eq!(resumed.items().len(), 1);
 }
 
+/// A snapshot whose items were written before they said what was unpriced, or why they were
+/// there, still resumes.
+#[tokio::test]
+async fn a_snapshot_written_before_items_said_what_was_unpriced_still_resumes() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+
+    let mut json = serde_json::to_value(kernel.snapshot()).unwrap();
+    for item in json["items"].as_array_mut().unwrap() {
+        let fields = item.as_object_mut().unwrap();
+        fields.remove("uncounted");
+        fields.remove("included_because");
+    }
+    let snapshot: Snapshot = serde_json::from_value(json).unwrap();
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    assert_eq!(resumed.items().len(), 1);
+}
+
 #[tokio::test]
 async fn a_snapshot_written_before_the_counter_learned_anything_still_resumes() {
     // the field is `serde(default)`: a snapshot from an older version has no `calibration` key at

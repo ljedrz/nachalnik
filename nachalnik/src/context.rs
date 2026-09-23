@@ -221,6 +221,10 @@ pub struct ContextItem {
     /// note: set by the counter, whenever `tokens` is, and by the same rules - it does not
     /// change by itself when the counter changes, and [`Kernel::recount`](crate::Kernel::recount)
     /// is what brings both into line.
+    ///
+    /// note: `serde(default)`, so a snapshot written before this existed still resumes, reading
+    /// `0` - which is what a counter that could not say so was reporting.
+    #[serde(default)]
     pub uncounted: usize,
     /// Whether the item takes part in the next request.
     pub state: ContextState,
@@ -238,6 +242,9 @@ pub struct ContextItem {
     /// the whole of it is recorded here. Kept in the note, it would go the first time somebody
     /// changed the item's state, and changing it back and forth is what a person does while
     /// trying to understand the pair.
+    ///
+    /// note: `serde(default)`, so a snapshot written before this existed still resumes.
+    #[serde(default)]
     pub included_because: Option<String>,
     /// Why the item is in its current state; set whenever the state changes.
     ///

@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A snapshot written before items carried `uncounted` or `included_because` resumes.** The
+  fields came in 0.3.2 and 0.4.0 without `serde(default)`, where every field added to `Snapshot`
+  itself has one so that an older file still loads; one without them was a parse error.
+
 - **Flattening says when it moves thinking ahead of a sentence.** A turn recorded as a sentence
   and then thinking goes out with the reasoning slot first, and `LinearProjector` reported a
   flattened order only for a sentence after a call, several sentences, several thoughts or a
