@@ -10,7 +10,7 @@
 //! note: it is a second provider rather than a flag on the first because they are two wire
 //! formats, not two settings: different paths, different auth header, different names for every
 //! field, `functionResponse` parts inside a user turn instead of a `tool` role. What they share is
-//! the trait the kernel talks through, which is the point being demonstrated.
+//! the trait the kernel talks through.
 //!
 //! note: signatures are the reason to bother beyond tidiness. Gemini signs the parts of a turn and
 //! answers `400 Function call is missing a thought_signature` when one comes back without its
@@ -164,8 +164,8 @@ impl Gemini {
 
     /// Everything in a part except the fields this provider understands.
     ///
-    /// note: not just `thoughtSignature`, though that is the one that matters today. Whatever
-    /// Google puts beside the text next is carried back unread, which is the same bargain
+    /// note: not just `thoughtSignature`, though that is the one that matters. Whatever Google
+    /// puts beside the text next is carried back unread, which is the same bargain
     /// [`ToolCall::extra`] makes and the only one a provider can make honestly about a field it
     /// has never heard of.
     fn attached(part: &Value) -> Value {
@@ -223,8 +223,8 @@ impl Gemini {
             // provider does not speak: `inlineData`, `executableCode`, `fileData`. The second is
             // dropped rather than reattached, because attaching an image to the text before it
             // would send it back out as a field of that text and quietly corrupt the turn. What
-            // is dropped is still in `ModelResponse::raw`, which is the whole of what a provider
-            // can honestly offer about a shape it has no variant for
+            // is dropped is still in `ModelResponse::raw`, which is as much as a provider can
+            // honestly offer about a shape it has no variant for
             let metadata = extra
                 .as_object()
                 .is_some_and(|fields| fields.keys().all(|key| key == "thoughtSignature"));
@@ -271,7 +271,7 @@ impl Gemini {
     /// note: a turn recorded as blocks goes back in the order it arrived in, each part carrying
     /// what was attached to it. One recorded the conventional way - by a session that started
     /// against another provider, or by a projector told not to send blocks - is assembled into
-    /// the order this API expects, which is the reassembly that used to be all anyone could do.
+    /// the order this API expects: the thinking, then what was said, then the calls.
     fn turn(message: &Message) -> Vec<Value> {
         let Some(blocks) = message.blocks() else {
             let mut parts = Vec::new();
@@ -500,8 +500,8 @@ impl Provider for Gemini {
 
 /// A stream, read: the turn as the parts left it.
 ///
-/// note: `partial` is the turn in the order it was produced, which is this dialect's whole point
-/// and the reason it gathers parts where the other one gathers three slots.
+/// note: `partial` is the turn in the order it was produced, which is why this dialect gathers
+/// parts where the other one gathers three slots.
 #[derive(Default)]
 struct Streamed {
     /// The turn so far, in the order the model produced it.
@@ -705,7 +705,7 @@ impl Endpoint for Gemini {
 
     /// note: the check happens whether or not a model was named. Given none the old name is kept,
     /// and a name that was right at the last address is exactly the one worth asking about at this
-    /// one - which is the case this used to skip, leaving the 404 on the next request to say so.
+    /// one. Skipping it leaves the 404 on the next request to say so.
     async fn set_endpoint(&self, url: String, model: Option<String>) {
         *self.base_url.lock() = url;
         *self.context_limit.lock() = self.configured;
@@ -724,10 +724,10 @@ impl Endpoint for Gemini {
 }
 
 impl Dialect for Gemini {
-    /// Both of the things the conventional dialect cannot take. This one's whole point is that
-    /// the shape of a turn is an order, and flattening it into three slots on the way out would
-    /// undo, one request later, the ordering that was recorded on the way in; and it takes a
-    /// turn's thinking back as a part marked `thought`, which for a signed one it has to.
+    /// Both of the things the conventional dialect cannot take. In this one the shape of a turn
+    /// is an order, and flattening it into three slots on the way out would undo, one request
+    /// later, the ordering that was recorded on the way in; and it takes a turn's thinking back as
+    /// a part marked `thought`, which for a signed one it has to.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
             send_blocks: true,
@@ -739,16 +739,15 @@ impl Dialect for Gemini {
 /// Puts a boundary between two text parts that are about to become one turn.
 ///
 /// note: this API concatenates the text parts of a turn with *nothing* between them, so two items
-/// merged above are read as one run of words. Found live, and the answer is what named it: a note
-/// ending `…the codename is kotelnaya` followed by a question beginning `what is the codename?`
-/// reached the model as `kotelnayawhat is the codename?`, and the model answered `codename is
-/// kotelnayawhat`. Every reference this client sends is one of these - a file put in with `-f`,
-/// an `/attach`, a `/note` - and the message after it is the question about it, which is the
-/// commonest shape there is.
+/// merged above are read as one run of words: a note ending `…the codename is kotelnaya` followed
+/// by a question beginning `what is the codename?` reaches the model as `kotelnayawhat is the
+/// codename?`, and the model reads the codename as `kotelnayawhat`. Every reference `kamchatka`
+/// sends is one of these - a file put in with `-f`, an `/attach`, a `/note` - and the message
+/// after it is the question about it, which is the commonest shape there is.
 ///
-/// note: the other dialect gets this for free by keeping one message per item, and that is the
-/// whole of the difference. Here the parts of a turn are the merge, so the separator has to live
-/// inside the text, and this is the last place that knows there were two of them.
+/// note: the other dialect gets this for free by keeping one message per item. Here the parts of
+/// a turn are the merge, so the separator has to live inside the text, and this is the last place
+/// that knows there were two of them.
 ///
 /// note: text against text only. A `functionResponse` is a field of its own and reads as one
 /// whatever precedes it, and a blob is `inline_data`; neither runs into a neighbour. The boundary

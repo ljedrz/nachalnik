@@ -1,17 +1,14 @@
 //! A suite any provider can be held to, whichever of the two dialects it speaks.
 //!
-//! note: this was written when there were three providers in this workspace that were one
-//! provider written three times, and it is the reason there is now one per dialect. The cost of
-//! the copies was paid three times in a row, each time the same way: a bug found in one copy,
-//! fixed in one copy. The stream that decoded each chunk lossily was in all three. The tool-call
-//! fragments filed by a missing index were in two. Arguments that would not parse were handled one
-//! way in a file's streamed path and another in its whole-answer path.
+//! note: a suite rather than a test per provider, because a bug in how one provider reads a
+//! stream is usually in every provider that reads the same stream, and fixed in one copy it stays
+//! in the others.
 //!
-//! note: it outlives the duplication because what it holds is not agreement between copies but a
-//! list of shapes some server really sent. Every case below is a bug that actually happened, asked
-//! through a real socket rather than of a parser, because what is under test lives inside
-//! `respond` - between reading bytes off a response and handing back a [`ModelResponse`] - and a
-//! test that reached in beside it would be testing a copy of the code under test.
+//! note: what it holds is not agreement between copies but a list of shapes some server really
+//! sent. Every case below is a bug that actually happened, asked through a real socket rather than
+//! of a parser, because what is under test lives inside `respond` - between reading bytes off a
+//! response and handing back a [`ModelResponse`] - and a test that reached in beside it would be
+//! testing a copy of the code under test.
 //!
 //! note: behind the `conformance` feature, and off by default. It is a dev tool, it stands up
 //! `TcpListener`s, and a caller writing a provider of its own is who it is for.
@@ -197,11 +194,10 @@ impl Conformance {
 
     /// A chunk boundary is not a character boundary.
     ///
-    /// note: the bytes off the socket were decoded as they arrived, lossily, in all three of this
-    /// workspace's providers. A character split between two reads was decoded twice - once with
-    /// its tail missing and once with its head - and became two replacement characters, which then
-    /// went into the context and into whatever record was kept. Every split point through the text
-    /// is tried, because one fixed split point proves only that one worked.
+    /// note: bytes decoded lossily as they arrive turn a character split between two reads into
+    /// two decodes - one with its tail missing and one with its head - and so into two replacement
+    /// characters, which then go into the context and into whatever record is kept. Every split
+    /// point through the text is tried, because one fixed split point proves only that one worked.
     async fn split_character(&self) -> Outcome {
         const SAID: &str = "zażółć — 大";
         let body = match self.dialect {
@@ -236,14 +232,13 @@ impl Conformance {
 
     /// A turn that thought reports the thinking inside what it generated.
     ///
-    /// note: the question none of the three was ever asked, and all three answered differently.
-    /// `Usage::output_tokens` is everything the model generated and is charged for, reasoning
+    /// note: `Usage::output_tokens` is everything the model generated and is charged for, reasoning
     /// included, so that `input + output` is the whole bill whichever endpoint answered. The
     /// dialects do not hand it over that way: OpenAI's `completion_tokens` already contains the
     /// reasoning, Google reports thoughts and candidates side by side, and a Google endpoint
     /// speaking the OpenAI dialect omits the details object and leaves the thinking to be found in
-    /// the difference between the total and its parts. Three shapes, one figure, and until this
-    /// case existed each provider settled it privately and two settled it wrongly.
+    /// the difference between the total and its parts. Three shapes, and one figure every provider
+    /// has to arrive at.
     ///
     /// note: what is asserted is the *relationship* rather than a number pulled from a fixture -
     /// the answer's own cost has to come back by subtracting the reasoning from the output. A
@@ -291,11 +286,9 @@ impl Conformance {
     ///
     /// note: the shape `delta.reasoning` is not. A dialect may hand the thinking over as fragments
     /// while it is generated, or as one finished summary of it afterwards - `{"content": ...,
-    /// "status": "complete"}`, on the chunk rather than in the delta - and an endpoint that does
-    /// the second had its thinking read by nothing here. Measured: `mercury-2` asked with
-    /// `reasoning_summary: true` returns eleven hundred reasoning tokens and a summary of them
-    /// in that field, and both providers put the turn on the context with nothing in it where the
-    /// thinking was.
+    /// "status": "complete"}`, on the chunk rather than in the delta. `mercury-2` asked with
+    /// `reasoning_summary: true` does the second, and a provider that reads only the first puts
+    /// the turn on the context with nothing in it where the thinking was.
     ///
     /// note: two summaries in one turn, because that is what the endpoint sends - one per stretch
     /// of reasoning it finishes - and the question is whether both are kept. Replacing rather than
@@ -357,18 +350,17 @@ impl Conformance {
 
     /// A body that stops arriving in the middle of an answer keeps what arrived.
     ///
-    /// note: the failure that prompted this ran for 148 seconds against a reasoning model and
-    /// came back `error decoding response body` - reqwest's words for a body that ended early -
-    /// with every token it had produced thrown away and the turn failed. All three providers here
-    /// did that, and one of them carried a note saying it did the opposite.
+    /// note: reqwest reports a body that ended early as `error decoding response body`, and a
+    /// provider that passes that on throws away every token the model had produced and fails the
+    /// turn - on a reasoning model, minutes of work.
     ///
-    /// note: the answer is the one the interrupt path eleven lines above it already gives: keep
-    /// whatever was parsed, abandon the socket, and mark the turn. A dropped connection is that
-    /// case without the consent, so it gets the same handling under a name of its own. The two
-    /// alternatives are both worse. Failing throws away work the provider has *already billed*;
-    /// retrying bills it again, up to the retry budget, so an answer that reliably outruns an
-    /// upstream's patience is paid for four times and fails anyway - and the loop that retries a
-    /// busy server is careful to do it only where nothing was generated.
+    /// note: the answer is the one the interrupt path already gives: keep whatever was parsed,
+    /// abandon the socket, and mark the turn. A dropped connection is that case without the
+    /// consent, so it gets the same handling under a name of its own. Failing instead throws away
+    /// work the provider has *already billed*; retrying bills it again, up to the retry budget, so
+    /// an answer that reliably outruns an upstream's patience is paid for four times and fails
+    /// anyway - and the loop that retries a busy server is careful to do it only where nothing was
+    /// generated.
     ///
     /// note: what a *complete* call caught by the cut does is nothing special on purpose. It is a
     /// call the model really made, it is recorded, and the permission policy is still the thing
@@ -441,9 +433,8 @@ impl Conformance {
     /// And a cut with nothing on the wire yet but thinking is still a turn.
     ///
     /// note: the case above cuts after some content, which is the easy half. On a reasoning model
-    /// the answer starts late - replaying a real OpenRouter stream, the first non-empty `content`
-    /// was 36% of the way in, behind eleven thousand bytes of `reasoning` - so a cut is more likely
-    /// to land here than anywhere else. What decides it is whether a thinking delta counts as
+    /// the answer starts late, behind all of the `reasoning`, so a cut is more likely to land here
+    /// than anywhere else. What decides it is whether a thinking delta counts as
     /// something having arrived: counted, the turn comes back with the thinking in it, and the next
     /// request carries what the model had worked out; not counted, the whole thing is an error and
     /// the most expensive part of the answer is the part thrown away.
@@ -621,10 +612,9 @@ impl Conformance {
     ///
     /// note: the two cases above meet here, and the combination is the one a real turn takes:
     /// `two_calls` sends whole calls and `fragmented_arguments` fragments a single one, so neither
-    /// asks what happens when a second call's fragments follow a first's. What made it worth
-    /// asking is a turn that came back with the first call's arguments a closing brace short and
-    /// the second's whole - which was the endpoint doing it, and could just as easily have been
-    /// this. Nothing here is subtle enough to be interesting until it breaks.
+    /// asks what happens when a second call's fragments follow a first's. An endpoint can send a
+    /// turn with the first call's arguments a closing brace short and the second's whole, and a
+    /// provider that misfiles fragments produces the same turn from a good stream.
     ///
     /// note: the openers carry `"arguments": ""`, because that is how the endpoints that do this
     /// announce a call, and because an empty fragment is what `loose_fragment` below turns on.
@@ -679,11 +669,11 @@ impl Conformance {
     /// loose fragment. Read as "the last call in the list", it lands on the new call - so the old
     /// one is short a brace and the new one carries a stray leading one, and a single misfiled
     /// character breaks two calls rather than none. That is the one way this end can produce the
-    /// truncation an endpoint produced for real, which is what makes it worth telling apart: the
-    /// fingerprint is the missing character turning up on the next call.
+    /// truncation an endpoint also produces, and what tells the two apart is the missing character
+    /// turning up on the next call.
     ///
-    /// note: the second call's opener carries `"arguments": ""`, and that is load-bearing. An empty
-    /// string announces a call rather than writing to one, so a provider that counted it would put
+    /// note: the second call's opener carries `"arguments": ""` on purpose. An empty string
+    /// announces a call rather than writing to one, so a provider that counted it would put
     /// "last written to" on a call nothing had been streamed to and fail this exactly as the list
     /// position did.
     async fn loose_fragment(&self) -> Outcome {
@@ -787,8 +777,8 @@ impl Conformance {
     /// These APIs report an upstream failure as an object inside an otherwise fine 200.
     ///
     /// note: a provider that only reads the status code records the model as having said nothing,
-    /// and the kernel faithfully writes that down. The runtime's own `Provider` documentation
-    /// warns about it: "Both of this crate's example providers had to learn that the hard way."
+    /// and the kernel faithfully writes that down. The runtime's own documentation of
+    /// `Provider::respond` warns about it.
     async fn error_in_a_200(&self) -> Outcome {
         let body = "data: {\"error\":{\"message\":\"the upstream is on fire\",\"code\":502}}\n\n";
 
@@ -925,7 +915,7 @@ async fn server(body: &'static str, delivery: Delivery) -> String {
                 Delivery::Split(at) if at < bytes.len() => {
                     let _ = socket.write_all(&bytes[..at]).await;
                     let _ = socket.flush().await;
-                    // long enough for the first half to be read on its own, which is the point
+                    // long enough for the first half to be read on its own
                     tokio::time::sleep(Duration::from_millis(20)).await;
                     let _ = socket.write_all(&bytes[at..]).await;
                 }

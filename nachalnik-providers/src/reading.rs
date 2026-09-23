@@ -4,8 +4,8 @@
 //! note: shared by both dialects, like [`waiting`](crate::waiting). What an event *says* differs
 //! between them, and each answers that through [`Events`]; getting events off a socket - a chunk
 //! that splits a character, a last line with no newline after it, a body that was never a stream,
-//! a stream that stops or goes quiet - is the same problem in both, and was solved twice and then
-//! fixed in one copy at a time.
+//! a stream that stops or goes quiet - is the same problem in both, and solved twice it gets fixed
+//! in one copy at a time.
 
 use nachalnik::{BoxError, DeltaSink};
 use serde_json::Value;
@@ -196,10 +196,10 @@ pub(crate) fn failure(error: &Value) -> String {
 
 /// What to say about a request the server refused: its own sentence, rather than its envelope.
 ///
-/// note: a spent quota came back as six hundred characters of JSON - the message, the remedy, the
-/// rate-limit headers, and the account's `user_id` - and all of it went into the transcript and
-/// into the session log, which is a file people send each other. What a reader needs is the
-/// sentence. Nobody needs an identifier for their account written into it.
+/// note: a spent quota comes back as an envelope of JSON - the message, the remedy, the rate-limit
+/// headers, and the account's `user_id` - and all of it would go into the transcript and into the
+/// session log, which is a file people send each other. What a reader needs is the sentence.
+/// Nobody needs an identifier for their account written into it.
 pub(crate) fn complaint(status: reqwest::StatusCode, body: &str) -> String {
     match serde_json::from_str::<Value>(body)
         .ok()
@@ -269,10 +269,9 @@ fn unmarked(body: &str) -> String {
 
 /// The sentence inside an error object, wherever the server put it.
 ///
-/// note: two shapes, both seen on the same endpoint in the same afternoon. A refused request
-/// nests it under `error`; a stream that fails halfway sends the object on its own, with `message`
-/// at the top. Google's nests it too, beside a `status` and a list of `details` that are not
-/// prose.
+/// note: two shapes, and one endpoint can send both. A refused request nests it under `error`; a
+/// stream that fails halfway sends the object on its own, with `message` at the top. Google's
+/// nests it too, beside a `status` and a list of `details` that are not prose.
 fn said(value: &Value) -> Option<String> {
     let error = match value.get("error").filter(|error| !error.is_null()) {
         Some(nested) => nested,
@@ -280,7 +279,7 @@ fn said(value: &Value) -> Option<String> {
     };
     let message = match error["message"].as_str() {
         Some(message) => message.trim().to_owned(),
-        // a third shape, and the one where reading a sentence mattered most: see `refusals`
+        // a third shape, and the one where the sentence matters most: see `refusals`
         None => refusals(&error["message"])?,
     };
 
@@ -310,7 +309,7 @@ fn said(value: &Value) -> Option<String> {
 /// note: `loc` is prepended only where the message does not already name the field. Pydantic's
 /// own wording varies on exactly that point - a `value_error` raised by a validator usually names
 /// it, a type failure says "Input should be a valid boolean" and names nothing - and a message
-/// that does not say which of eight parameters it means is a message somebody has to guess at.
+/// that does not say which parameter it means is a message somebody has to guess at.
 fn refusals(message: &Value) -> Option<String> {
     let listed = message.as_array().filter(|listed| !listed.is_empty())?;
 
@@ -415,10 +414,10 @@ mod tests {
 
     /// A refusal for length comes back as the numbers in it, not only as the sentence.
     ///
-    /// note: the whole seam, because the reading has to survive what this crate does to a body
-    /// on the way - and what it does is put the status in front of it, which is a number in the
-    /// message that is not a token count. Both fixtures are what `openrouter.ai` answered within
-    /// a minute of each other: the same complaint as a status and as an error object inside a
+    /// note: tested through the whole seam, because the reading has to survive what this crate
+    /// does to a body on the way - and what it does is put the status in front of it, which is a
+    /// number in the message that is not a token count. The fixture is what `openrouter.ai`
+    /// answers, and it sends the same complaint both as a status and as an error object inside a
     /// perfectly good 200.
     #[test]
     fn a_refusal_for_length_keeps_the_numbers_that_say_what_to_do_about_it() {
@@ -524,7 +523,7 @@ mod tests {
             serde_json::from_str(midstream).expect("the shape it actually arrives in");
 
         // `message` at the top, with no `error` around it - read only the nested one and this
-        // whole envelope went to the screen
+        // whole envelope goes to the screen
         let sentence = said(&value).expect("there is a sentence in there");
         assert!(
             sentence.starts_with("Upstream error from Inception"),

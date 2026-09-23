@@ -12,12 +12,12 @@ use nachalnik::{LinearProjector, Provider, async_trait};
 /// rather than something the runtime was made to carry: the runtime has no network in it and no
 /// business knowing that one exists.
 ///
-/// note: [`Provider`] is deliberately *not* a supertrait, which it was until a model arrived that
-/// answers none of the questions a turn is made of. TypeSafe's [`Jev`](crate::system1::Jev) has
-/// an address, a key, a model identifier, a listing and a usage report - every question below -
-/// and it generates no text and calls no tools, so there is no turn for it to drive. Requiring
-/// one of everything in here would have meant either shutting it out of the crate or handing the
-/// kernel an assistant turn manufactured out of probabilities. The turn-driving half is
+/// note: [`Provider`] is deliberately *not* a supertrait, because a model can answer every
+/// question below and none of the questions a turn is made of. TypeSafe's
+/// [`Jev`](crate::system1::Jev) has an address, a key, a model identifier, a listing and a usage
+/// report, and it generates no text and calls no tools, so there is no turn for it to drive.
+/// Requiring one of everything in here would mean either shutting it out of the crate or handing
+/// the kernel an assistant turn manufactured out of probabilities. The turn-driving half is
 /// [`Dialect`], and it is the one that carries the `Provider` bound.
 #[async_trait]
 pub trait Endpoint: Send + Sync {
@@ -85,26 +85,26 @@ pub trait Dialect: Endpoint + Provider {
     /// else it reads somebody's metadata.
     ///
     /// note: defaulted to `true` because a dialect that publishes one list of everything is the
-    /// ordinary case and the one this was written against. An endpoint that knows better says so.
+    /// ordinary case. An endpoint that knows better says so.
     fn lists_every_parameter(&self) -> bool {
         true
     }
 
     /// The projection this dialect can carry.
     ///
-    /// note: it is answered here, beside the `to_wire` that has to honour it, because the two
-    /// were decided in different places and drifted. The budget is counted over the messages the
+    /// note: it is answered here, beside the `to_wire` that has to honour it, because the two drift
+    /// apart when they are decided in different places. The budget is counted over the messages the
     /// projector produced - which is what makes it the size of the request rather than the size
     /// of the context - so a projector that hands over something the wire format then drops does
     /// not merely waste the effort. It charges the person for bytes that never leave the process,
     /// and goes on doing it for as long as those messages are in the context.
     fn projection(&self) -> LinearProjector {
         LinearProjector {
-            // note: `to_wire` has never put an assistant turn's thinking on the wire, and cannot:
+            // note: `to_wire` does not put an assistant turn's thinking on the wire, and cannot:
             // most endpoints speaking this dialect reject a message carrying a field they do not
-            // know, and there is no agreed name for that one. So sending it was never on offer -
-            // only paying for it was. The turn keeps its reasoning either way: it is in the
-            // record, on the context tab, and prunable like everything else.
+            // know, and there is no agreed name for that one. Projecting it would only mean
+            // paying for it. The turn keeps its reasoning either way: it is in the record, on the
+            // context tab, and prunable like everything else.
             send_reasoning: false,
             ..Default::default()
         }

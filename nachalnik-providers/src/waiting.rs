@@ -23,9 +23,9 @@ use crate::{
 
 /// How many times a request is sent when the server keeps saying it is busy, the first included.
 ///
-/// note: counted per request. It was one counter on the provider, which every request sharing it
-/// drew from and any one of them reset - so eight abreast against a busy endpoint handed out
-/// attempts one to eight, and the fourth to fail gave up without being retried at all.
+/// note: counted per request, not on the provider. A counter every request draws from and any of
+/// them resets gives concurrent requests against a busy endpoint one allowance between them, so a
+/// request can fail its first attempt and give up without being retried at all.
 pub(crate) const RETRIES: usize = 4;
 
 /// The longest a server may ask to be left alone before this stops waiting and says so.
@@ -70,8 +70,8 @@ pub(crate) enum Silence {
 ///
 /// note: [`HEARTBEAT`] only makes a stalled request *interruptible*. It wakes up, checks whether
 /// escape was pressed, and goes back to waiting - so a server that answers the connection and
-/// then goes quiet, which is exactly what an overloaded one does, left the status line reading
-/// `asking` for ever with nothing to tell it apart from a model that was simply thinking hard.
+/// then goes quiet, which is exactly what an overloaded one does, would leave the status line
+/// reading `asking` for ever with nothing to tell it apart from a model that is thinking hard.
 /// This is the part that says so, and eventually the part that stops.
 pub(crate) struct Vigil {
     /// When something last arrived.
@@ -202,10 +202,10 @@ pub(crate) fn interrupted() -> ModelResponse {
 ///
 /// note: a constant because it is the part that must not drift, and because it is the part this
 /// crate is entitled to say. What it is handed is a [`DeltaSink`], and what it asks is whether
-/// that has been interrupted; how a caller decides to set it is none of its business. It used to
-/// name `esc`, which was true of the one client in this workspace and became advice nobody could
-/// take the moment a second one arrived - a headless run printed it down a pipe, telling whoever
-/// was reading to press a key at a program that has no keyboard.
+/// that has been interrupted; how a caller decides to set it is none of its business. So it names
+/// no key: a key is true of one client and advice nobody can take in another - a headless run
+/// prints this down a pipe, where it would tell whoever reads it to press a key at a program that
+/// has no keyboard.
 const GIVES_UP: &str = "an interrupt gives up on it";
 
 /// A model that has not said anything at all yet.
@@ -277,8 +277,8 @@ enum Busy {
 /// must not silently send a request twice behind a caller's back. The count is this request's
 /// and nobody else's; see [`RETRIES`].
 ///
-/// note: `request` builds the request afresh for each attempt, because a sent one is spent, and
-/// it is the whole of what the dialects do differently here: a path, a header, a body.
+/// note: `request` builds the request afresh for each attempt, because a sent one is spent. It is
+/// also everything the dialects do differently here: a path, a header, a body.
 ///
 /// note: a whole answer is read *here* rather than by the caller, because the OpenAI dialect's
 /// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
@@ -410,8 +410,8 @@ fn passing(code: u64) -> bool {
 ///
 /// note: the headers arriving is not the end of the wait. An endpoint may send them at once and
 /// the answer when it is written, which for a whole answer is minutes - and one that sends them
-/// and then nothing is the stall [`WHOLE_ANSWER`] is for. Read in one `text()`, neither could be
-/// interrupted, and the second held the turn until the transport's own timeout, which the default
+/// and then nothing is the stall [`WHOLE_ANSWER`] is for. Read in one `text()`, neither can be
+/// interrupted, and the second holds the turn until the transport's own timeout, which the default
 /// client does not have.
 async fn body(
     mut response: reqwest::Response,
@@ -459,9 +459,9 @@ pub(crate) fn stalled(model: &str, waited: Duration) -> BoxError {
 ///
 /// note: `&mut sending` rather than `sending`. Handing `timeout` the future itself would drop it
 /// 120ms later and cancel the request that had just been made; borrowing it stops polling for
-/// that round and leaves the connection standing. The loop is the one the stream runs, for the
-/// same three reasons - an interrupt is heard, the silence is said out loud, and it ends - and it
-/// is here because everything before the first byte had none of them.
+/// that round and leaves the connection standing. The loop is the one the stream runs, so that the
+/// wait before the first byte gets the same three things: an interrupt is heard, the silence is
+/// said out loud, and it ends.
 async fn watched(
     sending: impl Future<Output = reqwest::Result<reqwest::Response>>,
     asking: &Asking<'_>,
@@ -490,8 +490,9 @@ async fn watched(
 /// Waits out a backoff, and says whether it was let run to the end.
 ///
 /// note: in heartbeats rather than one sleep, because a request somebody has asked to stop is not
-/// one to send again. A single sleep kept a stopped turn waiting for as long as the server asked -
-/// a minute, for a `Retry-After: 60` - and then sent the request anyway, to be answered and billed.
+/// one to send again. A single sleep keeps a stopped turn waiting for as long as the server
+/// asked - a minute, for a `Retry-After: 60` - and then sends the request anyway, to be answered
+/// and billed.
 async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
     let until = Instant::now() + wait;
     loop {
@@ -551,8 +552,8 @@ mod tests {
             "said"
         );
 
-        // and eventually it stops waiting, which is the whole point: `asking` for ever was
-        // indistinguishable from a model that was still coming
+        // and eventually it stops waiting: `asking` for ever is indistinguishable from a model
+        // that is still coming
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs()), "gave up");
         assert_eq!(judged(&mut vigil, PATIENCE.as_secs() + 60), "gave up");
     }
@@ -589,11 +590,11 @@ mod tests {
 
     /// An address on which nothing is listening, and which says so.
     ///
-    /// note: bound and then dropped rather than a well-known port assumed to be free. This was
-    /// `127.0.0.1:9` - discard - and it failed on a CI host whose firewall *drops* packets to a
-    /// reserved port instead of refusing them, which turns "nothing is listening" into a timeout
-    /// and so into the one answer this half of the test needs it not to give. A port the OS has
-    /// just handed out and taken back is refused rather than filtered.
+    /// note: bound and then dropped rather than a well-known port assumed to be free. A firewall
+    /// that *drops* packets to a reserved port such as discard, `127.0.0.1:9`, instead of refusing
+    /// them turns "nothing is listening" into a timeout, which is the one answer this half of the
+    /// test needs it not to give. A port the OS has just handed out and taken back is refused
+    /// rather than filtered.
     async fn nobody_home() -> std::net::SocketAddr {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -606,9 +607,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_stalled_request_is_waited_out_and_a_refused_one_is_not() {
-        // the failure this closes: a 429 got four tries and a doubling; a connection that stalled
-        // got none, and took the session with it. Eleven of fourteen runs against one upstream
-        // died this way while the same model answered a single request in six seconds
+        // a 429 gets four tries and a doubling, and a connection that stalls has to get them too,
+        // or a loaded upstream ends the session while the same model is answering other requests
         install_crypto();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_millis(250))
@@ -649,7 +649,7 @@ mod tests {
         );
 
         // counting the silence ourselves has to mean what the transport's own timeout means,
-        // because it is now the thing that usually notices first
+        // because it is usually the thing that notices first
         assert!(
             Unsent::Silent(PATIENCE).worth_waiting_out(),
             "a server that took the request and said nothing is a busy one"
@@ -663,11 +663,9 @@ mod tests {
         );
     }
 
-    /// note: the sentences a person actually reads when a model goes quiet, which until this was
-    /// written nothing in the workspace checked at all - the wording was changed in three places
-    /// and every suite stayed green. What it pins is the half that is a claim about *this* crate:
-    /// that it names the mechanism it really watches rather than a key, which is a fact about the
-    /// caller and one this crate had wrong for as long as it had one caller.
+    /// note: the sentences a person actually reads when a model goes quiet. What it pins is the
+    /// half that is a claim about *this* crate: that it names the mechanism it really watches
+    /// rather than a key, which is a fact about the caller.
     #[test]
     fn a_silence_names_no_key() {
         for said in [not_answered("a-model", 40), gone_quiet("a-model", 40)] {

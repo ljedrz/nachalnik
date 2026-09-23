@@ -23,11 +23,10 @@ mod wire;
 /// note: a stream in this dialect is text arriving in order, and every client of it appends. One
 /// parameter breaks that, and it is not a fringe one: Inception's `diffusing`, documented as
 /// "show the diffusion effect in the streamed response", sends the *whole answer again* in
-/// `delta.content` at each denoising step. Measured against `mercury-2.5`: four fragments of 339,
-/// 339, 427 and 435 characters, the first three noise - `ThR rMmchatka tYS>rf5Ta in Russia` - and
-/// the last the finished paragraph. Appended, as this crate and every other OpenAI-dialect client
-/// appends them, a 435-character answer became 1,540 characters of drafts - in the answer, in the
-/// context, in the token count and in whatever the client wrote down.
+/// `delta.content` at each denoising step. From `mercury-2.5` the early fragments are noise -
+/// `ThR rMmchatka tYS>rf5Ta in Russia` - and the last is the finished paragraph. Appended, as this
+/// crate and every other OpenAI-dialect client appends them, the answer becomes every draft end to
+/// end - in the answer, in the context, in the token count and in whatever the client wrote down.
 ///
 /// note: a list to warn from rather than a refusal, and rather than a reader that tries to cope.
 /// Parameters are the caller's to set and are carried to the provider verbatim - that is the
@@ -88,9 +87,9 @@ pub struct OpenAiCompatible {
     unlisted: bool,
     /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
     ///
-    /// note: worth setting when there are several. A panel comparing four models through three
-    /// endpoints has three providers whose `info()` all said `openai-compatible`, which told the
-    /// reader nothing about which was which.
+    /// note: worth setting when there are several. Without it a panel comparing models through
+    /// three endpoints has three providers whose `info()` all say `openai-compatible`, which tells
+    /// the reader nothing about which is which.
     label: String,
     /// Whether to ask for a streamed answer at all; see [`Self::streaming`].
     stream: bool,
@@ -181,8 +180,8 @@ impl OpenAiCompatible {
     ///
     /// note: a provider with no timeout is not a provider with no patience, which is why the
     /// default client is usable rather than a trap. What catches a socket with nobody on the other
-    /// end is the silence watch - counted here rather than told by the transport - and it ends a
-    /// request that has said nothing whether or not anything else would have.
+    /// end is the silence watch - counted by this crate rather than told by the transport - and it
+    /// ends a request that has said nothing whether or not anything else would have.
     pub fn client() -> reqwest::Client {
         Self::client_with(WHOLE_ANSWER)
     }
@@ -199,10 +198,10 @@ impl OpenAiCompatible {
     /// Sends through a client of the caller's own, so that several models on one host share a
     /// connection pool - and so that the timeout is the caller's to set.
     ///
-    /// note: a client built here is built before any constructor in this crate has run, so call
-    /// [`crate::install_crypto`] before building it or `reqwest::ClientBuilder::build` panics -
-    /// and it panics recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider
-    /// this crate uses. [`Self::client_with`] is the way round it where the only thing wanted is a
+    /// note: a caller's own client may be built before any constructor in this crate has run, so
+    /// call [`crate::install_crypto`] first or `reqwest::ClientBuilder::build` panics - and it
+    /// panics recommending `aws_lc_rs`, which is reqwest's suggestion and not the provider this
+    /// crate uses. [`Self::client_with`] is the way round it where the only thing wanted is a
     /// different timeout, because it installs the cryptography itself.
     #[must_use]
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
@@ -237,10 +236,9 @@ impl OpenAiCompatible {
     /// but a model whose chat template ends the prompt *inside* a thinking block never writes the
     /// `<think>` that opened it, and an endpoint serving that model with no reasoning parser of
     /// its own passes the whole thing through as content. What arrives is an answer with its own
-    /// thinking on the front and a bare `</think>` in the middle of it. A live session against
-    /// `poolside/laguna-xs-2.1:free` did this on nine turns of one conversation: the tag went into
-    /// the context, the transcript and the log, and `reasoning` was `None` on every one of them
-    /// while the reasoning sat in the text.
+    /// thinking on the front and a bare `</think>` in the middle of it. From
+    /// `poolside/laguna-xs-2.1:free`, left alone, the tag goes into the context, the transcript and
+    /// the log, and `reasoning` is `None` while the reasoning sits in the text.
     ///
     /// So a `</think>` in the content is read as what it is, the thinking in front of it becomes
     /// [`nachalnik::ModelResponse::reasoning`], and what follows is the answer. Only where the
@@ -394,10 +392,9 @@ impl OpenAiCompatible {
     /// endpoint is then asked whether it has one by that name, which is a notice rather than a
     /// 404 on the next request.
     ///
-    /// note: the key is not changed with it. It is read from the environment once, at startup, and
-    /// a key typed at the prompt would be a key in the transcript - so what this is for is the
-    /// endpoints that need no key or the same one: a local model, a proxy, a second base URL on
-    /// the same account.
+    /// note: the key is not changed with it. It is given once, at construction, and a key typed at
+    /// the prompt would be a key in the transcript - so what this is for is the endpoints that need
+    /// no key or the same one: a local model, a proxy, a second base URL on the same account.
     pub async fn set_endpoint(&self, url: impl Into<String>, model: Option<String>) {
         *self.base_url.lock() = url.into();
         if let Some(model) = model {
@@ -485,9 +482,9 @@ impl OpenAiCompatible {
     /// Switches models, and forgets the context limit that belonged to the old one.
     ///
     /// note: the limit somebody set for themselves is not the old model's, and is put back rather
-    /// than forgotten. Without this, switching model quietly replaced an explicit
-    /// [`with_context_limit`](Self::with_context_limit) with whatever the endpoint advertises -
-    /// which is the number the caller had already decided not to measure against.
+    /// than forgotten. Replacing an explicit [`with_context_limit`](Self::with_context_limit) with
+    /// whatever the endpoint advertises would measure against the number the caller had already
+    /// decided not to.
     pub async fn set_model(&self, model: impl Into<String>) {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = self.configured;
@@ -505,7 +502,7 @@ impl OpenAiCompatible {
     /// Asks the provider what it knows about the model, so that the context limit the kernel
     /// reports is the real one rather than a guess.
     ///
-    /// note: Worth the round trip, because every figure the status line shows about how full the
+    /// note: worth the round trip, because every figure the status line shows about how full the
     /// context is is measured against this number. An unknown limit is reported as unknown rather
     /// than guessed at, which is the honest answer but not a useful one.
     pub async fn probe(&self) {
@@ -538,7 +535,7 @@ impl OpenAiCompatible {
 
     /// Asks ollama what context length the model is actually being served with.
     ///
-    /// note: Its `/api/show` advertises the architecture's maximum - 131,072 for a llama that is
+    /// note: its `/api/show` advertises the architecture's maximum - 131,072 for a llama that is
     /// in fact loaded with a `num_ctx` of 4,096 - and a budget measured against that number would
     /// be wrong in the one direction that matters. Nothing would ever look full, no compactor
     /// would fire, and the server would quietly drop the front of the conversation instead.
@@ -615,18 +612,14 @@ impl OpenAiCompatible {
         // wrong. OpenRouter's `supported_parameters` lists everything a request may carry, sampling
         // knobs and `tools` and `response_format` together; Inception's
         // `supported_sampling_parameters` lists the sampling knobs only and puts the rest under
-        // `supported_features`. Reading whichever is present beats reading one and calling the
-        // other silence: an endpoint that published its list and had it go unread is an endpoint
-        // where `/params` says nothing about a `top_p` the model ignores, which is the single thing
-        // that check exists to say.
+        // `supported_features`. Whichever is present is read, because a list that goes unread
+        // leaves `/params` with nothing to say about a `top_p` the model ignores.
         //
-        // note: what the narrower name costs is a narrower answer to the same question. Set a
-        // *non*-sampling parameter against an endpoint that publishes only the sampling ones and it
-        // is reported as unlisted - `response_format` on `mercury-2.5` is exactly that, absent from
-        // the sampling list and served all the same. The message is worded "does not list", which
-        // stays true either way; it is the "and ignored" beside it that is guessing, and only for
-        // that class. The trade is one class of parameter over-reported against every class going
-        // unchecked, which is the position this was in.
+        // note: the narrower name is a narrower answer to the same question. A *non*-sampling
+        // parameter is absent from the sampling list and may be served all the same -
+        // `response_format` on `mercury-2.5` is - so `every_parameter` is set false for that shape,
+        // and a client reading `lists_every_parameter` says such a parameter is unchecked rather
+        // than ignored.
         let sampling_only = entry["supported_parameters"].is_null();
         if let Some(listed) = entry["supported_parameters"]
             .as_array()
@@ -693,9 +686,9 @@ mod tests {
         assert!(ranks_apps("openrouter.ai:443"));
         assert!(ranks_apps("api.openrouter.ai"));
 
-        // and the ones that are not. The last is the reason this matches on the authority rather
-        // than looking for the name anywhere in the address: a suffix test on the whole URL would
-        // have sent an unrelated host the name of the program calling it
+        // and the ones that are not. The two that only look like OpenRouter's are the reason this
+        // matches on the authority rather than looking for the name anywhere in the address: a
+        // substring or suffix test would send an unrelated host the name of the program calling it
         assert!(!ranks_apps("localhost:11434"));
         assert!(!ranks_apps("generativelanguage.googleapis.com"));
         assert!(!ranks_apps("openrouter.ai.example.com"));
@@ -733,8 +726,8 @@ mod tests {
     }
 
     /// note: the two shapes are quoted from what the two endpoints really answer, trimmed to the
-    /// fields being read. The Inception one is the case that prompted this: it published a list,
-    /// nothing read it, and `/params` had nothing to say about a parameter `mercury-2.5` ignores.
+    /// fields being read. The Inception one publishes only the sampling list, and left unread it
+    /// leaves `/params` with nothing to say about a parameter `mercury-2.5` ignores.
     #[tokio::test]
     async fn a_listing_is_read_under_either_name_for_what_the_model_takes() {
         let openrouter = r#"{"data":[{"id":"m","context_length":128000,

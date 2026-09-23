@@ -39,23 +39,21 @@ struct PartialCall {
 /// note: the other half of `delta.reasoning`, and a different shape rather than a second name for
 /// the same one. That field is a *fragment* of the thinking, pushed as it is generated; this one
 /// is a finished summary of it, `{"content": ..., "status": "complete"}` on the chunk itself
-/// rather than in the delta, and it arrives after the answer it explains. Inception's endpoint is
-/// the case - `reasoning_summary: true` in the parameters - and it sends more than one over a
-/// turn, each a summary of the reasoning done since the last, which is why they are appended and
-/// not replaced: the same endpoint's *non*-streamed field is those same summaries joined, so
-/// joining them is reading it the way its author writes it.
+/// rather than in the delta, and it arrives after the answer it explains. Inception's endpoint
+/// sends it, given `reasoning_summary: true` in the parameters. It sends more than one over a
+/// turn, each a summary of the reasoning done since the last, so they are appended rather than
+/// replaced: the same endpoint's *non*-streamed field is those same summaries joined.
 ///
 /// note: a summary already held is not appended again. The status is not read for anything: a
 /// summary with words in it has arrived whichever word is beside it, and `unavailable` and
-/// `skipped` both carry no content, so the content is the whole of the question. What it must not
-/// do is put the word `unavailable` on the screen as if the model had thought it.
+/// `skipped` both carry no content, so the content alone decides. What it must not do is put the
+/// word `unavailable` on the screen as if the model had thought it.
 ///
 /// note: what a caller has to ask for, since the reading is only half of it: `reasoning_summary:
 /// true` among the parameters, *and* `reasoning_summary_wait: true` beside it whenever the request
-/// is streamed - which this crate's always are. Measured against `mercury-2`: with the wait, two
-/// of ten chunks carry a summary; without it the stream ends before any summary exists and none
-/// of seven do. A client that sets the first and not the second has asked for thinking that cannot
-/// then be sent to it, and this has nothing to read.
+/// is streamed. Without the wait, `mercury-2` ends the stream before any summary exists. A client
+/// that sets the first and not the second has asked for thinking that cannot then be sent to it,
+/// and this has nothing to read.
 fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
     let Some(summary) = chunk["reasoning_summary"]["content"]
         .as_str()
@@ -128,8 +126,8 @@ impl Provider for OpenAiCompatible {
         // note: after the parameters rather than beside `stream` above, because it has to follow
         // whatever they settled on, and it is wrong in both directions if it does not. Sent to an
         // endpoint that was asked for a whole answer it is a 400 about a field nobody set; left
-        // off a request whose parameters turned streaming *on* it costs the usage report, and a
-        // turn whose cost is unknown is the one thing this workspace will not have
+        // off a request whose parameters turned streaming *on* it costs the usage report, and the
+        // turn goes into the record with its cost unknown
         //
         // note: added to options somebody set rather than put in place of them, since the rest of
         // what they asked for is theirs
@@ -306,7 +304,7 @@ impl OpenAiCompatible {
 
 /// The calls being assembled, and which of them a fragment that names nothing belongs to.
 ///
-/// note: a struct rather than the `Vec` it was, for `latest` alone. A fragment carrying neither an
+/// note: a struct rather than a bare `Vec`, for `latest` alone. A fragment carrying neither an
 /// index nor an identifier is a *continuation*, and what it continues is whatever was last being
 /// written - which is not the same as the last call in the list the moment a second one has been
 /// announced and has not begun. Read as the last in the list, such a fragment lands on the new call
@@ -326,17 +324,16 @@ impl Gathering {
     /// note: OpenAI numbers the calls in a message and streams each one's arguments in fragments,
     /// so the index is what says which call a fragment belongs to. Google's compatible endpoint
     /// sends no index at all - one whole call per chunk, each with an identifier of its own - and
-    /// taking that for index zero folded three parallel calls into one: the names ran together
-    /// into `writewritewrite` and the model was told there was no such tool. So the identifier
-    /// decides when there is no index, and a fragment with neither continues whatever was last
-    /// written to.
+    /// taking that for index zero folds parallel calls into one: the names run together into
+    /// `writewritewrite` and the model is told there is no such tool. So the identifier decides
+    /// when there is no index, and a fragment with neither continues whatever was last written to.
     fn fold(&mut self, requested: &Value, deltas: &DeltaSink) {
         let at = match requested["index"].as_u64() {
             // note: the index says which call a fragment belongs to. It is *not* a position in the
-            // list: minimax numbers its calls from one, and using it as a slot left an unfilled
-            // call at zero, which the kernel then reported as a repaired identifier and a tool
-            // with no name - a wasted round trip and an error the model had to read. So an index
-            // is looked up, and a number never seen before starts a new call at the end
+            // list: minimax numbers its calls from one, and using it as a slot leaves an unfilled
+            // call at zero, which the kernel reports as a repaired identifier and a tool with no
+            // name - a wasted round trip and an error the model has to read. So an index is
+            // looked up, and a number never seen before starts a new call at the end
             Some(index) => match self.calls.iter().position(|call| call.slot == Some(index)) {
                 Some(at) => at,
                 None => {
@@ -356,9 +353,9 @@ impl Gathering {
                     }
                 },
                 // note: the call last *written to* first, and only then the last announced. The two
-                // differ exactly where this used to be wrong - a call opened with a name and no
-                // arguments, while the one before it is still being streamed - and where nothing
-                // has been written yet there is nothing else the fragment can mean
+                // differ where a call has been opened with a name and no arguments while the one
+                // before it is still being streamed - and where nothing has been written yet there
+                // is nothing else the fragment can mean
                 None => match self.latest.or_else(|| self.calls.len().checked_sub(1)) {
                     Some(at) => at,
                     None => {
@@ -369,8 +366,8 @@ impl Gathering {
             },
         };
 
-        // note: read before the call is borrowed, and *empty is not a fragment* - which is the rule
-        // the content and reasoning branches upstream have always followed. An opener carrying
+        // note: read before the call is borrowed, and *empty is not a fragment* - the same rule the
+        // content and reasoning branches of `Streamed::event` follow. An opener carrying
         // `"arguments": ""` announces a call rather than writing to one, so counting it would put
         // `latest` on a call nothing has been streamed to and hand it the next loose fragment
         let fragment = requested["function"]["arguments"]
@@ -437,8 +434,7 @@ fn thinking_of(content: &str) -> Option<(&str, &str)> {
 ///
 /// note: only where `reasoning` came back empty. An endpoint that fills it has a reasoning parser
 /// of its own, and its content is content - `</think>` in that content is a model writing the
-/// characters. Between them these two cover it: the field is either the endpoint's answer or
-/// nobody's.
+/// characters. The field is either the endpoint's answer or nobody's.
 fn said_and_thought(
     content: &str,
     reasoning: Option<&str>,
@@ -464,10 +460,10 @@ fn said_and_thought(
 /// Reads a whole answer - one JSON body, no fragments - into a turn.
 ///
 /// note: the streamed path assembles the same thing from `delta` objects a piece at a time; this
-/// one is handed `message` finished. What they must agree about is what they make of it, which is
-/// why the two readers below are shared rather than written twice: a model whose arguments will
-/// not parse, a usage report whose reasoning has to be inferred, and thinking written into the
-/// content were each handled one way here and another there.
+/// one is handed `message` finished. What they must agree about is what they make of it: a model
+/// whose arguments will not parse, a usage report whose reasoning has to be inferred, and thinking
+/// written into the content. The last two go through the same readers on both paths, `usage_of`
+/// and `said_and_thought`, and the first gets the same `_unparsed` answer on both.
 fn whole(body: &Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
@@ -494,7 +490,7 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
             .flatten()
             .map(|call| {
                 // a model that produces invalid JSON gets to see that it did - the same answer
-                // the streamed path gives. Handing it `{}` instead meant a call arrived with no
+                // the streamed path gives. Handing it `{}` instead would be a call with no
                 // arguments and nothing anywhere to say why
                 let written = call["function"]["arguments"].as_str().unwrap_or("{}");
                 let args: Value = serde_json::from_str(written)
@@ -524,8 +520,7 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
 /// added to it and the reported one is not.
 ///
 /// note: the residual is worth inferring because an endpoint that bills for reasoning and reports
-/// none by name is the case where a turn's cost is otherwise invisible. There is nowhere else to
-/// find out where it went.
+/// none by name is the case where a turn's cost is otherwise invisible.
 fn usage_of(reported: &Value) -> Usage {
     let input = reported["prompt_tokens"].as_u64();
     let output = reported["completion_tokens"].as_u64();
@@ -564,9 +559,9 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
 /// A message's content as this dialect's list of typed parts, where a plain string cannot carry
 /// what is in it.
 ///
-/// note: `None` unless there is a blob somewhere, and that is the whole rule. A plain string is
-/// what every endpoint speaking this dialect accepts and some of the smaller ones accept nothing
-/// else, so a turn of text has to go out exactly as it did before any of this existed.
+/// note: `None` unless there is a blob somewhere. A plain string is what every endpoint speaking
+/// this dialect accepts and some of the smaller ones accept nothing else, so a turn of text has to
+/// go out as a plain string.
 ///
 /// note: [`Content::Blocks`] is the shape a turn takes when it is *both* - a sentence and the
 /// screenshot it is about - and it is the one a caller building a multimodal client reaches for.
@@ -586,9 +581,8 @@ fn parts_of(content: &Content) -> Option<Value> {
         match content.as_blob() {
             // note: a picture and a document are two different parts in this dialect, and the
             // media type is the only thing that says which. Sending a PDF as `image_url` is a 400
-            // from every endpoint that implements the spec - the field means an image, not an
-            // attachment - and it was the shape everything went out in until something that was
-            // not a picture had to
+            // from every endpoint that implements the spec: the field means an image, not an
+            // attachment
             Some(blob) if blob.media_type.starts_with("image/") => json!({
                 "type": "image_url",
                 "image_url": { "url": data(blob) },
@@ -649,7 +643,7 @@ fn to_wire(message: &Message) -> Value {
     if let Some(content) = &message.content {
         // note: only on a user turn. `tool` content is a string in this dialect whatever is in
         // it, so a tool that returned a picture sends the sentence naming it - which is what
-        // `nachalnik-mcp` has always done and is better than a 400
+        // `nachalnik-mcp` does and is better than a 400
         wire["content"] = match parts_of(content).filter(|_| message.role == Role::User) {
             Some(parts) => parts,
             None => json!(content.to_text()),
@@ -760,9 +754,9 @@ mod tests {
 
     /// An empty identifier on a later fragment does not write over the one the call opened with.
     ///
-    /// note: the lookup already read an empty identifier as naming nothing, and the write did not -
-    /// so the call ended up with none, and its early argument fragments were filed under a different
-    /// identifier from its late ones.
+    /// note: the lookup reads an empty identifier as naming nothing, and the write has to agree -
+    /// otherwise the call ends up with none, and its early argument fragments are filed under a
+    /// different identifier from its late ones.
     #[test]
     fn an_empty_identifier_does_not_unname_a_call() {
         let mut gathering = Gathering::default();
@@ -814,8 +808,8 @@ mod tests {
         assert_eq!(said, "a `</think>` closes the block");
     }
 
-    /// Thinking that finished with nothing after it is thinking, and the turn said nothing. The
-    /// alternative - reading the whole of it as the answer - is how this behaved before.
+    /// Thinking that finished with nothing after it is thinking, and the turn said nothing; none of
+    /// it is read as the answer.
     #[test]
     fn thinking_with_nothing_after_it_leaves_the_answer_empty() {
         let (thought, said) = thinking_of("still working on it</think>").expect("a tag");
@@ -824,8 +818,8 @@ mod tests {
         assert_eq!(said, "");
     }
 
-    /// And the whole point of the guards: content with no tag in it is content. A model that never
-    /// writes one must keep every word of its answer, which is what the `None` here protects.
+    /// Content with no tag in it is content. A model that never writes one must keep every word of
+    /// its answer, which is what the `None` here protects.
     #[test]
     fn content_that_closes_no_thinking_is_left_exactly_as_it_was() {
         assert_eq!(thinking_of("just an ordinary answer"), None);

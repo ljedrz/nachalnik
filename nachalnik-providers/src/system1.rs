@@ -8,16 +8,15 @@
 //! four branches this is, how bad the thing it just read is.
 //!
 //! note: named for the kind of model rather than for the company selling one. The three question
-//! types are the category's and not this vendor's - `laya`, the open one, has the same three
-//! under the same names - so a module called `typesafe` was naming the shop rather than the
-//! goods.
+//! types are the category's and not this vendor's: `laya`, the open one, has the same three under
+//! the same names.
 //!
-//! note: [`SystemOne`] is the seam, and it earned its place rather than being laid down for a
-//! caller that might arrive. The open engines ship as *libraries* rather than services, so the
-//! second implementation is a local process - and this crate does not spawn processes, which is
-//! the line `nachalnik-mcp` exists on the other side of. So the trait is here, [`Jev`] implements
-//! it, and the local one lives in whichever crate is already spawning things. A caller holds
-//! `dyn SystemOne` and never learns which it got.
+//! note: [`SystemOne`] is the seam, and there is a second implementation for it to fit. The open
+//! engines ship as *libraries* rather than services, so the second implementation is a local
+//! process - and this crate does not spawn processes, which is the line `nachalnik-mcp` exists on
+//! the other side of. So the trait is here, [`Jev`] implements it, and the local one lives in
+//! whichever crate is already spawning things. A caller holds `dyn SystemOne` and never learns
+//! which it got.
 //!
 //! note: what a third *service* takes, as against a second engine, is an address and nothing
 //! else. Anything answering a `state` and a map of typed questions at the path below works
@@ -74,8 +73,8 @@ pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/v1";
 /// The model identifier the documentation tells a caller to use.
 ///
 /// note: it resolves to a version on the way through - a request naming this one comes back
-/// saying `jev-1.13.0` - so [`Answers::model`] is what actually answered and is worth recording
-/// rather than what was asked for. The listing offers a `jev-preview` beside it.
+/// naming a version, such as `jev-1.13.0` - so [`Answers::model`] is what actually answered, and
+/// is the one worth recording rather than what was asked for.
 pub const DEFAULT_MODEL: &str = "jev-latest";
 
 /// Where OpenRouter takes these, which is not where it takes everything else.
@@ -89,7 +88,7 @@ pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/alpha";
 ///
 /// note: a version rather than a moving name, because there is no moving name to use. TypeSafe's
 /// own API resolves `jev-latest`; OpenRouter lists the versions it serves, `typesafe/jev-latest`
-/// is not one of them, and this is the identifier its own documentation uses - so it is a constant
+/// is not one of them, and this is the identifier its own documentation uses. So it is a constant
 /// somebody has to bump, and [`Answers::model`] is what says which version actually answered.
 pub const OPENROUTER_MODEL: &str = "typesafe/jev-1.13";
 
@@ -97,15 +96,15 @@ pub const OPENROUTER_MODEL: &str = "typesafe/jev-1.13";
 ///
 /// note: the model is the same one and the request body is the same JSON, so what this decides is
 /// only the paperwork around it: the path a question goes to, whether there is a listing to ask
-/// for, and which envelope a refusal arrives in. Three small differences, and getting any of them
-/// from the wrong service is a 404 or an unreadable error rather than a wrong answer.
+/// for, and which envelope a refusal arrives in. Getting any of them from the wrong service is a
+/// 404 or an unreadable error rather than a wrong answer.
 ///
 /// note: read off the address rather than passed in beside it, for the reason
 /// `openai::ranks_apps` is: the two cannot then disagree, and [`Endpoint::set_endpoint`] moving a
 /// live client from one service to the other moves the path with it. What that costs is a gateway
-/// standing in front of OpenRouter under somebody else's name, which is read as TypeSafe's own API
-/// and asked for `/systemone` - the other way round is right, since a proxy of TypeSafe keeps
-/// TypeSafe's paths.
+/// standing in front of OpenRouter under somebody else's name: it is read as TypeSafe's own API
+/// and asked for `/systemone`. Reading it the other way round would be wrong for a proxy of
+/// TypeSafe, which keeps TypeSafe's paths.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Service {
     /// TypeSafe's own API.
@@ -146,8 +145,9 @@ impl Service {
 
 /// How many times a request is retried when the server says it is busy.
 ///
-/// note: the same count the dialects next door use, arrived at independently: what the
-/// documentation asks for here is an exponential backoff and does not say how far.
+/// note: the documentation asks for an exponential backoff and does not say how far. The value is
+/// the one `waiting::RETRIES` has, but that one counts the first send and this does not, so a
+/// request here is sent once more than a dialect's.
 const RETRIES: usize = 4;
 
 /// How long the first retry waits, doubling from there.
@@ -156,9 +156,8 @@ const BACKOFF: Duration = Duration::from_millis(500);
 /// How long one request may take before the transport gives up on it.
 ///
 /// note: seconds rather than the minutes a reasoning model gets, because this model answers in
-/// one - three questions against a paragraph of state came back in 0.8s, measured. A wait of ten
-/// minutes would only ever be a hang, and the place this is wired into is a permission gate with
-/// somebody sitting in front of it.
+/// about one. A wait of ten minutes would only ever be a hang, and the place this is wired into is
+/// a permission gate with somebody sitting in front of it.
 const PATIENCE: Duration = Duration::from_secs(30);
 
 /// One typed question to put to a state.
@@ -171,10 +170,10 @@ const PATIENCE: Duration = Duration::from_secs(30);
 ///
 /// note: `#[non_exhaustive]`, with [`Answer`] beside it. Three is what the engines answer today
 /// and not what a question can be - a fourth primitive is the upstream's to add, and this crate
-/// exists to speak whatever it grows. Matching is what the attribute costs, and nothing outside
-/// here does: a caller builds these through [`Question::noul`], [`Question::choice`] and
-/// [`Question::score`], and reads the answers back through the accessors on [`Answers`], which
-/// already answer `None` for a variant they were not asked about.
+/// exists to speak whatever it grows. What the attribute costs is an exhaustive match, and nothing
+/// outside this crate needs one: a caller builds these through [`Question::noul`],
+/// [`Question::choice`] and [`Question::score`], and reads the answers back through the accessors
+/// on [`Answers`], which already answer `None` for a variant they were not asked about.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Question {
@@ -273,10 +272,10 @@ impl Question {
         }
     }
 
-    /// Puts a state of its own on this question, rather than the plain text of one.
+    /// Gives this question structured instructions, rather than the plain text of them.
     ///
     /// note: `instructions` takes a string, an object or an array, like `state` does. This is how
-    /// to hand over the second of the three without going through a `String`.
+    /// to hand over an object or an array without going through a `String`.
     pub fn structured(self, instructions: impl Into<Value>) -> Self {
         let instructions = instructions.into();
         match self {
@@ -455,10 +454,9 @@ impl Answer {
 
 /// Everything one request came back with.
 ///
-/// note: `#[non_exhaustive]` on the same question the enums above answer, put to a struct:
-/// nothing outside this crate builds one. [`Answers::read`] is where they come from, so the
-/// attribute costs a caller nothing and makes the next field a patch rather than a break - which
-/// matters here, because what a response carries is the other end's to widen.
+/// note: `#[non_exhaustive]` because nothing outside this crate builds one. [`Answers::read`] is
+/// where they come from, so the attribute costs a caller nothing and makes the next field a patch
+/// rather than a break - and what a response carries is the other end's to widen.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Answers {
@@ -480,8 +478,8 @@ impl Answers {
     ///
     /// note: the answers are read by the name they were asked under, and a name that did not
     /// come back is simply absent rather than an error. One question failing to arrive is not a
-    /// reason to throw away the others - which is the whole argument for asking several at once
-    /// - and every accessor below already answers `None` for a question nobody answered.
+    /// reason to throw away the others, and every accessor below already answers `None` for a
+    /// question nobody answered.
     ///
     /// note: public, and one reader for both engines. A local one answers over a pipe rather
     /// than a socket and is parsed by a caller in another crate; a second reader written there
@@ -537,7 +535,7 @@ impl Answers {
 
 /// Anything that answers typed questions put to a state.
 ///
-/// note: one method, and it is the whole of what a caller of this module does. [`Jev`] is the
+/// note: [`SystemOne::ask`] is the whole of what a caller of this module does. [`Jev`] is the
 /// implementation here; the reason there is a trait at all is that the other kind of System One
 /// engine is a *local* one - the open ones ship as libraries rather than services, so a caller
 /// reaching one is spawning a process rather than opening a socket, and this crate does not spawn
@@ -545,15 +543,15 @@ impl Answers {
 /// the seam it fits.
 ///
 /// note: concrete argument types where [`Jev::ask`] takes `impl Into<Value>` and an iterator,
-/// because a trait with generic methods is not one a caller can hold as `dyn`. Holding one as
-/// `dyn` is the entire point: what decides which engine answers is an environment variable read
-/// at startup, and every caller downstream of that is written against this and finds out nothing.
+/// because a trait with generic methods is not one a caller can hold as `dyn`, and a caller has
+/// to: what decides which engine answers is an environment variable read at startup, and every
+/// caller downstream of that is written against this and finds out nothing.
 ///
-/// note: it does *not* extend [`Endpoint`]. Three of that trait's four methods are about an
-/// address and a listing, and a local engine has neither - so a local one implementing it would
-/// be answering four questions with nothing in order to be asked one. [`SystemOne::notice`] is
-/// the one thing out of `Endpoint` worth having here, because a caller that has quietly stopped
-/// getting answers should be able to see why.
+/// note: it does *not* extend [`Endpoint`]. Most of that trait is about an address and a listing,
+/// and a local engine has neither - so a local one implementing it would be answering those with
+/// nothing in order to be asked one question. [`SystemOne::notice`] is the one thing out of
+/// `Endpoint` worth having here, because a caller that has quietly stopped getting answers should
+/// be able to see why.
 #[async_trait]
 pub trait SystemOne: Send + Sync {
     /// Puts the questions to the state, and answers all of them in one request.
@@ -748,10 +746,10 @@ impl Jev {
             let parsed: Value = serde_json::from_str(&said).unwrap_or(Value::Null);
 
             if status.is_success() {
-                // note: checked even on a 200. A `detail` beside the answers would mean the
-                // service reported a failure inside a successful response, which is the shape
-                // `Provider::respond` warns about and the one that otherwise reads as the model
-                // having said nothing
+                // note: checked even on a 200. A `detail` or an `error` beside the answers would
+                // mean the service reported a failure inside a successful response, which is the
+                // shape `Provider::respond` warns about and the one that otherwise reads as the
+                // model having said nothing
                 if let Some(complaint) = complaint(&parsed) {
                     return Err(complaint.into());
                 }
@@ -791,8 +789,8 @@ impl Jev {
     /// missing.
     ///
     /// note: there is nothing else for a probe to ask. What the sibling dialects use one for is
-    /// the model's context limit, and this model has no window to measure a conversation against
-    /// - a request is one state and a handful of questions, and the endpoint prices it afterwards.
+    /// the model's context limit, and this model has no window to measure a conversation against:
+    /// a request is one state and a handful of questions, and the endpoint prices it afterwards.
     pub async fn probe(&self) {
         self.say_if_the_model_is_not_there().await;
     }
@@ -859,7 +857,7 @@ fn busy(model: &str, why: &str, waiting: Duration) -> String {
 ///
 /// note: `input_tokens` and `output_tokens` under those exact names, which is the one dialect
 /// question this endpoint does not make anybody guess at. Nothing is reported about caching or
-/// reasoning, so those two stay `None` - which [`Usage`] is explicit is not the same as zero.
+/// reasoning, so those two stay `None` - and [`Usage`] is explicit that `None` is not zero.
 fn read_usage(usage: &Value) -> Option<Usage> {
     let input_tokens = usage["input_tokens"].as_u64();
     let output_tokens = usage["output_tokens"].as_u64();
@@ -887,14 +885,13 @@ impl Endpoint for Jev {
     /// What the endpoint serves, which TypeSafe publishes at `/models`.
     ///
     /// note: `models[].name`, and the listing carries a description and a release date beside it
-    /// that nothing here reads. At the time of writing it is `jev-latest` and `jev-preview`.
+    /// that nothing here reads.
     ///
     /// note: nothing is asked of OpenRouter, which publishes no listing on the path it takes these
     /// on - and the listing it publishes elsewhere does not carry this model at all, since it is
-    /// served out of an alpha route `/api/v1/models` does not report. Asking that one and
-    /// answering with it would report a model that *is* served as missing, which is the one thing
-    /// an empty answer is careful not to do: `say_if_the_model_is_not_there` reads it as nothing
-    /// having been said.
+    /// served out of an alpha route `/api/v1/models` does not report. Answering with that one would
+    /// report a model that *is* served as missing. An empty answer does not:
+    /// `say_if_the_model_is_not_there` reads it as nothing having been said.
     async fn models(&self) -> Vec<String> {
         if !self.service().publishes_a_listing() {
             return Vec::new();
