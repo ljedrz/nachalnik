@@ -1958,30 +1958,21 @@ impl App {
     /// session gets from the runtime by default is a counter that restarts with the process,
     /// which is fine as an identity and writes over the last session's record.
     pub fn session_stamp(secs: u64) -> String {
-        // days since the epoch, and what is left of the last one
-        let (days, rest) = ((secs / 86_400) as i64, secs % 86_400);
-        // note: Howard Hinnant's `civil_from_days`, the calendar in integer arithmetic, which gets
-        // the leap years right for every year rather than for the ones a test happened to try.
-        // The shift is to an era starting in March, so that a leap day is the last day of a year
-        // instead of the sixtieth
-        let z = days + 719_468;
-        let era = z.div_euclid(146_097);
-        let doe = z.rem_euclid(146_097);
-        let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
-        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-        let mp = (5 * doy + 2) / 153;
-        let day = doy - (153 * mp + 2) / 5 + 1;
-        let month = match mp < 10 {
-            true => mp + 3,
-            false => mp - 9,
-        };
-        let year = yoe + era * 400 + i64::from(month <= 2);
+        // note: the epoch where the seconds are past what the calendar holds, year 9999, which is
+        // not a moment this program is started at
+        let at = i64::try_from(secs)
+            .ok()
+            .and_then(|secs| time::OffsetDateTime::from_unix_timestamp(secs).ok())
+            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
 
         format!(
-            "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}Z",
-            rest / 3_600,
-            (rest % 3_600) / 60,
-            rest % 60
+            "{:04}-{:02}-{:02}T{:02}-{:02}-{:02}Z",
+            at.year(),
+            u8::from(at.month()),
+            at.day(),
+            at.hour(),
+            at.minute(),
+            at.second()
         )
     }
 

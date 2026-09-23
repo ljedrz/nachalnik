@@ -24,8 +24,8 @@ use crate::{common, harness::Harness};
 ///
 /// note: it was `kamchatka-1788849917`, written into a directory called `kamchatka` - so half of
 /// every filename repeated the directory and the other half said nothing to anybody reading a list
-/// of them. The dates here are the ones that catch a calendar written by hand: a leap day, the day
-/// after one, the first of March in a century that is not a leap year, and the epoch itself.
+/// of them. The dates here are the ones a calendar gets wrong: a leap day, the day after one, the
+/// first of March in a century that is not a leap year, and the epoch itself.
 #[test]
 fn a_session_is_named_for_when_it_started() {
     for (secs, expected) in [
