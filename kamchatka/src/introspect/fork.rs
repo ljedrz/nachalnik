@@ -17,7 +17,13 @@ use nachalnik::{
     OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::Value;
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
 
 use crate::{
     app::text::thousands,
@@ -63,17 +69,19 @@ fn ops() -> Vec<Op> {
 pub struct Fork {
     reach: Reach,
     limits: Limits,
+    forked: Arc<AtomicU64>,
     ops: Vec<Op>,
     schema: Arc<Value>,
 }
 
 impl Fork {
-    /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, limits: Limits) -> Self {
+    /// Builds one; see [`super::install`], which is the only caller, and which holds `forked`.
+    pub(super) fn new(reach: Reach, limits: Limits, forked: Arc<AtomicU64>) -> Self {
         let ops = ops();
         Self {
             reach,
             limits,
+            forked,
             schema: Arc::new(schema(&ops)),
             ops,
         }
@@ -128,7 +136,7 @@ impl Tool for Fork {
             return Ok(ToolOutput::error(refusal));
         }
         match action {
-            "draft" => branch(&kernel, None, &[], &output).await,
+            "draft" => branch(&kernel, None, &[], &output, &self.forked).await,
             "ask" => {
                 let Some(question) = args["question"].as_str() else {
                     return Ok(ToolOutput::error(
@@ -140,7 +148,7 @@ impl Tool for Fork {
                     Ok(without) => without,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
-                branch(&kernel, Some(question), &without, &output).await
+                branch(&kernel, Some(question), &without, &output, &self.forked).await
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
@@ -160,11 +168,17 @@ impl Tool for Fork {
 /// session's event log either - it has a log of its own that goes when it does. What it *is*
 /// visible as is the text it streams, relayed into this tool's own [`OutputSink`], so a person
 /// watching the terminal sees a fork thinking rather than a tool that has gone quiet.
+///
+/// note: and what it was charged, added to `forked` for the session's ceiling. Read off the fork's
+/// own log once its turn is over, whatever the turn came to, rather than off the stream the relay
+/// reads: the relay is stopped as soon as the turn ends, and a figure it had not reached yet would
+/// be spent and never counted.
 async fn branch(
     kernel: &Kernel,
     question: Option<&str>,
     without: &[ContextId],
     output: &OutputSink,
+    forked: &AtomicU64,
 ) -> Result<ToolOutput, BoxError> {
     let Some(provider) = kernel.provider() else {
         return Ok(ToolOutput::error("there is no provider to ask"));
@@ -255,6 +269,17 @@ async fn branch(
         }
     };
     relay.abort();
+    let charged: u64 = fork
+        .history()
+        .iter()
+        .filter_map(|record| match &record.event {
+            Event::ModelFinished {
+                usage: Some(usage), ..
+            } => Some(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0)),
+            _ => None,
+        })
+        .sum();
+    forked.fetch_add(charged, Ordering::Relaxed);
 
     if let Err(e) = outcome {
         return Ok(ToolOutput::error(format!("the fork got no answer: {e}")));

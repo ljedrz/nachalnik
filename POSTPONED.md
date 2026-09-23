@@ -424,13 +424,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   and the turn's outcome until it ends is the fix; bounding that wait is the decision, and so is
   what the record says about a turn that was still running when the bound ran out.
 
-- **A `fork` is not counted against the spend ceiling.** The fork is a kernel of its own with a
-  broadcast of its own, and `App::charge` reads only the main kernel's, so a model calling
-  `fork draft` over and over spends a full-context request each time and none of it reaches
-  `spent`. Either a shared accumulator handed to `introspect::install`, or refusing `fork` once the
-  ceiling is reached - which one is a decision about whether a draft is part of the session's
-  spend, and it is money either way.
-
 - **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
   take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with
   no `context.recounted` to say so, and lists every item as changed. Whether a recount is an

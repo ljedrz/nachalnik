@@ -374,7 +374,7 @@ pub struct App {
     /// what `context` is remembering. Turning a tool off is [`App::toggle`], and a shelved tool is
     /// still the same tool: what it pinned is still pinned, and what it could still walk back it
     /// still can.
-    pub introspect: Option<Arc<Kernel>>,
+    pub introspect: Option<crate::introspect::Installed>,
     /// The tools this session is not offering, by id, kept so that they can be offered again.
     ///
     /// note: the tool itself rather than its id, which is what makes this work for a tool nobody
@@ -1084,6 +1084,12 @@ impl App {
                 // actually given - and the line about what it cost is read off the item too,
                 // truncation included, so a resumed session says the same thing this one does
                 self.caught_up(item);
+                // a fork is charged in a kernel of its own, and this is the first moment after
+                // it that this session hears anything
+                let forked = self.introspect.as_ref().map_or(0, |it| it.forked());
+                if forked > 0 {
+                    self.count(forked);
+                }
             }
             Event::Compacted { report } => {
                 let mut note = format!(
@@ -1181,6 +1187,10 @@ impl App {
     /// note: it stops *after* the response that crosses the line, because that is the first moment
     /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the session
     /// ends having spent a little more than it, and the line says how much.
+    ///
+    /// note: a `fork`'s request is counted too, when the call that made it finishes: it is money
+    /// the session spent, and a model drafting over and over would otherwise spend without limit
+    /// under a ceiling that says there is one.
     fn charge(&mut self, usage: Option<Usage>) {
         let Some(usage) = usage else {
             // said only where it changes something: with no ceiling, a total nobody set a limit on
@@ -1196,10 +1206,16 @@ impl App {
             return;
         };
 
+        self.count(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0));
+    }
+
+    /// Adds what a provider charged to what this session has spent, and stops the turn once that
+    /// reaches the ceiling; see [`App::charge`].
+    fn count(&mut self, tokens: u64) {
         // counted whether or not anything is watching the figure. Added up only under a ceiling,
         // a session that set one half way through would begin from zero, and `/spend` would
         // answer `0 tokens spent` after a turn that plainly cost some
-        self.spent += usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0);
+        self.spent = self.spent.saturating_add(tokens);
         let Some(limit) = self.spend else {
             return;
         };

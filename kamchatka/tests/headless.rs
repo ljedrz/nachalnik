@@ -756,6 +756,57 @@ async fn a_ceiling_is_charged_while_the_turn_is_still_running() {
     assert!(!run.prose.contains("never reached"), "{}", run.prose);
 }
 
+/// What a `fork` is charged counts against the ceiling, as the session's own requests do.
+///
+/// note: a fork is a kernel of its own, and the ceiling was kept off this session's events alone,
+/// so a model drafting over and over spent a full-context request each time and none of it was
+/// counted. The fork's response here is the one that crosses the line; the turn's own requests
+/// cost almost nothing, and the last is priced at nothing so that the figure is the same whether
+/// the turn got as far as asking for it or not.
+#[tokio::test]
+async fn a_forks_request_counts_against_the_ceiling() {
+    let script = vec![
+        priced(
+            ModelResponse::tool_calls(vec![call("c1", "fork", json!({ "action": "draft" }))]),
+            100,
+            100,
+        ),
+        priced(ModelResponse::text("what I would say"), 900, 300),
+        priced(ModelResponse::text("done"), 0, 0),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(vec!["fork".to_owned()]),
+        spend: Some(1000),
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    app.kernel
+        .set_provider(Arc::new(ScriptedProvider::new(script)));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Allow, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert_eq!(app.spent(), 1400, "the fork's 1,200 were counted: {prose}");
+    assert!(app.overspent());
+    assert!(
+        prose.contains("spent 1,400 tokens of 1,000; stopping"),
+        "{prose}"
+    );
+}
+
 /// Nothing else is sent afterwards, however it is asked for.
 ///
 /// note: this is what makes the ceiling a bound rather than a report, and it is the reason the

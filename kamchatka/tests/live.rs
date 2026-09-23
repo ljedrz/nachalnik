@@ -662,7 +662,7 @@ async fn models_lists_what_the_endpoint_actually_serves() {
 /// other provider skips these rather than sending that provider's key to Google.
 fn gemini() -> Option<(
     App,
-    Arc<Kernel>,
+    kamchatka::introspect::Installed,
     tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
 )> {
     let base = std::env::var("KAMCHATKA_GEMINI_BASE_URL")

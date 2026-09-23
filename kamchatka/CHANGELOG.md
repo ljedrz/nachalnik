@@ -24,6 +24,11 @@ minor bump may break you.
   connections to write what they still owe and close. A loop of its own that ends a served
   session calls `serving.last(&app).await` where it called `serving.last(&app)`.
 
+- **`introspect::install` hands back an `introspect::Installed`**, and `App::introspect` holds
+  one, where both were an `Arc<Kernel>`. It keeps the same handle the tools reach the kernel
+  through, and `Installed::forked` says what forks have been charged, for the spend ceiling to
+  count. A caller that held the value to keep the tools alive holds it the same way.
+
 ### added
 
 - **A command the advisor could not rate says so.** Where the rating would be, the question says
@@ -141,6 +146,12 @@ minor bump may break you.
   a connection the session had answered on, and that starts the waits again - so a `--connect`
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
+
+- **What a `fork` is charged counts against the spend ceiling.** A fork is a kernel of its own,
+  and the ceiling was added up off this session's events alone, so a model calling `fork draft`
+  over and over spent a full-context request each time and none of it reached `/spend`. The fork
+  adds what its provider reported once its request is over, and the session counts it when the
+  call finishes, stopping the turn there if that crosses the line.
 
 - **`fs write` and `fs edit` no longer empty a file before writing it.** The open truncated, so a
   full disk or a killed process midway left a file shorter than either version of it. The new

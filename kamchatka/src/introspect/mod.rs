@@ -32,7 +32,10 @@
 
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Weak},
+    sync::{
+        Arc, Weak,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use nachalnik::{
@@ -62,22 +65,50 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 /// cannot know it says so about: the verdicts are labelled as this policy's, beside the name of
 /// whichever one the kernel is actually consulting.
 ///
-/// note: dropping the return value is how the tools are switched off: they hold a [`Weak`] to it,
-/// and a tool that cannot upgrade its weak handle refuses the call and says why. The indirection
-/// is there because a `Kernel` stored inside a `Tool` the same kernel holds is a reference cycle
-/// that keeps the whole session alive after the last handle to it is gone, which the runtime's own
-/// documentation warns about; an [`Arc`] somebody *else* owns, pointed at weakly from in here, is
-/// the shape that has an end.
-pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Arc<Kernel> {
+/// note: dropping the return value is how the tools are switched off: they hold a [`Weak`] to the
+/// kernel it keeps, and a tool that cannot upgrade its weak handle refuses the call and says why.
+/// The indirection is there because a `Kernel` stored inside a `Tool` the same kernel holds is a
+/// reference cycle that keeps the whole session alive after the last handle to it is gone, which
+/// the runtime's own documentation warns about; an [`Arc`] somebody *else* owns, pointed at weakly
+/// from in here, is the shape that has an end.
+pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Installed {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor));
+    let forked = Arc::new(AtomicU64::new(0));
 
     kernel.add_tool(Arc::new(Context::new(reach.clone(), limits.clone())));
-    kernel.add_tool(Arc::new(Fork::new(reach.clone(), limits.clone())));
+    kernel.add_tool(Arc::new(Fork::new(
+        reach.clone(),
+        limits.clone(),
+        forked.clone(),
+    )));
     kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone())));
     kernel.add_tool(Arc::new(Setup::new(reach, policy, limits)));
 
-    anchor
+    Installed {
+        _anchor: anchor,
+        forked,
+    }
+}
+
+/// What [`install`] hands back: the handle the tools reach the kernel through, and what their forks
+/// have cost.
+///
+/// note: a fork is a kernel of its own, so what it is charged is in no event of this session's,
+/// and a ceiling read off this session's events alone would never see it. The fork adds what its
+/// provider reported here, and [`Installed::forked`] is how whoever keeps the ceiling counts it.
+pub struct Installed {
+    _anchor: Arc<Kernel>,
+    forked: Arc<AtomicU64>,
+}
+
+impl Installed {
+    /// What forks have been charged since this was last asked, as their provider reported it.
+    ///
+    /// note: taken rather than read, so that a figure is counted once however often it is asked.
+    pub fn forked(&self) -> u64 {
+        self.forked.swap(0, Ordering::Relaxed)
+    }
 }
 
 /// The way back to the kernel a tool is registered on.

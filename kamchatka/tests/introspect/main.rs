@@ -90,7 +90,7 @@ fn offers(schema: &serde_json::Value) -> Vec<&str> {
 /// kernel was not consulting would be checking a sentence about the wrong thing.
 fn agent(
     script: impl IntoIterator<Item = ModelResponse>,
-) -> (Kernel, Arc<ScriptedProvider>, Arc<Kernel>) {
+) -> (Kernel, Arc<ScriptedProvider>, introspect::Installed) {
     let kernel = Kernel::new(Config::default());
     let provider = Arc::new(ScriptedProvider::new(script));
     kernel.set_provider(provider.clone());

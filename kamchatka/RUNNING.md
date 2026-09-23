@@ -57,7 +57,8 @@ at once if pressed again.
 `--spend 50000` stops one too, because time is not the only thing one of these can spend: a model
 that has found a loop — a tool that fails the same way, a question it keeps re-asking — will stay
 inside any deadline you were willing to give it. The unit is tokens, `input + output` as the
-provider reports them, because nothing here carries a price list and a figure in money would be one.
+provider reports them, because nothing here carries a price list and a figure in money would be one;
+what a `fork` is charged counts the same as the session's own requests.
 It is a stopping rule rather than a cap, since what a response cost is known only once it has
 arrived. When the session stops, it says what had been spent against what ceiling, and that
 `/spend N` raises it.
