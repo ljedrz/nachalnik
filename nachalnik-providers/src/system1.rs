@@ -65,7 +65,7 @@ use nachalnik::{BoxError, Usage, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, install_crypto, same_model};
+use crate::{Endpoint, install_crypto, same_model, waiting::RETRIES};
 
 /// Where `jev` lives.
 pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/v1";
@@ -142,13 +142,6 @@ impl Service {
         self == Self::TypeSafe
     }
 }
-
-/// How many times a request is retried when the server says it is busy.
-///
-/// note: the documentation asks for an exponential backoff and does not say how far. The value is
-/// the one `waiting::RETRIES` has, but that one counts the first send and this does not, so a
-/// request here is sent once more than a dialect's.
-const RETRIES: usize = 4;
 
 /// How long the first retry waits, doubling from there.
 const BACKOFF: Duration = Duration::from_millis(500);
@@ -717,7 +710,10 @@ impl Jev {
         let url = self.url();
         let mut waited = BACKOFF;
 
-        for attempt in 0..=RETRIES {
+        // note: `waiting::RETRIES`, counted the way the dialects count it - the first send
+        // included. The documentation asks for an exponential backoff and does not say how far,
+        // and a question put to `jev` has no better reason to be sent more often than a turn
+        for attempt in 1..=RETRIES {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let sent = self
                 .client
@@ -1173,5 +1169,42 @@ mod tests {
         let empty: Vec<(String, Question)> = Vec::new();
         assert!(jev.ask("anything", empty).await.is_err());
         assert_eq!(jev.attempts(), 0, "nothing should have gone out");
+    }
+
+    /// A server that stays busy is asked as many times as a dialect would ask it, and no more.
+    ///
+    /// note: `waiting::RETRIES` counts the first send, and this client once counted only the
+    /// retries against the same number. It waits out the real backoff, so it takes a few seconds.
+    #[tokio::test]
+    async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut buf = vec![0u8; 65536];
+                    let _ = socket.read(&mut buf).await;
+                    let _ = socket
+                        .write_all(
+                            b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\
+                              Connection: close\r\n\r\n",
+                        )
+                        .await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+
+        let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+        assert!(
+            jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+                .await
+                .is_err()
+        );
+        assert_eq!(jev.attempts(), RETRIES);
     }
 }

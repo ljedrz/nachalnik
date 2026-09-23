@@ -26,6 +26,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`jev` is sent a busy request as often as a dialect is, and no more.** `system1` had a
+  `RETRIES` of its own with the dialects' value, counted without the first send, so a question to
+  a server that stayed busy went out five times where a turn goes out four. It uses the dialects'
+  count now.
+
 - **A prompt Google blocks is a refusal.** It comes back with no candidate and the reason under
   `promptFeedback.blockReason`, which nothing read, so the turn was recorded empty with
   `StopReason::Other("unreported")` and the reason survived only in `raw`.
