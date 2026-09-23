@@ -1,9 +1,8 @@
 //! A connection to one MCP server, and what installing its tools into a kernel did.
 //!
-//! note: the connection lives as long as the [`Server`] does, which is the whole of the lifetime
-//! story: dropping it ends the session, and for a server running as a child process the process
-//! goes with it. That is also why this crate is not the runtime - holding a process open is
-//! precisely what `nachalnik` promises not to do.
+//! note: the connection lives as long as the [`Server`] does: dropping it ends the session, and for
+//! a server running as a child process the process goes with it. That is also why this crate is
+//! not the runtime - holding a process open is precisely what `nachalnik` promises not to do.
 
 use std::sync::Arc;
 
@@ -81,10 +80,11 @@ impl Server {
     /// separately: the runtime spawns no processes.
     ///
     /// note: its standard error is held and read rather than inherited, whatever the `Command`
-    /// says - the transport sets all three streams, and inheriting was its default. A server that
-    /// logs a line per request then wrote it across whatever the caller had on the terminal, a
-    /// drawn screen included, and no caller could stop it. What it says is kept, a few lines of
-    /// it, for the one moment it is worth reading: a handshake that failed, where it is the reason.
+    /// says - the transport sets all three streams, and inherits standard error by default.
+    /// Inherited, a server that logs a line per request writes it across whatever the caller has
+    /// on the terminal, a drawn screen included, and no caller can stop it. What it says is kept,
+    /// a few lines of it, for the one moment it is worth reading: a handshake that failed, where
+    /// it is the reason.
     #[cfg(feature = "child-process")]
     pub async fn spawn(name: impl Into<String>, command: tokio::process::Command) -> Result<Self> {
         let (transport, stderr) = rmcp::transport::TokioChildProcess::builder(command)

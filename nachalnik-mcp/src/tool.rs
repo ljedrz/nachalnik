@@ -2,11 +2,11 @@
 //! about it is believed.
 //!
 //! note: [`Trust`] is the decision this crate exists to get right, and the reasoning is on the
-//! type. The short of it: annotations are hints from the thing being gated, so the default takes
-//! nobody's word for anything, and the one subject that is a fact rather than a claim -
-//! `mcp:call`, which says only that this is somebody else's tool - is declared whatever the trust
-//! setting. Which server it came from is handed back by [`Server::install`](crate::Server::install)
-//! instead, because where a tool came from is not something it does.
+//! type. Annotations are hints from the thing being gated, so the default takes nobody's word for
+//! anything, and the one subject that is a fact rather than a claim - `mcp:call`, which says only
+//! that this is somebody else's tool - is declared whatever the trust setting. Which server it
+//! came from is handed back by [`Server::install`](crate::Server::install) instead, because where
+//! a tool came from is not something it does.
 
 use nachalnik::{
     BoxError, Capability, Content, Domain, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec,
@@ -21,11 +21,10 @@ use serde_json::Value;
 
 /// How the capabilities of a server's tools are decided.
 ///
-/// This is the most important decision in this crate, so it is worth being precise about the
-/// problem. MCP tools may carry annotations describing themselves - `readOnlyHint`,
-/// `destructiveHint`, `openWorldHint` - and the specification says, in as many words, that clients
-/// "should never make tool use decisions based on annotations received from untrusted servers".
-/// They are hints. A server that would rather not be asked about need only claim to be read-only.
+/// MCP tools may carry annotations describing themselves - `readOnlyHint`, `destructiveHint`,
+/// `openWorldHint` - and the specification says, in as many words, that clients "should never make
+/// tool use decisions based on annotations received from untrusted servers". They are hints. A
+/// server that would rather not be asked about need only claim to be read-only.
 ///
 /// A [`PermissionPolicy`](nachalnik::PermissionPolicy) that acted on those hints would therefore
 /// be taking the word of the thing it is meant to be gating. So the default here takes nobody's
@@ -70,12 +69,10 @@ impl Trust {
     ) -> Vec<Capability> {
         // note: calling somebody else's tool server is itself the operation, and every tool from
         // one declares it whatever else is believed about them. `Trust::Nothing` believes nothing,
-        // which used to mean a list holding only where the tool came from; with provenance out of
-        // this list it would mean an *empty* one, and an empty list of capabilities is a call that
-        // needs nothing and is allowed by the strictest policy there is. Which server it came from
-        // is a fact rather than an act, so it is not spelled as one: see `Server::install`, which
-        // hands back the ids it installed so a client can hold that fact the way it holds any
-        // other thing it knows about a tool it registered.
+        // and without this its list would be *empty* - and an empty list of capabilities is a
+        // call that needs nothing and is allowed by the strictest policy there is. Which server
+        // it came from is provenance rather than an act, which is why `server` goes unused here:
+        // `Server::install` hands back the ids it installed instead.
         let _ = server;
         let mut capabilities = vec![Capability::of(Domain::Other("mcp".into()), "call")];
 
@@ -162,8 +159,9 @@ impl Tool for McpTool {
 
 /// Turns what a server returned into what the kernel records.
 ///
-/// note: MCP results are a list of blocks, and not all of them are text. A picture cannot go into
-/// a text context, so it is *named* rather than dropped silently - the model is told that
+/// note: MCP results are a list of blocks, and not all of them are text. Neither dialect this
+/// workspace speaks takes a picture inside a tool result (POSTPONED.md has what carrying one
+/// would take), so it is *named* rather than dropped silently - the model is told that
 /// something came back and what it was, which is a better answer than a gap.
 fn output_of(result: CallToolResult) -> ToolOutput {
     let failed = result.is_error.unwrap_or(false);
@@ -302,8 +300,8 @@ mod tests {
 
     use super::*;
 
-    /// Whether an identifier is one a model provider will take, which is the whole of what
-    /// [`sanitize`] promises.
+    /// Whether an identifier is one a model provider will take, which is all [`sanitize`]
+    /// promises.
     fn acceptable(id: &str) -> bool {
         !id.is_empty()
             && id.chars().count() <= LIMIT
@@ -320,13 +318,11 @@ mod tests {
     /// a server may legitimately send, and each is a way for an identifier to reach a provider as
     /// something it rejects.
     ///
-    /// note: the lengths are stated, and they are stated because the first version of this was
-    /// `(?s).*` and was measurably weaker than it read. proptest's `*` tops out around thirty
-    /// characters, so no single name it produced ever reached [`LIMIT`] - and doubling the cap in
-    /// the implementation broke none of the properties below. Truncation is half of what
-    /// [`sanitize`] does, `{60,70}` is the half of the strategy that reaches it, and it is
-    /// weighted highest because the boundary is where every bug in this function's history has
-    /// been.
+    /// note: the lengths are stated because proptest's `*` tops out around thirty characters, so
+    /// `(?s).*` never produces a name that reaches [`LIMIT`], and raising the cap would break none
+    /// of the properties below. Truncation is half of what [`sanitize`] does, `{60,70}` is
+    /// the half of the strategy that reaches it, and it is weighted highest because the boundary
+    /// is where this function goes wrong.
     fn a_name() -> impl Strategy<Value = String> {
         prop_oneof![
             2 => "(?s).{0,8}",
@@ -370,10 +366,9 @@ mod tests {
             prop_assert_eq!(sanitize(&once), once);
         }
 
-        /// note: the property the 0.3.1 fix was about, stated over every pair of names rather
-        /// than over the sixty-two-character server that found it. The tool's own name is the
-        /// half that tells one of a server's tools from another, so it is the half that must
-        /// arrive whole however long the prefix was.
+        /// note: stated over every pair of names rather than over one long server name. The
+        /// tool's own name is the half that tells one of a server's tools from another, so it is
+        /// the half that must arrive whole however long the prefix was.
         #[test]
         fn a_tools_own_name_survives_however_long_the_prefix(
             prefix in a_name(),
@@ -399,14 +394,14 @@ mod tests {
     /// note: this is not a bug and is not to be "fixed". [`sanitize`]'s own note says a rewrite
     /// can collide, and [`Installed::replaced`](crate::Installed::replaced) is what the bridge
     /// answers with instead of assuming it displaced nothing - `bridge.rs` checks that it does.
-    /// What this pins is the shape of the remaining case, so that nobody reads the 0.3.1 fix as
-    /// having made identifiers unique: it made the *tool's* name survive, which is a different
-    /// promise and the only one truncation can keep.
+    /// What this pins is the shape of the remaining case, so that nobody reads the prefix giving
+    /// way in [`tool_id`] as having made identifiers unique: it makes the *tool's* name survive,
+    /// which is a different promise and the only one truncation can keep.
     ///
     /// note: no generator would find this. It needs the prefix to be truncated at a boundary the
     /// longer of the two tool names then reproduces out of the separator, and the two characters
-    /// the cut lands on to be underscores - and the run that goes looking for it uniformly over
-    /// strings will not put a sixty-first character anywhere in particular.
+    /// the cut lands on to be underscores - and a search that is uniform over strings will not
+    /// put a sixty-first character anywhere in particular.
     #[test]
     fn rewriting_can_still_collide_and_the_bridge_reports_it() {
         // sixty-four characters after the rewrite, with underscores at the sixtieth and
