@@ -399,22 +399,60 @@ async fn a_session_that_went_is_waited_for_longer_each_time() {
 
     // the input stays open, so nothing but the session going can be what the client is doing
     let (_feed, input) = tokio::io::duplex(256);
-    let (mut records, mut prose) = (Vec::new(), Vec::new());
-    let _ = tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
-            .run(&at, BufReader::new(input)),
-    )
-    .await;
+    let heard = Heard::default();
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    let mut client = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose);
+    let client = client.run(&at, BufReader::new(input));
+    // note: until the second wait is announced, rather than for a fixed time. A refused connection
+    // is refused at once on Linux and after about two seconds on Windows, which retries the
+    // handshake first, so a window that fitted one platform's second attempt missed the other's
+    let second = async {
+        while heard.text().matches("attaching again").count() < 2 {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    };
+    tokio::select! {
+        left = client => panic!("the client left a session it was waiting for: {left:?}"),
+        () = second => {}
+        () = tokio::time::sleep(PATIENCE * 4) => {}
+    }
 
-    let prose = String::from_utf8(prose).expect("the prose is text");
+    let prose = heard.text();
+    let waits: Vec<_> = prose
+        .lines()
+        .filter(|line| line.contains("attaching again"))
+        .collect();
     assert!(
-        prose.contains("attaching again from record") && prose.contains(" in 0.5s"),
+        waits.len() >= 2 && waits[1].ends_with(" in 0.5s"),
         "the client did not wait any longer the second time: {prose}"
     );
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// Prose a test can read while the client is still writing it.
+#[derive(Clone, Default)]
+struct Heard(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl Heard {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("not poisoned")).into_owned()
+    }
+}
+
+impl std::io::Write for Heard {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("not poisoned")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// The client answers a question with the same three letters the terminal's panel takes.
