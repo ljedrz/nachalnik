@@ -583,17 +583,19 @@ async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
 
 /// `since` is exclusive, and the schema says which number means everything.
 ///
-/// note: also found live, and it cost the answer. A session reaching for "all of it" wrote
-/// `since: 1`, which is *after* record 1 - and in a resumed session record 1 is `session.resumed`,
-/// the one record that would have told it the context was not its own. It read everything except
-/// the thing it was looking for.
+/// note: also found live, and it cost the answer. A session reaching for "all of it" wrote the
+/// first record's number, which is *after* that record - and in a resumed session the first record
+/// is `session.resumed`, the one that would have told it the context was not its own. It read
+/// everything except the thing it was looking for. A resumed log numbers on from the session it
+/// carries on from, so that first number is not `1`.
 #[tokio::test]
-async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
+async fn since_the_first_record_is_not_since_the_beginning_and_the_schema_says_so() {
     let first = Kernel::new(Config::default());
     first.push(ContextItem::user("earlier"));
     let kernel = Kernel::resume(Config::default(), first.snapshot());
+    let resumed = kernel.history()[0].seq;
     kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
-        call("c1", "log", json!({ "action": "read", "since": 1 })),
+        call("c1", "log", json!({ "action": "read", "since": resumed })),
         call("c2", "log", json!({ "action": "read", "since": 0 })),
     ]))));
     let policy = Arc::new(Careful::new());
@@ -610,7 +612,7 @@ async fn since_one_is_not_since_the_beginning_and_the_schema_says_so() {
     let said = answers_from(&kernel, &["log"]);
     assert!(
         !said[0].contains("session.resumed"),
-        "`since: 1` is after record 1, and record 1 is the one that matters: {}",
+        "`since: {resumed}` is after record {resumed}, and that is the one that matters: {}",
         said[0]
     );
     assert!(

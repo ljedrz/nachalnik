@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Snapshot` and `SelectorError` are `#[non_exhaustive]`.** Nothing outside the crate builds
+  either - `Kernel::snapshot` makes the one and `Selector::parse` the other - which is the
+  convention's test, and it makes the next field on a snapshot a patch. A struct literal of either
+  written elsewhere no longer compiles; a `Snapshot` read back with `serde`, and a
+  `SelectorError`'s `.0`, are unchanged.
+
 ### changed
 
 - **`cancel_pending_calls` passes through `State::Executing`.** It refuses the calls and claims
@@ -43,6 +51,14 @@ minor bump may break you.
   provider's identifiers against.
 
 ### fixed
+
+- **A resumed session numbers its records and its permission questions on from the one it
+  carries on from.** Both started again at 1, so a client keeping a `history_since` cursor across
+  `Kernel::resume` read nothing until the new log passed the old number, and a log kept across the
+  resume had two records under each number and two questions under one `PermissionId`.
+  `Snapshot::last_seq` and `Snapshot::next_permission` carry them, and `session.resumed` is the
+  record after the last one. Both are `serde(default)`, so a snapshot written before them resumes
+  and numbers from 1, as it did.
 
 - **`interrupt` sets and announces the flag under the machine lock**, where every step reads and
   spends it. Outside it, a step could spend an interrupt between its setting and its announcement,

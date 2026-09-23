@@ -405,14 +405,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   measures. What would unblock any of them is the decision, then a new instrument digest and a
   changelog line saying which runs it separates.
 
-- **Changes that wait for the next minor of `nachalnik`.** `Snapshot` and `SelectorError` want
-  `#[non_exhaustive]`: nothing outside the crate builds either, which is the convention's test.
-  And a resumed kernel starts its record sequence and its `PermissionId`s at 1 again, so a client
-  keeping a `history_since` cursor across `Kernel::resume` reads nothing until the new log passes
-  the old number, and a log spanning the resume repeats both. `Snapshot` carrying `last_seq` and
-  `next_permission` is the fix. All of these are breaking for somebody writing a struct literal,
-  so they ride the next `0.x` bump rather than forcing one. `nachalnik-eval`'s public result
-  structs - `Scores` has gained fields since release - are the same question in that crate.
+- **`nachalnik-eval`'s public result structs and `#[non_exhaustive]`.** `Scores` has gained fields
+  since release, and a struct literal of it elsewhere breaks each time. Which of the crate's public
+  structs nothing outside builds is the convention's test and wants asking one at a time: `Plant`
+  is one a caller writes as a struct literal. The crate's next minor is where it would go.
 
 - **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
   take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with

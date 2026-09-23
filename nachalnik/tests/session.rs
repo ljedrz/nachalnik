@@ -353,6 +353,74 @@ async fn what_the_counter_learned_survives_a_restart() {
     assert_eq!(kernel.budget().used(), resumed.budget().used());
 }
 
+/// A resumed log numbers on from the one it carries on from, and so do the questions it asks.
+///
+/// note: both started again at 1, so a client keeping a `history_since` cursor across a resume
+/// read nothing until the new log passed the old number, and a log kept across the resume had two
+/// records under each number and two questions under one identifier.
+#[tokio::test]
+async fn a_resumed_session_numbers_on_from_where_it_stopped() {
+    let asked = |kernel: &Kernel| {
+        kernel
+            .history()
+            .into_iter()
+            .filter_map(|record| match record.event {
+                Event::PermissionRequested { request } => Some(request.id),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let (kernel, _) = common::inquisitive([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "peek",
+        json!({}),
+    )])]);
+    kernel.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    kernel.push(ContextItem::user("have a look"));
+    kernel.turn().await.unwrap();
+    let before = asked(&kernel);
+    assert_eq!(before.len(), 1, "the first session asked once");
+
+    let resumed = Kernel::resume(Config::default(), kernel.snapshot());
+    assert_eq!(
+        resumed.history()[0].seq,
+        kernel.last_seq() + 1,
+        "the resume is the record after the last one"
+    );
+
+    resumed.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c2", "peek", json!({}))]),
+    ])));
+    resumed.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    resumed.push(ContextItem::user("again"));
+    resumed.turn().await.unwrap();
+    let after = asked(&resumed);
+    assert_eq!(after.len(), 1, "the resumed session asked once");
+    assert!(
+        after[0] > before[0],
+        "{:?} was asked before the resume, so {:?} cannot be its number",
+        before[0],
+        after[0]
+    );
+}
+
+/// A snapshot written before the numbering was kept still resumes, and numbers from the start.
+#[tokio::test]
+async fn a_snapshot_written_before_the_numbering_was_kept_still_resumes() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+
+    let mut json = serde_json::to_value(kernel.snapshot()).unwrap();
+    let fields = json.as_object_mut().unwrap();
+    fields.remove("last_seq");
+    fields.remove("next_permission");
+    let snapshot: Snapshot = serde_json::from_value(json).unwrap();
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    assert_eq!(resumed.history()[0].seq, 1);
+    assert_eq!(resumed.items().len(), 1);
+}
+
 #[tokio::test]
 async fn a_snapshot_written_before_the_counter_learned_anything_still_resumes() {
     // the field is `serde(default)`: a snapshot from an older version has no `calibration` key at

@@ -18,7 +18,8 @@ without it.
   wire where the kernel adds anything of its own. The one thing that may still intervene is a
   `Compactor`, and it reports exactly what it did.
 - **Identifiers are never reused**, including by items that `undo` took away, and including tool
-  call identifiers across a resumed session (`Snapshot::used_calls`, `repair_call_ids`).
+  call identifiers, record numbers and permission identifiers across a resumed session
+  (`Snapshot::used_calls`, `repair_call_ids`, `Snapshot::last_seq`, `Snapshot::next_permission`).
 - **Every state change is an `Event`**, and the log and the broadcast are written under one lock
   so their order agrees - with each other, and with the order the changes were actually applied in.
   No logging a user cannot see.

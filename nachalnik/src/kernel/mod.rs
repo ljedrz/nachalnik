@@ -331,9 +331,11 @@ impl Kernel {
     /// Creates a kernel that carries on from a [`Snapshot`], and broadcasts
     /// [`Event::SessionResumed`].
     ///
-    /// The context, the parameters and the identifiers the session had already handed out come
-    /// back; everything else is as [`Kernel::new`] leaves it, because a provider, a policy and a
-    /// set of tools are the caller's to supply and were never the session's to remember.
+    /// The context, the parameters and the identifiers the session had already handed out - for
+    /// items, tool calls, permission requests and records - come back; everything else is as
+    /// [`Kernel::new`] leaves it, because a provider, a policy and a set of tools are the caller's
+    /// to supply and were never the session's to remember. The new log starts empty and numbers
+    /// its first record, [`Event::SessionResumed`], after the last one the snapshot's session had.
     ///
     /// note: The name comes from the snapshot unless [`Config::session_name`] is set, which is
     /// how a session gets forked rather than continued.
@@ -370,6 +372,11 @@ impl Kernel {
         }
         *kernel.0.params.write() = snapshot.params;
         kernel.0.seen_calls.lock().extend(snapshot.used_calls);
+        kernel
+            .0
+            .next_permission
+            .store(snapshot.next_permission.max(1), SeqCst);
+        kernel.0.session.lock().carry_on_from(snapshot.last_seq);
 
         let (items, tokens) = {
             let context = kernel.0.context.read();
@@ -444,6 +451,8 @@ impl Kernel {
             params,
             next_item,
             used_calls,
+            last_seq: self.last_seq(),
+            next_permission: self.0.next_permission.load(SeqCst),
             calibration: counter.calibration(),
         }
     }

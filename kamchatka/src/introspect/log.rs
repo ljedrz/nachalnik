@@ -62,9 +62,10 @@ fn ops() -> Vec<Op> {
                 "only the records naming these context items",
             ),
             // note: `0` said out loud, because it is not guessable and the guess is costly. This
-            // is exclusive - `since: 1` means *after* record 1 - and a model reaching for
-            // "everything" writes `since: 1`, which in a resumed session drops exactly one record:
-            // `session.resumed`, which is always the first and is often the answer to the question
+            // is exclusive - `since: N` means *after* record N - and a model reaching for
+            // "everything" writes the first number it has seen, which drops exactly that record.
+            // In a resumed session that is `session.resumed`, which is always the first and is
+            // often the answer to the question
             Arg::whole(
                 "since",
                 "only the records after this sequence number, which is the first column; `0` is \

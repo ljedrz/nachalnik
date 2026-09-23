@@ -147,6 +147,11 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A resumed session's record carries on numbering from the saved one's**, with the runtime: its
+  first record, `session.resumed`, is the one after the last record of the session it was resumed
+  from, and a permission question is never numbered like one asked before the resume. The `log`
+  tool's note on `since` is about the first number rather than `1`.
+
 - **`/quit` and `/restart` wait for a running turn before the record is written.** Both ended the
   loop at once, and an interrupt does not abort a step already in flight, so the rest of a streamed
   answer and the result of a running tool landed after `session.finished`, in files already

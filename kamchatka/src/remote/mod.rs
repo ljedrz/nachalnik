@@ -22,7 +22,7 @@
 //! The runtime already draws the line this protocol needs. The obvious design draws a different
 //! one, and is wrong.
 //!
-//! A [`nachalnik::Record`] is numbered from 1, is never reused, is in the session log, and the log
+//! A [`nachalnik::Record`] is numbered in order, is never reused, is in the session log, and the log
 //! is unbounded by decision - a capped append-only log is not one. So the numbered half of what a
 //! client reads is not something the server hands out, queues or is able to drop: each connection
 //! holds a [`Kernel`](nachalnik::Kernel) of its own, which is a cheap `Arc` handle, and reads

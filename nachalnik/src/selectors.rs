@@ -37,7 +37,11 @@ pub enum Which {
 }
 
 /// Why a selector could not be parsed.
+///
+/// note: `#[non_exhaustive]`, because only [`Selector::parse`] makes one; the sentence is still
+/// read as `.0`.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct SelectorError(pub String);
 
 impl fmt::Display for SelectorError {

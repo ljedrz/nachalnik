@@ -135,6 +135,11 @@ impl Session {
         self.records.drain(..keep).collect()
     }
 
+    /// Numbers the next record after `seq`, for a session carried on from a [`Snapshot`].
+    pub(crate) fn carry_on_from(&mut self, seq: u64) {
+        self.seq = self.seq.max(seq);
+    }
+
     /// Appends an event.
     pub(crate) fn append(&mut self, event: Event) {
         self.seq += 1;
@@ -166,7 +171,11 @@ impl Session {
 /// [`State::Idle`](crate::State) with nothing pending, because a permission that nobody is
 /// around to answer is not worth restoring; a tool call left without a result is repaired out of
 /// the next request by the [`Projector`](crate::Projector), and says so.
+///
+/// note: `#[non_exhaustive]`, because [`Kernel::snapshot`] is what makes one and nothing outside
+/// this crate has to, so a field added here is not a break. One is read back with `serde`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Snapshot {
     /// The session's name.
     pub session: String,
@@ -185,6 +194,24 @@ pub struct Snapshot {
     /// against, and would accept one it had used before the snapshot - the reuse
     /// [`Event::ToolCallRepaired`] exists to catch.
     pub used_calls: Vec<ToolCallId>,
+    /// The sequence number of the last record in the session's log.
+    ///
+    /// note: so that a resumed log carries on from it rather than starting again at 1. A client
+    /// keeping a [`Kernel::history_since`](crate::Kernel::history_since) cursor across a resume
+    /// would otherwise read nothing until the new log passed the old number, and a log kept
+    /// across the resume would number two records the same.
+    ///
+    /// note: `serde(default)`, so a snapshot written before this existed still resumes, and numbers
+    /// from 1 as it always did.
+    #[serde(default)]
+    pub last_seq: u64,
+    /// The next permission request identifier to hand out.
+    ///
+    /// note: for the reason `last_seq` is here: a question asked after a resume would otherwise
+    /// carry the identifier of one asked before it, in a log that has both. `0` in a snapshot
+    /// written before this existed, which resumes as `1`.
+    #[serde(default)]
+    pub next_permission: u64,
     /// What the [`TokenCounter`](crate::TokenCounter) had learned, if it learns at all.
     ///
     /// note: The one piece of a seam's own state a snapshot carries, and it is here for the same

@@ -479,7 +479,11 @@ proptest! {
         let resumed = Kernel::resume(Config::default(), read);
         prop_assert_eq!(resumed.items(), world.kernel.items(), "the items came back");
         prop_assert_eq!(resumed.project(), world.kernel.project(), "the request came back");
-        prop_assert_eq!(&resumed.snapshot(), &taken, "and it can be saved again unchanged");
+        // unchanged but for the one record resuming is: the new log numbers on from the old one
+        let mut again = resumed.snapshot();
+        prop_assert_eq!(again.last_seq, taken.last_seq + 1, "the resume is the next record");
+        again.last_seq = taken.last_seq;
+        prop_assert_eq!(&again, &taken, "and it can be saved again unchanged");
     }
 
     /// note: the granularity `Kernel::undo` documents - one operation, not one item - is what
