@@ -476,7 +476,7 @@ pub struct Attached {
     /// note: a list beside the questions rather than a field on them, and empty in every session
     /// that did not start with an advisor. Without it the rating exists only inside the terminal's
     /// own drawing code, and a build with `shell-advisor` in it serves a browser exactly what a
-    /// build without it serves: the advisor runs and tightens the verdict, and the one thing a
+    /// build without it serves: the advisor runs and rates the question, and the one thing a
     /// person was supposed to see never leaves the process.
     pub rated: Vec<Judged>,
     /// What the policy in force is called.
@@ -515,7 +515,7 @@ pub struct Attached {
 /// note: beside [`Attached::asking`] rather than on a question, because a question is a
 /// [`PermissionRequest`] and that is the runtime's type. The runtime has no advisor and is not
 /// going to grow a field for one - see the module note on carrying runtime types verbatim - so the
-/// second opinion travels as its own row, named by the question it is about.
+/// rating travels as its own row, named by the question it is about.
 ///
 /// note: only for the questions something rated, which is `shell` commands in a build that has
 /// `shell-advisor` in it and a session started with `--advise`. A client draws the band where

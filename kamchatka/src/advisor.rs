@@ -56,7 +56,7 @@ use tokio::{
 /// note: the same thirty seconds the HTTP client waits, and for the same reason: this is a
 /// permission gate with somebody sitting in front of it, and a local engine that has not
 /// answered in half a minute has hung rather than thought. What a timeout costs here is the
-/// second opinion on one call - see the failure note on [`Local::ask`].
+/// rating of one command - see the failure note on [`Local::ask`].
 const PATIENCE: Duration = Duration::from_secs(30);
 
 /// How many lines of whatever the engine says about itself are kept.

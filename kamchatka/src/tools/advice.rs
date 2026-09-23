@@ -258,9 +258,9 @@ impl Rated {
     ///
     /// note: the whole command is one of the parts folded, always, and it is the only one that
     /// can see what the stages cannot - a pipeline whose every link is ordinary and whose
-    /// composition is not. It is also what makes a stage whose answer never arrived cost a
-    /// tightening rather than produce a wrong one: the fold can only ever come back at or above
-    /// the band the whole command was given.
+    /// composition is not. It is also what makes a stage whose answer never arrived cost a band
+    /// that might have been raised rather than a wrong one: the fold can only ever come back at or
+    /// above the band the whole command was given.
     ///
     /// note: the first *stage* to reach the worst band, where more than one part does, so what is
     /// pointed at is where the command first gets as bad as it gets. The whole command is kept
@@ -875,8 +875,8 @@ mod tests {
     /// And the fold can only ever come back at or above what the whole command was given.
     ///
     /// note: the property that makes a stage whose answer never arrived safe to carry on without.
-    /// The whole command is one of the parts folded, always, so a missing stage costs a
-    /// tightening that might have happened and cannot produce one that should not have.
+    /// The whole command is one of the parts folded, always, so a missing stage costs a raised band
+    /// that might have happened and cannot produce one that should not have.
     #[test]
     fn a_fold_is_never_softer_than_the_whole_command_on_its_own() {
         let whole = Rated::of(2.0, 0.9);
