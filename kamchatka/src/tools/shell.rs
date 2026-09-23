@@ -672,6 +672,10 @@ mod tests {
     }
 
     /// Runs one command, and gives up on it rather than on the suite.
+    ///
+    /// note: `#[cfg(unix)]` because every test that calls it is, and under the `RUSTFLAGS` this
+    /// workspace builds with, a helper nothing calls fails the build on Windows
+    #[cfg(unix)]
     async fn ran(command: &str) -> String {
         let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
         tokio::time::timeout(
