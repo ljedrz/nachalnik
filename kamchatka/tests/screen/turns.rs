@@ -580,7 +580,10 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         Limits::default(),
     );
 
-    for spec in harness.app.kernel.tool_specs() {
+    // a loop over nothing passes, so there has to be something to loop over
+    let specs = harness.app.kernel.tool_specs();
+    assert!(!specs.is_empty(), "no tools were installed");
+    for spec in specs {
         assert!(
             !spec.description.trim().is_empty(),
             "{} says nothing",

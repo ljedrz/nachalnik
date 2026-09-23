@@ -90,8 +90,11 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
         !read.contains("F1 lists the keys"),
         "a served session told a client about the terminal's keys: {read}"
     );
-    // and its stdout is the record stream, the same as a headless run's
-    for line in String::from_utf8_lossy(&client.stdout).lines() {
+    // and its stdout is the record stream, the same as a headless run's - and there is one, or
+    // the loop says nothing about it
+    let stdout = String::from_utf8_lossy(&client.stdout);
+    assert!(stdout.lines().next().is_some(), "no records on stdout");
+    for line in stdout.lines() {
         serde_json::from_str::<nachalnik::Record>(line).expect("every line is a record");
     }
 

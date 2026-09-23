@@ -172,18 +172,22 @@ async fn the_trace_says_what_each_event_carries_and_which_step_was_slow() {
     assert!(screen.contains("put back as they were"), "{screen}");
 
     // and nothing in the pane is a name with nothing beside it
+    // counted, because a row the loop cannot read is skipped, and a screen of them passes
+    let mut read = 0;
     for line in screen.lines().filter(|line| line.contains('.')) {
         let Some(name) = line.split_whitespace().find(|word| {
             word.contains('.') && word.chars().all(|c| c.is_ascii_lowercase() || c == '.')
         }) else {
             continue;
         };
+        read += 1;
         let after = line.split_once(name).map(|(_, rest)| rest).unwrap_or("");
         assert!(
             after.trim_end_matches(['│', ' ', '█']).trim().len() > 1,
             "`{name}` says nothing: {line}"
         );
     }
+    assert!(read > 0, "no event names on the trace: {screen}");
 
     // the gap column: blank for the frame-to-frame majority, and there for the few that waited
     harness.tab(Tab::Trace);
