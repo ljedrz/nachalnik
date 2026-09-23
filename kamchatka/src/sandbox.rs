@@ -1040,11 +1040,10 @@ pub fn run_if_asked() -> Option<i32> {
     if let Some(scratch) = &scratch {
         command.env("TMPDIR", scratch);
     }
-    // note: only when there is a ruleset in force. Unconfined, git can read its own configuration
-    // and pointing it elsewhere would take a person's identity and aliases away for nothing
-    if confinement.is_confined()
-        && let Some(global) = sandbox.git_config_global()
-    {
+    // note: a ruleset is in force here - an unconfined run has already returned - and that is the
+    // only case this is for. Unconfined, git can read its own configuration, and pointing it
+    // elsewhere would take a person's identity and aliases away for nothing
+    if let Some(global) = sandbox.git_config_global() {
         command.env("GIT_CONFIG_GLOBAL", global);
     }
 
