@@ -90,14 +90,17 @@ jobs:
       # this configuration, for a day, over an `mcp` key that asked for nothing
       - name: kamchatka, mcp and no screen
         run: cargo test -p kamchatka --no-default-features --features mcp --locked
-      # a dialect each, and the one nobody builds on purpose: `waiting.rs` is shared, so a
-      # constant only one of them reads is dead code in the other's build. `--all-targets`
+      # a dialect each, the System One client alone, and the one nobody builds on purpose:
+      # `waiting.rs` is shared, so a constant only one of them reads is dead code in the
+      # other's build, and the client is built without either. `--all-targets`
       # because the tests are gated by dialect too, and a test that names the provider that
       # is not there compiles nowhere except under `--all-features`
       - name: nachalnik-providers, gemini only
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features gemini --locked
       - name: nachalnik-providers, openai and the suite
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance --locked
+      - name: nachalnik-providers, system1 only
+        run: cargo check -p nachalnik-providers --all-targets --no-default-features --features system1 --locked
       - name: nachalnik-providers, no features
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --locked
 

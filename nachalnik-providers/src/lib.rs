@@ -66,6 +66,19 @@ use nachalnik::{Overrun, TooLong};
 
 mod endpoint;
 
+/// How many times a request is sent when the server keeps saying it is busy, the first included.
+///
+/// note: counted per request, not on the provider. A counter every request draws from and any of
+/// them resets gives concurrent requests against a busy endpoint one allowance between them, so a
+/// request can fail its first attempt and give up without being retried at all.
+///
+/// note: here rather than in `waiting`, because the System One client asks as often as a dialect
+/// does and is built without either of them.
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+pub(crate) const RETRIES: usize = 4;
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+mod markup;
+
 #[cfg(feature = "conformance")]
 pub mod conformance;
 

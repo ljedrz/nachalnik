@@ -39,6 +39,15 @@ minor bump may break you.
 
 ### fixed
 
+- **A System One refusal that is a web page says what the page says.** A firewall in front of the
+  service answers some requests with an HTML page, and the error quoted its first characters - a
+  doctype and a stylesheet. It carries the page's words now, with the markup taken off, the way
+  the chat dialects already read one.
+
+- **`system1` builds on its own.** It read the shared retry count from `waiting`, which is only
+  built for the chat dialects, so `--no-default-features --features system1` did not compile. The
+  count lives beside the three of them now, and CI builds that configuration.
+
 - **`jev` is sent a busy request as often as a dialect is, and no more.** `system1` had a
   `RETRIES` of its own with the dialects' value, counted without the first send, so a question to
   a server that stayed busy went out five times where a turn goes out four. It uses the dialects'

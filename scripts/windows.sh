@@ -39,6 +39,7 @@ check -p kamchatka --no-default-features --all-targets
 check -p kamchatka --no-default-features --features mcp --all-targets
 check -p nachalnik-providers --all-targets --no-default-features --features gemini
 check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance
+check -p nachalnik-providers --all-targets --no-default-features --features system1
 check -p nachalnik-providers --all-targets --no-default-features
 
 if [ ${#failed[@]} -gt 0 ]; then

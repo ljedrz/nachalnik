@@ -16,17 +16,10 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::{
-    out_of_quota,
+    RETRIES, out_of_quota,
     reading::{complaint, failure},
     refused,
 };
-
-/// How many times a request is sent when the server keeps saying it is busy, the first included.
-///
-/// note: counted per request, not on the provider. A counter every request draws from and any of
-/// them resets gives concurrent requests against a busy endpoint one allowance between them, so a
-/// request can fail its first attempt and give up without being retried at all.
-pub(crate) const RETRIES: usize = 4;
 
 /// The longest a server may ask to be left alone before this stops waiting and says so.
 ///

@@ -65,7 +65,7 @@ use nachalnik::{BoxError, Usage, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, install_crypto, same_model, waiting::RETRIES};
+use crate::{Endpoint, RETRIES, install_crypto, same_model};
 
 /// Where `jev` lives.
 pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/v1";
@@ -719,7 +719,7 @@ impl Jev {
         let url = self.url();
         let mut waited = BACKOFF;
 
-        // note: `waiting::RETRIES`, counted the way the dialects count it - the first send
+        // note: `RETRIES`, counted the way the dialects count it - the first send
         // included. The documentation asks for an exponential backoff and does not say how far,
         // and a question put to `jev` has no better reason to be sent more often than a turn
         for attempt in 1..=RETRIES {
@@ -774,9 +774,15 @@ impl Jev {
                 continue;
             }
 
-            let said = complaint(&parsed).unwrap_or_else(|| match said.is_empty() {
-                true => status.to_string(),
-                false => format!("{status}: {said}"),
+            // note: the body's words rather than the body, because what answers here is not
+            // always the service. A firewall in front of it refuses a request with a web page,
+            // and the page's doctype and stylesheet are not a reason anybody can read
+            let said = complaint(&parsed).unwrap_or_else(|| {
+                let words: String = crate::markup::unmarked(&said).chars().take(300).collect();
+                match words.is_empty() {
+                    true => status.to_string(),
+                    false => format!("{status}: {words}"),
+                }
             });
 
             return Err(said.into());
@@ -1182,7 +1188,7 @@ mod tests {
 
     /// A server that stays busy is asked as many times as a dialect would ask it, and no more.
     ///
-    /// note: `waiting::RETRIES` counts the first send, and this client once counted only the
+    /// note: `RETRIES` counts the first send, and this client once counted only the
     /// retries against the same number. It waits out the real backoff, so it takes a few seconds.
     #[tokio::test]
     async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
