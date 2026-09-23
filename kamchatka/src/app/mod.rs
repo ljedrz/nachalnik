@@ -16,7 +16,7 @@ use std::{
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
     Content, ContextId, ContextItem, ContextState, Delta, Event, Grant, GrantSource, Kernel,
-    PermissionId, PermissionRequest, State, Tool, Usage, Verdict,
+    PermissionId, PermissionRequest, State, StopReason, Tool, Usage, Verdict,
 };
 use nachalnik_providers::Dialect;
 #[cfg(feature = "tui")]
@@ -1013,7 +1013,9 @@ impl App {
                     );
                 }
             }
-            Event::ModelFinished { item, usage, .. } => {
+            Event::ModelFinished {
+                item, usage, stop, ..
+            } => {
                 // note: the tokens are real and the words are gone. Some endpoints bill for
                 // reasoning and return none of it - `mercury-2.5`'s stream carries no reasoning
                 // field at all - so the context tab shows a turn with nothing in it where the
@@ -1034,7 +1036,7 @@ impl App {
                             .to_owned(),
                     );
                 }
-                self.charge(usage);
+                self.charge(usage, &stop);
                 // the provider has just said what that request really cost, and what it was
                 // made of is still here from the event that sent it. Paired, they are the one
                 // exact figure in this program's accounting; see `Anchor`
@@ -1192,6 +1194,12 @@ impl App {
     /// and a limit quietly never reached is worse than no limit at all: whoever set it would be
     /// reading the session as bounded when nothing is bounding it.
     ///
+    /// note: except for a response that was interrupted. A stream cut short never reaches the
+    /// chunk the figures ride on, so its silence is about this end rather than the endpoint's -
+    /// and saying otherwise after a ctrl+c or a `--deadline` tells whoever set the ceiling it has
+    /// stopped meaning anything when it has not. `interrupted` is the stop reason both of
+    /// `nachalnik-providers`' dialects give a stream they were told to stop.
+    ///
     /// note: it stops *after* the response that crosses the line, because that is the first moment
     /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the session
     /// ends having spent a little more than it, and the line says how much.
@@ -1199,11 +1207,15 @@ impl App {
     /// note: a `fork`'s request is counted too, when the call that made it finishes: it is money
     /// the session spent, and a model drafting over and over would otherwise spend without limit
     /// under a ceiling that says there is one.
-    fn charge(&mut self, usage: Option<Usage>) {
+    fn charge(&mut self, usage: Option<Usage>, stop: &StopReason) {
         let Some(usage) = usage else {
+            let interrupted = matches!(stop, StopReason::Other(why) if why == "interrupted");
             // said only where it changes something: with no ceiling, a total nobody set a limit on
             // being short by one response is not news
-            if self.spend.is_some() && !std::mem::replace(&mut self.unreported, true) {
+            if self.spend.is_some()
+                && !interrupted
+                && !std::mem::replace(&mut self.unreported, true)
+            {
                 self.say(
                     Speaker::Note,
                     "this endpoint reports no usage, so nothing is counted against the ceiling; \

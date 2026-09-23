@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **An interrupted response no longer says the endpoint reports no usage.** A stream cut short by
+  ctrl+c, `--deadline` or a signal never reaches the chunk its figures ride on, and under a
+  `--spend` ceiling that was read as an endpoint reporting nothing - so a session against one that
+  reports usage on every other response was told that only a deadline could stop it now.
+
 ## [0.15.0] - 2026-09-23
 
 ### breaking

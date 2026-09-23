@@ -20,7 +20,7 @@ use kamchatka::{
 };
 use nachalnik::{
     BoxError, Capability, ContextItem, DeltaSink, Grant, ModelInfo, ModelRequest, ModelResponse,
-    OutputSink, Provider, Record, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict,
+    OutputSink, Provider, Record, StopReason, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict,
     async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
@@ -1002,6 +1002,23 @@ async fn a_ceiling_over_an_endpoint_that_reports_nothing_says_so() {
     assert!(run.prose.contains("reports no usage"), "{}", run.prose);
     assert!(!run.prose.contains("stopping"), "{}", run.prose);
     assert!(run.prose.contains("no usage on this one"), "{}", run.prose);
+}
+
+/// A response that was interrupted carries no figures, and that is not the endpoint's silence.
+///
+/// note: a stream cut short never reaches the chunk its usage rides on, so after a ctrl+c or a
+/// `--deadline` an endpoint that reports usage on every other response was being called one that
+/// reports none - telling whoever set the ceiling that it had stopped holding when it had not.
+#[tokio::test]
+async fn an_interrupted_response_does_not_say_the_endpoint_reports_nothing() {
+    let script = vec![ModelResponse {
+        stop: StopReason::Other("interrupted".to_owned()),
+        ..ModelResponse::text("cut sh")
+    }];
+    let run = run_capped("go\n", script, 1000, |_| {}).await;
+
+    assert!(run.prose.contains("cut sh"), "{}", run.prose);
+    assert!(!run.prose.contains("reports no usage"), "{}", run.prose);
 }
 
 /// The program itself runs headless, and keeps its two streams apart.
