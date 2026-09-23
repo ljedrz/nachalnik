@@ -16,6 +16,32 @@ minor bump may break you.
   no results, and the log said `idle` before it said the calls were refused. A client drawing
   states sees `executing` for the length of the recording.
 
+- **A policy is asked `why` only about a refusal its own verdict made.** The kernel called it for
+  every refused call and then used the answer for policy-sourced refusals alone, so a policy that
+  answered `Ask` and had its question refused by a person was asked to explain a decision it did
+  not make, and the explanation was computed and dropped. The wording the model reads is
+  unchanged - a call somebody refused still says it was an answer to that call rather than a
+  standing rule - and `PermissionPolicy::why` now says which refusals it is asked about.
+
+- Three doc notes that said what the code does not. `Blob::wire_len` said `meta` never reaches a
+  provider, where the field's own note says one reads `name` out of it and
+  `nachalnik-providers` does. `Session::last_seq` said `0` when there is no record, where a
+  drained log has none and it answers the last number handed out - which is what makes it a
+  cursor. And `Capability::of` now says that neither half may hold a colon and that nothing
+  enforces it: a capability built with one serializes to text `Capability::parse` refuses, so the
+  log record carrying it cannot be read back.
+
+- The docs say the policy is asked about what a call needs (`Tool::needs`) rather than everything
+  the tool declared; that `Budget::context_tokens` is counted over the projected messages; that a
+  step can also end in `Idle` or spend itself on an interrupt; and that `tool_result:N` is the item
+  numbered `N`, whatever its kind.
+
+- The docs say that `ContextChanged` also reports a new note on an unchanged state, so `from` and
+  `to` can be equal; that the session log leaves out tool output as well as deltas unless
+  `Config::record_progress` is on; that an `Overrun` can come from the kernel's own estimate as
+  well as from a refusal; and that `Snapshot::used_calls` is what a resumed session checks a
+  provider's identifiers against.
+
 ### fixed
 
 - **`interrupt` sets and announces the flag under the machine lock**, where every step reads and
@@ -36,11 +62,6 @@ minor bump may break you.
 - **The calibrating counter and `Usage::settled` saturate rather than overflow.** Both add figures
   that came from outside the process - a snapshot, a provider's report - which panicked in a debug
   build on a hostile one and wrapped in a release build.
-
-- The docs say the policy is asked about what a call needs (`Tool::needs`) rather than everything
-  the tool declared; that `Budget::context_tokens` is counted over the projected messages; that a
-  step can also end in `Idle` or spend itself on an interrupt; and that `tool_result:N` is the item
-  numbered `N`, whatever its kind.
 
 - **The results of a turn's calls are one undo.** Every result a batch produced took a checkpoint
   of its own, so one `undo` after a turn that ran three tools took back the last result and left
@@ -108,23 +129,6 @@ minor bump may break you.
   goes out byte for byte the same. `Params` is a `Map`, which makes this the one component setter
   that can tell: the rest hold an `Arc<dyn Trait>`, where two that would behave alike are not
   comparable. The rule is the one `replace` and `set_state` follow.
-
-### changed
-
-- **A policy is asked `why` only about a refusal its own verdict made.** The kernel called it for
-  every refused call and then used the answer for policy-sourced refusals alone, so a policy that
-  answered `Ask` and had its question refused by a person was asked to explain a decision it did
-  not make, and the explanation was computed and dropped. The wording the model reads is
-  unchanged - a call somebody refused still says it was an answer to that call rather than a
-  standing rule - and `PermissionPolicy::why` now says which refusals it is asked about.
-
-- Three doc notes that said what the code does not. `Blob::wire_len` said `meta` never reaches a
-  provider, where the field's own note says one reads `name` out of it and
-  `nachalnik-providers` does. `Session::last_seq` said `0` when there is no record, where a
-  drained log has none and it answers the last number handed out - which is what makes it a
-  cursor. And `Capability::of` now says that neither half may hold a colon and that nothing
-  enforces it: a capability built with one serializes to text `Capability::parse` refuses, so the
-  log record carrying it cannot be read back.
 
 ## [0.6.2] - 2026-09-21
 

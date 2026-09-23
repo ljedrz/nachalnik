@@ -18,7 +18,9 @@ minor bump may break you.
 
 - The crate docs no longer say a server's progress reaches an `OutputSink` - no progress token is
   sent, so no notification arrives - and `Server::install` says that running it again leaves a
-  tool the server stopped offering in place.
+  tool the server stopped offering in place. They say a stop is read before a call goes out and a
+  call already with the server is let finish, and that a picture in a result is named because
+  neither dialect takes one inside a tool result.
 
 ## [0.6.1] - 2026-09-19
 

@@ -15,6 +15,12 @@ minor bump may break you.
   one that ran. A `Plant` written as a struct literal elsewhere needs the field. The digests do not
   move: a name is not part of the text they are taken over.
 
+### changed
+
+- The docs have `Kind::Task` and `Kind::Foreign` in the table of claims, name `Surface` as the
+  primary endpoint and `Paired` as what the ladder is read with, say that `Subject::rounds` is
+  three whole turn budgets, and say that a study lives in a repository of its own.
+
 ### fixed
 
 - **A permit coming free wakes the future waiting for it.** `Permits::release` woke the first

@@ -30,6 +30,13 @@ minor bump may break you.
   without a `Jev` to render it. `Jev::render` calls it, and so does an engine reached some other
   way - `kamchatka`'s local advisor, over a pipe - so the body is written once.
 
+### changed
+
+- The docs say that `OpenAiCompatible::new` takes the address and the key, with the limit from
+  `with_context_limit`; that nothing in the crate reads the environment; that `SystemOne` has three
+  methods; and that an endpoint listing only its sampling parameters leaves a set parameter
+  unchecked rather than ignored.
+
 ### fixed
 
 - **`jev` is sent a busy request as often as a dialect is, and no more.** `system1` had a

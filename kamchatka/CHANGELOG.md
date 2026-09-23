@@ -71,6 +71,11 @@ minor bump may break you.
   `Sandbox::note_for` will claim. All six were behind the Linux gate because the file was, so the
   `macos-latest` column in CI passed without running any of them. Nothing moved in `src`.
 
+- The docs say that `tools::Careful::new` asks about everything rather than allowing reads, that
+  an MCP tool is judged as its server where it declares `mcp:call`, that `config::Settings` has
+  two keys with no argument behind them, `border` and `tools`, and that a file `attach` has no
+  name for is read as text and refused if it is not text.
+
 ### fixed
 
 - **A running turn says `esc stops it` once.** The chat tab said it in its footer and on the
@@ -144,8 +149,8 @@ minor bump may break you.
 - **`grep`'s `ignore_case` reads a quoted `"true"`**, and refuses a word that is neither, the way
   `files_only` beside it always has; it ran a case-sensitive search instead.
 
-- The compaction panel's header had fourteen spaces in the middle of a sentence, from a string
-  continued without its `\`.
+- **The compaction panel's header reads as a sentence.** It had fourteen spaces in the middle of
+  one, from a string continued without its `\`.
 
 - **A client attaching mid-turn no longer loses the records written while it attached.** The
   projection read the items and the questions waiting and only then the sequence it reflects, while
