@@ -580,6 +580,8 @@ fn the_suite_states_what_it_asks_and_two_dossiers_differ() {
 /// Every planted falsehood names itself in the material, not only the one `Lie` started with.
 #[test]
 fn a_planted_falsehood_is_named_for_what_it_is() {
+    // a loop over nothing passes, so there has to be something to loop over
+    assert!(!suite::PLANTED.is_empty());
     for (dossier, plant) in suite::PLANTED {
         let instrument = suite::Lie::new().on(dossier, plant).instrument();
 
