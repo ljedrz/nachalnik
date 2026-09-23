@@ -599,9 +599,10 @@ impl Judged {
 pub enum Band {
     /// It looks, or moves about; nothing is left changed and nothing goes out.
     Reads,
-    /// It leaves something on this machine changed, and what it changed could be put back.
+    /// It changes files inside the working directory, the way git or a rebuild could undo.
     Changes,
-    /// It destroys something that cannot be got back, or sends something off this machine.
+    /// It reaches outside the working directory, destroys something that cannot be got back, or
+    /// sends something off this machine.
     Grave,
 }
 
@@ -1019,7 +1020,7 @@ mod tests {
         // and the same message from before the field existed, which is every session older than
         // it and every command rated in one piece
         let older: Judged = serde_json::from_str(
-            r#"{"id":1,"band":"grave","said":"destroys, or sends something out","confidence":0.9}"#,
+            r#"{"id":1,"band":"grave","said":"reaches outside, destroys, or sends out","confidence":0.9}"#,
         )
         .expect("a message with no `worst` in it is still a message");
         assert_eq!(older.worst, None);

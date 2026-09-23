@@ -49,13 +49,15 @@ minor bump may break you.
 
 ### changed
 
-- **The rubric says what moving about and changing something are.** Its bottom level names
-  reading, listing, searching and changing directory, and its middle one a file, a setting or
-  installed software left changed. Said only as "moves about" and "something changed", a `cd` was
-  placed on the bottom level at barely the confidence a green needs, so `pwd && cd .. && pwd` was
-  one answer away from yellow; it is placed there with room to spare now, and nothing destructive
-  lost its red.
-
+- **The rubric draws its line at the working directory.** The middle level was "leaves something
+  changed that could be put back", and nearly everything could be: `chmod -R 777 /`, a global
+  `npm install`, `git config --global` and an edit to `~/.bashrc` were all drawn yellow beside
+  `cargo build`. Yellow is now a change to files inside the working directory, the way git or a
+  rebuild could undo, and red is anything outside it - system files, permissions, the home
+  directory, the machine, another account, a remote service - as well as what cannot be got back
+  and what is sent off the machine. The bottom level names reading, listing, searching and
+  changing directory, so a `cd` is no longer one answer away from yellow. The destructive claim
+  asked beside the rubric draws the same line, and the panel's band names say it.
 - **What a tool keeps of one call has a ceiling: 8 MiB, `tools::KEPT`.** The output limit decides
   what the model is shown and the whole is archived beside it, so the whole was whatever arrived -
   a `yes` nobody stopped grew the process, the archive and every save after it without end, and so

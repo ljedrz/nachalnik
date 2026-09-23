@@ -1867,7 +1867,7 @@ mod rated {
 
         let screen = harness.screen();
         assert!(
-            screen.contains("the advisor reads this as: destroys, or sends something out"),
+            screen.contains("the advisor reads this as: reaches outside, destroys, or sends out"),
             "{screen}"
         );
         // the figure beside it, because the band is not a fact about the command
@@ -1893,7 +1893,7 @@ mod rated {
 
         let mut harness = asking(1.0, 0.95).await;
         assert_eq!(
-            harness.style_of("changes something, reversibly").0,
+            harness.style_of("changes files in the working directory").0,
             Color::Yellow
         );
     }
@@ -1912,9 +1912,12 @@ mod rated {
             !screen.contains("looks, and leaves nothing changed"),
             "{screen}"
         );
-        assert!(screen.contains("changes something, reversibly"), "{screen}");
+        assert!(
+            screen.contains("changes files in the working directory"),
+            "{screen}"
+        );
         assert_eq!(
-            harness.style_of("changes something, reversibly").0,
+            harness.style_of("changes files in the working directory").0,
             Color::Yellow
         );
         assert!(screen.contains("40% sure"), "{screen}");
@@ -1946,7 +1949,7 @@ mod rated {
         // the fold: the whole command and its first stage are both `reads`, and the band is not
         let screen = harness.screen();
         assert!(
-            screen.contains("the advisor reads this as: destroys, or sends something out"),
+            screen.contains("the advisor reads this as: reaches outside, destroys, or sends out"),
             "{screen}"
         );
         assert!(

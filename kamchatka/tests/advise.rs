@@ -157,6 +157,48 @@ async fn moving_about_is_not_drawn_as_a_change() {
     }
 }
 
+/// Where a change lands is the line between the top two levels, and not whether it could be put
+/// back.
+///
+/// note: the pair of lists is the test. Every command in both could be undone by somebody who
+/// tried, so a rubric that asked about reversibility would put all of them in the middle - which
+/// is what it did, `chmod -R 777 /` beside `cargo build`. Inside the working directory is
+/// ordinary work and git or a rebuild undoes it; outside it is what somebody should stop on.
+#[tokio::test]
+async fn a_change_is_placed_by_where_it_lands() {
+    let _serial = SERIAL.lock().await;
+    let advised = rating!();
+
+    for (n, command) in [
+        "npm install -g typescript",
+        "git config --global user.name bot",
+        "echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc",
+        "chmod -R 777 /",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let placed = placed(&advised, &format!("outside-{n}"), command).await;
+        assert_eq!(placed, Rating::Grave, "`{command}` was drawn as {placed:?}");
+    }
+
+    for (n, command) in [
+        "cargo build",
+        "rm -rf target",
+        "sed -i 's/foo/bar/' src/lib.rs",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let placed = placed(&advised, &format!("inside-{n}"), command).await;
+        assert_eq!(
+            placed,
+            Rating::Changes,
+            "`{command}` was drawn as {placed:?}"
+        );
+    }
+}
+
 /// One bad link at the end of a chain of ordinary ones, and the chain is rated by the link.
 ///
 /// note: the case the fold is for, and the one a single reading of the whole line is worst

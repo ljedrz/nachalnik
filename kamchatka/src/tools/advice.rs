@@ -108,9 +108,10 @@ const STAGES: usize = 8;
 pub enum Rating {
     /// It looks, or moves about; nothing is left changed and nothing goes out.
     Reads,
-    /// It leaves something on this machine changed, and what it changed could be put back.
+    /// It changes files inside the working directory, the way git or a rebuild could undo.
     Changes,
-    /// It destroys something that cannot be got back, or sends something off this machine.
+    /// It reaches outside the working directory, destroys something that cannot be got back, or
+    /// sends something off this machine.
     Grave,
 }
 
@@ -130,11 +131,18 @@ pub enum Rating {
 /// directory again. So the bottom level names moving about among the things that qualify, and
 /// the middle one asks for something *still* changed once the command has finished.
 ///
-/// note: and both say what they mean in so many words - reading, listing, searching and changing
-/// directory at the bottom, a file, a setting or installed software in the middle. Said only as
-/// "moves about" and "something changed", a `cd` stage was placed on the bottom level at barely
-/// the confidence a green needs, so a `cd` drawn yellow was one answer away; named, it is placed
-/// there with room to spare, and nothing at the top of the rubric moved.
+/// note: and the bottom level says what moving about is - reading, listing, searching, changing
+/// directory. Said only as "moves about", a `cd` stage was placed there at barely the confidence
+/// a green needs, so a `cd` drawn yellow was one answer away.
+///
+/// note: the line between the top two levels is **where** a change lands, and not whether it
+/// could be put back. Nearly everything could be, given the effort - `chmod -R 777 /` can be
+/// undone, and so can a global install - so a middle level of "reversible" puts both beside
+/// `cargo build`. The working directory is where an agent is sent to work and is the line the
+/// sandbox draws for writes; git or a rebuild undoes what happens inside it, and anything outside
+/// it - system files, permissions, the home directory, the machine, another account, a remote
+/// service - is what a person should stop on. Destroying what cannot be got back and sending
+/// something off the machine stay at the top wherever they happen.
 ///
 /// note: and a command is placed stage by stage, so a `cd` is put on the rubric on its own rather
 /// than read as a clause of a longer command line. A level that misplaces it does so visibly.
@@ -147,8 +155,8 @@ pub enum Rating {
 /// `contrib/laya_advisor.py --probe` does.
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about - reads, lists, searches or changes directory - and leaves nothing changed",
-    "it leaves a file, a setting or installed software changed, in a way that could be put back",
-    "it destroys something that cannot be got back, or sends something off this machine",
+    "it changes files inside the working directory - writing, building, formatting, committing - in a way git or a rebuild could undo",
+    "it changes anything outside the working directory - system files, permissions, the home directory, the machine itself, other accounts, remote services - or destroys something that cannot be got back, or sends something off this machine",
 ];
 
 impl Rating {
@@ -156,8 +164,8 @@ impl Rating {
     pub fn said(self) -> &'static str {
         match self {
             Self::Reads => "looks, and leaves nothing changed",
-            Self::Changes => "changes something, reversibly",
-            Self::Grave => "destroys, or sends something out",
+            Self::Changes => "changes files in the working directory",
+            Self::Grave => "reaches outside, destroys, or sends out",
         }
     }
 }
@@ -460,20 +468,18 @@ pub(crate) const PLACE_STAGE: &str = "A command is about to be run on the user's
                            would do as part of that command.";
 
 /// [`LEVELS`]' top band as a claim, for the whole command.
-pub(crate) const RUIN: &str = "Would running the command in `cmd` destroy something that cannot be got back, or send something off this machine?";
+pub(crate) const RUIN: &str = "Would running the command in `cmd` change anything outside the working directory, destroy something that cannot be got back, or send something off this machine?";
 
 /// And for one stage of it, read in view of the whole the way [`PLACE_STAGE`] is.
-pub(crate) const RUIN_STAGE: &str = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. The whole command is in `cmd`. Would the stage in `stage` destroy something that cannot be got back, or send something off this machine?";
+pub(crate) const RUIN_STAGE: &str = "A command is about to be run on the user's machine, and a person is about to be asked whether to let it. The whole command is in `cmd`. Would the stage in `stage` change anything outside the working directory, destroy something that cannot be got back, or send something off this machine?";
 
 /// What each side of that claim means, in the words the rubric's own bands use.
-pub(crate) const RUINED: &str =
-    "it destroys something that cannot be got back, or sends something off this machine";
+pub(crate) const RUINED: &str = "it changes something outside the working directory, destroys something that cannot be got back, or sends something off this machine";
 
 /// note: it names both of the lower bands, because a claim has one false side and the rubric has
 /// two - and a `false` described as only the bottom one would be read as denying that a command
 /// changes anything, which is not what is being asked.
-pub(crate) const INTACT: &str =
-    "it only looks, moves about, or changes something that could be put back";
+pub(crate) const INTACT: &str = "it only looks, moves about, or changes files inside the working directory in a way git or a rebuild could undo";
 
 /// The claim put to one stage, carrying the stage the way [`placing`] does.
 fn claiming(stage: &str) -> Question {

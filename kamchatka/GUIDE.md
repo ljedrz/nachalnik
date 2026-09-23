@@ -530,8 +530,9 @@ under the one naming what the call wants, above the arguments and inside the par
 scroll: what the advisor reads the command as, and how sure it was.
 
 The reading is green, yellow or red, off a three-level rubric — it only reads, lists, searches or
-changes directory; it leaves a file, a setting or installed software changed in a way that could
-be put back; it destroys something that cannot be got back or sends something off this machine. It decides nothing: the verdict is the same one the rules would
+changes directory; it changes files inside the working directory, the way git or a rebuild could
+undo; it reaches outside the working directory, destroys something that cannot be got back, or
+sends something off this machine. It decides nothing: the verdict is the same one the rules would
 have given, and an advisor that is down costs the line and nothing else. A rating nobody was sure
 of is never drawn green, which is why the percentage is on the line — a yellow you cannot explain
 is a yellow the advisor could not place. [RUNNING.md](RUNNING.md) has what it sends out.

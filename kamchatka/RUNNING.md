@@ -717,8 +717,8 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
 - **The temperatures are refitted.** The card is explicit that the checkpoint ships over-confident
   and that one temperature per question type and option count has to be refitted on your own data
   before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
-  one. `contrib/laya_fit.json` is sixty labelled commands and `--fit` is what recomputes them from
-  it, printing the working: for each bucket, the shipped temperature and the fitted one, and how
+  one. `contrib/laya_fit.json` is a set of labelled commands and `--fit` is what recomputes them
+  from it, printing the working: for each bucket, the shipped temperature and the fitted one, and how
   each scores. Point it at a file of your own traffic if you have one:
 
   ```console
@@ -736,9 +736,10 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
   line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
   and goes to a checkpoint the card's own table rates worse on English.
 
-None of it makes laya good at this. Against sixty labelled commands, 21 of 30 destructive commands
-come out red, but *nothing* comes out green — laya cannot bring itself to say a command
-is safe, so 37 of 60 sit on the middle band. The card's own summary is the one to read — *a fast
+None of it makes laya good at this. Measured before the rubric drew its line at the working
+directory, against the sixty commands the set held then, 21 of 30 destructive commands came out
+red but *nothing* came out green — laya could not bring itself to say a command was safe, so 37
+of 60 sat on the middle band. The card's own summary is the one to read — *a fast
 base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
 typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
 an advisor that draws anything red at all; what would buy more is fine-tuning, which is what
@@ -768,18 +769,18 @@ The rating is drawn in the question, on the line under what the tool wants and a
 arguments: what the advisor reads the command as, in its colour, and how sure it is.
 
 Green, yellow or red, off a three-level rubric — it only reads, lists, searches or changes
-directory; it leaves a file, a setting or installed software changed in a way that could be put
-back; it destroys something that cannot be got back, or sends something off this machine. You still have to read the command, which is what the panel under it is for. What
-the colour buys is the half-second before that: whether this is the fifteenth `cargo test` of the
-afternoon or the one call in fifty worth stopping on.
+directory; it changes files inside the working directory, the way git or a rebuild could undo; it
+reaches outside the working directory, destroys something that cannot be got back, or sends
+something off this machine. You still have to read the command, which is what the panel under it
+is for. What the colour buys is the half-second before that: whether this is the fifteenth
+`cargo test` of the afternoon or the one call in fifty worth stopping on.
 
 **The top of that rubric is asked a second time, as a claim rather than as a position**, and the
 worse of the two answers is what gets drawn. The two engines are good at different halves of it:
 an ordinal `score` is the primitive laya's own card calls its weakest, and asking the same reading
-as a yes-or-no finds four more destructive commands of thirty with one fewer false alarm; `jev`
-reads the rubric almost perfectly and loses four of them when the rubric is taken away. Folded,
-laya draws 21 of 30 destructive commands red where the rubric alone drew 16, and `jev` draws
-exactly what it drew before. It costs a question and not a round trip — every question in a call
+as a yes-or-no finds destructive commands the rubric misses; `jev` reads the rubric well and
+misses some of them when the rubric is taken away. Folded, each draws at least as many of them
+red as either reading alone. It costs a question and not a round trip — every question in a call
 is answered in one pass at both engines, which is the same property that makes placing a command
 stage by stage affordable.
 
