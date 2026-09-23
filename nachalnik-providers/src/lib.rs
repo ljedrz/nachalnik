@@ -2,15 +2,16 @@
 //!
 //! The runtime ships no provider and never will - it has no network in it, and a kernel that
 //! opened a socket would be a kernel with an opinion about who you talk to. That leaves every
-//! adopter writing the same thousand lines of streamed HTTP before they can ask a model anything,
-//! which is what this crate is here to stop.
+//! adopter writing the same streamed HTTP client before they can ask a model anything, and this
+//! crate is that client.
 //!
 //! Everything in here is an [`Endpoint`]: an address, a key, a model identifier, a listing, and
 //! something to say when the server is slow. What splits the crate in two is whether the model
 //! behind it answers in *turns*.
 //!
 //! A [`Dialect`] does. It implements [`nachalnik::Provider`], so a kernel can be handed one and a
-//! session is what comes out. Two of them, each behind a feature:
+//! session is what comes out. There are two, each behind the feature of the same name, and
+//! `openai` is on by default:
 //!
 //! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from
 //!   fragments. What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak.
@@ -20,10 +21,10 @@
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
 //!
-//! - [`system1`] - System One models, of which this speaks to TypeSafe's `jev`. Typed questions
-//!   put to a state and answered with probabilities: no text, no tool calls, nothing to stream.
-//!   What it is for is the decisions a program makes *around* a conversation rather than the
-//!   conversation.
+//! - [`system1`] - System One models, behind the `system1` feature, of which this speaks to
+//!   TypeSafe's `jev`. Typed questions put to a state and answered with probabilities: no text,
+//!   no tool calls, nothing to stream. It is for the decisions a program makes *around* a
+//!   conversation rather than the conversation itself.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -43,13 +44,14 @@
 //! # }
 //! ```
 //!
-//! note: neither dialect reads the environment. Where the requests go, which key pays for them
-//! and what limit to measure against are the caller's to decide and its business to say out
+//! note: nothing in this crate reads the environment. Where the requests go, which key pays for
+//! them and what limit to measure against are the caller's to decide and its business to say out
 //! loud: a library that quietly picked up `OPENAI_API_KEY` would be spending somebody's money on
 //! the strength of a variable they exported for another reason. [`OpenAiCompatible::new`] takes
-//! all three, and [`OpenAiCompatible::with_context_limit`] takes the override.
+//! the address and the key, and [`OpenAiCompatible::with_context_limit`] a limit to measure
+//! against in place of the one the endpoint advertises.
 //!
-//! note: both providers report fragments through a [`nachalnik::DeltaSink`] and print nothing.
+//! note: both dialects report fragments through a [`nachalnik::DeltaSink`] and print nothing.
 //! The screen belongs to whoever owns it, and a provider writing to it would be drawing over
 //! somebody's frame.
 
@@ -103,28 +105,25 @@ pub fn out_of_quota(error: &str) -> bool {
 ///
 /// note: the wordings differ per vendor and the arithmetic does not, so this reads the numbers
 /// rather than the sentence, and it reads exactly one of them: the request, which is the largest
-/// token count a complaint of this kind can name. The limit is *not* taken from the prose, and a
-/// sentence that reads `you requested about 92674 tokens (92174 of text input, 500 in the output)`
-/// against a model that takes 65536 is why - the second-largest number there is neither of the
-/// two, and the difference is what somebody would be told to prune.
+/// token count a complaint of this kind can name. The limit is *not* taken from the prose. In
+/// `you requested about 92674 tokens (92174 of text input, 500 in the output)`, against a model
+/// that takes 65536, the second-largest number is neither of the two, and the difference is what
+/// somebody would be told to prune.
 ///
-/// note: `limit` is what says the reading is a sane one, since a refusal for length names a
-/// request larger than the model and nothing else in the sentence is. Without one, a message
-/// naming a single number is left alone: which number it is - the request, or what the model
-/// takes - is the whole of what this is for, and reading it the wrong way round calibrates a
-/// counter *down* on its way to a refusal.
+/// note: `limit` is what makes the reading safe: a refusal for length names a request larger than
+/// the model takes, and nothing else in the sentence is larger than the limit. Without one, a
+/// message naming a single number is left alone, because that number could be the request or the
+/// limit, and reading it the wrong way round calibrates a counter *down* on its way to a refusal.
 ///
 /// note: and the sentence has to *name* that limit, which is the one thing that says it is
 /// counting in the same units as the session reading it. An aggregator normalises token counts
 /// into its own tokenizer and enforces its own window, but the model behind it refuses in its
-/// native one - and both refusals arrive from the same address, for the same model id, in the
-/// same afternoon. One said `maximum context length is 65536 tokens ... you requested about
-/// 71311` against a request this counter had put at 71231, which is a correction worth having;
-/// the other named neither that limit nor anything near that request, because it was the
-/// upstream's own count of the same bytes. Reading the second would tell somebody to prune tens
-/// of thousands of tokens that were never there, and would teach the counter a scale belonging
-/// to a tokenizer this session is not held to. An unread refusal is still the server's own
-/// sentence, which names the problem in words.
+/// native one, and both refusals arrive from the same address for the same model id. The
+/// aggregator's names the limit the session measures against and a request close to the
+/// session's own count, which is a correction worth having. The upstream's names neither, because
+/// it is another tokenizer's count of the same bytes. Reading it would tell somebody to prune
+/// tokens that were never there, and would teach the counter a scale this session is not held
+/// to. An unread refusal is still the server's own sentence, which names the problem in words.
 pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
     /// What names this kind of refusal, whoever phrased it.
     const COMPLAINTS: [&str; 5] = [
@@ -198,12 +197,11 @@ pub fn same_model(listed: &str, model: &str) -> bool {
 /// decision about somebody's credentials or about somebody's data. Whether to send the app headers
 /// that put a program in a public ranking; which of the two services serving `jev` a question is
 /// shaped for; and, in `kamchatka`, whether a session's own key may be spent on anything else.
-/// Three copies of a host test is three chances for one of them to be read as saying what the
-/// others say when it no longer does.
+/// Three copies of a host test can drift apart and still be read as the same rule.
 ///
 /// note: on the authority alone, so a path, a port and a regional subdomain all still count, and
-/// `openrouter.ai.example.com` does not. That last one is the whole reason this is not a
-/// `contains`.
+/// `openrouter.ai.example.com` does not. A `contains` would match that last one, which is why
+/// this is not one.
 pub fn is_openrouter(address: &str) -> bool {
     let authority = address
         .split_once("://")
@@ -236,11 +234,11 @@ mod tests {
     ///
     /// note: three things turn this into a decision - app attribution, which of two services a
     /// `jev` question is shaped for, and whether `kamchatka` may spend a session's key on advice -
-    /// and the third is the reason the URL forms are here. `ranks_apps` only ever saw a bare host,
-    /// so a scheme and a path went untested until something passed one.
+    /// and the third is the reason the URL forms are here: `ranks_apps` passes a bare host, and
+    /// `kamchatka` passes the whole address.
     ///
-    /// note: `openrouter.ai.example.com` is the case that decides the shape of the whole function.
-    /// A `contains` or a suffix test over the raw address would match it, and the three callers
+    /// note: `openrouter.ai.example.com` decides the shape of the function. A `contains` or a
+    /// suffix test over the raw address would match it, and the three callers
     /// would then name a program, shape a request and spend a key against a host that merely put
     /// somebody else's name in front of its own.
     #[test]

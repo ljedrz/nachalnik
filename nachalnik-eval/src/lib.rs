@@ -25,7 +25,7 @@
 //!
 //! # what makes a number here mean anything
 //!
-//! Four decisions, each of which a benchmark of this kind gets wrong by default:
+//! A benchmark of this kind gets each of these wrong by default.
 //!
 //! 1. **No model is in the scoring path.** A [`Probe`] declares the shape its answer comes back
 //!    in and a [`Reading`] parses it; an answer that does not parse is [`Answer::Unreadable`] and
@@ -33,17 +33,16 @@
 //!    nothing in a score depends on a second model's opinion.
 //! 2. **Interventions run on a copy, never on the subject.** [`Ablation::observe`] resumes a
 //!    [`Snapshot`] with items excluded, elided, revised or planted; the session under test is
-//!    untouched and does not learn that it was measured. Which is also why every claim in the
+//!    untouched and does not learn that it was measured. For the same reason, every claim in the
 //!    supplied experiments is elicited *before* any copy is run.
-//! 3. **The control is a copy too, and the question says so.** "Did the answer change?" is the
-//!    treated copies against control copies of the same context with nothing moved - not against
+//! 3. **The control is a copy too, and the question says so.** "Did the answer change?" compares
+//!    the treated copies with control copies of the same context with nothing moved - not with
 //!    what the subject said in the live session, which was said with tools, at a different point
-//!    in the conversation. Which is why every counterfactual in [`suite`] asks about *two
-//!    copies* rather than about "your answer": a subject can be exactly right about how the two
-//!    copies will answer and be scored wrong for it, if the baseline it was shown is not the
-//!    baseline the score used. Run more than one replicate and [`Change::instability`] reports
-//!    how often the control disagreed with itself, which is the noise floor a change of one has
-//!    to clear.
+//!    in the conversation. So every counterfactual in [`suite`] asks about *two copies* rather
+//!    than about "your answer". Asked about its own answer, a subject can be exactly right about
+//!    how the copies will answer and still be scored wrong, because the baseline it had in mind
+//!    is not the one the score used. Run more than one replicate and [`Change::instability`]
+//!    reports how often the control disagreed with itself: the noise floor a change has to clear.
 //! 4. **Accuracy is reported beside what guessing would score.** [`Scores::majority`] is what a
 //!    subject that always gave the commonest answer would get, and [`Scores::skill`] is how much
 //!    of the room above that the subject actually took. A battery of counterfactuals in which
@@ -59,6 +58,8 @@
 //! | [`Kind::Recursive`] | "a copy of me, asked that, would say yes" | a copy, asked that |
 //! | [`Kind::Provenance`] | "nothing has been taken out of this conversation" | what the harness took out of it |
 //! | [`Kind::Consistency`] | "nothing in front of me contradicts anything else" | what the harness planted that does |
+//! | [`Kind::Task`] | not a claim about itself: the answer to the question | what the material supports |
+//! | [`Kind::Foreign`] | a counterfactual, about a session it was shown rather than one it is in | a copy of that session with it taken away |
 //!
 //! Each comparison is one [`Resolution`], and [`Scores`] is computed over a set of them:
 //! accuracy, the majority baseline, a Brier score, expected calibration error, an
@@ -98,7 +99,13 @@
 //! rules, and it is deliberate: the questions are the instrument. They are all in [`suite`],
 //! kept apart from the machinery in the modules above it, so that replacing them replaces the
 //! benchmark and not the harness. Everything in [`suite`] is written in terms of the public
-//! surface here and can be written again without touching it.
+//! surface here and can be written again without touching it. The machinery says two things of
+//! its own: [`PREAMBLE`], which every copy is told before its question, and
+//! [`Reading::instructions`], the line that tells a subject what shape to answer in.
+//!
+//! This crate is the instrument, not a study. A study run with it keeps its material, results
+//! and write-up in a repository of its own, as
+//! [deleting-a-memory](https://github.com/ljedrz/deleting-a-memory) does.
 //!
 //! [`Kernel`]: nachalnik::Kernel
 //! [`Kernel::resume`]: nachalnik::Kernel::resume

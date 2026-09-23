@@ -3,7 +3,7 @@
 
 //! **nachalnik** is a small, honest agent runtime: an execution loop around a language model in
 //! which the context, the tools, the permissions and the requests are explicit, inspectable
-//! state rather than hidden behavior.
+//! state rather than hidden behaviour.
 //!
 //! The agent is not the boss. You are.
 //!
@@ -40,7 +40,7 @@
 //! ritual, no "think step by step", no default tools, no filesystem access, no process
 //! spawning, no HTTP client, no subagents, no MCP, no background activity, no `/context`
 //! renderer, no permission table, and no automatic context management unless you install a
-//! [`Compactor`] - which then reports every single thing it did.
+//! [`Compactor`] - which then reports everything it did.
 //!
 //! # What it does not protect you from
 //!
@@ -53,17 +53,16 @@
 //!
 //! What it does enforce is one thing: a call the [`PermissionPolicy`] refused is never handed to
 //! [`Tool::invoke`], and the refusal is recorded as an [`Event`] and as a tool result the model is
-//! told about. That is a decision point with a paper trail, not a boundary. Four consequences,
-//! none of them a bug:
+//! told about. That is a decision point with a paper trail, not a boundary:
 //!
 //! - A [`Capability`] is a tool's own declaration, not a verified property; the kernel has nothing
 //!   to check it against.
-//! - `exec:run` subsumes every other one, so a policy that allows it has allowed all of
-//!   them whatever it answers about the rest.
+//! - `exec:run` subsumes every other capability, so a policy that allows it has allowed all of
+//!   them, whatever it answers about the rest.
 //! - A policy that reads a command's text is a heuristic: it can make a refusal real for what was
 //!   written, not for a program that reaches the network some other way. Confinement that *can*
-//!   belongs where the process is spawned - `kamchatka` puts its `shell` tool under Landlock, which
-//!   turns `network: deny` into a refused `connect` syscall.
+//!   stop that belongs where the process is spawned - `kamchatka` puts its `shell` tool under
+//!   Landlock, which turns `network: deny` into a refused TCP `connect` syscall.
 //! - Anything in the context is something the model reads, and it can carry instructions. What
 //!   this runtime offers against that is the policy - which nothing in a model's output reaches
 //!   except as a tool name and arguments - and a context you can see before the request goes.
@@ -151,11 +150,12 @@
 //!
 //! - [`Context`] is a list of identified [`ContextItem`]s. Nothing is ever silently dropped:
 //!   removal is a state change ([`Kernel::set_state`]), so a removed item can still be listed,
-//!   inspected, and restored - and that holds even for an output limit, which records the whole
-//!   of what a tool said beside the truncated copy the model is shown.
-//!   [`ContextState::Elided`] is the third answer between in and out: the item stays in the
-//!   request as a short marker, so a tool result can stop costing what it holds without the
-//!   call that asked for it having to be taken off the record to keep the request valid.
+//!   inspected, and restored. That holds for an output limit too: unless
+//!   [`Config::keep_truncated_output`] is turned off, the whole of what a tool said is kept beside
+//!   the truncated copy the model is shown.
+//!   [`ContextState::Elided`] is a third answer, between in and out: the item stays in the request
+//!   as a short marker. A tool result can then stop costing what it holds and still answer the
+//!   call that asked for it, where an excluded one takes that call out of the request with it.
 //! - An assistant turn is recorded the way the model produced it. Where a provider reports a
 //!   content slot, a reasoning slot and a list of calls, that is what the item holds; where it
 //!   reports an ordered sequence - thinking, a sentence, a call, more thinking before the next
@@ -171,12 +171,13 @@
 //! - The token figures are a [`TokenCounter`]'s, and the default one is an estimate that comes
 //!   out low. [`Calibrating`] closes the loop instead of guessing better: the kernel reports what
 //!   a request was estimated at beside what the provider charged for it, and the counter corrects
-//!   itself from the first response. Where a counter cannot reach something at all it says so
-//!   rather than returning `0` - [`TokenCounter::uncounted`] rides up to [`Budget::uncounted`]
-//!   and [`ContextItem::uncounted`], so a figure that is a *floor* is never mistaken for a
-//!   complete one. A [`Content::Blob`] is the case that forced it: what a picture costs is a
-//!   formula over its dimensions, and every vendor publishes a different one. [`Blob::meta`] is
-//!   where a counter gets the inputs; `examples/pricing_a_picture.rs` is one written out.
+//!   itself from the first response large enough to learn from.
+//!   Where a counter cannot reach something at all it says so rather than returning `0`:
+//!   [`TokenCounter::uncounted`] rides up to [`Budget::uncounted`] and
+//!   [`ContextItem::uncounted`], so a figure that is a *floor* is never mistaken for a complete
+//!   one. A [`Content::Blob`] is the usual case, because what a picture costs is a formula over
+//!   its dimensions and every vendor publishes a different one. [`Blob::meta`] is where a counter
+//!   gets the inputs; `examples/pricing_a_picture.rs` is one written out.
 //! - [`Snapshot`] is where it all ended up, which is a different question: [`Kernel::snapshot`]
 //!   and [`Kernel::resume`] carry a session across processes, because a log of events that name
 //!   their items cannot rebuild the items.

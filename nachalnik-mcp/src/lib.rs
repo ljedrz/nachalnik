@@ -29,30 +29,32 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 "#
 )]
 
-//! # Why this is not in the runtime
+//! # why this is not in the runtime
 //!
 //! `nachalnik` promises to spawn no processes, open no sockets and run nothing in the background.
-//! Every one of those is what speaking MCP consists of. Tying a context library's version to a
-//! protocol that revises faster than the library should would be the second problem.
+//! Every one of those is what speaking MCP consists of. And MCP revises faster than a context
+//! library's version should, so the runtime is not tied to it either.
 //!
 //! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to
 //! a server; tools arriving and leaving is [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
-//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a stop
-//! reaches a running tool through its [`OutputSink`](nachalnik::OutputSink); a structured result
-//! is [`Content::Json`](nachalnik::Content). That is the point of a seam. (A server's progress
-//! notifications are not forwarded yet: no progress token is sent, so none arrive.)
+//! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a stop is
+//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out, and a call
+//! already with the server is let finish; a structured result is
+//! [`Content::Json`](nachalnik::Content). A server's progress notifications are not forwarded yet:
+//! no progress token is sent, so none arrive.
 //!
-//! # What it decides, and what it refuses to
+//! # what it decides, and what it refuses to
 //!
-//! Two things here are judgement calls, and both are yours rather than the kernel's:
+//! Each of these is a judgement call with a default here, and yours to change rather than the
+//! kernel's:
 //!
 //! - **What a tool is allowed to do.** MCP tools carry *hints* about themselves, and the
 //!   specification says in as many words that a client should never make tool-use decisions
 //!   based on hints from a server it does not trust. So [`Trust`] defaults to believing none of
-//!   them. See its documentation - it is the most important decision in this crate.
+//!   them; read its documentation before changing that.
 //! - **What a tool is called.** Two servers may both offer `read`, and a kernel holds one tool per
-//!   identifier, so names are prefixed with the server's by default. Nothing is ever replaced
-//!   quietly: [`Installed::replaced`] says what was displaced.
+//!   identifier, so names are prefixed with the server's unless [`Server::without_prefix`] says
+//!   otherwise. Nothing is ever replaced quietly: [`Installed::replaced`] says what was displaced.
 
 mod server;
 mod tool;

@@ -575,10 +575,10 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
 ///
 /// note: two shapes for a blob, chosen by media type - `image_url` for a picture and `file` for
 /// everything else - because this dialect gives an attachment its own part and refuses one sent
-/// as an image. There is a third, `input_audio`, and it is deliberately not here: nothing in this
-/// workspace produces a recording, so it would be a shape written from documentation and pinned by
-/// no test. A caller sending one gets the `file` part, which is the best guess available and is
-/// wrong in a way the endpoint will say out loud.
+/// as an image. There is a third, `input_audio`, and it is deliberately not here: no test in this
+/// workspace sends a recording, so it would be a shape written from documentation and pinned by
+/// nothing. A caller sending one - `kamchatka` attaches mp3, wav and ogg - gets the `file` part,
+/// which is the best guess available and is wrong in a way the endpoint will say out loud.
 fn parts_of(content: &Content) -> Option<Value> {
     fn part(content: &Content) -> Value {
         let data = |blob: &Blob| format!("data:{};base64,{}", blob.media_type, blob.data);

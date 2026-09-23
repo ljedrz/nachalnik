@@ -55,7 +55,7 @@ shell-advisor = ["advise"]
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]
 # the screen and the keys: `ui`, the prompt, and the bindings that drive them. Optional because
-# `App` is the program and drawing it is one caller - the six dependencies below are wanted by
+# `App` is the program and drawing it is one caller - the dependencies below are wanted by
 # nothing else in here, and a session driven by anything but a person at a terminal pays for none
 # of them
 tui = [
@@ -92,8 +92,8 @@ tokio = { workspace = true, features = [
     # `--serve` and `--connect`: a unix socket where there are any and a loopback port where there
     # are not. With `socket2` above, which is one method on a port, that is the whole of what
     # remote control costs - which is why `remote` is not behind a feature of its own the way `tui`
-    # and `mcp` are: those exist to keep six dependencies and a bridge out of a build that wants
-    # neither, and a crate `tokio` already builds is nothing to keep out. The other half of the
+    # and `mcp` are: those exist to keep the drawing's dependencies and a bridge out of a build that
+    # wants neither, and a crate `tokio` already builds is nothing to keep out. The other half of the
     # decision is that a build with no screen is exactly the build a served session runs in
     "net",
     "process",
