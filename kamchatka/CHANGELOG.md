@@ -67,6 +67,12 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.7, `nachalnik-mcp` 0.7 and `nachalnik-providers` 0.6. The runtime's
+  `undo` and `redo` answer a `Result`, which is how `u` and `U` learn a turn is under way;
+  `record_rule` and `provider_changed` are how the rules and the switches reach the record;
+  `Snapshot::problems` is what `-r` and `/load` check a snapshot with; and the local advisor
+  renders its request with `system1::render`.
+
 - **The rubric draws its line at the working directory.** The middle level was "leaves something
   changed that could be put back", and nearly everything could be: `chmod -R 777 /`, a global
   `npm install`, `git config --global` and an edit to `~/.bashrc` were all drawn yellow beside
