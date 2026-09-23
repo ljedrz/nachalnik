@@ -4,8 +4,8 @@
 use crate::{agent, answered, answers_from, branch, one_turn};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
-    Config, ContextItem, ContextState, Kernel, ToolCallId, Verdict, test::ScriptedProvider,
-    test::call,
+    Config, Content, ContextItem, ContextKind, ContextState, Kernel, ToolCallId, Verdict,
+    test::ScriptedProvider, test::call,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -573,5 +573,49 @@ async fn look_says_which_items_this_session_did_not_produce() {
         !answered(&fresh).contains("resumed from a snapshot"),
         "{}",
         answered(&fresh)
+    );
+}
+
+/// A picture is counted as nothing, and every figure this tool gives says so.
+///
+/// note: the context tab marks such a row and `/budget` says every figure is a floor; this tool
+/// said neither, so the model read a context carrying a screenshot as a small one - its account of
+/// its own budget drifting from the person's, which `Going` is shared to prevent.
+#[tokio::test]
+async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    let shot = kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "iVBORw0KGgo=",
+    )));
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "context", json!({ "action": "budget" })),
+        call("c2", "context", json!({ "action": "look" })),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "look", "ids": [shot.0] }),
+        ),
+    ]))));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said: Vec<String> = kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(said.len(), 3, "{said:?}");
+    assert!(
+        said[0].contains("every figure above is a floor"),
+        "{}",
+        said[0]
+    );
+    assert!(said[1].contains("a `+` is a floor"), "{}", said[1]);
+    assert!(
+        said[2].contains("1 piece(s) nothing here can price"),
+        "{}",
+        said[2]
     );
 }

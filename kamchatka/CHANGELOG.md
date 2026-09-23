@@ -14,6 +14,12 @@ minor bump may break you.
   `--spend` ceiling that was read as an endpoint reporting nothing - so a session against one that
   reports usage on every other response was told that only a deadline could stop it now.
 
+- **The `context` tool says when a figure is a floor.** A picture or a document is counted as
+  nothing by a counter that cannot price it, and the context tab and `/budget` said so while the
+  model's own `budget` and `look` did not - so a context carrying a screenshot read to the model as
+  a small one. `budget` now says every figure is a floor, `look` marks such a row with the `+` the
+  tab uses, and one item read back says how many pieces of it nothing here can price.
+
 - **A `/model` or `/provider` on a script's last line is in the record.** The line after a switch
   is what waited for it, and at the end of the input there is none: the session was ended and
   written while the switch was still asking the endpoint, and the change never reached the record.

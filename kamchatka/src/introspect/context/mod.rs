@@ -480,13 +480,27 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
             item.id.0,
             item.state.to_string(),
             item.kind.name(),
-            thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
+            // a `+` where part of it is unpriced, as the context tab marks it, so that the two
+            // things `0` can mean are not one figure
+            match item.uncounted {
+                0 => thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
+                _ => format!(
+                    "{}+",
+                    thousands(going.costs.get(&item.id).copied().unwrap_or(0))
+                ),
+            },
             match going.held_back(item) {
                 0 => String::new(),
                 held => thousands(held),
             },
             row(item, &going),
         ));
+    }
+    if items.iter().any(|item| item.uncounted != 0) {
+        out.push_str(
+            "\na `+` is a floor: part of that item is content nothing here can put a number on, \
+             so it and the total going cost more than they say\n",
+        );
     }
 
     // note: the second sentence is there because the columns are easy to read wrong. Asked what
@@ -738,13 +752,17 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
     // note: `Going::holds` rather than `ContextItem::tokens`, so that the two figures in this one
     // sentence are counted on one scale - `Going::holds` has why that is not the same figure
     let mut out = format!(
-        "[{}] {} · {} · from {} · {} · {} tokens{}\n",
+        "[{}] {} · {} · from {} · {} · {} tokens{}{}\n",
         item.id,
         item.label,
         item.kind.name(),
         item.source,
         item.state,
         thousands(going.holds(item)),
+        match item.uncounted {
+            0 => String::new(),
+            n => format!(" and {n} piece(s) nothing here can price"),
+        },
         match going.held_back(item) {
             0 => String::new(),
             held => format!(
@@ -1021,6 +1039,15 @@ fn budget(kernel: &Kernel, mine: &super::Mine) -> String {
         thousands(budget.tool_tokens),
         thousands(withheld),
     );
+    // straight after the figures it qualifies, as `/budget` puts it for the person: a picture reads
+    // as nothing, so a context carrying one looks small when it is not
+    if !budget.fully_counted() {
+        out.push_str(&format!(
+            "{} piece(s) of content nothing here can put a number on, so every figure above is a \
+             floor and the real request is larger\n",
+            budget.uncounted
+        ));
+    }
 
     match budget.reported {
         Some(usage) => out.push_str(&format!(
