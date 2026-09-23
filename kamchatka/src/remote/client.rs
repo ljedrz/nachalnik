@@ -195,6 +195,11 @@ impl<'a> Client<'a> {
         typed: &mut tokio::io::Lines<impl AsyncBufRead + Unpin>,
         first: bool,
     ) -> Left {
+        // note: before the connect rather than after it. An attempt that cannot connect has not
+        // been answered either, and one that kept the last connection's `true` reset the wait on
+        // every failure - so a client whose session had gone tried every quarter of a second for
+        // as long as the process lived, and never reached `GIVE_UP`
+        self.reached = false;
         let stream = match connect(address).await {
             Ok(stream) => stream,
             // a first attempt that cannot connect is a wrong address or a session that is not
@@ -214,7 +219,6 @@ impl<'a> Client<'a> {
         // rather than decremented on the way out, because a client cannot tell which of what it
         // sent the session had already read
         self.outstanding = 0;
-        self.reached = false;
         // whether `ctrl+c` has already asked the turn to stop on this connection
         let mut stopping = false;
         // subscribed once, because a second press arriving while the first is being handled is the

@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`remote::Serving::last` takes the `Serving` and hands back a future to await.** It says the
+  last lines, as before, and the future is the session waiting up to two seconds for its
+  connections to write what they still owe and close. A loop of its own that ends a served
+  session calls `serving.last(&app).await` where it called `serving.last(&app)`.
+
 ### added
 
 - **`sandbox::confines_unix_sockets`** answers whether this kernel refuses a confined command a
@@ -65,6 +72,16 @@ minor bump may break you.
   `macos-latest` column in CI passed without running any of them. Nothing moved in `src`.
 
 ### fixed
+
+- **A client that ends a served session is told it did.** The connections were tasks nobody
+  waited for, so a host that exited on a `/quit` could take the answer to it and `session.finished`
+  with it. The client that typed `/quit` read the closed socket as a drop and went looking for a
+  session that was gone. The session now waits for its connections before it returns.
+
+- **A client whose session has gone gives up on it.** An attempt that could not connect counted as
+  a connection the session had answered on, and that starts the waits again - so a `--connect`
+  whose session had exited tried every quarter of a second for as long as it ran and never reached
+  the minute it gives up after.
 
 - **The file tools open what they checked.** `read`, `write`, `edit` and `grep` resolved a path,
   checked it against the reach and then opened it by name, so a directory replaced by a link

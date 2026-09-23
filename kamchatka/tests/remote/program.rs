@@ -96,12 +96,21 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
     }
 
     // the first client left and the session did not, so a second one can end it
-    tokio::task::spawn_blocking({
+    let quitter = tokio::task::spawn_blocking({
         let socket = socket.clone();
         move || connect(&socket, b"/quit\n")
     })
     .await
     .expect("the second client panicked");
+    // note: and it is told the session ended, rather than finding the socket closed. The host is a
+    // process that exits once the session is over, and a connection it had not yet written
+    // `session.finished` to went with it - so the client that typed `/quit` read a drop, and went
+    // looking for a session that was gone
+    let said = String::from_utf8_lossy(&quitter.stderr);
+    assert!(
+        quitter.status.success() && !said.contains("attaching again"),
+        "the client that ended the session was not told it had: {said}"
+    );
 
     let host = tokio::task::spawn_blocking(move || host.wait_with_output())
         .await

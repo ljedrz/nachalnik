@@ -358,6 +358,65 @@ async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A session that has gone is waited for longer each time, rather than every quarter of a second.
+///
+/// note: what the waits growing stands for is `GIVE_UP`, which is a minute and too long to wait
+/// for here. A connection the session answered on starts the waits again, and an attempt that
+/// could not connect used to count as one: so a client whose session had gone waited the first
+/// wait, again and again, and never gave up. The proxy answers one attach and then stops
+/// listening, which is a session that went.
+#[tokio::test]
+async fn a_session_that_went_is_waited_for_longer_each_time() {
+    let session = served(Vec::new(), |_| {}).await;
+    let Ok(Address::Tcp(host)) = protocol::address(&session.at) else {
+        panic!("the suite serves a port");
+    };
+    let host = host.to_owned();
+
+    let proxy = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", proxy.local_addr().expect("its own address"));
+    tokio::spawn(async move {
+        let (down, _) = proxy.accept().await.expect("the client came");
+        drop(proxy);
+        let up = TcpStream::connect(&host).await.expect("the session went");
+        let (mut down, mut up) = (BufReader::new(down), BufReader::new(up));
+        // the attach one way and the projection the other, and then nothing is there
+        let mut line = String::new();
+        down.read_line(&mut line).await.expect("an attach");
+        up.get_mut()
+            .write_all(line.as_bytes())
+            .await
+            .expect("it goes on");
+        line.clear();
+        up.read_line(&mut line).await.expect("a projection");
+        down.get_mut()
+            .write_all(line.as_bytes())
+            .await
+            .expect("it comes back");
+    });
+
+    // the input stays open, so nothing but the session going can be what the client is doing
+    let (_feed, input) = tokio::io::duplex(256);
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
+    )
+    .await;
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("attaching again from record") && prose.contains(" in 0.5s"),
+        "the client did not wait any longer the second time: {prose}"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// The client answers a question with the same three letters the terminal's panel takes.
 #[tokio::test]
 async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
@@ -569,7 +628,7 @@ async fn a_loop_of_somebody_elses_can_serve_the_session() {
         }
         serving.pump(&app);
         app.kernel.finish();
-        serving.last(&app);
+        serving.last(&app).await;
 
         app
     });

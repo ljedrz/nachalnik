@@ -20,12 +20,13 @@
 //! A slow client therefore costs one socket buffer and loses exactly the thing that could not have
 //! been recovered anyway.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use nachalnik::{Event, Kernel};
 use tokio::{
     io::{AsyncRead, AsyncWrite, BufReader},
     sync::{broadcast, mpsc, oneshot},
+    task::JoinSet,
 };
 
 use crate::{
@@ -42,6 +43,13 @@ use crate::{
 /// to say about a turn, and an error - a handful per turn against a thousand fragments - so a
 /// client this far behind on *these* has not been reading for a very long time.
 const VOICE: usize = 256;
+
+/// How long an ended session waits for its connections to write what they still owe.
+///
+/// note: a bound rather than a wait for all of them, because one of them may be a client that
+/// stopped reading, and this is what stands between it and a process that never exits. What they
+/// owe is the answer to the last command and `session.finished`, which is a few hundred bytes.
+const PARTING: Duration = Duration::from_secs(2);
 
 /// A session, and the socket somebody reaches it on.
 pub struct Server {
@@ -342,7 +350,7 @@ impl Server {
         // gives: `session.finished` is a record like any other, and a caller that ended it after
         // this returned would have written every record but the last one
         app.kernel.finish();
-        serving.last(app);
+        serving.last(app).await;
 
         match failed {
             Some(_) => Err("the last turn failed".to_owned()),
@@ -428,12 +436,14 @@ fn apply_press(app: &mut App, stopping: &mut bool) -> bool {
 /// serving. [`Server::run`] is one - a session with a socket and nothing else - and the terminal's
 /// own loop in `main.rs` is the other, which is what lets a session be driven from the desk it is
 /// running on and from a phone at the same time. What that costs a loop is three calls: [`pump`]
-/// before it waits, [`asked`] as a branch to wait on, and [`attend`] for each connection. The loop
-/// stays the loop, and this stays the part neither should be writing twice.
+/// before it waits, [`asked`] as a branch to wait on, and [`attend`] for each connection, and one
+/// more, [`last`], awaited once the session has ended. The loop stays the loop, and this stays the
+/// part neither should be writing twice.
 ///
 /// [`pump`]: Serving::pump
 /// [`asked`]: Serving::asked
 /// [`attend`]: Serving::attend
+/// [`last`]: Serving::last
 pub struct Serving {
     /// What every attached client hears the program say.
     voice: broadcast::Sender<Arc<Message>>,
@@ -453,6 +463,9 @@ pub struct Serving {
     model: Option<nachalnik::ModelInfo>,
     /// How many connections have arrived, which is what names them.
     clients: u64,
+    /// The connections, so that the session can wait for them on the way out; see
+    /// [`Serving::last`].
+    connections: JoinSet<()>,
 }
 
 impl Serving {
@@ -470,6 +483,7 @@ impl Serving {
             announced: app.busy,
             model: app.kernel.model_info(),
             clients: 0,
+            connections: JoinSet::new(),
         }
     }
 
@@ -601,22 +615,40 @@ impl Serving {
         // place the two can be taken together - see `Answered`. When this was said through
         // `App::say`, a receiver taken here also caught the line the projection already carried,
         // which printed one attach note twice on every attach there had ever been
+        //
+        // note: the ones that have finished are let go of here, because a `JoinSet` keeps each
+        // until it is asked for it, and a browser reconnecting once a second would otherwise be a
+        // list that only grows
+        while self.connections.try_join_next().is_some() {}
         match arrived.0 {
             #[cfg(unix)]
             Incoming::Unix(stream) => {
-                tokio::spawn(serve(client, stream, kernel, asks));
+                self.connections.spawn(serve(client, stream, kernel, asks));
             }
             Incoming::Tcp(stream) => {
-                tokio::spawn(serve(client, stream, kernel, asks));
+                self.connections.spawn(serve(client, stream, kernel, asks));
             }
         }
     }
 
-    /// The last of the voice, once the session has ended.
+    /// The last of the voice, once the session has ended, and the connections let go of.
     ///
     /// note: nothing else is going to send these. Whoever is still attached is about to find the
     /// socket closed, and these are the lines that say why.
-    pub fn last(&mut self, app: &App) {
+    ///
+    /// note: it waits, for up to two seconds, for every connection to write out what it owes and
+    /// close. Closing the voice is what tells a connection the session is over, and it flushes the
+    /// log on the way out - so this is where a client is sent the answer to its last command and
+    /// `session.finished`. The caller is usually about to exit, and the connections are tasks on
+    /// its runtime: a `/quit` whose answer was still in one when the process went was read by the
+    /// client that typed it as a dropped connection, and it went looking for a session that was
+    /// gone.
+    ///
+    /// note: the lines are said now and the waiting is what is handed back, so that the future
+    /// does not hold the [`App`]. With a screen built in, an `App` cannot be shared across threads,
+    /// and a future holding one across an `await` would make [`Server::run`] one nobody could
+    /// spawn.
+    pub fn last(self, app: &App) -> impl Future<Output = ()> + Send + use<> {
         let last: Vec<_> = app
             .notes(self.said)
             .map(|entry| Message::Said {
@@ -624,9 +656,24 @@ impl Serving {
                 text: entry.text.clone(),
             })
             .collect();
-        self.said += last.len();
         for message in last {
             let _ = self.voice.send(Arc::new(message));
+        }
+
+        // and a command still waiting on the loop is answered with its refusal rather than kept
+        // waiting for a loop that has stopped
+        let Self {
+            voice,
+            asked,
+            mut connections,
+            ..
+        } = self;
+        drop((voice, asked));
+        async move {
+            let _ = tokio::time::timeout(PARTING, async {
+                while connections.join_next().await.is_some() {}
+            })
+            .await;
         }
     }
 }

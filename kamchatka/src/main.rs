@@ -552,9 +552,9 @@ async fn drawn(
     // attached are owed it and the lines under it - which `finish` could not send, because the
     // voice they arrive on is this loop's. A drawn session with no socket leaves it to `finish`,
     // where it has always been
-    if let Some(serving) = &mut serving {
+    if let Some(serving) = serving {
         app.kernel.finish();
-        serving.last(app);
+        serving.last(app).await;
     }
 
     outcome
