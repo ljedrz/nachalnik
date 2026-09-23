@@ -1798,6 +1798,11 @@ mod rated {
             "{{\"model\":\"jev-1\",\"answers\":{{{}}}}}",
             answers.join(",")
         );
+        serving("200 OK", "application/json", body).await
+    }
+
+    /// An endpoint that answers every request with the same status and body.
+    async fn serving(status: &'static str, kind: &'static str, body: String) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
         let address = listener.local_addr().expect("its own address");
 
@@ -1808,7 +1813,7 @@ mod rated {
                 let _ = socket
                     .write_all(
                         format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                            "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\n\
                              Content-Length: {}\r\n\r\n{body}",
                             body.len()
                         )
@@ -2004,6 +2009,31 @@ mod rated {
     }
 
     /// An advisor that is not there leaves the question exactly as it was.
+    /// A command the advisor was asked about and could not rate says so, in words.
+    ///
+    /// note: the refusal is the shape the advisor's real endpoints send - a firewall's HTML page -
+    /// because the commands it refuses are the ones most worth a colour, and a question with no
+    /// line for one of them reads as a command nobody had anything to say about.
+    #[tokio::test]
+    async fn a_command_the_advisor_could_not_rate_says_why() {
+        let page = "<!DOCTYPE html><html><head><style>body{margin:0}</style></head><body>\
+                    <h1>Sorry, you have been blocked</h1></body></html>"
+            .to_owned();
+        let mut harness = asked_by(serving("403 Forbidden", "text/html", page).await).await;
+
+        let screen = harness.screen();
+        assert!(
+            screen.contains("the advisor could not rate this"),
+            "{screen}"
+        );
+        assert!(screen.contains("you have been blocked"), "{screen}");
+        assert!(
+            !screen.contains("DOCTYPE"),
+            "the page's words, not its markup: {screen}"
+        );
+        assert!(!screen.contains("reads this as"), "{screen}");
+    }
+
     #[tokio::test]
     async fn no_advisor_means_no_line() {
         let mut harness = Harness::new([

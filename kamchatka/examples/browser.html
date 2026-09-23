@@ -199,7 +199,7 @@
      and a warning under the thing it is about is one that arrives after the reading it was meant
      to aim */
   #rating { font-weight: 600; }
-  #rating .sure { font-weight: 400; color: var(--dim); }
+  #rating .sure, #rating .why { font-weight: 400; color: var(--dim); }
   .reads { color: var(--reads); } .changes { color: var(--changes); } .grave { color: var(--bad); }
   #answers { display: flex; gap: 8px; flex-wrap: wrap; }
   #answers button { flex: 1; }
@@ -744,7 +744,19 @@ function showQuestion() {
  */
 function band(next) {
   const seen = next && (latest?.rated ?? []).find((it) => it.id === next.id);
-  rating.hidden = !seen;
+  // asked and not answered says so, rather than drawing what a question nobody rated looks like:
+  // what the advisor's endpoint refuses is the commands most worth a colour
+  const missed = !seen && next && (latest?.unrated ?? []).find((it) => it.id === next.id);
+  rating.hidden = !seen && !missed;
+  if (missed) {
+    rating.className = "";
+    rating.textContent = "the advisor could not rate this: ";
+    const why = document.createElement("span");
+    why.className = "why";
+    why.textContent = missed.why;
+    rating.append(why);
+    return;
+  }
   if (!seen) return;
 
   rating.className = seen.band;

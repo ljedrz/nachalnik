@@ -26,6 +26,14 @@ minor bump may break you.
 
 ### added
 
+- **A command the advisor could not rate says so.** Where the rating would be, the question says
+  `the advisor could not rate this` and why, on the screen and in a projection's new `unrated`
+  list for a client to draw. The failure is not random: the advisor's endpoints sit behind a
+  firewall that refuses requests by what is in them, and what it refuses - `/etc/shadow`, a secret
+  piped to `curl` - is the command a colour is most for, which drew no line at all and read as one
+  nobody had anything to say about. `Advised::why_unrated` and `App::why_unrated` answer it, and
+  the browser page draws it.
+
 - **The readme shows the program.** Two screenshots, of the chat and context tabs, are woven into
   what it says about the tools a session manages itself with. They are linked by address and kept
   out of the published crate.

@@ -479,6 +479,17 @@ pub struct Attached {
     /// build without it serves: the advisor runs and rates the question, and the one thing a
     /// person was supposed to see never leaves the process.
     pub rated: Vec<Judged>,
+    /// Why the advisor has no rating for the questions it was asked about and could not answer.
+    ///
+    /// note: beside [`Attached::rated`] and in the same shape, one row per question, so that a
+    /// client draws one line or the other where the band would go. Without it an unrated
+    /// question looks like one the advisor had nothing to say about - and the requests the
+    /// advisor's endpoint refuses are the ones about the commands most worth a colour.
+    ///
+    /// note: empty from a session that predates the field, which a client reads as the absence
+    /// it drew before.
+    #[serde(default)]
+    pub unrated: Vec<Unjudged>,
     /// What the policy in force is called.
     pub policy: String,
     /// What it answers about anything nobody has told it about.
@@ -558,6 +569,16 @@ pub struct Judged {
     /// at, and a band to draw exactly as before.
     #[serde(default)]
     pub worst: Option<(usize, usize)>,
+}
+
+/// A question the advisor was asked about and could not rate, and why.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct Unjudged {
+    /// Which question.
+    pub id: PermissionId,
+    /// Why there is no rating, in the program's words and cut short.
+    pub why: String,
 }
 
 #[cfg(feature = "shell-advisor")]

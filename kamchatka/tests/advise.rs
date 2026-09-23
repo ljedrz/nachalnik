@@ -73,9 +73,14 @@ async fn rated(advised: &Advised, id: &str, command: &str) -> kamchatka::tools::
         "the rating is only asked for on a question"
     );
 
-    advised
-        .rating(&request.call)
-        .unwrap_or_else(|| panic!("`{command}` came back with no rating"))
+    advised.rating(&request.call).unwrap_or_else(|| {
+        panic!(
+            "`{command}` came back with no rating: {}",
+            advised
+                .why_unrated(&request.call)
+                .unwrap_or_else(|| "and no reason".to_owned())
+        )
+    })
 }
 
 /// Where the advisor puts a command, having been asked about it.

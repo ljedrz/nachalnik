@@ -212,6 +212,12 @@ impl App {
         self.advisor.as_ref()?.rating(&request.call)
     }
 
+    /// Why the advisor has no rating for the command a question is about, where it was asked.
+    #[cfg(feature = "shell-advisor")]
+    pub fn why_unrated(&self, request: &PermissionRequest) -> Option<String> {
+        self.advisor.as_ref()?.why_unrated(&request.call)
+    }
+
     /// Why a question is about everything a tool does, where that is because the call did not
     /// say which operation it wanted.
     ///

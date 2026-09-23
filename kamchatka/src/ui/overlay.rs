@@ -158,7 +158,8 @@ fn question_parts(
     ))
 }
 
-/// What the advisor made of the command, as a line of the header, or nothing at all.
+/// What the advisor made of the command, as a line of the header - or why it could not say, or
+/// nothing at all where it was not asked.
 ///
 /// note: the colour is what this adds. Somebody answering a question about a command has to read
 /// the command either way - that is what the panel under this is for - and what a band of green,
@@ -179,7 +180,18 @@ fn rating(app: &App, request: &nachalnik::PermissionRequest, columns: usize) -> 
     use crate::tools::Rating;
 
     let Some(rated) = app.rating(request) else {
-        return Vec::new();
+        // where it was asked and could not answer, the line says so rather than going missing -
+        // see `Advised::why_unrated` for why the absence is not a neutral one
+        return match app.why_unrated(request) {
+            Some(why) => refit(
+                &Line::from(vec![
+                    Span::raw("the advisor could not rate this: "),
+                    Span::styled(why, quiet()),
+                ]),
+                columns,
+            ),
+            None => Vec::new(),
+        };
     };
     let shown = rated.shown();
     let colour = match shown {

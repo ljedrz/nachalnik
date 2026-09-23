@@ -10,6 +10,32 @@ use nachalnik::ModelResponse;
 
 use crate::{Peer, attaching, quit, records, served, served_as};
 
+/// A projection from a session that predates the advisor's reasons is still one a client reads.
+///
+/// note: the field was added once two ends could be deployed apart, so an older session answers
+/// without it - and a client that refused the whole projection for a missing list of reasons
+/// would have nothing to draw at all.
+#[tokio::test]
+async fn a_projection_with_no_reasons_for_missing_ratings_still_reads() {
+    let session = served(vec![], |_| {}).await;
+    let (peer, attached) = Peer::attached(&session.at).await;
+
+    let mut sent = serde_json::to_value(Message::Attached(Box::new(attached))).expect("it writes");
+    sent.as_object_mut()
+        .expect("an object")
+        .remove("unrated")
+        .expect("this build sends the field");
+    let older: Message = serde_json::from_value(sent).expect("and reads without it");
+    let Message::Attached(older) = older else {
+        unreachable!("it was written as one")
+    };
+    assert!(older.unrated.is_empty());
+
+    drop(peer);
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client that has just arrived is told where the session stands, and then what happens next.
 #[tokio::test]
 async fn attaching_answers_with_a_projection_and_then_the_records() {

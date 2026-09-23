@@ -8,6 +8,9 @@
 //! reasoning as the exit colours in [`Exit`](crate::tools::Exit), one flight up: a coarse
 //! question, answered at a glance, beside the exact thing it is about.
 //!
+//! note: and where it cannot rate a command it says so, in the rating's place - see
+//! [`Advised::why_unrated`] for why a missing line is not a neutral one.
+//!
 //! note: **what leaves the machine.** For each shell command the rules are going to ask about,
 //! which in a default session is every command the model writes: the tool's id, the capabilities
 //! it declared, and its arguments - the command line. That is a real disclosure and much larger
@@ -53,6 +56,26 @@ const REMEMBERED: usize = 32;
 /// turns on is the first thing to go. Capping each value keeps every key, so a write of a large
 /// file arrives as the path it is writing to and a marker saying how much text came with it.
 const ROOM: usize = 2_048;
+
+/// Why there is no rating, where the advisor answered and nothing in the answer could be read.
+const UNREAD: &str = "it answered nothing this program could read";
+
+/// How long a reason for having no rating may be, in characters.
+///
+/// note: it goes in the question's pinned header, beside the command somebody is deciding about,
+/// and a firewall's refusal page runs on for a paragraph after the sentence that says what it is.
+const SAID: usize = 120;
+
+/// A reason cut to [`SAID`], saying where it was cut.
+fn cut(reason: &str) -> String {
+    match reason.chars().count() > SAID {
+        true => format!(
+            "{}…",
+            reason.chars().take(SAID).collect::<String>().trim_end()
+        ),
+        false => reason.to_owned(),
+    }
+}
 
 /// How sure the model has to be before a rating is taken at its word.
 ///
@@ -311,8 +334,9 @@ pub struct Advised {
     /// The engine asked for the rating: a service over HTTP, or a process on this machine.
     /// Nothing in here finds out which - see [`SystemOne`].
     jev: Arc<dyn SystemOne>,
-    /// Where it put each command it was asked to rate, for the question to draw.
-    rated: Mutex<VecDeque<(ToolCallId, Rated)>>,
+    /// Where it put each command it was asked to rate, or why it could not, for the question to
+    /// draw.
+    readings: Mutex<VecDeque<(ToolCallId, Result<Rated, String>)>>,
 }
 
 impl Advised {
@@ -321,7 +345,7 @@ impl Advised {
         Self {
             careful,
             jev,
-            rated: Mutex::new(VecDeque::new()),
+            readings: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -341,27 +365,56 @@ impl Advised {
         &self.careful
     }
 
-    /// Where the advisor put a command, if it was asked to place one.
-    ///
-    /// note: `None` covers every way of not having an answer and does not distinguish between
-    /// them, because the question draws a line for a rating and no line at all otherwise. A call
-    /// nobody asked about, an endpoint that was down, an answer that did not parse and a build
-    /// with the feature off all mean the same thing to a person reading the panel: this one is
-    /// theirs to judge, as it was before any of this existed.
+    /// Where the advisor put a command, if it was asked to place one and did.
     pub fn rating(&self, call: &ToolCallId) -> Option<Rated> {
-        self.rated
+        self.read(call)?.ok()
+    }
+
+    /// Why the advisor has no rating for a command it was asked to place.
+    ///
+    /// note: said rather than left as a missing line, because the failure is not random. The
+    /// endpoints this program knows sit behind a firewall that refuses a request by what is in it,
+    /// and what it refuses - `/etc/shadow`, a secret piped to `curl` - is the command the colour
+    /// is most for. A question with no line looks like one nobody had anything to say about, and a
+    /// person reading it that way has been told the command was not worth a colour.
+    pub fn why_unrated(&self, call: &ToolCallId) -> Option<String> {
+        self.read(call)?.err()
+    }
+
+    /// What was written down about a call, either way.
+    fn read(&self, call: &ToolCallId) -> Option<Result<Rated, String>> {
+        self.readings
             .lock()
             .iter()
             .find(|(known, _)| known == call)
-            .map(|(_, rated)| *rated)
+            .map(|(_, reading)| reading.clone())
     }
 
-    /// Asks where a command lands, and writes down the answer for the question to draw.
+    /// Asks where a command lands, and writes down the answer - or why there is none - for the
+    /// question to draw.
     ///
-    /// note: it returns nothing, and every way of failing leaves nothing written down. There is no
-    /// branch from here to a verdict, so the worst an outage can do is take the coloured line off
-    /// the panel.
+    /// note: it returns nothing. There is no branch from here to a verdict, so the worst an outage
+    /// can do is take the colour off the panel and put the reason there instead.
     async fn rate(&self, request: &PermissionRequest) {
+        let reading = self.placed(request).await;
+
+        let mut remembered = self.readings.lock();
+        match remembered
+            .iter_mut()
+            .find(|(known, _)| known == &request.call)
+        {
+            Some(known) => known.1 = reading,
+            None => {
+                if remembered.len() == REMEMBERED {
+                    remembered.pop_front();
+                }
+                remembered.push_back((request.call.clone(), reading));
+            }
+        }
+    }
+
+    /// Where a command lands, or why the advisor could not say.
+    async fn placed(&self, request: &PermissionRequest) -> Result<Rated, String> {
         // note: through `inner`, because some models put every argument inside a wrapper object
         // and the panel unwraps one before drawing it. Reading the command from the other place
         // than the screen does would take spans into a string nobody is looking at, and the
@@ -387,9 +440,11 @@ impl Advised {
             questions.push((format!("{DANGER}-{n}"), claiming(&cmd[*from..*to])));
         }
 
-        let Ok(answers) = self.jev.ask(state(request), questions).await else {
-            return;
-        };
+        let answers = self
+            .jev
+            .ask(state(request), questions)
+            .await
+            .map_err(|e| cut(&e.to_string()))?;
 
         // note: the score and the confidence together or not at all. A score with no confidence
         // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
@@ -414,7 +469,7 @@ impl Advised {
             .flatten()
             .collect();
         if whole.is_empty() {
-            return;
+            return Err(UNREAD.to_owned());
         }
 
         let placed = stages.iter().enumerate().flat_map(|(n, span)| {
@@ -431,23 +486,7 @@ impl Advised {
             .collect::<Vec<_>>()
         });
 
-        let Some(rated) = Rated::worst_of(whole.into_iter().chain(placed)) else {
-            return;
-        };
-
-        let mut remembered = self.rated.lock();
-        match remembered
-            .iter_mut()
-            .find(|(known, _)| known == &request.call)
-        {
-            Some(known) => known.1 = rated,
-            None => {
-                if remembered.len() == REMEMBERED {
-                    remembered.pop_front();
-                }
-                remembered.push_back((request.call.clone(), rated));
-            }
-        }
+        Rated::worst_of(whole.into_iter().chain(placed)).ok_or_else(|| UNREAD.to_owned())
     }
 }
 
@@ -810,10 +849,15 @@ mod tests {
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
         assert_eq!(jev.attempts(), 1, "the rating was asked for");
-        // and an advisor that could not be reached leaves no rating rather than a reassuring one
+        // and an advisor that could not be reached leaves no rating rather than a reassuring one,
+        // and a reason where the rating would have been
         assert!(
             advised.rating(&request.call).is_none(),
-            "an outage draws no line, rather than a green one"
+            "an outage draws no band, rather than a green one"
+        );
+        assert!(
+            advised.why_unrated(&request.call).is_some(),
+            "and says it could not rate the command"
         );
     }
 

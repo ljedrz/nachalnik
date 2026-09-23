@@ -654,7 +654,15 @@ map of typed questions there is reachable with those two set and nothing built. 
 It **decides nothing**. What the standing rules allow runs without a question and without
 anything being sent, what they refuse is refused, and what they ask about is asked about — an
 `allow` is your decision, and a second model does not get to reopen it. So an advisor that is
-unreachable, out of quota or unparseable costs the coloured line and nothing else.
+unreachable, out of quota or unparseable costs the colour and nothing else, and the question says
+so where the colour would have been: `the advisor could not rate this`, and why.
+
+**Some commands are refused before the advisor reads them.** TypeSafe's API and OpenRouter's both
+sit behind a firewall that turns a request away by what is in it, and what it turns away is the
+command an advisor is most for: anything naming `/etc/shadow`, even in an `echo`, and a pipeline
+that reads a secret into `curl`. The question says the advisor could not rate it and quotes the
+firewall's page, so what is missing is the colour rather than the fact that it is missing. A local
+advisor, below, has no firewall in front of it.
 
 **What leaves the machine**: for each shell command you are about to be asked about — which in a
 default session is every command the model writes, since `exec:run` is a question by default — the

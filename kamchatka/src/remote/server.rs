@@ -32,6 +32,7 @@ use crate::{
     app::{App, Outcome, Overlay, Speaker, text},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
+        Unjudged,
     },
 };
 
@@ -870,6 +871,26 @@ fn rated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Judged> {
     Vec::new()
 }
 
+/// Why the advisor has no rating for the questions waiting that it was asked about.
+#[cfg(feature = "shell-advisor")]
+fn unrated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Unjudged> {
+    asking
+        .iter()
+        .filter_map(|request| {
+            Some(Unjudged {
+                id: request.id,
+                why: app.why_unrated(request)?,
+            })
+        })
+        .collect()
+}
+
+/// The same where the ratings are not in the build.
+#[cfg(not(feature = "shell-advisor"))]
+fn unrated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Unjudged> {
+    Vec::new()
+}
+
 /// Where the session stands, in the form a client can start rendering from.
 fn project(app: &App) -> Attached {
     // note: first, before anything it is the watermark for. A turn runs on a task of its own and
@@ -885,6 +906,7 @@ fn project(app: &App) -> Attached {
 
     Attached {
         rated: rated(app, &asking),
+        unrated: unrated(app, &asking),
         version: protocol::VERSION,
         seq,
         session: app.kernel.session_name(),
