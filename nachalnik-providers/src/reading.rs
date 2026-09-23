@@ -387,6 +387,24 @@ mod tests {
         assert!(complaint(status, "").contains("429"));
     }
 
+    /// A page of megabytes is read in a moment, not in however long a lowercased copy of the rest
+    /// at every tag takes.
+    ///
+    /// note: every caller keeps a few hundred characters, and a mistyped address can answer with a
+    /// page of any size - which took gigabytes of copying, synchronously, for one error message.
+    #[test]
+    fn a_page_of_megabytes_is_read_in_a_moment() {
+        let page = "<p>word</p>".repeat(400_000);
+        let started = std::time::Instant::now();
+        let said = complaint(reqwest::StatusCode::NOT_FOUND, &page);
+        assert!(said.contains("word"), "{said}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
     /// A refusal for length comes back as the numbers in it, not only as the sentence.
     ///
     /// note: tested through the whole seam, because the reading has to survive what this crate

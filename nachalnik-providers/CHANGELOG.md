@@ -39,6 +39,23 @@ minor bump may break you.
 
 ### fixed
 
+- **Thinking sent as `reasoning_content` is thinking.** DeepSeek, llama.cpp and vLLM's reasoning
+  parser use that name, and it was read under `reasoning` alone, streamed or whole, so it reached
+  only `raw` and the turn had none.
+
+- **A call's arguments are what was written.** An empty string - a call to a tool that takes
+  nothing - failed to parse and came back `_unparsed`, so the model was told its arguments were
+  invalid and sent the same call again; it is `{}`. Arguments sent as an object where the dialect
+  says a string were read as `{}`, and are taken as they are.
+
+- **Reasoning is inferred from a total only where the prompt and the completion are both
+  reported.** A prompt count left out was read as `0`, which made the whole prompt a residual
+  billed as output.
+
+- **A web page in place of an answer is read in a moment.** Taking the markup off lowercased the
+  rest of the body at every tag, which for a page of megabytes was gigabytes of copying for one
+  error message; it reads the first 64 KiB, and compares tag names in place.
+
 - **A question about an endpoint gives up rather than waiting for ever.** A listing of models and
   the probes for a context limit ran on a client with no timeout and outside any turn, so nothing
   watched them and no interrupt reached them: an endpoint that took the connection and never

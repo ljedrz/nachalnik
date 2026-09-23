@@ -17,9 +17,17 @@
 ///
 /// note: not an HTML parser and not trying to be. A body that is not markup passes through with
 /// its whitespace collapsed, which is what a plain-text error wants anyway.
+///
+/// note: linear, and over the first [`READ`] bytes. Every caller keeps a few hundred characters of
+/// what this returns, and a page it is handed can be megabytes of markup - a lowercased copy of the
+/// rest at every `<` was gigabytes of copying for one error message.
 pub(crate) fn unmarked(body: &str) -> String {
+    let end = (0..=READ.min(body.len()))
+        .rev()
+        .find(|at| body.is_char_boundary(*at))
+        .unwrap_or(0);
     let mut out = String::new();
-    let mut rest = body.trim();
+    let mut rest = body[..end].trim();
 
     while let Some(at) = rest.find('<') {
         out.push_str(&rest[..at]);
@@ -28,14 +36,14 @@ pub(crate) fn unmarked(body: &str) -> String {
 
         // a `<style>` or `<script>` is skipped whole: its contents are not prose, and taking
         // only the tags off would leave the stylesheet behind as if it were
+        let named = rest[1..].trim_start();
         let skip = ["style", "script"].into_iter().find(|element| {
-            rest[1..]
-                .trim_start()
-                .to_ascii_lowercase()
-                .starts_with(*element)
+            named
+                .get(..element.len())
+                .is_some_and(|it| it.eq_ignore_ascii_case(element))
         });
         rest = match skip {
-            Some(element) => match rest.to_ascii_lowercase().find(&format!("</{element}")) {
+            Some(element) => match closing(rest, element) {
                 Some(end) => &rest[end..],
                 // an unclosed one runs to the end, and the end is where this stops
                 None => "",
@@ -51,4 +59,19 @@ pub(crate) fn unmarked(body: &str) -> String {
     out.push_str(rest);
 
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// How much of a body [`unmarked`] reads.
+const READ: usize = 64 << 10;
+
+/// Where `</element` starts in `text`, in any case.
+fn closing(text: &str, element: &str) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let wanted = element.as_bytes();
+    (0..bytes.len()).find(|&at| {
+        bytes[at..].starts_with(b"</")
+            && bytes
+                .get(at + 2..at + 2 + wanted.len())
+                .is_some_and(|it| it.eq_ignore_ascii_case(wanted))
+    })
 }

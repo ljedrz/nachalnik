@@ -235,7 +235,9 @@ impl Events for Streamed {
             deltas.text(fragment);
             self.text.push_str(fragment);
         }
-        if let Some(fragment) = delta["reasoning"].as_str().filter(|f| !f.is_empty()) {
+        // `reasoning_content` is the other spelling: DeepSeek's, llama.cpp's and vLLM's
+        // reasoning parser's. Read under the one name, the other's thinking arrived only in `raw`
+        if let Some(fragment) = reasoning_in(delta) {
             deltas.reasoning(fragment);
             self.reasoning.push_str(fragment);
         }
@@ -287,8 +289,7 @@ impl OpenAiCompatible {
                 .into_iter()
                 .map(|call| {
                     // a model that produces invalid JSON gets to see that it did
-                    let args: Value = serde_json::from_str(&call.args)
-                        .unwrap_or_else(|_| json!({ "_unparsed": call.args }));
+                    let args = arguments_of(&call.args);
 
                     // an empty or repeated identifier is repaired by the kernel, which says so on
                     // the event stream; a provider does not have to paper over it
@@ -474,10 +475,11 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
     // this one is already the several summaries joined, so there is nothing to append
     let (content, reasoning) = said_and_thought(
         message["content"].as_str().unwrap_or_default(),
-        message["reasoning"]
-            .as_str()
-            .or_else(|| body["reasoning_summary"]["content"].as_str())
-            .filter(|text| !text.is_empty()),
+        reasoning_in(message).or_else(|| {
+            body["reasoning_summary"]["content"]
+                .as_str()
+                .filter(|text| !text.is_empty())
+        }),
         inline,
     );
 
@@ -491,10 +493,12 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
             .map(|call| {
                 // a model that produces invalid JSON gets to see that it did - the same answer
                 // the streamed path gives. Handing it `{}` instead would be a call with no
-                // arguments and nothing anywhere to say why
-                let written = call["function"]["arguments"].as_str().unwrap_or("{}");
-                let args: Value = serde_json::from_str(written)
-                    .unwrap_or_else(|_| json!({ "_unparsed": written }));
+                // arguments and nothing anywhere to say why. An object sent as an object is taken
+                // as it is, which some servers do where the dialect says a string
+                let args = match &call["function"]["arguments"] {
+                    Value::Object(_) => call["function"]["arguments"].clone(),
+                    written => arguments_of(written.as_str().unwrap_or_default()),
+                };
 
                 ToolCall::new(
                     call["id"].as_str().unwrap_or_default(),
@@ -521,12 +525,16 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
 ///
 /// note: the residual is worth inferring because an endpoint that bills for reasoning and reports
 /// none by name is the case where a turn's cost is otherwise invisible.
+///
+/// note: and inferred only from all three figures. A prompt count left out, read as `0`, made the
+/// whole prompt a residual and billed it as generated output, which is the count that could not
+/// reach something returning a number anyway.
 fn usage_of(reported: &Value) -> Usage {
     let input = reported["prompt_tokens"].as_u64();
     let output = reported["completion_tokens"].as_u64();
     let residual = || {
         let total = reported["total_tokens"].as_u64()?;
-        total.checked_sub(input.unwrap_or_default() + output.unwrap_or_default())
+        total.checked_sub(input?.checked_add(output?)?)
     };
 
     let reported_reasoning = reported["completion_tokens_details"]["reasoning_tokens"].as_u64();
@@ -684,11 +692,109 @@ fn to_wire(message: &Message) -> Value {
     wire
 }
 
+/// The thinking a delta or a message carries, under either of the two names it goes by.
+fn reasoning_in(carrier: &Value) -> Option<&str> {
+    carrier["reasoning"]
+        .as_str()
+        .filter(|text| !text.is_empty())
+        .or_else(|| {
+            carrier["reasoning_content"]
+                .as_str()
+                .filter(|text| !text.is_empty())
+        })
+}
+
+/// A call's arguments, from the text the model wrote.
+///
+/// note: nothing written is no arguments, which is how a server spells a call to a tool that
+/// takes none - read as JSON, it failed, and the model was told its arguments were invalid and
+/// sent the same correct call again. Anything else that is not JSON is kept as it was written.
+fn arguments_of(written: &str) -> Value {
+    match written.trim() {
+        "" => json!({}),
+        written => {
+            serde_json::from_str(written).unwrap_or_else(|_| json!({ "_unparsed": written }))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use nachalnik::{ModelRequest, Params};
 
     use super::*;
+
+    /// Thinking under `reasoning_content` is thinking, streamed or whole.
+    ///
+    /// note: DeepSeek, llama.cpp and vLLM's reasoning parser send it under that name, and it was
+    /// read under `reasoning` alone - so it reached nothing but `raw`, and the turn had no thinking.
+    #[test]
+    fn thinking_under_its_other_name_is_thinking() {
+        let answered = whole(
+            &json!({ "choices": [{ "message": {
+                "content": "4", "reasoning_content": "two and two"
+            }, "finish_reason": "stop" }] }),
+            false,
+        );
+        assert_eq!(
+            answered
+                .reasoning
+                .map(|it| it.to_text().into_owned())
+                .as_deref(),
+            Some("two and two")
+        );
+
+        let mut streamed = Streamed::default();
+        let deltas = DeltaSink::disconnected();
+        for chunk in [
+            json!({ "choices": [{ "delta": { "reasoning_content": "two and " } }] }),
+            json!({ "choices": [{ "delta": { "reasoning_content": "two" } }] }),
+            json!({ "choices": [{ "delta": { "content": "4" }, "finish_reason": "stop" }] }),
+        ] {
+            streamed.event(&chunk, &deltas);
+        }
+        assert_eq!(streamed.reasoning, "two and two");
+    }
+
+    /// No arguments written is a call with no arguments, and an object sent as one is taken as it
+    /// is; only text that is not JSON is `_unparsed`.
+    ///
+    /// note: an empty string failed to parse, so a call to a tool that takes nothing came back
+    /// telling the model its JSON was invalid, and it sent the same correct call again. An object
+    /// where the dialect says a string became `{}`, a call run with nothing to say why.
+    #[test]
+    fn arguments_are_what_was_written() {
+        let call = |arguments: Value| {
+            whole(
+                &json!({ "choices": [{ "message": { "tool_calls": [{
+                    "id": "c1", "function": { "name": "ls", "arguments": arguments }
+                }] }, "finish_reason": "tool_calls" }] }),
+                false,
+            )
+            .tool_calls
+            .remove(0)
+            .args
+        };
+        assert_eq!(*call(json!("")), json!({}));
+        assert_eq!(*call(json!({ "path": "." })), json!({ "path": "." }));
+        assert_eq!(*call(json!("{\"path\": \".\"}")), json!({ "path": "." }));
+        assert_eq!(*call(json!("{oops")), json!({ "_unparsed": "{oops" }));
+        assert_eq!(arguments_of("  "), json!({}));
+    }
+
+    /// Reasoning is inferred from the total only where the prompt and the completion are both
+    /// reported, so a prompt left out is not billed as output.
+    #[test]
+    fn a_figure_left_out_is_not_read_as_nothing() {
+        let usage = usage_of(&json!({ "completion_tokens": 50, "total_tokens": 1_050 }));
+        assert_eq!(usage.output_tokens, Some(50), "{usage:?}");
+        assert_eq!(usage.reasoning_tokens, None, "{usage:?}");
+
+        let usage = usage_of(
+            &json!({ "prompt_tokens": 1_000, "completion_tokens": 50, "total_tokens": 1_100 }),
+        );
+        assert_eq!(usage.output_tokens, Some(100), "{usage:?}");
+    }
 
     /// `stream_options` follows whatever the parameters settled `stream` on, in both directions.
     ///
