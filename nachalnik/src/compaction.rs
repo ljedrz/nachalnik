@@ -30,8 +30,8 @@ pub struct Budget {
     /// cannot price - a picture, for the default one - has to return *some* figure, and `0` is
     /// the only honest one available; the trouble is that `0` also means "measured, and free",
     /// so a budget reading 4,000 of 100,000 could be a context that is nearly empty or one
-    /// carrying eight screenshots nobody has priced. This is the difference. It is a count of
-    /// pieces rather than of tokens, because a counter that could give tokens would not be
+    /// carrying eight screenshots nobody has priced; this field tells the two apart. It is a count
+    /// of pieces rather than of tokens, because a counter that could give tokens would not be
     /// abstaining.
     ///
     /// note: when this is not `0`, **the request is bigger than `used()` says** - and by an
@@ -44,11 +44,10 @@ pub struct Budget {
     ///
     /// note: The figures above are the kernel's estimates, produced by a
     /// [`TokenCounter`](crate::TokenCounter) that does not know the model's tokenizer; this one
-    /// is the truth as of the last request. They differ, sometimes by a lot - measured against a
-    /// small model over a real API, the default counter came out roughly a third low, and a
-    /// reasoning model's output tokens are largely invisible to it. A compactor deciding when to
-    /// act deserves both numbers - and [`Calibrating`](crate::Calibrating) is the counter that
-    /// uses this one to correct the others.
+    /// is the truth as of the last request. They differ, sometimes by a lot: the default counter
+    /// reads low, and a reasoning model's output tokens are largely invisible to it. A compactor
+    /// deciding when to act deserves both numbers - and [`Calibrating`](crate::Calibrating) is
+    /// the counter that uses this one to correct the others.
     pub reported: Option<Usage>,
 }
 
@@ -63,8 +62,8 @@ impl Budget {
     /// note: the question worth asking before believing [`Budget::used`] or
     /// [`Budget::fraction_used`]. When this is `false` both are floors, and a compactor that
     /// treats a floor as a measurement will sit under its threshold while the real request runs
-    /// past the limit - which is the failure this whole field exists to make visible rather than
-    /// to fix. Fixing it is a counter's job.
+    /// past the limit. [`Budget::uncounted`] makes that failure visible; fixing it is a counter's
+    /// job.
     pub fn fully_counted(&self) -> bool {
         self.uncounted == 0
     }

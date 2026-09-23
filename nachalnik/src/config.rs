@@ -18,8 +18,8 @@ pub struct Config {
     /// A user-friendly identifier of the session. It shows up in [`Event::SessionStarted`] and
     /// in exported session logs, where it allows sessions to be told apart.
     ///
-    /// note: If set to `None`, the kernel will automatically be assigned a sequential,
-    /// zero-based numeric identifier.
+    /// note: If set to `None`, the session is given a sequential, zero-based numeric identifier,
+    /// counted across every kernel in the process.
     pub session_name: Option<String>,
     /// The capacity of the event broadcast channel.
     ///
@@ -90,14 +90,12 @@ pub struct Config {
     /// note: Off by default because of *memory*, which is the cost that cannot be worked around.
     /// A stateless chat API is re-sent the whole conversation every time, so payload n contains
     /// payload n-1: recording them all is quadratic in the number of requests, and the log is a
-    /// live structure in RAM that nothing can compress. Twenty-four turns of a small
-    /// conversation come to 1.3 MB of payloads against 71 KB without them.
+    /// live structure in RAM that nothing can compress.
     ///
     /// note: On *disk* it is much cheaper than that sounds, because a log whose entries repeat
-    /// each other's prefixes is the best case there is for an ordinary compressor - the same
-    /// 1.3 MB is 4.8 KB under `xz`, against 3.5 KB for the log without payloads. If you want
-    /// them, the pattern is [`Kernel::drain_history`] on a schedule: take the records, compress
-    /// them somewhere, and stop paying for them in memory.
+    /// each other's prefixes is the best case there is for an ordinary compressor such as `xz`.
+    /// If you want them, the pattern is [`Kernel::drain_history`] on a schedule: take the
+    /// records, compress them somewhere, and stop paying for them in memory.
     ///
     /// note: With it off, [`Kernel::preview_payload`] still renders on demand, so nothing is
     /// hidden - it is only not kept.
@@ -114,8 +112,8 @@ pub struct Config {
     /// note: What does *not* change is the context. Results are recorded in the order the model
     /// asked for them, once they have all finished, so a session looks the same whichever mode it
     /// ran in. What varies is the order of [`Event::ToolStarted`] and [`Event::ToolOutput`],
-    /// which now genuinely do interleave - and the fact that you see no
-    /// [`Event::ToolFinished`] until the slowest call is done.
+    /// which now interleave, and no [`Event::ToolFinished`] arrives until the slowest call is
+    /// done.
     ///
     /// note: This is the one place the kernel spawns tasks, and only for the length of the step
     /// that spawned them. Dropping the future driving [`Kernel::step`] aborts them, so a
@@ -126,9 +124,8 @@ pub struct Config {
     /// recorded as having been interrupted before it was made. Run together there is no queue -
     /// they are all started before the first one has finished - so the only thing left for an
     /// interrupt to reach is a [`Tool`](crate::Tool) that checks
-    /// [`OutputSink::is_interrupted`](crate::OutputSink::is_interrupted) itself. Turning this on
-    /// trades the guarantee that an interrupt stops the calls that had not started for the
-    /// parallelism, and that is worth knowing before a batch of them is `rm`.
+    /// [`OutputSink::is_interrupted`](crate::OutputSink::is_interrupted) itself - worth knowing
+    /// before a batch of them is `rm`.
     pub parallel_tool_calls: bool,
 }
 

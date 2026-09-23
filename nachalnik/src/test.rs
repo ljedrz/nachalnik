@@ -91,8 +91,8 @@ impl Provider for ScriptedProvider {
 /// will read.
 ///
 /// note: it fails with a [`TooLong`] rather than with a sentence, because reading a vendor's
-/// wording is a dialect's job and what a kernel does with the numbers is not. The two are worth
-/// keeping apart in a test for the same reason they are in the crates.
+/// wording is a dialect's job, while what to do with the numbers is the kernel's. The two are
+/// worth keeping apart in a test for the same reason they are in the crates.
 pub struct TooLongProvider {
     info: ModelInfo,
     tokens: u64,
@@ -380,8 +380,8 @@ impl Compactor for LargestFirstCompactor {
         }
 
         Some(CompactionPlan {
-            // this one still *removes*, so that the crate's own tests keep exercising the
-            // orphan repair that removal needs; `kamchatka`'s compactor is the one that elides
+            // this one *removes* rather than elides, so that the crate's own tests keep
+            // exercising the orphan repair that removal needs; `kamchatka`'s compactor elides
             elide: Vec::new(),
             summary: Some(ContextItem::summary(format!(
                 "{} tool result(s) worth ~{freed} tokens were removed from the context",

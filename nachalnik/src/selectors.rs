@@ -22,9 +22,9 @@ use crate::context::{ContextId, ContextItem, ContextKind, ContextState};
 
 /// Which of the matching items a [`Selector::Tool`] refers to.
 ///
-/// note: `#[non_exhaustive]`, like [`Selector`] itself. Both name a syntax that grows - the table
-/// below is longer than it was - and a client still writes `Which::Latest`, since the attribute
-/// closes exhaustive matching and not construction.
+/// note: `#[non_exhaustive]`, like [`Selector`] itself, because both name a syntax that grows. A
+/// client still writes `Which::Latest`, since the attribute closes exhaustive matching and not
+/// construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Which {

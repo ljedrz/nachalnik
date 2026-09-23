@@ -5,15 +5,14 @@
 //! crate's internals; a [`Snapshot`] says what there *is* now, which is what resuming needs - the
 //! log names items rather than copying them, so a log cannot rebuild a context.
 //!
-//! note: "names rather than copies" is the rule and it has one standing exception, which is worth
-//! stating here because this is where somebody reads the rule and might go and enforce it.
-//! [`Event::ContextReplaced`] carries the text an item used to hold, deliberately: a replacement
-//! is the only operation that overwrites something, so once the change falls out of the undo
-//! window that text exists in no snapshot and in no other record. Taking it out would tidy this
-//! sentence and destroy the only account of an overwrite. Two [`Config`] settings put more content
-//! in by asking - [`Config::record_payloads`] keeps the rendered request and
-//! [`Config::record_progress`] keeps streaming fragments - and both are off by default, so what a
-//! log holds without being asked is the names, plus what an overwrite took.
+//! note: "names rather than copies" has one standing exception. [`Event::ContextReplaced`] carries
+//! the text an item used to hold, deliberately: a replacement is the only operation that
+//! overwrites an item's content, so once the change falls out of the undo window that text exists
+//! in no snapshot and in no other record. Enforcing the rule on it would destroy the only account
+//! of an overwrite. Two [`Config`] settings put more content in on request -
+//! [`Config::record_payloads`] keeps the rendered request and [`Config::record_progress`] keeps
+//! streaming fragments - and both are off by default, so what a log holds unasked is the names,
+//! plus what an overwrite took.
 
 use std::{
     collections::VecDeque,
@@ -61,11 +60,11 @@ pub struct Record {
 /// [`Config::record_progress`]); if a session outgrows memory, subscribe with
 /// [`Kernel::subscribe`], persist elsewhere, and start a new kernel.
 ///
-/// note: A caller gets at one through [`Kernel::with_history`], which is the mirror of
-/// [`Kernel::with_context`] and copies nothing - named for what it holds rather than for the type,
-/// which is why a grep for "session" on the kernel finds only [`Kernel::session_name`] and this
-/// looks absent. [`Kernel::history`] and [`Kernel::history_since`] hand back copies for the times
-/// a closure is the wrong shape.
+/// note: A caller reaches one through [`Kernel::with_history`], the mirror of
+/// [`Kernel::with_context`], which copies nothing. It is named for what it holds rather than for
+/// the type, so a search for "session" on the kernel finds only [`Kernel::session_name`].
+/// [`Kernel::history`] and [`Kernel::history_since`] hand back copies for when a closure is the
+/// wrong shape.
 #[derive(Debug, Clone)]
 pub struct Session {
     name: String,
@@ -108,9 +107,9 @@ impl Session {
     /// note: the highest handed out rather than the highest still here, which is the difference
     /// [`Kernel::drain_history`](crate::Kernel::drain_history) makes: a drained log holds no
     /// records and this still answers what the last of them was numbered. That is what makes it a
-    /// cursor - `last_seq` then
-    /// [`Session::since`] reads what arrived in between, whether or not anybody took the records
-    /// out from under it - and numbers are never reused, so the two cannot disagree.
+    /// cursor: `last_seq`, then [`Session::since`], reads what arrived in between, whether or not
+    /// anybody took the records out from under it - and numbers are never reused, so the two
+    /// cannot disagree.
     pub fn last_seq(&self) -> u64 {
         self.seq
     }
@@ -160,9 +159,8 @@ impl Session {
 /// keeps the log small enough to keep forever. Persist both: the snapshot to resume from, the
 /// log to answer "how did it get like this?".
 ///
-/// note: with one item of content in the log rather than none, the pair is more than the sum: a
-/// snapshot plus every [`Event::ContextReplaced`] since it was taken is enough to wind an item
-/// back through its overwrites, which neither half can do alone. See the module note.
+/// note: a snapshot plus every [`Event::ContextReplaced`] since it was taken is enough to wind an
+/// item back through its overwrites, which neither can do alone. See the module note.
 ///
 /// note: What is *not* here is anything transient. A resumed kernel starts
 /// [`State::Idle`](crate::State) with nothing pending, because a permission that nobody is
@@ -183,8 +181,9 @@ pub struct Snapshot {
     pub next_item: u64,
     /// The tool call identifiers the session has already used, sorted.
     ///
-    /// note: Without these, a resumed session could hand out an identifier it has used before,
-    /// which is the whole thing [`Event::ToolCallRepaired`] exists to prevent.
+    /// note: Without these, a resumed session has nothing to check a provider's identifiers
+    /// against, and would accept one it had used before the snapshot - the reuse
+    /// [`Event::ToolCallRepaired`] exists to catch.
     pub used_calls: Vec<ToolCallId>,
     /// What the [`TokenCounter`](crate::TokenCounter) had learned, if it learns at all.
     ///

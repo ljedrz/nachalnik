@@ -98,9 +98,9 @@ impl ContextKind {
 /// branches on which of them an item is in: [`ContextState::is_projected`] groups them, they are
 /// equally absent from the request, they take a tool call down with them alike, and every one of
 /// them is restorable by [`Kernel::set_state`]. What differs is what a reader is told, which is
-/// worth having and is not worth mistaking for a rule - a client that lists a context shows the
-/// word, and a selector picks on it. [`ContextState::Elided`] is the one
-/// distinction here that the projector actually makes; its note says how.
+/// worth having and is not a rule: a client that lists a context shows the word, and a selector
+/// picks on it. [`ContextState::Elided`] is the one distinction here that the projector actually
+/// makes; its note says how.
 pub enum ContextState {
     /// Included in the projection.
     Active,
@@ -188,8 +188,8 @@ impl fmt::Display for ContextState {
 /// A single, identifiable piece of context.
 ///
 /// note: Every field is public. An item is data, not an object with a hidden life of its own;
-/// the only things the [`Context`] insists on owning are the `id` and the `tokens` count, which
-/// it keeps in sync with the content.
+/// the only things the [`Context`] insists on owning are the `id` and the two counts, `tokens`
+/// and `uncounted`, which it keeps in sync with the content.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContextItem {
     /// The item's identifier, assigned when it is added to a [`Context`].
@@ -200,8 +200,8 @@ pub struct ContextItem {
     ///
     /// note: A free-form name, because the kernel never branches on it - it only reports it.
     /// The constructors use `user`, `system`, `instruction`, `file`, `selection`, `diagnostic`,
-    /// `tool_result`, `model` and `compaction`; an extension should use its own name, so that
-    /// "who injected these 12,000 tokens?" has an answer.
+    /// `memory`, `tool_result`, `model` and `compaction`; an extension should use its own name,
+    /// so that "who injected these 12,000 tokens?" has an answer.
     pub source: String,
     /// A short, human-facing name: a path, a command, a description.
     pub label: String,
@@ -235,16 +235,16 @@ pub struct ContextItem {
     /// note: this and `note` below are the two halves of "why is this here", and which one a fact
     /// belongs in is decided by whether it outlives a state change. A shortened tool result is
     /// *always* a shortened tool result, whatever state anybody moves it to, so which item holds
-    /// the whole of it is recorded here. Kept in the note it was destroyed the first time
-    /// somebody cycled the row, which is the one thing a person does while trying to understand
-    /// the pair.
+    /// the whole of it is recorded here. Kept in the note, it would go the first time somebody
+    /// changed the item's state, and changing it back and forth is what a person does while
+    /// trying to understand the pair.
     pub included_because: Option<String>,
     /// Why the item is in its current state; set whenever the state changes.
     ///
-    /// note: *replaced* whenever it changes, including with `None`. That is the point rather than
-    /// a shortcoming - a reason for being excluded stops being true the moment something is put
-    /// back, and a stale one would be worse than none - so nothing that has to survive a state
-    /// change may be kept in here. Put that in `included_because`.
+    /// note: *replaced* whenever the state is set, including with `None`, on purpose: a reason for
+    /// being excluded stops being true the moment something is put back, and a stale one would be
+    /// worse than none. So nothing that has to survive a state change may be kept in here; put
+    /// that in `included_because`.
     pub note: Option<String>,
 }
 
@@ -387,10 +387,10 @@ impl ContextItem {
     /// that only knew about the conventional slot would show a reasoning model as having done no
     /// reasoning at all.
     ///
-    /// note: the content of each, not the [`Part`](crate::Part), because the conventional slot is a [`Content`]
-    /// and there is nothing to borrow a part from. Whatever a provider attached to a thinking
-    /// block is reachable through the blocks themselves, and belongs to the provider rather than
-    /// to a client showing somebody what the model thought.
+    /// note: the content of each, not the [`Part`](crate::Part), because the conventional slot is
+    /// a [`Content`] and there is nothing to borrow a part from. Whatever a provider attached to a
+    /// thinking block is reachable through the blocks themselves, and belongs to the provider
+    /// rather than to a client showing somebody what the model thought.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         let ordered = match &self.kind {
             ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
@@ -743,10 +743,10 @@ impl Context {
 /// Puts the counter's two figures on an item: what it costs, and how much of it the counter
 /// would not price.
 ///
-/// note: one function rather than the four assignments it replaces, because the two fields have
-/// to move together and nothing in the type system says so. `uncounted` left behind by a path
-/// that recounted `tokens` is worse than no field at all: it reads as a definite "everything
-/// here is priced" while the tokens beside it have just been rewritten by a different counter.
+/// note: one function for every path that counts an item, because the two fields have to move
+/// together and nothing in the type system says so. An `uncounted` left behind by a path that
+/// recounted `tokens` is worse than no field at all: it reads as a definite "everything here is
+/// priced" while the tokens beside it have just been rewritten by a different counter.
 fn measure(item: &mut ContextItem, counter: &dyn TokenCounter) {
     item.tokens = counter.count_item(item);
     item.uncounted = counter.uncounted_item(item);

@@ -2,7 +2,8 @@
 //!
 //! note: the private half of [`super::Kernel`]'s execution path; see the sibling `request`
 //! module for why it is not in `mod.rs`. The division is the state machine's own: everything
-//! here happens between [`super::State::Ready`] and [`super::State::Idle`].
+//! here happens between the model asking for tools and the machine coming back to
+//! [`super::State::Idle`].
 
 use std::sync::{Arc, atomic::Ordering::SeqCst};
 
@@ -20,11 +21,13 @@ use super::{Kernel, PreparedCall, Restore, State};
 impl Kernel {
     /// Matches the model's calls to tools, asks the policy about each, and queues them.
     ///
-    /// note: Nothing about a permission is announced until every call is queued and the state
-    /// machine has moved. A client's whole job here is to answer the question it is handed, and
-    /// it would not be much of a runtime if [`Kernel::decide`] could fail purely because the
-    /// client was quick about it - which it did, for as long as the policy was still being
-    /// consulted about the *next* call in the batch.
+    /// note: Nothing about a permission is announced until every call is queued, and the
+    /// announcements and the move of the state machine happen under one hold of the machine lock,
+    /// so a client can see a question only once there is one to answer. Its whole job here is to
+    /// answer the question it is handed, and it would not be much of a runtime if
+    /// [`Kernel::decide`] could fail purely because the client was quick about it - which it
+    /// would, if a request were announced while the policy was still being consulted about the
+    /// *next* call in the batch.
     pub(super) async fn prepare_calls(&self, calls: &[ToolCall]) -> State {
         let mut prepared = Vec::with_capacity(calls.len());
         let mut announcements = Vec::with_capacity(calls.len());
@@ -232,7 +235,7 @@ impl Kernel {
             item.state = ContextState::Archived;
             // the same label its short copy gets, because the two are one call and the row
             // somebody opens to read what was cut is this one. Labelled `fs` beside an `fs:read`
-            // it answers, it reads as a different call by a tool that did not say what it did
+            // copy, it would read as a different call by a tool that did not say what it did
             if let Some(label) = self.operation_label(&prepared.call) {
                 item.label = label;
             }
@@ -261,18 +264,17 @@ impl Kernel {
     /// What a result of this call is called: the tool's name and the operation the call named,
     /// for a tool that does more than one thing.
     ///
-    /// note: a context listing thirteen rows all labelled `context` says nothing about what any of
+    /// note: a context listing row after row labelled `context` says nothing about what any of
     /// them did, and the label is the only place the row carries a name at all - the column beside
     /// it is the *kind*, which reads `tool_result` for every one of them. [`Tool::needs`] is how a
     /// call says which operation it is, and it is asked for every call anyway, to consult the
     /// policy.
     ///
-    /// note: the tool's id and not the capability's domain, though for every multi-operation tool
-    /// in this workspace the two are the same word and the label comes out as the subject exactly.
-    /// Where they differ the tool's name is the one worth keeping: a tool called `shell` acting in
+    /// note: the tool's id and not the capability's domain. For every multi-operation tool in this
+    /// workspace the two are the same word, and the label comes out as the subject exactly. Where
+    /// they differ the tool's name is the one worth keeping: a tool called `shell` acting in
     /// `exec` would be labelled `exec:run`, and every tool from an MCP server declares `mcp:call`,
-    /// so a context full of them would say `mcp:call` thirteen times and name none of them. That
-    /// is the failure this is fixing, one word further along.
+    /// so a context full of them would say `mcp:call` on every row and name none of them.
     ///
     /// note: `None` for a tool that declares one operation, and for a call that named none of the
     /// ones it declares. A tool that does one thing is described by its own name, and appending
@@ -282,9 +284,9 @@ impl Kernel {
     /// always did.
     ///
     /// note: asked here rather than written at the one place a result is recorded, because a
-    /// shortened output is recorded as *two* items and both of them are that call. The whole was
-    /// the one left carrying the bare tool name - so the row a person opens to read the part that
-    /// was cut was the row that would not say which read it came from.
+    /// shortened output is recorded as *two* items and both of them are that call. Labelled only
+    /// where a result is recorded, the whole would carry the bare tool name - and the row a person
+    /// opens to read the part that was cut would not say which read it came from.
     fn operation_label(&self, call: &ToolCall) -> Option<String> {
         let tool = self.tool(&call.tool)?;
         if tool.spec().capabilities.len() < 2 {
@@ -320,9 +322,9 @@ impl Kernel {
         // note: `included_because` and not `note`, which is documented as why an item is in its
         // *current state* and is replaced whenever that changes. This item is `Active`, so it has
         // no state to explain - and being a shortened copy is a fact about what it holds, which
-        // outlives every state it will ever be in. Kept in the note, it was destroyed the first
-        // time anybody pressed `space` on the row: a live session cycled the pair looking at it
-        // and lost the only sentence saying which item held the whole.
+        // outlives every state it will ever be in. Kept in the note, it would be lost the first
+        // time anybody changed the item's state, and with it the only sentence saying which item
+        // holds the whole.
         item.included_because = match (truncated, whole) {
             (Some(bytes), Some(whole)) => Some(format!(
                 "{bytes} bytes were truncated by the output limit; the whole output is item {whole}"

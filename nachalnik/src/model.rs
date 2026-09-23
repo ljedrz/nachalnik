@@ -23,9 +23,9 @@ use crate::{error::BoxError, event::DeltaSink, tool::ToolSpec};
 ///
 /// note: Every variant is behind an [`Arc`], so cloning content is a refcount bump rather than a
 /// copy. That is what makes the rest of the design affordable: an item is copied on every state
-/// change (the undo snapshot holding the old one is the point of undo) and again into a message on
-/// every request, so copying a 4 MiB tool output each time would make pruning cost more the more
-/// there was to prune.
+/// change (the undo snapshot keeps the old one) and again into a message on every request, so
+/// copying a 4 MiB tool output each time would make pruning cost more the more there was to
+/// prune.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -37,12 +37,12 @@ pub enum Content {
     /// An ordered sequence of typed [`Block`]s.
     ///
     /// note: this is what an assistant turn is in a dialect where the *order* is part of the
-    /// message - thinking, a sentence, a tool call, more thinking, another call - and it is here
-    /// rather than as a field on [`Message`] for one reason: content is the one thing a
+    /// message - thinking, a sentence, a tool call, more thinking, another call. It is here
+    /// rather than as a field on [`Message`] because content is the one thing a
     /// [`ModelResponse`], a [`ContextItem`](crate::ContextItem) and a [`Message`] all carry, so
     /// putting the order in it carries the order the whole way from the wire to the context and
-    /// back out again. A field on `Message` would have been a shape the context could not hold,
-    /// and a context that cannot hold it is a context no projector can project it out of.
+    /// back out again. A field on `Message` would be a shape the context could not hold, and so
+    /// one no projector could project out of it.
     ///
     /// note: an assistant turn is recorded *either* this way *or* the conventional way - content
     /// here, reasoning and calls in their own slots - and never both, so there is never a second
@@ -53,9 +53,8 @@ pub enum Content {
     ///
     /// note: a [`Block`] holds a [`Content`], so this nests and nothing here stops it. Nothing
     /// produces a nested one - a turn is a flat sequence in every dialect there is - and everything
-    /// in this crate treats it as flat. Written down because a sequence deep enough to matter would
-    /// recurse through [`Content::to_text`] and through `Drop`, which is on whoever hand-wrote the
-    /// snapshot.
+    /// in this crate treats it as flat. A sequence deep enough to matter would recurse through
+    /// [`Content::to_text`] and through `Drop`, and that is on whoever hand-wrote the snapshot.
     Blocks(Arc<[Block]>),
     /// Bytes that are not text: an image, a document, a recording.
     ///
@@ -68,12 +67,12 @@ pub enum Content {
 
 /// Bytes that are not text, in the form every one of these APIs wants them.
 ///
-/// note: the payload is already base64, and that is deliberate rather than lazy. It is the form
-/// the wire takes in both dialects this workspace speaks - a `data:` URI in one, `inline_data` in
-/// the other - so holding it this way means nothing is encoded on the way out, [`Content::byte_len`]
-/// really is the size in the form it would be sent in, and a session log is the base64 string and
-/// not a JSON array of six hundred thousand numbers. It also keeps a base64 codec out of a crate
-/// that has five dependencies and a rule about growing a sixth.
+/// note: the payload is already base64, because that is the form the wire takes in both dialects
+/// this workspace speaks - a `data:` URI in one, `inline_data` in the other. Holding it this way
+/// means nothing is encoded on the way out, [`Content::byte_len`] really is the size in the form
+/// it would be sent in, and a session log is the base64 string and not a JSON array of a number
+/// per byte. It also keeps a base64 codec out of a crate that has five dependencies and a rule
+/// about growing a sixth.
 ///
 /// note: nothing here validates it. A caller that hands over a string which is not base64 has
 /// built a request the endpoint will refuse, and it will say so; a runtime that checked would be
@@ -95,9 +94,9 @@ pub struct Blob {
     /// those and each vendor's is different, so the crate carries none of them and carries the
     /// place to put the inputs instead.
     ///
-    /// note: on the blob rather than on the item, which is the whole reason it is a field here.
-    /// A budget is counted over the *projected messages*, and a [`Message`] carries a [`Content`]
-    /// and nothing else a counter could read - so a fact left on `ContextItem::meta` reaches
+    /// note: on the blob rather than on the item, because a budget is counted over the
+    /// *projected messages*, and a [`Message`] carries a [`Content`] and nothing else a counter
+    /// could read. A fact left on `ContextItem::meta` reaches
     /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) and never reaches the figure
     /// a [`Compactor`](crate::Compactor) acts on.
     ///
@@ -134,11 +133,11 @@ impl Blob {
 
     /// How large the whole blob is on the wire: the payload and the media type naming it.
     ///
-    /// note: [`Blob::meta`] is not in it, because it is not sent: what a dialect may do is *read*
-    /// one of its keys and derive a field of its own, which `nachalnik-providers` does with
-    /// `name` to fill the filename an attachment part will not go out without. So this is the
-    /// payload and the type, and what a dialect wraps around them is the dialect's to count -
-    /// which is the same reason the envelope of the message carrying it is not in here either.
+    /// note: [`Blob::meta`] is not in it, because it is not sent. A dialect may *read* one of its
+    /// keys and derive a field of its own, as `nachalnik-providers` does with `name` to fill the
+    /// filename an attachment part will not go out without, but what a dialect wraps around the
+    /// payload is the dialect's to count - the same reason the envelope of the message carrying
+    /// it is not in here either.
     pub fn wire_len(&self) -> usize {
         self.byte_len() + self.media_type.len()
     }
@@ -147,8 +146,8 @@ impl Blob {
 impl fmt::Display for Blob {
     /// Names it, for the places something has to be text.
     ///
-    /// note: the same shape `nachalnik-mcp` has always used for a tool result it could not carry,
-    /// because the useful facts are the same two: what it was, and how much of it there was.
+    /// note: bracketed, as `nachalnik-mcp` names a tool result it could not carry, and holding the
+    /// two facts that are useful in its place: what it was, and how much of it there was.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[{}, {}]", self.media_type, sized(self.byte_len()))
     }
@@ -279,7 +278,7 @@ impl Content {
     /// turn.
     ///
     /// note: this is the seam a [`TokenCounter`](crate::TokenCounter) needs and could not build for
-    /// itself, and the nesting is the whole reason. A turn that is a sentence and a screenshot is a
+    /// itself, because of the nesting. A turn that is a sentence and a screenshot is a
     /// `Blocks` holding a `Blob` one level down, which is the shape both dialects send - so a
     /// counter matching only on `Content::Blob` sees a plain picture and misses every picture a
     /// model was actually shown.
@@ -806,7 +805,7 @@ pub struct ToolCall {
     /// Whatever the provider attached to this call and expects to see again, carried verbatim.
     ///
     /// note: This is [`Params`] in the other direction, and it exists for the same reason: some
-    /// APIs hand back a piece of opaque state per call - Google's `thought_signature`, an
+    /// APIs hand back a piece of opaque state per call - Gemini's `thoughtSignature`, an
     /// encrypted reasoning item - and *reject the next request* if it does not come back
     /// attached to the call it belongs to. The kernel never looks inside it, never separates it
     /// from its call, and a provider that ignores it loses nothing.
@@ -839,9 +838,9 @@ impl ToolCall {
     /// provider attached to it.
     ///
     /// note: a call is not free and a turn whose text is empty is not a turn that costs nothing -
-    /// the model wrote the arguments, and they go out on every request that follows. This is the
-    /// figure [`TokenCounter::count_item`](crate::TokenCounter::count_item) has always added on
-    /// top of the content, said once so that a [`Block::Call`] can be measured the same way.
+    /// the model wrote the arguments, and they go out on every request that follows. These are
+    /// the three things [`TokenCounter::count_item`](crate::TokenCounter::count_item) adds on top
+    /// of the content, said once so that a [`Block::Call`] can be measured the same way.
     pub fn byte_len(&self) -> usize {
         let extra = match self.extra.is_null() {
             true => 0,
@@ -916,9 +915,9 @@ pub struct Usage {
     pub reasoning_tokens: Option<u64>,
     /// Request tokens that were served from the provider's cache.
     ///
-    /// note: a part of [`Self::input_tokens`] rather than a second number beside it, which is
-    /// the dialect OpenAI defines and every endpoint speaking it is read as speaking.
-    /// [`Usage::settled`] is what happens when one does not.
+    /// note: a part of [`Self::input_tokens`] rather than a second number beside it. That is how
+    /// OpenAI's dialect defines it, and every endpoint speaking that dialect is read as meaning
+    /// it; [`Usage::settled`] is what happens when one does not.
     pub cached_input_tokens: Option<u64>,
 }
 
@@ -930,9 +929,9 @@ impl Usage {
     /// reads, and an endpoint reporting it is reporting the cache miss under the name of the
     /// whole. The two are added, since that is what the field is going to be read as either way.
     ///
-    /// note: what this must not become is a guess from the kernel's estimate at which convention
-    /// an endpoint is speaking - taking whichever of `input` and `input + cached` is nearer what
-    /// was estimated. The estimate is what the reported figure calibrates, so that reasoning is
+    /// note: this must not guess, from the kernel's estimate, which convention an endpoint is
+    /// speaking - taking whichever of `input` and `input + cached` is nearer what was
+    /// estimated. The estimate is what the reported figure calibrates, so that reasoning is
     /// circular, and it resolves in favour of whichever error the counter has already been
     /// dragged towards. A usage figure disagreeing with an estimate is not settled here; it is
     /// settled by [`Overrun`], which is the only measurement in the units the limit uses.
@@ -958,12 +957,14 @@ impl Usage {
 /// note: the only figure in a session that is measured in the units the *limit* is enforced in.
 /// [`Usage::input_tokens`] is what the endpoint charged for, and an aggregator in front of a
 /// model is free to normalise that to some other tokenizer's idea of the same bytes - it is a
-/// bill, and bills are quoted in one currency. The number in here comes from the model refusing
-/// to read the request, so it is the model's own count of it, and where the two disagree this is
-/// the one a budget has to be kept in.
+/// bill, and bills are quoted in one currency. An overrun a provider reports comes from the model
+/// refusing to read the request, so it is the model's own count of it, and where the two disagree
+/// this is the one a budget has to be kept in. One the kernel builds before sending, in
+/// [`Error::TooLong`](crate::Error::TooLong), carries the kernel's own estimate instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Overrun {
-    /// How long the provider said the request was.
+    /// How long the request was: what the provider said, or the kernel's estimate where the
+    /// kernel refused it first.
     pub tokens: u64,
     /// What the model holds, where the provider knows it.
     ///
@@ -978,9 +979,8 @@ pub struct Overrun {
 /// note: a [`Provider`] returns this in place of a plain message where it recognises the refusal,
 /// which is a dialect's job and not this crate's: the sentence is a vendor's wording and nothing
 /// here reads one. The kernel does not parse an error either - [`BoxError`] is carried
-/// uninterpreted, which is the point of it - but it will look for *this type* in what it was
-/// handed, because the number inside is the one thing a session that has run out of room cannot
-/// find out any other way.
+/// uninterpreted - but it will look for *this type* in what it was handed, because the number
+/// inside is the one thing a session that has run out of room cannot find out any other way.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TooLong {
     /// The two numbers.
@@ -1112,15 +1112,14 @@ impl ModelResponse {
 
     /// Returns what the model thought, wherever it is recorded.
     ///
-    /// note: the same accessor [`ContextItem::thinking`](crate::ContextItem::thinking) has had all
-    /// along, on the type a turn arrives as rather than the one it is kept as. A turn is recorded
-    /// one of two ways - the [`ModelResponse::reasoning`] field, or a [`Block::Reasoning`] among
-    /// ordered blocks - and which one a caller gets is a property of whichever provider it happens
-    /// to be talking to. [`ModelResponse::calls`] has read both since ordered turns existed, and a
-    /// context item reads both; a `ModelResponse` in hand was the one place left where asking what
-    /// the model thought meant reading a field and being right on one dialect only.
+    /// note: the same accessor as [`ContextItem::thinking`](crate::ContextItem::thinking), on the
+    /// type a turn arrives as rather than the one it is kept as. A turn is recorded one of two
+    /// ways - the [`ModelResponse::reasoning`] field, or a [`Block::Reasoning`] among ordered
+    /// blocks - and which one a caller gets depends on the provider it is talking to. Reading the
+    /// field directly is right on one dialect only; this reads both, as [`ModelResponse::calls`]
+    /// does.
     ///
-    /// note: an iterator of [`Content`], which is the shape of the two accessors beside it.
+    /// note: an iterator of [`Content`], the same shape as `ContextItem::thinking`.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         let blocks = self.content.as_ref().and_then(Content::as_blocks);
         let flat = match blocks {
@@ -1309,10 +1308,9 @@ mod tests {
 
     /// A size is written the way a person reads one, and stays a measurement while it does.
     ///
-    /// note: the boundaries are the whole of it. Under a thousand it is a count and gets no
-    /// decimals; at a thousand it changes unit; and two decimals are kept because one file
-    /// against another is the comparison these figures exist for - `1.05MB` and `1.10MB` are
-    /// different, where `1MB` and `1MB` are not.
+    /// note: under a thousand it is a count and gets no decimals; at a thousand it changes unit;
+    /// and two decimals are kept because one file against another is the comparison these figures
+    /// exist for - `1.05MB` and `1.10MB` are different, where `1MB` and `1MB` are not.
     #[test]
     fn a_size_is_written_in_the_unit_a_person_reads_it_in() {
         assert_eq!(sized(0), "0B");
@@ -1366,7 +1364,7 @@ mod tests {
         assert!(content.byte_len() <= 200);
     }
 
-    /// It survives a session log, which is the whole reason the payload is held as base64.
+    /// It survives a session log as the base64 string it already is.
     #[test]
     fn a_blob_round_trips_through_serde_as_the_string_it_already_is() {
         let content = Content::blob("image/png", "aGVsbG8=");
@@ -1393,7 +1391,7 @@ mod tests {
     fn truncation_does_not_split_a_character() {
         let mut content = Content::text("każdy".repeat(50));
         content.truncate_to(60).unwrap();
-        // the round trip is what proves it: invalid UTF-8 would not have got this far
+        // getting this far is what proves it: slicing inside a character would have panicked
         assert!(content.to_text().contains("truncated by an output limit"));
         assert!(content.byte_len() <= 60);
     }

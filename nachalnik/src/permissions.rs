@@ -17,11 +17,10 @@ use crate::{Config, Kernel, Tool};
 
 /// The family of side effect an operation belongs to: what a rule is written about.
 ///
-/// note: three the runtime can name and everything else by its own name, which is exactly the
-/// split there was before. `nachalnik` ships no tools, so it can vouch for the domains any agent
-/// has - a filesystem, a process, a socket - and cannot know that a client calls one of its own
-/// `context`. Those arrive as [`Domain::Other`], and the client that invented them is the one
-/// with names for them.
+/// note: three the runtime can name and everything else by its own name. `nachalnik` ships no
+/// tools, so it can vouch for the domains any agent has - a filesystem, a process, a socket - and
+/// cannot know that a client has one of its own called `context`. Those arrive as
+/// [`Domain::Other`], and the client that invented them is the one with names for them.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum Domain {
@@ -59,33 +58,32 @@ impl From<&str> for Domain {
 
 /// What a [`Tool`] does, as one operation in one domain: `fs:read`, `context:revise`.
 ///
-/// note: two levels and no more, because the whole of what a permission rule has to be is
-/// obvious. A domain is a thing that can be acted on and an operation is an act on it, so a rule
-/// is either about the thing (`fs`) or about one act (`fs:read`) and there is no third question
-/// to ask. It was a flat list of tool-shaped names before - `read` the capability, declared by
-/// `read` the tool - which read as a tautology on the screen and left the granularity a tool
-/// happened to offer as the granularity a rule could have.
+/// note: two levels and no more. A domain is a thing that can be acted on and an operation is an
+/// act on it, so a rule is either about the thing (`fs`) or about one act (`fs:read`) and there
+/// is no third question to ask. A flat list of tool-shaped names - `read` the capability,
+/// declared by `read` the tool - reads as a tautology on the screen and makes the granularity a
+/// tool happens to offer the granularity a rule can have.
 ///
 /// note: these are labels the kernel compares and reports; it cannot verify them. A tool that
-/// declares `fs:read` and then opens a socket is lying, and the only defense is that the user
+/// declares `fs:read` and then opens a socket is lying, and the only defence is that the user
 /// chose to register it.
 ///
-/// note: `exec:run` subsumes every other one, and it is worth saying so out loud because a list
-/// of capabilities invites being read as a list of boundaries. A command can read, write, and
-/// reach the network; a policy that allows `exec` has allowed all of it, whatever it answers
-/// about the rest. That is not a flaw in the labels - it is what a shell *is* - but a client that
-/// showed `exec: allow` beside `net: deny` without saying so would be reporting a restriction
-/// that does not exist. What closes the gap is the arguments: a [`PermissionPolicy`] is handed
-/// the call the model actually made ([`PermissionRequest::args`]), so it can judge `curl https://…`
-/// against whatever it thinks of the network. See `kamchatka`'s `Careful` for one that does, and
+/// note: `exec:run` subsumes every other one, and a list of capabilities invites being read as a
+/// list of boundaries. A command can read, write, and reach the network; a policy that allows
+/// `exec` has allowed all of it, whatever it answers about the rest. That is not a flaw in the
+/// labels - it is what a shell *is* - but a client that showed `exec: allow` beside `net: deny`
+/// without saying so would be reporting a restriction that does not exist. What closes the gap is
+/// the arguments: a [`PermissionPolicy`] is handed the call the model actually made
+/// ([`PermissionRequest::args`]), so it can judge `curl https://…` against whatever it thinks of
+/// the network. See `kamchatka`'s `Careful` for one that does, and
 /// for an honest account of what a heuristic over a command line is and is not worth.
 ///
-/// note: `net` attracts the question of whether it earns its place, since a session that also has
-/// a shell can reach the network through it whatever this says. The answer is that the objection
-/// is not about that domain: `fs:read` is exactly as unverifiable, and every one of these is a
-/// label rather than a boundary. Where there is no shell - an agent whose tools all come from MCP
-/// servers, an editor integration that reads, writes and fetches - refusing it refuses the whole
-/// of what the registered tools can do, which is a complete answer rather than a partial one.
+/// note: `net` still earns its place, though a session that also has a shell can reach the
+/// network through it whatever this says. That objection is not about the domain: `fs:read` is
+/// exactly as unverifiable, and every one of these is a label rather than a boundary. Where there
+/// is no shell - an agent whose tools all come from MCP servers, an editor integration that
+/// reads, writes and fetches - refusing `net` refuses every way the registered tools have of
+/// reaching the network.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 #[non_exhaustive]
@@ -101,10 +99,10 @@ impl Capability {
     ///
     /// note: neither half may hold a colon, and nothing here enforces it. A capability is written
     /// as `domain:op` - by [`fmt::Display`], and by serde, which is declared `into = "String"` -
-    /// and [`Capability::parse`] reads exactly one colon back, so `Capability::of(Domain::Fs,
-    /// "read:all")` serializes to text that its own deserializer refuses and a log record carrying
-    /// it cannot be read back. The operation is a client's own vocabulary and the constructor does
-    /// not police it; a name with a colon in it is naming two things.
+    /// and [`Capability::parse`] reads exactly one colon back. So `Capability::of(Domain::Fs,
+    /// "read:all")` serializes to text that its own deserializer refuses, and a log record
+    /// carrying it cannot be read back. The operation is a client's own vocabulary and the
+    /// constructor does not police it; a name with a colon in it is naming two things.
     pub fn of(domain: Domain, op: impl Into<String>) -> Self {
         Self {
             domain,
@@ -116,8 +114,8 @@ impl Capability {
     ///
     /// note: three of these for the three domains this crate can name, because they are what
     /// every agent has and writing `Capability::of(Domain::Fs, "read")` at each of them buys
-    /// nothing. The operation is still a string, which is the point: what the acts on a
-    /// filesystem *are* is the client's vocabulary, not this crate's.
+    /// nothing. The operation is still a string, because what the acts on a filesystem *are* is
+    /// the client's vocabulary, not this crate's.
     pub fn fs(op: impl Into<String>) -> Self {
         Self::of(Domain::Fs, op)
     }
@@ -307,21 +305,20 @@ pub trait PermissionPolicy: Send + Sync {
     /// reports whether a refusal was a standing rule or an answer to this one call, which is the
     /// part it knows on its own.
     ///
-    /// note: the reason itself is emphatically not the kernel's. It is made of a policy's own
+    /// note: the reason itself is not the kernel's. It is made of a policy's own
     /// vocabulary - which capability, which path rule, which of several subjects actually did it
     /// - and a kernel that invented one would be guessing at somebody else's decision. This is
     /// the question, not the answer.
     ///
-    /// note: what a refused agent most needs to know is whether trying again is worth anything,
-    /// and until this existed the answer was on the person's screen and nowhere else - a policy
-    /// that knew exactly why had no way to say so. A downstream policy needing a core change to
-    /// do an ordinary thing is the sign of a seam that is not finished.
+    /// note: what a refused agent most needs to know is whether trying again is worth anything.
+    /// Without this, the answer is on the person's screen and nowhere else, and a policy that
+    /// knows exactly why has no way to say so.
     ///
     /// note: the argument is the whole of the [`PermissionRequest`] [`Self::evaluate`] was asked
     /// about, and it is the same value rather than one built again to answer this - the kernel is
     /// holding it either way. The two methods are halves of one question, *what do you say about
-    /// this call* and *why did you say it*, and asking the second with only an identifier meant a
-    /// policy whose reason is a function of the arguments had to remember what it had decided a
+    /// this call* and *why did you say it*. Asked the second with only an identifier, a policy
+    /// whose reason is a function of the arguments would have to remember what it decided a
     /// moment earlier, keyed by call. Remembering means bounding, and a bound means the reason
     /// can have fallen out of it by the time the kernel asks.
     fn why(&self, request: &PermissionRequest) -> Option<String> {

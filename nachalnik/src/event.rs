@@ -43,7 +43,8 @@ pub enum Delta {
 ///
 /// note: This enum is the whole observability story: there is no logging the user cannot see,
 /// and no state change that skips it. Clients subscribe with [`Kernel::subscribe`] and render
-/// what they like; the same events, minus the deltas, form the session log.
+/// what they like; the same events form the session log, minus the streaming fragments unless
+/// [`Config::record_progress`] is on.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event")]
 #[non_exhaustive]
@@ -57,21 +58,21 @@ pub enum Event {
     /// A session was rebuilt from a [`Snapshot`](crate::Snapshot).
     ///
     /// note: One event, not one `context.added` per item. Those describe things happening; this
-    /// describes a session that already happened being picked back up, and a client that replayed
-    /// a thousand additions to say so would be telling a story that is not true.
+    /// describes a session that already happened being picked back up, and a log that replayed a
+    /// thousand additions to say so would be telling a story that is not true.
     #[serde(rename = "session.resumed")]
     SessionResumed {
         /// The session's name.
         session: String,
         /// How many items came back.
         items: usize,
-        /// What the ones sending their content are estimated to cost, summed over the items.
+        /// The estimated cost of the items that send their content, summed from their own figures.
         ///
         /// note: the items' own figures, not *the projected total* - which in this crate means
         /// what [`Projection::messages`](crate::Projection::messages) costs, the figure
         /// [`Budget::context_tokens`](crate::Budget::context_tokens) carries. The two differ by
         /// whatever the projector adds or takes away: a reference gains its label, and an elided
-        /// item is a marker here and nothing at all in the sum.
+        /// item is a marker in the projection and nothing at all in this sum.
         tokens: usize,
     },
     /// A session was declared finished by its owner.
@@ -107,7 +108,9 @@ pub enum Event {
         /// Why it was added, if a reason was given.
         because: Option<String>,
     },
-    /// A context item changed state, e.g. was excluded from the projection or pinned.
+    /// A context item's state or note changed, e.g. it was excluded from the projection or pinned.
+    ///
+    /// note: a new note on an unchanged state is a change too, so `from` and `to` can be equal.
     #[serde(rename = "context.changed")]
     ContextChanged {
         /// The item's identifier.
@@ -116,7 +119,7 @@ pub enum Event {
         from: ContextState,
         /// The state it is in now.
         to: ContextState,
-        /// Why.
+        /// Why - the item's note from now on.
         note: Option<String>,
     },
     /// A context item's content was replaced in place.
@@ -133,7 +136,7 @@ pub enum Event {
         /// note: This is the one event that carries content, and the rule it follows is: the log
         /// records what nothing else can recover. A [`Event::ContextAdded`] needs no content,
         /// because the item is still in the context and in any [`Snapshot`](crate::Snapshot). A
-        /// replacement is different - it is the only operation left that overwrites something,
+        /// replacement is different - it is the only operation that overwrites an item's content,
         /// and without this the old text would exist nowhere once it fell out of the undo window.
         ///
         /// note: It is also what keeps [`Event::ModelRequested`] honest. That names the items a
@@ -236,9 +239,10 @@ pub enum Event {
         /// nobody kept.
         ///
         /// note: [`Projection::reordered`](crate::Projection::reordered) is deliberately not here.
-        /// A move takes nothing out, and a client's honest use of this field is to say so where
-        /// somebody will see it - so carrying the moves as well would put the one thing nobody has
-        /// to act on in front of the person on every request that holds a note.
+        /// A move takes nothing out, and a client's honest use of this field is to put it where
+        /// somebody will see it. Carrying the moves as well would put something nobody has to act
+        /// on in front of them on every request where an item landed between a call and its
+        /// result.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         repairs: Vec<String>,
     },
@@ -282,8 +286,9 @@ pub enum Event {
         ///
         /// note: the numbers as well as the sentence, because this is the one failure a session
         /// can act on rather than only report - and the one measurement of a request in the
-        /// units its limit is enforced in. The counter is told before this is emitted, so a
-        /// client redrawing on this event draws the corrected figure.
+        /// units its limit is enforced in. The counter is told before this is emitted, unless
+        /// something in the request went unpriced, so a client redrawing on this event draws the
+        /// corrected figure.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         overrun: Option<Overrun>,
     },
@@ -300,8 +305,8 @@ pub enum Event {
         ///
         /// note: the same field [`Event::ModelFailed`] carries, because it is the same fact
         /// arriving one step earlier - the kernel's own arithmetic instead of the endpoint's
-        /// verdict. A client that says how much has to go says it the same way for both, which is
-        /// the whole reason this is not an event of its own.
+        /// verdict. It is a field rather than an event of its own so that a client saying how much
+        /// has to go says it the same way for both.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         overrun: Option<Overrun>,
         /// What went wrong.
@@ -433,8 +438,8 @@ pub enum Event {
     ///
     /// note: the four seam-changed events name what went out and what came in, because a session
     /// log that recorded only *that* one was swapped would leave a reader of it unable to say what
-    /// had been deciding, projecting or counting for the requests either side of the line. The
-    /// names are the seams' own `name()`, which is what they are for.
+    /// had been deciding, projecting, counting or compacting for the requests either side of the
+    /// line. The names are the seams' own `name()`s.
     #[serde(rename = "policy.changed")]
     PolicyChanged {
         /// What was deciding before.

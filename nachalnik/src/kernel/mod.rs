@@ -387,10 +387,10 @@ impl Kernel {
     /// Tells the kernel that these tool call identifiers are already spoken for, and returns how
     /// many of them it had not already been told about.
     ///
-    /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`], and for a session picked
-    /// back up in another process that is the whole story. This is for the other way of reading a
-    /// snapshot: a client that merges one *into* a session it is already running keeps the kernel
-    /// it has, so the turns it pushes arrive carrying identifiers this kernel never issued.
+    /// note: [`Kernel::resume`] does this from [`Snapshot::used_calls`], which covers a session
+    /// picked back up in another process. This is for the other way of reading a snapshot: a
+    /// client that merges one *into* a session it is already running keeps the kernel it has, so
+    /// the turns it pushes arrive carrying identifiers this kernel never issued.
     /// Without this the next response is free to hand one of them back, the repair has nothing to
     /// compare it against, and the request that follows carries the same `tool_call_id` twice -
     /// which most providers reject, and which is very hard to see afterwards. See
@@ -418,12 +418,11 @@ impl Kernel {
     /// can rebuild a context. The event log cannot, by design - an event names an item rather
     /// than carrying its contents, which is what makes the log affordable to keep.
     ///
-    /// note: the context is read before the used call identifiers, and the order is the point. A
-    /// turn reserves a call's identifier before it records the item carrying the call, and an
-    /// identifier is never given back - so identifiers read afterwards cover every call in the
-    /// items read before. Read the other way round, a turn recorded between the two left a call
-    /// in `items` whose identifier `used_calls` did not have, for a resumed session to hand out
-    /// again.
+    /// note: the context is read before the used call identifiers, not after. A turn reserves a
+    /// call's identifier before it records the item carrying the call, and an identifier is never
+    /// given back - so identifiers read afterwards cover every call in the items read before. Read
+    /// the other way round, a turn recorded between the two would leave a call in `items` whose
+    /// identifier `used_calls` does not have, for a resumed session to hand out again.
     pub fn snapshot(&self) -> Snapshot {
         let session = self.session_name();
         let params = self.params();
@@ -470,10 +469,9 @@ impl Kernel {
             tools: RwLock::new(BTreeMap::new()),
             policy: RwLock::new(Arc::new(AskAlways)),
             projector: RwLock::new(Arc::new(LinearProjector::default())),
-            // note: wrapped, not bare. `BytesPerToken` is an admitted estimate and a low one;
-            // `Calibrating` corrects nothing until a provider has said what a request cost, so
-            // this is the same counter until the moment there is something better to be, and
-            // then it is better. A user who never reads the documentation gets the honest number
+            // note: wrapped, not bare, for the reason on `Kernel::new`. `BytesPerToken` is an
+            // admitted estimate and a low one, and this way a user who never reads the
+            // documentation still gets the honest number
             counter: RwLock::new(Arc::new(Calibrating::new(BytesPerToken::default()))),
             compactor: RwLock::new(None),
             params: RwLock::new(Params::new()),
@@ -522,7 +520,7 @@ impl Kernel {
     ///
     /// note: The mirror of [`Kernel::with_context`], and it carries a sharper version of the same
     /// warning: the log is locked for the duration, so the closure must not call back into the
-    /// kernel - every emit anywhere in the process is waiting on it.
+    /// kernel - every emit on this kernel is waiting on it.
     pub fn with_history<R>(&self, f: impl FnOnce(&Session) -> R) -> R {
         f(&self.0.session.lock())
     }
@@ -541,8 +539,8 @@ impl Kernel {
     ///
     /// note: The log is unbounded because a capped append-only log is not one. This is the other
     /// way to keep a long session from growing forever: take the records, write them somewhere,
-    /// and the kernel stops holding on to them. Nothing goes missing behind anybody's back - you
-    /// asked for them, and now you have them.
+    /// and the kernel stops holding on to them. Nothing goes missing behind anybody's back: every
+    /// record the kernel lets go of is handed to the caller who asked.
     pub fn drain_history(&self, through: u64) -> Vec<Record> {
         self.0.session.lock().drain_through(through)
     }
@@ -555,14 +553,14 @@ impl Kernel {
     /// does is stop `turn` from starting anything else: the step in progress runs to the end,
     /// its result is recorded like any other, and `turn` returns instead of going round again.
     ///
-    /// note: It stops the loop in three places, in increasing order of how much has to
-    /// cooperate. Before a transition, [`Kernel::step`] and [`Kernel::turn`] spend one attempt
-    /// acknowledging it and do nothing else. During a request, a [`Provider`] that checks
-    /// [`crate::DeltaSink::is_interrupted`] can stop reading and hand back what it has. During a
-    /// tool call, a [`Tool`] that checks [`crate::OutputSink::is_interrupted`] can do the same -
-    /// and in the serial case the kernel does not start the calls that had not begun.
+    /// note: How far it reaches depends on how much cooperates. Before a transition,
+    /// [`Kernel::step`] and [`Kernel::turn`] spend one attempt acknowledging it and do nothing
+    /// else. During a request, a [`Provider`] that checks [`crate::DeltaSink::is_interrupted`] can
+    /// stop reading and hand back what it has. During a tool call, a [`Tool`] that checks
+    /// [`crate::OutputSink::is_interrupted`] can do the same - and in the serial case the kernel
+    /// does not start the calls that had not begun.
     ///
-    /// note: "in the serial case" is load-bearing. With
+    /// note: only in the serial case. With
     /// [`Config::parallel_tool_calls`](crate::Config::parallel_tool_calls) on there is nothing
     /// left to not-start: every call in the batch is spawned before the first one answers, so an
     /// interrupt reaches only the tools that check the sink for themselves. Neither mode can stop
@@ -570,13 +568,14 @@ impl Kernel {
     /// there is no safe way to take it back. What it always does is record: every call gets an
     /// output, even when that output is that it never ran.
     ///
-    /// note: The flag is cleared by the transition attempt that acts on it - [`Kernel::step`],
-    /// including the one [`Kernel::turn`] is in the middle of making - so it can never outlive the
-    /// thing it was meant to stop, and there is only ever one reader of it. It discards no work: a
-    /// partial answer and a half-finished tool result are recorded like any other. A step refused
-    /// as [`Error::Busy`] acts on nothing and so clears nothing: the attempt that spends the flag
-    /// is the one that was in a position to transition, and the request in flight keeps the stop
-    /// its provider is reading.
+    /// note: The flag is spent by the transition attempt that acts on it - [`Kernel::step`],
+    /// including the one [`Kernel::turn`] is in the middle of making - and nothing else spends it.
+    /// It is also put down when a turn reaches [`State::Finished`] and when the transition it was
+    /// stopping fails or is abandoned, so it can never outlive the thing it was meant to stop. It
+    /// discards no work: a partial answer and a half-finished tool result are recorded like any
+    /// other. A step refused as [`Error::Busy`] acts on nothing and so clears nothing: the attempt
+    /// that spends the flag is the one that was in a position to transition, and the request in
+    /// flight keeps the stop its provider is reading.
     ///
     /// note: set and announced under the machine lock, which is where every step reads it and
     /// spends it. Outside it, a step could take the flag between the setting and the announcing,
@@ -632,7 +631,7 @@ impl Kernel {
     /// note: the component setters hold their own lock the same way, which is what stops two
     /// clients swapping the same component from applying in one order and being logged in the
     /// other - and the log's last word on the provider naming the one that is not installed. What
-    /// it asks of a component is that [`Provider::info`] and the `name` of a policy, projector,
+    /// this asks of a component is that [`Provider::info`] and the `name` of a policy, projector,
     /// counter or compactor do not reach back into the kernel: each is called while the lock
     /// holding that component is held, to say what was replaced.
     pub(crate) fn emit(&self, event: Event) {
@@ -689,8 +688,8 @@ impl Kernel {
         let id = tool.spec().id;
         let mut held = self.0.tools.write();
         let previous = held.insert(id, tool);
-        // the list is read off the guard rather than through `tool_ids`, which would take the
-        // read lock this one is holding
+        // the list is read off the guard rather than through `tool_ids`, which would ask for a
+        // read lock on the one this guard holds for writing
         self.emit(Event::ToolsChanged {
             tools: held.keys().cloned().collect(),
         });
@@ -776,9 +775,9 @@ impl Kernel {
 
             previous
         };
-        // and the recount after the lock is let go, because it reads the counter it is counting
-        // with. What has to be under one lock is the change and the announcement of it; the
-        // figures it brings into line are announced as an event of their own
+        // the recount waits until the lock is let go, because it reads the counter through it.
+        // What has to be under one lock is the change and the announcement of it; the figures
+        // the recount brings into line are announced as an event of their own
         self.recount();
 
         previous
@@ -809,8 +808,8 @@ impl Kernel {
     /// ever offers back what a counter gave it, which is the rule [`TokenCounter::calibration`]
     /// states; a counter that never changes its mind has nothing to be told and nothing to
     /// recount for. A correction identical to the one in force is not a change either, and takes
-    /// no recount - read off what the counter says afterwards rather than off what it was handed,
-    /// since what was asked for and what was applied are not the same question.
+    /// no recount - judged by what the counter reports afterwards rather than by what it was
+    /// handed, because a counter may apply less than it is offered.
     pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
         let counter = self.counter();
         let previous = counter.calibration()?;
@@ -880,13 +879,13 @@ impl Kernel {
 
     /// Adds several items as one undoable operation, returning their identifiers.
     ///
-    /// note: Ten separate [`Kernel::push`]es are ten checkpoints, which at the default depth
-    /// means opening a project wipes the undo history before the user has done anything. Putting
-    /// a set of files in the context is one thing the user did, so it is one thing to undo.
+    /// note: Separate [`Kernel::push`]es are a checkpoint each, so opening a project file by file
+    /// can spend the whole undo history before the user has done anything. Putting a set of files
+    /// in the context is one thing the user did, so it is one thing to undo.
     ///
-    /// note: under one lock, and not for tidiness. Taken item by item, a turn recorded on another
-    /// thread halfway through landed inside this checkpoint - so one `undo` took back the turn and
-    /// the tail of the files and left their head.
+    /// note: under one lock. Taken item by item, a turn recorded on another thread halfway through
+    /// would land inside this checkpoint - and one `undo` would take back the turn and the tail of
+    /// the files and leave their head.
     pub fn push_all(&self, items: impl IntoIterator<Item = ContextItem>) -> Vec<ContextId> {
         let mut items = items.into_iter().peekable();
         if items.peek().is_none() {
@@ -905,14 +904,14 @@ impl Kernel {
     /// Adds an item in place of an existing one, marking the old one
     /// [`ContextState::Superseded`], as one undoable operation.
     ///
-    /// note: This is the one operation that means that state - [`Kernel::set_state`] can set it
-    /// too, and leaves saying what replaced the item to whoever did - and it is explicit because
-    /// the kernel cannot tell whether a second read of a file replaces the first or stands beside
-    /// it. The old item keeps its identifier and its contents, and comes back with a
+    /// note: This is the operation that state is for. [`Kernel::set_state`] can set it too, and
+    /// leaves saying what replaced the item to whoever did. It is explicit because the kernel
+    /// cannot tell whether a second read of a file replaces the first or stands beside it. The
+    /// old item keeps its identifier and its contents, and comes back with a
     /// [`Kernel::set_state`] or a [`Kernel::undo`] like anything else.
     pub fn supersede(&self, old: ContextId, item: ContextItem) -> Result<ContextId> {
         // one lock for the check and both changes, so that an `undo` on another thread cannot take
-        // `old` away in between - which answered `Ok` having superseded nothing
+        // `old` away in between and leave this answering `Ok` having superseded nothing
         let counter = self.counter();
         let mut context = self.0.context.write();
         if context.item(old).is_none() {
@@ -973,7 +972,7 @@ impl Kernel {
     /// Moves the given items to a state, as one undoable operation, and returns the ones that
     /// actually changed.
     ///
-    /// This is the whole of context control:
+    /// Pruning, restoring and pinning are all this one call:
     ///
     /// ```text
     /// prune   -> set_state(ids, ContextState::Excluded, Some("garbage".into()))
@@ -1010,7 +1009,8 @@ impl Kernel {
             }
 
             // an operation that changes nothing does not get a checkpoint: spending one would
-            // mean the next `undo` walked back somebody else's work instead
+            // make the next `undo` put back what is already there, and the operation somebody
+            // wanted reverted would need a second one
             if targets.is_empty() {
                 return outcome;
             }
@@ -1096,7 +1096,7 @@ impl Kernel {
     /// Puts back what the last [`Kernel::undo`] took away, returning whether there was any.
     ///
     /// note: A stack, not a toggle: undoing three operations and redoing them puts all three
-    /// back, in order. Any new context operation makes the redone future unreachable, because a
+    /// back, in order. Any new context operation makes what was undone unreachable, because a
     /// redo that reached across work done since would be overwriting it rather than restoring
     /// anything.
     pub fn redo(&self) -> bool {
@@ -1155,8 +1155,8 @@ impl Kernel {
     /// Builds the request that the next [`Kernel::step`] would send - every message, every tool
     /// definition, every parameter.
     ///
-    /// note: This is the whole point of the exercise: there is no step between this and the wire
-    /// where the kernel adds something of its own.
+    /// note: There is no step between this and the wire where the kernel adds something of its
+    /// own.
     ///
     /// note: The one thing that can still change the request is a [`Compactor`], which runs at
     /// the start of the next [`Kernel::step`] - and says exactly what it did.
@@ -1167,12 +1167,12 @@ impl Kernel {
     /// Renders the payload the provider would send for the next request, exactly as it would
     /// send it - or `None` when the provider cannot show one.
     ///
-    /// note: This is as close to the wire as a kernel with no wire format can get, and it is
-    /// worth being precise about what it is: [`Kernel::preview_request`] is the kernel's own
-    /// account, which it can guarantee, and this is the provider's account of what it will make
-    /// of it, which it cannot. A provider that renders one payload here and sends another is
-    /// lying in the same way a [`Tool`] that declares `Read` and opens a socket is lying, and
-    /// the defence is the same: you chose the provider.
+    /// note: This is as close to the wire as a kernel with no wire format can get.
+    /// [`Kernel::preview_request`] is the kernel's own account, which it can guarantee; this is
+    /// the provider's account of what it will make of it, which the kernel cannot. A provider
+    /// that renders one payload here and sends another is lying in the same way a [`Tool`] that
+    /// declares `Read` and opens a socket is lying, and the defence is the same: you chose the
+    /// provider.
     ///
     /// note: The body only. Headers, URLs and credentials never pass through the kernel.
     pub fn preview_payload(&self) -> Result<Option<Value>> {
@@ -1287,11 +1287,11 @@ impl Kernel {
             }
 
             // a summary stands in the place of what was taken, so a pass that took nothing has no
-            // place to put one. Banking it anyway is not a stray line: the pass is asked again
-            // before the next request, the context is no smaller than it was, so it says yes
-            // again - and a compactor whose every candidate is pinned then adds a summary saying
-            // results were elided, spends an undo, and grows the request it exists to shrink, on
-            // every request for as long as the session lasts. Measured at 53 tokens a turn
+            // place to put one. Added anyway, it compounds: the pass is asked again before the
+            // next request, the context is no smaller than it was, so it says yes again - and a
+            // compactor whose every candidate is pinned then adds a summary saying results were
+            // elided, spends an undo, and grows the request it exists to shrink, on every request
+            // for as long as the session lasts
             let moved = !removing.is_empty() || !eliding.is_empty();
             if moved {
                 context.checkpoint();
@@ -1314,9 +1314,8 @@ impl Kernel {
 
             // note: the note is set from the pass's reason rather than kept, as the removals
             // above do - a note says why an item is in the state it is in, and the one it may
-            // already be carrying answers a different question ("4,096 bytes were truncated by
-            // the output limit"), which would be a strange thing to hand the model as the reason
-            // it cannot see this any more
+            // already be carrying explains the state it is leaving, which would be a strange
+            // thing to hand the model as the reason it cannot see this any more
             for entry in eliding {
                 // the reason as it was written, with no `compaction:` in front of it: unlike a
                 // removal's note this one is read by the model, in the brackets the projector
@@ -1446,19 +1445,20 @@ impl Kernel {
     ///
     /// note: one checkpoint for the batch, taken by the first result and joined by the rest -
     /// the shape [`Kernel::push_all`] uses, for the reason it uses it. Dropping the calls is one
-    /// thing somebody did, so one `undo` is to put the whole of it back; a checkpoint each would
-    /// make a single `undo` take back one refusal and leave the others, which is a turn where
-    /// some of the model's calls were answered and one was never mentioned. It is also what
-    /// [`Config::context_undo_depth`] is measured against: a model asking for sixteen tools and
-    /// a person who says no would otherwise spend the whole undo history on one keystroke.
+    /// thing somebody did, so one `undo` puts the whole of it back; a checkpoint each would make
+    /// a single `undo` take back one refusal and leave the others, which is a turn where some of
+    /// the model's calls were answered and one was never mentioned. It also spares
+    /// [`Config::context_undo_depth`]: a model asking for sixteen tools and a person who says no
+    /// would otherwise spend the whole undo history on one keystroke.
     ///
-    /// note: the shape of [`Kernel::decide`] refusing every call and a [`Kernel::step`] running
-    /// them, which is what this is. The refusals are announced and the machine claimed as
-    /// [`State::Executing`] without letting go of the lock, and the results are recorded before
-    /// it returns to [`State::Idle`]. Going straight to `Idle` let a step in before the results
-    /// were there - a request carrying calls nobody had answered - and logged the machine idle
-    /// before the calls were refused. The results are not recorded *under* the lock because
-    /// recording one asks the tool what the call needed, and that is somebody else's code.
+    /// note: this is [`Kernel::decide`] refusing every call followed by a [`Kernel::step`]
+    /// running them, and it has the same shape. The refusals are announced and the machine
+    /// claimed as [`State::Executing`] without letting go of the lock, and the results are
+    /// recorded before it returns to [`State::Idle`]. Going straight to `Idle` would let a step in
+    /// before the results were there - a request carrying calls nobody had answered - and would
+    /// log the machine idle before the calls were refused. The results are not recorded *under*
+    /// the lock because recording one asks the tool what the call needed, and that is somebody
+    /// else's code.
     pub fn cancel_pending_calls(&self, reason: impl Into<String>) -> usize {
         let reason = reason.into();
         let prepared = {
@@ -1511,8 +1511,8 @@ impl Kernel {
     /// | any resting state, with an interrupt outstanding | nothing; the interrupt is spent | the same state |
     ///
     /// note: One step is one transition, so the model asking for a tool and that tool running
-    /// are two of them. That is deliberate: [`State::Ready`] is a checkpoint at which the model
-    /// has said what it wants and nothing has happened yet.
+    /// are two of them. That is deliberate: [`State::Ready`] is a resting state at which the
+    /// model has said what it wants and nothing has happened yet.
     pub async fn step(&self) -> Result<State> {
         self.step_once().await.map(|(state, _)| state)
     }
@@ -1520,10 +1520,10 @@ impl Kernel {
     /// One transition, and whether it was spent acknowledging an interrupt rather than making
     /// one.
     ///
-    /// note: [`Kernel::turn`] needs to be told, and cannot work it out. Both used to clear the
-    /// flag, so an interrupt that landed between the two checks was consumed by the step -
-    /// which returned the state unchanged, leaving `turn` to see an ordinary resting state and
-    /// go round again. The stop was on the event log and the next request went out anyway.
+    /// note: [`Kernel::turn`] needs to be told, and cannot work it out. A step that spends an
+    /// interrupt returns the state it found, which to `turn` looks like an ordinary resting state
+    /// to go round again from - and the next request would go out with the stop already on the
+    /// event log.
     async fn step_once(&self) -> Result<(State, bool)> {
         let claim = {
             let mut machine = self.0.machine.lock();
@@ -1579,11 +1579,11 @@ impl Kernel {
         let mut requests = 0;
 
         loop {
-            // note: this loop does not read the interrupt flag itself. It used to, and the step
-            // it then called read it again - so an interrupt landing between the two was spent
-            // on a step that transitioned nothing, and this loop, seeing an ordinary resting
-            // state come back, went round and sent the next request anyway. One reader, checked
-            // in one place, is what makes that window not exist rather than merely narrow
+            // note: this loop does not read the interrupt flag itself. If it did, and the step it
+            // then called read it again, an interrupt landing between the two would be spent on a
+            // step that transitions nothing, and this loop, seeing an ordinary resting state come
+            // back, would go round and send the next request anyway. With one reader, checked in
+            // one place, there is no window at all
 
             // the next step will send a request, so it counts against the budget
             if matches!(self.state(), State::Idle | State::Finished { .. }) {
@@ -1639,18 +1639,18 @@ impl Kernel {
     ///
     /// note: reaching [`State::Finished`] also puts down an outstanding interrupt, because the
     /// turn it was asked of is over and there is nothing left in flight for it to stop. Without
-    /// this the flag outlived the request it was meant for in the one case
+    /// this the flag would outlive the request it was meant for in the one case
     /// [`Kernel::step_once`] cannot catch: a [`Provider`] that watches
-    /// [`crate::DeltaSink::is_interrupted`] and hands back what it had *honoured* the interrupt
-    /// itself, so no step was ever spent acknowledging it - and the next turn was, transitioning
-    /// nothing and returning the state it was already in. Measured through a client: press stop,
-    /// type a message, and it lands in the context with nothing answering it; the message after
-    /// that is the one that gets a reply.
+    /// [`crate::DeltaSink::is_interrupted`] and hands back what it had has *honoured* the
+    /// interrupt itself, so no step is spent acknowledging it - and the next turn's first step
+    /// would be, transitioning nothing and returning the state it was already in. In a client,
+    /// the message somebody types after pressing stop would land in the context with nothing
+    /// answering it.
     ///
     /// note: only [`State::Finished`]. The resting states an interrupt is *for* -
     /// [`State::Ready`], [`State::Idle`] mid-loop, [`State::Deciding`] - are exactly the ones
-    /// from which another request would otherwise go out, and there the flag has to survive to
-    /// be read by the next step. That is the window the single reader in `step_once` exists to
+    /// from which the loop would otherwise carry on, and there the flag has to survive to be
+    /// read by the next step. That is the window the single reader in `step_once` exists to
     /// close, and this does not widen it: a stop asked for as a turn ends has nothing to stop.
     fn transition(&self, machine: &mut Machine, to: State) {
         if machine.state == to {

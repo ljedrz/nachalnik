@@ -47,11 +47,12 @@ impl Kernel {
             }
         };
 
-        // the compactor has already had its turn, above, and this is what is left when it could
-        // not get there - everything it might have taken is pinned, or there was nothing of the
-        // kind it takes. Sending anyway buys one round trip and the endpoint's own account of a
-        // figure that is already on the screen; see `Config::refuse_oversized_requests` for the
-        // half of this that is a judgement rather than arithmetic
+        // the compactor has already had its turn, above, and this check is for when it could not
+        // get the request under the limit - everything it might have taken is pinned, or there
+        // was nothing of the kind it takes. Sending anyway buys one round trip and the endpoint's
+        // own account of a figure that is already on the screen; see
+        // `Config::refuse_oversized_requests` for the half of this that is a judgement rather
+        // than arithmetic
         if let Some(overrun) = self.oversized(provider.info().context_limit, &cost) {
             self.emit(Event::StepFailed {
                 overrun: Some(overrun),
@@ -276,7 +277,7 @@ impl Kernel {
     /// because a set of identifiers cannot tell the two apart.
     ///
     /// note: a turn recorded as ordered blocks keeps its calls in its content, so repairing one
-    /// means rewriting the sequence. That is only done when something actually needed repairing -
+    /// means rewriting the sequence. That is only done when something actually needs repairing -
     /// which is almost never - so the ordinary turn pays a walk over its own blocks and nothing
     /// else.
     fn repair_call_ids(&self, response: &mut ModelResponse) {
@@ -359,14 +360,13 @@ impl Kernel {
 
 /// Counts what a projection costs, which is what a request carrying it would cost.
 ///
-/// note: the one definition of "the projected total", because there are two callers and they were
-/// not agreeing. Counted over the messages that came out rather than the items that went in: a
-/// reference is labelled on its way out, and an elided item is a marker the size of a line where
-/// the item behind it may be ten thousand tokens.
-/// note: the same walk answers both figures, which is the point of doing it in one place. An
-/// abstention counted over the *items* would report a picture inside an elided item as unpriced,
-/// when what goes out in its place is a one-line marker with no picture in it - the budget would
-/// name a hole in a request that does not have one.
+/// note: the one definition of "the projected total", so that [`Kernel::projected`] and
+/// [`Kernel::apply_compaction`] cannot disagree about it. It is counted over the messages that
+/// came out rather than the items that went in, for the reason on [`Kernel::projected`].
+///
+/// note: the same walk answers both figures. An abstention counted over the *items* would report a
+/// picture inside an elided item as unpriced, when what goes out in its place is a one-line marker
+/// with no picture in it - the budget would name a hole in a request that does not have one.
 pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounter) -> Cost {
     projection
         .messages
@@ -380,10 +380,8 @@ pub(super) fn projection_cost(projection: &Projection, counter: &dyn TokenCounte
 /// What a projection costs: the estimate, and how much of the request the estimate does not
 /// cover.
 ///
-/// note: the two travel together everywhere, and this type is why. `tokens` alone was threaded
-/// through three signatures, and each of them would otherwise have grown a second `usize` beside
-/// it - two bare numbers of the same type in the same order, for every reader to get right by
-/// remembering which was which. The pair has a name instead.
+/// note: the two travel together everywhere, so the pair has a name rather than being two bare
+/// `usize`s in the same order, for every reader to get right by remembering which was which.
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct Cost {
     /// The estimated tokens.

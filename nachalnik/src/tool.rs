@@ -41,12 +41,11 @@ pub struct ToolSpec {
     /// [`ToolOutput::error`](crate::ToolOutput::error) - which the model reads and can act on,
     /// where a refusal from underneath would be a failure it never sees the shape of.
     ///
-    /// note: that is a deliberate boundary rather than a missing feature. Enforcing it would mean
-    /// this crate choosing a JSON Schema dialect and a validator for everybody who ever writes a
-    /// tool, on behalf of models that disagree about which dialect they emit for - and the check
-    /// is one line in the tool that already has to parse the arguments to use them. A caller who
-    /// wants it everywhere can wrap `Tool` once and install the wrapper, which is the seam this
-    /// leaves open.
+    /// note: enforcing it would mean this crate choosing a JSON Schema dialect and a validator
+    /// for everybody who ever writes a tool, on behalf of models that disagree about which dialect
+    /// they follow - and the check is one line in the tool that already has to parse the
+    /// arguments to use them. A caller who wants it everywhere can wrap `Tool` once and install
+    /// the wrapper.
     pub schema: Arc<Value>,
     /// The capabilities an invocation of this tool requires.
     pub capabilities: Vec<Capability>,
@@ -133,9 +132,9 @@ pub trait Tool: Send + Sync {
     /// note: a tool that does one thing declares it once and never implements this. A tool that
     /// does several - `fs`, whose `action` picks between reading a file and writing one - is the
     /// only thing that can say which of them a given call is, because it is the only thing that
-    /// knows its own arguments. Before this the policy read the `action` argument itself, which
-    /// meant it had to guess from a string's shape whether `<name>:<name>` was an operation or a
-    /// tool that happened to have a colon in its name.
+    /// knows its own arguments. A policy reading the `action` argument itself would have to guess
+    /// from a string's shape whether `<name>:<name>` was an operation or a tool that happened to
+    /// have a colon in its name.
     ///
     /// note: the default is the whole of [`ToolSpec::capabilities`], which is right for a tool
     /// with one operation and safe for any other: the strictest of everything consulted wins, so

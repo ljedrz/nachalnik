@@ -53,15 +53,14 @@ pub struct Projection {
     pub repairs: Vec<String>,
     /// What it had to **move**, in plain words. Nothing is lost by one of these.
     ///
-    /// note: a separate list because it is a different piece of news, and the two were one until a
-    /// live run made the difference plain. A tool result has to reach the wire immediately after
-    /// the call it answers, so an item pushed between the two sends it down the list and the
-    /// projector puts it back - which is the layout rule working, not a fault. `context: note`
-    /// does exactly that on every call, the item being written while the call that writes it is
-    /// still in flight, so every note a model took produced "the request is repaired" in the
-    /// conversation, and it stood there for the rest of the session and every session resumed from
-    /// it. The order really is not the context's order, and saying so belongs in a request preview;
-    /// what it does not belong in is a line that reads like something went wrong.
+    /// note: a separate list from [`Projection::repairs`] because it is a different piece of news.
+    /// A tool result has to reach the wire immediately after the call it answers, so an item
+    /// pushed between the two sends it down the list and the projector puts it back - the layout
+    /// rule working, not a fault. A tool that writes to the context, such as `kamchatka`'s
+    /// `context: note`, does this on every call, because its item is written while the call that
+    /// writes it is still in flight. The order really is not the context's order, and saying so
+    /// belongs in a request preview; it does not belong in a line that reads like something went
+    /// wrong, and that stays in the conversation for the rest of the session.
     pub reordered: Vec<String>,
 }
 
@@ -131,11 +130,10 @@ pub trait Projector: Send + Sync {
 
 /// Puts several blocks' worth of content into the one slot a conventional message has.
 ///
-/// note: one of them is carried through untouched, which matters more than it looks: a
-/// [`Content::Json`] thinking block is how a signed or encrypted one travels, and a provider that
-/// received it as a string of its own serialization could not send it back. Several can only be
-/// joined as text, which is why [`LinearProjector::send_blocks`] exists and why joining is
-/// reported.
+/// note: one of them is carried through untouched, because a [`Content::Json`] thinking block is
+/// how a signed or encrypted one travels, and a provider that received it as a string of its own
+/// serialization could not send it back. Several can only be joined as text, which is why
+/// [`LinearProjector::send_blocks`] exists and why joining is reported.
 ///
 /// note: what cannot survive either way is [`Part::extra`] - a conventional message has a
 /// [`Content`] in each slot and nowhere to put what a provider attached to it. The caller reports
@@ -220,9 +218,8 @@ pub struct LinearProjector {
     ///
     /// note: with it off, a turn recorded as blocks is flattened back into the three slots, and
     /// where that loses something - two thinking blocks joined into one, a sentence that came
-    /// *after* a call - it says so in [`Projection::repairs`] rather than doing it quietly. That
-    /// is the honest version of what a provider used to have to do for itself, and the reason
-    /// this flag exists is that for a signed thinking block it is not good enough.
+    /// *after* a call - it says so in [`Projection::repairs`] rather than doing it quietly. The
+    /// flag exists because for a signed thinking block that is not good enough.
     pub send_blocks: bool,
     /// Whether an assistant turn's reasoning is carried back into
     /// [`Message::reasoning`](crate::Message::reasoning).
@@ -308,9 +305,9 @@ impl LinearProjector {
 
             // an elided item goes in as a marker in place of what it says, and nothing else about
             // the message changes: same role, and a tool result still answers its call. That is
-            // the whole difference from excluding it - the turn keeps its shape, so the repair
-            // below never has to take the call down and rewrite history into one where it was
-            // never made. The words are the item's own note; this only supplies the brackets
+            // how it differs from excluding it - the turn keeps its shape, so the repair below
+            // never has to take the call down and rewrite history into one where it was never
+            // made. The words are the item's own note; this only supplies the brackets
             let said = match item.state.is_elided() {
                 true => Content::text(format!(
                     "[... {} ...]",
@@ -379,8 +376,7 @@ impl LinearProjector {
     ///
     /// note: the turn is read as one ordered sequence whichever way it was recorded, so the
     /// repair, the elision and the skip rule are each written once and only the last step asks
-    /// which of the two shapes it goes out in. Four arms would have asked that first and
-    /// written the other three twice.
+    /// which of the two shapes it goes out in.
     fn turn(
         &self,
         item: &ContextItem,
@@ -395,16 +391,14 @@ impl LinearProjector {
         // the turn as one ordered sequence, whichever way it was recorded. For a conventional one
         // that is the order every provider has been assuming anyway - what it thought, what it
         // said, what it asked for - so flattening it back below reproduces exactly what came in;
-        // for one recorded as blocks it is the order the model actually produced, which is the
-        // whole point. Doing it in two steps rather than four arms is what keeps the repair, the
-        // elision and the skip rule from being written twice
+        // for one recorded as blocks it is the order the model actually produced
         let recorded: Vec<Block> = match item.content.as_blocks() {
             Some(blocks) => blocks.to_vec(),
             None => {
                 let mut assembled = Vec::with_capacity(tool_calls.len() + 2);
                 assembled.extend(reasoning.clone().map(Block::reasoning));
                 // an empty text is no text at all - but an elided turn still gets its marker, which
-                // is the whole of what elision leaves behind
+                // is what elision leaves behind
                 if elided || item.content.as_text() != Some("") {
                     assembled.push(Block::text(item.content.clone()));
                 }
@@ -504,9 +498,8 @@ impl LinearProjector {
 /// report. A turn with one of everything, in the order the slots are in, loses nothing either.
 ///
 /// note: a signature on a text or a thinking part has nowhere to go in a conventional message,
-/// and going missing is the thing here it is most important to say out loud: it is what an API
-/// rejects the next request over, and the reason it went is that this projector was asked for a
-/// shape that cannot hold it.
+/// and losing it is the most important thing reported here. An API rejects the next request over
+/// it, and it went because this projector was asked for a shape that cannot hold it.
 fn flattening_lost(item: &ContextItem, kept: &[Block], spoke: usize) -> Option<String> {
     // only a turn that was recorded as blocks has an order to lose
     item.content.as_blocks()?;
@@ -586,23 +579,19 @@ fn claim(remaining: &mut HashMap<ToolCallId, usize>, id: &ToolCallId) -> bool {
 /// the `tool_call_id` that went unanswered. So each turn's results are gathered to it, and
 /// everything else keeps the order the context had it in.
 ///
-/// note: *a* strict endpoint, not every endpoint, and the difference was measured rather
-/// than assumed. Inception Labs' `mercury-2.5` accepts the malformed order without
-/// complaint - a `tool` message two messages away from its call went out and came back
-/// answered - so an endpoint that tolerates it is not hypothetical and a test that only
-/// checks "the API accepted it" would pass on the broken order there. Which is why the
-/// property in `tests/invariants.rs` asserts the adjacency itself rather than trusting a
-/// provider to complain, and why the live test asserts the *position* of the result and
-/// not merely that the request went through.
+/// note: *a* strict endpoint, not every endpoint. Inception Labs' `mercury-2.5` accepts the
+/// malformed order without complaint, so a test that only checks "the API accepted it" passes
+/// on the broken order there. That is why the property in `tests/invariants.rs` asserts the
+/// adjacency itself rather than trusting a provider to complain, and why the live test asserts
+/// the *position* of the result and not merely that the request went through.
 ///
-/// note: a pass rather than bookkeeping inside the loop above, and the difference is a bug
-/// that lived here. What the loop kept was a *count* of what the current turn was waiting
-/// for, reset on the next turn - so a result whose turn was no longer the current one had
-/// nothing anchoring it, and two turns in a row with the first one's result recorded after
-/// the second put a `tool` message several messages away from its call. A count also let
-/// any result decrement it, including one answering somebody else. Reading the whole list
-/// at once costs one walk and cannot get either wrong: a result goes where its own call
-/// is, and a call is a place in a list rather than a number that has to be kept.
+/// note: a pass of its own rather than bookkeeping inside the loop in `build`. Bookkeeping
+/// there means a *count* of what the current turn is waiting for, reset on the next turn: a
+/// result recorded after a later turn has nothing anchoring it and goes out several messages
+/// away from its call, and any result can decrement the count, including one answering
+/// somebody else. Reading the whole list at once costs one walk and gets neither wrong: a
+/// result goes where its own call is, and a call is a place in a list rather than a number
+/// that has to be kept.
 fn in_wire_order(
     built: Vec<(ContextId, Message)>,
     reordered: &mut Vec<String>,
@@ -614,9 +603,9 @@ fn in_wire_order(
         }
     }
     // the calls this request actually makes, which is what decides whether a result has somebody
-    // to wait for. Asking `results` instead was asking whether a result is a result: the map was
-    // built from every result's own identifier, so the answer was yes for all of them and the
-    // branch below meant to keep an unasked-for result where it was never ran
+    // to wait for. `results` cannot answer that: it is built from every result's own identifier,
+    // so it says yes for all of them and the branch below that keeps an unasked-for result where
+    // it was would never run
     let asked: HashSet<&ToolCallId> = built
         .iter()
         .flat_map(|(_, message)| message.calls())
@@ -644,13 +633,12 @@ fn in_wire_order(
         // its content, and the repair above may have taken some down
         let mut adjacent = at + 1;
         for call in message.calls() {
-            // one result per call, and the next unplaced one, because that is the pairing the pass
-            // above made: calls and results are claimed one for one, in order, rather than by set
-            // membership. Taking every result that shares the identifier undid exactly that where
-            // it matters - two calls carrying one identifier, which `repair_orphans` names as the
-            // case counting exists for, put both answers behind the first call and left the second
-            // reaching the wire with nothing after it. Two `tool` messages in a row and a trailing
-            // unanswered call, and nothing said, because nothing had been dropped
+            // one result per call, and the next unplaced one, because that is the pairing `build`
+            // made: calls and results are claimed one for one, in order, rather than by set
+            // membership. Taking every result that shares the identifier would undo that for two
+            // calls carrying one identifier - the case `repair_orphans` counts for - putting both
+            // answers behind the first call and sending the second with nothing after it, and
+            // saying nothing, because nothing was dropped
             let answer = results
                 .get(&call.id)
                 .into_iter()

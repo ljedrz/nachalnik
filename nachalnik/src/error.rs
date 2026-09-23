@@ -20,10 +20,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// Things that can go wrong in the kernel itself.
 ///
-/// note: This list is deliberately short. A failing [`Tool`] is *not* a kernel error - the
-/// failure is recorded as an error tool result and handed back to the model, since that is
-/// information the model needs. Only conditions that make the loop unable to proceed appear
-/// here.
+/// note: only conditions that make the loop unable to proceed appear here. A failing [`Tool`]
+/// is *not* a kernel error - the failure is recorded as an error tool result and handed back to
+/// the model, since that is information the model needs.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
@@ -34,12 +33,11 @@ pub enum Error {
     ///
     /// note: There is deliberately nothing here to wait on. A kernel that handed out a "tell me
     /// when you are free" future would be choosing a queueing policy - who gets it next, and what
-    /// becomes of whoever asked first - and that is not the same answer twice. What it offers
+    /// becomes of whoever asked first - and no one answer suits every client. What it offers
     /// instead is the fact: every transition is an
-    /// [`Event::StateChanged`](crate::Event::StateChanged), so waiting is
-    /// [`Kernel::subscribe`](crate::Kernel::subscribe) and a loop until
-    /// [`State::is_busy`] stops being true, and a client that would rather refuse than queue
-    /// reports this and moves on.
+    /// [`Event::StateChanged`](crate::Event::StateChanged). Waiting is
+    /// [`Kernel::subscribe`](crate::Kernel::subscribe) and a loop until [`State::is_busy`] stops
+    /// being true; a client that would rather refuse than queue reports this and moves on.
     Busy,
     /// [`Kernel::step`] was called without a [`Provider`] being set.
     NoProvider,

@@ -233,17 +233,16 @@ impl TokenCounter for BytesPerToken {
     /// reachable from a byte length. [`Blob::meta`](crate::Blob::meta) is where the inputs to one
     /// go, for a counter that has a formula to apply them to.
     ///
-    /// note: *wherever it appears* is the part that was wrong before, and by a factor of
-    /// infinity. This matched on [`Content::Blob`] alone and fell through to
-    /// [`Content::byte_len`] for everything else - which sums the blobs nested inside a
-    /// [`Content::Blocks`] turn, the shape a sentence-and-a-screenshot arrives in from both
-    /// dialects. So the same 400 KB picture counted `0` on its own and 100,005 tokens in the
-    /// turn a model was actually shown it in. [`Content::blobs`] is the seam that fixes it, and
-    /// it exists because a counter cannot walk that nesting for itself.
+    /// note: *wherever it appears* includes inside a [`Content::Blocks`] turn, the shape a
+    /// sentence-and-a-screenshot arrives in from both dialects. [`Content::byte_len`] sums the
+    /// blobs nested there, so matching on [`Content::Blob`] alone would count a picture as `0` on
+    /// its own and as its base64 over four in the turn a model was actually shown it in.
+    /// [`Content::blobs`] is the seam that reaches them, and it exists because a counter cannot
+    /// walk that nesting for itself.
     ///
     /// note: it under-reports rather than over-reports, and [`BytesPerToken::uncounted`] is what
     /// stops it doing so silently. A context carrying pictures is larger than this says, by an
-    /// amount the budget now states in pieces; a real tokenizer put in with
+    /// amount the budget states in pieces; a real tokenizer put in with
     /// [`Kernel::set_counter`](crate::Kernel::set_counter) is the answer for anyone who needs the
     /// number itself to be right.
     fn count(&self, content: &Content) -> usize {
@@ -253,10 +252,9 @@ impl TokenCounter for BytesPerToken {
         content.byte_len().saturating_sub(blobs).div_ceil(divisor)
     }
 
-    /// note: one for every blob, at whatever depth. This is the whole of what this counter
-    /// declines to measure - text and JSON it will always put a number on, however bad the
-    /// number is - so the figure a client reads is exactly "how many pictures are in here that
-    /// nothing has priced".
+    /// note: one for every blob, at whatever depth. Blobs are all this counter declines to
+    /// measure - text and JSON it will always put a number on, however bad the number is - so the
+    /// figure a client reads is exactly "how many pictures are in here that nothing has priced".
     fn uncounted(&self, content: &Content) -> usize {
         content.blobs().len()
     }
@@ -350,31 +348,31 @@ const BOUNDS: (f64, f64) = (0.1, 10.0);
 /// anything from.
 ///
 /// note: Measured against a real API, the underlying estimate is out by about 7% on a request of
-/// a few thousand tokens - a systematic error worth correcting - and by anything between -20% and
-/// +17% on requests of a few dozen, where the absolute error is a handful of tokens and the
+/// a few thousand tokens - a systematic error worth correcting - and by tens of percent either
+/// way on requests of a few dozen, where the absolute error is a handful of tokens and the
 /// percentage is noise. Learning from the second kind makes the first kind worse, so it is
 /// ignored.
 ///
-/// note: both sides, and the estimate is the side this was missing. An endpoint charges for
-/// framing nobody counted - its own preamble, the scaffolding round a tool call - and that is a
-/// fixed cost, so on a small request it is the whole of the difference. `mercury-2.5` reported
-/// **933** tokens for a request estimated at 31: a ratio of 30, held at [`BOUNDS`] to 10, and
-/// from then on every figure in the session read ten times what it was. A request the *provider*
-/// says is large enough is not the same claim as a request with enough content in it for the
-/// framing to be a percentage rather than the answer.
+/// note: both sides, because an endpoint charges for framing nobody counted - its own preamble,
+/// the scaffolding round a tool call - and that is a fixed cost, so on a small request it is the
+/// whole of the difference. A request estimated at a few dozen tokens can be charged at many
+/// times that; [`BOUNDS`] still lets the ratio reach 10, and every figure in the session would
+/// then read ten times what it is. A request the *provider* says is large enough is not the same
+/// claim as a request with enough content in it for the framing to be a percentage rather than
+/// the answer.
 const WORTH_LEARNING_FROM: usize = 256;
 
 /// The scale a correction is actually applied at: inside [`BOUNDS`], and a number the arithmetic
 /// around it can be done with.
 ///
 /// note: one function rather than a `clamp` where the ratio is worked out, because there are two
-/// doors into that field and only one of them was holding the bound. [`TokenCounter::observe`]
-/// derives a ratio and clamped it; [`TokenCounter::recalibrate`] is *handed* one, and what comes
-/// through it is a [`Snapshot`](crate::Snapshot)'s - `Calibration` is `serde` with public fields,
-/// so what a file says a scale is has been derived by nobody. A `0.0` there is the value
-/// [`Calibration::default`] is hand-written to avoid, and it arrives by another route: every
-/// figure in the session reported as nothing, and the next `observe` dividing by it, which comes
-/// out as an infinity that saturates to `u64::MAX` and is then added to a running total.
+/// doors into that field and both have to hold the bound. [`TokenCounter::observe`] derives a
+/// ratio; [`TokenCounter::recalibrate`] is *handed* one, and what comes through it is a
+/// [`Snapshot`](crate::Snapshot)'s - `Calibration` is `serde` with public fields, so what a file
+/// says a scale is has been derived by nobody. A `0.0` there is the value
+/// [`Calibration::default`] is hand-written to avoid, arriving by another route: every figure in
+/// the session reported as nothing, and the next `observe` dividing by it, which comes out as an
+/// infinity that saturates to `u64::MAX` and is then added to a running total.
 ///
 /// note: the finite test is not redundant with the clamp. `f64::clamp` answers a NaN with a NaN
 /// rather than with a bound, and a NaN scale makes every count `0` - a float-to-integer `as`
