@@ -9,15 +9,18 @@
 //!   cargo run -p kamchatka --example recorded
 //! ```
 //!
-//! `TASK` sets the question, `OUT` the directory the recording is written to, `INTROSPECT=off`
-//! takes the four introspection tools away, and `KAMCHATKA_MODEL` names the model - this reads
-//! the variable rather than taking a `-m`, unlike the program it is built out of.
+//! `TASK` sets the question and `TASK2` a second line to follow it, `BRIEF` replaces the system
+//! instruction, `PLANT` puts memories in the context before the question is asked, `OUT` names the
+//! directory the recording is written to, `INTROSPECT=off` takes the four introspection tools away,
+//! and `KAMCHATKA_MODEL` names the model - this reads the variable rather than taking a `-m`,
+//! unlike the program it is built out of.
 //!
 //! note: **`DIALECT` defaults to Google's native one**, which is what the ordered-blocks path
 //! wants and is wrong for every other endpoint. Left out against an OpenAI-compatible base URL
 //! the run comes back `404 Not Found` on the first request, recorded as `model.failed` in
 //! `events.jsonl` and reported out here as `the last turn failed` - which names neither the
-//! endpoint nor the dialect. `DIALECT=openai` is the other half of the line above.
+//! endpoint nor the dialect. So a base URL that is not Google's wants `DIALECT=openai` beside it,
+//! as in the command above.
 
 use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 
@@ -72,11 +75,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // the budget is the whole point, and the provider already reads it from here - so it is
     // required rather than set, which keeps this example free of the one `unsafe` that setting an
-    // environment variable now costs
+    // environment variable costs in edition 2024
     let budget: usize = std::env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
-        .ok_or("set KAMCHATKA_CONTEXT_LIMIT (10000 is what the recorded sessions used)")?;
+        .ok_or("set KAMCHATKA_CONTEXT_LIMIT (the default brief tells the model 10000)")?;
 
     // two dialects, one trait. `DIALECT=openai` points this at anything OpenAI-compatible -
     // OpenRouter, ollama, a proxy - and the only thing downstream that changes is whether the
@@ -135,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(Subject::Capability)
             .collect(),
         // the two that are about something other than this session, named rather than a flag
-        // turned off: which tools a session offers is one list now, and this is what the control
+        // turned off: which tools a session offers is one list, and this is what the control
         // arm's looks like
         tools: (!introspecting).then(|| vec!["fs".to_owned(), "shell".to_owned()]),
         system: Some(std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned())),
@@ -167,10 +170,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // the loop is `kamchatka --headless`, driven from a string instead of a pipe. This used to be
-    // forty lines of its own - a turn loop, a permission answered, a follow-up pushed, a deadline -
-    // written that way because the only way into an `App` was to press a key. `TASK2` is now
-    // simply the second line somebody types
+    // the loop is `kamchatka --headless`, driven from a string instead of a pipe, and `TASK2` is
+    // the second line somebody types
     //
     // note: what stays here rather than moving into the program is what this example is *for*: a
     // planted context, a budget small enough that managing it is not optional, and `session.md`,
@@ -183,18 +184,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     lines.push('\n');
 
-    // every question granted, which is what a recording somebody is watching wants and the
-    // opposite of what the program defaults to; see `OnAsk` in `main.rs`
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    // note: the deadline is the driver's rather than a `timeout` around it. Wrapped, the future
-    // was dropped where it stood - so the session was never finished and the records of the turn
-    // it was stopped in went nowhere, which is the one run worth reading afterwards
+    // every question granted, which is what a recording somebody is watching wants and the
+    // opposite of what the program defaults to; see `OnAsk` in `args.rs`
+    //
+    // note: the deadline is the driver's rather than a `timeout` around it. Wrapped in one, the
+    // future is dropped where it stands, so the session is never finished and the records of the
+    // turn it was stopped in go nowhere - and a run that hit its deadline is one worth reading
+    // afterwards
     let mut driver =
         Headless::new(Grant::Allow, &mut records, &mut prose).deadline(Duration::from_secs(600));
-    // a turn that fails used to take the recording with it: `?` here skipped the write below, so
-    // the runs worth reading afterwards - nine in a row against a provider that timed out - were
-    // exactly the ones that left an empty file. The error is still the exit code; it just waits
-    // until the record is on disk
+    // not `?`, which would skip the write below: a run that failed is the one worth reading
+    // afterwards. The error is still the exit code; it waits until the record is on disk
     let failed = driver
         .run(&mut app, &mut events, &mut finished, lines.as_bytes())
         .await
@@ -210,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-/// Writes the exchange out three ways: to read, to check, and to replay.
+/// Writes the exchange out four ways: to read, to check, to replay, and as it streamed.
 fn write(
     kernel: &Kernel,
     budget: usize,
@@ -301,9 +302,9 @@ fn write(
         serde_json::to_string_pretty(&kernel.snapshot())?,
     )?;
     // note: what the driver printed, rather than the deltas drained off the broadcast at the end.
-    // That drain was quietly lossy - a subscriber nobody reads from until the session is over
-    // keeps the last few hundred events and drops the rest - and this is what a person watching
-    // the run actually saw
+    // A subscriber nobody reads from until the session is over keeps only the last
+    // `Config::event_queue_depth` events and drops the rest; this is what a person watching the
+    // run saw
     fs::write(out.join("streamed.txt"), prose)?;
 
     eprintln!(

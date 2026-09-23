@@ -3,9 +3,9 @@
 //! ```console
 //! $ export KAMCHATKA_API_KEY=sk-or-...
 //! $ cargo run --example phone -- -m qwen/qwen3-coder
-//! · a session of its own at tcp:127.0.0.1:41337
-//! · a browser reaches tcp:127.0.0.1:41337 at http://127.0.0.1:8080/
 //! ```
+//!
+//! It prints where its session listens and the address a browser reaches the page at.
 //!
 //! ```console
 //! $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- \
@@ -13,13 +13,12 @@
 //! ```
 //!
 //! note: **the program's own arguments**, every one of them, because this assembles the program's
-//! own session - see [`kamchatka::args`]. It took two positional words and defaulted the model to
-//! one somebody else had picked, which is the thing `--model` stopped doing, and it had no way to
-//! ask for `--advise`, a system instruction, a tool, or a path rule. A second, smaller vocabulary
-//! in an example is two sets of flags to keep in step and one of them always behind.
+//! own session - see [`kamchatka::args`]. `--advise`, a system instruction, a tool and a path rule
+//! all mean here what they mean there. A second, smaller vocabulary in an example is two sets of
+//! flags to keep in step and one of them always behind.
 //!
 //! note: where the *page* listens is the one thing that is not an argument, and it is a variable
-//! rather than a positional because the positional is the first message now. `--serve` is not it
+//! rather than a positional because the positional is the first message. `--serve` is not it
 //! either: that is the session's own socket, which this one holds on loopback and a port nothing
 //! else is using, and giving the flag a second meaning here would be the kind of overload a reader
 //! has to be told about.
@@ -32,12 +31,11 @@
 //! A session here ends the way the program's does. `/quit` from the page writes it out under the
 //! temporary directory and says where, and `/restart` writes it out and wires another from the
 //! same arguments behind the same socket, which the page comes back into by itself. Both are
-//! [`kamchatka::wiring`]'s, and this returned when the first session did before they were - so
-//! either command ended the process with the session in memory and nothing on disk.
+//! [`kamchatka::wiring`]'s, the same calls `main.rs` makes.
 //!
-//! note: the relay is `relay/mod.rs` and is shared rather than copied, which is the whole reason
-//! this is a second example instead of a flag on the first. `gateway.rs` says what a relay is for
-//! and does nothing else; this says what it is like to have one, and does not restate a word of it.
+//! note: the relay is `relay/mod.rs`, shared rather than copied, which is what lets this be a
+//! second example instead of a flag on the first. `gateway.rs` says what a relay is for and does
+//! nothing else; this says what it is like to have one, and does not restate a word of it.
 //!
 //! note: it draws nothing, and that is not a limitation of the example. `kamchatka --serve` in a
 //! terminal is a session with a screen *and* a socket, which is the better way to have both; what
@@ -46,8 +44,8 @@
 //!
 //! note: **no authentication and no encryption**, exactly as in `gateway.rs`, and the same sentence
 //! applies with more force because this one starts the session too: whatever reaches the page runs
-//! the `shell` tool as whoever ran this. The listen address is asked for outright rather than
-//! defaulted to a wildcard, and a non-loopback one says what it means.
+//! the `shell` tool as whoever ran this. The page listens on loopback unless
+//! `KAMCHATKA_PHONE_LISTEN` says otherwise, and a non-loopback address says what it means.
 
 use kamchatka::{
     app::Speaker,
@@ -81,8 +79,8 @@ const SESSION: &str = "tcp:127.0.0.1:0";
 async fn main() -> Result<(), String> {
     // this binary is its own confiner, the way the program is: the shell tool re-executes it with
     // `--confine-and-run` and it restricts itself before exec'ing the command. Without it the child
-    // reads that flag as the address to listen on and starts a second session of its own, which is
-    // an example that hangs on the first thing the model tries to run
+    // hands that flag to the argument parser, which refuses it, and nothing the model tries to run
+    // runs
     if let Some(code) = kamchatka::sandbox::run_if_asked() {
         std::process::exit(code);
     }
@@ -122,9 +120,9 @@ async fn main() -> Result<(), String> {
     println!("· a session of its own at {at}");
 
     // note: the session is the task and the relay is what this waits on, rather than the other way
-    // round. `Server::run` returns when the session ends - a `/quit` or a `/restart` from the page -
-    // and the relay never returns at all, so a `select!` over the two leaves by the door that has
-    // one
+    // round. The task ends with the last session - a `/quit` from the page, since a `/restart` is
+    // taken inside it - and the relay returns only where it could not listen, so a `select!` over
+    // the two leaves by the session's door
     //
     // note: a loop inside the task, for the reason `main.rs` has one: `/restart` writes this
     // session out and asks for another, built from the arguments this run started with rather

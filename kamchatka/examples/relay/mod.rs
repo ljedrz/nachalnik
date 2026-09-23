@@ -4,12 +4,12 @@
 //! them is about it. `gateway.rs` is a relay to a session somebody else is running, which is the
 //! claim worth making on its own; `phone.rs` is a session and a relay in one process, which is the
 //! convenience. Neither is the other, and an `#[path]`-free `mod relay;` is what stops them being
-//! two copies - the same trick `tests/common` uses, and cargo builds neither of these as an example
-//! of its own because there is no `main.rs` under here.
+//! two copies - the same trick `tests/common` uses - and cargo builds no example out of this
+//! directory, because there is no `main.rs` in it.
 //!
-//! note: why this is `text/event-stream` rather than a WebSocket is `gateway.rs`'s header, and it
-//! is the interesting half: an SSE `id:` is a record sequence and `Last-Event-ID` is
-//! `attach { since }`, so a browser implements resume with no client code at all.
+//! note: why this is `text/event-stream` rather than a WebSocket is `gateway.rs`'s header: an SSE
+//! `id:` is a record sequence and `Last-Event-ID` is `attach { since }`, so a browser implements
+//! resume with no client code at all.
 
 use std::{
     collections::HashMap,
@@ -31,7 +31,7 @@ const PAGE: &str = include_str!("../browser.html");
 
 /// How long a browser waits before reconnecting a dropped stream, in milliseconds.
 ///
-/// note: sent once at the top of every stream. The browser's default is three seconds and this is
+/// note: sent once at the top of every stream. The browser's default is a few seconds and this is
 /// a session somebody is watching, so it is worth being quicker - and the reconnection costs only
 /// the records that were missed, because `Last-Event-ID` says where to start.
 const RETRY: u64 = 1_000;
@@ -50,11 +50,11 @@ type Tabs = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Command>>>>;
 /// note: remembered here because a browser's own reconnection opens a *new* connection to the
 /// session, which therefore has no projection of its own to read the name off - and a resume that
 /// cannot say which session it came from is the one `Command::Attach` describes as the quiet
-/// failure. The browser keeps its resume with no client code at all, which is the point of this
-/// being SSE; naming the session is the gateway's half of it.
+/// failure. The browser keeps its resume with no client code at all; naming the session is the
+/// gateway's half of it.
 type Named = Arc<Mutex<Option<String>>>;
 
-/// Serves the page and the stream to browsers, relaying each to `session`, until something stops it.
+/// Serves the page and the stream to browsers, relaying each to `session`, until stopped.
 pub async fn run(session: &str, listen: &str) -> Result<(), String> {
     let session = session.to_owned();
     // the session is reached the way any other client reaches it, and this checks the spelling here
@@ -101,7 +101,7 @@ pub async fn run(session: &str, listen: &str) -> Result<(), String> {
     }
 }
 
-/// One browser connection: read a request, answer it, and for a stream stay for as long as it lasts.
+/// One browser connection: read a request, answer it, and for a stream stay as long as it lasts.
 async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> Result<(), String> {
     let (read, mut write) = browser.into_split();
     let mut reader = BufReader::new(read);
@@ -221,7 +221,7 @@ async fn stream<W: AsyncWrite + Unpin>(
     };
     // note: the whole attach happens before the head goes out, which is what makes the retry below
     // possible: nothing has been said to the browser yet, so a second attempt is the first one it
-    // hears about. A `200` on this route means "attached", and now it is true when it is sent
+    // hears about. A `200` on this route means "attached", and it is true when it is sent
     let Some(Upstream {
         mut up,
         mut down,
@@ -272,8 +272,8 @@ async fn stream<W: AsyncWrite + Unpin>(
     // note: removed only where the entry is still *this* stream's. A browser reconnecting under
     // the same tab id before this relay notices its socket is gone - a half-open TCP, which is the
     // case the session's own keepalive exists for - puts a live sender in the map, and a blind
-    // `remove` takes that one out instead. `POST /do` then answers `409 no such tab` to every line
-    // typed until the browser reconnects again
+    // `remove` would take that one out instead, leaving `POST /do` answering `409 no such tab` to
+    // every line typed until the browser reconnects again
     let mut open = tabs.lock().expect("the tabs are not poisoned");
     if open.get(&tab).is_some_and(|to| to.same_channel(&mine)) {
         open.remove(&tab);
@@ -298,20 +298,18 @@ struct Upstream {
 /// note: what `remote::Client` does with the same answer, and for the same reason - a relay is a
 /// client. `/restart` leaves a session of its own behind this address, so a resume naming the one
 /// before it, or numbered from its log, is refused, which is the check doing its job. Passed on to
-/// the page it was a `failed` line, a closed stream, a reconnection a second later carrying the
-/// same `Last-Event-ID`, and the same line again for as long as the tab was open - and the session
-/// the restart had just started, with the path the old one was written to as its first line, was
-/// the one thing nobody could see. Only a fresh attach can succeed now, so this is where it is
-/// made: the `attached` that answers one carries the new session's `seq`, which is the `id:` that
-/// puts the browser's own watermark back where it belongs.
+/// the page, that refusal is a `failed` line, a closed stream, and a reconnection a second later
+/// carrying the same `Last-Event-ID`, for as long as the tab is open - and the new session, whose
+/// first line says where the old one was written, is never seen. Only a fresh attach can succeed,
+/// so this is where it is made: the `attached` that answers one carries the new session's `seq`,
+/// which is the `id:` that puts the browser's own watermark back where it belongs.
 ///
 /// note: the answer is read here rather than left to the relay, because it is the only place both
 /// halves of the retry are still to hand - the connection to replace and the watermark to drop -
 /// and it is handed back so that the browser is told what it said like anything else.
 ///
-/// note: a version refusal is passed on untouched, because nothing mends it. Attaching again says
-/// the same thing and is refused for the same reason, which is the minute `remote::Client` spent
-/// finding that out.
+/// note: a version refusal is passed on untouched, because nothing mends it: attaching again is
+/// refused for the same reason, and `remote::Client` gives up on it for the same one.
 async fn attach<W: AsyncWrite + Unpin>(
     host: &str,
     since: Option<u64>,
@@ -405,14 +403,14 @@ async fn forward<W: AsyncWrite + Unpin>(
     {
         *named.lock().expect("the name is not poisoned") = Some(session.to_owned());
     }
-    // note: the whole mapping, and it is three lines because the standard already had the
-    // shape. An `id:` is what a browser resumes from, so it goes on exactly the messages that
-    // *can* be resumed from - which is the numbered ones, which is the ones in the log
+    // note: the whole mapping. An `id:` is what a browser resumes from, so it goes on exactly the
+    // messages that *can* be resumed from - which is the numbered ones, which is the ones in the
+    // log
     //
-    // note: `projected` carries a `seq` that would be a valid one, which is the near miss
-    // worth naming. It is an answer to a command rather than a place in the stream, and a
-    // browser resuming from it would be resuming from a message nobody can ask for again by
-    // number. The rule is what can be *re-sent*, not what has a number on it
+    // note: `projected` carries a `seq` that would be a valid one. It is an answer to a command
+    // rather than a place in the stream, and a browser resuming from it would be resuming from a
+    // message nobody can ask for again by number. The rule is what can be *re-sent*, not what has
+    // a number on it
     let id = matches!(is, Some("record" | "attached"))
         .then(|| message.get("seq").and_then(serde_json::Value::as_u64))
         .flatten();

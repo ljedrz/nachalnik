@@ -7,33 +7,31 @@
 //!
 //! note: or `KAMCHATKA_API_KEY`, which asks the same model through OpenRouter. It goes through
 //! [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the two
-//! choose the account and the model the same way - this used to ask for `TYPESAFE_API_KEY` and
-//! nothing else, which left the one example about the advisor unrunnable for anybody whose key
-//! is the one the feature is happiest with.
+//! choose the account and the model the same way.
 //!
 //! An agent's context fills up, and something has to go. `kamchatka` ships [`Trim`], which elides
-//! the oldest tool results — and age is a *proxy*. Nobody wants the oldest gone; they want the
+//! the oldest tool results - and age is a *proxy*. Nobody wants the oldest gone; they want the
 //! least useful gone, and "useful" is a relation between a result and what the session is trying
 //! to do. Nothing in a terminal client could evaluate that, so the pass answers the question it
 //! can instead.
 //!
 //! [`Jev`] can answer the real one. It is a System One model: it takes a state and a map of typed
-//! questions and returns numbers — no text, no tool calls, nothing to parse. Here the state is
+//! questions and returns numbers - no text, no tool calls, nothing to parse. Here the state is
 //! everything the user typed over the session plus a digest of each candidate result, and there is
 //! one `score` question per candidate against an ordered rubric. All of them go in **one
 //! request**, evaluated in parallel and in isolation, so no candidate's answer can be moved by
 //! another's and the round trip is paid once however many there are.
 //!
 //! The context below is synthetic and rigged in exactly one way: the result the task depends on
-//! is the *oldest*. That is not a trick — it is the ordinary shape of a session, since you read
+//! is the *oldest*. That is not a trick - it is the ordinary shape of a session, since you read
 //! the file you are working on first and then spend twenty turns running things against it, and
 //! it is the shape age gets wrong every time.
 //!
 //! What this compares is the **order**, holding the number of items taken fixed: `Trim` decides
-//! how many it must elide to get under its target, and the same count is taken off the other end
-//! of the ranking. So the two are choosing between the same alternatives. It deliberately does
-//! not reimplement the rest of `Trim` — the marker arithmetic, the floor under what is worth
-//! eliding, the superseded summary — because a copy of those in an example would be a subtly
+//! how many it must elide to get under its target, and the same count is taken off the bottom of
+//! the ranking. So the two are choosing between the same alternatives. It deliberately does
+//! not reimplement the rest of `Trim` - the marker arithmetic, the floor under what is worth
+//! eliding, the superseded summary - because a copy of those in an example would be a subtly
 //! wrong one.
 
 use std::{
@@ -52,8 +50,8 @@ use serde_json::json;
 /// The rubric each candidate is placed on, least worth keeping first.
 ///
 /// note: a `score` rather than a `choice`, because the answer is a *position* on an ordered list
-/// and may fall between two levels — which is what a ranking wants. A `choice` over the same four
-/// would have thrown the ordering away and made two adjacent answers incomparable.
+/// and may fall between two levels - which is what a ranking wants. A `choice` over the same four
+/// would throw the ordering away and make two adjacent answers incomparable.
 ///
 /// note: phrased about the task rather than about the content. "Large" and "old" are properties of
 /// an item; "still needed" is a relation between an item and the work, and that relation is the
@@ -63,7 +61,7 @@ use serde_json::json;
 /// reachable only because the state carries what the *user* said. Somebody typing "this is
 /// important:" or "remember that" is the whole of the signal, it lives in the transcript where
 /// they typed it, and nothing on the result itself records it. That is why the state below sends
-/// the user's messages in order rather than only the opening task — take them away and this level
+/// the user's messages in order rather than only the opening task - take them away and this level
 /// becomes unreachable, since no amount of reading a spec file tells you the user asked for it.
 const RUBRIC: [&str; 4] = [
     "oneshot: nothing since refers to it and the conversation has moved past it",
@@ -87,10 +85,8 @@ enum Step {
 
 /// The session, oldest first, and between them the results cover every level of [`RUBRIC`].
 ///
-/// note: rigged in exactly one way — the result the work is actually about is the *oldest*, so
-/// age gets the one decision that matters maximally wrong. That is not a trick: it is the ordinary
-/// shape of a session, since you read the file you are working on first and then spend twenty
-/// turns running things against it.
+/// note: rigged in the one way the header says - the result the work is actually about is the
+/// *oldest*, so age gets the one decision that matters maximally wrong.
 ///
 /// note: `obsolete` needs a pair to be obsolete *against*, which is why the failing `cargo build`
 /// and the later passing one are both here. A level defined as "already said later in the
@@ -98,7 +94,7 @@ enum Step {
 ///
 /// note: the two [`Step::Said`] entries are load-bearing rather than scene-setting. The second one
 /// is the only thing in the whole session that makes `read docs/chunked-framing.md` more than
-/// another file somebody opened, and it is four steps away from the result it is about.
+/// another file somebody opened, and it is said once and never again.
 const SESSION: &[Step] = &[
     Step::Said(
         "The `parse_header` function in src/wire.rs is returning the wrong length for chunked \
@@ -148,8 +144,8 @@ const SESSION: &[Step] = &[
     },
     // the later work that makes the grep above `referenced` rather than another spent lookup. A
     // level defined as "later work builds on something in it" needs that later work to be in the
-    // session: the first draft of this example asserted the grep was referenced and nothing ever
-    // used it, and the ranking said `obsolete` and was right
+    // session: without this edit nothing uses the grep, and a ranking that calls it `obsolete` is
+    // right
     Step::Ran {
         label: "fs edit src/reader.rs",
         body: "replaced 2 occurrences\n  src/reader.rs:88  parse_header(&self.buf)? -> \
@@ -190,7 +186,7 @@ const THRESHOLD: f64 = 0.8;
 /// How much of each candidate is shown to the model, in bytes.
 ///
 /// note: a head excerpt rather than the whole thing, since the whole thing is what the context is
-/// too full of — sending it to be judged would cost more than the pass recovers. Most of the
+/// too full of - sending it to be judged would cost more than the pass recovers. Most of the
 /// signal is not in the content anyway: it is in the label, which for a tool result is the command
 /// or the path that produced it, and `grep -r todo src/` is distinguishable from `cat src/main.rs`
 /// without reading either result.
@@ -200,12 +196,13 @@ const EXCERPT: usize = 400;
 ///
 /// note: the pass refuses to elide anything smaller than the marker that replaces it, so a
 /// demonstration built out of four-line outputs would print two empty plans and show nothing. What
-/// is padded is the bulk, never the first lines — those are what the excerpt carries.
+/// is padded is the bulk, never the first lines - those are what the excerpt carries.
 fn padded(body: &str) -> String {
     format!("{body}{}", "\n// ... more output ...".repeat(120))
 }
 
-/// A context in the shape a session gets into: a task, and six results behind it.
+/// A context in the shape a session gets into: a task, a remark made in passing, and the tool
+/// results around them.
 fn context() -> Kernel {
     let kernel = Kernel::new(Config::default());
     // a `Budget` takes its limit from the provider's `ModelInfo`, so one has to be plugged in even
@@ -293,7 +290,7 @@ async fn main() -> Result<(), BoxError> {
         .collect();
 
     println!(
-        "the rubric — a score is a position on this scale, and may land between two levels:\n"
+        "the rubric - a score is a position on this scale, and may land between two levels:\n"
     );
     for (n, level) in RUBRIC.iter().enumerate() {
         let (name, means) = level.split_once(": ").unwrap_or((level, ""));
@@ -305,7 +302,7 @@ async fn main() -> Result<(), BoxError> {
         println!("  · {text}");
     }
     println!(
-        "\ncontext: {} tokens against a {LIMIT}-token limit — {}% of it, so the next request \
+        "\ncontext: {} tokens against a {LIMIT}-token limit - {}% of it, so the next request \
          would be refused.",
         budget.used(),
         (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
@@ -335,11 +332,10 @@ async fn main() -> Result<(), BoxError> {
         .map(|item| {
             (
                 item.id.to_string(),
-                // note: "worth keeping" rather than "does the task depend on it", which is what
-                // this asked first and was a question narrower than the rubric it is scored
-                // against. `marked` is not about dependence at all - it is about something the
-                // user said - so a question that only asked about dependence left that level
-                // unreachable by construction, and the answers duly never went near it
+                // note: "worth keeping" rather than "does the task depend on it", which is a
+                // question narrower than the rubric it is scored against. `marked` is not about
+                // dependence at all - it is about something the user said - so a question that
+                // only asked about dependence would leave that level unreachable by construction
                 Question::score(
                     format!(
                         "Result {} was produced by `{}`. How much is it still worth keeping in \
@@ -380,7 +376,7 @@ async fn main() -> Result<(), BoxError> {
         .collect();
 
     println!(
-        "\n{going} of the {} results have to go — ✂ is elided, · is kept:\n",
+        "\n{going} of the {} results have to go - ✂ is elided, · is kept:\n",
         candidates.len()
     );
     println!(
@@ -404,8 +400,8 @@ async fn main() -> Result<(), BoxError> {
         );
     }
 
-    // the line a reader should leave with, and it is computed rather than asserted: whatever the
-    // model happened to say, this names what the two passes actually disagreed about
+    // computed rather than asserted: whatever the model happened to say, this names what the two
+    // passes actually disagreed about
     let saved: Vec<&str> = candidates
         .iter()
         .filter(|item| cut_by_age.contains(&item.id) && !cut_by_jev.contains(&item.id))
@@ -417,8 +413,7 @@ async fn main() -> Result<(), BoxError> {
             false => format!("{} and {last}", rest.join(", ")),
         };
         println!(
-            "\nage takes {listed} — the ranking keeps {} and spends the room on results \
-             nothing has referred to since.",
+            "\nage takes {listed} - the ranking keeps {} and takes others instead.",
             match saved.len() {
                 1 => "it",
                 _ => "all of them",
@@ -437,7 +432,7 @@ async fn main() -> Result<(), BoxError> {
         // one is a line about somebody else's bill
         println!(
             "It cost {} in / {} out at {} to decide which of {} tokens of the agent's own \
-             context to keep — a different endpoint, and a different bill.",
+             context to keep.",
             usage.input_tokens.unwrap_or_default(),
             usage.output_tokens.unwrap_or_default(),
             jev.named(),

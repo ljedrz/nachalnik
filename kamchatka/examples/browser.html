@@ -17,10 +17,8 @@
 
 <!--
   The whole client. No build step, no framework, no bundler, no dependency - it is served by
-  examples/gateway.rs out of an include_str!, and everything it knows about the session it learns
-  from the protocol.
-
-  What it does that is worth reading:
+  examples/relay/, for gateway.rs and phone.rs alike, out of an include_str!, and everything it
+  knows about the session it learns from the protocol.
 
   * the conversation comes from a projection, and can come from nowhere else. The records name
     things rather than carrying them, so a page fed only the stream can follow a turn as it arrives
@@ -30,7 +28,7 @@
   * anything it finds it has no text for - an item added by somebody else, an answer it missed
     while it was away - it asks for with `inspect`. That is the other half of the same decision.
   * it never reconnects. `EventSource` does that by itself, and sends `Last-Event-ID`, which the
-    gateway turns into `attach { since }`. Resume, for free.
+    relay turns into `attach { since }`, so resuming takes no code here.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
   * the four views are the terminal's tabs, in the terminal's order, drawn from what the terminal
@@ -61,15 +59,15 @@
     }
   }
   /* note: `--line` is every border on the page - the header, the footer, a row's rule, the box you
-     type in - and it was two shades off the background, which is a hairline on a good monitor and
-     nothing at all on a phone in daylight. About 2:1 against the background in either scheme now,
-     which is a line somebody can find without it reading as a heavy rule */
+     type in - and it is about 2:1 against the background in either scheme. Much fainter is a
+     hairline on a good monitor and nothing at all on a phone in daylight; this is a line somebody
+     can find without it reading as a heavy rule */
   * { box-sizing: border-box; }
   /* note: `--tall` is the *visual* viewport's height, set from script, and `100dvh` is the fallback
      for a browser without one. They are not the same viewport and the difference is the on-screen
-     keyboard: `dvh` is the one the URL bar grows and shrinks, and a keyboard does not resize it at
-     all - so a footer pinned to the bottom of `100dvh` sits underneath the keyboard, which is where
-     the prompt was on a phone the moment anybody tried to type into it */
+     keyboard: `dvh` is the one the URL bar grows and shrinks, and a keyboard does not resize it
+     unless `interactive-widget` above is honoured - so a footer pinned to the bottom of `100dvh`
+     sits underneath the keyboard, with the prompt in it */
   body {
     margin: 0; background: var(--bg); color: var(--fg);
     font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -85,11 +83,10 @@
        a browser to scroll when it decides to bring a focused box into view */
     overflow: hidden;
   }
-  /* note: one row, always. It used to wrap, and a model whose name is long - or a word like
-     `reconnecting…` beside it - took a second row, which grew the header and pushed the chat and
-     the prompt down the page. A bar that moves the thing under it is worse than a bar that says
-     less: what gives here is the model's name, which ellipsizes, because it is the one thing on the
-     row that has no length anybody can predict */
+  /* note: one row, always. A second row grows the header and pushes the chat and the prompt down
+     the page, and a bar that moves the thing under it is worse than a bar that says less: what
+     gives here is the model's name, which ellipsizes, because it is the one thing on the row that
+     has no length anybody can predict */
   header {
     padding: 8px 12px; border-bottom: 1px solid var(--line);
     display: flex; gap: 12px; flex-wrap: nowrap; align-items: baseline;
@@ -144,17 +141,18 @@
   .versions.past { border-color: var(--call); color: var(--call); }
   .figures { font-size: 12px; color: var(--dim); margin-top: 2px; }
   .why { font-size: 12px; color: var(--note); margin-top: 2px; font-style: italic; }
-  /* note: a `textarea` rather than a `div`, which is the whole of making an item editable. The box
-     already showed what the item said and already read as something you could type into; what it
-     was missing was somewhere for the typing to go. See `Command::Revise` */
+  /* note: a `textarea` rather than a `div`, which is all it takes to make an item editable: the
+     box shows what the item says, reads as something you can type into, and has somewhere for the
+     typing to go. See `Command::Revise` */
   .body {
     display: none; margin-top: 8px; padding: 8px; white-space: pre-wrap;
     overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px;
     width: 100%; font: inherit; background: transparent; color: inherit; resize: vertical;
   }
   .row.open .body { display: block; }
-  /* the three shapes an edit cannot reach still open and still read - what they do not do is take
-     typing they were never going to keep. `Listed::beyond` is what says which, and says why */
+  /* the three shapes an edit cannot reach, and any earlier version, still open and still read -
+     what they do not do is take typing they were never going to keep. `Listed::beyond` is what
+     says which shapes, and says why */
   .body[readonly] { color: var(--dim); }
   .empty { color: var(--dim); white-space: pre-wrap; }
   .policy { margin: 0 0 10px; font-weight: 600; overflow-wrap: anywhere; }
@@ -184,8 +182,8 @@
     background: transparent; color: inherit;
     border: 1px solid var(--line); border-radius: 6px; min-height: 42px;
     /* a third of what is *visible*, not of the screen: `vh` is the layout viewport, which a
-       keyboard does not shrink, so this said a third of the whole phone while a third of the phone
-       was all there was */
+       keyboard does not shrink, and a third of the whole phone can be all that is left above the
+       keyboard */
     max-height: calc(var(--tall, 100dvh) * 0.3);
   }
   button {
@@ -206,15 +204,14 @@
   #answers { display: flex; gap: 8px; flex-wrap: wrap; }
   #answers button { flex: 1; }
   .allow { border-color: var(--user); } .deny { border-color: var(--bad); }
-  /* note: the corner a person's eye is already in, because the session name is there and it is the
+  /* note: the corner a person's eye is already in, because the model's name is there and it is the
      first thing read. A turn can be a minute of nothing arriving - a model thinking, a command
      running, a provider gone quiet - and a page with no pulse in it is indistinguishable from a
      page whose connection died.
-     note: and it is the whole of what the bar says about both, where there used to be a word beside
-     it as well. `working…` and `reconnecting…` said what the dot was already saying, and cost the
-     row the width that made it wrap. The two states are told apart by colour rather than by text:
-     the colour a call is drawn in for a turn that is running, and the colour a refusal is drawn in
-     for a stream that has gone */
+     note: and it is the whole of what the bar says about both. A word beside it would say what the
+     dot already says, and cost the row the width that makes it wrap. The two states are told apart
+     by colour rather than by text: the colour a call is drawn in for a turn that is running, and
+     the colour a refusal is drawn in for a stream that has gone */
   #pulse { color: var(--call); animation: pulse 1.2s ease-in-out infinite; }
   #pulse.down { color: var(--bad); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .15; } }
@@ -277,9 +274,9 @@ let adrift = false;     // and whether the stream has gone, which is the other h
 /**
  * The views, in the order the terminal's tab strip has them.
  *
- * note: the order is `Tab::ALL`, deliberately, down to the event log sitting where the trace does
- * rather than at the end where it was easiest to add. Somebody who knows one of these two should
- * not have to learn the other's habits, and tab order is the cheapest kind of similarity there is.
+ * note: the order is `Tab::ALL`, down to the event log sitting where the trace does rather than at
+ * the end. Somebody who knows one of these two should not have to learn the other's habits, and
+ * tab order is the cheapest kind of similarity there is.
  */
 const VIEWS = ["chat", "context", "events", "permissions"];
 /**
@@ -304,7 +301,7 @@ const RESHAPES = new Set([
  * out. An excluded item is gone from the chat; an elided one is still there in full, because
  * eliding is about what the *model* is sent and the marker is for it rather than for the person.
  * Which of those a given state means is `ContextState::is_projected`, over in the runtime, and a
- * page that reimplemented it would be a second copy of a rule that has six cases and gains them.
+ * page that reimplemented it would be a second copy of a rule the runtime can add cases to.
  *
  * note: a flag rather than a redraw, because the answer arrives later and may arrive at a bad
  * moment - see the `projected` case. Asking twice is cheap and rebuilding under a model that is
@@ -379,8 +376,8 @@ function say(kind, text, item) {
  * note: what stops a message appearing twice. A line is drawn the moment it is sent, because a
  * message handed into a running turn is *queued* and does not become an item until that turn ends -
  * which can be minutes, and a page that waited would have swallowed it. But it does become one
- * eventually, and `context.added` is how everybody hears about it, so without this the page
- * inspected its own message and drew it a second time underneath the first.
+ * eventually, and `context.added` is how everybody hears about it, so without this the page would
+ * inspect its own message and draw it a second time underneath the first.
  *
  * note: claimed from either direction, because the order is not guaranteed. `replied` carries the
  * item a line was asked as and arrives on the command path; `context.added` arrives on the record
@@ -409,12 +406,11 @@ function inspect(id, kind) {
 /**
  * Moves to a view and draws it.
  *
- * note: it asks for a projection every time rather than drawing the one it has, and the staleness
- * it is avoiding is not the obvious one. The items can be read out of the records - `context.added`
- * names each as it arrives - but what the context view is *for* is the columns that say what the
- * next request will do with each of them, and those are worked out by projecting rather than
- * recorded by anything. A page that accumulated rows from the stream would show a column that was
- * right when the item arrived and has been wrong since.
+ * note: it asks for a projection every time rather than drawing the one it has. The items can be
+ * read out of the records - `context.added` names each as it arrives - but what the context view
+ * is *for* is the columns that say what the next request will do with each of them, and those are
+ * worked out by projecting rather than recorded by anything. A page that accumulated rows from
+ * the stream would show a column that was right when the item arrived and has been wrong since.
  *
  * note: what it does not ask for is the conversation, even though the answer carries one. The chat
  * is drawn from the stream as it arrives and is already right; taking it from here as well would
@@ -471,7 +467,7 @@ function row(into, name, figures, why) {
  * and would take the box with it - mid-sentence, and mid-edit. It is the bargain the chat already
  * strikes with a model that is still writing, and letting go of the box is what pays it. A
  * projection arrives for every state change in the session, so without this an edit on a phone
- * lasted until the next one.
+ * would last until the next one.
  */
 function draw() {
   if (showing === "chat") return;
@@ -498,7 +494,7 @@ function draw() {
       const el = row(panel, `${item.id} ${item.label}`, figures, item.left_out ?? item.marker);
 
       // the state, and the way to change it. One button rather than three, because the session
-      // owns the ring and what it writes beside each step - see `Command::cycle`. What the button
+      // owns the ring and what it writes beside each step - see `Command::Cycle`. What the button
       // says is where the item *is*, so a row reads as a fact and the tap is what changes it
       const state = document.createElement("button");
       state.type = "button";
@@ -580,8 +576,8 @@ function draw() {
         el.querySelector(".head").insertBefore(versions, state);
       }
       // a row the reader had open is drawn open, and asked about again. Every projection rebuilds
-      // this panel - an edit produces one itself - so a row that did not survive the rebuild was a
-      // row that closed the moment it was saved, over the text it had just been given
+      // this panel - an edit produces one itself - so a row that did not survive the rebuild would
+      // close the moment it was saved, over the text it had just been given
       if (opened.has(item.id)) {
         el.classList.add("open");
         fill();
@@ -589,8 +585,7 @@ function draw() {
       el.onclick = (e) => {
         // the row is the toggle and the box inside it is not: a tap on the text is somebody
         // reaching for the keyboard, and a row that collapsed under it would be a row nobody
-        // could edit. Everything else about the row opens and closes it, which is the gesture
-        // that was already there
+        // could edit. Everything else about the row opens and closes it
         if (body.contains(e.target)) return;
         if (el.classList.toggle("open")) opened.add(item.id);
         else opened.delete(item.id);
@@ -657,14 +652,14 @@ function draw() {
     return;
   }
 
-  // note: named rather than left as the fall-through it was. A view this does not know about is a
-  // bug, and drawing the permissions at it is the kind that looks like a feature
+  // note: named rather than left as a fall-through. A view this does not know about is a bug, and
+  // drawing the permissions at it is the kind that looks like a feature
   if (showing !== "permissions") return;
 
   // what is deciding, and what it does with everything the list does not mention - above the list,
-  // always, which is where the tab puts it. A list of decisions is not a policy, and this page
-  // drew the rows alone: somebody who had allowed one `ls` saw an empty table and no answer to
-  // why the model had just run one
+  // always, which is where the tab puts it. A list of decisions is not a policy: drawn alone, the
+  // rows leave somebody who allowed one `ls` looking at an empty table and no answer to why the
+  // model has just run one
   const policy = document.createElement("p");
   policy.className = "policy";
   policy.append(document.createTextNode(`${latest.policy} · anything it has not been told about: `));
@@ -678,15 +673,15 @@ function draw() {
     aside(
       panel,
       "nothing has been decided yet, which is why this list is empty rather than permissive.\n\n" +
-        "Answer a question `allow` or `deny` and its subject arrives here, where it can be " +
-        "changed. A fresh policy also holds a rule for each of a handful of paths that are " +
-        "credentials by convention, and those are questions too, so they are not rows either - " +
-        "the line along the bottom is what counts them. They begin to earn their keep the moment " +
-        "a capability is answered `always`: the capability opens, the rules stay where they are, " +
-        "and the strictest thing consulted wins - so a rule can only ever tighten what a " +
-        "capability allows. Those rules bind `fs`, and deliberately not `shell`: a command names " +
-        "its files inside a string, so what holds a command to a boundary is the sandbox rather " +
-        "than a rule here.",
+        "Answer a question `always` and everything it was judged by arrives here; the " +
+        "terminal's permissions tab is where a row is changed. A fresh policy also holds a rule " +
+        "for each of a handful of paths that are credentials by convention, and those are " +
+        "questions too, so they are not rows either - the line along the bottom is what counts " +
+        "them. They begin to earn their keep the moment a capability is answered `always`: the " +
+        "capability opens, the rules stay where they are, and the strictest thing consulted " +
+        "wins - so a rule can only ever tighten what a capability allows. Those rules bind " +
+        "`fs`, and deliberately not `shell`: a command names its files inside a string, so what " +
+        "holds a command to a boundary is the sandbox rather than a rule here.",
     );
   }
   for (const rule of latest.permissions) {
@@ -702,8 +697,8 @@ function draw() {
   // and the footer the tab has, in the tab's order. The sandbox line comes first because it is the
   // one thing here that is not negotiable: a registered shell that has not been refused can read,
   // write and reach the network whatever the rows above say, so a list of verdicts with nothing
-  // about it would be reporting restrictions that are not there. The count is the honest footnote
-  // that the rows are the decisions rather than the whole policy
+  // about it would be reporting restrictions that are not there. The count says that the rows are
+  // the decisions rather than the whole policy
   const footer = [latest.confinement ?? "no sandbox: a command reaches whatever this user can"];
   if (latest.undecided) footer.push(`${latest.undecided} more it will ask about`);
   aside(panel, footer.join(" · "));
@@ -782,12 +777,11 @@ prompt.onsubmit = async (e) => {
   // running turn is queued, and would be invisible until that turn ended. `claim` is what stops
   // it being drawn again when it does become an item
   const drawn = say("user", text);
-  // note: a *message* is waiting to become an item and a command never will, which is the whole
-  // of why this asks. `claim` empties this list one entry per `context.added`, so a command left
-  // in it is an entry nothing is ever going to take out - and the chat rebuild is held back
-  // while anything is in here, so the first `/` anybody typed stopped the chat following the
-  // context for the rest of the session. `conversation` is what empties the list, and it was the
-  // one thing the list was blocking: only a reload got out of it
+  // note: a *message* is waiting to become an item and a command never will, which is why this
+  // asks. `claim` empties this list one entry per `context.added`, so a command left in it is an
+  // entry nothing is ever going to take out - and the chat rebuild, the only other thing that
+  // empties it, is held back while anything is in here. One `/` would stop the chat following
+  // the context until a reload
   const waiting = !text.startsWith("/");
   if (waiting) pending.push(drawn);
   // and taken back where the gateway would not take it. A line drawn optimistically is a promise
@@ -822,9 +816,8 @@ function heard(m) {
       // whatever this page had drawn belongs to the conversation it is about to be handed
       latest = m;
       stale = false;
-      // note: the session's name is not up here, and it is a timestamp - which is the one thing in
-      // the header nobody reads twice and the widest thing on a phone. It is still what the record
-      // is filed under and what `/save` writes, and `setup` says it
+      // note: the session's name is not up here. It is a timestamp, which nobody reads twice and
+      // which would be the widest thing on a phone; it is still what the record is filed under
       named(m.model);
       budget(m);
       if (showing !== "chat") draw();
@@ -839,11 +832,11 @@ function heard(m) {
     case "progress": {
       // note: dropped unless something is actually arriving, and that is not a nicety. A fragment
       // is unnumbered and best-effort, so a connection that has fallen behind is handed one *after*
-      // the record that ends the answer it belonged to - the server says so in as many words. A
-      // page that took those anyway started a second bubble underneath whatever had been drawn
-      // since, which is how one answer came to be shown twice, and how another arrived in two
-      // pieces with a message typed in between them. The terminal drops the same fragments under
-      // the name `Entry::transient`: once the item exists, the item is what says what was said
+      // the record that ends the answer it belonged to, and says so: its `after` is that record. A
+      // page that took those anyway would start a second bubble underneath whatever had been drawn
+      // since, and show one answer twice, or in two pieces with a message typed in between them.
+      // The terminal drops the same fragments under the name `Entry::transient`: once the item
+      // exists, the item is what says what was said
       if (m.event.event === "model.delta" && m.event.delta.text !== undefined && streaming) {
         if (!open) open = say("model", "");
         open.textContent += m.event.delta.text;
@@ -853,10 +846,9 @@ function heard(m) {
     }
     case "projected": {
       latest = m;
-      // note: the model as well as the figures, and it is not decoration. A projection is the only
-      // thing that knows what the session is talking to *now*, and for a long time this case read
-      // the budget off it and left the name in the header saying whatever it said when this page
-      // attached
+      // note: the model as well as the figures. A projection is the only thing that knows what the
+      // session is talking to *now*, and reading the budget off it alone would leave the name in
+      // the header saying whatever it said when this page attached
       named(m.model);
       budget(m);
       if (showing !== "chat") draw();
@@ -932,15 +924,14 @@ function heard(m) {
 
 /** One thing that happened, out of a record. */
 function happened(e) {
-  // anything that touched the context makes the rows on screen stale, whoever touched it - this
-  // page, somebody at the terminal, or the model through its own `context` tool. Asked for rather
-  // than patched in, because what the columns say is worked out by projecting
-  // the context view's figures go stale on anything that touched the context, and the trace on
-  // anything at all - it is the log of everything, so every record is a line of it
+  // the context view's rows go stale on anything that touched the context, whoever touched it -
+  // this page, somebody at the terminal, or the model through its own `context` tool - and the
+  // trace on anything at all, because every record is a line of it. Asked for rather than patched
+  // in, because what the columns say is worked out by projecting
   if (showing === "events" || (showing === "context" && e.event.startsWith("context."))) {
     send({ do: "project" });
   }
-  // and a subset of those changed the *conversation*, which every view owes a rebuild. Not
+  // and a subset of those changed the *conversation*, which the chat owes a rebuild. Not
   // `context.added`, which is the one the appending below already draws, and not `annotated` or
   // `recounted`, which move a figure and not a line
   if (RESHAPES.has(e.event)) restale();
@@ -958,12 +949,11 @@ function happened(e) {
     case "tool.finished":
       say("result", `${e.tool}: ${e.tokens} tokens${e.is_error ? ", an error" : ""}`);
       break;
-    // note: and a projection asked for on the spot, which is the one thing a record cannot carry.
-    // The advisor's reading of the command is not in the session log - it is not an event, because
-    // it decided nothing - so it travels beside the questions in a projection, and a question that
-    // arrived on the stream is a question this page holds without one. Asked for here rather than
-    // waited for: `stale` is settled at the end of a turn, and a turn is exactly what this has
-    // stopped in the middle of
+    // note: and a projection asked for on the spot, because the advisor's reading of the command
+    // is not in the session log - it is not an event, because it decided nothing - so it travels
+    // beside the questions in a projection, and a question that arrived on the stream is a
+    // question this page holds without one. Asked for here rather than waited for: `stale` is
+    // settled at the end of a turn, and a turn is exactly what this has stopped in the middle of
     case "permission.requested":
       asking.push(e.request);
       showQuestion();
@@ -978,10 +968,10 @@ function happened(e) {
       // the fragments were the live half and are over; the item is what was kept, and the item is
       // what the chat shows from here. That is `Entry::transient` upstairs - the terminal drops
       // every streamed line the moment the turn is recorded and reads the context instead - and
-      // this page used to keep whatever had arrived, which is wrong in two ways a person sees.
-      // A fragment is unnumbered and best-effort, so a page that fell behind kept a *truncated*
-      // answer for good; and the fragments are what the provider sent, byte for byte, so an answer
-      // that began with two blank lines began with two blank lines, where the context trims them
+      // keeping whatever had arrived is wrong in two ways a person sees. A fragment is unnumbered
+      // and best-effort, so a page that fell behind would keep a *truncated* answer for good; and
+      // the fragments are what the provider sent, byte for byte, so an answer that began with two
+      // blank lines would begin with two blank lines, where the context trims them
       streaming = false;
       if (open) { open.dataset.item = e.item; open = null; }
       restale();
@@ -1028,25 +1018,23 @@ function indicator() {
   dot.title = adrift ? "the stream went; picking it back up" : "working";
 }
 
-// note: no reconnection anywhere in this file. `EventSource` does it, and sends `Last-Event-ID` -
-// the last record this page was given - which the gateway hands to the session as `attach
-// { since }`. The whole of resume, for nothing
-// note: anything this page throws goes on the page, because the alternative is what it looked like
-// the first time something did: a blank screen and nothing to go on
+// note: anything this page throws goes on the page, because the alternative is a blank screen and
+// nothing to go on
 window.onerror = (message, src, line) => { say("error", `${message} (${src}:${line})`); };
 
 // note: the class on `body` is what the stylesheet reads to decide which view is showing, and
-// `show` is the only thing that sets it - so a page that never called it started with no class at
-// all, which `body:not(.chat)` reads as "not the chat": the conversation and the prompt were both
-// hidden until somebody cycled all the way round to chat and set it. The invariant is that
+// `show` is the only thing that sets it. A page with no class at all is one `body:not(.chat)`
+// reads as "not the chat", with the conversation and the prompt both hidden. The invariant is that
 // `showing` and the class always agree, and this is where it starts being true
 show("chat");
 
 const events = new EventSource(`/events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
-// note: `EventSource` reconnects by itself and sends `Last-Event-ID`, so there is nothing to do
-// here but say so - and the saying is the dot going red, because a page that looks exactly the same
-// whether or not it is still attached is the thing the indicator exists to stop
+// note: no reconnection anywhere in this file. `EventSource` reconnects by itself and sends
+// `Last-Event-ID` - the last record this page was given - which the relay hands to the session as
+// `attach { since }`, so there is nothing to do here but say so. The saying is the dot going red,
+// because a page that looks exactly the same whether or not it is still attached is the thing the
+// indicator exists to stop
 events.onerror = () => {
   adrift = true;
   indicator();
@@ -1067,8 +1055,8 @@ function visible() {
   return window.visualViewport ? window.visualViewport.height : window.innerHeight;
 }
 
-// note: this is what put the prompt back above the keyboard. A browser without `visualViewport`
-// keeps the `100dvh` in the stylesheet and the old behaviour with it
+// note: this is what keeps the prompt above the keyboard. A browser without `visualViewport`
+// keeps the `100dvh` in the stylesheet and nothing more
 if (window.visualViewport) {
   const fit = () => {
     // pinned before the height changes and restored after, because a shorter log keeps the scroll
@@ -1080,8 +1068,7 @@ if (window.visualViewport) {
     // shortens the visual viewport on Android and on iOS also slides it down the layout viewport,
     // and `window.scrollTo` below does not move that: it is an offset within the layout viewport
     // rather than a scroll of it. Left out, the page ends up exactly the right height and that
-    // many pixels too high, with the prompt under the keyboard again - which is the whole
-    // symptom this is about
+    // many pixels too high, with the prompt under the keyboard again
     document.documentElement.style.setProperty(
       "--lift",
       `${Math.round(window.visualViewport.offsetTop)}px`,
@@ -1101,8 +1088,8 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener("scroll", fit);
   // note: and again after a box takes the focus, because a keyboard *animates* in. The first
   // resize a browser reports is measured part of the way through it, so a page that trusted it
-  // sized itself to a keyboard half the height of the one that arrived - which is the prompt
-  // ending up under it by the difference. Three re-measures over half a second cost nothing and
+  // would size itself to a keyboard half the height of the one that arrived, with the prompt
+  // under it by the difference. Three re-measures in the next 600ms cost nothing and
   // catch whichever frame the animation settles on; `fit` only ever writes two numbers, so
   // running it again when nothing moved changes nothing
   document.addEventListener("focusin", () => {

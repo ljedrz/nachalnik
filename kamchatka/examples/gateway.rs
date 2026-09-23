@@ -12,16 +12,15 @@
 //!
 //! # why events, not sockets
 //!
-//! The interesting part is that `text/event-stream` already has the protocol's own shape in it.
+//! `text/event-stream` already has the protocol's own shape in it.
 //!
 //! An SSE event may carry an `id:`, and when a connection drops the browser reconnects **by
 //! itself** and sends `Last-Event-ID:` with the last one it saw. That is exactly
 //! [`Command::Attach`]'s `since`, which means the browser implements resume with no client code at
-//! all - and resume is the fiddliest part of a client, the part [`kamchatka::remote::Client`] spends
-//! eighty lines and a backoff on.
+//! all - and resume is the fiddliest part of a client, the part [`kamchatka::remote::Client`] needs
+//! a reconnection loop and a backoff for.
 //!
-//! The negative space matches too, which is the half that says the fit is real rather than
-//! convenient. An event with **no** `id:` does not move `Last-Event-ID` - so:
+//! The negative space matches too. An event with **no** `id:` does not move `Last-Event-ID` - so:
 //!
 //! ```text
 //! Message::Record    ->  id: <seq>   data: {…}     numbered, in the log, recoverable
@@ -30,25 +29,25 @@
 //! ```
 //!
 //! A fragment of a model still typing is never something a browser tries to resume from, because
-//! it was never given an id to resume from. That is the two-stream design written in somebody
-//! else's standard.
+//! it was never given an id to resume from.
 //!
 //! A WebSocket would be one connection instead of two, and would cost a handshake, client-frame
 //! unmasking and fragmentation - or a dependency - and every line of the reconnection this gets for
-//! nothing. Commands go the other way by `POST`, which is four or five messages in a session.
+//! nothing. Commands go the other way by `POST`, one request each, and a person does not send
+//! enough of them for that to cost anything.
 //!
 //! # what this is not
 //!
 //! **There is no authentication here, and no encryption.** Whatever reaches this gateway reaches
 //! the session behind it, which runs a `shell` tool as whoever started it. `kamchatka --serve`
-//! refuses to listen anywhere but loopback for that reason; this asks for the listen address
-//! outright and says what a non-loopback one means, because an example somebody runs on their own
-//! network for an afternoon is a different thing from a program's default. It is not a thing to
-//! leave running, and it is not a thing to put on a network you share.
+//! refuses to listen anywhere but loopback for that reason; this listens on loopback unless it is
+//! given another address, and says what a non-loopback one means, because an example somebody runs
+//! on their own network for an afternoon is a different thing from a program's default. It is not a
+//! thing to leave running, and it is not a thing to put on a network you share.
 //!
 //! What it does refuse is the one way in that needs no network at all: another page open in the
-//! same browser. A request has to be for an address rather than a name, come from this page if it
-//! says where it came from, and post its command as JSON - see `relay::foreign`.
+//! same browser. A request has to be for an address or `localhost` rather than a name, come from
+//! this page if it says where it came from, and post its command as JSON - see `relay::foreign`.
 
 mod relay;
 

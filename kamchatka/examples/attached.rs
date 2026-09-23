@@ -1,29 +1,23 @@
-//! A client of somebody else's session, in about a hundred lines and over a port.
+//! A client of somebody else's session, over a port.
 //!
 //! ```console
 //! $ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2
-//! · serving on tcp:127.0.0.1:7878
 //! ```
 //!
 //! ```console
 //! $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
-//! --- 2026-09-12T16-25-31Z, 9 records, 0 items, ~526 tokens, mercury-2 ---
-//! · serving on tcp:127.0.0.1:7878: the session is this program's rather than any client's …
-//! ask: what is 2+2
-//! --- the session took it: Asked(ContextId(1)) ---
-//! 4
-//! --- the turn ended; 7 records arrived, and item 2 is where those fragments ended up ---
-//! 4
 //! ```
+//!
+//! It prints a line naming the session it attached to and what that holds, the conversation so
+//! far, the answer as it is written, and then the item that answer was recorded as.
 //!
 //! note: this reaches for [`kamchatka::remote::protocol`], `tokio`, and three plain data types
 //! that `protocol` itself names - `Speaker`, `Did` and `Page`, which are an enum of seven, an enum
-//! of three, and two strings. It touches no `App`, no wiring and not `remote::Client`, and that is
-//! the point of it rather than something it happens to do: `remote/` says that when something
-//! which is not `kamchatka` needs to speak this, `protocol` is what moves, and the honest version
-//! of that sentence is `protocol` **and those three** - which is what an example rather than a
-//! paragraph is for. They are the program's own vocabulary rather than the wire's second copy of
-//! it, which is why they are borrowed instead of redeclared.
+//! of three, and two strings. It touches no `App`, no wiring and not `remote::Client`. `remote/`
+//! says that when something which is not `kamchatka` needs to speak this, `protocol` is what
+//! moves, and this is the check on that sentence: `protocol` **and those three**. They are the
+//! program's own vocabulary rather than the wire's second copy of it, which is why they are
+//! borrowed instead of redeclared.
 //!
 //! note: a client in another language needs none of that and no Rust at all. The wire is
 //! newline-delimited JSON, one object per line:
@@ -40,7 +34,7 @@
 //!
 //! note: it refuses every permission question it is asked, and says so. That is what an unattended
 //! client should do - it is the same default `--on-ask` has - and a real one puts the question in
-//! front of a person instead. The shape of the answer is the interesting part either way.
+//! front of a person instead.
 
 use std::time::Duration;
 
@@ -116,8 +110,8 @@ async fn main() -> Result<(), String> {
 
     // note: what says the turn is over is `busy`, and it has to be: a turn is a loop over
     // transitions, so `state.changed` reaches `Idle` between two requests of one turn. Every
-    // command is answered exactly once and the answer carries `busy`, which is how this knows a
-    // turn started at all
+    // command is answered exactly once, and the answer to a `submit` carries `busy`, which is how
+    // this knows a turn started at all
     let mut busy = true;
     let mut records = 0;
     let mut answer = None;
@@ -139,9 +133,9 @@ async fn main() -> Result<(), String> {
                     },
                 ..
             } => {
-                // flushed, because this is the one thing the example is for: a model's sentence
-                // arriving as it is written. stdout is line-buffered, so without this the
-                // streaming shows up a line at a time, which is what not streaming looks like
+                // flushed, because a model's sentence arriving as it is written is what this is
+                // showing. stdout is line-buffered, so without this the streaming shows up a line
+                // at a time, which is what not streaming looks like
                 print!("{text}");
                 let _ = std::io::Write::flush(&mut std::io::stdout());
             }
@@ -192,7 +186,7 @@ async fn main() -> Result<(), String> {
             // note: the same words twice, on purpose. Above they were fragments of a model still
             // writing, which are in no log and are gone once they have gone past; this is the item
             // they were recorded as, which is what a client that was not here for them would ask
-            // for. Seeing both is the clearest way to see that they are two different things
+            // for
             println!(
                 "\n--- the turn ended; {records} records arrived, and item {item} is where those \
                  fragments ended up ---"
@@ -202,8 +196,8 @@ async fn main() -> Result<(), String> {
     }
 
     // note: nothing ends the session here. Dropping the connection detaches; the session is the
-    // serving program's and carries on without this one, which is the invariant the whole protocol
-    // is arranged around. `/quit` as a `submit` is how a client says it meant to end one
+    // serving program's and carries on without this one, which is the invariant the protocol is
+    // arranged around. `/quit` as a `submit` is how a client says it meant to end one
     Ok(())
 }
 
