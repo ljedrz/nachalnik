@@ -770,3 +770,32 @@ async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody() {
         );
     }
 }
+
+/// A client whose input closes after a command writes the records that command made before it
+/// leaves.
+///
+/// note: a command's reply carries `busy`, and a client with its input closed leaves on
+/// `busy: false`. The reply was written the moment the session answered, ahead of the records the
+/// command had just emitted - so `/note` piped in was answered, the client left, and the
+/// `context.added` of the note it had written was nowhere in what it wrote out.
+#[tokio::test]
+async fn a_command_piped_in_leaves_its_records_behind_before_the_client_goes() {
+    let session = served(Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"/note keep this\n"[..]))
+        .await
+        .expect("the client failed");
+    let records = String::from_utf8(records).expect("the records are text");
+
+    assert!(
+        records
+            .lines()
+            .any(|line| line.contains("context.added") && line.contains("note")),
+        "{records}"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}

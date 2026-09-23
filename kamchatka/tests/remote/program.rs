@@ -918,9 +918,15 @@ async fn a_projection_can_be_asked_for_again_without_starting_over() {
     );
 
     // and nothing was replayed. The next thing on the wire is the answer to the next command,
-    // because asking for a projection is not attaching
+    // because asking for a projection is not attaching - behind any record newer than the
+    // projection, which is the log carrying on rather than going back, and which a reply waits for
     peer.send(Command::Interrupt).await;
-    let next = peer.recv().await;
+    let next = loop {
+        match peer.recv().await {
+            Message::Record(record) if record.seq > again.seq => continue,
+            other => break other,
+        }
+    };
     assert!(
         matches!(next, Message::Done { .. }),
         "asking for a projection put something back on the stream: {next:?}"

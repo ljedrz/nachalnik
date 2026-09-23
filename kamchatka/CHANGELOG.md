@@ -14,6 +14,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A `--connect` client writes out the records of its last command before it leaves.** A reply
+  carries `busy`, and a client whose input has closed leaves on `busy: false` - and the reply was
+  written ahead of the records the command had just made, so `/note` piped in was answered and
+  the client gone before its `context.added` arrived. Replies now wait for the records, as the
+  message saying a turn is over already did.
+
 - **`/restart` goes back to the model and the address the flags named.** The restart carries the
   provider over, and `/model` and `/provider` switch it in place, so a new session came up on the
   old one's switch - where it is documented to go back to the flags, the model among them.

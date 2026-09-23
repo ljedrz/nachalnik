@@ -111,7 +111,16 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         line: "go".to_owned(),
     })
     .await;
-    one.until_record("tool.started").await;
+    // the reply to `go` as well as the tool starting, in whichever order they come: a reply waits
+    // for the records already in the log, so it can arrive after the tool has started, and left
+    // unread it is what the `until` below would find
+    let heard = one
+        .until(|message| matches!(message, Message::Replied { .. }))
+        .await;
+    let started = |message: &Message| matches!(message, Message::Record(record) if record.event.name() == "tool.started");
+    if !heard.iter().any(started) {
+        one.until_record("tool.started").await;
+    }
 
     one.send(Command::Submit {
         line: "mine".to_owned(),

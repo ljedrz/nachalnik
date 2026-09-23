@@ -1095,7 +1095,15 @@ where
                 Some(command) => {
                     let about = name(&command);
                     match ask(asks, client, command).await.map(|it| it.message) {
-                        Ok(Some(message)) => answer(write, &message, about).await?,
+                        // note: caught up first, for the reason `Message::Busy` is: a reply carries
+                        // `busy`, and a client whose input has closed leaves on `busy: false` - so
+                        // `/note keep this` piped in and answered ahead of its `context.added` was
+                        // a client gone before the record of what it had just done
+                        Ok(Some(message)) => {
+                            caught_up(&mut events, kernel, &mut last, write, progress_recorded)
+                                .await?;
+                            answer(write, &message, about).await?
+                        }
                         Ok(None) => {}
                         Err(error) => {
                             protocol::write(write, &Message::Failed {
