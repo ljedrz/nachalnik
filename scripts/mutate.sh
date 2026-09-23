@@ -18,11 +18,22 @@
 set -uo pipefail
 
 patch=${1:-}
-pattern=${2:-$'\x00nothing\x00'}
+pattern=${2:-}
 
 if [ -z "$patch" ] || [ ! -f "$patch" ]; then
     echo "usage: scripts/mutate.sh <patch> [pattern]" >&2
     exit 2
+fi
+
+# asked before the suite runs rather than after: `grep` answers a pattern it cannot read with `2`,
+# which the two splits below would take for "no match" on both sides - and an empty "everything
+# else" is the one answer this script must never give by accident
+if [ -n "$pattern" ]; then
+    grep -qE "$pattern" </dev/null
+    if [ $? -eq 2 ]; then
+        echo "\`$pattern\` is not an extended regex grep can read" >&2
+        exit 2
+    fi
 fi
 
 # a mutation is applied to the working tree and taken back out of it, so anything already in
@@ -59,8 +70,17 @@ if [ -z "$failing" ]; then
     exit 1
 fi
 
-measured=$(echo "$failing" | grep -E "$pattern")
-other=$(echo "$failing" | grep -vE "$pattern")
+# note: no pattern is no tests under measurement, spelled as a branch. It was a sentinel meant to
+# match nothing, `$'\x00nothing\x00'` - and a bash string cannot hold a NUL, so it was the empty
+# string, which matches everything: every failure was under measurement, nothing else had caught
+# it, and the verdict was coverage the workspace did not have
+if [ -n "$pattern" ]; then
+    measured=$(echo "$failing" | grep -E "$pattern")
+    other=$(echo "$failing" | grep -vE "$pattern")
+else
+    measured=""
+    other=$failing
+fi
 
 printf 'under measurement: %s\n' "$(echo "$measured" | grep -c . )"
 echo "$measured" | grep . | sed 's/^/  /'
