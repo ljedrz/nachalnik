@@ -563,11 +563,10 @@ async fn the_program_has_one_voice_and_every_client_hears_it() {
 
 /// A model change reaches every client, because nothing else would tell them.
 ///
-/// note: the one change to a session that is in no record. `/model` and `/provider` finish inside
-/// the `Dialect` the kernel already holds rather than by replacing the kernel's provider, so the
-/// slot never changes and `model.changed` is never emitted - a client went on naming the model
-/// before it until something happened to make it ask for a fresh projection. A browser's header is
-/// where that showed, and a second client would never have found out at all.
+/// note: `/model` and `/provider` finish inside the `Dialect` the kernel already holds, and before
+/// this a client went on naming the model before it until something made it ask for a fresh
+/// projection. A browser's header is where that showed, and a second client would never have
+/// found out at all.
 ///
 /// note: driven by replacing the provider rather than by typing `/model`, because the suite's
 /// endpoint is a port nothing listens on and a switch is a round trip to it. What is under test is

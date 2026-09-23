@@ -288,3 +288,52 @@ async fn a_provider_can_be_taken_out_again() {
         Err(nachalnik::Error::NoProvider)
     ));
 }
+
+/// A provider that switches its model in place, the way a client sharing one has to.
+struct Switching(parking_lot::Mutex<String>);
+
+#[nachalnik::async_trait]
+impl nachalnik::Provider for Switching {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("switching", self.0.lock().clone())
+    }
+
+    async fn respond(
+        &self,
+        _request: nachalnik::ModelRequest,
+        _deltas: nachalnik::DeltaSink,
+    ) -> Result<ModelResponse, nachalnik::BoxError> {
+        Ok(ModelResponse::text("hello"))
+    }
+}
+
+/// A switch made inside the provider is announced once, from the model last announced.
+///
+/// note: setting the same provider again asked it what it was after the switch, so the record said
+/// the change was from the new model to itself - and not setting it said nothing at all.
+#[test]
+fn a_switch_in_place_is_announced_from_what_was_announced() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Switching(parking_lot::Mutex::new("first".to_owned())));
+    kernel.set_provider(provider.clone());
+    let mut events = kernel.subscribe();
+
+    assert!(!kernel.provider_changed(), "nothing has changed yet");
+    *provider.0.lock() = "second".to_owned();
+    assert!(kernel.provider_changed());
+    assert!(!kernel.provider_changed(), "and it is announced once");
+
+    let changed: Vec<_> = drain(&mut events)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::ModelChanged { from, to } => {
+                Some((from.map(|it| it.model), to.map(|it| it.model)))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        changed,
+        [(Some("first".to_owned()), Some("second".to_owned()))]
+    );
+}

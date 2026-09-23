@@ -263,11 +263,17 @@ impl App {
                         // a session started without `-m` has held no provider until now, and this
                         // is what ends that - after the switch rather than before it, so that
                         // nothing reads a model whose name is still the empty one it was built
-                        // with. Where the kernel has one already it is this same object, so the
-                        // switch is done and setting it again would put a second `model.changed`
-                        // on the trace for one change
-                        if kernel.model_info().is_none() {
-                            kernel.set_provider(provider);
+                        // with. Where the kernel has one already it is this same object, switched in
+                        // place, so the kernel is told rather than handed it again: setting it
+                        // would ask it what it was after the switch, and record the change as from
+                        // the new model to itself
+                        match kernel.model_info() {
+                            None => {
+                                kernel.set_provider(provider);
+                            }
+                            Some(_) => {
+                                kernel.provider_changed();
+                            }
                         }
                     }));
 
@@ -393,8 +399,12 @@ impl App {
                 self.forget_the_last_model();
                 // the new endpoint has a context limit of its own, and a list of what it serves;
                 // both are round trips, the screen should not stop for them, and the next line does
+                // and then the kernel is told, as `/model` tells it, so that the record says the
+                // session is talking to somebody else from here on
+                let kernel = self.kernel.clone();
                 self.settling = Some(tokio::spawn(async move {
-                    provider.set_endpoint(url, model).await
+                    provider.set_endpoint(url, model).await;
+                    kernel.provider_changed();
                 }));
             }
             "params" => {

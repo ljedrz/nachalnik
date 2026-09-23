@@ -147,6 +147,11 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A `/model` or `/provider` switch is in the record.** Both switch the provider the kernel
+  already holds in place, so `model.changed` was never emitted after the first pick: the session
+  talked to another model and the log, a `/save` and a resume from it could not say when. Each
+  tells the kernel once the switch is done (`Kernel::provider_changed`).
+
 - **A great many refused paths are accounted for in a moment.** `Sandbox::note_for` compared every
   path in a command's standard error against every one kept so far, each costing a dozen
   `canonicalize` calls, before keeping three - minutes of work on a large standard error, after the

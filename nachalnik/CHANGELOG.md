@@ -31,6 +31,12 @@ minor bump may break you.
 
 ### added
 
+- **`Kernel::provider_changed`** announces that the provider the kernel holds now answers as a
+  different model, as `model.changed` from the model the log last named. It is for a provider that
+  switches in place, which is the only way a client sharing one can switch it: setting the same
+  provider again asked it what it was after the switch, and recorded the change as from the new
+  model to itself.
+
 - **`Snapshot::problems`** says what is wrong with a snapshot, in words: an identifier two items
   share or none, a call the items name that `used_calls` does not list, and a number too near the
   top of a `u64` to count on from. It is what `Kernel::resume` would have to repair or could not,

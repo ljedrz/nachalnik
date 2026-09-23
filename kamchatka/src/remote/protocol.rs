@@ -336,14 +336,11 @@ pub enum Message {
     },
     /// Which model the requests are going to, sent whenever that changes.
     ///
-    /// note: on the wire for the reason [`Message::Busy`] is: it cannot be worked out from the
-    /// records. `/model` and `/provider` finish inside the
-    /// [`Dialect`](nachalnik_providers::Dialect) the kernel already holds rather than by replacing
-    /// the kernel's provider, so the slot never changes and `model.changed` is never emitted - the
-    /// session is talking to something else and the log does not say so. Every projection is
-    /// right, because it asks the provider; nothing between two projections was. See
-    /// `POSTPONED.md` for what it would take to make this a record instead, which is where it
-    /// belongs.
+    /// note: on the wire as well as in the records, which since `Kernel::provider_changed` say
+    /// when the model changed. `/model` and `/provider` finish inside the
+    /// [`Dialect`](nachalnik_providers::Dialect) the kernel already holds, so the record comes when
+    /// the switch is done - and a client that follows the model on screen is told the moment the
+    /// session's answer changes, the way [`Message::Busy`] tells it the other thing a screen shows.
     ///
     /// note: broadcast rather than answered to whoever typed it, like every other notice. A
     /// session two people are watching is one session, and the model is not one of them's.

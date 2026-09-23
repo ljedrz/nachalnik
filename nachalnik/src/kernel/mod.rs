@@ -248,6 +248,8 @@ struct InnerKernel {
     session: Mutex<Session>,
     events: broadcast::Sender<Event>,
     provider: RwLock<Option<Arc<dyn Provider>>>,
+    /// The model the log last said was in use; see [`Kernel::provider_changed`].
+    announced: Mutex<Option<ModelInfo>>,
     tools: RwLock<BTreeMap<String, Arc<dyn Tool>>>,
     policy: RwLock<Arc<dyn PermissionPolicy>>,
     projector: RwLock<Arc<dyn Projector>>,
@@ -503,6 +505,7 @@ impl Kernel {
             session: Mutex::new(Session::new(name)),
             events,
             provider: RwLock::new(None),
+            announced: Mutex::new(None),
             tools: RwLock::new(BTreeMap::new()),
             policy: RwLock::new(Arc::new(AskAlways)),
             projector: RwLock::new(Arc::new(LinearProjector::default())),
@@ -689,6 +692,7 @@ impl Kernel {
         let to = provider.info();
         let mut held = self.0.provider.write();
         let previous = held.replace(provider);
+        *self.0.announced.lock() = Some(to.clone());
         // still under the lock: see the note on `Kernel::emit`
         self.emit(Event::ModelChanged {
             from: previous.as_ref().map(|p| p.info()),
@@ -702,12 +706,34 @@ impl Kernel {
     pub fn clear_provider(&self) -> Option<Arc<dyn Provider>> {
         let mut held = self.0.provider.write();
         let previous = held.take();
+        *self.0.announced.lock() = None;
         self.emit(Event::ModelChanged {
             from: previous.as_ref().map(|p| p.info()),
             to: None,
         });
 
         previous
+    }
+
+    /// Says that the provider this kernel holds now answers as a different model, and announces it
+    /// as [`Event::ModelChanged`]; returns whether anything had changed.
+    ///
+    /// note: for a provider that switches its model in place, which is the only way a client can
+    /// switch one it shares with something else. [`Kernel::set_provider`] with the same provider
+    /// would ask it what it was *after* the switch and report `from` and `to` as the same model,
+    /// so the kernel remembers what it last announced and compares against that instead.
+    pub fn provider_changed(&self) -> bool {
+        // the component's lock, held while the change is announced, for the reason `emit` gives
+        let held = self.0.provider.write();
+        let to = held.as_ref().map(|provider| provider.info());
+        let mut announced = self.0.announced.lock();
+        if *announced == to {
+            return false;
+        }
+        let from = std::mem::replace(&mut *announced, to.clone());
+        self.emit(Event::ModelChanged { from, to });
+
+        true
     }
 
     /// Returns the provider, if one is set.

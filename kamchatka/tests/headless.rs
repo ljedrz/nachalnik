@@ -2828,3 +2828,54 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A `/model` or `/provider` switch is in the record, from what was in use to what is now.
+///
+/// note: both switch the provider the kernel already holds in place, so the kernel's slot never
+/// changed and `model.changed` was never emitted: the session talked to another model and the
+/// log, a `/save` and a resume from it could not say when. Setting the same provider again would
+/// have asked it after the switch and recorded the change as from the new model to itself.
+#[tokio::test]
+async fn a_switch_of_model_is_in_the_record() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "first",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            "/model second\n/provider http://127.0.0.1:2 third\n/model\n".as_bytes(),
+        )
+        .await
+        .expect("the run failed");
+
+    let changes: Vec<(Option<String>, Option<String>)> = app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::ModelChanged { from, to } => {
+                Some((from.map(|it| it.model), to.map(|it| it.model)))
+            }
+            _ => None,
+        })
+        .collect();
+    let named = |from: &str, to: &str| (Some(from.to_owned()), Some(to.to_owned()));
+    assert!(changes.contains(&named("first", "second")), "{changes:?}");
+    assert!(changes.contains(&named("second", "third")), "{changes:?}");
+}

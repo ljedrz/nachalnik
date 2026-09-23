@@ -298,30 +298,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   an unknown message is *counted* as an answer, because a client cannot tell one from a broadcast,
   and a client that leaves a beat early is the cost of that guess.
 
-- **A model switch that is in no record.** `/model` and `/provider` hand the new model to the
-  `Dialect` the kernel already holds, and `wiring.rs` gave the kernel a clone of that same `Arc`, so
-  the kernel's provider slot never changes and `Event::ModelChanged` is never emitted. The session
-  is talking to something else and the log does not say so, which means a `/save` and a resume from
-  it cannot say when the model changed either, and neither can anything reading the records
-  afterwards.
-
-  One case is now on the record and it is the first pick rather than a switch: a session started
-  without `-m` is wired with no provider at all, so the `/model` that ends that calls
-  `Kernel::set_provider` and the event says `from` nothing, `to` the model. Every switch after it
-  is still in no record.
-
-  `Message::Model` covers the clients, which was the visible half: it is broadcast on a change, like
-  `Message::Busy`, and for the same stated reason. What it does not do is make this a *state change*
-  in the runtime's sense, which is the invariant the workspace holds itself to.
-
-  What would unblock it is deciding where a switch belongs. `Kernel::set_provider` emits the event
-  and computes `from` by asking the outgoing provider - so calling it with the same `Arc` after the
-  fact reports `from` and `to` as the same model, which is worse than silence. The honest shapes are
-  a `Dialect` that is replaced rather than mutated, so the kernel sees a new provider, or a way to
-  tell the kernel that the one it holds now answers differently. The first is a change to how
-  `App::provider` is shared; the second is API the runtime does not have and should be asked for
-  carefully, because "the seam I am holding changed under me" is a door worth opening once.
-
 - **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
 
   **Where the attach and leave lines go is decided: the trace.** `client N attached` and `client N
