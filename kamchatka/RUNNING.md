@@ -307,14 +307,15 @@ machine is two addresses. A comparison that cannot see the address is a comparis
 Every session is written out when it ends, whether or not it ended well, and the last thing
 printed is where: a record of its events and a snapshot of its context, both in a `kamchatka`
 directory under the system's temporary one, and the `kamchatka -r` line that carries on from the
-snapshot.
+snapshot. A `SIGTERM` or `SIGHUP` — a closed terminal, `timeout`, `docker stop` — ends the session
+the way `/quit` does: a running turn is stopped and waited for, and then the record is written.
 
 A session's name is when it started, in UTC, so that a list of them says something to whoever is
 reading it, and it is also the name of its two files.
 
 Nobody has to type `/save` for any of this, because a session that ended badly is the one worth
-reading afterwards. A resumed session keeps its name, so carrying on writes back to the same pair
-rather than scattering a lineage across files. It is a temporary directory because this is a
+reading afterwards. A resumed session keeps its name, and its record goes beside the one it carried
+on from, as `NAME-2`, rather than over it. It is a temporary directory because this is a
 safety net and not an archive — `/save PATH` is still how a session goes somewhere it will be next
 week — and `--no-record` turns it off for anyone who would rather a transcript did not outlive the
 terminal. The directory is `0700`: what goes in it is a whole conversation and every byte every tool

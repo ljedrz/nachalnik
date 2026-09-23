@@ -109,6 +109,77 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The two files of a save describe one moment, and a save that cannot finish leaves the one
+/// before it as it was.
+///
+/// note: `/save good` and `/load good` are the checkpoint `RUNNING.md` describes, and saving again
+/// truncated both files before writing either - so a second save that ran out of room destroyed
+/// the checkpoint it was replacing. A directory nothing may be written in is the failure a test can
+/// arrange; the files in it can still be renamed over, which is why the temporaries are the part
+/// that has to come first.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_save_that_cannot_finish_leaves_the_last_one_alone() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = common::scratch("save-kept");
+    let stem = dir.join("good");
+    let mut harness = Harness::new([ModelResponse::text("noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+    harness.send(&format!("/save {}", stem.display())).await;
+
+    let (log, state) = (dir.join("good.jsonl"), dir.join("good.json"));
+    let (logged, saved) = (std::fs::read(&log).unwrap(), std::fs::read(&state).unwrap());
+    let last = String::from_utf8_lossy(&logged)
+        .lines()
+        .rfind(|line| !line.is_empty())
+        .map(|line| serde_json::from_str::<nachalnik::Record>(line).unwrap().seq);
+    let snapshot: nachalnik::Snapshot = serde_json::from_slice(&saved).unwrap();
+    assert_eq!(
+        last,
+        Some(snapshot.last_seq),
+        "the log ends where the snapshot was taken"
+    );
+
+    harness.send("and 9001 as well").await;
+    harness.settle().await;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+    // somebody permissions do not bind has nothing to show here
+    let binding = std::fs::File::create(dir.join("probe")).is_err();
+    if binding {
+        harness.send(&format!("/save {}", stem.display())).await;
+    }
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    if !binding {
+        let _ = std::fs::remove_dir_all(&dir);
+        return;
+    }
+
+    assert!(
+        harness.flat().contains("could not write"),
+        "{}",
+        harness.screen()
+    );
+    assert_eq!(
+        std::fs::read(&log).unwrap(),
+        logged,
+        "the log is the one saved before"
+    );
+    assert_eq!(
+        std::fs::read(&state).unwrap(),
+        saved,
+        "and so is the snapshot"
+    );
+    let names: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(names.len(), 2, "nothing is left beside them: {names:?}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// `/load` takes every spelling `/save` does, which is the only way the pair round-trips.
 ///
 /// note: a session is two files, so `/save notes.jsonl` writes `notes.json` beside the log it was

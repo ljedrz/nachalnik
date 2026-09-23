@@ -1359,8 +1359,8 @@ impl App {
     /// not abort a step already in flight, so the rest of a streamed answer and the result of a
     /// running tool are still to come - and a loop that ended at once put them in the old kernel
     /// after `session.finished`, in files already written, with a restarted session running
-    /// beside it. The headless loop does not need it: it reads no line while a turn runs, so it
-    /// is never told to leave during one.
+    /// beside it. Every loop here calls it on the way out however it was left - `/quit`, a
+    /// `SIGTERM` or `SIGHUP`, or an error - except a second `ctrl+c`, which means at once.
     ///
     /// note: bounded by [`LEAVING`], because somebody who typed `/quit` is waiting, and a tool
     /// that does not look at its interrupt could hold them for as long as it runs. A turn still
@@ -2071,21 +2071,82 @@ impl App {
     /// has been restored, where `say` has nowhere to put a sentence. Both go through here so that
     /// what `/save` produces and what a session leaves behind on its way out are the same pair of
     /// files, written the same way.
+    ///
+    /// note: the snapshot first, and the log only up to the record it names. A snapshot reads the
+    /// log's last number under the lock every change to the context is announced under, so those
+    /// records are exactly the ones whose changes it shows - and a pair written while a turn runs
+    /// agrees rather than holding items whose `context.added` came after the log was read.
+    ///
+    /// note: each file is written beside itself, flushed to disk and renamed over, both before
+    /// either is renamed. `/save good` a second time is the checkpoint `/load good` is for, and an
+    /// overwrite that ran out of disk half way would have destroyed the one it was replacing.
     pub fn write_session(&self, log: &str, state: &str) -> Result<usize, String> {
-        let records: Vec<String> = self
-            .kernel
-            .history()
+        let snapshot = self.kernel.snapshot();
+        let history = self.kernel.history();
+        let records = history
             .iter()
-            .filter_map(|record| serde_json::to_string(record).ok())
-            .collect();
+            .filter(|record| record.seq <= snapshot.last_seq)
+            .map(|record| {
+                serde_json::to_string(record)
+                    .map_err(|e| format!("could not render record {}: {e}", record.seq))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let snapshot = serde_json::to_vec_pretty(&snapshot)
+            .map_err(|e| format!("could not render the session: {e}"))?;
+
         // named, because "No such file or directory" on its own leaves somebody guessing which
         // one; `-r` says which file it could not read and this should match it
-        std::fs::write(log, records.join("\n") + "\n")
+        let log_beside = beside(log, (records.join("\n") + "\n").as_bytes())
             .map_err(|e| format!("could not write {log}: {e}"))?;
-        let snapshot = serde_json::to_vec_pretty(&self.kernel.snapshot())
-            .map_err(|e| format!("could not render the session: {e}"))?;
-        std::fs::write(state, snapshot).map_err(|e| format!("could not write {state}: {e}"))?;
+        let state_beside = match beside(state, &snapshot) {
+            Ok(it) => it,
+            Err(e) => {
+                let _ = std::fs::remove_file(&log_beside);
+                return Err(format!("could not write {state}: {e}"));
+            }
+        };
+        std::fs::rename(&log_beside, log).map_err(|e| {
+            let _ = std::fs::remove_file(&log_beside);
+            let _ = std::fs::remove_file(&state_beside);
+            format!("could not write {log}: {e}")
+        })?;
+        std::fs::rename(&state_beside, state).map_err(|e| {
+            let _ = std::fs::remove_file(&state_beside);
+            format!("wrote {log}, and could not write {state} beside it: {e}")
+        })?;
 
         Ok(records.len())
     }
+}
+
+/// Writes `bytes` to a new file beside `path`, flushed to disk, for a rename to put in its place.
+fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write as _;
+
+    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // `create_new`, which follows no link, because `/save` names a path anywhere - a shared
+    // directory included - and a name somebody predicted could be a link they left there
+    let (at, mut file) = loop {
+        let at = std::path::PathBuf::from(format!(
+            "{path}.{}.{}.writing",
+            std::process::id(),
+            MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&at)
+        {
+            Ok(file) => break (at, file),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    };
+    let written = file.write_all(bytes).and_then(|()| file.sync_all());
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&at);
+        return Err(e);
+    }
+
+    Ok(at)
 }

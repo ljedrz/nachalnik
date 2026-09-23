@@ -11,7 +11,7 @@
 #![deny(unsafe_code)]
 
 use std::{
-    io::{IsTerminal as _, stdout},
+    io::{IsTerminal as _, Write as _, stdout},
     path::Path,
 };
 
@@ -361,7 +361,8 @@ async fn session() -> Result<()> {
                         let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
                             // here rather than in the library's default: taking a process-wide
                             // signal is the program's decision, and here this *is* the program
-                            .stops_on_ctrl_c();
+                            .stops_on_ctrl_c()
+                            .leaves_when_terminated();
                         if let Some(seconds) = args.deadline {
                             driver = driver.deadline(std::time::Duration::from_secs(seconds));
                         }
@@ -474,26 +475,35 @@ fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Resul
     // note: on stderr in a headless run, because stdout is the log there. A line of prose in the
     // middle of a stream of JSON is the one thing that would make it unparseable, and this is the
     // last line written - so it would be the one nobody noticed until a reader fell over the end
+    //
+    // note: and written without the macros, which panic when the write fails. A run piped into
+    // `head` has nobody reading either stream by the time it gets here, and a panic on the first
+    // line would take the record down with it
     let logged = matches!(ending, Ending::Logged);
-    let say = |line: &str| match logged {
-        true => eprintln!("{line}"),
-        false => println!("{line}"),
+    let say = |line: &str| {
+        let _ = match logged {
+            true => writeln!(std::io::stderr(), "{line}"),
+            false => writeln!(stdout(), "{line}"),
+        };
     };
+    // written whether or not anybody typed `/save`: a session that ended badly is the one worth
+    // reading afterwards, and it is the one nobody thinks to save - and written before anything is
+    // said about it, since saying is the part that can fail
+    let written = record.then(|| kamchatka::wiring::record(app));
     say(&format!(
         "{} · {} events recorded",
         app.kernel.session_name(),
         app.kernel.history().len()
     ));
-    // written whether or not anybody typed `/save`: a session that ended badly is the one worth
-    // reading afterwards, and it is the one nobody thinks to save
-    if record {
-        match kamchatka::wiring::record(app) {
-            Ok(written) => say(&format!(
-                "{written}\n`kamchatka -r {}` carries on from it",
-                written.state
-            )),
-            Err(e) => eprintln!("the session was not written: {e}"),
+    match written {
+        Some(Ok(written)) => say(&format!(
+            "{written}\n`kamchatka -r {}` carries on from it",
+            written.state
+        )),
+        Some(Err(e)) => {
+            let _ = writeln!(std::io::stderr(), "the session was not written: {e}");
         }
+        None => {}
     }
 
     outcome
@@ -534,6 +544,9 @@ async fn drawn(
     .await;
     let _ = execute!(stdout(), DisableBracketedPaste);
     ratatui::restore();
+    // however the loop was left - `/quit`, a signal, or a terminal that stopped answering - a turn
+    // still running is stopped and waited for before anybody writes `session.finished`
+    app.wait_for_turn(events, finished, |_| {}).await;
 
     // note: a drawn session ends itself only where it was also served, and that is the difference
     // `Ending::Served` names. `session.finished` is a record like any other, and the clients still
@@ -568,6 +581,9 @@ async fn run(
 
     let mut keys = EventStream::new();
     let mut ticks = tokio::time::interval(TICK);
+    // raw mode makes `ctrl+c` a key, so these are the only signals this loop is sent
+    let mut terminations =
+        kamchatka::stopping::Terminated::new().context("could not listen for a request to end")?;
 
     loop {
         // before the frame, so that what a client is told and what the screen shows are one look at
@@ -584,8 +600,6 @@ async fn run(
             app.say(Speaker::Note, why);
         }
         if app.leaving() {
-            app.wait_for_turn(events, finished, |_| {}).await;
-
             return Ok(());
         }
 
@@ -672,6 +686,7 @@ async fn run(
                     }
                 }
             }
+            () = terminations.arrived() => app.quit = true,
             _ = ticks.tick() => {
                 if let Some(notice) = app.provider.take_notice() {
                     app.say(Speaker::Note, notice);

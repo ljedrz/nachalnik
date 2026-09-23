@@ -42,6 +42,8 @@ pub struct Headless<'a> {
     deadline: Option<Duration>,
     /// Whether a `ctrl+c` stops the run rather than killing the process.
     ctrl_c: bool,
+    /// Whether `SIGTERM` and `SIGHUP` end the session rather than the process.
+    terminated: bool,
     /// Whether the prose is part-way through a line somebody else would finish.
     ///
     /// note: the model's answer arrives in fragments and is printed as it does, so the last thing
@@ -60,6 +62,7 @@ impl<'a> Headless<'a> {
             prose,
             deadline: None,
             ctrl_c: false,
+            terminated: false,
             mid_line: false,
         }
     }
@@ -94,6 +97,15 @@ impl<'a> Headless<'a> {
     /// lets them survive. A second `ctrl+c` leaves at once.
     pub fn stops_on_ctrl_c(mut self) -> Self {
         self.ctrl_c = true;
+        self
+    }
+
+    /// Takes `SIGTERM` and `SIGHUP` as `/quit` rather than letting them kill the process; see
+    /// [`crate::stopping::Terminated`].
+    ///
+    /// note: off by default for the reason `stops_on_ctrl_c` is.
+    pub fn leaves_when_terminated(mut self) -> Self {
+        self.terminated = true;
         self
     }
 
@@ -145,6 +157,13 @@ impl<'a> Headless<'a> {
             .then(crate::stopping::Stopping::new)
             .transpose()
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
+        let mut terminations = self
+            .terminated
+            .then(crate::stopping::Terminated::new)
+            .transpose()
+            .map_err(|e| format!("could not listen for a request to end: {e}"))?;
+        // a second `ctrl+c`, which is the one way out that does not wait for a running turn
+        let mut at_once = false;
         // note: the *last* one rather than any, because a turn that failed and was then carried on
         // from is a session that recovered, and a run that reported it as a failure would have
         // every script treating one provider hiccup as a dead session
@@ -157,7 +176,10 @@ impl<'a> Headless<'a> {
         // and the generation that mark belongs to, since `/cleanup` starts the sequence again
         let mut cleared = app.cleared();
 
-        loop {
+        // note: an async block rather than the loop alone, so that every way out of it - a
+        // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
+        // up below, where a turn still running is stopped and waited for before `session.finished`
+        let driven: Result<(), String> = async { loop {
             // before anything else, and wherever the question came from: a turn that stopped to
             // ask, or a `/step` that reached one. Answered in the branch that handles the outcome,
             // a question from `/step` would go unanswered, and a session whose input had closed
@@ -319,7 +341,10 @@ impl<'a> Headless<'a> {
                 } => {
                     match stopping {
                         // the second one: whatever is still running is somebody else's problem now
-                        true => break,
+                        true => {
+                            at_once = true;
+                            break;
+                        }
                         false => {
                             stopping = true;
                             reading = false;
@@ -346,7 +371,25 @@ impl<'a> Headless<'a> {
                     };
                     app.on_outcome(outcome);
                 }
+                // taken as `/quit`, which the check at the top of the loop then acts on
+                () = async {
+                    match terminations.as_mut() {
+                        Some(terminations) => terminations.arrived().await,
+                        None => std::future::pending().await,
+                    }
+                } => app.quit = true,
             }
+        } Ok(()) }.await;
+
+        // what the prose fails to say here is not a reason to leave a turn running: the records
+        // are the part that is kept, and they are read out of the log below
+        if !at_once {
+            let waited = app
+                .wait_for_turn(events, finished, |event| {
+                    let _ = self.say(event);
+                })
+                .await;
+            failed = waited.or(failed);
         }
 
         // note: the session is ended here rather than by the caller, and it is the one piece of
@@ -354,7 +397,9 @@ impl<'a> Headless<'a> {
         // that ended the session after this returned would have written every record but the last
         // one down the stream.
         app.kernel.finish();
-        self.flush(app, &mut written)?;
+        let flushed = self.flush(app, &mut written);
+        driven?;
+        flushed?;
         self.echo(app, &mut said, &mut cleared)?;
         // and the last answer's own line, which nothing else is going to end: a model that stops
         // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end

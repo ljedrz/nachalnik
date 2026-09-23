@@ -147,6 +147,34 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **A session asked to end from outside is recorded.** `SIGTERM` and `SIGHUP` - a closed terminal,
+  an ssh drop, `timeout`, `docker stop` - were left to their default, which ended the process with
+  no `session.finished` and no record, and a `shell` command, in a process group of its own, went
+  on running after the agent. All three loops now take either as `/quit` (`stopping::Terminated`,
+  and `Headless::leaves_when_terminated` for a loop of the library's), and a `shell` call dropped
+  before its command ends kills the command's group.
+
+- **A loop left on an error stops and waits for its turn too.** The headless loop returned on a
+  prose write that failed - `… | head` - with the turn still running, and the drawn one on a
+  terminal that stopped answering; both now go through `App::wait_for_turn` on the way out, as
+  `/quit` does. Only a second `ctrl+c` still leaves at once.
+
+- **The record is written before anything is said about it.** The closing lines were printed with
+  the macros that panic on a failed write, and before the record: a run with nobody left reading
+  either stream panicked and wrote nothing. The record comes first, and the lines are written
+  without panicking.
+
+- **`/save` writes a pair that agrees, and leaves the last one alone if it cannot finish.** Both
+  files were truncated and rewritten in place, so a second `/save good` that ran out of room
+  destroyed the checkpoint it was replacing, and the log and the snapshot were read at different
+  moments. The snapshot is taken first and the log written only up to the record it names, and each
+  file is written beside itself, flushed, and renamed over once both are whole. A record that fails
+  to render is an error rather than a line left out, and a record that cannot be written says why
+  rather than that no unused name was found.
+
+- **A `/restart` that cannot start a fresh session still says where the old one went.** The line
+  naming the record was dropped when the wiring failed, and the error came out alone.
+
 - **A resumed session's record carries on numbering from the saved one's**, with the runtime: its
   first record, `session.resumed`, is the one after the last record of the session it was resumed
   from, and a permission question is never numbered like one asked before the resume. The `log`

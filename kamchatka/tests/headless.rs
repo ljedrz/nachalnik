@@ -807,6 +807,59 @@ async fn a_forks_request_counts_against_the_ceiling() {
     );
 }
 
+/// Prose that fails part-way through a turn still ends the session after the turn, not in it.
+///
+/// note: `… | head` is this: the reader goes, the next line written fails, and the loop left with
+/// the error while the turn was still running - no `session.finished` and a tool still going, for
+/// whoever wrote the record afterwards. `Breaks` fails every write after the first tool call.
+#[tokio::test]
+async fn a_run_whose_prose_breaks_mid_turn_still_ends_after_the_turn() {
+    struct Breaks(bool);
+    impl std::io::Write for Breaks {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            if self.0 {
+                return Err(std::io::ErrorKind::BrokenPipe.into());
+            }
+            self.0 = String::from_utf8_lossy(buf).contains("wait");
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+        ModelResponse::text("never reached"),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, None);
+    app.kernel.add_tool(Arc::new(Slow));
+
+    let (mut records, mut prose) = (Vec::new(), Breaks(false));
+    let ran = Headless::new(Grant::Allow, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+        .await;
+
+    assert!(ran.is_err(), "the broken prose is still the answer");
+    assert!(!app.busy, "the turn was left running");
+    let names: Vec<_> = app
+        .kernel
+        .history()
+        .into_iter()
+        .map(|record| record.event.name().to_owned())
+        .collect();
+    assert_eq!(
+        names.last().map(String::as_str),
+        Some("session.finished"),
+        "{names:?}"
+    );
+    assert!(names.contains(&"tool.finished".to_owned()), "{names:?}");
+}
+
 /// Nothing else is sent afterwards, however it is asked for.
 ///
 /// note: this is what makes the ceiling a bound rather than a report, and it is the reason the
@@ -1522,6 +1575,216 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
         pressed.elapsed() < std::time::Duration::from_secs(5),
         "the second press waited for the tool anyway: {:?}",
         pressed.elapsed()
+    );
+}
+
+/// `SIGTERM` and `SIGHUP` end the session rather than the process: the running command is
+/// stopped, and the session is recorded as having ended.
+///
+/// note: both were left to their default, which ends the process where it stands - so closing the
+/// terminal, an ssh drop, `timeout` or `docker stop` wrote no record at all, and a `shell` command,
+/// in a process group of its own and never sent the terminal's hangup, went on running after the
+/// agent. `late.txt` is what the command would have done had it been left to finish.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
+    for signal in ["TERM", "HUP"] {
+        let dir = common::scratch(&format!("terminated-{signal}"))
+            .canonicalize()
+            .expect("it exists");
+        let cmd = "sleep 3; touch late.txt";
+        let base = common::endpoint(vec![format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
+            ]}, "finish_reason": "tool_calls"}]})
+        )])
+        .await;
+
+        let mut child = std::process::Command::new(common::program())
+            .args([
+                "--headless",
+                "-m",
+                "nothing",
+                "--allow",
+                "exec:run,fs:write",
+            ])
+            .arg("go")
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .env("TMPDIR", &dir)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+        let said = watch(child.stderr.take().expect("stderr is a pipe"));
+        let waited = std::time::Instant::now();
+        while !said.lock().contains("⟩ shell(") {
+            assert!(
+                waited.elapsed() < std::time::Duration::from_secs(20),
+                "it never reached the command: {}",
+                said.lock()
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        // a moment for the command to have started, rather than only been asked for
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        let sent = std::process::Command::new("kill")
+            .args([&format!("-{signal}"), &child.id().to_string()])
+            .status()
+            .expect("`kill` is on the path");
+        assert!(sent.success());
+        let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
+        assert!(status.success(), "SIG{signal}: {}", said.lock());
+
+        let said = said.lock().clone();
+        let path = said
+            .split_whitespace()
+            .find_map(|word| word.strip_suffix(',').filter(|it| it.ends_with(".jsonl")))
+            .unwrap_or_else(|| panic!("SIG{signal}: it named no log: {said}"));
+        let names: Vec<String> = std::fs::read_to_string(path)
+            .expect("the file it named is there")
+            .lines()
+            .map(|line| {
+                serde_json::from_str::<Record>(line)
+                    .expect("every line is a record")
+                    .event
+                    .name()
+                    .to_owned()
+            })
+            .collect();
+        assert_eq!(
+            names.last().map(String::as_str),
+            Some("session.finished"),
+            "SIG{signal}: {names:?}"
+        );
+        assert!(
+            names.contains(&"tool.finished".to_owned()),
+            "SIG{signal}: the command's end is in the record: {names:?}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        assert!(
+            !dir.join("late.txt").exists(),
+            "SIG{signal}: the command went on running after the session ended"
+        );
+    }
+}
+
+/// A run with nobody left reading either stream still writes its record.
+///
+/// note: `kamchatka --headless … 2>&1 | head` gets here once `head` has gone. The closing lines
+/// were printed with the macros that panic on a failed write, and before the record was written,
+/// so the panic took the record with it.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_nobody_is_reading_still_writes_its_record() {
+    let base = common::endpoint(vec![answer("said to nobody")]).await;
+    let dir = common::scratch("unread");
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "-m", "nothing", "go"])
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("TMPDIR", &dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    drop(child.stdout.take());
+    drop(child.stderr.take());
+    let nothing = Arc::new(parking_lot::Mutex::new(String::new()));
+    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &nothing);
+    assert_ne!(status.code(), Some(101), "it panicked");
+
+    let logs: Vec<_> = walkdir(&dir)
+        .into_iter()
+        .filter(|path| path.extension().is_some_and(|it| it == "jsonl"))
+        .collect();
+    assert_eq!(logs.len(), 1, "one record: {logs:?}");
+    let last = std::fs::read_to_string(&logs[0])
+        .expect("the record is readable")
+        .lines()
+        .last()
+        .map(|line| {
+            serde_json::from_str::<Record>(line)
+                .expect("a record")
+                .event
+                .name()
+                .to_owned()
+        });
+    assert_eq!(last.as_deref(), Some("session.finished"));
+}
+
+/// Every file under a directory.
+#[cfg(unix)]
+fn walkdir(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+        let path = entry.path();
+        match path.is_dir() {
+            true => found.extend(walkdir(&path)),
+            false => found.push(path),
+        }
+    }
+    found
+}
+
+/// A `/restart` whose fresh session cannot be wired still says where the old one was written.
+///
+/// note: the old session is recorded before the new one is wired, and the line naming the file was
+/// dropped when the wiring failed - so the error came out alone, over a record nobody was told
+/// about. A `--file` that has gone since the run started is one way to make the wiring fail.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
+    use std::io::Write as _;
+
+    let base = common::endpoint(vec![]).await;
+    let dir = common::scratch("restart-failed");
+    std::fs::write(dir.join("notes.md"), "notes").expect("a file to attach");
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "-m", "nothing", "--file", "notes.md"])
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("TMPDIR", &dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    // once the first session has read it, which the opening lines come after
+    let waited = std::time::Instant::now();
+    while said.lock().is_empty() {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(20),
+            "it never started"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    std::fs::remove_file(dir.join("notes.md")).expect("the file goes");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin is a pipe")
+        .write_all(b"/restart\n")
+        .expect("could not type");
+    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
+
+    let said = said.lock().clone();
+    assert!(!status.success(), "{said}");
+    assert!(said.contains("no fresh session could be started"), "{said}");
+    assert!(
+        said.contains("kamchatka -r "),
+        "it names the record: {said}"
     );
 }
 

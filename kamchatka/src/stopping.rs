@@ -56,3 +56,76 @@ impl Stopping {
         }
     }
 }
+
+/// Every request from outside to end this process that is not <kbd>ctrl+c</kbd>: `SIGTERM` and
+/// `SIGHUP` on unix, and closing the console, logging off or shutting down on Windows.
+///
+/// note: what a closed terminal window, a dropped ssh connection, `timeout`, `systemctl stop` and
+/// `docker stop` send. Left to its default each ends the process where it stands, with no
+/// `session.finished` and no record written - and a `shell` command, in a process group of its
+/// own, is not sent the terminal's hangup and keeps running after the agent that started it. So
+/// each loop takes one of these as `/quit`: the running turn is stopped and waited for, and the
+/// session ends the way a session ends.
+///
+/// note: one arrival is enough, unlike `ctrl+c`, because none of these is somebody at a keyboard
+/// who might mean less than "leave". Windows gives a handler a few seconds before it ends the
+/// process regardless, which is shorter than [`crate::app::LEAVING`] and is the platform's call.
+pub struct Terminated(TerminatedInner);
+
+#[cfg(unix)]
+type TerminatedInner = (tokio::signal::unix::Signal, tokio::signal::unix::Signal);
+#[cfg(windows)]
+type TerminatedInner = (
+    tokio::signal::windows::CtrlClose,
+    tokio::signal::windows::CtrlLogoff,
+    tokio::signal::windows::CtrlShutdown,
+);
+#[cfg(not(any(unix, windows)))]
+type TerminatedInner = ();
+
+impl Terminated {
+    /// Subscribes.
+    pub fn new() -> io::Result<Self> {
+        #[cfg(unix)]
+        let inner = {
+            use tokio::signal::unix::{SignalKind, signal};
+            (
+                signal(SignalKind::terminate())?,
+                signal(SignalKind::hangup())?,
+            )
+        };
+        #[cfg(windows)]
+        let inner = (
+            tokio::signal::windows::ctrl_close()?,
+            tokio::signal::windows::ctrl_logoff()?,
+            tokio::signal::windows::ctrl_shutdown()?,
+        );
+        #[cfg(not(any(unix, windows)))]
+        let inner = ();
+
+        Ok(Self(inner))
+    }
+
+    /// Waits for the next one; cancel-safe, as [`Stopping::pressed`] is.
+    pub async fn arrived(&mut self) {
+        #[cfg(unix)]
+        {
+            let (terminate, hangup) = &mut self.0;
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = hangup.recv() => {}
+            }
+        }
+        #[cfg(windows)]
+        {
+            let (close, logoff, shutdown) = &mut self.0;
+            tokio::select! {
+                _ = close.recv() => {}
+                _ = logoff.recv() => {}
+                _ = shutdown.recv() => {}
+            }
+        }
+        #[cfg(not(any(unix, windows)))]
+        std::future::pending::<()>().await;
+    }
+}

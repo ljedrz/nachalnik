@@ -505,7 +505,11 @@ impl Setup {
             session_name: Some(App::session_stamp(started)),
             ..self.clone()
         };
-        let wired = fresh.wire(provider)?;
+        // the old session's line rides on the error, since it is the one pointer to where that
+        // session went and the caller is about to report this instead of saying it
+        let wired = fresh
+            .wire(provider)
+            .map_err(|e| format!("{said}\nand no fresh session could be started: {e}"))?;
 
         Ok((wired, said))
     }
@@ -617,34 +621,39 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 /// note: `create_new` rather than asking whether the file is there, because between asking and
 /// writing is exactly where the first of those two collisions lives. The `.json` is checked
 /// before the `.jsonl` is claimed, so a suffix this passes over leaves nothing of its own behind.
+///
+/// note: a name that is taken is passed over and nothing else is: a directory that cannot be
+/// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
+/// a thousand tries later would be the wrong one.
 fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
-    // bounded, so that a directory nothing can be written in is an error rather than a loop
-    (1..1_000)
-        .find_map(|nth| {
-            let stem = match nth {
-                1 => stem.display().to_string(),
-                nth => format!("{}-{nth}", stem.display()),
-            };
-            let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
-            // anything there at all, a link to nothing included, which `exists` answers no to and
-            // a write would follow
-            if std::fs::symlink_metadata(&state).is_ok() {
-                return None;
-            }
+    // bounded, so that a directory full of these is an error rather than a loop
+    for nth in 1..1_000 {
+        let stem = match nth {
+            1 => stem.display().to_string(),
+            nth => format!("{}-{nth}", stem.display()),
+        };
+        let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
+        // anything there at all, a link to nothing included, which `exists` answers no to and
+        // a write would follow
+        if std::fs::symlink_metadata(&state).is_ok() {
+            continue;
+        }
 
-            std::fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&log)
-                .ok()
-                .map(|_| (log, state))
-        })
-        .ok_or_else(|| {
-            format!(
-                "could not find an unused name for the record beside {}",
-                stem.display()
-            )
-        })
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&log)
+        {
+            Ok(_) => return Ok((log, state)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("could not write {log}: {e}")),
+        }
+    }
+
+    Err(format!(
+        "could not find an unused name for the record beside {}",
+        stem.display()
+    ))
 }
 
 #[cfg(test)]

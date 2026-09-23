@@ -291,6 +291,8 @@ impl Server {
         // one that means leave; see `crate::stopping`
         let mut presses = crate::stopping::Stopping::new()
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
+        let mut terminations = crate::stopping::Terminated::new()
+            .map_err(|e| format!("could not listen for a request to end: {e}"))?;
 
         // set by whichever branch found a reason to stop, rather than each of them breaking where
         // it stands: one of them is nested inside a second `select!`, and a `break` there ends the
@@ -348,6 +350,8 @@ impl Server {
                 },
                 event = events.recv() => leaving |= !apply_event(app, event),
                 () = presses.pressed() => leaving |= apply_press(app, &mut stopping),
+                // taken as `/quit`: the turn is stopped and waited for above
+                () = terminations.arrived() => app.quit = true,
                 Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
             }
         }

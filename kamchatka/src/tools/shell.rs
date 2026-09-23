@@ -409,6 +409,8 @@ impl Tool for Shell {
         // started; see `stop`
         #[cfg(unix)]
         command.process_group(0);
+        // and killed if this call is dropped before it is over; see `Running`
+        command.kill_on_drop(true);
 
         let mut child = match command
             .stdin(Stdio::null())
@@ -419,6 +421,7 @@ impl Tool for Shell {
             Ok(child) => child,
             Err(e) => return Ok(ToolOutput::error(format!("could not run `{cmd}`: {e}"))),
         };
+        let running = Running(child.id());
         // the confined child cannot remove its own temporary directory, so this is where that
         // happens; the identifier has to be read now, because a child that has been waited on no
         // longer has one. See `sandbox::scratch_for`
@@ -556,6 +559,7 @@ impl Tool for Shell {
             Some(waited) => waited,
             None => child.wait().await,
         };
+        running.over();
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
                 Exit::Stopped,
@@ -614,6 +618,38 @@ impl Tool for Shell {
         );
 
         Ok(ToolOutput::new(text))
+    }
+}
+
+/// The process group of a command still running, killed if the call is dropped before it ends.
+///
+/// note: what `kill_on_drop` does for the child alone, done for its group. A call is dropped when
+/// the process is on its way out - a runtime shut down with a turn still going, a panic - and the
+/// group is not sent the terminal's hangup, so without this a `make` or a server the command
+/// started keeps running after the agent is gone, with nothing left to record what it does.
+struct Running(Option<u32>);
+
+impl Running {
+    /// The command has been waited for, so its identifier may already be somebody else's.
+    fn over(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.0 {
+            // `std` rather than tokio's, because a drop cannot wait on a future and this may be
+            // the last thing the runtime does
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(format!("kill -KILL -{pid}"))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
     }
 }
 
@@ -685,6 +721,39 @@ mod tests {
         .content
         .to_text()
         .into_owned()
+    }
+
+    /// A call dropped while its command runs takes the command's whole group with it.
+    ///
+    /// note: a call is dropped when the process is going - a runtime shut down mid-turn, a panic -
+    /// and a group of its own is not sent the terminal's hangup, so without `Running` the
+    /// subshell here, which the shell started, finishes and writes the file after nobody is
+    /// watching.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_dropped_call_takes_its_command_with_it() {
+        let dir = std::env::temp_dir().join(format!("kamchatka-dropped-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("a directory");
+        let late = dir.join("late.txt");
+        // in the background, so that the process that would write it is not the one `kill_on_drop`
+        // reaches: killing `sh` alone leaves this running
+        let command = format!("(sleep 1; touch {}) & wait", late.display());
+        let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
+
+        let dropped = tokio::time::timeout(
+            Duration::from_millis(300),
+            unconfined().invoke(&call, OutputSink::disconnected()),
+        )
+        .await;
+        assert!(
+            dropped.is_err(),
+            "the command was meant to still be running"
+        );
+
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let survived = late.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!survived, "the command outlived the call");
     }
 
     /// Output that is not text is shown rather than stopped at, and what follows it arrives.
