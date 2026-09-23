@@ -620,9 +620,11 @@ impl Reach {
     /// note: a rename puts a different file at the path, and where that would show the file is
     /// written in place instead, as it was before: when another hard link shares it, since the link
     /// would keep the old contents; when the new file would not carry the old one's owner and group,
-    /// which only root could set; when the directory will not take a new file; and when what is
-    /// there is not a regular file. The permission bits are copied across. Extended attributes are
-    /// not.
+    /// which only root could set; when its owner has made it read-only, so that the open refuses it
+    /// as it always did rather than a rename stepping round the refusal; when the directory will
+    /// not take a new file, or its name is too long to carry the temporary's suffix; and when what
+    /// is there is not a regular file. The permission bits are copied across. Extended attributes
+    /// are not.
     pub fn replace(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {
         let was = std::fs::symlink_metadata(path).ok();
         let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
@@ -630,7 +632,7 @@ impl Reach {
         };
         if was
             .as_ref()
-            .is_some_and(|was| !was.is_file() || linked(was))
+            .is_some_and(|was| !was.is_file() || linked(was) || protected(was))
         {
             return self.overwrite(path, content);
         }
@@ -638,7 +640,13 @@ impl Reach {
         let beside = self.beside(dir, path)?;
         let (temporary, mut file) = match beside.create(name) {
             Ok(created) => created,
-            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            // a name too long to carry the temporary's suffix is still one a file can have
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::InvalidFilename
+                ) =>
+            {
                 return self.overwrite(path, content);
             }
             Err(e) => return Err(e),
@@ -783,6 +791,17 @@ fn linked(was: &std::fs::Metadata) -> bool {
 #[cfg(not(unix))]
 fn linked(_: &std::fs::Metadata) -> bool {
     false
+}
+
+/// Whether the file's owner has taken away their own right to write it.
+#[cfg(unix)]
+fn protected(was: &std::fs::Metadata) -> bool {
+    std::os::unix::fs::PermissionsExt::mode(&was.permissions()) & 0o200 == 0
+}
+
+#[cfg(not(unix))]
+fn protected(was: &std::fs::Metadata) -> bool {
+    was.permissions().readonly()
 }
 
 /// Whether a new file has the owner and group of the one it would stand in for.

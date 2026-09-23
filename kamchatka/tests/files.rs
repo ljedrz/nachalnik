@@ -309,3 +309,34 @@ async fn a_file_with_another_link_is_written_where_it_is() {
         "the other name shows the write"
     );
 }
+
+/// A file its owner made read-only is refused, as the open always refused it, and one whose name
+/// leaves no room for the temporary's suffix is still written.
+///
+/// note: both are what a rename changed. The new file is made in the directory, which the
+/// read-only file does not protect, so it stepped round the refusal; and its name is longer than
+/// the file's, which `NAME_MAX` can refuse where the file's own name was fine.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_read_only_file_is_refused_and_a_long_name_is_written() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch("files-protected");
+    std::fs::write(dir.join("kept.txt"), "mine\n").expect("a file");
+    std::fs::set_permissions(dir.join("kept.txt"), std::fs::Permissions::from_mode(0o444))
+        .expect("made read-only");
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "kept.txt", "content": "yours\n" }),
+    )
+    .await;
+    assert!(said.contains("denied"), "{said}");
+    assert_eq!(held(&dir, "kept.txt"), "mine\n");
+
+    let long = format!("{}.txt", "n".repeat(240));
+    let said = ask(&dir, "write", json!({ "path": long, "content": "one\n" })).await;
+    assert!(said.contains("wrote 4 bytes"), "{said}");
+    assert_eq!(held(&dir, &long), "one\n");
+}

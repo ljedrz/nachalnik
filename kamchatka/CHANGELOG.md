@@ -172,8 +172,9 @@ minor bump may break you.
   opened beneath what it was allowed under, as `Reach::open` does. A rename puts a different file
   at the path, so the permission bits are copied across, and the file is written in place as before
   where a rename would change more than its contents: another hard link shares it, the new file
-  would not have its owner and group, or the directory will not take a new file. Extended
-  attributes are not carried. `Reach::replace` is the operation.
+  would not have its owner and group, its owner made it read-only, the directory will not take a
+  new file, or its name leaves no room for the temporary's suffix. Extended attributes are not
+  carried. `Reach::replace` is the operation.
 
 - **The file tools open what they checked.** `read`, `write`, `edit` and `grep` resolved a path,
   checked it against the reach and then opened it by name, so a directory replaced by a link
