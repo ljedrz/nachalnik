@@ -300,14 +300,12 @@ it serves is `browser.html`, compiled in.
 context can afford to lose, against `Trim`'s oldest-first.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
-as events, as a snapshot, as the raw stream - which is how the first two transcripts under `docs/`
-were produced. The third needed a conversation rather than a task, which `recorded.rs` cannot do:
-it takes a brief and two tasks. That session ran the same `App`, tools and kernel with its turns
-read from a file and `/save` typed at the end, and that harness is not in this tree yet. `PLANT`,
-`TASK`, `TASK2`, `BRIEF`, `DIALECT`, `INTROSPECT` and `OUT` parameterise it, and it needs
-`KAMCHATKA_CONTEXT_LIMIT` set rather than setting one itself. It writes into `recorded/`,
-which is ignored: a run measuring the repository it sits in must not find previous transcripts
-lying in it.
+as events, as a snapshot, as the raw stream. It takes a brief and two tasks rather than a
+conversation, and none of the write-ups under `docs/` came from it: those are ordinary sessions in
+`kamchatka`, typed by hand. `PLANT`, `TASK`, `TASK2`, `BRIEF`, `DIALECT`, `INTROSPECT` and `OUT`
+parameterise it, and it needs `KAMCHATKA_CONTEXT_LIMIT` set rather than setting one itself. It
+writes into `recorded/`, which is ignored: a run measuring the repository it sits in must not find
+previous transcripts lying in it.
 
 `docs/` is the write-ups, served by GitHub Pages from `master` `/docs`. `index.html` lists them and
 each piece is a directory with an `index.html` in it; `style.css` is shared by all of them. No
