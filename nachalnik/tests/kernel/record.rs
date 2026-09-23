@@ -2,9 +2,10 @@
 //! carries across a resume.
 //!
 //! note: the log names things rather than copying them - `model.requested` records context ids,
-//! not messages - and the two exceptions are here, because both are deliberate. A payload is the
+//! not messages - and the exceptions are here, because each is deliberate. A payload is the
 //! provider's own account of what it is about to send and is kept only when asked for; a
-//! replaced item's old text is the one thing nothing else can recover.
+//! replaced item's old text is the one thing nothing else can recover; and an item's metadata,
+//! first and replaced, is the hint a compactor decides by.
 
 use std::sync::Arc;
 
@@ -305,4 +306,49 @@ async fn the_log_holds_the_same_bytes_as_the_context_not_a_copy() {
         .find_map(|m| m.tool_calls.first())
         .unwrap();
     assert!(Arc::ptr_eq(&sent.args, &tool_calls[0].args));
+}
+
+/// An item's metadata is in the record from the start, and an annotation says what it replaced.
+///
+/// note: `context.added` named the item and left its metadata out, and `context.annotated` said
+/// only what the metadata became - so what an item was added with, and every hint an annotation
+/// overwrote, survived only in a snapshot taken before the change. Those are what a compactor
+/// decides by, which is the reason the kernel records them at all.
+#[test]
+fn an_items_metadata_is_in_the_record_from_the_start() {
+    let kernel = Kernel::new(Config::default());
+    let id = kernel.push(ContextItem::user("hello").with_meta(json!({ "expendable": false })));
+    kernel.annotate(id, json!({ "expendable": true })).unwrap();
+
+    let history = kernel.history();
+    let added = history
+        .iter()
+        .find_map(|record| match &record.event {
+            Event::ContextAdded { meta, .. } => Some(meta.clone()),
+            _ => None,
+        })
+        .expect("the item was added");
+    assert_eq!(added, json!({ "expendable": false }));
+    let (now, was) = history
+        .iter()
+        .find_map(|record| match &record.event {
+            Event::ContextAnnotated { meta, was, .. } => Some((meta.clone(), was.clone())),
+            _ => None,
+        })
+        .expect("the item was annotated");
+    assert_eq!(now, json!({ "expendable": true }));
+    assert_eq!(was, json!({ "expendable": false }));
+
+    // and a log written before either was carried still reads
+    let older: Record = serde_json::from_value(json!({
+        "seq": 1, "at": 0, "event": { "event": "context.annotated", "id": 1, "meta": {} }
+    }))
+    .unwrap_or_else(|e| panic!("an older record reads: {e}"));
+    assert!(matches!(
+        older.event,
+        Event::ContextAnnotated {
+            was: serde_json::Value::Null,
+            ..
+        }
+    ));
 }

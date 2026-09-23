@@ -25,7 +25,9 @@ without it.
   No logging a user cannot see.
 - **The log names things, it does not copy them.** `model.requested` records context ids, not
   messages. `context.replaced` is the one event carrying content, because overwritten text is the
-  one thing nothing else can recover.
+  one thing nothing else can recover. An item's metadata is copied too - into `context.added`, and
+  what an annotation replaced into `context.annotated` - because it is a hint a compactor decides
+  by, and nothing else keeps the one it replaced.
 - **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove a pinned item and
   says so in `CompactionReport::refused` - and the same for a removal of the call or the result a
   pinned item is paired with, because the two go out together or not at all.

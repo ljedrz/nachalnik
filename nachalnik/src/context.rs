@@ -680,23 +680,21 @@ impl Context {
         self.redo.clear();
     }
 
-    /// Replaces an item's metadata, returning whether it changed.
+    /// Replaces an item's metadata, returning what it was if it changed.
     ///
     /// note: no checkpoint, because metadata rides with the operation it describes - a client
     /// that rewrites an item and records who did it wants one `undo` for the two. But it is new
     /// work all the same, so the redone future goes: a redo that reached across it would put the
     /// old metadata back.
-    pub(crate) fn annotate(&mut self, id: ContextId, meta: Value) -> bool {
-        let Some(index) = self.index_of(id) else {
-            return false;
-        };
+    pub(crate) fn annotate(&mut self, id: ContextId, meta: Value) -> Option<Value> {
+        let index = self.index_of(id)?;
         if self.items[index].meta == meta {
-            return false;
+            return None;
         }
-        Arc::make_mut(&mut self.items[index]).meta = meta;
+        let was = std::mem::replace(&mut Arc::make_mut(&mut self.items[index]).meta, meta);
         self.redo.clear();
 
-        true
+        Some(was)
     }
 
     /// Recounts every item's tokens.

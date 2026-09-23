@@ -416,14 +416,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   operation `undo` should see - and so a checkpoint, and the undo history it costs - or a fact that
   `undo` should re-apply on the way back is the decision.
 
-- **An item's first metadata is in no record.** `context.added` names an item without its `meta`,
-  and `context.annotated` carries what `meta` says *now*. So the metadata an item was added with,
-  and whatever an annotation replaced, survive only in a snapshot taken before the change - the
-  hole `context.replaced` closes for content, left open for the hint a `Compactor` decides by.
-  Carrying it is a field on an event variant, which is a break; what unblocks it is deciding
-  whether `meta` is content the log should copy on an overwrite, as it copies replaced text, and
-  then the next minor of `nachalnik`.
-
 - **Screenshots in the guide.** `kamchatka`'s readme shows the chat and context tabs, from
   `kamchatka/assets/`; the guide still carries no pictures, only prose about what each screen
   holds. A capture pasted in as text is a copy of one session's output: the program's words move

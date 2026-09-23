@@ -134,7 +134,8 @@ that put it there, is in [INVARIANTS.md](INVARIANTS.md) - read that before chang
 - **Identifiers are never reused**, including across a resumed session.
 - **Every state change is an `Event`**, and the log and the broadcast are written under one lock so
   their order agrees. No logging a user cannot see.
-- **The log names things, it does not copy them.** `context.replaced` is the one exception.
+- **The log names things, it does not copy them.** `context.replaced` is the one exception for
+  content; an item's metadata is copied too, first and replaced.
 - **A pin is a promise**: the kernel refuses a `Compactor` that reaches for a pinned item.
 - **One operation is one undo**, and an operation that changes nothing takes no checkpoint.
 - **A failing `Tool` is not a kernel error.** It becomes an error tool result the model is shown.

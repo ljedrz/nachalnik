@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### breaking
 
+- **`Event::ContextAdded` carries `meta`, and `Event::ContextAnnotated` carries `was`.** The
+  metadata an item was added with, and whatever an annotation replaced, were in no record - only in
+  a snapshot taken before the change - and they are the hints a `Compactor` decides by. Both fields
+  are `serde(default)`, so an older log reads as metadata that was null; a pattern that names the
+  variants' fields needs the new one or `..`.
+
 - **`Kernel::undo` and `Kernel::redo` return `Result<bool>`, and refuse while a turn holds
   calls.** From `Requesting` until the machine is resting with nothing to run - through
   `Deciding`, `Ready` and `Executing` - they answer `Error::Busy`. Undoing the turn that asked for

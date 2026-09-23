@@ -981,8 +981,8 @@ impl Kernel {
             return Err(Error::UnknownItem(id));
         }
 
-        if context.annotate(id, meta.clone()) {
-            self.emit(Event::ContextAnnotated { id, meta });
+        if let Some(was) = context.annotate(id, meta.clone()) {
+            self.emit(Event::ContextAnnotated { id, meta, was });
         }
 
         Ok(())
@@ -1412,6 +1412,7 @@ impl Kernel {
                     label: item.label.clone(),
                     tokens: item.tokens,
                     because: item.included_because.clone(),
+                    meta: item.meta.clone(),
                 });
                 added = Some(Removed {
                     id,
@@ -1779,6 +1780,7 @@ impl Kernel {
             label: item.label.clone(),
             tokens: item.tokens,
             because: item.included_because.clone(),
+            meta: item.meta.clone(),
         });
 
         id

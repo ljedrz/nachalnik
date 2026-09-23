@@ -129,7 +129,9 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             restored.len(),
             changed.len()
         ),
-        Event::ContextAnnotated { id, meta } => format!("[{id}] {}", one_line(&meta.to_string())),
+        Event::ContextAnnotated { id, meta, .. } => {
+            format!("[{id}] {}", one_line(&meta.to_string()))
+        }
         Event::ModelChanged { from, to } => format!(
             "{} → {}",
             from.as_ref().map(|i| i.model.as_str()).unwrap_or("none"),

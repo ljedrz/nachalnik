@@ -107,6 +107,15 @@ pub enum Event {
         tokens: usize,
         /// Why it was added, if a reason was given.
         because: Option<String>,
+        /// The metadata it was added with.
+        ///
+        /// note: copied, where the rest of the item is named, for the reason
+        /// [`Event::ContextReplaced`] copies what it overwrote: a hint is what a
+        /// [`Compactor`](crate::Compactor) decides by, and an item's first one is otherwise only in
+        /// a snapshot taken before the next [`Event::ContextAnnotated`] replaced it. `serde(default)`
+        /// so a log written before this reads as an item added with none.
+        #[serde(default)]
+        meta: Value,
     },
     /// A context item's state or note changed, e.g. it was excluded from the projection or pinned.
     ///
@@ -184,6 +193,9 @@ pub enum Event {
         id: ContextId,
         /// What it says now.
         meta: Value,
+        /// What it said before, which nothing else keeps; see [`Event::ContextAdded`]'s `meta`.
+        #[serde(default)]
+        was: Value,
     },
     /// Every item's token count was recomputed, e.g. after the token counter was replaced.
     ///
