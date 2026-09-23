@@ -147,6 +147,10 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **`-r` and `/load` refuse a snapshot the runtime would have to repair**, and say what is wrong
+  with it (`nachalnik::Snapshot::problems`). A session carried on from a record that had to be
+  changed to be read is one whose record no longer says what happened.
+
 - **`u` and `U` say why they did nothing while a turn is under way.** The runtime refuses an undo
   while a turn holds calls, and the context pane says so rather than that there is nothing to
   undo.

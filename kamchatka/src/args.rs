@@ -415,12 +415,23 @@ impl Args {
             self.compact
         );
         let resume = match &self.resume {
-            Some(path) => Some(
-                serde_json::from_slice(
+            Some(path) => {
+                let snapshot: nachalnik::Snapshot = serde_json::from_slice(
                     &std::fs::read(path).with_context(|| format!("could not read {path}"))?,
                 )
-                .with_context(|| format!("{path} is not a session"))?,
-            ),
+                .with_context(|| format!("{path} is not a session"))?;
+                // refused rather than repaired: the runtime would renumber or reserve its way round
+                // most of these, and a session carried on from a record that had to be changed to
+                // be read is one whose record no longer says what happened
+                let problems = snapshot.problems();
+                anyhow::ensure!(
+                    problems.is_empty(),
+                    "{path} is a session this will not carry on from: {}",
+                    problems.join("; ")
+                );
+
+                Some(snapshot)
+            }
             None => None,
         };
 

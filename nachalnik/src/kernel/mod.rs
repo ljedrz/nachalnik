@@ -372,6 +372,16 @@ impl Kernel {
             if let Some(calibration) = snapshot.calibration {
                 counter.recalibrate(calibration);
             }
+            // every call the items name, not only the ones `used_calls` lists: a snapshot merged or
+            // written by hand can leave a call out of the list, and a provider handing that
+            // identifier back would then go unrepaired, two results answering one call
+            kernel.0.seen_calls.lock().extend(
+                snapshot
+                    .items
+                    .iter()
+                    .flat_map(crate::session::named_calls)
+                    .cloned(),
+            );
             kernel
                 .0
                 .context
@@ -447,7 +457,7 @@ impl Kernel {
         // while holding it: every record numbered up to it describes a change these items already
         // show, and every one after it a change they do not. That is what lets a caller write the
         // log out to exactly this point and have the pair agree
-        let (items, next_item, last_seq) = {
+        let (items, next_item, last_seq): (Vec<ContextItem>, _, _) = {
             let context = self.0.context.read();
             (
                 context.items().iter().map(|i| (**i).clone()).collect(),
@@ -455,8 +465,13 @@ impl Kernel {
                 self.last_seq(),
             )
         };
+        // and every call the items name, reserved or not: a client may push a turn it did not
+        // reserve the calls of, and a snapshot whose items name a call its list leaves out is one
+        // `Snapshot::problems` calls inconsistent
         let mut used_calls: Vec<_> = self.0.seen_calls.lock().iter().cloned().collect();
+        used_calls.extend(items.iter().flat_map(crate::session::named_calls).cloned());
         used_calls.sort();
+        used_calls.dedup();
 
         Snapshot {
             session,

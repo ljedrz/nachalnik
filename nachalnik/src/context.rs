@@ -572,7 +572,9 @@ impl Context {
     /// Adds an item, assigning it an identifier and counting its tokens.
     pub(crate) fn add(&mut self, mut item: ContextItem, counter: &dyn TokenCounter) -> ContextId {
         let id = ContextId(self.next_id);
-        self.next_id += 1;
+        // saturating rather than overflowing: a snapshot numbered at the top is refused by
+        // `Snapshot::problems`, and one resumed regardless should not be a panic
+        self.next_id = self.next_id.saturating_add(1);
         item.id = id;
         measure(&mut item, counter);
         self.items.push(Arc::new(item));
@@ -639,23 +641,40 @@ impl Context {
     /// note: The items are sorted by identifier and the next one is taken past the highest of
     /// them, so that a snapshot somebody edited by hand cannot quietly break the ordering the
     /// lookups depend on, or hand out an identifier that is already in use.
+    ///
+    /// note: and an identifier two items share, or the `0` that means none was given, is given
+    /// the next free one - the first to hold a number keeps it - because a lookup by identifier
+    /// finds one of two at random, and an operation on it moves whichever that was. It is a repair
+    /// of a snapshot that should not exist; `Snapshot::problems` is how to refuse one instead.
     pub(crate) fn restore(
         &mut self,
-        items: Vec<ContextItem>,
+        mut items: Vec<ContextItem>,
         next_id: u64,
         counter: &dyn TokenCounter,
     ) {
-        let mut items: Vec<_> = items
+        items.sort_by_key(|item| item.id);
+        let past_the_last = items
+            .last()
+            .map(|item| item.id.0.saturating_add(1))
+            .unwrap_or(1);
+        let mut next = next_id.max(past_the_last).max(1);
+        let mut held = std::collections::HashSet::new();
+        for item in &mut items {
+            if item.id.0 == 0 || !held.insert(item.id) {
+                item.id = ContextId(next);
+                next = next.saturating_add(1);
+            }
+        }
+        items.sort_by_key(|item| item.id);
+
+        let items: Vec<_> = items
             .into_iter()
             .map(|mut item| {
                 measure(&mut item, counter);
                 Arc::new(item)
             })
             .collect();
-        items.sort_by_key(|item| item.id);
-
-        let past_the_last = items.last().map(|item| item.id.0 + 1).unwrap_or(1);
-        self.next_id = next_id.max(past_the_last);
+        self.next_id = next;
         self.items = items;
         self.undo.clear();
         self.redo.clear();

@@ -142,7 +142,7 @@ impl Session {
 
     /// Appends an event.
     pub(crate) fn append(&mut self, event: Event) {
-        self.seq += 1;
+        self.seq = self.seq.saturating_add(1);
         let record = Record {
             seq: self.seq,
             at: SystemTime::now()
@@ -228,4 +228,65 @@ pub struct Snapshot {
     /// resumes with nothing learned, which is exactly what it had.
     #[serde(default)]
     pub calibration: Option<Calibration>,
+}
+
+/// Past this, a number in a snapshot leaves no room to count on from; see [`Snapshot::problems`].
+const ROOM: u64 = u64::MAX / 2;
+
+impl Snapshot {
+    /// What is wrong with this snapshot, in words; empty if nothing is.
+    ///
+    /// note: what [`Kernel::resume`] would have to repair or could not, for a caller that would
+    /// rather refuse a snapshot than resume a repaired one. A snapshot is a record, and one read
+    /// back from a file may have been edited, merged or written by something else. Resuming
+    /// repairs what it can - an identifier two items share, or `0`, gets the next free one, and
+    /// every call the items name is reserved whether or not `used_calls` lists it - and cannot
+    /// repair a number too near the top of a `u64` to count on from.
+    pub fn problems(&self) -> Vec<String> {
+        let mut problems = Vec::new();
+
+        let mut held = std::collections::HashSet::new();
+        for item in &self.items {
+            if item.id.0 == 0 {
+                problems.push("an item has no identifier (0)".to_owned());
+            } else if !held.insert(item.id) {
+                problems.push(format!("two items are both numbered {}", item.id));
+            }
+        }
+
+        let used: std::collections::HashSet<_> = self.used_calls.iter().collect();
+        for call in self.items.iter().flat_map(named_calls) {
+            if !used.contains(call) {
+                problems.push(format!(
+                    "the call `{}` is in the items and not in `used_calls`",
+                    call.0
+                ));
+            }
+        }
+
+        let highest = self.items.iter().map(|item| item.id.0).max().unwrap_or(0);
+        for (what, number) in [
+            ("an item identifier", highest),
+            ("`next_item`", self.next_item),
+            ("`last_seq`", self.last_seq),
+            ("`next_permission`", self.next_permission),
+        ] {
+            if number > ROOM {
+                problems.push(format!(
+                    "{what} is {number}, which leaves no room to number anything after it"
+                ));
+            }
+        }
+
+        problems
+    }
+}
+
+/// Every tool call identifier an item names: the calls a turn made, and the one a result answers.
+pub(crate) fn named_calls(item: &ContextItem) -> Vec<&ToolCallId> {
+    let mut named: Vec<_> = item.calls().map(|call| &call.id).collect();
+    if let crate::context::ContextKind::ToolResult { call, .. } = &item.kind {
+        named.push(call);
+    }
+    named
 }

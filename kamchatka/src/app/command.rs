@@ -1399,6 +1399,15 @@ impl App {
             self.say(Speaker::Error, format!("{file} holds no context"));
             return;
         }
+        // refused for the reason `-r` refuses one; see `nachalnik::Snapshot::problems`
+        let problems = snapshot.problems();
+        if !problems.is_empty() {
+            self.say(
+                Speaker::Error,
+                format!("{file} will not be loaded: {}", problems.join("; ")),
+            );
+            return;
+        }
 
         // set aside first, so that the calls in the loaded turns are the only ones the projector
         // can pair a loaded result with. Archived items are not projected, so an old copy of the

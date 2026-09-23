@@ -604,3 +604,121 @@ async fn a_payload_survives_a_snapshot_with_what_was_known_about_it() {
     assert_eq!(resumed.budget().uncounted, 2);
     assert!(!resumed.budget().fully_counted());
 }
+
+/// A snapshot whose items name a call `used_calls` does not list still has that call reserved.
+///
+/// note: `resume` reserved only what the list said, and a snapshot merged or written by hand can
+/// leave a call out of it - so a provider handing that identifier back went unrepaired, and the
+/// request after it carried one `tool_call_id` twice.
+#[tokio::test]
+async fn a_call_the_items_name_is_reserved_whatever_the_list_says() {
+    let kernel = worked_session().await;
+    let mut snapshot = kernel.snapshot();
+    snapshot.used_calls.clear();
+    assert!(
+        snapshot.problems().iter().any(|it| it.contains("`c1`")),
+        "{:?}",
+        snapshot.problems()
+    );
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    resumed.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ])));
+    resumed.set_policy(Arc::new(nachalnik::test::AllowAll));
+    resumed.add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    resumed.push(ContextItem::user("again"));
+    let mut events = resumed.subscribe();
+    resumed.turn().await.unwrap();
+
+    let repaired = std::iter::from_fn(|| events.try_recv().ok())
+        .any(|event| matches!(event, Event::ToolCallRepaired { .. }));
+    assert!(
+        repaired,
+        "an identifier the items already hold was handed out again"
+    );
+}
+
+/// Two items sharing an identifier, or one with none, are given one of their own on resume, and
+/// the snapshot says so first.
+#[test]
+fn an_identifier_two_items_share_is_given_a_new_one() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("one"));
+    kernel.push(ContextItem::user("two"));
+    kernel.push(ContextItem::user("three"));
+    let mut snapshot = kernel.snapshot();
+    snapshot.items[1].id = snapshot.items[0].id;
+    snapshot.items[2].id = nachalnik::ContextId(0);
+    let problems = snapshot.problems();
+    assert!(
+        problems.iter().any(|it| it.contains("both numbered")),
+        "{problems:?}"
+    );
+    assert!(
+        problems.iter().any(|it| it.contains("no identifier")),
+        "{problems:?}"
+    );
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    let ids: Vec<_> = resumed.items().iter().map(|item| item.id.0).collect();
+    let mut distinct = ids.clone();
+    distinct.dedup();
+    assert_eq!(ids, distinct, "every item is its own: {ids:?}");
+    assert!(!ids.contains(&0), "{ids:?}");
+    let pushed = resumed.push(ContextItem::user("four"));
+    assert!(
+        !ids.contains(&pushed.0),
+        "and the next is new: {ids:?} and {pushed}"
+    );
+}
+
+/// Numbers at the top of what a `u64` holds are named as a problem, and resuming one anyway is
+/// not a panic.
+#[test]
+fn a_snapshot_numbered_at_the_top_is_named_and_does_not_panic() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+    let mut snapshot = kernel.snapshot();
+    snapshot.last_seq = u64::MAX;
+    snapshot.next_item = u64::MAX;
+    assert_eq!(snapshot.problems().len(), 2, "{:?}", snapshot.problems());
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    resumed.push(ContextItem::user("and on"));
+    assert_eq!(resumed.items().len(), 2);
+}
+
+/// What the counter learned comes back exactly, whatever the ratio.
+///
+/// note: the scale is a float, and one read back from JSON is not always the one that was
+/// written, so a resumed session counted on a scale a digit off the one it was saved with. A sweep
+/// rather than one figure, because which ratios survive the round trip is a matter of luck.
+#[tokio::test]
+async fn what_the_counter_learned_comes_back_exactly_whatever_the_ratio() {
+    for reported in 1_200..1_400 {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse {
+            usage: Some(nachalnik::Usage {
+                input_tokens: Some(reported),
+                ..nachalnik::Usage::default()
+            }),
+            ..ModelResponse::text("hello")
+        }])));
+        // an estimate of 1,003 rather than a round thousand, whose ratios are short decimals that
+        // survive the trip whatever happens to them
+        kernel.push(ContextItem::user("a".repeat(4_012)));
+        kernel.turn().await.unwrap();
+        let learned = kernel.counter().calibration().expect("the default learns");
+
+        let snapshot: Snapshot =
+            serde_json::from_str(&serde_json::to_string(&kernel.snapshot()).unwrap()).unwrap();
+        let resumed = Kernel::resume(Config::default(), snapshot);
+        assert_eq!(
+            resumed.counter().calibration(),
+            Some(learned),
+            "reported {reported}"
+        );
+    }
+}

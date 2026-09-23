@@ -462,9 +462,19 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
 
     fn recalibrate(&self, calibration: Calibration) {
         // through the same gate the ratio this counter works out for itself goes through; see
-        // `applicable` for what arrives here that has been through nothing
+        // `applicable` for what arrives here that has been through nothing.
+        //
+        // note: and worked out again from the two totals where there are any, as `observe` works
+        // it out, rather than taken as written. The scale is derived from them, and a float read
+        // back from JSON is not always the one that was written - so a resumed session counted on a
+        // scale one digit off the one it was saved with, and a snapshot was not equal to itself
+        // after a round trip
+        let scale = match calibration.estimated {
+            0 => calibration.scale,
+            estimated => calibration.reported as f64 / estimated as f64,
+        };
         *self.learned.write() = Calibration {
-            scale: applicable(calibration.scale),
+            scale: applicable(scale),
             ..calibration
         };
     }

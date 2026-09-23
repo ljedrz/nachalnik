@@ -23,6 +23,14 @@ minor bump may break you.
   written elsewhere no longer compiles; a `Snapshot` read back with `serde`, and a
   `SelectorError`'s `.0`, are unchanged.
 
+### added
+
+- **`Snapshot::problems`** says what is wrong with a snapshot, in words: an identifier two items
+  share or none, a call the items name that `used_calls` does not list, and a number too near the
+  top of a `u64` to count on from. It is what `Kernel::resume` would have to repair or could not,
+  for a caller that would rather refuse a snapshot read back from a file than resume a repaired
+  one.
+
 ### changed
 
 - **`cancel_pending_calls` passes through `State::Executing`.** It refuses the calls and claims
@@ -59,6 +67,21 @@ minor bump may break you.
   provider's identifiers against.
 
 ### fixed
+
+- **A resumed snapshot is checked rather than trusted.** `resume` reserved only the calls
+  `used_calls` listed, so a snapshot that left one out - merged, or written by hand - let a
+  provider hand it back unrepaired, and a request carried one `tool_call_id` twice; it reserves
+  every call the items name now, and `Kernel::snapshot` lists them all, since a client can push a
+  turn whose calls it never reserved. Two items sharing an identifier, or one with `0`, resumed as
+  they were, and a lookup found one of the two at random; each is given the next free identifier.
+  And a number at the top of a `u64` - an item's, `next_item`, `last_seq` - panicked in a debug
+  build and wrapped round in a release one; the counting saturates, and `Snapshot::problems` names
+  the snapshot that would need it.
+
+- **What the counter learned comes back exactly.** The scale was read back from JSON as written,
+  and about one ratio in six does not survive that trip, so a resumed session counted on a scale a
+  digit off the one it was saved with. It is worked out again from the two totals, as `observe`
+  works it out.
 
 - **A batch of tool results is one undo whatever lands between two of them.** Each result joined
   the checkpoint the first took, assuming nothing else took one in between - and a tool that

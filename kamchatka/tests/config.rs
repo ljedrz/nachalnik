@@ -682,3 +682,27 @@ fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
         "the instruction was pushed into the session again: {second}"
     );
 }
+
+/// `-r` refuses a snapshot the runtime would have to repair, and says what is wrong with it.
+///
+/// note: a snapshot is a record, and one read back from a file may have been edited or merged. The
+/// runtime renumbers an identifier two items share rather than resume a context whose lookups
+/// find one of the two at random - which is right for a library that cannot fail there, and wrong
+/// for a session carried on from a record that no longer says what happened.
+#[test]
+fn a_session_the_runtime_would_have_to_repair_is_not_carried_on_from() {
+    let dir = common::scratch("resumed-repaired");
+    let (ok, said) = run_from(&dir, &[], "/save first.json\n");
+    assert!(ok, "{said}");
+
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("first.json")).expect("saved"))
+            .expect("a snapshot");
+    snapshot["last_seq"] = serde_json::json!(u64::MAX);
+    std::fs::write(dir.join("broken.json"), snapshot.to_string()).expect("written");
+
+    let (ok, said) = run_from(&dir, &["-r", "broken.json"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("will not carry on from"), "{said}");
+    assert!(said.contains("`last_seq`"), "it says which: {said}");
+}

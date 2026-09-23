@@ -290,6 +290,10 @@ fn a_nonsensical_report_cannot_turn_a_budget_into_a_fiction() {
 /// to as well. `Calibration` is `serde` with public fields and a `Snapshot` carries one, so a
 /// scale arriving that way has been derived by nobody - and `0.0` is the value
 /// `Calibration::default` is hand-written to avoid, reachable through the other door.
+///
+/// note: where it arrives with the totals it is derived from, it is worked out from them again
+/// rather than believed, which is what makes a resumed scale the one that was saved; a scale with
+/// no totals behind it is the one the bounds are left to catch.
 #[test]
 fn a_calibration_that_was_derived_nowhere_is_held_to_the_same_bounds() {
     let counter = calibrating();
@@ -300,7 +304,11 @@ fn a_calibration_that_was_derived_nowhere_is_held_to_the_same_bounds() {
         estimated: 4_000,
         reported: 5_000,
     });
-    assert_eq!(counter.calibration().scale, 0.1, "clamped, not believed");
+    assert_eq!(
+        counter.calibration().scale,
+        1.25,
+        "worked out from its totals, not believed"
+    );
     assert_ne!(
         counter.count(&Content::text("x".repeat(4_000))),
         0,
