@@ -30,6 +30,43 @@ back to earlier points in the discussion
 - you want a minimalistic agent with negligible OS footprint and a transparent configuration
 - you like to keep detailed, auditable, and local transcripts of past conversations
 
+## 🖼️ what a session looks like
+
+Asked to pin a budget and a deadline, the model writes the note itself with its `context` tool,
+and the result it reads back says what the note did to its next request:
+
+![The chat tab. Asked to pin a budget and a deadline, the model calls `context` to write a note;
+the result says the note is pinned, goes into every request from then on, and what the next request
+now costs.][shot-chat]
+
+The context tab is the same session from your side: every item, what it puts into the next request
+and what it holds back, and one opened on the page that says why it is there — in the model's
+words, since the model put it there — and that it is pinned:
+
+![The context tab. Five items with what each sends and holds back; the pinned note is selected and
+open, showing why it is there and what it says.][shot-context]
+
+## 📦 installing
+
+Download one of the binaries from [releases](https://github.com/ljedrz/nachalnik/releases), or
+install the latest release using `cargo`:
+
+```console
+$ cargo install kamchatka                     # from the registry
+$ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
+$ cargo install --path kamchatka              # from a clone
+```
+
+Two binaries are attached to a release. The Linux one is static musl and runs wherever the kernel
+is new enough. The Mac one is arm64 and **unsigned**, so Gatekeeper quarantines it and the first
+run is refused until `xattr -d com.apple.quarantine kamchatka` — signing it needs a paid Apple
+Developer account. It also runs the shell unconfined, which is a limit of macOS rather than of the
+download, and the status line says so in as many words.
+
+Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
+to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
+looking for yours.
+
 ## 🔧 what it comes with
 
 Six tools — `fs`, `shell`, `context`, `fork`, `log`, `setup` — and a policy that asks about all of
@@ -59,19 +96,7 @@ not open it and says how many it left alone.
 Four of them are about the session itself: `context` reads the context and changes it, `log` reads
 the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
 session a question. Every operation in them is a public function the screen was already calling —
-[what each does][guide-introspect]. Asked to pin a budget and a deadline, the model writes the note
-itself, and the result it reads back says what the note did to its next request:
-
-![The chat tab. Asked to pin a budget and a deadline, the model calls `context` to write a note;
-the result says the note is pinned, goes into every request from then on, and what the next request
-now costs.][shot-chat]
-
-The context tab is the same session from your side: every item, what it puts into the next request
-and what it holds back, and one opened on the page that says why it is there — in the model's
-words, since the model put it there — and that it is pinned:
-
-![The context tab. Five items with what each sends and holds back; the pinned note is selected and
-open, showing why it is there and what it says.][shot-context]
+[what each does][guide-introspect].
 
 The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from
 the next request onward and `/tools toggle shell` again offers it, which is one call on the kernel
@@ -116,26 +141,7 @@ only checkpoint it has. Here the checkpoint is the state machine's own.
 the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
 to drive.
 
-## 📦 installing
-
-Download one of the binaries from [releases](https://github.com/ljedrz/nachalnik/releases), or
-install the latest release using `cargo`:
-
-```console
-$ cargo install kamchatka                     # from the registry
-$ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
-$ cargo install --path kamchatka              # from a clone
-```
-
-Two binaries are attached to a release. The Linux one is static musl and runs wherever the kernel
-is new enough. The Mac one is arm64 and **unsigned**, so Gatekeeper quarantines it and the first
-run is refused until `xattr -d com.apple.quarantine kamchatka` — signing it needs a paid Apple
-Developer account. It also runs the shell unconfined, which is a limit of macOS rather than of the
-download, and the status line says so in as many words.
-
-Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
-to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
-looking for yours.
+## 🎛️ features
 
 Four features, two of them on by default. `--no-default-features --features tui` drops MCP
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
