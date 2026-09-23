@@ -233,12 +233,31 @@ impl Server {
     /// missed or had never been offered; the marker costs a line, and pushing it is optional like
     /// everything else here.
     pub async fn resources(&self) -> Result<Vec<ContextItem>> {
-        let listed = self
-            .running
-            .peer()
-            .list_all_resources()
-            .await
-            .map_err(|e| Error::Request(Box::new(e)))?;
+        // page by page and to the same bound as `tools`, for the same reason: the cursor is the
+        // server's to hand back, and the SDK's own `list_all_resources` follows it for ever
+        let mut listed = Vec::new();
+        let mut cursor = None;
+        for _ in 0..PAGES {
+            let page = self
+                .running
+                .peer()
+                .list_resources(Some(
+                    rmcp::model::PaginatedRequestParams::default().with_cursor(cursor),
+                ))
+                .await
+                .map_err(|e| Error::Request(Box::new(e)))?;
+            listed.extend(page.resources);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        if cursor.is_some() {
+            return Err(Error::Request(
+                format!("it listed more than {PAGES} pages of resources and was still going")
+                    .into(),
+            ));
+        }
 
         let mut items = Vec::with_capacity(listed.len());
         for resource in listed {

@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A listing of resources that never ends gives up, as a listing of tools does.** `Server::tools`
+  follows the server's cursor for a bounded number of pages, and `Server::resources` went through
+  the SDK's `list_all_resources`, which follows it for ever: a server always handing back another
+  cursor held the call until somebody killed it.
+
 - **Under `Trust::Annotations`, a tool that does not say it is closed to the world gets
   `net:reach`.** An absent `openWorldHint` was read as `false`, where the specification's default
   for it is `true` - the same reading an absent `readOnlyHint` already got the other way, for the

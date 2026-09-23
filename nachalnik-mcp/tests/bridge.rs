@@ -623,6 +623,19 @@ impl ServerHandler for Wedged {
         Ok(page)
     }
 
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        let mut page =
+            ListResourcesResult::with_all_items(vec![Resource::new("file:///more", "more")]);
+        if self.endless {
+            page.next_cursor = Some("more".into());
+        }
+        Ok(page)
+    }
+
     async fn call_tool(
         &self,
         _request: CallToolRequestParams,
@@ -709,6 +722,25 @@ async fn a_listing_that_never_ends_gives_up() {
     .await;
 
     let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.tools())
+        .await
+        .expect("it listed for ever");
+    let Err(e) = listed else {
+        panic!("an endless listing is not a list");
+    };
+    assert!(e.to_string().contains("pages"), "{e}");
+}
+
+/// A listing of resources whose server always has another page gives up as a listing of tools
+/// does, rather than listing for ever.
+#[tokio::test]
+async fn a_listing_of_resources_that_never_ends_gives_up() {
+    let server = wedged(Wedged {
+        endless: true,
+        ..Wedged::default()
+    })
+    .await;
+
+    let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.resources())
         .await
         .expect("it listed for ever");
     let Err(e) = listed else {
