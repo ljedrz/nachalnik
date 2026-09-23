@@ -8,23 +8,21 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 ---
 
-- **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image
-  block with `[an image (image/png), not carried into the context]`, which was the only thing it
-  could do and is no longer. Carrying it is a few lines - a `Content::Blob` instead of a sentence
-  - and the reason to wait was that a server offering a 4 MB screenshot would put 5.5 MB of
-  base64 into a context whose budget could not count it. **The counter is in as of 0.4.0**, so
-  the blocker is gone: a budget now says how many pieces it could not price, and `kamchatka`'s
-  compactor takes an unpriced tool result first.
+- **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image block
+  with `[an image (image/png), not carried into the context]`, which was the only thing it could do
+  and is no longer. Carrying it is a few lines - a `Content::Blob` instead of a sentence - and the
+  reason to wait was that a server offering a 4 MB screenshot would put 5.5 MB of base64 into a
+  context whose budget could not count it. **The counter is in as of 0.4.0**, so the blocker is
+  gone: a budget now says how many pieces it could not price, and `kamchatka`'s compactor takes an
+  unpriced tool result first.
 
-  **The blocker was never only the counter, and this entry said it was.** Neither dialect
-  accepts a picture in a *tool result* - `tool` content is a string in one and a
-  `functionResponse` in the other - so a `Content::Blob` in one is flattened to
-  `[image/png, N bytes]` on the way out, deliberately, and `blobs.rs` pins that. Carrying an MCP
-  picture would therefore put megabytes of base64 in the context, send the model the same
-  sentence it already gets, and - measured - make `Budget::uncounted` report one unpriced piece
-  for a request whose actual content is twenty-four characters of text. That is the budget
-  naming a hole the request does not have, which is the thing the elided-item rule exists to
-  prevent.
+  **The blocker was never only the counter.** Neither dialect accepts a picture in a *tool result* -
+  `tool` content is a string in one and a `functionResponse` in the other - so a `Content::Blob` in
+  one is flattened to `[image/png, N bytes]` on the way out, deliberately, and `blobs.rs` pins that.
+  Carrying an MCP picture would therefore put megabytes of base64 in the context, send the model the
+  same sentence it already gets, and make `Budget::uncounted` report one unpriced piece for a
+  request whose actual content is a line of text. That is the budget naming a hole the request
+  does not have, which is the thing the elided-item rule exists to prevent.
 
   So what would unblock it is not a counter. It is a decision about **where a tool's picture
   reaches the model**, since the one place it cannot is where it currently sits: a picture has
@@ -41,20 +39,20 @@ Referenced from [AGENTS.md](AGENTS.md).
   *inside* the branch that read it - so while `/models` fetches a list, or `/model` and
   `/provider` finish a switch, neither branch can be reached. A deadline falling in that window is
   served when the command returns. The model's own turns are interruptible, which is where a run
-  spends its time, so the hole is real and narrow.
+  spends its time, so the hole is narrow.
 
-  What would unblock it is somewhere for a command to run that the loop can outlive: `App::submit`
+  What would unblock it is somewhere for a command to run that the loop can outlive. `App::submit`
   takes `&mut App`, so the obvious move - a `timeout_at` around it - would drop the future
   mid-command and leave a `/provider` half applied, which is a worse thing to leave a session than
   a late deadline. The shape that works is the one `/model` already uses for its switch (a task,
   and `App::settling` awaited before the next line is read), applied to the commands that are
-  themselves a request; what has to be decided first is what a deadline *means* for one - whether
+  themselves a request. What has to be decided first is what a deadline *means* for one - whether
   it interrupts the request or merely stops what comes after it.
 
 - **`--reconcile`: one context out of several hard forks of one session.** Two or more past
   snapshots that share an ancestor, folded into one session to carry on from. Nothing about it is
-  blocked; it is not built. The design was worked out and is written down here rather than in
-  nobody's head, because most of it is decisions rather than code.
+  blocked; it is not built. The design is written down here because most of it is decisions
+  rather than code.
 
   It needs nothing in the runtime. `Snapshot` and `Kernel::resume` already are this, which is
   what the `fork` tool is built out of and what its own note says - so it is a
@@ -91,17 +89,16 @@ Referenced from [AGENTS.md](AGENTS.md).
   hiding it picks a side on the model's behalf.
 
   **Where that label goes is the part with a trap in it.** `note` is replaced whenever an item's
-  state changes, so provenance cannot live there - the first `pin` would take it.
-  `included_because` is already carrying the model's own reason for writing the note, and
-  overwriting it would be rewriting the model's words. And `meta`
-  never reaches the request at all: a `Reference` projects as `{label}:\n{text}`, so the label is
-  the only field of an item a model reads without calling `context: look`. Prefixing the label
-  (`a/plan`) buys visibility and breaks addressing - `label:plan` then names neither. So leave the
-  label alone, stamp `meta` for the pane and for `look`, and push one **manifest** item at the
-  divergence point: which ids came from which fork, and which labels are now carried by more than
-  one. Said out loud because the resumed session cannot work it out, the way `fork`'s system
-  message is - and it is the read-time counterpart of what `note` says at write time when a name
-  is already taken.
+  state changes, so provenance cannot live there - the first `pin` would take it. `included_because`
+  is already carrying the model's own reason for writing the note, and overwriting it would be
+  rewriting the model's words. And `meta` never reaches the request at all: a `Reference` projects
+  as `{label}:\n{text}`, so the label is the only field of an item a model reads without calling
+  `context: look`. Prefixing the label (`a/plan`) buys visibility and breaks addressing -
+  `label:plan` then names neither. So leave the label alone, stamp `meta` for the pane and for
+  `look`, and push one **manifest** item at the divergence point: which ids came from which fork,
+  and which labels are now carried by more than one. Said out loud because the resumed session
+  cannot work it out, the way `fork`'s system message is - and it is the read-time counterpart of
+  what `note` says at write time when a name is already taken.
 
   Calibration merges by summing `estimated` and `reported` and recomputing, which is right for two
   forks of one model and meaningless across two models, where it should be dropped - `Option` with
@@ -141,31 +138,29 @@ Referenced from [AGENTS.md](AGENTS.md).
   directly: `(deny default)`, `(allow file-read* (subpath ...))`,
   `(allow file-write* (subpath ...))`, `(deny network*)`.
 
-  What differs. `(deny network*)` covers UDP, so the module's "`no network` here means no TCP" is
-  a Linux-only sentence. There is no `Partial` - a profile applies or it does not - so macOS
+  Against Landlock, `(deny network*)` covers UDP, so the module's "`no network` here means no TCP"
+  is a Linux-only sentence. There is no `Partial` - a profile applies or it does not - so macOS
   answers `Full` or `Unavailable`, and `Unavailable` becomes a runtime check for
   `/usr/bin/sandbox-exec`, which doubles as the warning if Apple pulls it. `SYSTEM` needs a macOS
-  twin: `/System` for the dyld cache, `/private/var`, `/Library`. And the profile is generated
-  text, so a working directory holding a `"` is an injection surface that wants escaping and a
-  test before the rest is worth having.
+  twin: `/System` for the dyld cache, `/private/var`, `/Library`. And the profile is generated text,
+  so a working directory holding a `"` is an injection surface that wants escaping and a test before
+  the rest is worth having.
 
   `birdcage` covers both platforms and is the wrong fit: it confines the calling process, so the
   restriction leaks past the spawn, which is the opposite of the re-execution this program does
   deliberately.
 
-  **The first step is done.** `tests/sandbox.rs` was `#![cfg(target_os = "linux")]` at the file
-  level, so the `macos-latest` column in CI was green while checking none of this. Everything up
-  to the spawn is `tests/boundary.rs` now, under `#![cfg(unix)]` - the `Reach` rules the file
-  tools obey, what a refusal names, the `~` refused in words rather than expanded, the arguments
-  a confinement travels as, what the scratch directory may be made through, and which errors
-  `Sandbox::note_for` will claim. Six of the twenty-six, and `cfg(unix)` rather than nothing at
-  all because they are written against `/usr` and `/etc` and a root with no drive letter is not
-  absolute on Windows.
+  **The first step is done.** `tests/sandbox.rs` is `#![cfg(target_os = "linux")]`, so everything
+  up to the spawn is in `tests/boundary.rs`, under `#![cfg(unix)]`, where the `macos-latest`
+  column in CI runs it: the `Reach` rules the file tools obey, what a refusal names, the `~`
+  refused in words rather than expanded, the arguments a confinement travels as, what the scratch
+  directory may be made through, and which errors `Sandbox::note_for` will claim. It is
+  `cfg(unix)` rather than nothing at all because those tests are written against `/usr` and
+  `/etc`, and a root with no drive letter is not absolute on Windows.
 
-  This entry used to say the portable half included *a command cannot write outside the working
-  directory* and *a `curl` is refused*. It does not: both of those are a spawned process being
-  stopped, which off Linux nothing does - they are the whole of what is left in `sandbox.rs`, and
-  a backend is what would check them.
+  The portable half does not include *a command cannot write outside the working directory* or
+  *a `curl` is refused*. Both are a spawned process being stopped, which off Linux nothing does;
+  they are what is left in `sandbox.rs`, and a backend is what would check them.
 
   **The Mac binary was separable and is shipped.** It is a second entry in the `binary` job's
   matrix, `aarch64-apple-darwin` on `macos-latest`, through the `upload-rust-binary-action` the
@@ -176,12 +171,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   what is still not done - a Homebrew tap is the other way to avoid the quarantine. What the
   binary does not have is any of the confinement above.
 
-- **A second System One engine, `laya` among them.** The module is
-  `nachalnik-providers::system1` and the variables are `KAMCHATKA_SYSTEM1_*` because the three
-  question types are the *category's* rather than TypeSafe's - a claim to weigh, a closed set, an
-  ordered rubric, under those names. What the module holds is still one client, `Jev`, and there
-  is deliberately no trait: a second engine would be a second struct beside it, and a trait with
-  one implementor is a seam invented for a caller that does not exist.
+- **A second System One engine, `laya` among them.** The module is `nachalnik-providers::system1`
+  and the variables are `KAMCHATKA_SYSTEM1_*` because the three question types are the *category's*
+  rather than TypeSafe's - a claim to weigh, a closed set, an ordered rubric, under those names.
+  What the module holds is still one HTTP client, `Jev`.
 
   The obvious candidate is [`laya`](https://github.com/NandhaKishorM/laya), which is open, has the
   same three primitives under the same names, answers in ~33ms, and benchmarks itself against
@@ -198,19 +191,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   `KAMCHATKA_SYSTEM1_MODEL` set and no Rust written at all. Anybody wanting this before the
   upstream has a wire format should write that shim rather than a client.
 
-  **The trait this entry argued against now exists, and the reason it was wrong is worth
-  keeping.** It said a second engine would be a second struct beside `Jev` and that a trait
-  would be a seam shaped around the only thing that fits it. What it missed is that the second
-  engine is not a second *service*: a library is reached by spawning a process, this crate does
-  not spawn processes, and so the second implementation could never have sat beside `Jev` at
-  all. `system1::SystemOne` is the seam it needs instead, and `kamchatka::advisor::Local` is on
-  the other end of it, talking to `contrib/laya_advisor.py` over a pipe in the body `Jev`
-  already sends.
+  **A second engine is not a second struct beside `Jev`, because it is not a second *service*.** A
+  library is reached by spawning a process, and this crate does not spawn processes, so a second
+  implementation could never have sat beside `Jev` at all. That is why there is a trait:
+  `system1::SystemOne` is the seam, and `kamchatka::advisor::Local` is on the other end of it,
+  talking to `contrib/laya_advisor.py` over a pipe in the body `Jev` already sends.
 
-  What is still not built is a laya *client* - there is nothing to write one against, and a
-  shim somebody runs is the honest answer while that is true. What would unblock one is `laya`
-  publishing an HTTP interface, or somebody standardising the body this workspace already
-  sends.
+  What is still not built is a laya HTTP *client*. What would unblock one is `laya` publishing an
+  HTTP interface, or somebody standardising the body this workspace already sends.
 
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
   app headers, so a session that borrows its own key for `--advise` is attributed for the
@@ -219,12 +207,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   build them, and `kamchatka::endpoint` already holds the URL, the title and the categories to
   pass.
 
-  What stops it being three lines is that `Attribution` is an inherent part of one client, and
-  `Jev` is deliberately not a `Dialect`: two unrelated clients now want the same pair of headers,
-  and copying them onto the second is the third place in this workspace to write out the same
-  thing - which is what `is_openrouter` was just consolidated out of. So what would unblock it is
-  deciding **where the pair lives** now that it is not one client's business: a builder the crate
-  offers, rather than a method each client grows.
+  What stops it being three lines is that `Attribution` is an inherent part of one client, and `Jev`
+  is deliberately not a `Dialect`. Two unrelated clients now want the same pair of headers, and
+  copying them onto the second would be the third copy of one thing in this workspace, which is what
+  `is_openrouter` was consolidated out of. So what would unblock it is deciding **where the pair
+  lives** now that it is not one client's business: a builder the crate offers, rather than a method
+  each client grows.
 
   `KAMCHATKA_NO_ATTRIBUTION` has to cover both the day it does, and as one switch. Somebody who
   turned attribution off for their conversation has not agreed to be named by a second client on
@@ -238,9 +226,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **Arbitration between clients attached to one session.** Every attached client may submit,
   interrupt and answer questions, and there is room for exactly one message queued into a running
   turn - so a second client typing during a turn silently takes the first one's place. The session
-  says so, to everybody, which is the least it can do and is not the same as the line not being
-  lost. Anybody who attaches two phones to one session meets this, and `RUNNING.md` names it in
-  passing, which is the right disclosure in the wrong file.
+  says so, to everybody, and the first line is still lost. Anybody who attaches two phones to one
+  session meets this, and `RUNNING.md` names it in passing.
 
   There is nothing to unblock: what is missing is a decision about what several people driving one
   agent *means*. The cheap version is a queue instead of a slot, and it is cheap because the slot
@@ -253,18 +240,17 @@ Referenced from [AGENTS.md](AGENTS.md).
   loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
   list, `/model` and `/provider` finish a switch, `/compact` runs a whole compaction pass, and a
   switch still in flight is awaited before the next line is read at all. While any of those is
-  awaited the loop accepts no connections, answers no other client, processes no kernel events and
-  does not poll `ctrl_c`. One client typing `/models` at an endpoint that has gone quiet freezes
-  everybody attached.
+  awaited the loop answers no other client, and one client typing `/models` at an endpoint that
+  has gone quiet stalls everybody attached.
 
-  **The half that was losing something is closed, and the paragraph above overstated the rest.**
-  Both loops now read the kernel's broadcast while a command is in flight, because that is the one
-  channel here that *drops* what nobody took: `App::trace` is built from what the loop read, and
-  `Attached::trace` hands it to every client that attaches afterwards, so a lagged session gave
-  everybody who arrived later a trace with holes in it and nothing said so. The other three do not
-  lose anything. A connection waits in the listen backlog, an outcome in an unbounded channel and a
-  `ctrl+c` in its own stream; all of them arrive late, none of them is dropped, and a client cannot
-  tell the difference between the loop taking them early and taking them at the end.
+  **Nothing is lost while it waits.** Both loops read the kernel's broadcast while a command is in
+  flight, because that is the one channel here that *drops* what nobody took: `App::trace` is
+  built from what the loop read, and `Attached::trace` hands it to every client that attaches
+  afterwards, so a lagged session would give everybody who arrived later a trace with holes in it
+  and nothing would say so. Everything else queues. A connection waits in the listen backlog, an
+  outcome in an unbounded channel and a `ctrl+c` in its own stream; all of them arrive late, none
+  of them is dropped, and a client cannot tell the difference between the loop taking them early
+  and taking them at the end.
 
   What is left is a client waiting for its turn, and it is not a queue anybody can add out here. It
   is `App::submit` taking `&mut App` for the length of a round trip, so answering one client while
@@ -278,9 +264,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A projection larger than `protocol::MAX_LINE` makes a session unattachable.** The *record* half
   of this is closed: a record over the cap goes out as `Message::Oversized`, which names its
   sequence and its size, and the client takes that sequence as seen and carries on. What is left is
-  the projection, and it was found by writing the test for the other half - a 33 MB context item
-  makes `Message::Attached` itself too long, and unlike a record a projection cannot be skipped. A
-  client with no projection has nothing.
+  the projection: a context item larger than the cap makes `Message::Attached` itself too long, and
+  unlike a record a projection cannot be skipped. A client with no projection has nothing.
 
   So it wants abridging rather than naming, and that is the decision: `Line::text` in a projection
   is the whole of what an item says, and clipping it changes what every client is handed - the
@@ -301,20 +286,20 @@ Referenced from [AGENTS.md](AGENTS.md).
   number and does not keep it, so the moment `VERSION` is `2` nothing in a connection knows it is
   talking to a version-1 client and nothing can stop it being sent a version-2 message.
 
-  There is nothing to unblock and nothing to do while this is `1`, which is exactly why it is
-  written down: the day the number moves is the day it is needed, and it is not the day anybody
-  will be thinking about it. What it costs is the number kept per connection and every write in
-  `remote::server::attend` asking about it - which is more than a field, because "a message this
-  version lacks" is a fact about each variant that nothing declares today.
+  There is nothing to unblock and nothing to do while this is `1`. The day the number moves is the
+  day it is needed, and it is not the day anybody will be thinking about it. What it costs is the
+  number kept per connection and every write in `remote::server::attend` asking about it - which is
+  more than a field, because "a message this version lacks" is a fact about each variant that
+  nothing declares today.
 
   What stands in meanwhile is `Message::Unknown` at the client, which makes an unrecognised message
   something a client survives rather than something that ends it, and `Attached::version`, which is
-  how a client finds out what the other end speaks without being refused first. Both are honest and
-  neither is the rule: an unknown message is *counted* as an answer, because a client cannot tell
-  one from a broadcast, and a client that leaves a beat early is the cost of that guess.
+  how a client finds out what the other end speaks without being refused first. Neither is the rule:
+  an unknown message is *counted* as an answer, because a client cannot tell one from a broadcast,
+  and a client that leaves a beat early is the cost of that guess.
 
 - **A model switch that is in no record.** `/model` and `/provider` hand the new model to the
-  `Dialect` the kernel already holds, and `wiring.rs` gave the kernel a clone of that same `Arc` - so
+  `Dialect` the kernel already holds, and `wiring.rs` gave the kernel a clone of that same `Arc`, so
   the kernel's provider slot never changes and `Event::ModelChanged` is never emitted. The session
   is talking to something else and the log does not say so, which means a `/save` and a resume from
   it cannot say when the model changed either, and neither can anything reading the records
@@ -323,7 +308,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   One case is now on the record and it is the first pick rather than a switch: a session started
   without `-m` is wired with no provider at all, so the `/model` that ends that calls
   `Kernel::set_provider` and the event says `from` nothing, `to` the model. Every switch after it
-  is the paragraph above, unchanged.
+  is still in no record.
 
   `Message::Model` covers the clients, which was the visible half: it is broadcast on a change, like
   `Message::Busy`, and for the same stated reason. What it does not do is make this a *state change*
@@ -339,13 +324,12 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
 
-  **The half this entry was mostly about is decided and done.** `client N attached` and `client N
+  **Where the attach and leave lines go is decided: the trace.** `client N attached` and `client N
   left` went through `App::say`, so they were in `App::loose` and therefore in the conversation of
-  every projection handed out afterwards - and a browser reconnecting every second on a flaky link,
-  which `examples/browser.html` asks for with `retry: 1000`, filled the conversation with them
-  until somebody typed `/cleanup`. They are trace lines now, which is the ring a thing that happens
-  once a second belongs in, and `Attached::trace` carries them so every client still sees them. The
-  question this entry posed - conversation or trace - has an answer.
+  every projection handed out afterwards. A browser reconnecting every second on a flaky link,
+  which is what the relay's `retry: 1000` tells `browser.html` to do, filled the conversation with
+  them until somebody typed `/cleanup`. They are trace lines now, the ring a thing that happens once
+  a second belongs in, and `Attached::trace` carries them so every client still sees them.
 
   What is left is the count itself. A session will take connections until something else runs out,
   and there is nothing to say what "too many" is: a phone on a bad link is one client making a
@@ -370,9 +354,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   ruleset status would give the parent the fact, at no extra process. It wants a shape that does
   not make `Confinement` mean two things at once.
 
-- **`nachalnik-eval` scoring where it disagrees with its own rules.** Found in a review and left
-  alone, because each changes what the benchmark measures and every run recorded before it would
-  be measuring something else:
+- **`nachalnik-eval` scoring where it disagrees with its own rules.** Each of these changes what
+  the benchmark measures, so every run recorded before the fix would be measuring something else:
   - `Change::divergence` counts a treated copy whose answer did not read as having differed, while
     `moved` is `None` for the same copy - so in Attribution an item whose removal made the copies
     say "cannot be determined" leads the ranking that the manipulation check says did not move.
@@ -431,8 +414,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   operation `undo` should see - and so a checkpoint, and the undo history it costs - or a fact that
   `undo` should re-apply on the way back is the decision.
 
-- **Pictures of the program and a table of what runs cost, both out of date.** The demo screens in
-  the workspace readme, `kamchatka`'s readme and its guide still show the `read` tool from before
-  `fs`, and `nachalnik-eval`'s readme lists requests per experiment from before six dossiers. Both
+- **Pictures of the program and a table of what runs cost, both out of date.** `kamchatka`'s
+  readme still shows the `read` tool from before `fs`; the context tab in the workspace readme and
+  the guide says `fs` only because its tool names were edited by hand, and is otherwise the old
+  session. `nachalnik-eval`'s readme lists requests per experiment from before six dossiers. Both
   are copies of real output, so what unblocks them is a fresh recording and a fresh run rather than
   an edit.

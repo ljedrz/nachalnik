@@ -4,10 +4,9 @@ Orientation for whoever - person or model - is about to change this workspace. T
 files say what the crates are *for*; this says how they are built, what must not be broken, and
 which way the arguments have already gone.
 
-Five files carry the long form, so that this one stays readable end to end:
-[INVARIANTS.md](INVARIANTS.md) for what must not be broken and why each one is there,
-[MAP.md](MAP.md) for where everything lives, [CONTRIBUTING.md](CONTRIBUTING.md) for the commands,
-the house conventions and the things that have cost somebody an afternoon,
+The long form is elsewhere: [INVARIANTS.md](INVARIANTS.md) for what must not be broken and why
+each one is there, [MAP.md](MAP.md) for where everything lives, [CONTRIBUTING.md](CONTRIBUTING.md)
+for the commands, the house conventions and the things that have cost somebody an afternoon,
 [SECURITY.md](SECURITY.md) for what is and is not enforced, and [POSTPONED.md](POSTPONED.md) for
 what is deliberately not built and what would unblock it.
 
@@ -32,11 +31,11 @@ Two rules decide most questions before they are asked:
    prompt text in `nachalnik/src`, and model parameters are an opaque `serde_json` map carried to
    the provider verbatim. Before adding to `nachalnik/src`, answer: *can this be an optional
    capability instead of core behaviour?* If yes, it is not going in.
-2. **The loop is an explicit state machine**, one transition per `Kernel::step`. This is
-   load-bearing rather than decorative: it is what makes a second concurrent step `Error::Busy`
-   instead of a duplicated request, what makes a dropped step future return to `Idle` instead of
-   wedging, and what gives a client one thing to render. Anything that changes the shape of the
-   loop shows up as a state or a transition, never as a hidden flag.
+2. **The loop is an explicit state machine**, one transition per `Kernel::step`. The machine is
+   what makes a second concurrent step `Error::Busy` instead of a duplicated request, what makes a
+   dropped step future return to `Idle` instead of wedging, and what gives a client one thing to
+   render. Anything that changes the shape of the loop shows up as a state or a transition, never
+   as a hidden flag.
 
 ```text
   Idle ── step ──> Requesting ──(no tool calls)──> Finished
@@ -59,7 +58,7 @@ Two rules decide most questions before they are asked:
 | `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, and not one crate in its tree the runtime did not already need. | yes |
 | `nachalnik-providers` | the two dialects this workspace talks - OpenAI chat-completions and Google's `generateContent` - feature-gated, streamed, retried and interruptible. Deliberately outside the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
-| `nachalnik-utils` | the *environment* the examples, the live suites and `nachalnik-eval`'s `bench` example read - which endpoint, which key, which models. One file; it held the provider until `nachalnik-providers` could. **Never published, permanently `0.0.0`, dev-dependency only, and depended on without a version** - which is what makes cargo strip it from a published manifest. Nothing may depend on it normally. | no |
+| `nachalnik-utils` | the *environment* the examples, the live suites and `nachalnik-eval`'s `bench` example read - which endpoint, which key, which models. One file. **Never published, permanently `0.0.0`, dev-dependency only, and depended on without a version** - which is what makes cargo strip it from a published manifest. Nothing may depend on it normally. | no |
 
 `nachalnik-mcp` was written with **no change to the runtime at all**, and so were
 `kamchatka`'s introspection tools and `nachalnik-eval`. That remains the test of whether a seam is
@@ -108,18 +107,18 @@ scripts/windows.sh                          # the configurations CI builds on Wi
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
 `nachalnik-mcp`, `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three
-keyless examples, and
-checks the whole workspace on the MSRV, **1.88**. Edition is 2024, `RUSTFLAGS: -D warnings`
-throughout, so a warning is a failure.
+keyless examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024, and
+`RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
 
 A second workflow, `release.yml`, runs on a `kamchatka-v*` tag only: it creates the GitHub release
 from that version's changelog section and attaches a static `x86_64-unknown-linux-musl` binary
-and an unsigned `aarch64-apple-darwin` one.
-`workflow_dispatch` runs the build and uploads nothing, which is how to check it without tagging.
+and an unsigned `aarch64-apple-darwin` one. `workflow_dispatch` runs the build and uploads
+nothing, which is how to check it without tagging.
 
 The live suites are the only thing that can check that a real API accepts what this workspace
 builds. Which keys and variables each reads, which endpoints are known to work, where they are
-known to differ, and how to measure whether a test is worth keeping: [CONTRIBUTING.md](CONTRIBUTING.md).
+known to differ, and how to measure whether a test is worth keeping are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -207,9 +206,9 @@ the mistake it came from - which is the half that makes them stick.
   Read it before touching anything that decides whether a call runs.
 - **[POSTPONED.md](POSTPONED.md)** - known, decided against *for now*, and written down so nobody
   spends an afternoon rediscovering them. Each entry says what would unblock it.
-- **gotchas** - two of them, both expensive, both in [CONTRIBUTING.md](CONTRIBUTING.md): emit an
-  event while still holding the lock that made the change, and `cargo package` lying to you the
-  second time you run it on an unpublished version.
+- **gotchas** - in [CONTRIBUTING.md](CONTRIBUTING.md). The two expensive ones: emit an event
+  while still holding the lock that made the change, and `cargo package` lying to you the second
+  time you run it on an unpublished version.
 
 ---
 
@@ -231,6 +230,5 @@ wrong: the flags are not in the environment, and without them it exits `0` on th
 denies. Nothing else in the toolchain reads a doc comment, so a broken link is caught there or not
 at all - [CONTRIBUTING.md](CONTRIBUTING.md) has the two shapes it takes.
 
-If the change adds a test, two more: look for the test first, and break what it is about to see
-what fails. Both are a sentence under conventions, spelled out in
-[CONTRIBUTING.md](CONTRIBUTING.md), and both have caught something real.
+If the change adds a test, two more: look for the test first, and break what it is about and see
+what fails. Both are under conventions above and spelled out in [CONTRIBUTING.md](CONTRIBUTING.md).

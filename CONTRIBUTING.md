@@ -25,16 +25,14 @@ scripts/windows.sh                          # the configurations CI builds on Wi
 ```
 
 These are pre-commit checks and not just CI steps, and the `cargo doc` one is the one that gets
-skipped.
-`RUSTDOCFLAGS` is not in the environment the way `RUSTFLAGS: -D warnings` is in CI's, so without it
-the command prints its warnings, exits `0` and reads as a pass; the `docs` job sets it and does not.
-It is worth running, because nothing else in the toolchain reads a doc comment - neither `clippy`
-nor the test suites resolve an intra-doc link - so what it catches is caught here or in CI and
-nowhere in between. Two shapes, both of which arrived in the same commit. A link to an item under a
-name it never had - `Shell::call`, where the method is `invoke` and arrives through a trait, so
-there is nothing on the type to read the name off and nothing but rustdoc to say so. And a public
-comment linking to a `pub(super)` item, which resolves for everyone in the module and for nobody on
-docs.rs.
+skipped. `RUSTDOCFLAGS` is not in the environment the way `RUSTFLAGS: -D warnings` is in CI's, so
+without it the command prints its warnings, exits `0` and reads as a pass; CI's `docs` step sets
+it. Nothing else in the toolchain reads a doc comment - neither `clippy` nor the test suites
+resolve an intra-doc link - so what it catches is caught here or in CI and nowhere in between. A
+broken link takes two shapes. A link to an item under a name it never had: `Shell::call`, where
+the method is `invoke` and arrives through a trait, so there is nothing on the type to read the
+name off and nothing but rustdoc to say so. And a public comment linking to a `pub(super)` item,
+which resolves for everyone in the module and for nobody on docs.rs.
 
 `scripts/windows.sh` checks for Windows from here, in the configurations CI's Windows job builds,
 with `cargo xwin` supplying the Microsoft CRT and SDK that `ring`'s C needs. It catches what the
@@ -51,10 +49,11 @@ nothing. Changelogs are skipped, since what they name was true when they say, an
 on purpose - the layout a test directory was chosen over, a file an example writes - is listed in
 `scripts/references.allow` beside the file that mentions it.
 
-CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn both on, so
-nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp`,
+CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn every
+feature on, so nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp`,
 `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three keyless
-examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024. `RUSTFLAGS: -D warnings` throughout, so a warning is a failure.
+examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024, and
+`RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
 
 The live suite is the only thing that can check that a real API accepts what this crate builds:
 
@@ -66,105 +65,102 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 then skips them, so the compiler catches a field that is *gone* and nothing at all catches an
 assertion that still reads the wrong one of two. Splitting `Projection::reordered` out of
 `Projection::repairs` left `a_result_recorded_after_a_later_turn_still_reaches_the_api` asking the
-losses list whether anything had been moved: it answers `[]` for ever, and the failure sat there
-for three days and a release, invisible to everybody without a key. When a change brings the
-offline suites along, grep `tests/live.rs` for the same name before believing it is done.
+losses list whether anything had been moved: it answers `[]` for ever, and the failure went out in
+a release unseen by everybody without a key. When a change brings the offline suites along, grep
+`tests/live.rs` for the same name before believing it is done.
 
-It reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray `OPENAI_API_KEY`, and the first
-only when the base URL is OpenRouter's), with
-`NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere -
-Google AI Studio's OpenAI-compatible endpoint and a local ollama both work, and the whole of it
-passes against the first (27 tests, `NACHALNIK_VISION_MODEL` included). One endpoint difference
-worth knowing when it does not: a request *ending with a model turn* - which is what carrying on
-from an interrupted answer builds - is refused by that shim with a 400 and accepted by OpenAI's own
-API and OpenRouter, so the interrupt test asks whether the flag was cleared rather than whether the
-continuation was taken. It skips rather than fails without a key, or when a free tier has spent its
-allowance. `kamchatka`'s live suite reads
-`KAMCHATKA_API_KEY` / `KAMCHATKA_TEST_MODEL` / `KAMCHATKA_BASE_URL` instead - **`_TEST_MODEL`**,
-where the binary's own flag is `KAMCHATKA_MODEL`, and getting that wrong is quiet: the suite falls
-back to its default model, the endpoint refuses a name it does not serve, and eleven tests fail
-about tool calls that never happened rather than about the model being wrong. Two of its tests
-want more than a key: `KAMCHATKA_CONTEXT_LIMIT` small enough for the fixture to breach, since the
-compactor fires on a fraction and a generous limit means it never runs (`12288` works; `32768`
-leaves the context at a third of it). The compaction fixture used to land at 47-49% of `12288`
-against a threshold of 50%, so the model's own verbosity decided it and the same model passed and
-failed on consecutive runs; it is twice the size now and breaches on the file alone, firing at
-74-81%. The test says which it was, so a sizing failure reads as one. Also
-`KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF.
+`nachalnik`'s suite reads `OPENROUTER_API_KEY` or `NACHALNIK_API_KEY` (never a stray
+`OPENAI_API_KEY`, and the first only when the base URL is OpenRouter's), with
+`NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and `NACHALNIK_CONTEXT_LIMIT` to point it elsewhere.
+Google AI Studio's OpenAI-compatible endpoint and a local ollama both work, and the whole suite
+passes against the first, `NACHALNIK_VISION_MODEL` included. One endpoint difference is worth
+knowing: a request *ending with a model turn* - which is what carrying on from an interrupted
+answer builds - is refused by that shim with a 400 and accepted by OpenAI's own API and
+OpenRouter, so the interrupt test asks whether the flag was cleared rather than whether the
+continuation was taken. The suite skips rather than fails without a key, or when a free tier has
+spent its allowance.
 
-**The same variable is a trap on `nachalnik`'s side**, and it is the one worth knowing before a
-release run: `NACHALNIK_CONTEXT_LIMIT` does not size a fixture, it makes the runtime *report* a
-window the endpoint does not enforce - so `a_counter_is_told_what_a_refused_request_came_to`,
-which builds a request over the limit and reads the endpoint's refusal, gets a perfectly good
-answer instead and fails with `a model that takes 12288 read 17292`. Set it for `kamchatka`'s
-suite, leave it unset for `nachalnik`'s, and read that failure as the environment rather than as
-a counter that stopped working. The rest want
-`KAMCHATKA_GEMINI_API_KEY`: they drive Google's *native* dialect, where a turn is an order of
-blocks, and they will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly Google's -
-deliberately, because borrowing it once sent an OpenRouter key to
-`generativelanguage.googleapis.com` and reported the 400 as three broken tests about turn order.
+`kamchatka`'s live suite reads `KAMCHATKA_API_KEY` / `KAMCHATKA_TEST_MODEL` /
+`KAMCHATKA_BASE_URL` instead. It is **`_TEST_MODEL`**, where the binary's own flag is
+`KAMCHATKA_MODEL`, and getting that wrong is quiet: the suite falls back to its default model, the
+endpoint refuses a name it does not serve, and the tests fail about tool calls that never happened
+rather than about the model being wrong. Some of its tests want more than a key:
+
+- `KAMCHATKA_CONTEXT_LIMIT` small enough for the compaction fixture to breach, since the compactor
+  fires on a fraction and a generous limit means it never runs (`12288` works; `32768` does not).
+  The fixture breaches on the file alone, so the model's own verbosity does not decide it, and a
+  miss prints how far the context got against the threshold, so a sizing failure reads as one.
+- `KAMCHATKA_DOCUMENT_MODEL` for the one that attaches a PDF.
+- `KAMCHATKA_GEMINI_API_KEY` for the ones that drive Google's *native* dialect, where a turn is an
+  order of blocks. They will not borrow `KAMCHATKA_API_KEY` unless the base URL is plausibly
+  Google's: borrowing it once sent an OpenRouter key to `generativelanguage.googleapis.com` and
+  reported the 400 as broken tests about turn order.
+
 So a whole-suite run against an OpenAI-compatible endpoint leaves the ordered-blocks path
-unexercised, which is worth knowing before reading the count as a clean sweep - and the count says
-`23 passed` either way, because a skipped test passes. Measured 2026-09-13 against OpenRouter:
-**17 of `kamchatka`'s 23 actually ran**, the other six being the five native-dialect tests and the
-PDF one. `nachalnik` does better - 26 of the 27 it had then, the PDF again - and `--nocapture` with a grep for
-`skip` is how to see it, since the skip lines are the only place it is said.
+unexercised, and the summary does not say so, because a skipped test passes. `--nocapture` with a
+grep for `skip` is how to see what ran, in either suite, since the skip lines are the only place
+it is said.
+
+**`NACHALNIK_CONTEXT_LIMIT` is a trap on `nachalnik`'s side**, and it is the one worth knowing
+before a release run. It does not size a fixture; it makes the runtime *report* a window the
+endpoint does not enforce. So `a_counter_is_told_what_a_refused_request_came_to`, which builds a
+request over the limit and reads the endpoint's refusal, gets a perfectly good answer instead and
+fails with `a model that takes 12288 read 17292`. Set it for `kamchatka`'s suite, leave it unset
+for `nachalnik`'s, and read that failure as the environment rather than as a counter that stopped
+working.
 
 **`kamchatka`'s live suite sends requests to Google's shim unless told otherwise**, and that is a
 default rather than a detection: `base_url()` in `tests/live.rs` falls back to
 `generativelanguage.googleapis.com/v1beta/openai`. So a run with only `KAMCHATKA_API_KEY` set posts
-whatever key that is to Google, which answers `400 ... Please pass a valid API key`, and eighteen
+whatever key that is to Google, which answers `400 ... Please pass a valid API key`, and the
 tests fail about tool calls, budgets and truncation - none of them about the endpoint. Set
 `KAMCHATKA_BASE_URL` explicitly for anything that is not Google. The status line in the failure
 output is what gives it away: it names the host.
 
-Free OpenRouter models are enough for both live suites and cost nothing - measured 2026-09-13 with
-`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`.
-`kamchatka`'s 23 passed against both `nex-agi/nex-n2.5-mini:free` and
-`nvidia/nemotron-3-super-120b-a12b:free`; `nachalnik`'s 27 passed against the second. Against the
-first, `nachalnik` fails four or five of them and *not the same four or five twice*. Two things to
-know before reading a result. The `:free` pool is rate-limited upstream and a model that answered
-an hour ago can return `429` or an idle timeout now, which the runtime reports honestly as a
-provider failure rather than as a test failure. And `nachalnik`'s suite asks a model to *do*
-things - use a tool, keep a secret, be interrupted mid-stream - so a small model fails some of them
-for being small: five failed on one free model and four of those five passed on another, with one
-case failing and then passing on the same model. The list moves between runs of the same model,
-so a failure that reproduces on a *second* model is the one worth reading -
-`an_interrupt_stops_a_stream_that_is_watching` failed on two and turned out to be the test
-pressing its button on the first delta of any kind, which on a reasoning model is the thinking.
+Free OpenRouter models are enough for both live suites and cost nothing, with
+`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`. As of
+2026-09-13, `kamchatka`'s suite passed whole against both `nex-agi/nex-n2.5-mini:free` and
+`nvidia/nemotron-3-super-120b-a12b:free`, and `nachalnik`'s against the second. The `:free` pool
+is rate-limited upstream, and a model that answered an hour ago can return `429` or an idle
+timeout now, which the runtime reports as a provider failure rather than as a test failure. And
+`nachalnik`'s suite asks a model to *do* things - use a tool, keep a secret, be interrupted
+mid-stream - so a small model fails some of them for being small, and not the same ones twice.
+A failure that reproduces on a *second* model is the one worth reading:
+`an_interrupt_stops_a_stream_that_is_watching` failed on two, and the cause was the test pressing
+its button on the first delta of any kind, which on a reasoning model is the thinking.
 
-**That same test has a second way to fail, and it is not the model being small.** Measured
-2026-09-14 against Inception's `mercury-2.5`: it watches for the first *text* fragment now,
-interrupts on it, and skips if none arrived - which is a proxy for *is there still a stream to
-stop*, and one that holds only where an answer is produced token by token. A diffusion model emits
-the whole of it in a burst, so the first fragment and the last are the same event: the guard
-passes, the interrupt lands after the provider has already finished, and the stop reason comes
-back `Length`. The whole test runs in 1.4 seconds there. It fails deterministically rather than
-skipping, and nothing about the kernel is wrong in it - the case the test is about cannot arise on
-that endpoint. Left alone on purpose: the obvious repair is to widen the skip, and no version of
+**That same test has a second way to fail, and it is not the model being small.** It interrupts
+on the first *text* fragment and skips if none arrived, which stands in for *is there still a
+stream to stop* and holds only where an answer is produced token by token. A diffusion model such
+as Inception's `mercury-2.5` emits the whole answer in one burst, so the first fragment and the
+last are the same event: the guard passes, the interrupt lands after the provider has already
+finished, and the stop reason comes back `Length`. It fails every time there rather than
+skipping, and nothing about the kernel is wrong - the case the test is about cannot arise on that
+endpoint. It is left alone on purpose: the obvious repair is to widen the skip, and no version of
 it yet proposed can tell *the answer finished first* from *the interrupt was ignored*, which is
-the thing the test is for. The same run put `a_reasoning_models_own_turn_comes_back_as_it_went_out`
-in the failures too and it passed on re-run - that endpoint's filter sometimes answers the
-secret-code-word prompt with a 400 whose body is a refusal sentence, which is worth recognising
-before reading it as a malformed request. `kamchatka`'s is not exempt either:
-`a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants `LARKSPUR` in a resumed context
-and asks which word the model was told to remember, and the shared system prompt two hundred lines
-away plants `APRICOT` - so a model that picks the wrong one of two plausible words fails a test
-about *projection*. It passed and failed three times running on the same model and the same commit.
-Attribute a live failure to the model before attributing it to the code: re-run it, run it on a
-second model, and `git worktree add` the last tag and run it there before believing anything.
+the thing the test is for.
 
-**An endpoint can truncate a tool call and the turn will look like the model's fault.** Measured
-2026-09-20 against `inclusionai/ling-3.0-flash-vl:free`, which OpenRouter routes to Novita: a
-message asking for two tool calls arrives with the *first* one's arguments a closing `}` short and
-the second one whole. Three calls, and the first two are short. It reads as a model writing invalid
-JSON - the turn comes back with `_unparsed`, the model is told, and it burns a request retrying -
-and the shape gives it away: it is always every call but the last, always exactly one brace, and
-the missing braces are nowhere else in the turn. `/raw` is what settles it, and it settled this:
-the last `arguments` fragment for each non-final call is never sent. The accumulator in
-`openai/wire.rs` has one way to misfile a fragment - a tail carrying neither an index nor an
-identifier lands on whatever call came last - and that leaves the brace on the *next* call, which
-is the fingerprint to look for before blaming this end.
+On the same endpoint, `a_reasoning_models_own_turn_comes_back_as_it_went_out` can fail and then
+pass on a re-run: its filter sometimes answers the secret-code-word prompt with a 400 whose body
+is a refusal sentence, which is not a malformed request. `kamchatka`'s suite has a test that
+turns on the model too: `a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants
+`LARKSPUR` in a resumed context and asks which word the model was told to remember, and the shared
+system prompt plants `APRICOT` - so a model that picks the wrong one of two plausible words fails
+a test about *projection*, and the same model passes and fails it on one commit. Attribute a live
+failure to the model before attributing it to the code: re-run it, run it on a second model, and
+`git worktree add` the last tag and run it there before believing anything.
+
+**An endpoint can truncate a tool call and the turn will look like the model's fault.**
+`inclusionai/ling-3.0-flash-vl:free`, which OpenRouter routes to Novita, delivers a message asking
+for two tool calls with the *first* one's arguments a closing `}` short and the second one whole;
+with three calls, the first two are short. It reads as a model writing invalid JSON - the turn
+comes back with `_unparsed`, the model is told, and it burns a request retrying - and the shape
+gives it away: it is always every call but the last, always exactly one brace, and the missing
+braces are nowhere else in the turn. `/raw` settles it: the last `arguments` fragment of each
+non-final call is never sent. The accumulator in `openai/wire.rs` has one way to misfile a
+fragment - a tail carrying neither an index nor an identifier lands on whatever call came last -
+and that leaves the brace on the *next* call, which is the fingerprint to look for before blaming
+this end.
 
 **Pointing both halves at Google**, which is one key and covers everything except the `file` part:
 
@@ -175,66 +171,73 @@ $ KAMCHATKA_GEMINI_API_KEY=... KAMCHATKA_GEMINI_MODEL=gemini-3.5-flash \
     cargo test -p kamchatka --test live -- --test-threads=1
 ```
 
-Three things that cost an hour each and are facts about the endpoint rather than about this code,
-measured 2026-09-11. **`KAMCHATKA_DOCUMENT_MODEL` must not point at Google's shim**: it answers a
-`file` content part with `400 Invalid content part type: file`, so that test fails with an empty
-answer where the cause is a rejected request - the `file` part is OpenAI's and OpenRouter's to
-accept. The same PDF reaches the same model through the native dialect's `inline_data` and is
-read, which is what `a_pdf_goes_out_as_a_document_in_the_native_dialect` now pins. **A model that
-`models.list` returns may still be refused**: `gemini-2.5-flash-lite` is listed and answers
+**`KAMCHATKA_DOCUMENT_MODEL` must not point at Google's shim**: it answers a `file` content part
+with `400 Invalid content part type: file`, so that test fails with an empty answer where the
+cause is a rejected request - the `file` part is OpenAI's and OpenRouter's to accept. The same PDF
+reaches the same model through the native dialect's `inline_data` and is read, which is what
+`a_pdf_goes_out_as_a_document_in_the_native_dialect` pins. **A model that `models.list` returns
+may still be refused**: `gemini-2.5-flash-lite` is listed and answers
 `404 ... no longer available to new users`. And **the lite models return no thought summaries at
-all** - `gemini-3.5-flash-lite` gave none in ten requests across every condition tried - so the
-test about a turn carrying its thinking skips there and runs on `gemini-3.5-flash`.
-`nachalnik-eval` reads the `NACHALNIK_` ones, since it talks through the same provider:
+all**, so the test about a turn carrying its thinking skips on `gemini-3.5-flash-lite` and runs on
+`gemini-3.5-flash`.
+
+`nachalnik-eval` reads the `NACHALNIK_` variables, since it talks through the same provider:
 
 ```console
 $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
     cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
 ```
 
-Its own live suite is a couple of tests and about twenty requests; the whole experiment
-suite is about a hundred and sixty, which is the `bench` example's job rather than `cargo test`'s.
-Request counts stay because they are what a run costs and somebody has to budget for them; test
-counts do not, here or in the readmes.
+Its own live suite is about twenty requests; the whole experiment suite is about a hundred and
+sixty, which is the `bench` example's job rather than `cargo test`'s.
 
-Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the record,
-and the seams - a file each), `context/` (items, undo, compaction, and what the context projects
-to), `state`, `session`, `tokens`, `concurrency` (a claim about ordering is tested by holding
-the kernel at one moment through a seam - a counter or a provider that waits to be let go - and
-doing the other thing while it is there, rather than by racing threads and hoping), `blocks`,
-`crash` (a dropped kernel and a resume from what was written down), `invariants` (what holds after every operation of a generated
-sequence), `live`. `nachalnik-eval/tests/` is `machinery` (the readings, the arithmetic and the
-pinned instrument digests), `harness` (the whole loop against a provider whose causal structure the
-test wrote - the only way to check that the harness recovers an influence nobody told it about,
-and, since the rulebook can emit tool calls, the only way to check the handles without paying a
-model to use them), `abreast` and `paced` (the combinator independent work runs on, and that a run
-asked to go abreast never goes wider than it was told) and `live`. `kamchatka/tests/` draws the
-screen and reads the characters back (`screen/`, one binary - `harness.rs` is the terminal every
-other file sits at, and they are named for what they read off it), drives the introspection tools
-through the real loop (`introspect`), serves a session over a socket and speaks the protocol to it
-(`remote/`, laid out the same way), runs real commands under a real ruleset (`sandbox`, Linux only)
-and works out the boundary without spawning anything (`boundary`, which is the half that runs on
-every unix), puts `fs` against real files (`files` and `search`), and asks the policy its own
-questions rather than reading the answers off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
-key at every tab with nothing to act on, and both scrolled past their own ends - a frame that
-panics takes the session with it, which is the one failure this program cannot report. `headless`
-is the program with nothing drawing it, and half of it runs the *binary*: a settings file, a
-signal, a pty, and a session written where it said it was. The program builds its own provider out
-of two environment variables in a process of its own, so a scripted one cannot be swapped into it
-- `endpoint` there answers on a socket instead, which is the only seam a child process has, and is
-what lets a tool call, a spend ceiling and a recorded session be driven without a key. `config` is
-the settings file through the same door, and `mcp` is somebody else's server spawned as a child.
+Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the
+record, and the seams - a file each), `context/` (items, undo, compaction, and what the context
+projects to), `state`, `session`, `tokens`, `concurrency`, `blocks`, `crash` (a dropped kernel and
+a resume from what was written down), `invariants` (what holds after every operation of a
+generated sequence) and `live`. In `concurrency`, a claim about ordering is tested by holding the
+kernel at one moment through a seam - a counter or a provider that waits to be let go - and doing
+the other thing while it is there, rather than by racing threads and hoping.
+
+`nachalnik-eval/tests/` is `machinery` (the readings, the arithmetic and the pinned instrument
+digests), `harness`, `abreast` and `paced` (the combinator independent work runs on, and that a
+run asked to go abreast never goes wider than it was told) and `live`. `harness` runs the whole
+loop against a provider whose causal structure the test wrote. It is the only way to check that
+the harness recovers an influence nobody told it about and, since the rulebook can emit tool
+calls, the only way to check the handles without paying a model to use them.
+
+`kamchatka/tests/` draws the screen and reads the characters back (`screen/`, one binary -
+`harness.rs` is the terminal every other file sits at, and they are named for what they read off
+it), drives the introspection tools through the real loop (`introspect`), serves a session over a
+socket and speaks the protocol to it (`remote/`, laid out the same way), runs real commands under
+a real ruleset (`sandbox`, Linux only) and works out the boundary without spawning anything
+(`boundary`, which is the half that runs on every unix), puts `fs` against real files (`files`
+and `search`), and asks the policy its own questions rather than reading the answers off the
+screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
+every tab with nothing to act on, and both scrolled past their own ends - a frame that panics
+takes the session with it, which is the one failure this program cannot report.
+
+`headless` is the program with nothing drawing it, and half of it runs the *binary*: a settings
+file, a signal, a pty, and a session written where it said it was. The program builds its own
+provider out of two environment variables in a process of its own, so a scripted one cannot be
+swapped into it. `endpoint` there answers on a socket instead, which is the only seam a child
+process has, and is what lets a tool call, a spend ceiling and a recorded session be driven
+without a key. `config` is the settings file through the same door, and `mcp` is somebody else's
+server spawned as a child.
+
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
 back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one
-mid-stream (`stalled`), holds each dialect's projection against what its own `to_wire` carries
+mid-stream (`stalled`), asks both dialects about the edges of the reader they share - a body that
+ends without a newline, one that was never a stream, a refusal that says how long to wait
+(`reading`), holds each dialect's projection against what its own `to_wire` carries
 (`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
 it would refuse (`blobs`), reads the answer that arrives in one piece (`whole_answers`), takes
-thinking back out of the content a model wrote it into (`thinking`), and moves a session to a second
-address to be told the model does not live there (`switching`). `system1` and `kamchatka`'s
-`advise` ask TypeSafe's real endpoint and skip without its key, like the `live` suites.
-`nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one
-(`bridge`), and `foreign` runs one written in another language.
+thinking back out of the content a model wrote it into (`thinking`), and moves a session to a
+second address to be told the model does not live there (`switching`). `system1` and
+`kamchatka`'s `advise` ask TypeSafe's real endpoint and skip without its key, like the `live`
+suites. `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one (`bridge`), and
+`foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the
 same each time. `nachalnik-providers/src/conformance.rs` is the suite, behind the `conformance`
@@ -276,20 +279,20 @@ for, so there is nothing for it to agree with.
   The question to ask is not "is this an output" but **"does anything outside this crate build
   one"**, and `grep` answers it.
 
-  **The rule is the workspace's rather than `nachalnik`'s**, and the crate it was last applied to
-  is `nachalnik-providers`, which had it nowhere: `system1::Question` and `system1::Answer` name
-  the shapes a System One engine answers in, which are the engine's to add and not this crate's;
-  `system1::Answers` and `openai::Attribution` are built here and nowhere else. `kamchatka` is
+  **The rule is the workspace's rather than `nachalnik`'s.** In `nachalnik-providers`,
+  `system1::Question` and `system1::Answer` carry it because they name the shapes a System One
+  engine answers in, which are the engine's to add and not this crate's; `system1::Answers` and
+  `openai::Attribution` carry it because they are built here and nowhere else. `kamchatka` is
   held to it more loosely - its library is a terminal agent's insides rather than a runtime - but
   the same question decides.
 
   The attribute on an enum does *not* cover its variants: a struct-like variant gaining a field
   breaks every caller who wrote the pattern out, which is what `Event::ModelFailed` gaining
-  `overrun` did. Marking the variants would fix that and cost more than it is worth - measured,
-  54 patterns in this workspace would need `..`, and 26 places in `kamchatka`'s screen suite that
-  build an event to drive the app could not build one at all, since the attribute closes
-  construction from outside the crate. A field on an `Event` variant is a break, it is rare, and
-  the version number is where it is said.
+  `overrun` did. Marking the variants would fix that and cost more: every pattern that names a
+  variant's fields would need `..`, and `kamchatka`'s screen suite, which builds events to drive
+  the app, could not build one at all, since the attribute closes construction from outside the
+  crate. A field on an `Event` variant is a break, it is rare, and the version number is where it
+  is said.
 - **One word per mechanism, and it is the word the result is read back in.** An output limit
   **truncates**, a compactor **elides**, `/exclude` **excludes**, `Kernel::supersede`
   **supersedes**. A second word for something that already has one is a second thing to learn and
@@ -298,16 +301,16 @@ for, so there is nothing for it to agree with.
   `prune` action with a `state` argument, which put the word for *one* move over five of them -
   `pin` and `restore` included, so "prune to pin it" was the documented way to protect
   something - and an item you pruned then read back as `archived` on every screen that listed it.
-  Two live models in a row spent a call each asking for `restore` as an action, were told it was a
-  state and not an action, and gave up; they were right and the levels were wrong. The four moves
-  are actions now, named for the state each leaves behind.
+  Live models spent calls asking for `restore` as an action, were told it was a state and not an
+  action, and gave up; they were right and the levels were wrong. The four moves are actions now,
+  named for the state each leaves behind.
 
   This is about what the program **says**, not what it accepts. Taking a word somebody reached for
   costs nothing and refusing it costs them a turn, so `/prune` and `/keep` still work at the
   prompt and neither is documented. A synonym in an enum, a help line or a message is the bug; a
   synonym in a `match` is a kindness. The one place that takes no second spelling is a tool's
   schema: the model's `context` moves used to, and every place answering "which operation is this
-  call" then needed a table of the words that are not in it (`state_of` in
+  call" then needed a table of the words that are not in it (the note on `state_of` in
   `introspect/context/changes.rs` has the rest).
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
@@ -318,29 +321,27 @@ for, so there is nothing for it to agree with.
   caught" - it is "did anything **other** than the new test catch it", because a test that only
   duplicates coverage costs CI time and buys a false sense of a well-guarded seam.
 
-  This has caught three different mistakes here, none of which reading the test would have found.
-  A property whose generators never reached the case it was named after, so breaking that case
-  failed nothing at all - which happened four times, and is why the generated suites carry a
-  reachability check of their own. Two hand-written cases that duplicated
-  `tests/context/undo.rs`, deleted once measured, because a duplicated case passes and reads
-  exactly like coverage. And a mutation that had *not compiled*, which any script grepping for
-  failing tests reports as a green suite - so build first, and treat "nothing failed" as three
-  possibilities rather than one.
+  It has caught three mistakes that reading the test would not have found. A property whose
+  generators never reached the case it was named after, so breaking that case failed nothing at
+  all - which is why the generated suites carry a reachability check of their own. Two
+  hand-written cases that duplicated `tests/context/undo.rs`, deleted once measured, because a
+  duplicated case passes and reads exactly like coverage. And a mutation that had *not compiled*,
+  which any script grepping for failing tests reports as a green suite - so build first, and
+  treat "nothing failed" as three possibilities rather than one.
 
-  `scripts/mutate.sh <patch> [pattern]` is the mechanics: it refuses
-  a dirty tree (a mutation goes into the working tree and comes back out of it), builds before it
-  tests, takes a patch so that `git apply -R` reverts exactly what went in, and splits the
-  failures into the tests being measured and everything else. The mutations themselves are not
-  committed - they are ad hoc per investigation and a patch rots as soon as its context moves.
+  `scripts/mutate.sh <patch> [pattern]` is the mechanics: it refuses a dirty tree (a mutation goes
+  into the working tree and comes back out of it), builds before it tests, takes a patch so that
+  `git apply -R` reverts exactly what went in, and splits the failures into the tests being
+  measured and everything else. The mutations themselves are not committed - they are ad hoc per
+  investigation and a patch rots as soon as its context moves.
 
   `--no-fail-fast` is not optional. `cargo test` stops after the first failing test *binary*, so
-  without it you see one binary's failures and nothing after them - which reads as "only the old
-  tests caught this" and is the most misleading shape the answer can take.
+  without it you see one binary's failures and nothing after them, which reads as "only the old
+  tests caught this".
 
   A test that is measured and found redundant is not automatically wasted: the projection
-  invariants duplicate a lot and still found the ordering bug that a suite of five hundred and
-  ninety-seven passing tests could not see. The point is to know which half of that is true
-  before writing the changelog entry.
+  invariants duplicate a lot and still found an ordering bug the rest of the suite, passing, could
+  not see. Know whether a redundant test is wasted before writing the changelog entry.
 - **Before writing a test, look for it.** `tests/context/undo.rs`'s module note says what counts
   as one operation; two cases derived from `Kernel::undo`'s doc comment were written anyway, and
   both already existed there. Reading the source's own prose is a good way to find an invariant
@@ -375,7 +376,7 @@ for, so there is nothing for it to agree with.
   `cargo doc --workspace --all-features --no-deps` in both trees with separate `CARGO_TARGET_DIR`s,
   and compare every `item-decl` block and `code-header` in the HTML - **keyed by the page it is
   on**, or two identically-signed methods on different types cancel out and the comparison comes
-  back empty. That is not hypothetical: it hid `ModelResponse::thinking` behind
+  back empty. Without the page as a key, it hid `ModelResponse::thinking` behind
   `ContextItem::thinking` and reported the release that added one as a release that added nothing.
   A comparison that finds no change at all across a cycle with entries in its changelog is a
   broken comparison until proven otherwise.
@@ -383,19 +384,17 @@ for, so there is nothing for it to agree with.
 - **A version moves as soon as something above it needs API the registry does not have.**
   `cargo package --workspace` builds each member from its own tarball, and a tarball carries
   version requirements rather than path dependencies - so `kamchatka` is resolved against whatever
-  `nachalnik` the registry has, unless the requirement names one it does not. What that costs when
-  it goes unnoticed is two incompatible copies of the runtime in one build: `kamchatka` depends on
-  the bridge as well as on the runtime, so a bridge left at a version already on the registry brings
-  the `nachalnik` *it* was published against down beside the one the workspace is building. Bumping
-  to a version that is not published yet is what makes cargo reach for the crate next door, and the
-  `package`
-  job is the only thing in CI that notices: everything else builds the workspace, where the path
-  dependency always wins. Every time this has happened it is the one that has said so, and it has
-  happened on every runtime bump so far. Bump in a commit of its own that names what made it
-  necessary, and check whether the crates in between have to follow - a *minor* moves the floor
-  under `nachalnik-mcp` and the bridge has to be re-cut against it, a *patch* does not, since a
-  published `^0.3.0` resolves to `0.3.1` on its own and a release with nothing behind it is not
-  one.
+  `nachalnik` the registry has, unless the requirement names one it does not. Unnoticed, that
+  costs two incompatible copies of the runtime in one build: `kamchatka` depends on the bridge as
+  well as on the runtime, so a bridge left at a version already on the registry brings the
+  `nachalnik` *it* was published against down beside the one the workspace is building. Bumping to
+  a version that is not published yet is what makes cargo reach for the crate next door. The
+  `package` job is the only thing in CI that notices, since everything else builds the workspace,
+  where the path dependency always wins - and it has noticed on every runtime bump so far. Bump in
+  a commit of its own that names what made it necessary, and check whether the crates in between
+  have to follow. A *minor* moves the floor under `nachalnik-mcp` and the bridge has to be re-cut
+  against it; a *patch* does not, since a published `^0.3.0` resolves to `0.3.1` on its own and a
+  release with nothing behind it is not one.
 - **A bump belongs to the release when nothing forced one earlier.** The bullet above is about a
   version that has to move mid-cycle, and most do not - so at a release, every crate carrying a
   non-empty `[unreleased]` section gets a bump, in a commit of its own, numbered by the comparison
@@ -409,10 +408,9 @@ for, so there is nothing for it to agree with.
 - **One of those tags builds a binary.** `kamchatka-v*` starts `.github/workflows/release.yml`,
   which creates the GitHub release with that version's section of `kamchatka/CHANGELOG.md` as its
   body and attaches a static `x86_64-unknown-linux-musl` build and an unsigned
-  `aarch64-apple-darwin` one, each with a `sha256` beside it. The
-  other crates are libraries and their artifact is the crates.io tarball, which the `package` job
-  already checks; the workspace `v*` tag builds nothing, since it would be the same binary under
-  a name that does not say so.
+  `aarch64-apple-darwin` one, each with a `sha256` beside it. The other crates are libraries and
+  their artifact is the crates.io tarball, which the `package` job already checks; the workspace
+  `v*` tag builds nothing, since it would be the same binary under a name that does not say so.
 
   **Two files in the archive: the binary and `kamchatka.json`.** The settings file is worth more
   beside the binary than on a web page, because `cargo install` copies no files and an archive is
@@ -521,5 +519,5 @@ for, so there is nothing for it to agree with.
   `no method named ... found for struct Kernel` against a tarball which demonstrably contains the
   method - before believing the compiler, read it out of the tarball cargo is actually resolving:
   `tar -xzOf target/package/tmp-registry/nachalnik-0.3.1.crate nachalnik-0.3.1/src/kernel.rs`.
-  `cargo clean -p nachalnik` is the fix. CI has one run on a fresh machine and never sees this,
-  which is exactly why it costs an afternoon here instead.
+  `cargo clean -p nachalnik` is the fix. CI packages once on a fresh machine and never sees this,
+  which is why it costs an afternoon here instead.
