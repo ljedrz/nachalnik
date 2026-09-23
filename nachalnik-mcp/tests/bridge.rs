@@ -343,7 +343,10 @@ async fn a_fixed_set_of_capabilities_ignores_what_the_server_claims() {
         .await
         .unwrap();
 
-    for id in kernel.tool_ids() {
+    // a loop over nothing passes, so there has to be something to loop over
+    let ids = kernel.tool_ids();
+    assert!(!ids.is_empty(), "the server's tools were not installed");
+    for id in ids {
         let spec = kernel.tool(&id).unwrap().spec();
         assert!(spec.capabilities.contains(&Capability::exec("run")), "{id}");
     }
