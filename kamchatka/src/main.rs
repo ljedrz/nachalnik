@@ -584,6 +584,8 @@ async fn run(
             app.say(Speaker::Note, why);
         }
         if app.leaving() {
+            app.wait_for_turn(events, finished, |_| {}).await;
+
             return Ok(());
         }
 

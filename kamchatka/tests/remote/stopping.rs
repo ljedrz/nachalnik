@@ -59,6 +59,62 @@ async fn a_turn_is_stopped_by_a_client_that_can_only_type() {
     );
 }
 
+/// A `/quit` during a turn waits for it, so that the record it writes ends with the session.
+///
+/// note: an interrupt does not abort a step already in flight, and the loop ended as soon as it
+/// was told to: `session.finished` went into the log while the tool was still running, and its
+/// result landed after it, in a record already written. `Slow` does not look at its interrupt,
+/// which is the case the wait is for.
+#[tokio::test]
+async fn a_quit_during_a_turn_waits_for_it_to_end() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+        ModelResponse::text("this should never be said"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Slow));
+    })
+    .await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until_record("tool.started").await;
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+
+    let names: Vec<_> = app
+        .kernel
+        .history()
+        .into_iter()
+        .map(|record| record.event.name().to_owned())
+        .collect();
+    assert_eq!(
+        names.last().map(String::as_str),
+        Some("session.finished"),
+        "{names:?}"
+    );
+    assert!(
+        names.iter().any(|name| name == "tool.finished"),
+        "the tool's result came before the end: {names:?}"
+    );
+    assert_eq!(
+        names
+            .iter()
+            .filter(|name| *name == "model.requested")
+            .count(),
+        1,
+        "and the turn stopped rather than asking again: {names:?}"
+    );
+    assert!(!app.busy);
+}
+
 #[tokio::test]
 async fn stopping_nothing_says_there_was_nothing_to_stop() {
     let session = served(vec![], |_| {}).await;

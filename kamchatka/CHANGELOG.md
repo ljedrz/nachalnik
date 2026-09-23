@@ -147,6 +147,14 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **`/quit` and `/restart` wait for a running turn before the record is written.** Both ended the
+  loop at once, and an interrupt does not abort a step already in flight, so the rest of a streamed
+  answer and the result of a running tool landed after `session.finished`, in files already
+  written, while a restarted session ran beside it. The screen and a served session now stop the
+  turn and take in what it does until it ends, for up to five seconds (`app::LEAVING`); a turn
+  still going then is said to be, and the record ends on its `turn.interrupted`. `/quit` stops the
+  turn as `/restart` already did. `App::wait_for_turn` is the wait, for a loop of its own.
+
 - **What a `fork` is charged counts against the spend ceiling.** A fork is a kernel of its own,
   and the ceiling was added up off this session's events alone, so a model calling `fork draft`
   over and over spent a full-context request each time and none of it reached `/spend`. The fork

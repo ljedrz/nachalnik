@@ -299,7 +299,12 @@ impl Server {
 
         loop {
             serving.pump(app);
-            if app.leaving() || leaving || (stopping && !app.busy) {
+            // a second `ctrl+c` or a closed stream leaves at once; a `/quit` waits for the turn
+            if app.leaving() && !leaving {
+                failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
+                break;
+            }
+            if leaving || (stopping && !app.busy) {
                 break;
             }
 

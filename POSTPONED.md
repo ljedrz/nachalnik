@@ -414,16 +414,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   so they ride the next `0.x` bump rather than forcing one. `nachalnik-eval`'s public result
   structs - `Scores` has gained fields since release - are the same question in that crate.
 
-- **Leaving while a turn is still running writes the record before the turn has ended.** `/quit`
-  and `/restart` interrupt and then end the loop at once, and an interrupt does not abort a step
-  already in flight - so the rest of a streamed answer and the result of a running tool land in
-  the old kernel after `session.finished`, in files already written, while a restarted session is
-  already running beside it. Reachable from the screen and from a remote client.
-
-  What would unblock it is deciding how long somebody who pressed restart waits. Draining events
-  and the turn's outcome until it ends is the fix; bounding that wait is the decision, and so is
-  what the record says about a turn that was still running when the bound ran out.
-
 - **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
   take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with
   no `context.recounted` to say so, and lists every item as changed. Whether a recount is an

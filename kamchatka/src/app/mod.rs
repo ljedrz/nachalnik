@@ -246,6 +246,13 @@ pub struct Anchor {
     pub reported: usize,
 }
 
+/// How long leaving a session waits for a turn that is still running to stop; see
+/// [`App::wait_for_turn`].
+///
+/// note: long enough for anything that looks at its interrupt - a model's stream, `shell`, the
+/// searches and `fork` do - and short enough that a `/quit` does not look like a hang.
+pub const LEAVING: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// What the kernel's task reports when it stops.
 pub enum Outcome {
     /// The turn ended in this state.
@@ -1342,6 +1349,77 @@ impl App {
     /// with the answer.
     pub fn leaving(&self) -> bool {
         self.quit || self.restart
+    }
+
+    /// Stops a turn that is still running when the session is left, and takes in what it does
+    /// until it has ended; `heard` is handed each event first, for a loop that prints them. Hands
+    /// back what the turn failed with, if it did.
+    ///
+    /// note: what a loop does between [`App::leaving`] and `session.finished`. An interrupt does
+    /// not abort a step already in flight, so the rest of a streamed answer and the result of a
+    /// running tool are still to come - and a loop that ended at once put them in the old kernel
+    /// after `session.finished`, in files already written, with a restarted session running
+    /// beside it. The headless loop does not need it: it reads no line while a turn runs, so it
+    /// is never told to leave during one.
+    ///
+    /// note: bounded by [`LEAVING`], because somebody who typed `/quit` is waiting, and a tool
+    /// that does not look at its interrupt could hold them for as long as it runs. A turn still
+    /// going when the bound runs out is said to be, and is in the record as it stood: its
+    /// `turn.interrupted` with no `state.changed` to `idle` after it before `session.finished`.
+    pub async fn wait_for_turn(
+        &mut self,
+        events: &mut tokio::sync::broadcast::Receiver<Event>,
+        finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
+        mut heard: impl FnMut(&Event),
+    ) -> Option<String> {
+        use tokio::sync::broadcast::error::RecvError;
+
+        if !self.busy {
+            return None;
+        }
+        self.interrupt();
+        let until = tokio::time::Instant::now() + LEAVING;
+        while self.busy {
+            tokio::select! {
+                event = events.recv() => match event {
+                    Ok(event) => {
+                        heard(&event);
+                        self.on_event(event);
+                    }
+                    // the log has what went by; what is waited for here is the outcome
+                    Err(RecvError::Lagged(_)) => {}
+                    Err(RecvError::Closed) => return None,
+                },
+                Some(outcome) = finished.recv() => {
+                    // the turn's last events are queued behind its outcome, as in every loop
+                    while let Ok(event) = events.try_recv() {
+                        heard(&event);
+                        self.on_event(event);
+                    }
+                    let failed = match &outcome {
+                        Outcome::Failed(e) => Some(e.clone()),
+                        _ => None,
+                    };
+                    self.on_outcome(outcome);
+
+                    return failed;
+                }
+                () = tokio::time::sleep_until(until) => {
+                    self.say(
+                        Speaker::Note,
+                        format!(
+                            "the turn was still running {} seconds after it was asked to stop, and \
+                             was left; the record ends before it does",
+                            LEAVING.as_secs()
+                        ),
+                    );
+
+                    return None;
+                }
+            }
+        }
+
+        None
     }
 
     /// Asks for this session to be written out and a fresh one put in its place.
