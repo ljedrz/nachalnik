@@ -543,13 +543,18 @@ impl App {
     /// Keys that belong to the trace tab, which is a log and therefore worth reading backwards.
     pub(super) fn trace_key(&mut self, key: KeyEvent) {
         // the pane draws the tail, so scrolling counts upwards from the newest line; the frame
-        // clamps it to what there is
+        // clamps it to what there is. Saturating going up too, because `g` parks it at the top of
+        // the range and a key read before the next frame would otherwise go past it
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => self.trace_scroll += 1,
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.trace_scroll = self.trace_scroll.saturating_add(1)
+            }
             KeyCode::Down | KeyCode::Char('j') => {
                 self.trace_scroll = self.trace_scroll.saturating_sub(1)
             }
-            KeyCode::PageUp => self.trace_scroll += self.viewport.max(1),
+            KeyCode::PageUp => {
+                self.trace_scroll = self.trace_scroll.saturating_add(self.viewport.max(1))
+            }
             KeyCode::PageDown => {
                 self.trace_scroll = self.trace_scroll.saturating_sub(self.viewport.max(1))
             }

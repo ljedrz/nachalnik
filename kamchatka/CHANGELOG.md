@@ -14,6 +14,14 @@ minor bump may break you.
   `--spend` ceiling that was read as an endpoint reporting nothing - so a session against one that
   reports usage on every other response was told that only a deadline could stop it now.
 
+- **`/tools toggle` is a word.** `/tools togglefs` toggled `fs`, and `/tools toggleable` went
+  looking for a tool called `able`; a verb run into its argument is now answered with how the
+  command is written.
+
+- **`g` then `k` on the trace no longer goes round.** `g` parks the scroll at the top of its range
+  for the frame to clamp, and a client reading keys faster than it draws went past it: a panic in
+  a debug build.
+
 ## [0.15.0] - 2026-09-23
 
 ### breaking

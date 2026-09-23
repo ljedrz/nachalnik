@@ -208,10 +208,10 @@ impl App {
             // the registry is live rather than fixed at startup, and taking a tool out of it and
             // putting it back is the plainest demonstration of that: the next request simply does
             // not mention it, and the one after that does again
-            "tools" => match rest.strip_prefix("toggle") {
-                Some(id) => self.toggle_tool(id.trim()),
-                None if rest.is_empty() => self.tools(),
-                None => self.say(
+            "tools" => match rest.split_once(char::is_whitespace).unwrap_or((rest, "")) {
+                ("", _) => self.tools(),
+                ("toggle", id) => self.toggle_tool(id.trim()),
+                _ => self.say(
                     Speaker::Error,
                     "`/tools` lists them; `/tools toggle ID` stops offering one, or offers it \
                      again",

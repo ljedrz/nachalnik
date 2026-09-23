@@ -707,3 +707,45 @@ async fn models_says_when_the_endpoint_lists_none() {
     assert!(screen.contains("lists no models"), "{screen}");
     assert!(app.overlay.is_none(), "and no empty box was opened");
 }
+
+/// `g` on the trace parks the scroll at the top of its range, and a key read before the next frame
+/// has clamped it goes up from there without going round.
+///
+/// note: the program's own loop draws between every two keys, which is what hid it; a client of
+/// its own that reads keys faster than it draws, or not at all, does not.
+#[tokio::test]
+async fn the_trace_scrolls_up_from_its_top_before_a_frame_clamps_it() {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    let mut app = app();
+    app.show(Tab::Trace);
+    for key in [KeyCode::Char('k'), KeyCode::PageUp] {
+        app.on_key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE))
+            .await;
+        app.on_key(KeyEvent::new(key, KeyModifiers::NONE)).await;
+        assert_eq!(app.trace_scroll, usize::MAX, "{key:?}");
+    }
+}
+
+/// A command's verb is a whole word: `/tools toggleread` is not `/tools toggle read`.
+#[tokio::test]
+async fn a_verb_run_into_its_argument_is_not_the_verb() {
+    let mut app = app();
+
+    let said: Vec<String> = app
+        .submit("/tools toggleread")
+        .await
+        .said
+        .into_iter()
+        .map(|entry| entry.text)
+        .collect();
+
+    assert!(
+        said.iter().any(|line| line.contains("`/tools toggle ID`")),
+        "{said:?}"
+    );
+    assert!(
+        !said.iter().any(|line| line.contains("no longer offered")),
+        "{said:?}"
+    );
+}
