@@ -147,6 +147,13 @@ minor bump may break you.
   whose session had exited tried every quarter of a second for as long as it ran and never reached
   the minute it gives up after.
 
+- **Every rule the permissions decide by is in the record.** A rule from `--allow`, `--deny` or a
+  settings file, one set on the permissions tab, and one an answer of "always" made - from the
+  screen or a client - went into the policy's table and nowhere else, so every call it let through
+  was recorded as allowed by the policy in force and nothing said which rule, or when it appeared.
+  Each is a `policy.ruled` now, the last tied to the question it answered; so is the network opened
+  for one call, which the decision alone did not say.
+
 - **A `/model` or `/provider` switch is in the record.** Both switch the provider the kernel
   already holds in place, so `model.changed` was never emitted after the first pick: the session
   talked to another model and the log, a `/save` and a resume from it could not say when. Each

@@ -12,7 +12,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   filesystem, no network, no process spawning - so it has nothing to contain. Containment belongs
   inside a `Tool` or around the whole process.
 - **What is enforced is one thing:** a refused call is never handed to `Tool::invoke`, and the
-  refusal is an event and a tool result. A decision point with a paper trail, not a boundary.
+  refusal is an event and a tool result. A decision point with a paper trail, not a boundary. The
+  rules a policy decides by are the policy's own and the kernel cannot see them, so the trail
+  holds them as `policy.ruled` only where the policy's owner records them - `kamchatka` does for
+  every rule it sets, the answer that made one, and the network opened for one call.
 - **A `Capability` is a declaration, not a verified property**, and `Shell` subsumes every other
   one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
   restriction that does not exist - which is why `kamchatka`'s permissions tab says so.

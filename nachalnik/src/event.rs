@@ -17,7 +17,7 @@ use crate::{
     context::{ContextId, ContextState},
     kernel::{Kernel, State},
     model::{Content, ModelInfo, Overrun, Params, StopReason, ToolCallId, Usage},
-    permissions::{Grant, GrantSource, PermissionId, PermissionRequest},
+    permissions::{Grant, GrantSource, PermissionId, PermissionRequest, Verdict},
     projection::Skipped,
 };
 
@@ -344,6 +344,23 @@ pub enum Event {
         /// Who gave it.
         source: GrantSource,
     },
+    /// The policy was told something that changes what it answers; see [`Kernel::record_rule`].
+    ///
+    /// note: the kernel holds no rules and cannot see a policy's, so this is what the policy's
+    /// owner says it changed. Without it a call allowed "by policy" said by which policy and not
+    /// why, and a rule an answer of "always" made was in no record at all.
+    ///
+    #[serde(rename = "policy.ruled")]
+    PolicyRuled {
+        /// What the rule is about, in the policy's own words.
+        subject: String,
+        /// What the policy answers about it from here on.
+        verdict: Verdict,
+        /// The question whose answer made the rule, where one did.
+        answering: Option<PermissionId>,
+        /// Whether it holds for that question's call alone rather than from here on.
+        once: bool,
+    },
     /// The model asked for a tool.
     #[serde(rename = "tool.requested")]
     ToolRequested {
@@ -514,6 +531,7 @@ impl Event {
             Self::StepFailed { .. } => "step.failed",
             Self::PermissionRequested { .. } => "permission.requested",
             Self::PermissionDecided { .. } => "permission.decided",
+            Self::PolicyRuled { .. } => "policy.ruled",
             Self::ToolRequested { .. } => "tool.requested",
             Self::ToolUnknown { .. } => "tool.unknown",
             Self::ToolCallRepaired { .. } => "tool.repaired",

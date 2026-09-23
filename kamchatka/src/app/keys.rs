@@ -469,6 +469,10 @@ impl App {
             _ => return,
         };
 
+        // and recorded, because the rule is what a later call is allowed or refused by, and the
+        // record otherwise says only that the policy decided
+        self.kernel
+            .record_rule(subject.to_string(), decided, None, false);
         // said out loud, because this is a decision about what may happen later and the tab it
         // was made on is not the one somebody will be looking at when it does
         self.say(

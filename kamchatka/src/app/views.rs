@@ -190,6 +190,13 @@ impl App {
                 .is_some_and(crate::tools::reaches_the_network)
         {
             self.policy.grant_the_network(&request.call);
+            // the one grant the decision itself does not say: that this call may reach out
+            self.kernel.record_rule(
+                Subject::Capability(Capability::net("reach")).to_string(),
+                Verdict::Allow,
+                Some(request.id),
+                true,
+            );
         }
 
         // the state the kernel lands in is the caller's to read off the events like any other;

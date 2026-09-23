@@ -30,7 +30,7 @@ use crate::{
         ToolCallId,
     },
     permissions::{
-        AskAlways, Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest,
+        AskAlways, Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest, Verdict,
     },
     projection::{LinearProjector, Projection, Projector},
     session::{Record, Session, Snapshot},
@@ -734,6 +734,29 @@ impl Kernel {
         self.emit(Event::ModelChanged { from, to });
 
         true
+    }
+
+    /// Records that the policy was told something that changes what it answers, as
+    /// [`Event::PolicyRuled`].
+    ///
+    /// note: a record and nothing more. The kernel holds no rules and cannot see a policy's, so
+    /// whoever changed one says what it changed, and the record is as good as what it is told -
+    /// which is why the event names the rule in the policy's own words rather than in a form the
+    /// kernel checks. `answering` is the question whose answer made it, where one did, and `once`
+    /// that it holds for that question's call alone.
+    pub fn record_rule(
+        &self,
+        subject: impl Into<String>,
+        verdict: Verdict,
+        answering: Option<PermissionId>,
+        once: bool,
+    ) {
+        self.emit(Event::PolicyRuled {
+            subject: subject.into(),
+            verdict,
+            answering,
+            once,
+        });
     }
 
     /// Returns the provider, if one is set.

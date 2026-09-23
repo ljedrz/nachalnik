@@ -65,6 +65,18 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 _ => "by something else",
             }
         ),
+        Event::PolicyRuled {
+            subject,
+            verdict,
+            answering,
+            once,
+        } => match (answering, once) {
+            (Some(id), true) => format!("{subject}: {verdict}, for question {id}'s call alone"),
+            (Some(id), false) => {
+                format!("{subject}: {verdict} from now on, answering question {id}")
+            }
+            (None, _) => format!("{subject}: {verdict} from now on"),
+        },
         // note: the reason as well as the figures, because the report carries one. A pass
         // announced as `1 out, 4 elided, 8863 → 725 tokens` says what moved and not what moved it;
         // the compactor's own sentence - which threshold it crossed, and by how much - is the part

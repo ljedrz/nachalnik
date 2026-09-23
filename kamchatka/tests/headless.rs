@@ -2879,3 +2879,40 @@ async fn a_switch_of_model_is_in_the_record() {
     assert!(changes.contains(&named("first", "second")), "{changes:?}");
     assert!(changes.contains(&named("second", "third")), "{changes:?}");
 }
+
+/// A rule given at the start - a flag or a settings file - is at the start of the record.
+#[tokio::test]
+async fn a_rule_given_at_the_start_is_in_the_record() {
+    let Wired { app, .. } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        allow: vec![Subject::parse("exec:run")],
+        deny: vec![Subject::parse("*.pem")],
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let ruled: Vec<_> = app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::PolicyRuled {
+                subject, verdict, ..
+            } => Some((subject, verdict)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        ruled,
+        [
+            ("exec:run".to_owned(), Verdict::Allow),
+            ("*.pem".to_owned(), Verdict::Deny)
+        ]
+    );
+}

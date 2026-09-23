@@ -383,6 +383,9 @@ impl Setup {
         ] {
             for subject in subjects {
                 policy.set(&subject, verdict);
+                // at the start of the record, so that a call allowed by one of these later says
+                // where its permission came from, whether a flag or a settings file set it
+                kernel.record_rule(subject.to_string(), verdict, None, false);
             }
         }
         // note: only where the provider names a model, because a session started without `-m` has

@@ -74,6 +74,53 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
     assert!(harness.app.overlay.is_none());
 }
 
+/// An answer of "always" is in the record as a rule, tied to the question it answered.
+///
+/// note: the rule went into the policy's table and nowhere else, so every later call it let
+/// through was recorded as allowed by the policy in force, and nothing said which rule, where it
+/// came from, or when.
+#[tokio::test]
+async fn saying_always_is_a_rule_in_the_record() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    let asked = harness.app.asked().expect("a question").id;
+    harness.answer(KeyCode::Char('a')).await;
+    harness.settle().await;
+
+    let ruled: Vec<_> = harness
+        .app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::PolicyRuled {
+                subject,
+                verdict,
+                answering,
+                once,
+            } => Some((subject, verdict, answering, once)),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ruled.contains(&(
+            "exec:run".to_owned(),
+            nachalnik::Verdict::Allow,
+            Some(asked),
+            false
+        )),
+        "{ruled:?}"
+    );
+}
+
 #[tokio::test]
 async fn saying_always_stops_the_question_being_asked_again() {
     let mut harness = Harness::new([
@@ -2072,4 +2119,74 @@ async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
 
     let said = harness.flat();
     assert!(said.contains("--advise is what turns that on"), "{said}");
+}
+
+/// What the rule records say, as `(subject, verdict, answering, once)`.
+fn ruled(harness: &Harness) -> Vec<(String, Verdict, Option<nachalnik::PermissionId>, bool)> {
+    harness
+        .app
+        .kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            nachalnik::Event::PolicyRuled {
+                subject,
+                verdict,
+                answering,
+                once,
+            } => Some((subject, verdict, answering, once)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A rule changed on the permissions tab is in the record.
+#[tokio::test]
+async fn a_rule_changed_on_the_tab_is_in_the_record() {
+    let mut harness = Harness::new(Vec::new());
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.policy.set(
+        &Subject::Capability(Capability::exec("run")),
+        Verdict::Allow,
+    );
+    harness.tab(Tab::Permissions);
+
+    harness.press(KeyCode::Char('n')).await;
+    assert_eq!(
+        ruled(&harness),
+        [("exec:run".to_owned(), Verdict::Deny, None, false)]
+    );
+}
+
+/// A yes to a command that reaches the network is in the record as a grant for that call alone.
+///
+/// note: the decision said the call was allowed, and nothing said the network was opened for it,
+/// which is the half the sandbox acts on.
+#[tokio::test]
+async fn a_network_grant_for_one_call_is_in_the_record() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "cmd": "curl https://example.com" }),
+        )]),
+        ModelResponse::text("fetched"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("fetch it").await;
+    harness.settle().await;
+    let asked = harness.app.asked().expect("a question").id;
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+
+    assert!(
+        ruled(&harness).contains(&("net:reach".to_owned(), Verdict::Allow, Some(asked), true)),
+        "{:?}",
+        ruled(&harness)
+    );
 }

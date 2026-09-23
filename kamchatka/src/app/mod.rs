@@ -1539,8 +1539,15 @@ impl App {
         };
 
         if remember {
-            // everything the policy actually consulted, not just what the tool declared
-            self.policy.always(&self.policy.judges(&request));
+            // everything the policy actually consulted, not just what the tool declared - and
+            // each one recorded against the question it answered, so that the calls it lets through
+            // later say where their permission came from
+            let judged = self.policy.judges(&request);
+            self.policy.always(&judged);
+            for subject in &judged {
+                self.kernel
+                    .record_rule(subject.to_string(), Verdict::Allow, Some(id), false);
+            }
         }
         // the other thing a session waits on somebody for. Whatever the question cost in wall time
         // was spent reading it, and `permission.decided` is the line it lands on

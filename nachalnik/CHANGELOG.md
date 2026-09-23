@@ -31,6 +31,11 @@ minor bump may break you.
 
 ### added
 
+- **`Kernel::record_rule` and `Event::PolicyRuled`** (`policy.ruled`): what a policy's owner says
+  changed in what it answers - a subject, the verdict, the question whose answer made the rule if
+  one did, and whether it holds for that question's call alone. The kernel holds no rules and cannot
+  see a policy's, so without this a call allowed by the policy said by which policy and never why.
+
 - **`Kernel::provider_changed`** announces that the provider the kernel holds now answers as a
   different model, as `model.changed` from the model the log last named. It is for a provider that
   switches in place, which is the only way a client sharing one can switch it: setting the same
