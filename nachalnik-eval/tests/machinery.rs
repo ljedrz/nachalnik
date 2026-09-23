@@ -186,6 +186,8 @@ fn an_errand_answers_out_of_its_own_result() {
     // an answer whose support nothing is measuring, so the declared figure has to be in the
     // result, has to be restated in the answer, and must *not* be in the question - a figure the
     // asking supplied would be readable in every arm.
+    // a loop over nothing passes, so there has to be something to loop over
+    assert!(!ERRANDS.is_empty());
     for errand in ERRANDS {
         // the constant itself, because `args()` falls back to an empty object and so is an object
         // whatever the constant says
