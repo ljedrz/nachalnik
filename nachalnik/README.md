@@ -15,6 +15,10 @@ it owns is the loop, the context, and the paper trail. The rest of the
 [workspace][workspace] — a terminal agent, an MCP bridge, an introspection benchmark — is what
 gets built on top.
 
+**Looking for an agent to run rather than one to build?** That is [`kamchatka`][kamchatka], a
+terminal agent on this runtime that shows you everything in its context and lets you change it,
+and the [transcripts][writeup] are what its sessions look like.
+
 ---
 
 ### ⏱️ in thirty seconds
