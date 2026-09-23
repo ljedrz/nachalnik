@@ -920,6 +920,14 @@ fn opened_beneath(
         io::Errno,
     };
 
+    // a file allowed on its own - `--sandbox-read notes.txt` - has nothing beneath it to hold an
+    // open to, and opening it as a directory refused a file `Reach::allows` had just allowed. The
+    // directory it is in is held instead and its name is the one step taken from there: the
+    // place every platform without `openat2` already opens and replaces it from
+    let root = match root.is_file() {
+        true => root.parent().unwrap_or(root),
+        false => root,
+    };
     let dir = match rustix::fs::open(
         root,
         OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,

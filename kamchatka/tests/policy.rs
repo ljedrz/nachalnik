@@ -623,3 +623,48 @@ fn a_refused_mcp_call_is_not_talked_past_by_an_allowed_server() {
         );
     }
 }
+
+/// A file allowed on its own is read and written through the in-process boundary, not only
+/// through the shell's.
+///
+/// note: the confined open is held beneath the root it was allowed under, and it opened that root
+/// as a directory - so `--sandbox-read notes.txt` was allowed by `Reach::allows` and then refused
+/// by `Reach::open` with "Not a directory", where Landlock, which takes a rule on a file, let the
+/// shell read it. The file next to it is still out of reach.
+#[test]
+fn a_file_allowed_on_its_own_can_be_opened() {
+    let work = common::scratch("alone-work");
+    let outside = common::scratch("alone-outside");
+    let allowed = outside.join("notes.txt");
+    let beside = outside.join("other.txt");
+    std::fs::write(&allowed, "hello").expect("a file");
+    std::fs::write(&beside, "not yours").expect("a file");
+    let reach = Reach {
+        workdir: work,
+        extra: vec![allowed.clone()],
+        readable: Vec::new(),
+        confined: true,
+    };
+
+    let mut read = String::new();
+    std::io::Read::read_to_string(
+        &mut reach
+            .open(&allowed, Access::Reading)
+            .expect("it was allowed, so it opens"),
+        &mut read,
+    )
+    .expect("and reads");
+    assert_eq!(read, "hello");
+
+    reach
+        .replace(&allowed, b"changed")
+        .expect("and is written, since it was allowed read-write");
+    assert_eq!(std::fs::read_to_string(&allowed).unwrap(), "changed");
+
+    assert!(reach.open(&beside, Access::Reading).is_err());
+    assert!(
+        reach
+            .allows(&beside.to_string_lossy(), Access::Reading)
+            .is_err()
+    );
+}

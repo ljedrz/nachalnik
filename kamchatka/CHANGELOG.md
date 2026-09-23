@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A file given to `--sandbox-allow` or `--sandbox-read` on its own opens through `fs`.** The
+  confined open is held beneath the root it was allowed under and opened that root as a
+  directory, so a file allowed on its own was allowed and then refused with "Not a directory" -
+  where the shell, under Landlock, read it. The directory it is in is held instead, which is where
+  every platform without `openat2` already opened it from.
+
 - **What a person reads headless, or through `--connect`, carries no control characters but the
   newline and the tab.** The model's words, a provider's error and an item's content went to
   stderr as they came, so an escape sequence among them - read by the model out of a file, say -
