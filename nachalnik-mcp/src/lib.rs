@@ -38,8 +38,8 @@ println!("{} tools: {}", installed.added.len(), installed.added.join(", "));
 //! It needs nothing the runtime does not already expose. An MCP tool is a `Tool` that forwards to
 //! a server; tools arriving and leaving is [`Kernel::add_tool`](nachalnik::Kernel::add_tool) and
 //! [`remove_tool`](nachalnik::Kernel::remove_tool), which put it on the event stream; a stop is
-//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out, and a call
-//! already with the server is let finish; a structured result is
+//! read off the tool's [`OutputSink`](nachalnik::OutputSink) before a call goes out and while it
+//! is with the server, which is then sent MCP's cancellation; a structured result is
 //! [`Content::Json`](nachalnik::Content). A server's progress notifications are not forwarded yet:
 //! no progress token is sent, so none arrive.
 //!

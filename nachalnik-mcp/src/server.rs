@@ -14,6 +14,12 @@ use crate::{
     tool::{McpTool, Trust, spec_of, tool_id},
 };
 
+/// The most pages of tools one listing reads; see `Server::tools`.
+///
+/// note: far past what a server offers - a page is commonly dozens of tools - and a bound all the
+/// same, since the cursor is the server's to hand back.
+const PAGES: usize = 100;
+
 /// What installing a server's tools into a kernel did.
 ///
 /// note: `replaced` exists because a kernel holds one tool per identifier, and two servers may
@@ -148,13 +154,33 @@ impl Server {
     ///
     /// note: Nothing is registered anywhere by this; it hands back a list, and what to do with it
     /// is yours. [`Server::install`] is the common answer.
+    ///
+    /// note: a page at a time, to a hundred of them. A server hands the next page's cursor back
+    /// with each one, and one that always hands back another would be listed for ever - at
+    /// startup, where nothing interrupts it.
     pub async fn tools(&self) -> Result<Vec<Arc<dyn Tool>>> {
-        let listed = self
-            .running
-            .peer()
-            .list_all_tools()
-            .await
-            .map_err(|e| Error::Request(Box::new(e)))?;
+        let mut listed = Vec::new();
+        let mut cursor = None;
+        for _ in 0..PAGES {
+            let page = self
+                .running
+                .peer()
+                .list_tools(Some(
+                    rmcp::model::PaginatedRequestParams::default().with_cursor(cursor),
+                ))
+                .await
+                .map_err(|e| Error::Request(Box::new(e)))?;
+            listed.extend(page.tools);
+            cursor = page.next_cursor;
+            if cursor.is_none() {
+                break;
+            }
+        }
+        if cursor.is_some() {
+            return Err(Error::Request(
+                format!("it listed more than {PAGES} pages of tools and was still going").into(),
+            ));
+        }
 
         Ok(listed
             .into_iter()

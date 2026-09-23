@@ -585,3 +585,125 @@ async fn the_tools_can_be_looked_at_before_anything_is_registered() {
     kernel.add_tool(one.clone());
     assert_eq!(kernel.tool_ids(), vec!["files__counts"]);
 }
+
+// ------------------------------------------------------------------------ a server that misbehaves
+
+/// A server whose one tool never answers until it is told to stop, and whose listing never ends
+/// when asked to be endless.
+#[derive(Clone, Default)]
+struct Wedged {
+    endless: bool,
+    stopped: Arc<AtomicUsize>,
+}
+
+impl ServerHandler for Wedged {
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::default()
+    }
+
+    async fn list_tools(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, ErrorData> {
+        let mut page =
+            ListToolsResult::with_all_items(vec![McpTool::new("hang", "never", schema(json!({})))]);
+        if self.endless {
+            page.next_cursor = Some("more".into());
+        }
+        Ok(page)
+    }
+
+    async fn call_tool(
+        &self,
+        _request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResponse, ErrorData> {
+        context.ct.cancelled().await;
+        self.stopped.fetch_add(1, SeqCst);
+
+        Err(ErrorData::internal_error("stopped", None))
+    }
+}
+
+async fn wedged(handler: Wedged) -> Server {
+    let (theirs, ours) = tokio::io::duplex(8 * 1024);
+    tokio::spawn(async move {
+        if let Ok(running) = handler.serve(theirs).await {
+            let _ = running.waiting().await;
+        }
+    });
+
+    Server::connect("wedged", ours)
+        .await
+        .expect("the handshake completes")
+}
+
+/// A call the server never answers is stopped by an interrupt, and the server is told to stop.
+///
+/// note: the interrupt was checked before the call went out and not after, so a server that took a
+/// call and never answered held the turn for as long as it liked - escape, a deadline and a first
+/// `ctrl+c` did nothing.
+#[tokio::test]
+async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
+    let handler = Wedged::default();
+    let stopped = handler.stopped.clone();
+    let server = wedged(handler).await;
+
+    let kernel = kernel();
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "wedged__hang", json!({}))]),
+        ModelResponse::text("never reached"),
+    ])));
+    server.install(&kernel).await.expect("the tools install");
+    kernel.push(ContextItem::user("go"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    kernel.interrupt();
+    tokio::time::timeout(std::time::Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should reach a call the server is sitting on")
+        .expect("the turn is not a panic")
+        .expect("an interrupted turn is not a failed one");
+
+    let said = kernel
+        .items()
+        .into_iter()
+        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .expect("the call has a result")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(said.contains("told to stop"), "{said}");
+    let waited = std::time::Instant::now();
+    while stopped.load(SeqCst) == 0 {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(5),
+            "the server was never told"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+/// A listing whose server always has another page gives up rather than listing for ever.
+#[tokio::test]
+async fn a_listing_that_never_ends_gives_up() {
+    let server = wedged(Wedged {
+        endless: true,
+        ..Wedged::default()
+    })
+    .await;
+
+    let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.tools())
+        .await
+        .expect("it listed for ever");
+    let Err(e) = listed else {
+        panic!("an endless listing is not a list");
+    };
+    assert!(e.to_string().contains("pages"), "{e}");
+}

@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### fixed
 
+- **A call the server never answers can be stopped.** The interrupt was read before a call went
+  out and not while it was with the server, so a server that took a call and never answered held
+  the turn for as long as it liked: escape, a deadline and a first `ctrl+c` did nothing. The call
+  watches the interrupt while it waits now, and on one sends MCP's `notifications/cancelled` and
+  tells the model the call was stopped part-way, since what the server did by then is not known.
+  `tokio`'s `time` and `macros` are features of every build for it, which `rmcp` builds anyway.
+
+- **A listing that never ends gives up.** `Server::tools` followed `nextCursor` for as long as a
+  server handed one back, at startup, where nothing interrupts it; it reads a hundred pages and then
+  refuses.
+
 - **A spawned server's standard error is held rather than inherited.** `Server::spawn` handed the
   command to a transport whose default is to inherit it, and which sets all three streams over
   whatever the `Command` said - so a server logging a line per request wrote across the caller's

@@ -14,10 +14,16 @@ use nachalnik::{
 };
 use rmcp::{
     RoleClient,
-    model::{CallToolRequestParams, CallToolResult, ContentBlock, ToolAnnotations},
-    service::Peer,
+    model::{
+        CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ContentBlock,
+        ServerResult, ToolAnnotations,
+    },
+    service::{Peer, PeerRequestOptions},
 };
 use serde_json::Value;
+
+/// How long a call waits on its server before it looks up to see whether it has been interrupted.
+const HEARTBEAT: std::time::Duration = std::time::Duration::from_millis(120);
 
 /// How the capabilities of a server's tools are decided.
 ///
@@ -120,11 +126,13 @@ impl Tool for McpTool {
         self.spec.clone()
     }
 
+    /// note: interruptible while the server works on it, as `shell` is while a command runs. A
+    /// server that never answers would otherwise hold the turn for as long as it liked, and escape,
+    /// a deadline and a first `ctrl+c` would do nothing. MCP's own `notifications/cancelled` tells
+    /// the server to stop, and the model is told the call was stopped part-way, since what the
+    /// server had done by then is not known here.
     async fn invoke(&self, call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
-        // note: checked before dispatching rather than during. Once the request is with the
-        // server, this crate lets it finish: abandoning it would mean either leaving the server
-        // working on something nobody is waiting for, or claiming a cancellation that has not
-        // been negotiated. Whether it *ran* is something the model should be told accurately
+        // before dispatching, so that a call interrupted before it went out says it did not run
         if output.is_interrupted() {
             return Ok(ToolOutput::error(
                 "interrupted before this call was made; it did not run",
@@ -148,11 +156,43 @@ impl Tool for McpTool {
             request = request.with_arguments(arguments);
         }
 
-        match self.peer.call_tool(request).await {
-            Ok(result) => Ok(output_of(result)),
+        let sent = self
+            .peer
+            .send_cancellable_request(
+                ClientRequest::CallToolRequest(CallToolRequest::new(request)),
+                PeerRequestOptions::no_options(),
+            )
+            .await;
+        let mut handle = match sent {
+            Ok(handle) => handle,
             // the server is not going to answer this one; that is a failure the model can act on,
             // not a reason to stop the loop
-            Err(e) => Ok(ToolOutput::error(format!("the MCP server refused: {e}"))),
+            Err(e) => return Ok(ToolOutput::error(format!("the MCP server refused: {e}"))),
+        };
+        let answered = loop {
+            tokio::select! {
+                answered = &mut handle.rx => break answered,
+                () = tokio::time::sleep(HEARTBEAT) => {
+                    if output.is_interrupted() {
+                        let _ = handle.cancel(Some("interrupted".to_owned())).await;
+                        return Ok(ToolOutput::error(
+                            "interrupted while the MCP server was working on it, and the server \
+                             was told to stop; what it had done by then is not known",
+                        ));
+                    }
+                }
+            }
+        };
+
+        match answered {
+            Ok(Ok(ServerResult::CallToolResult(result))) => Ok(output_of(result)),
+            Ok(Ok(_)) => Ok(ToolOutput::error(
+                "the MCP server answered with something that is not the result of a call",
+            )),
+            Ok(Err(e)) => Ok(ToolOutput::error(format!("the MCP server refused: {e}"))),
+            Err(_) => Ok(ToolOutput::error(
+                "the MCP server went away before it answered",
+            )),
         }
     }
 }

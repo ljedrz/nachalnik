@@ -1290,8 +1290,8 @@ async fn restart_ends_it_without_ending_the_program() {
 /// that has merely gone quiet ends the run in about 200ms on one press, because the provider
 /// watches the interrupt while it waits; and a `shell` command halfway through `sleep 30` is
 /// *killed* by one press, which is the re-exec being load-bearing rather than tidy. So what is
-/// asserted here is what actually happens, and the second press has a test of its own next to a
-/// tool that really will not stop - see `a_second_press_leaves_a_tool_that_will_not_stop`.
+/// asserted here is what actually happens - and since an MCP call now watches the interrupt too,
+/// no tool this program ships holds a turn past one press.
 ///
 /// note: the endpoint is a socket rather than a scripted provider because the program builds its
 /// own provider in a process of its own, and a listener is the only seam a child process has.
@@ -1490,22 +1490,17 @@ fn waited_out(
     }
 }
 
-/// A second `ctrl+c` leaves a tool that will not stop.
+/// A first `ctrl+c` stops an MCP call the server never answers.
 ///
-/// note: what the second press is *for*, and finding a case to show it in took measuring three.
-/// A model that has gone quiet ends on the first press in about 200ms, because the provider
-/// watches the interrupt while it waits; a `shell` command is killed by the first press, because
-/// the re-exec means the process that dies is the command. Neither is a turn the first press
-/// cannot stop. What is one is somebody else's tool: a kernel interrupt lands between steps, and
-/// an MCP call already in flight is not between steps - so a server that never answers holds the
-/// turn open for as long as it likes, and `sleep 600` in forty lines of Python is exactly that.
-///
-/// note: which makes this a test of the thing as well as of the guard. An MCP server that wedges
-/// is a real hazard - somebody else's process, on the other side of a pipe - and what it must not
-/// be able to do is hold the program hostage.
+/// note: a kernel interrupt lands between steps, and an MCP call in flight is not between steps -
+/// so a server that never answered held the turn open for as long as it liked, and only a second
+/// press, leaving at once, got out. The call watches the interrupt now and tells the server to
+/// stop, so the first press ends the turn like any other, and `sleep 600` in forty lines of Python
+/// is what shows it. No tool this program ships ignores the interrupt any more, so the second
+/// press - for a tool of an embedder's that does - has nothing here to be shown on.
 #[cfg(all(unix, feature = "mcp"))]
 #[tokio::test(flavor = "multi_thread")]
-async fn a_second_press_leaves_a_tool_that_will_not_stop() {
+async fn a_first_press_stops_a_call_the_server_never_answers() {
     if std::process::Command::new("python3")
         .arg("--version")
         .output()
@@ -1550,19 +1545,6 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
     }
 
     interrupt(child.id());
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    assert!(
-        child.try_wait().expect("it was spawned").is_none(),
-        "the first press waits for the turn, and this turn is not coming back: {}",
-        said.lock()
-    );
-    assert!(
-        said.lock().contains("what has arrived is kept"),
-        "{}",
-        said.lock()
-    );
-
-    interrupt(child.id());
     let pressed = std::time::Instant::now();
     let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
 
@@ -1573,7 +1555,7 @@ async fn a_second_press_leaves_a_tool_that_will_not_stop() {
     );
     assert!(
         pressed.elapsed() < std::time::Duration::from_secs(5),
-        "the second press waited for the tool anyway: {:?}",
+        "the first press waited for the server anyway: {:?}",
         pressed.elapsed()
     );
 }
