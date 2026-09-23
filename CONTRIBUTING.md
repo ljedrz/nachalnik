@@ -117,11 +117,15 @@ tests fail about tool calls, budgets and truncation - none of them about the end
 `KAMCHATKA_BASE_URL` explicitly for anything that is not Google. The status line in the failure
 output is what gives it away: it names the host.
 
-Free OpenRouter models are enough for both live suites and cost nothing, with
-`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`. As of
-2026-09-13, `kamchatka`'s suite passed whole against both `nex-agi/nex-n2.5-mini:free` and
-`nvidia/nemotron-3-super-120b-a12b:free`, and `nachalnik`'s against the second. The `:free` pool
-is rate-limited upstream, and a model that answered an hour ago can return `429` or an idle
+Free OpenRouter models cost nothing and are enough for the runtime's suites. As of 2026-09-23,
+`nachalnik`'s, `nachalnik-eval`'s and `nachalnik-mcp`'s `foreign` passed whole against
+`nvidia/nemotron-3-super-120b-a12b:free`, some tests only on a re-run. `kamchatka`'s does not
+pass whole on one: against `nex-agi/nex-n2.5-mini:free`, with
+`KAMCHATKA_BASE_URL=https://openrouter.ai/api/v1` and `KAMCHATKA_CONTEXT_LIMIT=12288`, a handful
+of tests fail on what the model chooses - no tool call, a `glob` where it was told to read, the
+system prompt's word where it was asked for another - and the last release fails as many, of the
+same kinds, on the same model. All four pass whole against Google's endpoint, below. The `:free`
+pool is rate-limited upstream, and a model that answered an hour ago can return `429` or an idle
 timeout now, which the runtime reports as a provider failure rather than as a test failure. And
 `nachalnik`'s suite asks a model to *do* things - use a tool, keep a secret, be interrupted
 mid-stream - so a small model fails some of them for being small, and not the same ones twice.
@@ -165,11 +169,16 @@ this end.
 **Pointing both halves at Google**, which is one key and covers everything except the `file` part:
 
 ```console
-$ KAMCHATKA_GEMINI_API_KEY=... KAMCHATKA_GEMINI_MODEL=gemini-3.5-flash \
+$ KAMCHATKA_GEMINI_API_KEY=... KAMCHATKA_GEMINI_MODEL=gemini-3.1-flash-lite \
   KAMCHATKA_API_KEY=... KAMCHATKA_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
-  KAMCHATKA_TEST_MODEL=gemini-3.5-flash-lite KAMCHATKA_CONTEXT_LIMIT=12288 \
+  KAMCHATKA_TEST_MODEL=gemini-3.1-flash-lite KAMCHATKA_CONTEXT_LIMIT=12288 \
     cargo test -p kamchatka --test live -- --test-threads=1
 ```
+
+As of 2026-09-23 that passes whole, with the thinking test and the `file` one skipping, and so
+do the other three suites with `NACHALNIK_API_KEY`, `NACHALNIK_BASE_URL` and
+`NACHALNIK_TEST_MODEL` pointed at the same endpoint and model. `gemini-3.1-flash-lite` is the
+oldest and cheapest `flash-lite` still served to a new key.
 
 **`KAMCHATKA_DOCUMENT_MODEL` must not point at Google's shim**: it answers a `file` content part
 with `400 Invalid content part type: file`, so that test fails with an empty answer where the
@@ -178,8 +187,9 @@ reaches the same model through the native dialect's `inline_data` and is read, w
 `a_pdf_goes_out_as_a_document_in_the_native_dialect` pins. **A model that `models.list` returns
 may still be refused**: `gemini-2.5-flash-lite` is listed and answers
 `404 ... no longer available to new users`. And **the lite models return no thought summaries at
-all**, so the test about a turn carrying its thinking skips on `gemini-3.5-flash-lite` and runs on
-`gemini-3.5-flash`.
+all**, so the test about a turn carrying its thinking skips on them. On `gemini-3.5-flash` and
+`gemini-3.6-flash` a summary is not promised either, and on 2026-09-23 both skipped; the test's
+own note has what has been measured.
 
 `nachalnik-eval` reads the `NACHALNIK_` variables, since it talks through the same provider:
 
