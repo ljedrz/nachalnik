@@ -55,7 +55,8 @@ minor bump may break you.
   one - but nothing said so, and a session started with `--allow fs:read` was then asked about
   `fs:write` with no way to see that its rule and the call could never meet. The permission panel
   and a headless run now say which it is: a call that named nothing, or one that named something
-  the tool does not do, and what a rule that would have answered looks like.
+  the tool does not do, and what a rule that would have answered looks like. `App::widened`
+  answers it for a client of its own.
 
 - **A release attaches a Mac binary as well.** `aarch64-apple-darwin`, built on `macos-latest`,
   which is that runner's own host - so it is a second entry in the matrix rather than anything
@@ -75,6 +76,7 @@ minor bump may break you.
   and what is sent off the machine. The bottom level names reading, listing, searching and
   changing directory, so a `cd` is no longer one answer away from yellow. The destructive claim
   asked beside the rubric draws the same line, and the panel's band names say it.
+
 - **What a tool keeps of one call has a ceiling: 8 MiB, `tools::KEPT`.** The output limit decides
   what the model is shown and the whole is archived beside it, so the whole was whatever arrived -
   a `yes` nobody stopped grew the process, the archive and every save after it without end, and so
@@ -95,9 +97,8 @@ minor bump may break you.
 - **`tests/remote.rs` is `tests/remote/`**, the way `tests/screen/` and `tests/introspect/`
   already are: one binary named for the directory, `main.rs` holding what every file in it reaches
   for - a served session, the `Peer` that speaks the protocol by hand, the two tools that answer
-  slowly - and nine files for the nine things it is about. It had grown to 3,900 lines, the
-  largest file in the workspace and half again the next test suite, with the seams already drawn
-  as section banners. Not one test changed.
+  slowly - and a file for each thing it is about, along the seams its section banners already
+  drew. Not one test changed.
 
 - **The sandbox suite is two: `tests/sandbox.rs` for what needs a process, `tests/boundary.rs` for
   what does not.** The first is `#![cfg(target_os = "linux")]`, as it was; the second is
@@ -375,7 +376,7 @@ minor bump may break you.
 
 - **The published crate no longer carries a compiled Python file.**
   `contrib/__pycache__/laya_advisor.cpython-314.pyc` was committed by accident and `cargo package`
-  takes what `git` tracks, so 29 KB of bytecode for one interpreter version went out inside 0.14.0.
+  takes what `git` tracks, so bytecode for one interpreter version went out inside 0.14.0.
   `.gitignore` covers `__pycache__/` now. The advisor script beside it is unaffected.
 
 - **A confined command could have a process outside the confinement act for it.** Landlock governs
@@ -393,6 +394,7 @@ minor bump may break you.
   directory now needs `--sandbox-allow <the socket>`, and `--sandbox-read` will not do it -
   connecting is the writing half of the rule, because what comes back from a socket is whatever
   the process behind it was willing to do.
+
 - **A browser watching a session through `examples/phone.rs` came back after `/restart`.** It
   could not. `EventSource` reconnects with `Last-Event-ID`, which the relay hands the session as
   `attach { since }` under the name it read off the first projection - and behind that address is
@@ -426,10 +428,9 @@ minor bump may break you.
 
 - **A call whose arguments never parsed says what is wrong with them and shows that part.** It
   said `the arguments were not JSON` and quoted the first 200 characters, which is the wrong two
-  hundred: of twelve such calls in one session, four had the fault past the cut, so the message
-  quoted the part that was fine and left out the part that was not. It now carries the parser's
-  own account - where the text stops, or where an escape went wrong - and a window around that
-  rather than the opening.
+  hundred wherever the fault lies past the cut: the message quoted the part that was fine and left
+  out the part that was not. It now carries the parser's own account - where the text stops, or
+  where an escape went wrong - and a window around that rather than the opening.
 
 ## [0.14.0] - 2026-09-21
 
