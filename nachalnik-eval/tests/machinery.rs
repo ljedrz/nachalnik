@@ -577,6 +577,16 @@ fn the_suite_states_what_it_asks_and_two_dossiers_differ() {
     assert_ne!(depot.digest, suite::Recursion::new().instrument().digest);
 }
 
+/// Every planted falsehood names itself in the material, not only the one `Lie` started with.
+#[test]
+fn a_planted_falsehood_is_named_for_what_it_is() {
+    for (dossier, plant) in suite::PLANTED {
+        let instrument = suite::Lie::new().on(dossier, plant).instrument();
+
+        assert_eq!(instrument.material, vec![dossier.name, plant.name]);
+    }
+}
+
 #[test]
 fn a_template_says_what_it_will_say() {
     let filled = suite::script::fill(suite::script::EXCLUDED, &[("label", "records/omsk-annex")]);

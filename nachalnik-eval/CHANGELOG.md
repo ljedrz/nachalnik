@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Plant` has a `name`.** `Lie`'s instrument named its material `cancelled` whichever falsehood
+  was planted, so a run on `ORCHARD` with `REASSIGNED` said it had measured `orchard` and
+  `cancelled`. Each plant names itself now, as each dossier does, and the instrument names the
+  one that ran. A `Plant` written as a struct literal elsewhere needs the field. The digests do not
+  move: a name is not part of the text they are taken over.
+
 ### fixed
 
 - **A permit coming free wakes the future waiting for it.** `Permits::release` woke the first
