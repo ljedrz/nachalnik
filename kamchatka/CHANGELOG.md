@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`--deny mcp:call` and `--deny mcp` hold against `--allow-server`.** A server this program
+  spawned is judged by its name in place of `mcp:call`, so that `--allow-server files` grants what
+  it says without a second flag - and the substitution dropped a refusal of `mcp:call` along with
+  its question, so every tool the server had ran. A refusal is now still consulted, and the
+  permissions tab and `setup` say it covers the server's tools.
+
 - **`shell` holds output with no newlines to its ceiling while reading it.** The 8 MiB ceiling was
   checked when a read returned, and a read of a line that never ends returned only when the
   heartbeat stopped it: two gigabytes of zeros held hundreds of megabytes before the check could

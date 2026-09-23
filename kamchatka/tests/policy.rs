@@ -577,3 +577,39 @@ fn the_policy_reads_a_path_and_a_command_through_the_wrapper() {
         );
     }
 }
+
+/// A refusal of somebody else's tools is still consulted about a server's, whoever allowed the
+/// server.
+///
+/// note: naming the server stands in for `mcp:call`, so that `--allow-server files` grants what it
+/// says without `mcp:call` being answered too - and the stand-in dropped a *refusal* of `mcp:call`
+/// along with its question. `--deny mcp:call --allow-server files` ran every tool the server had.
+#[test]
+fn a_refused_mcp_call_is_not_talked_past_by_an_allowed_server() {
+    let request = PermissionRequest {
+        id: PermissionId(1),
+        call: ToolCallId::from("c1"),
+        tool: "files__read".to_owned(),
+        capabilities: vec![Capability::parse("mcp:call").expect("a subject")],
+        args: std::sync::Arc::new(json!({})),
+    };
+    let policy = Careful::new();
+    policy.came_from("files__read", "files");
+    policy.set(&Subject::Server("files".to_owned()), Verdict::Allow);
+
+    // the server's name is the whole decision where nobody has said anything about `mcp:call`
+    assert_eq!(policy.verdict(&request), Verdict::Allow);
+
+    for refusal in ["mcp:call", "mcp"] {
+        let policy = Careful::new();
+        policy.came_from("files__read", "files");
+        policy.set(&Subject::Server("files".to_owned()), Verdict::Allow);
+        policy.set(&Subject::parse(refusal), Verdict::Deny);
+
+        assert_eq!(policy.verdict(&request), Verdict::Deny, "{refusal}");
+        assert!(
+            policy.decides(&Subject::parse("mcp:call"), "files__read"),
+            "the tables have to say the refusal covers it: {refusal}"
+        );
+    }
+}

@@ -475,9 +475,16 @@ impl Careful {
         // `--allow-server files` grant nothing until `mcp:call` had been answered too - two flags
         // for one decision. Whatever the server's *annotations* claimed is untouched: a tool that
         // says it writes is still judged against `fs:write`.
+        //
+        // note: except where somebody refused it. The server stands in for `mcp:call`'s question,
+        // not for a `--deny mcp:call` or a `--deny mcp`, and dropping one of those would let
+        // `--allow-server` talk its way past a refusal - which no rule here may do
+        let unvouched = Subject::Capability(unvouched());
+        let refused = self.stance(&unvouched) == Verdict::Deny;
         if let Some(server) = self.servers.lock().get(&request.tool) {
-            let unvouched = Subject::Capability(unvouched());
-            judged.retain(|subject| *subject != unvouched);
+            if !refused {
+                judged.retain(|subject| *subject != unvouched);
+            }
             judged.push(Subject::Server(server.clone()));
         }
 
@@ -494,7 +501,8 @@ impl Careful {
     /// `judges` takes it back out again for a server this program spawned, so a table read off the
     /// declarations would list a server's tools beside an `allow` for `mcp:call` that is never
     /// consulted about them. A coverage column that names tools a rule will not be consulted about
-    /// is worse than an empty one: it is the answer somebody checks their own flags against.
+    /// is worse than an empty one: it is the answer somebody checks their own flags against. A
+    /// `deny` for it is consulted, and covers them.
     ///
     /// note: it takes a name and not a [`PermissionRequest`], so a path rule - which is about the
     /// argument of one call rather than about the tool - is not something it can answer. Those
@@ -503,7 +511,7 @@ impl Careful {
     pub fn decides(&self, subject: &Subject, tool: &str) -> bool {
         match subject {
             Subject::Capability(capability) if *capability == unvouched() => {
-                self.server_of(tool).is_none()
+                self.server_of(tool).is_none() || self.stance(subject) == Verdict::Deny
             }
             _ => true,
         }
