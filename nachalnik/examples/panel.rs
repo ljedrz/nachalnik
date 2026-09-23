@@ -684,6 +684,7 @@ async fn main() -> Result<(), BoxError> {
     }
 
     let split = match (counted.len(), abstained.len()) {
+        (0, _) => "nobody stated a position".to_owned(),
         (1, 0) => "unanimous".to_owned(),
         (1, n) => format!(
             "unanimous among the {} who stated a position; {n} did not ({})",
@@ -691,7 +692,7 @@ async fn main() -> Result<(), BoxError> {
             abstained.join(", ")
         ),
         (_, _) => format!(
-            "not unanimous; {} took the minority view",
+            "not unanimous; {} took another view",
             counted[1..]
                 .iter()
                 .flat_map(|(_, voters)| voters.clone())
