@@ -2721,6 +2721,48 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
     );
 }
 
+/// A restart goes back to the model the flags named, not the one the session had switched to.
+///
+/// note: `/model` switches the provider in place and the restart carries the provider over, so the
+/// new session came up on the old one's switch - where RUNNING.md says a restart goes back to the
+/// flags, the model among them.
+#[cfg(unix)]
+#[test]
+fn a_restart_goes_back_to_the_model_the_flags_named() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-reflag-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a directory to record into");
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "-m", "flagged-model"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    use std::io::Write as _;
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    stdin
+        .write_all(b"/model switched-model\n/restart\n/model\n/quit\n")
+        .expect("the lines go in");
+    drop(stdin);
+
+    let out = child.wait_with_output().expect("it ran");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(out.status.success(), "{said}");
+    let (_, after) = said
+        .split_once("ended:")
+        .unwrap_or_else(|| panic!("no restart in: {said}"));
+    assert!(after.contains("flagged-model"), "{after}");
+    assert!(!after.contains("switched-model"), "{after}");
+}
+
 /// `/restart` writes the session out and carries on in a new one, in the program proper.
 ///
 /// note: the binary rather than a driver, because the half worth testing is the loop around

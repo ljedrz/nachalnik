@@ -7,7 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`wiring::Flagged`**: where a provider was pointed when the session began, and `restore` to put
+  it back - for a loop of its own that relaunches a session with `Setup::relaunch`.
+
 ### fixed
+
+- **`/restart` goes back to the model and the address the flags named.** The restart carries the
+  provider over, and `/model` and `/provider` switch it in place, so a new session came up on the
+  old one's switch - where it is documented to go back to the flags, the model among them.
 
 - **A file given to `--sandbox-allow` or `--sandbox-read` on its own opens through `fs`.** The
   confined open is held beneath the root it was allowed under and opened that root as a

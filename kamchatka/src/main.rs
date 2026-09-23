@@ -205,6 +205,7 @@ async fn session() -> Result<()> {
     let setup = args.advised(setup).await?;
 
     let provider = args.provider().await?;
+    let flagged = kamchatka::wiring::Flagged::of(&*provider);
 
     // note: kept so that `/restart` can wire a second session out of the same settings. That is
     // what makes the new one the session the *flags* describe rather than a copy of this one's
@@ -393,6 +394,7 @@ async fn session() -> Result<()> {
         // that is over. That is the price of `App::leaving` being one question: what it answers is
         // *stop holding this*, and which of the two reasons it was is read here, where there is
         // somewhere to go with the answer
+        flagged.restore(&*provider).await;
         let (wired, said) = base
             .relaunch(&app, provider.clone())
             .map_err(|e| anyhow::anyhow!("{e}"))?;

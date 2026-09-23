@@ -110,6 +110,7 @@ async fn main() -> Result<(), String> {
     }
 
     let provider = args.provider().await.map_err(|e| format!("{e:#}"))?;
+    let flagged = kamchatka::wiring::Flagged::of(&*provider);
     let setup = args.setup().map_err(|e| format!("{e:#}"))?;
     setup.check()?;
     #[cfg(feature = "shell-advisor")]
@@ -173,6 +174,7 @@ async fn main() -> Result<(), String> {
                 break outcome;
             }
 
+            flagged.restore(&*provider).await;
             let (wired, said) = base.relaunch(&app, provider.clone())?;
             let Wired {
                 app: fresh,

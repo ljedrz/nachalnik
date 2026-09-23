@@ -295,6 +295,39 @@ fn unreached(subject: &Subject) -> Option<String> {
     }
 }
 
+/// Where a provider was pointed when the session began: the address and the model the flags gave
+/// it, for a `/restart` to put back.
+///
+/// note: a restart carries the provider over rather than connecting again, because the connection
+/// is what is not cheap to rebuild - and `/model` and `/provider` switch that provider in place, so
+/// the model on it is this session's drift and not the flags'. Taken once, before the first
+/// session is wired, and put back before every relaunch.
+#[derive(Debug, Clone)]
+pub struct Flagged {
+    endpoint: String,
+    model: String,
+}
+
+impl Flagged {
+    /// What `provider` is pointed at now.
+    pub fn of(provider: &dyn Dialect) -> Self {
+        Self {
+            endpoint: provider.endpoint(),
+            model: provider.model(),
+        }
+    }
+
+    /// Points `provider` back there, where a `/model` or a `/provider` has moved it; nothing is
+    /// asked of the endpoint where nothing moved.
+    pub async fn restore(&self, provider: &dyn Dialect) {
+        if provider.endpoint() != self.endpoint || provider.model() != self.model {
+            provider
+                .set_endpoint(self.endpoint.clone(), Some(self.model.clone()))
+                .await;
+        }
+    }
+}
+
 impl Setup {
     /// What can be said about a setup before anything is reached: a path rule nothing can match,
     /// a tool nobody offers.
