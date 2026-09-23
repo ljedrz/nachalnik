@@ -191,6 +191,10 @@ impl Selector {
     }
 
     /// Returns whether the selector matches a single item.
+    ///
+    /// note: `first` and `latest` are not answered here, because they are about a list and one
+    /// item cannot say where it stands in one: `tool:grep:latest` matches every `grep` result.
+    /// [`Selector::matches`] is what applies them.
     pub fn matches_item(&self, item: &ContextItem) -> bool {
         match self {
             Self::Id(id) => item.id == *id,
