@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A turn recorded as ordered blocks reads on the chat in its own order.** The chat drew every
+  thought, then every sentence, then every call - right for a turn with one of each, and wrong for
+  the interleaved turns `--gemini` exists to keep, which read as something that did not happen.
+
 - **A `--connect` client writes out the records of its last command before it leaves.** A reply
   carries `busy`, and a client whose input has closed leaves on `busy: false` - and the reply was
   written ahead of the records the command had just made, so `/note` piped in was answered and

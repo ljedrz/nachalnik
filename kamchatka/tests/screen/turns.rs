@@ -787,3 +787,30 @@ async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
     assert_eq!(harness.style_of("old:").0, Color::Reset);
     assert_eq!(harness.style_of("path: greet.py").0, Color::Reset);
 }
+
+/// A turn recorded as ordered blocks reads on the chat in the order it was produced.
+///
+/// note: the chat drew every thought, then every sentence, then every call, which is right for a
+/// turn with one of each and wrong for the interleaved ones `--gemini` is there to keep: a turn
+/// that thought, said, thought again and said again read as two thoughts and then two sentences.
+#[tokio::test]
+async fn an_ordered_turn_reads_on_the_chat_in_its_own_order() {
+    let mut harness = Harness::new([ModelResponse::blocks(vec![
+        nachalnik::Block::reasoning(Content::text("aardvark thought")),
+        nachalnik::Block::text(Content::text("badger sentence")),
+        nachalnik::Block::reasoning(Content::text("cormorant thought")),
+        nachalnik::Block::text(Content::text("dingo sentence")),
+    ])]);
+    harness.send("go").await;
+    harness.settle().await;
+
+    let screen = harness.sized(120, 60);
+    let at = |word: &str| {
+        screen
+            .find(word)
+            .unwrap_or_else(|| panic!("no `{word}` on the chat: {screen}"))
+    };
+    assert!(at("aardvark") < at("badger"), "{screen}");
+    assert!(at("badger") < at("cormorant"), "{screen}");
+    assert!(at("cormorant") < at("dingo"), "{screen}");
+}

@@ -17,7 +17,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use nachalnik::{ContextId, ContextItem, ContextKind, Event, Overrun, Record};
+use nachalnik::{Block, ContextId, ContextItem, ContextKind, Event, Overrun, Record};
 
 use super::{
     App, Going, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
@@ -614,9 +614,37 @@ impl App {
         match &item.kind {
             ContextKind::System => {}
             ContextKind::UserMessage => line(Speaker::User, Self::trimmed(item.content.to_text())),
+            // a turn recorded as ordered blocks reads in its own order: thinking, a sentence, a
+            // call, thinking again. Stacked as thoughts, then sentences, then calls, an interleaved
+            // turn read on the chat as something that did not happen - the one place most people
+            // read it, and the order `--gemini` exists to keep
+            ContextKind::AssistantMessage { .. } if item.content.as_blocks().is_some() => {
+                for block in item.content.as_blocks().into_iter().flatten() {
+                    match block {
+                        Block::Reasoning(part) | Block::Text(part) => {
+                            let text = Self::trimmed(part.content.to_text());
+                            if text.trim().is_empty() {
+                                continue;
+                            }
+                            let speaker = match block {
+                                Block::Reasoning(_) => Speaker::Reasoning,
+                                _ => Speaker::Model,
+                            };
+                            line(speaker, text);
+                        }
+                        Block::Call(call) => {
+                            let args = one_line(&call.args.to_string());
+                            line(Speaker::Call, Cow::Owned(format!("{}({args})", call.tool)));
+                        }
+                        // a kind of block the runtime added after this was written: the context
+                        // tab names it, and the chat has no speaker for it yet
+                        _ => {}
+                    }
+                }
+            }
             ContextKind::AssistantMessage { .. } => {
-                // the thinking first, because that is the order it happened in and the order a
-                // turn recorded as ordered blocks holds it in
+                // the thinking first, because that is the order it happened in: a turn in the
+                // conventional shape has one of each and nothing that says otherwise
                 for thought in item.thinking() {
                     let text = Self::trimmed(thought.to_text());
                     if !text.trim().is_empty() {
