@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A server's standard error is held a line's worth at a time.** The tail kept twenty lines and
+  no bound on one, so a server writing without newlines - a progress bar redrawn with `\r`, or one
+  that means harm - grew it for as long as it ran. The start of each line is kept, to 1 KiB, and
+  the rest read and let go.
+
 - **A call the server never answers can be stopped.** The interrupt was read before a call went
   out and not while it was with the server, so a server that took a call and never answered held
   the turn for as long as it liked: escape, a deadline and a first `ctrl+c` did nothing. The call

@@ -308,7 +308,16 @@ const KEPT: usize = 20;
 #[cfg(feature = "child-process")]
 const LAST_WORDS: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Reads a spawned server's standard error to its end, keeping the last [`KEPT`] lines.
+/// How much of one line of a server's standard error is kept.
+#[cfg(feature = "child-process")]
+const LINE: usize = 1024;
+
+/// Reads a spawned server's standard error to its end, keeping the start of each of the last
+/// [`KEPT`] lines.
+///
+/// note: the start of a line, to [`LINE`] bytes, and the rest read and let go. The count of lines
+/// was bounded and the length of one was not, so a server writing without newlines - a progress
+/// bar redrawn with `\r`, or one that means harm - grew this without end for as long as it ran.
 #[cfg(feature = "child-process")]
 async fn drain(
     stderr: tokio::process::ChildStderr,
@@ -316,17 +325,40 @@ async fn drain(
 ) {
     use tokio::io::AsyncBufReadExt as _;
 
-    let mut stderr = tokio::io::BufReader::new(stderr);
-    let mut line = Vec::new();
-    while let Ok(1..) = stderr.read_until(b'\n', &mut line).await {
-        let text = String::from_utf8_lossy(&line).trim_end().to_owned();
-        line.clear();
+    let keep = |line: &[u8]| {
+        let text = String::from_utf8_lossy(line).trim_end().to_owned();
         let Ok(mut said) = said.lock() else {
-            return;
+            return false;
         };
         if said.len() == KEPT {
             said.pop_front();
         }
         said.push_back(text);
+        true
+    };
+
+    let mut stderr = tokio::io::BufReader::new(stderr);
+    let mut line = Vec::new();
+    loop {
+        let read = match stderr.fill_buf().await {
+            Ok(read) if !read.is_empty() => read,
+            _ => break,
+        };
+        let (taken, ended) = match read.iter().position(|byte| *byte == b'\n') {
+            Some(at) => (at + 1, true),
+            None => (read.len(), false),
+        };
+        let room = LINE.saturating_sub(line.len()).min(taken);
+        line.extend_from_slice(&read[..room]);
+        stderr.consume(taken);
+        if ended {
+            if !keep(&line) {
+                return;
+            }
+            line.clear();
+        }
+    }
+    if !line.is_empty() {
+        keep(&line);
     }
 }

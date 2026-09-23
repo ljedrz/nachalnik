@@ -274,3 +274,27 @@ async fn a_server_that_dies_before_the_handshake_says_why() {
 
     assert!(refused.contains("no module named mcp"), "{refused}");
 }
+
+/// What a server writes to standard error without ending a line is kept to a line's worth.
+///
+/// note: the tail kept a bounded number of lines and no bound on one, so a server writing without
+/// newlines - a progress bar redrawn with `\r`, or one that means harm - grew it for as long as it
+/// ran. The handshake failing is when the tail is handed back, so that is where it can be seen.
+#[tokio::test]
+async fn a_line_that_never_ends_is_kept_to_a_lines_worth() {
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg("head -c 5000000 /dev/zero | tr '\\0' x >&2; exit 1");
+
+    let refused = match Server::spawn("chatty", command).await {
+        Ok(_) => panic!("nothing answered the handshake"),
+        Err(e) => e.to_string(),
+    };
+
+    assert!(
+        refused.contains("xxxx"),
+        "the start of it is kept: {refused:.200}"
+    );
+    assert!(refused.len() < 4096, "{} bytes of it", refused.len());
+}
