@@ -181,9 +181,9 @@ pub struct Rated {
     /// its scarcest thing - the same argument [`joints`](crate::tools::joints) is ranges for -
     /// and on a phone a second copy of a long stage is the whole screen.
     ///
-    /// note: `None` where the whole command earned its own band, and for every call that was
-    /// rated in one piece: a heredoc, a command with no joints in it, one too long to be sent
-    /// whole, and one with more stages than are worth reporting on separately.
+    /// note: `None` where the whole command earned a band no stage reaches, and for every call
+    /// that was rated in one piece: a heredoc, a command with no joints in it, one too long to be
+    /// sent whole, and one with more stages than are worth reporting on separately.
     pub worst: Option<(usize, usize)>,
 }
 
@@ -248,14 +248,18 @@ impl Rated {
     /// tightening rather than produce a wrong one: the fold can only ever come back at or above
     /// the band the whole command was given.
     ///
-    /// note: the first part to reach the worst band, where more than one does, so what is pointed
-    /// at is where the command first gets as bad as it gets.
+    /// note: the first *stage* to reach the worst band, where more than one part does, so what is
+    /// pointed at is where the command first gets as bad as it gets. The whole command is kept
+    /// only where no stage reaches its band: a destructive link usually makes the whole command
+    /// read as destructive too, and keeping the whole on that tie would point at nothing in
+    /// exactly the chain the pointing is for.
     fn worst_of(parts: impl IntoIterator<Item = Self>) -> Option<Self> {
         parts
             .into_iter()
-            .reduce(|best, next| match next.shown() > best.shown() {
-                true => next,
-                false => best,
+            .reduce(|best, next| match next.shown().cmp(&best.shown()) {
+                std::cmp::Ordering::Greater => next,
+                std::cmp::Ordering::Equal if best.worst.is_none() && next.worst.is_some() => next,
+                _ => best,
             })
             .map(|worst| Self {
                 scored: worst.shown(),
@@ -892,6 +896,13 @@ mod tests {
         // and the whole command winning points at nothing, because it is not a stage
         let folded = Rated::worst_of([Rated::of(2.0, 0.99), at((7, 11), 0.0)]).expect("it folds");
         assert_eq!(folded.worst, None);
+        assert_eq!(folded.shown(), Rating::Grave);
+
+        // but a stage as bad as the whole is what made it that bad, and is pointed at - which is
+        // the ordinary case, since a destructive link makes the whole read as destructive too
+        let folded = Rated::worst_of([Rated::of(2.0, 0.99), at((0, 4), 0.0), at((7, 11), 2.0)])
+            .expect("it folds");
+        assert_eq!(folded.worst, Some((7, 11)));
         assert_eq!(folded.shown(), Rating::Grave);
     }
 

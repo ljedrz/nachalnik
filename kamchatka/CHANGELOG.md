@@ -88,6 +88,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A chain's destructive link is underlined when the whole command reads as destructive too.**
+  The fold kept the first reading to reach the worst band, and the whole command's comes first, so
+  a tie - which is what `cargo build && rm -rf ~/.ssh` is, since a destructive link makes the whole
+  read as destructive - pointed at nothing. The stage is kept on that tie now, and the whole
+  command only where no stage reaches its band.
+
 - **A running turn says `esc stops it` once.** The chat tab said it in its footer and on the
   status line beneath; the status line is on every tab, so it says it there alone.
 
