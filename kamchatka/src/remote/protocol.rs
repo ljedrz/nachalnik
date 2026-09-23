@@ -311,10 +311,9 @@ pub enum Message {
     /// note: every command a client sends gets exactly one answer - this, or the
     /// [`Message::Attached`], [`Message::Projected`], [`Message::Replied`] or [`Message::Item`]
     /// that carries one, or a [`Message::Failed`] - and that is a property of the protocol rather
-    /// than a convenience. A
-    /// client that cannot tell when the session has caught up with what it asked for is guessing,
-    /// and the guess it gets wrong is always the same one: whether its own last line has happened
-    /// yet. See [`Message::Busy`] for the other half.
+    /// than a convenience. A client that cannot tell when the session has caught up with what it
+    /// asked for is guessing, and the guess it gets wrong is always the same one: whether its own
+    /// last line has happened yet. See [`Message::Busy`] for the other half.
     Done {
         /// Which command it was about.
         about: String,
