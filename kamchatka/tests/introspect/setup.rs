@@ -366,11 +366,14 @@ async fn setup_permissions_lists_one_row_per_operation() {
     );
     // and every row is an operation rather than a tool's own name, which is what the old table
     // had on seven of its ten rows
-    let rows = said
+    let rows: Vec<&str> = said
         .lines()
         .skip_while(|line| !line.starts_with("capability"))
         .skip(1)
-        .take_while(|line| !line.trim().is_empty());
+        .take_while(|line| !line.trim().is_empty())
+        .collect();
+    // and there are rows, or the loop below checks nothing: a table whose heading moved is empty
+    assert!(!rows.is_empty(), "no table of operations: {said}");
     for row in rows {
         let subject = row.split_whitespace().next().expect("a row names one");
         assert!(
