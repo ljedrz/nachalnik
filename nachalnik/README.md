@@ -171,16 +171,7 @@ trait object you can set, swap at runtime, and inspect:
 Each of them can also say what it is — `Provider` through `info()`, `Tool` through `spec()`, and
 the other four through a `name()` whose default is the implementing type's own path. So
 `kernel.policy().name()` is a thing a client can put on a screen, and "six replaceable parts" is
-checkable rather than asserted:
-
-```text
-provider     gemini-3.5-flash at https://openrouter.ai/api/v1 (openai-compatible)
-tools        6 offered: context, fork, fs, log, setup, shell
-policy       kamchatka::tools::policy::Careful
-projector    nachalnik::projection::LinearProjector
-counter      nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>
-compactor    kamchatka::tools::trim::Trim
-```
+checkable rather than asserted: `kamchatka`'s `/seams` lists all six, by the names they give.
 
 Model parameters are an opaque `serde_json` map carried to the provider verbatim, so `thinking`,
 `safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` — and the

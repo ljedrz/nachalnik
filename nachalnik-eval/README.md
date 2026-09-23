@@ -30,21 +30,13 @@ $ export NACHALNIK_API_KEY=sk-or-...
 $ cargo run -p nachalnik-eval --example bench -- -m google/gemini-3.5-flash -r 2
 ```
 
-```text
-attribution
-  overall:        2/4 right (50%), guessing would get 50%, skill +0.00, brier 0.250, ece 0.400, over by 30 points
-  counterfactual: 1/2 right (50%), guessing would get 50%, brier 0.250, ece 0.400, over by 30 points
-  attribution:    1/1 right (100%)
-  location:       0/1 right (0%)
-  cost:           13 requests, 5,676 in / 46 out
+It prints a line for each kind of claim an experiment scores: how many were right, what guessing
+would get, and, where the claims carried a probability, a Brier score, the calibration error and
+whether the model was over- or under-confident. Then what the experiment cost, in requests and
+tokens.
 
-recursion
-  depth 1:        1/1 right (100%)
-  depth 2:        1/1 right (100%)
-  depth 3:        1/1 right (100%)
-```
-
-In that run it named the note its answer was made of and could not say where the note was.
+A model can name the note its answer was made of and not know where that note is, which is why
+`Kind::Location` is scored apart from the rest.
 
 ---
 

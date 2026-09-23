@@ -15,13 +15,6 @@ is not a terminal, and it says so rather than deciding quietly.
 ```console
 $ printf 'what is 2+2? answer with just the number\n/budget\n' \
     | kamchatka --headless -m mercury-2 > session.jsonl
-4
---- the budget ---
-the next request: ~571 tokens, 12 of context and 559 of tool definitions
-
-anchored on the last response: ~570 tokens - the provider's own 569 for the request it
-answered, plus what the context has done since. This is the figure in the corner
-…
 ```
 
 **stdout is the session log**, one JSON record per line — the same bytes `/save` writes, so
@@ -45,15 +38,8 @@ stops the session rather than going onto the permissions tab as a rule no path c
 
 `--on-ask deny` rather than `allow` is deliberate: a run nobody is watching should not be able to
 do a thing nobody has allowed. The model is told, and told that it was *this call* rather than a
-standing rule — so it works around it rather than retrying:
-
-```text
-⟩ shell({"cmd":"echo hello"})
-· shell: deny, because nobody is here to be asked
-· shell: 48 tokens, an error
-I’m not able to execute shell commands directly, but the command you asked about is
-straightforward. …
-```
+standing rule — so it works around it rather than retrying. On stderr it is the tool's name and
+the answer, `because nobody is here to be asked`.
 
 Somebody else's tools are given the same way, and where a tool came from is a subject of its own.
 `--mcp files=… --allow-server files` is the whole of granting one server: the same subject the
@@ -73,11 +59,8 @@ that has found a loop — a tool that fails the same way, a question it keeps re
 inside any deadline you were willing to give it. The unit is tokens, `input + output` as the
 provider reports them, because nothing here carries a price list and a figure in money would be one.
 It is a stopping rule rather than a cap, since what a response cost is known only once it has
-arrived:
-
-```text
-· spent 2,264 tokens of 2,000; stopping. `/spend N` raises the ceiling
-```
+arrived. When the session stops, it says what had been spent against what ceiling, and that
+`/spend N` raises it.
 
 It belongs to the *session* rather than to this loop, which is why it is on
 [`wiring::Setup`](#-embedding-it) and not on the headless driver. What stops the turn that crossed
@@ -109,21 +92,11 @@ where there is one to draw on, so a session started at a desk is the same sessio
 
 ```console
 $ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m mercury-2
-· serving on unix:/run/user/1000/kamchatka.sock
 ```
 
 ```console
 $ printf 'what is 2+2? answer with just the number\n' \
     | kamchatka --connect unix:/run/user/1000/kamchatka.sock > session.jsonl
---- 2026-09-12T15-26-18Z · 9 record(s), 0 item(s), ~526 tokens, mercury-2 ---
-· serving on unix:/run/user/1000/kamchatka.sock: the session is this program's rather than any
-  client's, so it carries on when they leave, and waits when a tool needs an answer nobody is
-  here to give
-· client 1 attached
---- a line is a message, a line starting with `/` is a command, `?N` says what item N holds, and
-    `ctrl+c` stops the turn ---
-> what is 2+2? answer with just the number
-4
 ```
 
 **The session belongs to the program running it, not to whoever is attached.** A turn carries on
@@ -142,15 +115,10 @@ There is no bearer token in this protocol and there is not going to be one: it c
 tool, so reaching the session is reaching the machine, and a scheme that had to be kept in step
 would be protecting a channel whose real boundary is the socket. A unix socket's file permissions
 are that boundary — the file is made `0600` the moment it exists — and `tcp:127.0.0.1:PORT` is the
-machine. Anything else is refused with the reason and a way out:
-
-```console
-$ kamchatka --serve tcp:0.0.0.0:7878
-Error: 0.0.0.0:7878 is not a loopback address, and this protocol carries no authentication:
-whatever reaches the port runs the `shell` tool as you. Listen on `tcp:127.0.0.1:PORT` or on
-`unix:PATH`, and reach it from elsewhere through something that does authenticate — `ssh -L`
-is the usual one
-```
+machine. Anything else, `--serve tcp:0.0.0.0:7878` for one, is refused with the reason and a way
+out: it is not a loopback address and whatever reaches the port runs the `shell` tool as you, so
+listen on `tcp:127.0.0.1:PORT` or on `unix:PATH`, and reach it from elsewhere through something
+that does authenticate — `ssh -L` is the usual one.
 
 So reaching a session from another machine is a tunnel: SSH already has the key management, so the
 session gets an authenticated, encrypted transport without this program growing either.
@@ -209,7 +177,6 @@ HTTP in front. Three routes, no framework, no build step, and one HTML file.
 ```console
 $ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
 $ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
-· a browser reaches tcp:127.0.0.1:7878 at port 8080 on every address this machine has
 ```
 
 `examples/phone.rs` is the same thing in one command, for when there is nobody at the machine: it
@@ -219,8 +186,6 @@ in front of it. The HTTP half is `examples/relay/`, shared rather than copied, w
 
 ```console
 $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- -m qwen/qwen3-coder
-· a session of its own at tcp:127.0.0.1:41337
-· a browser reaches tcp:127.0.0.1:41337 at port 8080 on every address this machine has
 ```
 
 It takes the program's own arguments, all of them, because the session it assembles is the
@@ -305,18 +270,11 @@ in the order they were produced. The OpenAI-compatible shim in front of the same
 that into a `content` string beside a `tool_calls` array, because the dialect it is imitating has
 nowhere to put an order. Everything downstream then reads a turn that has been tidied up.
 
-```text
-▸ [4] assistant · assistant_message · from model · active · 178 tokens
-    --- 3 block(s), in order ---
-    [0] reasoning: The user wants the code word, and the tool is the only place it is…
-    [1] text: Let me look that up.
-    [2] call (signed): secret({})
-```
-
-That is the context pane, and `context` reads the same thing back to the agent. It is only worth
-having because the order is really in there: the runtime records it as `Content::Blocks`, counts
-it, prunes it and elides it like any other content, and `LinearProjector::send_blocks` sends it
-back the same way.
+The context pane reads such a turn out in the order it was produced — the thinking, the sentence,
+the call — and `context` hands the agent the same blocks, numbered, with the signed ones marked. It
+is only worth having because the order is really in there: the runtime records it as
+`Content::Blocks`, counts it, prunes it and elides it like any other content, and
+`LinearProjector::send_blocks` sends it back the same way.
 
 Signatures are the other half. Gemini signs the parts of a turn and answers
 `400 Function call is missing a thought_signature` to a request that returns one without it — and
@@ -334,12 +292,7 @@ $ kamchatka --gemini "what does src/kernel.rs do?"
 ## 🔀 the model, and the address it lives at
 
 `/model` says which model this is talking to, where that is, in what dialect, and how much context
-it has:
-
-```text
-· gemini-3.6-flash at https://generativelanguage.googleapis.com/v1beta/openai
-  (openai-compatible), 1,048,576 tokens of context
-```
+it has.
 
 `/model ID` switches the model and `/provider URL [ID]` switches the address — and the model with
 it, because a model belongs to the address that serves it. Switching one and keeping the other is
@@ -350,14 +303,9 @@ models is one address and two names, while comparing a hosted model with the one
 machine is two addresses. A comparison that cannot see the address is a comparison of names.
 
 Every session is written out when it ends, whether or not it ended well, and the last thing
-printed is where:
-
-```text
-2026-09-02T18-25-10Z · 9 events recorded
-9 records in /tmp/kamchatka/2026-09-02T18-25-10Z.jsonl, and a session in
-/tmp/kamchatka/2026-09-02T18-25-10Z.json
-`kamchatka -r /tmp/kamchatka/2026-09-02T18-25-10Z.json` carries on from it
-```
+printed is where: a record of its events and a snapshot of its context, both in a `kamchatka`
+directory under the system's temporary one, and the `kamchatka -r` line that carries on from the
+snapshot.
 
 A session's name is when it started, in UTC, so that a list of them says something to whoever is
 reading it, and it is also the name of its two files.
@@ -374,19 +322,9 @@ world-readable file on a shared machine.
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
 `gemini-3.5-flash` at another, and after a `/provider` there is no other way to find out which
-without guessing. It asks the endpoint, marks the one you are on with `▸`, and takes a filter
-because a list of everything an endpoint serves is not an answer:
-
-```text
-┌  6 of 54 matching `flash-lite` · /model ID switches  ────────────────┐
-│   gemini-flash-lite-latest                                           │
-│   gemini-2.5-flash-lite                                              │
-│   gemini-3.1-flash-lite-preview                                      │
-│   gemini-3.1-flash-lite                                              │
-│   gemini-3.1-flash-lite-image                                        │
-│ ▸ gemini-3.5-flash-lite                                              │
-└ 1–6 of 6 · any key closes ───────────────────────────────────────────┘
-```
+without guessing. It asks the endpoint, marks the one you are on with `▸` where it stands in the
+endpoint's own order, and takes a filter because a list of everything an endpoint serves is not an
+answer; a filtered list says how many of how many matched.
 
 The key is *not* switched with the address. It is read from the environment once, at startup, and a
 key typed at a prompt would be a key in the transcript — so `/provider` is for the addresses that
@@ -402,15 +340,12 @@ takes, where the endpoint publishes it. It shows the second because a parameter 
 take is not refused: it is sent, ignored, and nothing anywhere says so, which makes a `seed` set
 for a reproducible run buy no reproducibility and look exactly like one that worked. The runtime
 invents none of them — only what you set is sent — and a listing that publishes nothing is read as
-silence rather than as a prohibition, because ollama and a bare proxy both say nothing here:
+silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
 
-```text
-parameters: {"seed":42}
-upstage/solar-pro4 does not list seed: sent, and ignored
-upstage/solar-pro4 also takes: frequency_penalty, include_reasoning, max_tokens,
-presence_penalty, reasoning, response_format, structured_outputs, temperature, tool_choice,
-tools, top_p
-```
+Where the listing is everything the model takes, a parameter you set that is not on it is named as
+sent and ignored, and the ones it takes that you have not set follow. Where the endpoint publishes
+its sampling parameters only, the same absence settles nothing, so it is named as sent and
+unchecked instead.
 
 ## 📏 the number in the status line is a guess, and says which kind
 
@@ -418,37 +353,27 @@ Nothing here has the model's tokenizer, so the figure the status line leads with
 it is written `~2,460` for that reason. The percentage beside it names the total it is a
 percentage of (`0.9% (128k)`), because a fraction of an unstated number is not something anybody
 can act on, and it turns yellow past 70% and red past 90%. Then comes what the provider actually
-charged for the last request, and `/budget` is where all of it is reconciled:
+charged for the last request, and `/budget` is where all of it is reconciled: the next request,
+split into context and tool definitions; the same request anchored on the last response; the limit
+and how much of it the next request would fill; what the last request really cost, as the provider
+counted it; and what the counter has learned.
 
-```text
-the next request: ~20,125 tokens, 19,953 of context and 172 of tool definitions
-
-anchored on the last response: ~20,188 tokens - the provider's own 20,063 for the
-request it answered, plus what has changed since
-
-the limit: 1,048,576, which the next request would fill 1.9% of
-
-the last request really cost 20,063, as the provider counted it
-
-the counter has learned from 2 request(s) and scaled itself by 1.131: its own guesses
-came to 35,447 tokens where the provider counted 40,073
-```
-
-The first line is the counter estimating the whole request from scratch. The second is the one the
-corner shows once there has been a response to anchor on, and it is a different method rather than
-a better guess: it starts from what the provider charged, adds what the context estimates *now*,
-and subtracts what the estimator says the items that figure already covered would cost now. An
-item that has not moved appears in both estimates and cancels — so it contributes its measured
-cost and no error at all, and only what has changed since the last request is being guessed at.
-The error is a few percent of the change instead of a few percent of the context, which is the
+The first figure is the counter estimating the whole request from scratch. The anchored one is the
+one the corner shows once there has been a response to anchor on, and it is a different method
+rather than a better guess: it starts from what the provider charged, adds what the context
+estimates *now*, and subtracts what the estimator says the items that figure already covered would
+cost now. An item that has not moved appears in both estimates and cancels — so it contributes its
+measured cost and no error at all, and only what has changed since the last request is being guessed
+at. The error is a few percent of the change instead of a few percent of the context, which is the
 difference between a thousand tokens and thirty on a context of a hundred thousand.
 
 It also absorbs, exactly and for nothing, the three things the counter is structurally blind to:
 per-message framing, the tool schemas, and any payload it refuses to price. A PDF the counter
 cannot put a number on is inside the provider's figure the moment it has gone out once.
 
-That correction on the last line is the runtime's `Calibrating` counter: every response tells it
-what the request it just estimated really cost, and it adjusts. Over a real session against Gemini
+The counter is the runtime's `Calibrating` one: every response tells it what the request it just
+estimated really cost, and it adjusts. `/budget` says from how many requests, by what scale, and
+what its own guesses came to against the provider's count. Over a real session against Gemini
 it went from 13% low to within 0.3%.
 
 So does every request the model refuses for being too long, and that one is worth more than a
@@ -627,12 +552,8 @@ this program expands one, because every other way of giving those paths has a sh
 that expanded `~` before the program saw anything, and a file has nothing in front of it. The tools
 still refuse a leading `~` rather than expanding it, because those paths are written by a *model*.
 
-A key nothing reads is an error naming it, not a line that quietly does nothing:
-
-```console
-$ kamchatka --config-file kamchatka.json
-Error: kamchatka.json: unknown field `modle`, expected one of `model`, `gemini`, `system`, …
-```
+A key nothing reads is an error naming it, not a line that quietly does nothing: the program stops
+and names the file, the key it did not know, and the keys it would have.
 
 What it deliberately does not carry is anything belonging to one invocation rather than to the
 project: a message, `-r`, `-f`, and `--headless`, which decides for itself from whether stdout is a
@@ -643,12 +564,8 @@ terminal.
 because a file sitting next to the thing it describes is the one you mean; nothing walks *up* from
 there, because the surprise grows with the distance and typing the flag costs one flag. A file that
 applies because of where you are standing is one that can surprise you, and the answer to that is
-not to hide it — a session that picked one up says so, in the conversation, before anything else
-happens:
-
-```console
-· settings read from kamchatka.json
-```
+not to hide it — a session that picked one up says which file it read, in the conversation, before
+anything else happens.
 
 A path you typed is not announced: you already know which file it was.
 
@@ -672,89 +589,13 @@ setting added later nor a number added here can go unnoticed.
 
 ## 🎛️ options
 
-```text
-kamchatka [OPTIONS] [MESSAGE]...
-
-  -m, --model <MODEL>       the model to talk to            [env: KAMCHATKA_MODEL]
-                            without one the session starts with none and sends
-                            nothing until /model picks one
-  -f, --file <PATH>         put a file in the context, pinned; a PDF or an image
-                            goes in as itself. May be repeated
-  -s, --system <TEXT>       a system instruction; the runtime ships none of its own
-  -r, --resume <PATH>       carry on from a session written by /save
-      --mcp <COMMAND>       an MCP server to run, as `[name=]command`; may be repeated
-      --requests <N>        how many requests one turn may make; 0 is no
-                            limit at all                                  [default: 8]
-      --compact <FRACTION>  how full the context may get; 1 never compacts [default: 0.8]
-      --parallel            run the model's tool calls at the same time
-      --gemini              talk to Google's own API rather than an OpenAI-compatible
-                            one, so a turn keeps the order it was produced in
-      --advise              ask a second model about every tool call the rules were
-                            going to allow, and take the stricter of the two. Needs
-                            the `advise` feature; sends the call's arguments out
-      --headless            drive the session from lines on stdin: the session log to
-                            stdout, one JSON record a line, and what the model says to
-                            stderr. Implied when stdout is not a terminal
-      --serve <ADDRESS>     put a socket in front of the session as well as a screen,
-                            as unix:PATH or tcp:127.0.0.1:PORT. The session is this
-                            program's: it carries on when a client detaches
-      --connect <ADDRESS>   attach to a session somebody else is serving and drive it
-                            from lines on stdin, in the two streams --headless writes.
-                            Nothing else here applies: the model, the key, the tools
-                            and the sandbox are all the host's
-      --allow <SUBJECT>     answer `allow` in advance for a domain, one operation in one
-                            or a path, as fs, fs:read, exec:run, .env* ;
-                            comma-separated, may be repeated
-      --deny <SUBJECT>      the same, refused
-      --on-ask <ANSWER>     what a question nobody is there to answer gets, in a
-                            headless run: deny or allow               [default: deny]
-      --deadline <SECONDS>  stop a headless run after this long, keeping what
-                            arrived and writing the session out as usual
-      --spend <TOKENS>      stop the session once the provider has charged this many
-                            tokens for it, in and out; /spend changes it as it runs
-      --sandbox-allow <PATH> a path outside the working directory the tools may also
-                            read and write; comma-separated, may be repeated
-      --sandbox-read <PATH> a path outside the working directory the tools may read
-                            but not change; comma-separated, may be repeated
-      --no-sandbox          no confinement at all: the shell reaches whatever you can, and `fs`
-                            stops holding itself to the working directory
-      --forget-truncated    drop the whole of a shortened tool output instead of
-                            keeping it as an archived item you can still read
-      --send-oversized      send a request that looks too long for the model anyway,
-                            and let the endpoint be the one that says no
-      --config-file <PATH>  a JSON file of settings, for the ones you would otherwise
-                            type every time; anything given here wins over it.
-                            Given none, ./kamchatka.json and then the one under
-                            your config directory
-      --print-config        print the settings file this program ships with and stop
-      --no-record           do not write the session out when it ends; it goes to a
-                            temporary directory otherwise, named on the way out
-
-Environment:
-  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
-  KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for
-                           ollama; OpenRouter by default, or Google's own v1beta
-                           with --gemini
-  KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
-  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter
-
-The advisor, which is only ever asked when --advise is given:
-  SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
-                              Takes precedence over the three below, and nothing
-                              leaves the machine when it is set
-  KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
-                              KAMCHATKA_API_KEY, but only where this session already
-                              talks to OpenRouter, which serves jev too
-  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
-                              those two keys was found, or any other service that
-                              answers the same typed questions
-  KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
-                              typesafe/jev-1.13 through OpenRouter
-```
-
-That is `--help`, which lists the environment too rather than leaving its variables for the
-readme alone to mention. The advisor's block is printed by a build that has an `--advise` to use
-it and by no other, which is why it is the one part of the above you may not see.
+`kamchatka --help` lists every option, and the environment too rather than leaving its variables
+for the readme alone to mention: the key, as `KAMCHATKA_API_KEY` or else `OPENROUTER_API_KEY` or
+`OPENAI_API_KEY`; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
+says otherwise, or Google's own `v1beta` with `--gemini`; `KAMCHATKA_CONTEXT_LIMIT`, for a
+provider that will not say how much context its model has; and `KAMCHATKA_NO_ATTRIBUTION`, which
+stops the program naming itself to OpenRouter. The advisor's variables are listed by a build that
+has an `--advise` to use them and by no other.
 
 ### a second opinion on a tool call
 
@@ -782,22 +623,22 @@ Any other session is refused and told why. A key is an OpenRouter key because it
 OpenRouter, not because of the variable it was read from — so a session pointed at ollama, at
 Google with `--gemini`, or at a gateway of your own holds a key that service issued, and spending
 it here would hand a third party a credential with no business with them. Those need
-`KAMCHATKA_SYSTEM1_API_KEY`:
+`KAMCHATKA_SYSTEM1_API_KEY`, and one started without it
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
-error: could not reach the advisor
-caused by: --advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). This
-session talks to http://localhost:11434/v1, so its own key is not OpenRouter's to borrow
 ```
+
+stops before the session begins, saying that it could not reach the advisor, which key to set,
+and which address the session talks to.
 
 The dedicated key is checked first, so setting it is what moves the questions to TypeSafe's own API
 from anywhere. What the fallback changes is who is told: the arguments below go to OpenRouter as
 well as to the model behind it.
 
-The two settings underneath follow whichever key was found, and `KAMCHATKA_SYSTEM1_BASE_URL` moves
-the address without moving the account — pointing it at the other service means naming that
-service's model with `KAMCHATKA_SYSTEM1_MODEL` as well. TypeSafe resolves `jev-latest` to whatever
+`KAMCHATKA_SYSTEM1_BASE_URL` and `KAMCHATKA_SYSTEM1_MODEL` follow whichever key was found, and the
+first moves the address without moving the account — pointing it at the other service means
+naming that service's model with the second as well. TypeSafe resolves `jev-latest` to whatever
 version is current; OpenRouter serves versions under their own names, which is why the identifier
 this program sends there names one.
 
@@ -864,26 +705,19 @@ If your `laya` answers under keys this does not expect, `--probe` says so withou
 
 ```console
 $ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
---- the state kamchatka sends ---
-...
---- the gate: what laya answered, verbatim ---
-...
---- the gate: what this shim would send on ---
-...
---- the rubric: what laya answered, verbatim ---
-...
 ```
 
-It asks the program's questions, word for word, of the state the program sends: a probe that
-makes up its own measures something nobody runs. That goes for the state as much as the rubric —
-a bare command line where the program sends the whole call answers differently enough to be
-mistaken for a fact about the rubric. Both blocks come from the same constants the program sends,
-and a test fails if either drifts.
+It prints the state kamchatka sends and then, for each request, what laya answered verbatim and
+what this shim would send on. It asks the program's questions, word for word, of the state the
+program sends: a probe that makes up its own measures something nobody runs. That goes for the
+state as much as the rubric — a bare command line where the program sends the whole call answers
+differently enough to be mistaken for a fact about the rubric. The state and the questions both
+come from the same constants the program sends, and a test fails if either drifts.
 
 Both requests are shown because the program makes two: the gate's pair, which decides whether a
 call runs, and the rubric, which is only ever drawn. An advisor can be useless at one and fine at
-the other. An empty second block is the translation not recognising what laya sent; a `score` in
-the right place under a flat distribution is the engine finding the question hard, which is a
+the other. An empty *would send on* is the translation not recognising what laya sent; a `score`
+in the right place under a flat distribution is the engine finding the question hard, which is a
 different problem and not one this file can fix. `--selftest` checks the translation against a
 recorded answer and needs no checkpoint; `cargo test` runs it.
 
@@ -893,13 +727,11 @@ recorded answer and needs no checkpoint; `cargo test` runs it.
   and that one temperature per question type and option count has to be refitted on your own data
   before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
   one. `contrib/laya_fit.json` is sixty labelled commands and `--fit` is what recomputes them from
-  it, printing the working. Point it at a file of your own traffic if you have one:
+  it, printing the working: for each bucket, the shipped temperature and the fitted one, and how
+  each scores. Point it at a file of your own traffic if you have one:
 
   ```console
   $ python3 laya_advisor.py --fit           # or --fit path/to/your-own.json
-  bucket                     T     NLL     gap  accuracy  misfires
-  choice:3-5   shipped    1.76   0.721   0.448     0.717         0
-               fitted     0.76   0.603   0.347     0.717         0
   ```
 
   A temperature moves confidence and never the answer — accuracy is identical at every value — so
@@ -927,12 +759,7 @@ laya's notebook is for.
 **Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
 matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
 sharing your terminal would be writing over the screen ratatui is drawing. What the session is
-told instead is two lines and no more — that the advisor is not ready yet, and then that it is:
-
-```text
-· the advisor `…/python` is not ready yet; you will be told when it is
-· the advisor is ready
-```
+told instead is two lines and no more — that the advisor is not ready yet, and then that it is.
 
 The second one means it answered a question, not that it printed a word: the advisor is asked
 one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
@@ -965,18 +792,9 @@ $ kamchatka --advise "tidy up the build artifacts"
 
 There is no `--allow exec:run` here. The verdict is asked about calls that would otherwise
 **run**; a rating is asked about the ones you are going to be **asked** about, which in a default
-session is every command. The answer is drawn in the question, above the arguments:
-
-```text
-┌ a tool wants to run · tab ───────────────────────────────────────────────────┐
-│ shell wants: exec:run, net:reach                                             │
-│ the advisor reads this as: destroys, or sends something out · 93% sure        │
-│                                                                              │
-│ action: run                                                                  │
-│                                                                              │
-│ cmd:                                                                         │
-│ │ rm -rf ~/work && curl -X POST https://example.com                          │
-```
+session is every command. The answer is drawn in the question, on the line under what the tool
+wants and above the arguments: what the advisor reads the command as, in its colour, and how sure
+it is.
 
 Green, yellow or red, off a three-level rubric — it leaves nothing changed; it leaves something
 changed that could be put back; it destroys something that cannot be got back, or sends something
@@ -1038,15 +856,11 @@ sitting in the context marked `▫` if you want to read it.
 
 `/restart` is the other end of that. Where `/load` brings a file into the session you are in,
 this writes the session out and puts a brand new one in its place — the same thing that would
-happen if you quit and ran the program again, without quitting:
+happen if you quit and ran the program again, without quitting.
 
-```text
-· 2026-09-21T14-22-09Z ended: 148 records in /tmp/kamchatka/2026-09-21T14-22-09Z.jsonl, and a
-  session in /tmp/kamchatka/2026-09-21T14-22-09Z.json (`kamchatka -r …` carries on from it)
-```
-
-That line is the first thing the new session says, and it is the only place the old one's name
-and files are still written down — so the run you just abandoned is a `-r` away for as long as
+The first thing the new session says is that the old one ended, with the old one's name, where its
+record and its snapshot went, and the `kamchatka -r` that carries on from it. It is the only place
+those are still written down — so the run you just abandoned is a `-r` away for as long as
 the temporary directory lasts. `--no-record` says so instead and writes nothing, as it does at
 the end of a run.
 
@@ -1101,13 +915,9 @@ a model can act on. A scripted provider agrees with every refusal it is handed.
 
 `$HOME` is not a system directory, so a confined command cannot read it — and most toolchains keep
 their real installation there. `cargo` is a rustup shim, rustup reads `~/.rustup/settings.toml`
-before it does anything at all, and a model asked to build a Rust project therefore gets
-
-```text
-error: could not read settings file: '/home/you/.rustup/settings.toml': Permission denied
-```
-
-which looks exactly like a missing compiler. Hand it the toolchain, for reading and no more:
+before it does anything at all, and a model asked to build a Rust project therefore gets a
+`Permission denied` on that file, which looks exactly like a missing compiler. Hand it the
+toolchain, for reading and no more:
 
 ```console
 $ kamchatka --sandbox-read ~/.rustup,~/.cargo -m …
@@ -1141,13 +951,10 @@ files`, and every git command in the session dead. So a confined command is hand
 your identity and aliases in there too.
 
 **A permission error says where it came from.** When a confined command is refused a path outside
-its reach, the tool result names it:
-
-```text
-exit: 1 (the command reported a failure)
-[/home/you/.rustup/settings.toml is outside what this session reaches, so the permission error
-below is the confinement rather than the file's own permissions. …]
-```
+its reach, the tool result names the path and says it is outside what this session reaches, so
+the permission error is the confinement rather than the file's own permissions — along with what
+the command runs with, and to work inside the working directory or ask for the path to be opened
+up.
 
 A refusal that names only paths the command *can* reach gets no such line: `cat /etc/shadow` is
 refused with or without a sandbox, and hedging about it would send a model looking for a boundary
@@ -1156,10 +963,6 @@ that had nothing to do with it.
 **And it says where the session does reach**, in the tools that run in process too, in the same
 words the `shell` tool's description uses. A refusal that named only the working directory would
 read as the whole boundary, and a path opened up with `--sandbox-allow` would be one the model
-never tried:
-
-```text
-/home/you/.ssh/id_rsa: outside what this session reaches, which is /home/you/proj read-write,
-/tmp/work read-write, /home/you/.rustup read-only. Work where it does, or ask for this path to
-be opened up and say what you need it for.
-```
+never tried. So a refused path is answered with every place the session reaches, each marked
+read-write or read-only, and told to work where it does or to ask for the path to be opened up and
+say what it needs it for.

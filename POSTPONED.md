@@ -414,9 +414,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   operation `undo` should see - and so a checkpoint, and the undo history it costs - or a fact that
   `undo` should re-apply on the way back is the decision.
 
-- **Pictures of the program and a table of what runs cost, both out of date.** `kamchatka`'s
-  readme still shows the `read` tool from before `fs`; the context tab in the workspace readme and
-  the guide says `fs` only because its tool names were edited by hand, and is otherwise the old
-  session. `nachalnik-eval`'s readme lists requests per experiment from before six dossiers. Both
-  are copies of real output, so what unblocks them is a fresh recording and a fresh run rather than
-  an edit.
+- **Screenshots of the program.** The documents carry no pictures of `kamchatka`, only prose
+  about what it shows. A capture pasted in as text is a copy of one session's output: the
+  program's words move on and the copy does not, and one edited by hand is a picture of no session
+  at all. What unblocks it is real screenshots, saved as images and taken from a session of a
+  named version, in the readmes and the guide where the prose now says what a screen holds.
+
+- **A table of what runs cost, out of date.** The `~requests` column of `nachalnik-eval`'s readme
+  counts requests per experiment from before six dossiers. It is a copy of a real run, so what
+  unblocks it is a fresh run rather than an edit.

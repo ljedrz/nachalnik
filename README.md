@@ -51,29 +51,12 @@ Each crate's own readme says what it is and how to start; the longer material si
 $ cargo run -p kamchatka -- -f src/kernel.rs "what does the kernel do?"
 ```
 
-```text
-┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│  id  label         kind               sending   held  what it says, or why it is not being sent              │
-│  1 ▪ src/kernel.rs reference            1,045         pub struct Kernel;                                     │
-│  2 · user          user_message             6         what does the kernel do?                               │
-│  3 · assistant     assistant_message        7         asked for fs                                           │
-│  4 - fs            tool_result              0     15  excluded: at the terminal, by `tool:fs`                │
-│  5 · assistant     assistant_message        7         asked for shell                                        │
-│  6 … shell         tool_result             11  9,004  compaction: compacted to make room                     │
-│  7 · assistant     assistant_message       62         The kernel is a state machine with five states. …      │
-│                                                                                                              │
-└────────────────────────────────────────────────────────────────────────────── 7 items, 2 not going, 1 elided ┘
-┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ask for something, or /help                                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · gpt-4o-mini @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back
-```
-
-That second tab is the runtime: every item the context holds, what it costs, whether it is going
-into the next request, and — for the ones that are not — why, on their own row, in the projector's
-words. `space` cycles how much of an item the model gets, `p` pins it, `e` changes what it says,
-`u` undoes. `/step` performs exactly one transition of the state machine, which is the only way to
-stand in `Ready`: the model has said what it wants to do, and none of it has run yet.
+`kamchatka`'s **context** tab is the runtime: every item the context holds, what it costs, whether
+it is going into the next request, and — for the ones that are not — why, on their own row, in the
+projector's words. `space` cycles how much of an item the model gets, `p` pins it, `e` changes
+what it says, `u` undoes. `/step` performs exactly one transition of the state machine, which is
+the only way to stand in `Ready`: the model has said what it wants to do, and none of it has run
+yet.
 
 Ordinary user code on top of the crate, and nothing else: two providers, six tools — four of them
 about the session itself — a policy, a compactor and the drawing. Not one of them is a privileged

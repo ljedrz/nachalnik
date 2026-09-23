@@ -17,28 +17,6 @@ $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
 
-```text
-┌ chat │ context │ trace │ permissions ────────────────────────────────────────────────────────────────────────┐
-│> what does the kernel do?                                                                                    │
-│                                                                                                              │
-│⟩ read({"path":"src/kernel.rs"})                                                                              │
-│                                                                                                              │
-││ pub struct Kernel(Arc<InnerKernel>);                                                                        │
-│  // ... 900 more lines                                                                                       │
-│                                                                                                              │
-│· read: 15 tokens                                                                                             │
-│                                                                                                              │
-│The kernel is a state machine with five states. `step` performs one transition and returns the state it       │
-│produced; `turn` repeats it until the model stops asking for tools. Nothing in it decides what the model is   │
-│told - that is the projector's job.                                                                           │
-│                                                                                                              │
-└──────────────────────────────────────────────── alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions ┘
-┌ you ─────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ask for something, or /help                                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- done · qwen/qwen3-coder @ openrouter.ai · ~1,168 tokens, 0.9% (128k) · 1,102 really · 15 held back
-```
-
 ## ❓ who this is for
 
 You're likely to find `kamchatka` compelling if any of these apply to you:
@@ -112,15 +90,12 @@ turn. That is the only way to stand in `ready` — which the runtime documents a
 on purpose*, the moment the model has said what it wants and **nothing has happened yet**:
 
 ```text
-> /step how many lines are in ledger.py?
-
-⟩ shell({"cmd":"wc -l ledger.py"})
-
-· step → ready: 1 call(s) decided, none of them run yet
-      shell {"cmd":"wc -l ledger.py"}
+/step how many lines are in ledger.py?
 ```
 
-The command is decided, permitted, and not running. From here you can read it, prune the context
+Where the model answers with a call — a `shell` running `wc -l`, say — the session stops in
+`ready` and says which calls were decided and that none of them has run. The command is decided,
+permitted, and not running. From here you can read it, prune the context
 it would have run against, drop it, or `/step` again to run it. A whole turn walks through this
 state without ever drawing it, which is why every other agent's "approve this command?" is the
 only checkpoint it has. Here the checkpoint is the state machine's own.
