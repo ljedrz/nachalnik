@@ -581,7 +581,8 @@ pub fn record(app: &App) -> Result<Recorded, String> {
             .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0);
         if !private {
             return Err(format!(
-                "{} is not a directory only you can enter, so the session was not recorded                  there; remove it, or use `--no-record` and `/save`",
+                "{} is not a directory only you can enter, so the session was not recorded \
+                 there; remove it, or use `--no-record` and `/save`",
                 dir.display()
             ));
         }

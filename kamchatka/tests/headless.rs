@@ -2477,3 +2477,58 @@ fn restart_writes_the_session_out_and_starts_another() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A record directory that is not a real one of the owner's is refused, and the refusal reads.
+///
+/// note: a link where the directory should be is the case one user can arrange; the other - a
+/// directory somebody else made first - needs a second user, and it is the same refusal. What it
+/// promises is that nothing is written through the link and that the sentence says why and what
+/// to do instead, which is the only thing a person running this is told.
+#[cfg(unix)]
+#[test]
+fn a_record_directory_that_is_a_link_is_refused_in_words() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-linked-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let elsewhere = dir.join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).expect("a directory to point at");
+    std::os::unix::fs::symlink(&elsewhere, dir.join("kamchatka")).expect("a link");
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    use std::io::Write as _;
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    stdin
+        .write_all(b"a line\n/quit\n")
+        .expect("the lines go in");
+    drop(stdin);
+    let out = child.wait_with_output().expect("it ran");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+
+    let refusal = said
+        .lines()
+        .find(|line| line.contains("is not a directory only you can enter"))
+        .unwrap_or_else(|| panic!("the record directory was not refused: {said}"));
+    assert!(
+        refusal.contains("was not recorded there") && refusal.contains("--no-record"),
+        "the refusal does not say what happened and what to do: {refusal}"
+    );
+    assert!(
+        !refusal.contains("  "),
+        "the refusal has a run of spaces in the middle of it: {refusal}"
+    );
+    assert_eq!(
+        std::fs::read_dir(&elsewhere).expect("the target").count(),
+        0,
+        "something was written through the link"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
