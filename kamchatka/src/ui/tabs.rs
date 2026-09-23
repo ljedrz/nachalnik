@@ -546,18 +546,20 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
         // note: what is *not* here is a row per thing nobody has answered about yet. The policy
         // asks about everything by default, so listing the defaults is listing the absence of
         // decisions - and it would bury the one or two lines that say what this agent can do
-        // without stopping. What arrives here is what somebody answered `a` or `n` to
+        // without stopping. What arrives here is what somebody answered `a` to, or set here
         frame.render_widget(
             Paragraph::new(
                 "nothing has been decided yet, which is why this list is empty rather than \
-                 permissive.\n\nAnswer a question with `a` or `n` and its subject arrives here, \
-                 where it can be changed. A fresh policy also holds a rule for each of a handful \
+                 permissive.\n\nAnswer a question with `a` and everything it was judged by arrives \
+                 here, where it can be changed; `y` and `n` answer that one call and record \
+                 nothing. A fresh policy also holds a rule for each of a handful \
                  of paths that are credentials by convention, and those are questions too, so \
                  they are not rows either - the line along the bottom is what counts them. They \
                  begin to earn their keep the moment a capability is answered `always`: the \
                  capability opens, the rules stay where they are, and the strictest thing \
                  consulted wins - so a rule can only ever tighten what a capability allows. Those \
-                 rules bind `read`, `write` and `edit`, and deliberately not `shell`: a command \
+                 rules bind every `fs` operation that is handed a path, and deliberately not \
+                 `shell`: a command \
                  names its files inside a string, so what holds a command to a boundary is the \
                  sandbox rather than a rule here.",
             )
