@@ -12,14 +12,14 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
-use std::{cell::Cell, collections::HashMap};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{List, ListItem, Paragraph},
 };
 
@@ -42,7 +42,7 @@ use super::{Scrolled, faint, in_view, quiet};
 
 pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: Rect) -> Scrolled {
     let width = inner.width as usize;
-    let mut lines: Vec<Line> = Vec::new();
+    let mut lines: Vec<Row> = Vec::new();
     // the item the last marked line belonged to, so that a turn and the calls it asked for say
     // once between them why they are not going rather than once each
     let mut marked: Option<ContextId> = None;
@@ -100,10 +100,10 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         if let Some(item) = held {
             if marked != Some(item.id) {
                 let (mark, _) = state_mark(item.state);
-                lines.push(Line::styled(
+                lines.push(Row::Drawn(Line::styled(
                     format!("{mark} [{}] {}", item.id.0, withheld_why(item, going)),
                     quiet().italic(),
-                ));
+                )));
                 marked = Some(item.id);
             }
 
@@ -116,12 +116,12 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
             // which is right for `> ` and wrong for this, where a long answer would come out with
             // one marked row and the rest reading as ordinary indented text
             for text in wrapped(&said, width.saturating_sub(2), "") {
-                lines.push(Line::from(vec![
+                lines.push(Row::Drawn(Line::from(vec![
                     Span::styled("╎ ", faint()),
                     Span::styled(text, quiet()),
-                ]));
+                ])));
             }
-            lines.push(Line::default());
+            lines.push(Row::Drawn(Line::default()));
             continue;
         }
         marked = None;
@@ -136,12 +136,12 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
                 None => {
                     let (text, answer) = kept
                         .remove_entry(said.as_ref())
-                        .unwrap_or_else(|| (said.to_string(), answer(&said, width)));
+                        .unwrap_or_else(|| (said.to_string(), answer(&said, width).into()));
                     fresh.entry(text).or_insert(answer)
                 }
             };
-            lines.extend(answer.iter().cloned());
-            lines.push(Line::default());
+            lines.extend((0..answer.len()).map(|at| Row::Kept(Rc::clone(answer), at)));
+            lines.push(Row::Drawn(Line::default()));
             continue;
         }
 
@@ -172,21 +172,21 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         {
             Some(exit) => {
                 for text in wrapped(head, width, prefix) {
-                    lines.push(Line::styled(text, exit_style(exit)));
+                    lines.push(Row::Drawn(Line::styled(text, exit_style(exit))));
                 }
                 if !rest.is_empty() {
                     for text in wrapped(rest, width, &" ".repeat(columns(prefix))) {
-                        lines.push(Line::styled(text, style));
+                        lines.push(Row::Drawn(Line::styled(text, style)));
                     }
                 }
             }
             None => {
                 for text in wrapped(&said, width, prefix) {
-                    lines.push(Line::styled(text, style));
+                    lines.push(Row::Drawn(Line::styled(text, style)));
                 }
             }
         }
-        lines.push(Line::default());
+        lines.push(Row::Drawn(Line::default()));
     }
 
     DRAWN.set(Drawn {
@@ -204,12 +204,34 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     let at = app.scroll.min(bottom);
     let total = lines.len();
 
-    frame.render_widget(Paragraph::new(in_view(lines, at, inner)), inner);
+    frame.render_widget(
+        Paragraph::new(Text::from_iter(in_view(lines, at, inner))),
+        inner,
+    );
 
     Scrolled {
         position: at,
         total,
         area: inner,
+    }
+}
+
+/// A row of the chat: one drawn for this frame, or one of an answer's as [`Drawn`] keeps them.
+///
+/// note: an answer's rows are pointed at rather than copied, and only the ones on screen become
+/// lines. Copying every answer's rows into every frame, to show one screenful of them, cost more
+/// than drawing the rest of the chat did.
+enum Row {
+    Drawn(Line<'static>),
+    Kept(Rc<[Line<'static>]>, usize),
+}
+
+impl From<Row> for Line<'static> {
+    fn from(row: Row) -> Self {
+        match row {
+            Row::Drawn(line) => line,
+            Row::Kept(answer, at) => answer[at].clone(),
+        }
     }
 }
 
@@ -222,12 +244,12 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
 #[derive(Default)]
 struct Drawn {
     width: usize,
-    answers: HashMap<String, Vec<Line<'static>>>,
+    answers: HashMap<String, Rc<[Line<'static>]>>,
 }
 
 impl Drawn {
     /// What is kept for a frame of this width: all of it, or nothing if the width changed.
-    fn at(self, width: usize) -> HashMap<String, Vec<Line<'static>>> {
+    fn at(self, width: usize) -> HashMap<String, Rc<[Line<'static>]>> {
         match self.width == width {
             true => self.answers,
             false => HashMap::new(),

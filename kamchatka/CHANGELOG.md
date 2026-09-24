@@ -30,6 +30,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A long chat stops copying every answer into every frame.** The answers kept from one frame to
+  the next were copied whole into each frame and all but a screenful thrown away, which cost more
+  than drawing the rest of the chat. A frame now points at the answers it keeps and makes lines
+  only of the rows on screen.
 - **`context request` sizes a message by what it sends.** The `bytes` column counted the text a
   message said, so a turn that only called a tool read as `0` however large its arguments, its
   thinking was not counted, and a picture was as long as its name. It now counts the content, the
