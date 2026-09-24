@@ -234,12 +234,15 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
             (
                 "fs",
                 json!({"call": {"action": "write", "path": path.join("w.rs"),
-                                   "content": "y".repeat(40_000)}}),
+                                   "content": "y".repeat(39_700) + &"z".repeat(300)}}),
             ),
             (
                 "fs",
+                // note: a run of `old` that occurs once. `y` three hundred times over occurs all
+                // through a file of `y`, and the edit refused every time - so what this measured
+                // was the refusal
                 json!({"call": {"action": "edit", "path": path.join("w.rs"),
-                                   "old": "y".repeat(300), "new": "z".repeat(300)}}),
+                                   "old": "z".repeat(300), "new": "w".repeat(300)}}),
             ),
             ("context", json!({"call": {"action": "budget"}})),
             (
@@ -302,6 +305,10 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
                 .await
                 .expect("the call was answered");
             let said = out.content.to_text();
+            assert!(
+                !out.is_error,
+                "the call has to have worked for its size to mean anything: {said}"
+            );
             assert!(
                 !said.contains("is required") && !said.contains("no such item"),
                 "the call has to have worked for its size to mean anything: {said}"
