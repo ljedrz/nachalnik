@@ -329,16 +329,19 @@ impl Conformance {
             .collect::<Vec<_>>()
             .join("\n");
         match (
-            thought.contains("all but 9 means 9 stay"),
-            thought.contains("so the answer is 9"),
+            thought.find("all but 9 means 9 stay"),
+            thought.find("so the answer is 9"),
         ) {
-            (true, true) => match text_of(&response).trim() {
+            (Some(first), Some(second)) if second < first => Outcome::Failed(format!(
+                "the two summaries were kept in the wrong order: {thought:?}"
+            )),
+            (Some(_), Some(_)) => match text_of(&response).trim() {
                 "9" => Outcome::Passed,
                 said => Outcome::Failed(format!(
                     "the summary went into the answer as well: the turn said {said:?}"
                 )),
             },
-            (false, false) => Outcome::Failed(format!(
+            (None, None) => Outcome::Failed(format!(
                 "a summary of the thinking was sent and none of it is on the turn: {thought:?}"
             )),
             _ => Outcome::Failed(format!(
@@ -607,11 +610,17 @@ impl Conformance {
             "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         );
 
+        // one call and no more: a provider that made a call of every fragment as well as the
+        // whole would pass on the first alone
         match self.ask(body, Delivery::Whole).await {
-            Ok(response) => match response.calls().next() {
-                Some(call) if call.args["path"] == "notes.md" => Outcome::Passed,
-                Some(call) => Outcome::Failed(format!("the fragments came back as {}", call.args)),
-                None => Outcome::Failed("no call survived the fragments".to_owned()),
+            Ok(response) => match response.calls().collect::<Vec<_>>()[..] {
+                [call] if call.args["path"] == "notes.md" => Outcome::Passed,
+                [call] => Outcome::Failed(format!("the fragments came back as {}", call.args)),
+                [] => Outcome::Failed("no call survived the fragments".to_owned()),
+                ref calls => Outcome::Failed(format!(
+                    "one call in fragments came back as {} calls",
+                    calls.len()
+                )),
             },
             Err(e) => Outcome::Failed(e),
         }
@@ -745,13 +754,14 @@ impl Conformance {
             Ok(response) => response,
             Err(e) => return Outcome::Failed(e),
         };
-        match response.calls().next() {
-            Some(call) if call.args["_unparsed"] == "{path: notes" => Outcome::Passed,
-            Some(call) => Outcome::Failed(format!(
+        match response.calls().collect::<Vec<_>>()[..] {
+            [call] if call.args["_unparsed"] == "{path: notes" => Outcome::Passed,
+            [call] => Outcome::Failed(format!(
                 "what the model wrote is not in the arguments it was given: {}",
                 call.args
             )),
-            None => Outcome::Failed("the call did not survive at all".to_owned()),
+            [] => Outcome::Failed("the call did not survive at all".to_owned()),
+            ref calls => Outcome::Failed(format!("one call came back as {}", calls.len())),
         }
     }
 
