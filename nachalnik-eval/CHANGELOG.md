@@ -35,6 +35,12 @@ minor bump may break you.
 - **A name `inspect` does not know is not a refusal.** It was journaled as `Act::Refused`, which is
   what a subject was not allowed to have, where `amend` journals nothing for the same mistake; so
   `Reached::refusals` counted a typo in one handle and not in the other. Neither journals it.
+- **`privilege` records its other session.** It briefed and asked a second session and put one
+  line of it in the record, so the notes that session was given and the answer the foreign arm
+  was scored against were not there - and neither was the request, which `Trial::spend` left out.
+  The other session now runs first, to the end of its answer, and is recorded as a session: a
+  `Briefed` in the middle of the subject's would have filed the subject's questions under it. A
+  sibling starts empty, so nobody is asked anything different for the order.
 - **A move inside the control's own noise is not read as one.** `Change::as_answer` read `moved`
   alone and `Attribution` ranked notes on divergence whatever the noise, so with replicates a
   commonest answer that flipped on one readable copy in three scored a claim as though the note
