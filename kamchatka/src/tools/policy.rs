@@ -186,6 +186,8 @@ impl Spelling {
     /// The name the filesystem opens for this one.
     fn opened(self, name: &str) -> &str {
         match self.windows {
+            // `.` and `..` are not names but steps, and trimming their dots made `../` match nothing
+            true if matches!(name, "." | "..") => name,
             // a stream of a file is the file, and a trailing dot or space is dropped on the way in
             true => name
                 .split(':')
@@ -917,6 +919,7 @@ mod tests {
             ("*.pem", "key.pem::$DATA", false, false, true),
             ("secrets/", "secrets. /x", false, false, true),
             (".env*", ".env", true, true, true),
+            ("../", "../outside", true, true, true),
             ("*.pem", "key.txt", false, false, false),
         ] {
             assert_eq!(
