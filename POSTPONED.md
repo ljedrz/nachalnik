@@ -362,9 +362,6 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **`nachalnik-eval` scoring where it disagrees with its own rules.** Each of these changes what
   the benchmark measures, so every run recorded before the fix would be measuring something else:
-  - `Change::divergence` counts a treated copy whose answer did not read as having differed, while
-    `moved` is `None` for the same copy - so in Attribution an item whose removal made the copies
-    say "cannot be determined" leads the ranking that the manipulation check says did not move.
   - Attribution sets `happened` to unreadable when the subject names two items, which takes the
     claim out of the denominator. Lie and Conflict count an unreadable claim against a readable
     outcome as measured and wrong, which is the rule `trial.rs` states.
