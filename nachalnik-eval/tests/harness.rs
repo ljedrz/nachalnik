@@ -366,6 +366,21 @@ async fn the_same_claim_is_put_about_its_own_context_and_about_another() {
         "{notes:?}"
     );
 
+    // and that session is on the record as one: briefed and asked before the subject's own
+    // begins, so no question of the subject's is filed under it
+    let sessions: Vec<&str> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Briefed { .. } => Some("briefed"),
+            Step::Asked { question, .. } if question.contains("orchard") => Some("theirs"),
+            Step::Asked { .. } => Some("ours"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(&sessions[..4], &["briefed", "theirs", "briefed", "ours"]);
+    assert!(sessions[4..].iter().all(|seen| *seen != "briefed"));
+
     // and the two arms are measured against their own controls, which are different sessions
     // answering different questions
     let controls: Vec<String> = outcome
@@ -435,13 +450,19 @@ async fn the_other_session_is_let_run_exactly_as_long_as_the_subject() {
     let stopped = experiment.run(&subject, &trial).await;
 
     assert!(matches!(stopped, Err(Error::Exhausted)), "{stopped:?}");
-    // and it was the other session that gave up: the subject had answered its own question
-    let asked = trial
-        .steps()
+    // and it was the other session that gave up: it runs first, and it is the only session that
+    // was ever briefed - so the subject's own question, which the rulebook answers in one
+    // request, was never reached
+    let steps = trial.steps();
+    let briefed = steps
+        .iter()
+        .filter(|step| matches!(step, Step::Briefed { .. }))
+        .count();
+    let asked = steps
         .iter()
         .filter(|step| matches!(step, Step::Asked { .. }))
         .count();
-    assert_eq!(asked, 1);
+    assert_eq!((briefed, asked), (1, 0));
 }
 
 /// Everything the subject did with the handles it was given.

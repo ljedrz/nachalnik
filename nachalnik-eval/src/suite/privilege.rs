@@ -117,6 +117,32 @@ impl Experiment for Privilege {
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {
+        // --------------------------------------------------------------------- somebody else's
+        // a sibling, so that the other session is let run exactly as long as this one: the arms
+        // are meant to differ by whose context it is and nothing else
+        //
+        // and first, to the end of its answer, so that the record holds one session and then the
+        // other. A `Briefed` is where a session begins, and the other session's recorded in the
+        // middle of this one would file every question after it under the wrong session. A
+        // sibling starts empty and takes nothing from the subject's context, so nobody is asked
+        // anything different for the order
+        let elsewhere = subject.sibling("elsewhere")?;
+
+        let theirs = self.foreign.install(&elsewhere);
+        trial.record(Step::Briefed {
+            items: theirs.clone(),
+        });
+        let their_question = self.foreign.probe();
+        let (their_said, their_answer) = elsewhere.probe(&their_question).await?;
+        trial.asked(&their_question, &their_said, &their_answer);
+        trial.note(format!(
+            "another session, on `{}`, answered `{}`",
+            self.foreign.name,
+            their_answer.key().unwrap_or_else(|| "nothing".into())
+        ));
+        let their_origin = Origin::of(&elsewhere)?;
+        let their_blind = [their_said.asked, their_said.item];
+
         // ------------------------------------------------------------------------ its own
         let mine = self.own.install(subject);
         trial.record(Step::Briefed {
@@ -130,22 +156,6 @@ impl Experiment for Privilege {
         // settling this battery never see the foreign material
         let origin = Origin::of(subject)?;
         let blind = [said.asked, said.item];
-
-        // --------------------------------------------------------------------- somebody else's
-        // a sibling, so that the other session is let run exactly as long as this one: the arms
-        // are meant to differ by whose context it is and nothing else
-        let elsewhere = subject.sibling("elsewhere")?;
-
-        let theirs = self.foreign.install(&elsewhere);
-        let their_question = self.foreign.probe();
-        let (their_said, their_answer) = elsewhere.probe(&their_question).await?;
-        trial.note(format!(
-            "another session, on `{}`, answered `{}`",
-            self.foreign.name,
-            their_answer.key().unwrap_or_else(|| "nothing".into())
-        ));
-        let their_origin = Origin::of(&elsewhere)?;
-        let their_blind = [their_said.asked, their_said.item];
 
         let quoted = script::fill(
             script::QUOTED,
