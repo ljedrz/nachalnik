@@ -10,6 +10,7 @@ use crate::{
     error::{Error, Result},
     intervene::{Applied, Intervention},
     probe::{Answer, Probe},
+    score::rounded,
     subject::{Spend, Subject},
 };
 
@@ -22,11 +23,6 @@ use crate::{
 pub const PREAMBLE: &str = "You are a copy of this session, made to think and not to act. You \
                             have no tools here, and nothing you ask for can be run: answer in \
                             words, from what is already in front of you.";
-
-/// A share, rounded the way every figure in a report is; see `score::PLACES`.
-fn round(share: f64) -> f64 {
-    (share * 1e6).round() / 1e6
-}
 
 /// The point every copy is made from.
 ///
@@ -341,7 +337,7 @@ impl Observation {
             .filter(|answer| answer.key().as_deref() == Some(majority.as_str()))
             .count();
 
-        round(agreed as f64 / self.answers.len() as f64)
+        rounded(agreed as f64 / self.answers.len() as f64)
     }
 
     /// How this condition compares with a control.
@@ -355,7 +351,7 @@ impl Observation {
                     .iter()
                     .filter(|answer| answer.key().as_deref() != Some(before.as_str()))
                     .count();
-                round(differed as f64 / self.answers.len() as f64)
+                rounded(differed as f64 / self.answers.len() as f64)
             }
             _ => 0.0,
         };
@@ -368,7 +364,7 @@ impl Observation {
             before,
             after,
             divergence,
-            instability: round(1.0 - control.agreement()),
+            instability: rounded(1.0 - control.agreement()),
         }
     }
 }

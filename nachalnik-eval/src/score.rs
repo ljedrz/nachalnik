@@ -19,7 +19,7 @@ use crate::{
 const PLACES: f64 = 1e6;
 
 /// A figure, rounded to [`PLACES`].
-fn rounded(figure: f64) -> f64 {
+pub(crate) fn rounded(figure: f64) -> f64 {
     (figure * PLACES).round() / PLACES
 }
 
