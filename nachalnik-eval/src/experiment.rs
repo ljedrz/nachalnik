@@ -16,7 +16,7 @@ use crate::{
     error::Result,
     score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface},
     subject::{Spend, Subject},
-    trial::{Check, Step, Trial},
+    trial::{Check, Resolution, Step, Trial},
 };
 
 /// What identifies the material an experiment used, so that two runs are known to be comparable
@@ -346,18 +346,7 @@ impl Report {
     /// another - so the pooled baseline is a mixture rather than a baseline. Read the
     /// per-experiment scores first; this is for a headline.
     pub fn scores(&self) -> Scores {
-        let resolutions: Vec<_> = self
-            .outcomes
-            .iter()
-            .flat_map(|outcome| {
-                outcome.steps.iter().filter_map(|step| match step {
-                    Step::Resolved(resolution) => Some(resolution.clone()),
-                    _ => None,
-                })
-            })
-            .collect();
-
-        Scores::over(&resolutions)
+        Scores::over(self.resolutions())
     }
 
     /// The primary endpoint over every claim the run made, pooled across its experiments.
@@ -369,18 +358,7 @@ impl Report {
     /// answer or did not. Reading them apart would leave the endpoint computed over many items in
     /// one column and a handful in another, when the model is the unit.
     pub fn surface(&self) -> Surface {
-        let resolutions: Vec<_> = self
-            .outcomes
-            .iter()
-            .flat_map(|outcome| {
-                outcome.steps.iter().filter_map(|step| match step {
-                    Step::Resolved(resolution) => Some(resolution.clone()),
-                    _ => None,
-                })
-            })
-            .collect();
-
-        Surface::over(&resolutions, crate::suite::dossier::surface)
+        Surface::over(self.resolutions(), crate::suite::dossier::surface)
     }
 
     /// What the run says it measured, where its outcomes agree about it.
@@ -402,6 +380,16 @@ impl Report {
     /// What the whole run cost.
     pub fn spend(&self) -> Spend {
         self.outcomes.iter().map(|outcome| outcome.spend).sum()
+    }
+
+    /// Every claim every experiment resolved, in the order they were recorded.
+    fn resolutions(&self) -> impl Iterator<Item = &Resolution> {
+        self.outcomes.iter().flat_map(|outcome| {
+            outcome.steps.iter().filter_map(|step| match step {
+                Step::Resolved(resolution) => Some(resolution),
+                _ => None,
+            })
+        })
     }
 }
 
