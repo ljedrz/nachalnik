@@ -384,3 +384,36 @@ async fn two_servers_under_one_name_are_refused() {
     let left = wired.app.kernel.tool_ids();
     assert!(left.is_empty(), "{left:?}");
 }
+
+/// A restart holds the servers already running to the same rule: one whose tools would take
+/// another's identifiers is left out and said, rather than let displace them.
+///
+/// note: two servers that were each let in on their own are the plainest way to get a clash
+/// into a restart. What it stands for is a server whose list changed since the run began, which
+/// `attach` never saw.
+#[tokio::test]
+async fn a_restart_leaves_out_a_server_whose_tools_would_displace_another() {
+    let spec = spec!();
+    let (_, mut servers) = session(spec.clone(), &[], Vec::new()).await;
+    let (_, more) = session(spec, &[], Vec::new()).await;
+    servers.extend(more);
+
+    let fresh = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    let left_out = kamchatka::mcp::reinstall(&fresh.app.kernel, &fresh.app.policy, &servers).await;
+
+    assert_eq!(left_out.len(), 1, "{left_out:?}");
+    assert!(left_out[0].contains("py__add"), "{left_out:?}");
+    let mut offered = fresh.app.kernel.tool_ids();
+    offered.sort();
+    assert_eq!(offered, ["py__add", "py__hang"]);
+}

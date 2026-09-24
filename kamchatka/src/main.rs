@@ -418,20 +418,8 @@ async fn session() -> Result<()> {
         // is why `attach` is above the loop and this is not it. Re-spawning them would be seconds
         // of handshake for a set of tools the process is already holding open
         #[cfg(feature = "mcp")]
-        for server in &servers {
-            match server.install(&app.kernel).await {
-                Ok(installed) => {
-                    for tool in &installed.added {
-                        app.policy.came_from(tool, server.name());
-                    }
-                }
-                // not fatal: a server that will not list its tools twice leaves a session without
-                // them, which is worth saying and is not worth ending a run over
-                Err(e) => app.say(
-                    Speaker::Error,
-                    format!("`{}` would not list its tools again: {e}", server.name()),
-                ),
-            }
+        for left_out in kamchatka::mcp::reinstall(&app.kernel, &app.policy, &servers).await {
+            app.say(Speaker::Error, left_out);
         }
 
         // the first thing the new session says, because it is the only place the old one's name

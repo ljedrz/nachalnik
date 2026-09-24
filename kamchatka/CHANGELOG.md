@@ -29,11 +29,17 @@ minor bump may break you.
 
 ### added
 
+- **`mcp::reinstall`**: the tools of servers that are already running, installed into another
+  kernel under the rule `attach` holds, with a sentence for each server left out.
 - **`wiring::Flagged`**: where a provider was pointed when the session began, and `restore` to put
   it back - for a loop of its own that relaunches a session with `Setup::relaunch`.
 
 ### fixed
 
+- **`/restart` leaves out an MCP server whose tools would take another tool's identifier, and says
+  so**, as starting the run refuses it. The servers' tools went back into the new kernel one after
+  another, and a server whose list had changed since the run began could displace another's tool
+  without a word.
 - **A message sent into a turn that fails, or into a `/step` that comes to rest, goes into the
   context when it ends.** It stayed waiting, so the next message sent ran first and the waiting
   one went in after that turn, or never.

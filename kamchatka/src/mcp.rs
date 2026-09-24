@@ -5,7 +5,9 @@
 //! `main.rs` because an embedder that wants somebody else's tools should not have to re-derive the
 //! one part of this that is not obvious: the name.
 
-use nachalnik::Kernel;
+use std::{collections::HashSet, sync::Arc};
+
+use nachalnik::{Kernel, Tool};
 use nachalnik_mcp::Server;
 
 use crate::tools::Careful;
@@ -35,7 +37,7 @@ pub async fn attach(
 ) -> Result<Vec<Server>, String> {
     let mut servers = Vec::new();
     let mut offered = Vec::new();
-    let mut taken: std::collections::HashSet<String> = kernel.tool_ids().into_iter().collect();
+    let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
 
     for spec in specs {
         let (name, line) = named(spec);
@@ -55,11 +57,7 @@ pub async fn attach(
         // note: refused rather than let stand, as a failed handshake is. Two servers under one
         // name - two `npx` lines with no `name=` - offer their tools under the same identifiers,
         // and installing the second would quietly take the first one's out from under it
-        let clashes: Vec<String> = tools
-            .iter()
-            .map(|tool| tool.spec().id)
-            .filter(|id| !taken.insert(id.clone()))
-            .collect();
+        let clashes = claim(&mut taken, &tools);
         if !clashes.is_empty() {
             return Err(format!(
                 "`{line}` offers {} under a name another server's tools already have; give each \
@@ -79,6 +77,66 @@ pub async fn attach(
     }
 
     Ok(servers)
+}
+
+/// Installs the tools of servers that are already running into another kernel, as `/restart`
+/// does, and hands back a sentence for each server whose tools were left out.
+///
+/// note: held to the rule `attach` is. A server's list can change between one session and the
+/// next, and [`Server::install`] reports a clash in `replaced` only after the tool that was there
+/// first is gone - so a server offering an identifier something else already has is left out
+/// whole, before any of its tools go in.
+///
+/// note: left out rather than refused, because a session is already running: a server short is
+/// worth saying and not worth ending a run over.
+pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) -> Vec<String> {
+    let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
+    let mut left_out = Vec::new();
+
+    for server in servers {
+        let tools = match server.tools().await {
+            Ok(tools) => tools,
+            Err(e) => {
+                left_out.push(format!(
+                    "`{}` would not list its tools again: {e}",
+                    server.name()
+                ));
+                continue;
+            }
+        };
+        let clashes = claim(&mut taken, &tools);
+        if !clashes.is_empty() {
+            left_out.push(format!(
+                "`{}` now offers {} under a name another tool already has, so none of its tools \
+                 are in this session",
+                server.name(),
+                clashes.join(", ")
+            ));
+            continue;
+        }
+        for tool in tools {
+            policy.came_from(tool.spec().id, server.name());
+            kernel.add_tool(tool);
+        }
+    }
+
+    left_out
+}
+
+/// The identifiers among `tools` that are taken already or that `tools` offers twice. `taken`
+/// gains the rest only when there are none, so a server left out claims nothing.
+fn claim(taken: &mut HashSet<String>, tools: &[Arc<dyn Tool>]) -> Vec<String> {
+    let mut claimed = HashSet::new();
+    let clashes: Vec<String> = tools
+        .iter()
+        .map(|tool| tool.spec().id)
+        .filter(|id| taken.contains(id) || !claimed.insert(id.clone()))
+        .collect();
+    if clashes.is_empty() {
+        taken.extend(claimed);
+    }
+
+    clashes
 }
 
 /// The name a server is given by one `--mcp` spec, and the command line that starts it.
