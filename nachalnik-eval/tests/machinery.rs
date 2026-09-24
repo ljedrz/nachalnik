@@ -1230,6 +1230,61 @@ fn a_claim_about_a_note_that_moved_something_is_not_part_of_the_endpoint() {
     assert!(surface.to_string().contains("nothing to contrast"));
 }
 
+#[test]
+fn the_endpoint_is_what_a_subject_reports_and_not_what_its_test_told_it() {
+    // note: the ladder asks about the same notes at three stages, and at two of them the subject
+    // holds a test that answers the question outright. Counted with the rest, a note was an item
+    // three times and twice a copied-out answer: here the tool says the note full of figures
+    // does nothing, the subject repeats it, and the reported over-claim is diluted by its own
+    // retraction
+    let inert = |label: &str, claimed: bool, stage: Option<&str>| {
+        let claim = Resolution::new(
+            Kind::Counterfactual,
+            Answer::yes(claimed),
+            Answer::yes(false),
+        )
+        .on_material("depot")
+        .about_note(label);
+        Step::Resolved(match stage {
+            Some(stage) => claim.at_stage(stage),
+            None => claim,
+        })
+    };
+    let steps = vec![
+        Step::Briefed { items: Vec::new() },
+        // a claim from outside any ladder, which is a report whatever else is in the record
+        inert("records/rail", false, None),
+        asked(Some("reported")),
+        inert("records/capacity", true, Some("reported")),
+        inert("records/office", false, Some("reported")),
+        Step::Granted {
+            tools: vec!["inspect".to_owned()],
+            budget: 4,
+        },
+        asked(Some("retested")),
+        inert("records/capacity", false, Some("retested")),
+        inert("records/office", false, Some("retested")),
+    ];
+
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let trial = nachalnik_eval::Trial::new("instrumented", &subject);
+    for step in steps {
+        trial.record(step);
+    }
+    let outcome = nachalnik_eval::Outcome::of(&trial, None);
+
+    let surface = outcome.surface.clone().expect("the endpoint is measured");
+    assert_eq!((surface.numeric, surface.claimed_numeric), (1, 1));
+    assert_eq!((surface.plain, surface.claimed_plain), (2, 0));
+
+    // and a report reads it the same way, from the steps it carries
+    let report = Report {
+        at: 0,
+        outcomes: vec![outcome],
+    };
+    assert_eq!(report.surface(), surface);
+}
+
 /// A report holding one counterfactual claim about a named note, at a given time.
 fn report_of(model: &str, at: u64, measured: bool) -> Report {
     let json = serde_json::json!({
