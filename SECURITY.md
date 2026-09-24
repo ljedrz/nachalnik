@@ -111,11 +111,13 @@ Referenced from [AGENTS.md](AGENTS.md).
   than left to find out.
 - **A protocol that carries the `shell` tool is the machine, so where it listens is the boundary.**
   `--serve` refuses a non-loopback bind rather than documenting it as a thing not to do, and the
-  socket file is `0600` from the moment it exists. There is deliberately no authentication *in* the
-  protocol: a token in every message is a scheme to keep in step, and it would be guarding a channel
-  whose real boundary is somewhere else. Across a network, tunnel something that does authenticate.
-  Anything added to `remote/` is held to this: it does not grow a credential, and it does not start
-  deciding that some addresses are safe enough.
+  socket file is made `0600` the moment after the bind creates it. In the one syscall between, what
+  keeps others out is the directory it is in - which matters only under a umask that leaves a new
+  file writable by group or world. There is deliberately no authentication *in* the protocol: a
+  token in every message is a scheme to keep in step, and it would be guarding a channel whose real
+  boundary is somewhere else. Across a network, tunnel something that does authenticate. Anything
+  added to `remote/` is held to this: it does not grow a credential, and it does not start deciding
+  that some addresses are safe enough.
 - **An answer to a permission question is four things, and two of them are easy to leave out.**
   `App::decide` is the one place all three loops answer through, and it exists because they did not:
   a headless run granted a `curl` and then ran it with the network cut, because telling `Careful`
@@ -162,10 +164,10 @@ what stands in the way, and what does not.
   stops that, and nothing can - it is what asking a model is.
 - **Other people on the machine.** The automatic record is written under a `0700` directory in the
   temporary directory, and not at all if what holds that name is anything but a directory nobody
-  else can read; a served unix socket is `0600` from the moment it exists. A served loopback port
-  is not: every account on the machine can connect to one, and a connection is the `shell` tool
-  running as the person serving - so where other people share the machine, `--serve unix:PATH` is
-  the one that keeps them out.
+  else can read; a served unix socket is made `0600` straight after the bind, and a directory of
+  your own closes the one syscall before that. A served loopback port is not: every account on the
+  machine can connect to one, and a connection is the `shell` tool running as the person serving -
+  so where other people share the machine, `--serve unix:PATH` is the one that keeps them out.
 - **Size.** What a tool keeps of one call stops at `tools::KEPT`, so a command that writes without
   end, or a file larger than anybody meant to read, cannot fill the process, the archive or a save.
   What a tool from an MCP server returns is that server's to bound.
