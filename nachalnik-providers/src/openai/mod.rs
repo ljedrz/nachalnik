@@ -56,7 +56,7 @@ pub struct OpenAiCompatible {
     /// the same entry the context limit comes from, which is already being fetched and read.
     parameters: Mutex<Vec<String>>,
     /// Whether [`Self::parameters`] is the whole of what the model takes; see
-    /// [`Endpoint::lists_every_parameter`].
+    /// [`Dialect::lists_every_parameter`](crate::Dialect::lists_every_parameter).
     every_parameter: Mutex<bool>,
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
