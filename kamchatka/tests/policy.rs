@@ -646,10 +646,14 @@ fn a_file_allowed_on_its_own_can_be_opened() {
         confined: true,
     };
 
+    // opened as a caller opens it, under the name `allows` resolved it to
+    let resolved = reach
+        .allows(&allowed.to_string_lossy(), Access::Writing)
+        .expect("it was allowed");
     let mut read = String::new();
     std::io::Read::read_to_string(
         &mut reach
-            .open(&allowed, Access::Reading)
+            .open(&resolved, Access::Reading)
             .expect("it was allowed, so it opens"),
         &mut read,
     )
@@ -657,7 +661,7 @@ fn a_file_allowed_on_its_own_can_be_opened() {
     assert_eq!(read, "hello");
 
     reach
-        .replace(&allowed, b"changed")
+        .replace(&resolved, b"changed")
         .expect("and is written, since it was allowed read-write");
     assert_eq!(std::fs::read_to_string(&allowed).unwrap(), "changed");
 
