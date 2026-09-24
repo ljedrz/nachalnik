@@ -210,7 +210,7 @@ impl Intervention {
             Self::Nothing => "nothing moved".to_owned(),
             Self::Without(what) => format!("without {}", ids(what)),
             Self::Only(what) => format!("only {}", ids(what)),
-            Self::Elided(what) => format!("with the content of {} taken", ids(what)),
+            Self::Elided(what) => format!("with {} elided", ids(what)),
             Self::Revised { id, .. } => format!("with {id} saying something else"),
             Self::Planted(item) => format!("with `{}` added", item.label),
             Self::Compound(each) => each

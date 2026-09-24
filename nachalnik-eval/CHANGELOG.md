@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **An elision is described as one.** `Intervention::describe` said an `Elided` intervention
+  left a copy "with the content of 4 taken", which is not the word the variant, the schema or
+  the runtime use; it says "with 4 elided".
 - **A sibling is let run as long as the subject it was raised from.** `Subject::sibling` started
   its kernel on `Config::default()` and its `rounds` at three, so a subject given a longer
   request budget or more rounds was compared with a sibling that gave up sooner. Both are

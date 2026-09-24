@@ -367,6 +367,11 @@ fn an_intervention_says_what_it_is() {
         Intervention::revised(ContextId(4), "x").describe(),
         "with 4 saying something else"
     );
+    // in the word the result is read back in, which is the variant's own
+    assert_eq!(
+        Intervention::elided([ContextId(4)]).describe(),
+        "with 4 elided"
+    );
 }
 
 // --------------------------------------------------------------------------------------- scores
