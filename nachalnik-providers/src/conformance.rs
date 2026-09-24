@@ -415,12 +415,21 @@ impl Conformance {
         }
         // `calls()` rather than the field, because one dialect records a turn as ordered blocks
         // and keeps its calls in them
+        //
+        // note: kept as it arrived, and not merely kept. A call that survived with its arguments
+        // emptied is one that would run on nothing, and a count of one would pass it
         let calls: Vec<_> = response.calls().collect();
-        if calls.len() != 1 {
-            return Outcome::Failed(format!(
-                "the call that arrived whole was not kept: {:?}",
-                calls.iter().map(|call| &call.tool).collect::<Vec<_>>()
-            ));
+        match calls.as_slice() {
+            [call] if call.tool == "write" && call.args["path"] == "a.txt" => {}
+            other => {
+                return Outcome::Failed(format!(
+                    "the call that arrived whole was not kept as it arrived: {:?}",
+                    other
+                        .iter()
+                        .map(|call| (&call.tool, &call.args))
+                        .collect::<Vec<_>>()
+                ));
+            }
         }
         match &response.stop {
             StopReason::Other(why) if why == CUT_OFF => Outcome::Passed,
@@ -832,8 +841,13 @@ impl Conformance {
         };
 
         match self.ask(body, Delivery::Whole).await {
-            Ok(response) => match response.usage.and_then(|usage| usage.input_tokens) {
-                Some(11) => Outcome::Passed,
+            // both figures, because both are what the request cost: a provider that kept only what
+            // was sent would report every answer as free to generate
+            Ok(response) => match response
+                .usage
+                .map(|usage| (usage.input_tokens, usage.output_tokens))
+            {
+                Some((Some(11), Some(3))) => Outcome::Passed,
                 other => Outcome::Failed(format!("the request was reported as costing {other:?}")),
             },
             Err(e) => Outcome::Failed(e),

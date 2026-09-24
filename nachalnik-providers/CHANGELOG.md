@@ -25,6 +25,10 @@ minor bump may break you.
 
 ### changed
 
+- **Two conformance checks fail a provider they used to pass.** The cut-off stream wanted one
+  call to survive and took any call, so one kept with its arguments emptied passed; it wants the
+  call as it arrived. The usage check read only what was sent, so a provider that lost the output
+  figure passed; it wants both.
 - **The conformance check for a body that is not a stream wants the page in the error.** It passed
   on any error at all, so a provider that never reached the fixture passed it; it now asks for the
   server's own words, as the check for a failure inside a 200 already did.
