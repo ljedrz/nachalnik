@@ -203,3 +203,34 @@ async fn a_turn_resting_on_a_question_is_told_what_ends_it() {
     .await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// An interrupt with nothing running is not saved up for the next message.
+#[tokio::test]
+async fn an_interrupt_with_nothing_running_does_not_swallow_the_next_message() {
+    let session = served(vec![ModelResponse::text("answered")], |_| {}).await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Interrupt).await;
+    peer.until(|message| matches!(message, Message::Done { .. }))
+        .await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until(|message| matches!(message, Message::Busy { busy: false }))
+        .await;
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("answered")),
+        "the message went unanswered"
+    );
+}

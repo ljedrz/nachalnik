@@ -3166,3 +3166,95 @@ async fn one_answer_does_not_run_into_the_next() {
     assert!(!run.prose.contains("firstsecond"), "{:?}", run.prose);
     assert!(run.prose.contains("first\nsecond"), "{:?}", run.prose);
 }
+
+/// A stop asked for inside that window is honoured by the turn it carries on, and a line waiting
+/// for the turn does not start another.
+#[tokio::test]
+async fn a_stop_inside_the_window_is_not_undone_by_carrying_the_turn_on() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("never asked"),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(script);
+    app.kernel.add_tool(Arc::new(
+        ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+    ));
+
+    app.ask("go");
+    app.start_turn();
+    let outcome = finished.recv().await.expect("the turn never ended");
+    assert!(app.busy, "the window is not where this test thinks it is");
+    let question = app.asked().expect("the turn stopped without asking");
+    app.decide(question.id, Grant::Allow, false)
+        .expect("the answer was refused");
+    app.submit("and then").await;
+    app.submit("/stop").await;
+    app.on_outcome(outcome);
+
+    while app.busy {
+        let outcome = finished.recv().await.expect("the turn never ended");
+        while let Ok(event) = events.try_recv() {
+            app.on_event(event);
+        }
+        app.on_outcome(outcome);
+    }
+    assert!(
+        !app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("never asked")),
+        "the stop was undone"
+    );
+}
+
+/// A ceiling set under what has already gone stops a turn that is running, as crossing it does.
+#[tokio::test]
+async fn a_ceiling_lowered_under_the_spend_stops_the_running_turn() {
+    let script = vec![
+        priced(
+            ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+            400,
+            200,
+        ),
+        priced(ModelResponse::text("never reached"), 400, 200),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, None);
+    app.kernel.add_tool(Arc::new(Slow));
+
+    app.submit("go").await;
+    loop {
+        let event = events.recv().await.expect("the events stopped");
+        let started = event.name() == "tool.started";
+        app.on_event(event);
+        if started {
+            break;
+        }
+    }
+    assert!(
+        app.busy && app.spent() > 0,
+        "the window is not where this test thinks it is"
+    );
+    app.submit("/spend 100").await;
+
+    while app.busy {
+        tokio::select! {
+            outcome = finished.recv() => app.on_outcome(outcome.expect("the turn never ended")),
+            event = events.recv() => app.on_event(event.expect("the events stopped")),
+        }
+    }
+    assert!(
+        !app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("never reached")),
+        "the turn asked again after the ceiling was put under what it had spent"
+    );
+}

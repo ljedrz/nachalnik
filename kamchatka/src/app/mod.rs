@@ -841,7 +841,8 @@ impl App {
         let ended = matches!(outcome, Outcome::Stopped(ref state) if !matches!(state, State::Deciding { .. }));
         // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
         // not the moment to start something else; either way what was typed waits for `/continue`
-        let carry_on = ended && !self.interrupting;
+        let interrupted = std::mem::take(&mut self.interrupting);
+        let carry_on = ended && !interrupted;
         match outcome {
             Outcome::Failed(e) => self.say_error(e),
             // note: a turn stopping to ask says nothing here, and opens nothing. The question is
@@ -863,11 +864,12 @@ impl App {
                 if !self.stepping && self.kernel.pending_permissions().is_empty() =>
             {
                 self.start_turn();
+                self.interrupting = interrupted;
             }
             Outcome::Stopped(State::Deciding { .. }) => {}
             // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
             // the difference matters to whoever is reading the screen
-            Outcome::Stopped(State::Idle) if !self.interrupting => {
+            Outcome::Stopped(State::Idle) if !interrupted => {
                 let budget = self
                     .kernel
                     .config()
@@ -882,7 +884,6 @@ impl App {
             Outcome::Stopped(_) => {}
             Outcome::Stepped(state) => self.stepped(state),
         }
-        self.interrupting = false;
 
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
         // unless the turn was stopped or stepped it gets a turn of its own
@@ -1352,6 +1353,9 @@ impl App {
     pub fn set_spend(&mut self, limit: Option<u64>) {
         self.spend = limit;
         self.overspent = limit.is_some_and(|limit| self.spent >= limit);
+        if self.overspent {
+            self.interrupt();
+        }
     }
 
     /// Whether the loop driving this session should let go of it.
@@ -1465,6 +1469,9 @@ impl App {
     /// budget ceiling or a request cap watching from another task is another, and the kernel
     /// takes an interrupt from any thread. What it never does is discard what arrived.
     pub fn interrupt(&mut self) {
+        if !self.busy {
+            return;
+        }
         self.interrupting = true;
         self.kernel.interrupt();
     }

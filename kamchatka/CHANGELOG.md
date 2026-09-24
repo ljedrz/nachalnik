@@ -22,6 +22,11 @@ minor bump may break you.
 
 ### fixed
 
+- **An interrupt holds, and one with nothing running is not saved up.** A `/spend` lowered under
+  what a turn had already spent stopped nothing, and the turn went on to its next request. An
+  interrupt sent while nothing was running - a client's ctrl+c between turns - stayed set, and the
+  next message's turn spent it and ended without asking anything. And a stop that landed while a
+  turn's answered questions were being carried on was undone by carrying them on.
 - **`--spend 0` is no ceiling, as `/spend 0` is.** It was a ceiling of nothing, reached before
   the first request, so a session given it refused every turn - headless, it read no lines and
   ended without saying why. The settings file's `spend` is read the same way.
