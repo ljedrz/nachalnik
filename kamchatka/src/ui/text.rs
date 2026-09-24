@@ -1,9 +1,9 @@
 //! Measuring text, and making it fit.
 //!
-//! note: nothing in here draws. They are the functions that answer "how many rows will this
-//! take" and "what does this look like at 34 columns", which is what a screen made of nested
-//! [`Rect`]s spends most of its time asking. Kept apart from the drawing for the ordinary
-//! reason: they are the part that can be reasoned about without a terminal.
+//! note: nothing in here draws. They are the functions that answer "how many rows will this take"
+//! and "what does this look like at 34 columns", which is what a screen made of nested
+//! [`Rect`](ratatui::layout::Rect)s spends most of its time asking. Kept apart from the drawing for
+//! the ordinary reason: they are the part that can be reasoned about without a terminal.
 
 use ratatui::{
     style::{Color, Style},

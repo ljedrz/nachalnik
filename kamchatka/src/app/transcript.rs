@@ -552,11 +552,11 @@ impl App {
     /// same one.
     ///
     /// note: `e` does not make one of those. A terminal edit replaces in place, keeps its
-    /// identifier and is therefore already where it belongs; see [`App::commit_edit`]. This
-    /// stays for a context that arrives with a supersession in it - a session saved by an older
-    /// build, or one written by another client, since [`Kernel::supersede`] is the runtime's
-    /// and is the right shape for a caller whose next round replaces the last. The hint it
-    /// reads lives on `meta`, which is where this program wrote it and where such a client
+    /// identifier and is therefore already where it belongs; see [`App::commit_edit`]. This stays
+    /// for a context that arrives with a supersession in it - a session saved by an older build, or
+    /// one written by another client, since [`Kernel::supersede`](nachalnik::Kernel::supersede) is
+    /// the runtime's and is the right shape for a caller whose next round replaces the last. The
+    /// hint it reads lives on `meta`, which is where this program wrote it and where such a client
     /// would: the field exists for exactly this, and the runtime never reads it.
     ///
     /// note: the chain is followed rather than the one hop, because an item can be superseded

@@ -107,7 +107,8 @@ impl App {
     /// it now.
     ///
     /// Only ever asked about an item whose content really was in the anchored request - see
-    /// [`Anchor::sent`] - which is what makes the middle arm below true rather than a guess.
+    /// [`Anchor::sent`](super::Anchor::sent) - which is what makes the middle arm below true rather
+    /// than a guess.
     ///
     /// note: three answers rather than one, and the middle one is the reason. An item that is
     /// still sending its content is worth what the projection says it costs - the message it

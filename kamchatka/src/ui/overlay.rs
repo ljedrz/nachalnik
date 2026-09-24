@@ -167,9 +167,10 @@ fn question_parts(
 /// turn has been full of, or the one call that is about to send something somewhere. It is above
 /// the arguments because that is the pinned region; see `question_parts`.
 ///
-/// note: the band and the words both come from [`Rated::shown`], and the colour is the only thing
-/// decided here. `ui` does not read the score, does not know where the thresholds are, and cannot
-/// disagree with the sentence beside it - the same division `Exit` is drawn under, one file along.
+/// note: the band and the words both come from [`Rated::shown`](crate::tools::Rated::shown), and
+/// the colour is the only thing decided here. `ui` does not read the score, does not know where the
+/// thresholds are, and cannot disagree with the sentence beside it - the same division `Exit` is
+/// drawn under, one file along.
 ///
 /// note: the percentage is on the line because the band it produced is not a fact about the
 /// command. `Rated::shown` will not draw an unsure rating green, so an uncertain reading arrives
@@ -321,7 +322,7 @@ pub(super) const BESIDES: u16 = 2;
 pub(super) const MIN_CHAT: u16 = 5;
 
 /// How many rows the pinned question would like, or `0` when nothing is being asked. What it
-/// actually gets is [`draw`]'s to decide, and is less on a screen with no room for it.
+/// actually gets is [`draw`](super::draw)'s to decide, and is less on a screen with no room for it.
 pub(super) fn question_rows(app: &App, columns: usize) -> u16 {
     let Some((head, args, foot)) = question_parts(app, columns.saturating_sub(2), false) else {
         return 0;
@@ -432,13 +433,14 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
 /// know what is behind them. The red here is a pair with the green and reads as one; the border's
 /// red is about whether anybody is at the keys, and nothing else in the panel is either colour.
 ///
-/// note: a shell command is drawn as code, through the same [`highlighted`] a fenced ```sh block in
-/// the chat goes through, and broken at its joints by [`joints`](crate::tools::joints) first.
-/// Wrapped as prose it would be folded at whatever space ran out, with the continuation back at the
-/// margin - so the second half of a pipeline would sit under `cmd:` looking exactly like the next
-/// argument, on the one screen whose whole job is saying what is about to run. The rule down the
-/// left settles that by itself; the highlighting is what makes a quoted string legible as one thing
-/// rather than as a run of flags.
+/// note: a shell command is drawn as code, through the same
+/// [`highlighted`](super::markdown::highlighted) a fenced ```sh block in the chat goes through, and
+/// broken at its joints by [`joints`](crate::tools::joints) first. Wrapped as prose it would be
+/// folded at whatever space ran out, with the continuation back at the margin - so the second half
+/// of a pipeline would sit under `cmd:` looking exactly like the next argument, on the one screen
+/// whose whole job is saying what is about to run. The rule down the left settles that by itself;
+/// the highlighting is what makes a quoted string legible as one thing rather than as a run of
+/// flags.
 ///
 /// note: by the tool's name as well as the field's, the way [`App::about`] picks its two out. A
 /// `cmd` is a shell command *here* because `shell` is the tool that takes one, and somebody else's
