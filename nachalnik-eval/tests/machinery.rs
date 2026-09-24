@@ -676,15 +676,15 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
 #[test]
 fn the_rules_a_claim_is_scored_by_are_numbered_and_on_the_record() {
     // note: the digests above name the questions, and nothing in them moves when the way a claim
-    // is resolved does. If this number moves, how a claim is resolved or scored changed and every
-    // run before it was scored by other rules: put the new number here and say in the changelog
-    // which runs it separates
-    assert_eq!(RULES, 1);
+    // is resolved does. If this number moves, how a claim is resolved or scored changed, or what a
+    // subject's handles allow, and every run before it was held to other rules: put the new
+    // number here and say in the changelog which runs it separates
+    assert_eq!(RULES, 2);
 
     let subject = Subject::new(Kernel::new(Config::default()));
     let outcome = nachalnik_eval::Outcome::of(&nachalnik_eval::Trial::new("any", &subject), None);
     assert_eq!(outcome.rules, RULES);
-    assert!(outcome.to_string().contains("rules 1"));
+    assert!(outcome.to_string().contains("rules 2"));
 
     // and a report from before the rules were numbered says so, rather than passing for this set
     assert_eq!(report_of("m", 0, true).outcomes[0].rules, 0);
@@ -1951,4 +1951,58 @@ async fn the_policy_that_grants_two_handles_grants_only_those_two() {
         Verdict::Deny,
         "one of the two beside something else is still something else"
     );
+}
+
+#[tokio::test]
+async fn amend_refuses_the_turn_it_is_called_from_and_no_earlier_one() {
+    use nachalnik::{OutputSink, Tool, ToolCall};
+    use nachalnik_eval::{Act, Journal, suite::handles::Amend};
+    use std::sync::Arc;
+
+    let kernel = Arc::new(Kernel::new(Config::default()));
+    kernel.push(ContextItem::user("Which depot runs out first?"));
+    let answer = kernel.push(ContextItem::assistant("Omsk", Vec::new()));
+    kernel.push(ContextItem::user("Something in your context is wrong."));
+    let revise = |id: ContextId| {
+        ToolCall::new(
+            "c1",
+            "amend",
+            serde_json::json!({
+                "action": "revise", "id": id.0.to_string(), "content": "Kirov", "reason": "wrong",
+            }),
+        )
+    };
+    let journal = Journal::default();
+    let amend = Amend::new(&kernel, journal.clone());
+
+    // the description promises that only the turn a call is made from is refused, and an earlier
+    // answer is the subject's own to rewrite
+    let speaking = kernel.push(ContextItem::assistant("", vec![revise(answer)]));
+    let out = amend
+        .invoke(&revise(answer), OutputSink::disconnected())
+        .await
+        .expect("a tool result");
+    assert!(!out.is_error, "{}", out.content.to_text());
+    assert_eq!(
+        kernel.item(answer).expect("the answer").content.to_text(),
+        "Kirov"
+    );
+
+    // and the turn carrying the call is refused, with the reason the description gives
+    let out = amend
+        .invoke(&revise(speaking), OutputSink::disconnected())
+        .await
+        .expect("a tool result");
+    assert!(out.is_error);
+    assert!(
+        out.content
+            .to_text()
+            .contains("the turn you are speaking in")
+    );
+    let acts = journal.lock();
+    assert!(matches!(
+        acts.as_slice(),
+        [Act::Revised { .. }, Act::Refused { .. }]
+    ));
+    assert!(matches!(&acts[0], Act::Revised { id, .. } if id.0 == answer.0));
 }
