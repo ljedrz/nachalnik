@@ -478,18 +478,28 @@ impl Tool for Shell {
             let mut bounded = (&mut stdout).take(room);
             match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
                 Ok(Ok(0)) => break,
-                Ok(Ok(_)) if full || collected.len() + line.len() > KEPT => {
-                    full = true;
+                Ok(Ok(_)) if full => {
                     dropped += line.len();
                     line.clear();
                 }
+                // note: measured as it is kept rather than as it arrived. A byte that is not UTF-8
+                // is kept as the three of `�`, so a line held to the ceiling as it arrived could
+                // be kept at three times it
                 Ok(Ok(_)) => {
                     let text = String::from_utf8_lossy(&line);
                     let text = text.strip_suffix('\n').unwrap_or(&text);
                     let text = text.strip_suffix('\r').unwrap_or(text);
-                    output.push(format!("{text}\n"));
-                    collected.push_str(text);
-                    collected.push('\n');
+                    match collected.len() + text.len() + 1 > KEPT {
+                        true => {
+                            full = true;
+                            dropped += line.len();
+                        }
+                        false => {
+                            output.push(format!("{text}\n"));
+                            collected.push_str(text);
+                            collected.push('\n');
+                        }
+                    }
                     line.clear();
                 }
                 Ok(Err(e)) => {
@@ -544,13 +554,23 @@ impl Tool for Shell {
         if held {
             collecting_stderr.abort();
         }
-        let (mut errors, dropped) = {
+        let (mut errors, mut dropped) = {
             let heard = heard.lock().expect("nothing panics holding it");
             (
                 String::from_utf8_lossy(&heard.0).into_owned(),
                 dropped + heard.1,
             )
         };
+        // held to the ceiling as it is kept, for the reason standard output is: the bytes were
+        // counted as they arrived, and what is not UTF-8 grows on the way to text
+        if errors.len() > KEPT {
+            let mut cut = KEPT;
+            while !errors.is_char_boundary(cut) {
+                cut -= 1;
+            }
+            dropped += errors.len() - cut;
+            errors.truncate(cut);
+        }
         if held && !interrupted {
             errors.push_str("\n[standard error is still open: something this command started is still running]\n");
         }

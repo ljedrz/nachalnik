@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` holds output that is not text to its ceiling as it is kept.** A byte that is not
+  UTF-8 is kept as the three bytes of `�`, and both streams were measured by the bytes that
+  arrived, so a line of standard output just under the 8 MiB ceiling, or standard error up to
+  it, came back at nearly three times it.
 - **A client's `/compact` is taken and said, as it is headless.** It left the proposal standing
   as a question no client could see or answer, and a served session with no screen had nobody
   who could, so every later `/compact` was refused as already waiting. The list goes out in the
