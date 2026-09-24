@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A resource's non-text parts are named beside its text.** A resource with no text at all was
+  named, and one with a caption and a picture came back as the caption, the picture dropped
+  without a word - where a tool result names every block it cannot carry.
+
 - **A listing of resources that never ends gives up, as a listing of tools does.** `Server::tools`
   follows the server's cursor for a bounded number of pages, and `Server::resources` went through
   the SDK's `list_all_resources`, which follows it for ever: a server always handing back another

@@ -120,6 +120,7 @@ impl ServerHandler for Bench {
         Ok(ListResourcesResult::with_all_items(vec![
             Resource::new("file:///notes.md", "notes"),
             logo,
+            Resource::new("file:///poster.md", "poster"),
         ]))
     }
 
@@ -128,6 +129,18 @@ impl ServerHandler for Bench {
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResponse, ErrorData> {
+        // a caption and the picture it captions, which is one resource in two parts
+        if request.uri.ends_with("poster.md") {
+            let mut picture = ResourceContents::blob("iVBORw0KGgo=", request.uri.clone());
+            if let ResourceContents::BlobResourceContents { mime_type, .. } = &mut picture {
+                *mime_type = Some("image/png".to_owned());
+            }
+            return Ok(ReadResourceResult::new(vec![
+                ResourceContents::text("a caption", request.uri),
+                picture,
+            ])
+            .into());
+        }
         let contents = match request.uri.ends_with(".png") {
             true => ResourceContents::blob("iVBORw0KGgo=", request.uri),
             false => ResourceContents::text("remember the milk", request.uri),
@@ -538,7 +551,7 @@ async fn resources_arrive_as_items_to_push_or_not() {
 
     let items = server.resources().await.unwrap();
 
-    assert_eq!(items.len(), 2);
+    assert_eq!(items.len(), 3);
     assert_eq!(items[0].label, "file:///notes.md");
     assert_eq!(items[0].source, "mcp");
     assert_eq!(items[0].content.to_text(), "remember the milk");
@@ -554,6 +567,12 @@ async fn resources_arrive_as_items_to_push_or_not() {
     assert_eq!(
         items[1].content.to_text(),
         "[a resource with no text (image/png), not carried into the context]"
+    );
+
+    // and a blob beside some text is named beside it, rather than dropped because there was text
+    assert_eq!(
+        items[2].content.to_text(),
+        "a caption\n[a part with no text (image/png), not carried into the context]"
     );
 
     // and nothing was pushed anywhere: a server offering documents is not an argument

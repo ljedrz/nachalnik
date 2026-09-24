@@ -269,14 +269,32 @@ impl Server {
                 .await
                 .map_err(|e| Error::Request(Box::new(e)))?;
 
-            let text: Vec<String> = read
+            // every part, text or a marker for what was there, as a tool result's blocks are: a
+            // blob beside some text was dropped without a word where a blob on its own was named
+            let parts: Vec<(bool, String)> = read
                 .contents
                 .iter()
-                .filter_map(|content| match serde_json::to_value(content).ok()? {
-                    serde_json::Value::Object(map) => map.get("text")?.as_str().map(str::to_owned),
-                    _ => None,
+                .map(|content| {
+                    let value = serde_json::to_value(content).unwrap_or_default();
+                    match value.get("text").and_then(serde_json::Value::as_str) {
+                        Some(text) => (true, text.to_owned()),
+                        None => (
+                            false,
+                            format!(
+                                "[a part with no text ({}), not carried into the context]",
+                                value
+                                    .get("mimeType")
+                                    .and_then(serde_json::Value::as_str)
+                                    .unwrap_or("no media type given")
+                            ),
+                        ),
+                    }
                 })
                 .collect();
+            let text: Vec<String> = match parts.iter().any(|(text, _)| *text) {
+                true => parts.into_iter().map(|(_, part)| part).collect(),
+                false => Vec::new(),
+            };
 
             // a blob cannot go into a text context; saying what was there beats a gap in the list
             let content = match text.is_empty() {
