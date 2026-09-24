@@ -23,6 +23,19 @@ pub(crate) fn rounded(figure: f64) -> f64 {
     (figure * PLACES).round() / PLACES
 }
 
+/// Which rules the claims in a record were resolved and scored by.
+///
+/// note: the half of comparability an [`Instrument`](crate::Instrument) cannot hold. Its digest
+/// names the questions, and two runs asked the same questions can still have been scored by
+/// different rules - which copies' answers make a claim, when a move counts as one, which claims
+/// the primary endpoint is over - and a figure from one is not comparable with a figure from the
+/// other. Stated by hand, like `suite::script::VERSION`, because rules are code and code has no
+/// digest: a change to how a claim is resolved or scored moves it, and the changelog says which
+/// runs it separates.
+///
+/// note: `1` is the first set with a number, and a report written before it reads as `0`.
+pub const RULES: u32 = 1;
+
 /// How many bins the calibration curve is cut into.
 ///
 /// note: Five, not the ten the literature usually uses. A run of this kind produces tens of

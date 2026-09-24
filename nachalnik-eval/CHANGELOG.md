@@ -28,6 +28,16 @@ minor bump may break you.
   `bench` assembles from outcomes as they land, `Faced`, `Labelled`, and the material - `Plant`,
   `Errand`, `Rift`, `Dossier` and `Note`.
 
+### added
+
+- **`RULES` and `Outcome::rules`: which rules a run's claims were resolved and scored by.** An
+  instrument's digest names the questions, and nothing in it moves when the way a claim is
+  resolved does - which is what the fixes below change. Every outcome records the number it was
+  scored under, a report from before reads as `0`, and `compare` groups by it and says when one
+  experiment's rows were scored by more than one set. This release is rules `1`: a run scored by
+  `0` is not comparable with one scored by `1` on any experiment whose claims the fixes below
+  touch, and `Report::surface`, which re-reads the steps, gives an old report the new endpoint.
+
 ### changed
 
 - **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two

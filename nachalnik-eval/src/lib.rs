@@ -137,7 +137,7 @@ pub use crate::{
     intervene::{Applied, Intervention},
     probe::{Answer, Probe, Reading},
     score::{
-        BINS, Bin, Cohort, Deference, Depth, Depths, Faced, Family, Gain, Interval, Paired,
+        BINS, Bin, Cohort, Deference, Depth, Depths, Faced, Family, Gain, Interval, Paired, RULES,
         Reached, Scores, Stage, Surface,
     },
     subject::{Said, Spend, Subject},

@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::{
     abreast::{Governor, Pace, together},
     error::{Error, ErrorKind, Result},
-    score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface, unaided},
+    score::{
+        Deference, Depths, Family, Gain, Paired, RULES, Reached, Scores, Stage, Surface, unaided,
+    },
     subject::{Spend, Subject},
     trial::{Check, Resolution, Step, Trial},
 };
@@ -175,6 +177,13 @@ pub struct Outcome {
     /// field exists to establish.
     #[serde(default)]
     pub instrument: Instrument,
+    /// Which rules its claims were resolved and scored by: [`RULES`] as it stood when it ran.
+    ///
+    /// note: `serde(default)`, so a report from before the rules were numbered reads as `0`,
+    /// which is what it is. Its stored figures are the ones those rules gave; a figure a reader
+    /// recomputes from its steps, [`Report::surface`] among them, is under the rules of the reader.
+    #[serde(default)]
+    pub rules: u32,
     /// The preconditions it tested rather than assumed.
     ///
     /// note: read these before the scores. An experiment whose material turned out not to do
@@ -328,6 +337,7 @@ impl Outcome {
         Self {
             experiment: trial.experiment().to_owned(),
             instrument: trial.instrument().clone(),
+            rules: RULES,
             checks: trial.checks(),
             model: trial.model().cloned(),
             params: trial.params().clone(),
@@ -349,7 +359,11 @@ impl Outcome {
 
 impl fmt::Display for Outcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}  [{}]", self.experiment, self.instrument)?;
+        writeln!(
+            f,
+            "{}  [{}, rules {}]",
+            self.experiment, self.instrument, self.rules
+        )?;
         for check in self.checks.iter().filter(|check| !check.held) {
             writeln!(f, "  {:<16}{}: {}", "unmet:", check.what, check.detail)?;
         }
@@ -688,6 +702,7 @@ fn unrun(experiment: &Arc<dyn Experiment>, failed: Failure) -> Outcome {
     Outcome {
         experiment: experiment.name().to_owned(),
         instrument: experiment.instrument(),
+        rules: RULES,
         checks: Vec::new(),
         model: None,
         params: Params::new(),
