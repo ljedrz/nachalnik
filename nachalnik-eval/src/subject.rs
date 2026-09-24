@@ -67,6 +67,10 @@ impl Subject {
     ///
     /// note: tools and policy are deliberately *not* carried across. A sibling starts with the
     /// context it is given and the handles the experiment chooses to grant it.
+    ///
+    /// note: the configuration and [`Subject::rounds`] are, because together they are how long a
+    /// question may run before it is given up on. A sibling on the defaults could fail a question
+    /// the subject it is compared with would have been let finish.
     pub fn sibling(&self, tag: &str) -> Result<Self> {
         let provider = self
             .kernel
@@ -74,12 +78,15 @@ impl Subject {
             .ok_or_else(|| Error::Setup("there is no provider to raise a sibling on".into()))?;
         let kernel = Kernel::new(Config {
             session_name: Some(format!("{}#{tag}", self.kernel.session_name())),
-            ..Config::default()
+            ..self.kernel.config().clone()
         });
         kernel.set_provider(provider);
         kernel.set_params(self.kernel.params());
 
-        Ok(Self::new(kernel))
+        Ok(Self {
+            kernel,
+            rounds: self.rounds,
+        })
     }
 
     /// Puts a question, drives the loop until the model ends its turn, and hands back what it
@@ -242,5 +249,30 @@ impl std::iter::Sum for Spend {
             total += one;
             total
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nachalnik::test::ScriptedProvider;
+
+    use super::*;
+
+    /// A sibling is given as long to answer as the subject it was raised from.
+    #[test]
+    fn a_sibling_is_let_run_as_long_as_its_subject() {
+        let kernel = Kernel::new(Config {
+            max_requests_per_turn: Some(2),
+            ..Config::default()
+        });
+        kernel.set_provider(Arc::new(ScriptedProvider::new([])));
+        let subject = Subject::new(kernel).rounds(7);
+
+        let sibling = subject.sibling("fresh").expect("a provider to raise it on");
+        assert_eq!(sibling.rounds, 7);
+        assert_eq!(sibling.kernel.config().max_requests_per_turn, Some(2));
+        assert!(sibling.kernel.session_name().ends_with("#fresh"));
     }
 }

@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A sibling is let run as long as the subject it was raised from.** `Subject::sibling` started
+  its kernel on `Config::default()` and its `rounds` at three, so a subject given a longer
+  request budget or more rounds was compared with a sibling that gave up sooner. Both are
+  carried across; tools and policy still are not.
 - **`handles::Granted` grants exactly the two capabilities it says it does.** It matched the
   domain alone, so any `introspect` or `context` operation was allowed - `kamchatka`'s own
   `context:elide` among them - by the policy meant to grant `introspect:read` and
