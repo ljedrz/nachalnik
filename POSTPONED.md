@@ -18,7 +18,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 
   **The blocker was never only the counter.** Neither dialect accepts a picture in a *tool result* -
   `tool` content is a string in one and a `functionResponse` in the other - so a `Content::Blob` in
-  one is flattened to `[image/png, N bytes]` on the way out, deliberately, and `blobs.rs` pins that.
+  one goes out as the sentence naming it, the blob's own `Display`, deliberately, and `blobs.rs`
+  pins that for both dialects.
   Carrying an MCP picture would therefore put megabytes of base64 in the context, send the model the
   same sentence it already gets, and make `Budget::uncounted` report one unpriced piece for a
   request whose actual content is a line of text. That is the budget naming a hole the request
@@ -36,18 +37,22 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
   `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
-  *inside* the branch that read it - so while `/models` fetches a list, or `/model` and
-  `/provider` finish a switch, neither branch can be reached. A deadline falling in that window is
+  *inside* the branch that read it - so while `/models` fetches a list, or the line after a
+  `/model` or `/provider` waits in `App::submit` for the switch to settle, neither branch can be
+  reached. A deadline falling in that window is
   served when the command returns. The model's own turns are interruptible, which is where a run
   spends its time, so the hole is narrow.
 
   What would unblock it is somewhere for a command to run that the loop can outlive. `App::submit`
   takes `&mut App`, so the obvious move - a `timeout_at` around it - would drop the future
   mid-command and leave a `/provider` half applied, which is a worse thing to leave a session than
-  a late deadline. The shape that works is the one `/model` already uses for its switch (a task,
-  and `App::settling` awaited before the next line is read), applied to the commands that are
-  themselves a request. What has to be decided first is what a deadline *means* for one - whether
-  it interrupts the request or merely stops what comes after it.
+  a late deadline. `/model` and `/provider` already run their switch as a task, `App::settling`,
+  and that is half of the shape: the other half is that the wait for it, and for a command that is
+  itself a request, has to be something the driver's `select!` can race against the deadline rather
+  than an `await` at the top of `App::submit`. On the way out `App::wait_for_turn` already waits
+  for a settling switch, under `LEAVING`, so a deadline does not strand one. What has to be decided
+  first is what a deadline *means* for a command - whether it interrupts the request or merely
+  stops what comes after it.
 
 - **`--reconcile`: one context out of several hard forks of one session.** Two or more past
   snapshots that share an ancestor, folded into one session to carry on from. Nothing about it is
@@ -177,7 +182,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   What the module holds is still one HTTP client, `Jev`.
 
   The obvious candidate is [`laya`](https://github.com/NandhaKishorM/laya), which is open, has the
-  same three primitives under the same names, answers in ~33ms, and benchmarks itself against
+  same three primitives under the same names, answers quickly, and benchmarks itself against
   `jev-1.13.0` directly. **It is not a service.** It is a Python library - `pip install laya`, a
   `Router` with a `predict(state, questions)` method - and it publishes no HTTP API at all. So
   there is nothing to write a client against: the request shape a client would post does not
@@ -238,8 +243,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A client command that awaits the endpoint holds the whole session loop.** `remote::server`'s
   loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
-  list, `/model` and `/provider` finish a switch, `/compact` runs a whole compaction pass, and a
-  switch still in flight is awaited before the next line is read at all. While any of those is
+  list, `/compact` works a pass out and then takes it, and a `/model` or `/provider` switch still
+  in flight is awaited before the next line is read at all. While any of those is
   awaited the loop answers no other client, and one client typing `/models` at an endpoint that
   has gone quiet stalls everybody attached.
 
@@ -264,20 +269,23 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A projection larger than `protocol::MAX_LINE` makes a session unattachable.** The *record* half
   of this is closed: a record over the cap goes out as `Message::Oversized`, which names its
   sequence and its size, and the client takes that sequence as seen and carries on. What is left is
-  the projection: a context item larger than the cap makes `Message::Attached` itself too long, and
+  the projection: a message larger than the cap makes `Message::Attached` itself too long, and
   unlike a record a projection cannot be skipped. A client with no projection has nothing.
 
-  So it wants abridging rather than naming, and that is the decision: `Line::text` in a projection
-  is the whole of what an item says, and clipping it changes what every client is handed - the
-  browser, the gateway and `--connect` alike. `Message::Item` is already *the whole of what one
+  So it wants abridging rather than naming, and that is the decision. A tool result already reaches
+  a projection as its first lines, and a file or a note as one line naming it, but a message is
+  `Line::text` whole, and clipping one changes what every client is handed - the browser, the
+  gateway and `--connect` alike. `Message::Item` is already *the whole of what one
   context item says*, fetched on demand, so there is somewhere for the rest to live and the shape
   of the answer is not in doubt. What is in doubt is the number: a cap per line has to leave an
   ordinary conversation untouched and still hold when a session has a thousand lines in it, and a
   projection is one message however many lines are in it.
 
-  Worth knowing for whoever picks this up: the item does not have to be attached by hand. Anything
-  that puts a large file in the context reaches it, and the tool results that would are already
-  bounded by `tools::CEILING` - so the way in is `/attach`, or an embedder pushing one.
+  Worth knowing for whoever picks this up: a file does not reach it. This entry once said `/attach`
+  was the way in, and it is not: `/attach`, `-f`, `/note` and an embedder's `ContextItem::file` all
+  read in a projection as one line naming the item. What reaches it is a message - one pasted at
+  the desk, one in a session that was loaded, or one an embedder pushes. A client cannot send one,
+  because its own line is held to `MAX_LINE` on the way in.
 
 - **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
   The rule on the constant is that a session refuses a version it does not know and serves an older
@@ -350,27 +358,33 @@ Referenced from [AGENTS.md](AGENTS.md).
   `/run` is now exactly that case and the reasoning no longer holds: the session can read it and
   cannot connect to it, so `docker ps` comes back `Permission denied` with nothing said about why.
 
-  What stops it is that the note is written in the terminal's own process, which never applies a
-  ruleset and so cannot ask `confines_unix_sockets` about the kernel that matters - the answer
-  belongs to the child. Saying it unconditionally would be wrong on every kernel below 7.1, where
-  the connect is not confined and the refusal really is the socket's own permissions.
+  Knowing when to say it is not in the way. This entry once said it was - that the terminal's own
+  process could not ask `confines_unix_sockets`, and the answer belonged to the child - but that
+  function builds a ruleset and applies none, so any process can ask it, and the kernel it answers
+  about is the one the child runs on; `tests/sandbox.rs` asks it the same way. Below 7.1 it answers
+  `false`, and there the refusal really is the socket's own permissions, so the sentence belongs
+  only where it answers `true`.
 
-  What would unblock it is the startup probe carrying the answer back. `available` already spawns
-  the binary and reads one line out of it; that line naming the socket right as well as the
-  ruleset status would give the parent the fact, at no extra process. It wants a shape that does
-  not make `Confinement` mean two things at once.
+  What is left is reading a refusal as a `connect`. `Sandbox::reaches` is the reading half of the
+  rule and a socket is held to the writing half, so the note wants a test of its own beside it: a
+  named path that is a socket by its file type rather than by the wording of the error, outside
+  every writable path, on a kernel that handles the right.
 
 - **`nachalnik-eval` scoring where it disagrees with its own rules.** Each of these changes what
   the benchmark measures, so every run recorded before the fix would be measuring something else:
-  - Attribution sets `happened` to unreadable when the subject names two items, which takes the
-    claim out of the denominator. Lie and Conflict count an unreadable claim against a readable
-    outcome as measured and wrong, which is the rule `trial.rs` states.
+  - Attribution sets `happened` to unreadable when the subject names two items, or none, which
+    takes the claim out of the denominator. Lie and Conflict count an unreadable claim against a
+    readable outcome as measured and wrong, which is the rule `trial.rs` states.
   - Provenance builds its claimed answer from `Observation::majority`, a bare key, so it carries
     no confidence and its Brier, ECE and overconfidence are always `None` - while its doc says
     overconfidence is the figure that separates its two kinds of wrong.
   - A copy cut off at the token limit reads as unreadable rather than `Answer::Cut` wherever the
     copies' majority is the *claimed* answer (Provenance, and Conflict's unsettled and settled
     arms), so it is scored wrong and never reaches `Scores::cut`.
+
+  - Counterfactual resolutions (`Change::as_answer`) and Attribution's `leaders` do not ask
+    `clears_the_noise()`, so with more than one replicate a change inside the control's own spread
+    still reads as having moved. The guard is optional and documented as that.
 
   Smaller, of the same kind: Deference credits a test without several items to each of them;
   Surface takes claims from every stage, so an item can count up to three times; a tied control
@@ -383,11 +397,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   structs nothing outside builds is the convention's test and wants asking one at a time: `Plant`
   is one a caller writes as a struct literal. The crate's next minor is where it would go.
 
-- **An `undo` across a change of counter.** `set_counter` and `recount` re-price every item and
-  take no checkpoint, so an `undo` after either puts back the figures the old counter gave, with
-  no `context.recounted` to say so, and lists every item as changed. Whether a recount is an
-  operation `undo` should see - and so a checkpoint, and the undo history it costs - or a fact that
-  `undo` should re-apply on the way back is the decision.
+- **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
+  the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
+  counter gave, with no `context.recounted` to say so, and lists every item it re-priced as changed
+  though nothing in the item did; a recount that moves no figure copies nothing, and `undo` does not
+  see it. Whether a recount is an operation `undo` should see - and so a checkpoint, and the undo
+  history it costs - or a fact that `undo` should re-apply on the way back is the decision.
 
 - **Screenshots in the guide.** `kamchatka`'s readme shows the chat and context tabs, from
   `kamchatka/assets/`; the guide still carries no pictures, only prose about what each screen
@@ -396,6 +411,201 @@ Referenced from [AGENTS.md](AGENTS.md).
   unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
   says what a screen holds.
 
-- **A table of what runs cost, out of date.** The `~requests` column of `nachalnik-eval`'s readme
-  counts requests per experiment from before six dossiers. It is a copy of a real run, so what
-  unblocks it is a fresh run rather than an edit.
+- **A table of what runs cost, out of date.** The `~requests` column of `nachalnik-eval`'s readme,
+  and the whole-suite figure in its `RUNNING.md`, count requests from before the experiments ran
+  every dossier in `dossier::ALL`. Both are copies of a real run, so what unblocks them is a fresh
+  run rather than an edit.
+
+- **Calling a partial ruleset confined.** On a kernel that enforces only part of the ruleset
+  Landlock answers `Partial`, and below Linux 6.7 the part it drops is TCP: the files are held and
+  the network is open. The permissions tab says "partly confined", SECURITY.md gives the kernel
+  floor, and the `shell` description hedges with "TCP may be closed" - but a call says nothing, and
+  a person reading "confined" on the status line of a 6.5 machine reads more than is there. The
+  choice is between the word and the hedge: keep "confined" for `Full` and name what a `Partial`
+  one leaves open, or leave the words and make the hedge a statement where the kernel is known.
+
+- **`/save` writes with the umask.** A snapshot saved over a file somebody had made private comes
+  back readable by whoever the umask allows, where the record the session writes itself is kept
+  private. What waits is the rule: whether a save takes the target's existing mode, the record's
+  mode, or the umask a person chose for their shell.
+
+- **An extra writable path under `--deny fs:write`.** `--sandbox-allow` paths stay writable for
+  `shell` when the policy denies `fs:write`, and `fs` is refused them, so the two tools disagree
+  about one path. It is documented beside `Sandbox::of` and the screen draws the path read-write, so
+  nothing is hidden. Moving the extra paths into the readable set when writing is denied, for the
+  ruleset and for the shell's list of what it opened, is the fix if the two tools are to agree.
+
+- **Which checks the record directory's privacy makes.** It looks at the mode bits and not at who
+  owns the directory, which matters only to a process that can read past the bits anyway - root, or
+  one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid. Windows has no ACL step
+  and relies on `%TEMP%` being per-user. At most a line saying the check is unix's.
+
+- **Three small things in the sandbox's accounts.**
+  - `/dev` files are readable and `/dev` listings are not, so `note_for` can blame the boundary for
+    a refusal that was the file's own permissions.
+  - `reaches` and `Reach::allows` treat a leftover `..` differently (`/work/missing/../../outside`),
+    which costs a hint in a contrived case; `reaches` refusing a `ParentDir` component settles it.
+  - `Confinement::complaint` is public and nothing calls it. Removing it is a break of
+    `kamchatka`'s library API, so it goes in a minor release.
+
+- **A path rule about a link's name, not its target.** `grep` and `glob` judge a symlink by the
+  name it has in the walk, as `fs read` does, because `Careful` matches names and a rule cannot see
+  a link - so `alias -> .env` is not caught by `.env*`, and the sandbox is the boundary. The walk
+  already holds the resolved target and could check it too; doing so for the walk alone would make
+  it stricter than `read`, and doing it for both is a change to what a path rule is.
+
+- **An `--allow-server` for a server this run does not start.** A server rule naming no server
+  is refused, allow and deny alike, as a rule about a domain no tool declares already is. A settings
+  file that allows a server is refused with it when the command line's `--mcp` replaces the file's
+  list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
+  denies is the other reading, at the cost of the two rules no longer being held alike.
+
+- **A refusal explained by the policy installed now.** A denied call's `why` is asked of whichever
+  policy is installed when the explanation is written, so a `set_policy` while calls wait explains a
+  refusal with the rules of a policy that did not make it. Keeping the deciding policy beside the
+  call - an `Arc<dyn PermissionPolicy>` in `PreparedCall` - is the fix, and it touches core types.
+
+- **Reads that span more than one lock.** `snapshot()` reads the context and then `last_seq` under
+  separate locks, so an event that changes no item - an interrupt, a component setter - can land
+  between them and be named by a snapshot whose items do not reflect it. A request is built from
+  the tools, the projector and the counter read at separate moments; the counter is captured once
+  now, and a concurrent swap of the tools or the projector can still mix versions. Both are
+  closed by taking the reads under one lock, which is a change to the core's locking.
+
+- **A pin named twice in one compaction list is reported twice.** A pin named in both lists being
+  reported once per list is asserted on purpose; a pin named twice in the *same* list is reported
+  twice as well. Deduplicating within a list is the change, if a report is meant to name each
+  refusal once.
+
+- **`n` above 1.** The core refuses no parameter, so a request asking for several choices has them
+  merged. Parameters are the caller's to set and the runtime carries them verbatim, which is rule
+  one, so this is written down rather than fixed: a caller that asks for alternatives gets what the
+  provider does with them.
+
+- **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
+  `{label}:\n{text}`, which builds a new string from the item's content each time the context is
+  projected - the largest cost in a projection, and the one place it copies content the rest of the
+  runtime shares. Not copying means sending the label as a block of its own, which changes what goes
+  out in both dialects.
+
+- **A generation counter for the context.** Several things project the same context twice with
+  nothing between them to say it has not changed: `maybe_compact` and then `build_request`, and a
+  client's frame, which builds `Going` and then asks for `Kernel::budget`. Reusing the first
+  projection is unsound while the context can change in between, and nothing says whether it did.
+  A number the context bumps on every change would make every one of them a cache, and it is a core
+  addition for clients' sake - which is the reason it waits.
+
+- **`--spend` and a lagging broadcast.** The `App` counts spend from the events it reads, and a
+  broadcast it falls behind drops them, `model.finished` included - so a ceiling can be passed by
+  whatever the lag took. Reading spend from the log, which drops nothing, rather than from the
+  broadcast is the fix.
+
+- **The model's `undo` against a person's later change.** The `context` tool's own undo puts an
+  item back where the model had left it, and respects a pin, but not a person's later exclusion or
+  edit of the same item - one after the model's `revise`, too. Its undo of a move over several
+  states takes several kernel checkpoints, and its journal takes no operation lock under
+  `--parallel`. What waits is the rule: whether the model's undo stops at anything a person did
+  since, and what it says when it does.
+
+- **Whose pin it is after a resume.** Which pins the model made is kept in memory and not in the
+  snapshot, so after a resume every pin is the person's and the model is refused unpinning its
+  own. That fails safe. Keeping it needs the pin's author written down, in `meta` for instance.
+
+- **A headless run resumed already over its spend ceiling ends without saying why.** Nothing in
+  its output names the ceiling, so the run reads as one that simply stopped.
+
+- **`--connect` runs one answer into the next.** Two answers in a row can come out on one line in
+  the connecting client's output. It is known and not yet fixed.
+
+- **`/prune` and `/keep` in CONTRIBUTING and in `/help`.** CONTRIBUTING calls them undocumented and
+  `/help` lists them, and `every_command_that_exists_is_in_the_help` requires every accepted name in
+  the help. One of the two has to change, and which is a decision about whether those names are
+  meant to be found.
+
+- **Three small differences between the loops.**
+  - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
+  - `--headless` prints a `ToolRequested`'s arguments in full, and `--connect` through `one_line`.
+  - `wiring::ended` asks whether the last record ended the session and `main::finish` whether any
+    did; they differ only after a double `ctrl+c`, and one predicate would serve both.
+
+- **`glob` counts past its cap.** A `glob` shows the first 200 paths and walks the rest of the tree
+  to say how many there were, because the exact total is part of the answer. Stopping at the cap and
+  saying "at least 200", as `grep` says there may be more, would make a glob over a large tree
+  cheaper and give the model a floor instead of a count.
+
+- **`app::when::read_off` returns an `Option` that is always `Some`.** A zone that cannot be read
+  falls back to UTC and says so, so there is never a `None`. Returning `When` removes an arm that
+  cannot run, and changes the signature of a public function.
+
+- **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
+  target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
+  files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the
+  process id back in that one name, is the way round it if concurrent runs are wanted.
+
+- **No bound on an MCP server's first answers.** The handshake, `tools/list` and `resources/read`
+  wait as long as the server takes, and a first `npx -y` can legitimately take minutes to download
+  its package. A bound has to be long enough for that and short enough to mean something, and what
+  a person sees while it runs is part of the same decision.
+
+- **Schemas and names Gemini refuses.** Google's dialect rejects some JSON Schema an MCP server may
+  send - `$ref`, `additionalProperties` - and a tool name that starts with a digit, so a server
+  that works through the OpenAI dialect can fail a request through Google's. Checking needs a Google
+  key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
+
+- **`structuredContent` and the blocks beside it.** A result that carries structured content is
+  taken from it, and a non-text block beside it goes unnamed. The spec says `content` normally
+  repeats it, and it is documented, so what is lost is only a block the structured half does not
+  cover.
+
+- **`Installed::remove_from` removes by identifier.** A tool installed since under one of the same
+  identifiers is the one that goes, which the doc says. Removing only the very tool that was added
+  needs `Arc` identity and `ptr_eq`, and the check and the removal would not be one step.
+
+- **What `system1` does with a busy service.** Its retries ignore `Retry-After`, do not ask
+  `out_of_quota` about a 429, and retry only 429 and 529 - the two statuses the service documents -
+  where the dialects retry every 5xx. That fits a client answering a person at a permission prompt,
+  who is better served by a quick failure than a long wait. Whether a 502 or 503 is worth one more
+  try is the decision.
+
+- **A stream silent before its headers is sent again.** A streamed request that has heard nothing
+  for `PATIENCE` is retried up to `RETRIES` times, on the reading that a server which took the
+  connection and went quiet is busy - and it is for a whole answer, whose headers come with its last
+  token, that `may_have_been_heard` says otherwise. An endpoint that holds a stream's headers until
+  its first token, as ollama does while it loads a model, can be asked, and billed, more than once.
+  The choices are to keep it, to resend only a request that never connected, or to send an
+  idempotency key where an endpoint takes one.
+
+- **What an eval run keeps.** Each of these is a field on a public type, so each waits for a minor
+  release of `nachalnik-eval`:
+  - `Act::Tested` keeps no copy observations or spend, so `Trial::spend` leaves out the subject's
+    own test copies. A `spend` with `serde(default)` on the variant is the fix.
+  - The `privilege` experiment does not record the other session's briefing or answer; recording
+    them means reordering its sessions.
+  - A failed `test` in `handles` is not journaled, and `inspect` and `amend` disagree about whether
+    an unknown name counts as refused.
+  - `Outcome::failed` is a message and not which `Error` it was: a kind beside the message, or a
+    `Failure { kind, message }` with a serde fallback so old reports still read.
+
+- **Re-reading a saved run's answers.** A saved run can be re-scored from its resolutions - other
+  bins, unreadables counted another way - but not re-read with a new answer parser, because a
+  `Resolution` does not name the `Step::Asked` it came from. Linking them is a field on a struct
+  without `#[non_exhaustive]`; the other ways are an API per experiment to re-read its steps, or a
+  note on `Step::Asked` that promises only that the raw answer is kept.
+
+- **A model's identity in a report.** `Report::model`, and `per_model`, `pool` and `compare` after
+  it, key on the model's name alone, so one model served by two providers is pooled as one. A run
+  measures one model by design; keying on the provider as well changes what `Report::model`
+  returns.
+
+- **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
+  constructor, so it stays unless a minor release wants the surface smaller.
+
+- **What `Trim` says and what it takes.** Its summary can count more than it elided when orphaned
+  results are elided with the rest, and it elides a picture whatever the model has seen of it -
+  including one the model has not yet been shown.
+
+- **The examples' own copies, and one arm nothing reaches.** `compaction` and `transparency` keep
+  their own `thousands` and line wrapper rather than using `examples/common`, because
+  `transparency` says everything it shows is in its one file. `panel` handles `State::Deciding`,
+  which its one tool, asking for nothing, can never reach; the arm is a defensive branch or dead
+  code, with the unreachable `Deny` beside it.
