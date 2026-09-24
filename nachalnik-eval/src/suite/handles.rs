@@ -366,7 +366,7 @@ impl Tool for Amend {
                         unknown.join(", ")
                     )));
                 }
-                let (allowed, refused) = permitted(&ids, &items);
+                let (allowed, refused) = permitted(&ids, &items, call);
                 for (id, why) in &refused {
                     self.journal.lock().push(Act::Refused {
                         what: format!("exclude {id}"),
@@ -407,7 +407,7 @@ impl Tool for Amend {
                 let Some(content) = call.args["content"].as_str() else {
                     return Ok(ToolOutput::error("`revise` needs `content`"));
                 };
-                let (allowed, refused) = permitted(&ids, &items);
+                let (allowed, refused) = permitted(&ids, &items, call);
                 let Some(id) = allowed.first().copied() else {
                     for (id, why) in &refused {
                         self.journal.lock().push(Act::Refused {
@@ -579,10 +579,21 @@ fn resolve(named: &[Value], items: &[(ContextId, String)]) -> (Vec<ContextId>, V
 /// protected is the measurement and the person: a subject that could exclude the brief could make
 /// the question unanswerable, and one that could rewrite the turn it is speaking in could take
 /// the call being executed down with it.
+///
+/// note: the turn the call is made from, and no other. [`AMEND`] tells the subject that much, and
+/// a subject's earlier answers are its own to move: rewriting one is a thing `repair` is there to
+/// see, and every answer it gave is already on the record as the step it was given in.
 fn permitted(
     ids: &[ContextId],
     items: &[Arc<ContextItem>],
+    call: &ToolCall,
 ) -> (Vec<ContextId>, Vec<(ContextId, String)>) {
+    // `calls()`, so that a turn recorded as ordered blocks is found by the calls inside it
+    let speaking = items
+        .iter()
+        .rev()
+        .find(|item| item.calls().any(|asked| asked.id == call.id))
+        .map(|item| item.id);
     let mut allowed = Vec::new();
     let mut refused = Vec::new();
     for id in ids {
@@ -593,7 +604,7 @@ fn permitted(
         let why = match (&item.kind, item.state) {
             (ContextKind::System, _) => Some("a system instruction is not yours to move"),
             (_, ContextState::Pinned) => Some("that item is pinned"),
-            (ContextKind::AssistantMessage { .. }, _) => Some("that is a turn you are speaking in"),
+            _ if Some(item.id) == speaking => Some("that is the turn you are speaking in"),
             _ => None,
         };
         match why {

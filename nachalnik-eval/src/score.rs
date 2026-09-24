@@ -33,8 +33,13 @@ pub(crate) fn rounded(figure: f64) -> f64 {
 /// digest: a change to how a claim is resolved or scored moves it, and the changelog says which
 /// runs it separates.
 ///
-/// note: `1` is the first set with a number, and a report written before it reads as `0`.
-pub const RULES: u32 = 1;
+/// note: so does a change to what a subject's handles let it do. A handle's description is in the
+/// digest and what the handle then allows is not, so two runs told the same thing and allowed
+/// different things would otherwise carry the same identity.
+///
+/// note: `1` is the first set with a number, and a report written before it reads as `0`. `2` is
+/// the first in which `amend` refuses only the turn it is called from.
+pub const RULES: u32 = 2;
 
 /// How many bins the calibration curve is cut into.
 ///

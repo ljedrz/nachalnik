@@ -34,9 +34,10 @@ minor bump may break you.
   instrument's digest names the questions, and nothing in it moves when the way a claim is
   resolved does - which is what the fixes below change. Every outcome records the number it was
   scored under, a report from before reads as `0`, and `compare` groups by it and says when one
-  experiment's rows were scored by more than one set. This release is rules `1`: a run scored by
-  `0` is not comparable with one scored by `1` on any experiment whose claims the fixes below
-  touch. `Report::surface` re-reads an old report's steps under the new rule for which claims the
+  experiment's rows were scored by more than one set. This release is rules `2`: a run scored by
+  `0` is not comparable with one scored by `2` on any experiment whose claims the fixes below
+  touch. A run recorded from this code before `amend`'s rule changed carries `1`, and is
+  comparable with a `2` everywhere but `repair`. `Report::surface` re-reads an old report's steps under the new rule for which claims the
   endpoint counts, but the claims themselves were resolved by the old rules.
 
 ### changed
@@ -51,6 +52,13 @@ minor bump may break you.
 
 ### fixed
 
+- **`amend` refuses only the turn it is called from.** Its description tells a subject that a
+  pinned item, a system instruction and the turn it is speaking in are refused, and it refused
+  every assistant turn, with the reason `that is a turn you are speaking in`. A subject in
+  `repair` rewriting an answer it gave a stage earlier was refused for a reason that was not true,
+  and the attempt went on the record as a refusal. Its earlier answers are its own to move now.
+  The description did not change, so `repair`'s digest did not either, and `RULES` moved to `2`
+  to tell the runs apart.
 - **What a run cost includes the copies the subject's own tests ran.** `Act::Tested` carried no
   spend and `Trial::spend` summed the subject's requests and the harness's copies, so an
   instrumented run was reported as costing less than it was billed, by every test the subject ran.
