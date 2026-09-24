@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`handles::Granted` grants exactly the two capabilities it says it does.** It matched the
+  domain alone, so any `introspect` or `context` operation was allowed - `kamchatka`'s own
+  `context:elide` among them - by the policy meant to grant `introspect:read` and
+  `context:revise` and nothing else.
 - **`Repair` records what the subject answered when it was asked to put the context right.** The
   step was recorded as `Unreadable` whatever came back, so a run's record contradicted the
   verbatim answer beside it. Nothing scores that answer, so no score moves.

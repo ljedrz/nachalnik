@@ -81,7 +81,16 @@ pub struct Granted;
 #[async_trait]
 impl PermissionPolicy for Granted {
     async fn evaluate(&self, request: &PermissionRequest) -> Verdict {
-        let mine = |capability: &Capability| matches!(&capability.domain, Domain::Other(name) if name == "introspect" || name == "context");
+        // note: the operation as well as the domain. The domains are shared - `kamchatka`'s own
+        // `context` tool declares `context:look` and `context:elide` - so matching on the domain
+        // alone granted any tool that happened to use one
+        let mine = |capability: &Capability| match &capability.domain {
+            Domain::Other(name) => matches!(
+                (name.as_str(), capability.op.as_str()),
+                ("introspect", "read") | ("context", "revise")
+            ),
+            _ => false,
+        };
 
         // note: the emptiness is checked as well as the contents, because `all` over an empty
         // list is `true`. A tool that declares nothing - which is what `ToolSpec::new` leaves
