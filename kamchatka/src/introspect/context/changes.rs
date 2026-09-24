@@ -480,9 +480,17 @@ impl Changes {
             ));
         }
 
+        // the kernel takes this as no operation, and so does this: no metadata, no journal entry
+        let content = Content::text(content.to_owned());
+        if item.content == content {
+            return ToolOutput::new(format!(
+                "[{id}] already says exactly that, so nothing was changed"
+            ));
+        }
+
         let before = kernel.budget().used();
         let was = item.tokens;
-        if let Err(e) = kernel.replace(id, Content::text(content.to_owned())) {
+        if let Err(e) = kernel.replace(id, content) {
             return ToolOutput::error(e.to_string());
         }
 

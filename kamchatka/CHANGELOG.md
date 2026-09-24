@@ -22,6 +22,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The `context` tool's counts and search say what the context holds.** `look` counted as going
+  into the next request every item in a state that sends, including ones the projector repairs
+  away, where the table under it said otherwise. `search` read an item's text and not what a turn
+  thought or called a tool with, so it answered "no line says it" about an argument the model
+  had passed. And `revise` to the words an item already had reported a rewrite, and journalled one
+  for `undo`, though nothing had changed.
 - **A served session leaving takes away only its own socket.** It removed whatever file was at the
   path it had bound, so a socket removed by hand and bound again by a second session was taken
   away when the first one left.

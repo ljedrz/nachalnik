@@ -343,7 +343,7 @@ impl Tool for Context {
                         &self.pinned.lock(),
                         own_turn(&kernel, &call.id),
                     ),
-                    None => look(&kernel, &named.ids, whole),
+                    None => look(&kernel, &named.ids, whole, own_turn(&kernel, &call.id)),
                 }))
             }
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
@@ -363,7 +363,8 @@ impl Tool for Context {
                     Ok(ids) => ids,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
-                Ok(ToolOutput::new(search(&kernel, text, &only, take)))
+                let own = own_turn(&kernel, &call.id);
+                Ok(ToolOutput::new(search(&kernel, text, &only, take, own)))
             }
             // note: asked for here *as well as* in the schema. A branch per operation lets eight
             // of the twelve require it and four not offer it at all, but nothing is sent
@@ -427,7 +428,7 @@ fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
 /// an inventory, the sending figure hides tens of thousands of tokens the agent really is
 /// carrying. Both, named, is the only honest answer, and it is what `held` in the next line and
 /// the expensive list under `budget` are counted from.
-fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
+fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>) -> String {
     let items = kernel.items();
     let going = Going::of(kernel);
     if !ids.is_empty() {
@@ -456,7 +457,12 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool) -> String {
          you did\n\n\
          {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
         items.len(),
-        items.iter().filter(|item| item.is_projected()).count(),
+        // what the projection carries, and the turn this call is in, which it will carry once
+        // this call has an answer
+        items
+            .iter()
+            .filter(|item| going.costs.contains_key(&item.id) || Some(item.id) == own)
+            .count(),
         thousands(budget.used()),
         budget
             .limit
@@ -565,7 +571,10 @@ fn matched(
          {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
         picked.len(),
         items.len(),
-        picked.iter().filter(|item| item.is_projected()).count(),
+        picked
+            .iter()
+            .filter(|item| going.costs.contains_key(&item.id) || Some(item.id) == own)
+            .count(),
         thousands(sending),
         thousands(withheld),
         thousands(kernel.budget().used()),
@@ -834,7 +843,13 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
 /// note: case is ignored. A model that searched for `landlock` and was told there are no matches
 /// in a context full of `Landlock` has been told something false about itself, and the failure is
 /// silent - which is the one shape of wrong answer a search must not have.
-fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) -> String {
+fn search(
+    kernel: &Kernel,
+    text: &str,
+    only: &[ContextId],
+    take: Option<usize>,
+    own: Option<ContextId>,
+) -> String {
     let needle = text.to_lowercase();
     let items = kernel.items();
 
@@ -850,7 +865,17 @@ fn search(kernel: &Kernel, text: &str, only: &[ContextId], take: Option<usize>) 
             continue;
         }
         read += 1;
-        let hay = item.content.to_text();
+        // what a turn thought and what it called a tool with are in the context too, and a search
+        // that skipped them would answer "no line says it" about an argument the model passed
+        let mut hay = item.content.to_text().into_owned();
+        if let Some(reasoning) = item.reasoning() {
+            hay.push('\n');
+            hay.push_str(&reasoning.to_text());
+        }
+        // but not the turn asking: its calls carry the text being searched for
+        for asked in item.calls().filter(|_| Some(item.id) != own) {
+            hay.push_str(&format!("\n{} {}", asked.tool, asked.args));
+        }
         let lines: Vec<String> = hay
             .lines()
             .filter(|line| line.to_lowercase().contains(&needle))

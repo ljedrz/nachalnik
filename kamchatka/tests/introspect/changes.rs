@@ -1613,3 +1613,32 @@ async fn a_note_pinned_in_quotes_is_pinned() {
         "a `pin` it could not read wrote nothing"
     );
 }
+
+/// A revision to what the item already says changes nothing and says so.
+#[tokio::test]
+async fn revise_to_the_same_words_changes_nothing_and_says_so() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({
+            "action": "revise",
+            "ids": [1],
+            "content": "the parser is in src/parser.rs",
+            "reason": "tidying",
+        }),
+    )]));
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = &answers_from(&kernel, &["context"])[0];
+    assert!(!said.contains("now says something else"), "{said}");
+    assert!(
+        kernel.item(nachalnik::ContextId(1)).unwrap().meta["revised"].is_null(),
+        "an edit that did not happen is credited to the tool"
+    );
+}

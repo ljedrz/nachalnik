@@ -649,3 +649,32 @@ async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
         said[2]
     );
 }
+
+/// The headline counts what the request carries, and an item repaired out of it is not carried.
+#[tokio::test]
+async fn look_counts_what_the_projection_carries_rather_than_the_states() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+
+    let turn = kernel.push(ContextItem::assistant("", vec![crate::call_of("t1")]));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId::from("t1"),
+        "shell",
+        "an answer to a call that is no longer there",
+        false,
+    ));
+    kernel.push(ContextItem::user("go on"));
+    kernel.set_state([turn], ContextState::Archived, Some("set aside".into()));
+
+    kernel.turn().await.expect("the turn failed");
+
+    // the user's line and the turn this call is in; not the result whose call was set aside
+    let said = answered(&kernel);
+    assert!(
+        said.contains("4 items · 2 of them go into the next request"),
+        "{said}"
+    );
+}

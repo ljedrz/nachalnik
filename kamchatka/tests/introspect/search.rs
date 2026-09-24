@@ -407,3 +407,34 @@ async fn a_search_finds_a_blob_by_what_names_it() {
     // the standing-in sentence, not the payload: nothing here reads a picture
     assert!(!said.contains("AAAABBBB"), "{said}");
 }
+
+/// What a turn asked a tool for, and what it thought, are in the context and are found there.
+#[tokio::test]
+async fn search_finds_the_arguments_a_turn_called_a_tool_with() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "needle.rs" }),
+    )]));
+
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "t1",
+            "fs",
+            json!({ "action": "read", "path": "src/needle.rs" }),
+        )],
+    ));
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("t1"),
+        "fs",
+        "fn main() {}",
+        false,
+    ));
+    kernel.push(ContextItem::user("what did you read?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(!said.starts_with("no line of your context"), "{said}");
+}
