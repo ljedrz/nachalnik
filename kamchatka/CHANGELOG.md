@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **The `context` tool's warning after a batch is put away no longer calls it pruning.** The
+  line pointing at `note` said a note is written "where pruning cannot reach it", which is the
+  word for a move the tool took away; it says the note is an item of its own that the move does
+  not touch. The `sending_only` field's doc names everything the filter leaves out.
 - **`/continue` after a turn the model ended says there is nothing to continue.** It started a
   turn from wherever the runtime rested, and after a clean end that is a request with nothing new
   at the end of it: the model answered the same question again, for a request, and some endpoints

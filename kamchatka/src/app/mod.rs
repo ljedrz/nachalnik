@@ -443,7 +443,7 @@ pub struct App {
     /// not the whole context when `sending_only` is on.
     pub selected: usize,
     /// Whether the context tab lists only what the next request carries, leaving out everything
-    /// that has been pruned, archived or superseded.
+    /// that is excluded, elided, archived, superseded or repaired away.
     pub sending_only: bool,
     /// Where the context pane is scrolled to, which it keeps between frames.
     #[cfg(feature = "tui")]

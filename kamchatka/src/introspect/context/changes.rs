@@ -427,7 +427,10 @@ impl Changes {
                      back, and `restore` returns the whole - but a finding you have to go and look \
                      for again is not one you have.\n",
                 );
-                out.push_str("`note` writes a finding down where pruning cannot reach it.\n");
+                out.push_str(
+                    "`note` writes a finding down in an item of its own, which this move does not \
+                     touch.\n",
+                );
             }
         }
         for refusal in &refused {
