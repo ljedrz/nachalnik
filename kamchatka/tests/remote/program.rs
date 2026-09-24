@@ -91,6 +91,13 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
         !read.contains("F1 lists the keys"),
         "a served session told a client about the terminal's keys: {read}"
     );
+    // note: nor says the headless opening. A served session with no screen is asked the same
+    // question a pipe is, and the answer put the host's `--on-ask` into every projection, though
+    // no loop of a served session reads it: what a question gets is the attached clients' to say
+    assert!(
+        !read.contains("nobody can be asked is answered"),
+        "a served session told a client how the host answers questions: {read}"
+    );
     // and its stdout is the record stream, the same as a headless run's - and there is one, or
     // the loop says nothing about it
     let stdout = String::from_utf8_lossy(&client.stdout);

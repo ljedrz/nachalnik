@@ -283,7 +283,12 @@ async fn session() -> Result<()> {
         // run wants both of the first two and the match gave it one. The replay line says what was
         // picked up; the opening says how this run is driven and what a question nobody can answer
         // gets, which a session carried on from a file needs to know exactly as much as a fresh one
-        if headless {
+        //
+        // note: not for a served session, whose loop is `Server::run` even with no screen. That
+        // loop reads no lines of this program's and never consults `--on-ask`, so the opening would
+        // tell every client that attaches that a question is answered `deny` - beside a line saying
+        // the session waits for one
+        if headless && server.is_none() {
             headless::opening(&mut app, on_ask);
         }
         if let Some(server) = &server {
