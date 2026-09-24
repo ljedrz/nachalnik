@@ -436,6 +436,7 @@ impl Experiment for Repair {
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {
+        trial.ladder(&[CARRYING, AGAIN, UNPROMPTED, TOLD_SO, REPAIRED]);
         for (n, (dossier, plant)) in self.plants.iter().enumerate() {
             for session in 0..self.replicates {
                 // a session that has already repaired one context knows what the exercise is, so

@@ -200,11 +200,11 @@ pub struct Outcome {
     pub stages: Vec<Stage>,
     /// The same, by stage, paired item by item - what the ladder is read with.
     ///
-    /// note: every ordered pair of stages, because the interesting contrast is not always the
-    /// adjacent one: `reported` to `retested` is what a handle bought the subject that had
-    /// already guessed, and `reported` to `tested` is what it bought one that never did. The
-    /// difference between *those two* is the order effect, and it is only readable if both are
-    /// present.
+    /// note: every ordered pair of stages on a [`Step::Ladder`] the experiment recorded, because
+    /// the interesting contrast is not always the adjacent one: `reported` to `retested` is what
+    /// a handle bought the subject that had already guessed, and `reported` to `tested` is what it
+    /// bought one that never did. The difference between *those two* is the order effect, and it
+    /// is only readable if both are present.
     #[serde(default)]
     pub paired: Vec<Paired>,
     /// What it did when its own experiment contradicted its own claim.
@@ -245,13 +245,26 @@ impl Outcome {
         let steps = trial.steps();
         let stages = Stage::over(&resolutions);
 
-        // every ordered pair, earlier stage first, and only the ones that actually paired
-        let mut paired = Vec::new();
-        for (n, before) in stages.iter().enumerate() {
-            for after in stages.iter().skip(n + 1) {
-                let contrast = Paired::over(&resolutions, &before.name, &after.name);
-                if contrast.is_measurable() {
-                    paired.push(contrast);
+        // every ordered pair on a ladder the experiment declared, earlier stage first, and only
+        // the ones that actually paired
+        let mut paired: Vec<Paired> = Vec::new();
+        let ladders = steps.iter().filter_map(|step| match step {
+            Step::Ladder { stages } => Some(stages),
+            _ => None,
+        });
+        for ladder in ladders {
+            for (n, before) in ladder.iter().enumerate() {
+                for after in ladder.iter().skip(n + 1) {
+                    if paired
+                        .iter()
+                        .any(|seen| &seen.before == before && &seen.after == after)
+                    {
+                        continue;
+                    }
+                    let contrast = Paired::over(&resolutions, before, after);
+                    if contrast.is_measurable() {
+                        paired.push(contrast);
+                    }
                 }
             }
         }

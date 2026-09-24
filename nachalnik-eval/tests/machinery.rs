@@ -911,6 +911,40 @@ fn three_passes_over_one_dossier_pair_within_a_pass_rather_than_against_each_oth
 }
 
 #[test]
+fn only_the_stages_an_experiment_climbs_as_a_ladder_are_paired() {
+    // note: `Outcome` paired every two stages it found. `conflict`'s are the subject's own
+    // unprompted claim and two sets of copies - one of them with the opposite truth - and each
+    // pair of them was reported as a paired contrast with a McNemar p-value, over the same label
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let trial = nachalnik_eval::Trial::new("both", &subject);
+    trial.ladder(&["reported", "retested"]);
+    for note in ["a", "b"] {
+        for (stage, correct) in [
+            ("reported", false),
+            ("retested", true),
+            ("noticed", true),
+            ("unsettled", false),
+        ] {
+            trial.record(Step::Resolved(at(stage, "depot", note, correct)));
+        }
+    }
+    // a ladder recorded twice is still one set of contrasts
+    trial.ladder(&["reported", "retested"]);
+
+    let outcome = nachalnik_eval::Outcome::of(&trial, None);
+
+    let contrasts: Vec<(&str, &str)> = outcome
+        .paired
+        .iter()
+        .map(|p| (p.before.as_str(), p.after.as_str()))
+        .collect();
+    assert_eq!(contrasts, vec![("reported", "retested")]);
+    assert_eq!(outcome.paired[0].gained, 2);
+    // and the undeclared stages are still scored, one by one
+    assert_eq!(outcome.stages.len(), 4);
+}
+
+#[test]
 fn an_interval_pays_for_claims_that_came_from_the_same_dossier() {
     // the worst case the adjustment exists for: one dossier the subject got right throughout and
     // one it got wrong throughout. Eight claims, four right, and the naive interval reports it as
