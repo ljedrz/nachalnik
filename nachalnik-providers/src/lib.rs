@@ -29,7 +29,9 @@
 //! ```no_run
 //! # use std::sync::Arc;
 //! # use nachalnik::{Config, Kernel};
+//! # #[cfg(feature = "openai")]
 //! # use nachalnik_providers::OpenAiCompatible;
+//! # #[cfg(feature = "openai")]
 //! # async fn go() -> Result<(), nachalnik::BoxError> {
 //! let provider = Arc::new(OpenAiCompatible::new(
 //!     "openai/gpt-5",
