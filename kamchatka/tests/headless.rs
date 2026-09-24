@@ -2099,6 +2099,12 @@ async fn compact_down_a_pipe_is_taken_and_said() {
             Content::text("x".repeat(40_000)),
             false,
         ));
+        // read, so the pass may take it: a result the model has not been shown yet is kept while
+        // the request fits
+        app.kernel.push(ContextItem::assistant(
+            Content::text("it is forty thousand x"),
+            vec![],
+        ));
     })
     .await;
 

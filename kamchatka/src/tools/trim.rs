@@ -155,6 +155,19 @@ impl Compactor for Trim {
         // base64 nothing can count is worth less
         let (blobs, rest): (Vec<_>, Vec<_>) =
             candidates.partition(|item| carries_blob(&item.content));
+        // what the model has not been shown yet: the results after its last turn, which it asked
+        // for and the request about to go is the first to carry. Taken for the threshold like the
+        // rest, a search that fitted the limit was elided on its way in - the model ran it again
+        // for a marker, and again. So these go only where the request would not fit the limit
+        // without them, and after everything already read
+        let unseen: Vec<ContextId> = items
+            .iter()
+            .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
+            .map(|turn| items[turn + 1..].iter().map(|item| item.id).collect())
+            .unwrap_or_default();
+        let (fresh, rest): (Vec<_>, Vec<_>) =
+            rest.into_iter().partition(|item| unseen.contains(&item.id));
+        let limit = budget.limit?;
 
         let mut used = budget.used();
         let mut elide = Vec::new();
@@ -179,6 +192,16 @@ impl Compactor for Trim {
             // spend the person's undo and a line of the model's attention to make the request
             // bigger. Skipped rather than breaking, because these are in the order the
             // conversation happened and a small one early says nothing about the next
+            let Some(recovered) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
+                continue;
+            };
+            used -= recovered.min(used);
+            elide.push(item.id);
+        }
+        for item in fresh {
+            if used <= limit {
+                break;
+            }
             let Some(recovered) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
                 continue;
             };

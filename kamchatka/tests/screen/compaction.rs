@@ -45,6 +45,11 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         Content::text("x".repeat(40_000)),
         false,
     ));
+    // read, so the pass may take it: one the model has not been shown is kept while it fits
+    kernel.push(ContextItem::assistant(
+        Content::text("it is forty thousand x"),
+        vec![],
+    ));
 
     let trim = Trim {
         threshold: 0.0,
@@ -530,7 +535,10 @@ async fn compaction_summaries_do_not_pile_up() {
         ..kernel.budget()
     };
 
-    // four passes with something new to take each time, which is what a tool loop looks like
+    // four passes with something new each time, which is what a tool loop looks like. The newest
+    // result has not been shown yet and is kept, so the first pass has nothing it may take and
+    // every later one takes the one before
+    let mut passes = 0;
     for n in 0..4 {
         let call = call(&format!("c{n}"), "peek", json!({}));
         kernel.push(ContextItem::assistant("looking", vec![call.clone()]));
@@ -541,12 +549,12 @@ async fn compaction_summaries_do_not_pile_up() {
             false,
         ));
 
-        let plan = trim
-            .plan(&kernel.items(), &budget())
-            .await
-            .expect("something to take");
-        kernel.apply_compaction(plan);
+        if let Some(plan) = trim.plan(&kernel.items(), &budget()).await {
+            kernel.apply_compaction(plan);
+            passes += 1;
+        }
     }
+    assert_eq!(passes, 3, "every pass but the first had something to take");
 
     let items = kernel.items();
     let standing: Vec<_> = items
@@ -668,6 +676,11 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
         "read",
         Content::text("x".repeat(40_000)),
         false,
+    ));
+    // read, so the pass may take it: one the model has not been shown is kept while it fits
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("it is forty thousand x"),
+        vec![],
     ));
     harness.drain();
 
@@ -840,4 +853,61 @@ fn a_compactor_aims_lower_than_the_point_it_starts_at() {
         "the default aims at {}",
         default.target,
     );
+}
+
+/// A result the model has not been shown yet is kept while the request fits the limit, and taken
+/// only where it cannot.
+///
+/// note: found in a live session with a 12,000-token limit. Pass after pass at 84 to 90% of it
+/// elided the `grep` the model had just run - before the request that would have been the first
+/// to carry it - so the model read a marker and ran the search again, for a result that fitted.
+#[tokio::test]
+async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // read, and answered since
+    let old = call("c1", "read", json!({"path": "old.rs"}));
+    kernel.push(ContextItem::assistant(Content::text(""), vec![old.clone()]));
+    let seen = kernel.push(ContextItem::tool_result(
+        old.id.clone(),
+        "read",
+        "x".repeat(4_000),
+        false,
+    ));
+    // read, and not yet answered: the request about to go is the first to carry it
+    let new = call("c2", "read", json!({"path": "new.rs"}));
+    kernel.push(ContextItem::assistant(Content::text(""), vec![new.clone()]));
+    let fresh = kernel.push(ContextItem::tool_result(
+        new.id.clone(),
+        "read",
+        "y".repeat(4_000),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.5,
+        target: 0.3,
+    };
+    let within = |limit| Budget {
+        limit: Some(limit),
+        ..kernel.budget()
+    };
+
+    // over the threshold and over the target with both, and inside the limit without the old one
+    let plan = trim
+        .plan(&kernel.items(), &within(3_000))
+        .await
+        .expect("over the threshold");
+    assert_eq!(plan.elide, vec![seen], "the one not yet read stays");
+
+    // and where the request cannot fit the limit even without the old one, the new one goes too
+    let plan = trim
+        .plan(&kernel.items(), &within(1_000))
+        .await
+        .expect("over the threshold");
+    assert_eq!(plan.elide, vec![seen, fresh]);
 }

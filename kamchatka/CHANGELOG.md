@@ -22,6 +22,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The compactor keeps a tool result the model has not been shown yet, while the request fits.**
+  It took the results after the model's last turn for the threshold like any other, so a search
+  that fitted the limit was elided on its way in and the model ran it again for a marker - eight
+  times in one live session. Those results now go only where the request would not fit the limit
+  without them, and after everything already read.
+
 - **A turn recorded as ordered blocks reads on the chat in its own order.** The chat drew every
   thought, then every sentence, then every call - right for a turn with one of each, and wrong for
   the interleaved turns `--gemini` exists to keep, which read as something that did not happen.
