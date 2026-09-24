@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A `Jev` answer that arrives as a 200 but is not JSON is an error.** A body cut short or a
+  proxy's page came back as `Ok` with every question unanswered, which is also what a model that
+  declined all of them looks like; the dialects already refused one.
 - **Gemini reports a turn that ran out of room as `Length`, even beside a call.** A turn that asked
   for a tool and hit `MAX_TOKENS` came back as `ToolUse`, which hid the one thing said nowhere
   else; the calls run from the blocks either way. The OpenAI dialect already did this.

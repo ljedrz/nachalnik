@@ -756,8 +756,26 @@ impl Jev {
             };
 
             let status = response.status();
-            let said = response.text().await.unwrap_or_default();
-            let parsed: Value = serde_json::from_str(&said).unwrap_or(Value::Null);
+            let said = match response.text().await {
+                Ok(said) => said,
+                Err(e) if status.is_success() => return Err(e.into()),
+                // a refusal whose body never arrived is still a refusal, and its status says
+                // which kind
+                Err(_) => String::new(),
+            };
+            let parsed: Value = match serde_json::from_str(&said) {
+                Ok(parsed) => parsed,
+                // note: an error, not an empty answer. Read as one, a 200 that is not JSON - a
+                // body cut short, a proxy's page - comes back as every question unanswered, which
+                // is also what a model that declined all of them looks like
+                Err(e) if status.is_success() => {
+                    let words: String = crate::markup::unmarked(&said).chars().take(300).collect();
+                    return Err(
+                        format!("{} answered with no JSON ({e}): {words}", self.model()).into(),
+                    );
+                }
+                Err(_) => Value::Null,
+            };
 
             if status.is_success() {
                 // note: checked even on a 200. A `detail` or an `error` beside the answers would
@@ -1209,12 +1227,8 @@ mod tests {
         assert_eq!(jev.attempts(), 0, "nothing should have gone out");
     }
 
-    /// A server that stays busy is asked as many times as a dialect would ask it, and no more.
-    ///
-    /// note: `RETRIES` counts the first send, and this client once counted only the
-    /// retries against the same number. It waits out the real backoff, so it takes a few seconds.
-    #[tokio::test]
-    async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
+    /// An address that answers every request with the same bytes, whatever was asked.
+    async fn answering(raw: &'static [u8]) -> std::net::SocketAddr {
         use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -1226,16 +1240,26 @@ mod tests {
                 tokio::spawn(async move {
                     let mut buf = vec![0u8; 65536];
                     let _ = socket.read(&mut buf).await;
-                    let _ = socket
-                        .write_all(
-                            b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\
-                              Connection: close\r\n\r\n",
-                        )
-                        .await;
+                    let _ = socket.write_all(raw).await;
                     let _ = socket.shutdown().await;
                 });
             }
         });
+
+        at
+    }
+
+    /// A server that stays busy is asked as many times as a dialect would ask it, and no more.
+    ///
+    /// note: `RETRIES` counts the first send, and this client once counted only the
+    /// retries against the same number. It waits out the real backoff, so it takes a few seconds.
+    #[tokio::test]
+    async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
+        let at = answering(
+            b"HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\
+              Connection: close\r\n\r\n",
+        )
+        .await;
 
         let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
         assert!(
@@ -1244,5 +1268,29 @@ mod tests {
                 .is_err()
         );
         assert_eq!(jev.attempts(), RETRIES);
+    }
+
+    /// A 200 that carries no answer is an error, not a response with every question unanswered.
+    #[tokio::test]
+    async fn a_success_that_is_not_an_answer_is_an_error() {
+        let page = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 32\r\n\
+              Connection: close\r\n\r\n<html><p>Welcome back</p></html>",
+        )
+        .await;
+        let cut = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n\
+              {\"model\": \"jev-1",
+        )
+        .await;
+
+        for at in [page, cut] {
+            let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+            let asked = jev
+                .ask("anything", [("q", Question::noul("Is this fine?"))])
+                .await;
+            assert!(asked.is_err(), "{at} answered nothing, and got {asked:?}");
+            assert_eq!(jev.attempts(), 1, "a 200 is not worth asking again");
+        }
     }
 }
