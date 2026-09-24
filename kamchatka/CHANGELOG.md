@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A served session leaving takes away only its own socket.** It removed whatever file was at the
+  path it had bound, so a socket removed by hand and bound again by a second session was taken
+  away when the first one left.
 - **`--connect` answers each question once.** An answer typed at the client left the question at
   the front of its queue until the record saying it was decided came back, so a second `y` typed
   before then answered the same question again, was refused, and left the next one unanswered.

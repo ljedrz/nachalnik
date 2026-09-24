@@ -158,3 +158,29 @@ fn an_address_says_what_kind_of_thing_it_is() {
         assert!(refused.contains("unix:PATH"), "{refused}");
     }
 }
+
+/// A session leaving takes away its own socket file, and not one another session put there since.
+#[cfg(unix)]
+#[tokio::test]
+async fn leaving_does_not_take_away_another_sessions_socket() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-unlink-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let path = dir.join("s.sock");
+    let at = format!("unix:{}", path.display());
+
+    let first = kamchatka::remote::server::Server::bind(&at)
+        .await
+        .expect("the first bind failed");
+    std::fs::remove_file(&path).expect("the socket was not there");
+    let second = kamchatka::remote::server::Server::bind(&at)
+        .await
+        .expect("the second bind failed");
+    drop(first);
+
+    assert!(
+        path.exists(),
+        "the first session took the second one's socket with it"
+    );
+    drop(second);
+    let _ = std::fs::remove_dir_all(&dir);
+}

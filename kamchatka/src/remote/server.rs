@@ -55,7 +55,10 @@ const PARTING: Duration = Duration::from_secs(2);
 pub struct Server {
     listener: Listener,
     /// Where the socket file is, when it is one this process made and has to take away again.
-    unlink: Option<std::path::PathBuf>,
+    ///
+    /// note: with the device and inode the bind made, because the path is only a name. A file
+    /// removed by hand and bound again by another session is that session's socket.
+    unlink: Option<(std::path::PathBuf, u64, u64)>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -145,7 +148,7 @@ impl Server {
     /// taking anything away from anybody.
     #[cfg(unix)]
     async fn unix(path: &str) -> Result<Self, String> {
-        use std::os::unix::fs::PermissionsExt as _;
+        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
         let path = std::path::PathBuf::from(path);
         if path.exists() {
@@ -176,10 +179,13 @@ impl Server {
             let _ = std::fs::remove_file(&path);
             return Err(format!("could not make {} private: {e}", path.display()));
         }
+        let made = std::fs::symlink_metadata(&path)
+            .map(|meta| (meta.dev(), meta.ino()))
+            .map_err(|e| format!("could not read {} back: {e}", path.display()))?;
 
         Ok(Self {
             listener: Listener::Unix(listener),
-            unlink: Some(path),
+            unlink: Some((path, made.0, made.1)),
         })
     }
 
@@ -694,8 +700,18 @@ impl Drop for Server {
     /// listener is a path every later client is refused at and every later `--serve` refuses as
     /// stale. There is nothing to do for a port.
     fn drop(&mut self) {
-        if let Some(path) = &self.unlink {
-            let _ = std::fs::remove_file(path);
+        // there are no socket files off unix, so nothing is ever put here to take away
+        #[cfg(not(unix))]
+        let _ = &self.unlink;
+        #[cfg(unix)]
+        if let Some((path, dev, ino)) = &self.unlink {
+            use std::os::unix::fs::MetadataExt as _;
+
+            if std::fs::symlink_metadata(path)
+                .is_ok_and(|meta| (meta.dev(), meta.ino()) == (*dev, *ino))
+            {
+                let _ = std::fs::remove_file(path);
+            }
         }
     }
 }
