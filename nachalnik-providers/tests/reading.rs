@@ -288,3 +288,55 @@ async fn done_ends_the_stream_while_the_connection_stays_open() {
 
     assert_eq!(said(&response), "ok");
 }
+
+/// A line that arrives over many chunks is read in a moment, however long it is.
+///
+/// note: a Gemini call's arguments, or an image, arrive as one event on one line. Searched for its
+/// newline from the start at every chunk, a line of megabytes in pieces the size of a TLS record
+/// took time quadratic in its length. The reader is shared, so one dialect asks it.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_long_line_in_many_pieces_is_read_in_a_moment() {
+    const LONG: usize = 12 << 20;
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let _ = socket.set_nodelay(true);
+                let mut discard = [0u8; 16384];
+                let _ = socket.read(&mut discard).await;
+                let head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n";
+                let text = "a".repeat(LONG);
+                let body = format!(
+                    "{head}data: {{\"choices\":[{{\"delta\":{{\"content\":\"{text}\"}},\
+                     \"finish_reason\":\"stop\"}}]}}\n\ndata: [DONE]\n\n"
+                );
+                // a piece at a time, handing over between them: written at once, the whole body is
+                // in the socket before the reader looks, and arrives as a few large chunks
+                for piece in body.as_bytes().chunks(16 << 10) {
+                    if socket.write_all(piece).await.is_err() {
+                        return;
+                    }
+                    let _ = socket.flush().await;
+                    tokio::task::yield_now().await;
+                }
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+    let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "m",
+        format!("http://{address}"),
+        "",
+    ));
+
+    let started = std::time::Instant::now();
+    let response = asked(provider).await.expect("an answer");
+    assert_eq!(said(&response).len(), LONG);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}

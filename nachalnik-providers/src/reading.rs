@@ -65,6 +65,10 @@ pub(crate) async fn read(
     // tail of a split character waits in here for the rest of itself, and only whole lines are
     // decoded
     let mut buffer: Vec<u8> = Vec::new();
+    // how much of `buffer` is already known to hold no newline: a line that arrives over many
+    // chunks - a Gemini call's whole arguments, an image - is searched once rather than from its
+    // start at every chunk, which is quadratic in the length of the line
+    let mut searched = 0;
     // every byte, until one of them is part of an event: a body that never was a stream is read
     // whole, rather than as whatever followed its last newline
     let mut unstreamed: Vec<u8> = Vec::new();
@@ -130,7 +134,14 @@ pub(crate) async fn read(
             }
         };
 
-        while let Some(end) = buffer.iter().position(|byte| *byte == b'\n') {
+        loop {
+            let Some(end) = buffer[searched..].iter().position(|byte| *byte == b'\n') else {
+                searched = buffer.len();
+                break;
+            };
+            let end = searched + end;
+            searched = 0;
+
             // checked before each event rather than after, so that an event is never read and
             // then thrown away
             if asking.deltas.is_interrupted() {

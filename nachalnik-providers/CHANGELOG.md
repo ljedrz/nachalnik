@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A long line arriving over many chunks is read in time linear in its length.** The reader
+  searched for its newline from the start of the line at every chunk, so a Gemini call's arguments
+  or an image, one event of megabytes, cost time quadratic in its size.
 - **A `Jev` answer that arrives as a 200 but is not JSON is an error.** A body cut short or a
   proxy's page came back as `Ok` with every question unanswered, which is also what a model that
   declined all of them looks like; the dialects already refused one.
