@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`log` does not give an item that never existed a history.** Asked about an id the session has
+  never held, it said the item was already in the context before the log began; it says there is
+  no such item.
 - **The `context` tool's counts and search say what the context holds.** `look` counted as going
   into the next request every item in a state that sends, including ones the projector repairs
   away, where the table under it said otherwise. `search` read an item's text and not what a turn

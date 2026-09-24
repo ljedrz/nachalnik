@@ -470,13 +470,19 @@ impl Query {
     /// in every request since - and can read them as proof it wrote the item itself. What decides
     /// the question is the record that is not there.
     fn inherited(&self, kernel: &Kernel, read: &Read) -> String {
-        let unborn: Vec<&ContextId> = self
+        // an item the kernel has never held has no beginning anywhere, and saying it was inherited
+        // would be telling a model a history that did not happen
+        let (unborn, never): (Vec<&ContextId>, Vec<&ContextId>) = self
             .ids
             .iter()
             .filter(|id| !read.added.contains(id))
-            .collect();
+            .partition(|id| kernel.item(**id).is_some());
+        let never = match never.is_empty() {
+            true => String::new(),
+            false => format!("\n{} is no item this session has held.\n", numbered(&never)),
+        };
         if unborn.is_empty() {
-            return String::new();
+            return never;
         }
 
         let (has, they, them) = match unborn.len() {
@@ -485,8 +491,8 @@ impl Query {
         };
 
         format!(
-            "\n{} {has} no `context.added` here: {they} already in the context before this log \
-             begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
+            "{never}\n{} {has} no `context.added` here: {they} already in the context before this \
+             log begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
             numbered(&unborn),
             match read.first_seq > 1 {
                 // the records that would have said are gone rather than never written, and which

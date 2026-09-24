@@ -816,3 +816,20 @@ async fn a_whole_record_can_be_asked_for_in_quotes() {
     let said = answers_from(&kernel, &["log"]);
     assert!(said[0].contains("src/lex.rs"), "{}", said[0]);
 }
+
+/// An item that never existed is said not to, rather than to have been inherited.
+#[tokio::test]
+async fn an_item_that_never_existed_is_not_reported_as_inherited() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "ids": [999] }),
+    )]));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = &answers_from(&kernel, &["log"])[0];
+    assert!(!said.contains("already in the context"), "{said}");
+    assert!(said.contains("[999]"), "{said}");
+}
