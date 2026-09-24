@@ -165,29 +165,51 @@ fn warm(
 ///
 /// note: it ends when the child closes the stream, which is when the child ends, so there is
 /// nothing to cancel. [`Local`] kills the child on drop and this sees the close.
+///
+/// note: bytes, to [`LINE`] of each line and the rest read and let go, and made text afterwards.
+/// A line reader holds a whole line before it can be cut, which a progress bar that never ends
+/// one grows without bound; and it gives up for good on a line that is not UTF-8, after which
+/// nothing reads the pipe and the engine blocks on it - the hang this exists to prevent.
 fn drain(errors: tokio::process::ChildStderr, said: Arc<Sync<VecDeque<String>>>) {
-    tokio::spawn(async move {
-        let mut lines = BufReader::new(errors).lines();
-        while let Ok(Some(mut line)) = lines.next_line().await {
-            if line.trim().is_empty() {
-                continue;
-            }
-            if line.len() > LINE {
-                // on a character boundary, since this is somebody else's output
-                let mut room = LINE;
-                while room > 0 && !line.is_char_boundary(room) {
-                    room -= 1;
-                }
-                line.truncate(room);
-                line.push('…');
-            }
-
-            let mut said = said.lock();
-            if said.len() == REMEMBERED {
-                said.pop_front();
-            }
-            said.push_back(line);
+    let keep = move |line: &[u8], cut: bool| {
+        let mut line = String::from_utf8_lossy(line).trim_end().to_owned();
+        if line.is_empty() {
+            return;
         }
+        if cut {
+            line.push('…');
+        }
+
+        let mut said = said.lock();
+        if said.len() == REMEMBERED {
+            said.pop_front();
+        }
+        said.push_back(line);
+    };
+
+    tokio::spawn(async move {
+        let mut errors = BufReader::new(errors);
+        let (mut line, mut cut) = (Vec::new(), false);
+        loop {
+            let read = match errors.fill_buf().await {
+                Ok(read) if !read.is_empty() => read,
+                _ => break,
+            };
+            let (taken, ended) = match read.iter().position(|byte| *byte == b'\n') {
+                Some(at) => (at + 1, true),
+                None => (read.len(), false),
+            };
+            let room = LINE.saturating_sub(line.len()).min(taken);
+            line.extend_from_slice(&read[..room]);
+            cut |= room < taken && !(ended && room + 1 == taken);
+            errors.consume(taken);
+            if ended {
+                keep(&line, cut);
+                line.clear();
+                cut = false;
+            }
+        }
+        keep(&line, cut);
     });
 }
 
@@ -669,6 +691,45 @@ for line in sys.stdin:
             complaint.contains('…'),
             "and the cut is marked: {complaint}"
         );
+
+        let _ = std::fs::remove_file(&at);
+    }
+
+    /// A line that is not UTF-8 is read like any other, and so is everything after it.
+    ///
+    /// note: a line reader gave up for good on one, and with nothing reading the pipe any more
+    /// the engine blocks on its own diagnostics as soon as it fills - the hang the drain is there
+    /// to prevent, with nothing left to say why.
+    #[tokio::test]
+    async fn stderr_that_is_not_text_does_not_stop_it_being_read() {
+        let shim = "\
+import sys
+sys.stderr.buffer.write(b'\\xff\\xfe not text\\n')
+sys.stderr.flush()
+print('later', file=sys.stderr, flush=True)
+for line in sys.stdin:
+    print('{\"model\": \"stub\", \"answers\": {}}', flush=True)
+";
+        let at = std::env::temp_dir().join(format!("kamchatka-bytes-{}.py", std::process::id()));
+        if std::fs::write(&at, shim).is_err() {
+            return;
+        }
+        let Ok(local) = Local::new(&format!("python3 {}", at.display())) else {
+            let _ = std::fs::remove_file(&at);
+            return;
+        };
+
+        local
+            .ask(
+                json!({ "cmd": "ls" }),
+                vec![("q".to_owned(), Question::noul("is it?"))],
+            )
+            .await
+            .expect("it answered");
+
+        let complaint = complaint_after(&local, 2).await;
+        assert!(complaint.contains("not text"), "{complaint}");
+        assert!(complaint.contains("later"), "{complaint}");
 
         let _ = std::fs::remove_file(&at);
     }

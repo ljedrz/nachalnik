@@ -22,6 +22,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A local advisor's standard error is read for as long as it runs, whatever it writes.** The
+  drain read whole lines, so one that was not UTF-8 stopped it for good - after which nothing read
+  the pipe and the engine would block on it once it filled - and one with no newline was held
+  whole before it was cut. It reads bytes now, keeps the start of each line, and makes them text
+  afterwards, as the MCP bridge's drain does.
 - **`--connect` skips a blank line and trims the rest, as `--headless` does.** A blank line was
   sent as a message and answered, and `  /help` was a message rather than a command.
 - **`shell` holds output that is not text to its ceiling as it is kept.** A byte that is not
