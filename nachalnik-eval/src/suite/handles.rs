@@ -44,6 +44,7 @@ use crate::{
     fork::{Ablation, Origin},
     intervene::Intervention,
     probe::Probe,
+    subject::Spend,
     trial::{Act, Journal},
 };
 
@@ -151,6 +152,39 @@ impl Inspect {
     pub fn remaining(&self) -> usize {
         self.budget.load(SeqCst)
     }
+
+    /// Runs a test's two copies, adding what they cost to `spend`, and hands back what the
+    /// untouched one answered beside what the treated one did - or why it could not be run.
+    async fn copies(
+        &self,
+        without: &[ContextId],
+        spend: &mut Spend,
+    ) -> (Option<String>, crate::Result<Option<String>>) {
+        let ablation = Ablation::new(self.probe.clone()).blind_to(self.blind.clone());
+        // the untouched copy is the same copy every time, so it is run once and kept
+        let cached = self.control.lock().clone();
+        let before = match cached {
+            Some(answered) => Some(answered),
+            None => match ablation.observe(&self.origin, Intervention::Nothing).await {
+                Ok(control) => {
+                    *spend += control.spend;
+                    let answered = control.majority();
+                    *self.control.lock() = answered.clone();
+                    answered
+                }
+                Err(e) => return (None, Err(e)),
+            },
+        };
+        let after = ablation
+            .observe(&self.origin, Intervention::without(without.to_vec()))
+            .await
+            .map(|treated| {
+                *spend += treated.spend;
+                treated.majority()
+            });
+
+        (before, after)
+    }
 }
 
 #[async_trait]
@@ -197,13 +231,13 @@ impl Tool for Inspect {
                     .map(|item| (item.id, item.label.clone()))
                     .collect();
                 let (without, unknown) = resolve(named, &known);
+                // not journaled, as `amend` does not journal it: a refusal is something the
+                // subject was not allowed to have, and a name that is not here is a mistake
                 if !unknown.is_empty() {
-                    let why = format!("nothing here is called {}", unknown.join(", "));
-                    self.journal.lock().push(Act::Refused {
-                        what: "test".to_owned(),
-                        why: why.clone(),
-                    });
-                    return Ok(ToolOutput::error(why));
+                    return Ok(ToolOutput::error(format!(
+                        "nothing here is called {}",
+                        unknown.join(", ")
+                    )));
                 }
                 if without.is_empty() {
                     return Ok(ToolOutput::error(
@@ -225,32 +259,28 @@ impl Tool for Inspect {
                     return Ok(ToolOutput::error(why));
                 }
 
-                let ablation = Ablation::new(self.probe.clone()).blind_to(self.blind.clone());
-                // the untouched copy is the same copy every time, so it is run once and kept
-                let cached = self.control.lock().clone();
-                let before = match cached {
-                    Some(answered) => Some(answered),
-                    None => {
-                        let control = ablation
-                            .observe(&self.origin, Intervention::Nothing)
-                            .await?;
-                        let answered = control.majority();
-                        *self.control.lock() = answered.clone();
-                        answered
-                    }
+                let mut spend = Spend::default();
+                let (before, after) = self.copies(&without, &mut spend).await;
+                let (after, failed) = match after {
+                    Ok(after) => (after, None),
+                    Err(e) => (None, Some(e)),
                 };
-                let treated = ablation
-                    .observe(&self.origin, Intervention::without(without.clone()))
-                    .await?;
-                let after = treated.majority();
-                let moved = before.as_ref().zip(after.as_ref()).map(|(a, b)| a != b);
+                let moved = match failed {
+                    None => before.as_ref().zip(after.as_ref()).map(|(a, b)| a != b),
+                    Some(_) => None,
+                };
 
                 self.journal.lock().push(Act::Tested {
                     without: without.clone(),
                     before: before.clone(),
                     after: after.clone(),
                     moved,
+                    spend,
+                    failed: failed.as_ref().map(ToString::to_string),
                 });
+                if let Some(e) = failed {
+                    return Err(e.into());
+                }
 
                 Ok(ToolOutput::new(verdict(
                     &without,
@@ -586,7 +616,91 @@ fn refusals(refused: &[(ContextId, String)]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use nachalnik::{
+        ModelResponse,
+        test::{ScriptedProvider, call},
+    };
+
     use super::*;
+    use crate::{probe::Reading, subject::Subject};
+
+    /// A test whose copies could not be run is journaled, with what it cost and why, and a name
+    /// that is not here is not journaled as a refusal.
+    ///
+    /// note: the `?` on each copy returned before the journal was written, so a test that came
+    /// off the budget left no trace and the question it followed read as one the subject did
+    /// not instrument. And `inspect` filed an unknown name as `Act::Refused`, which is what the
+    /// subject was not allowed to have, where `amend` filed nothing.
+    #[tokio::test]
+    async fn a_test_that_failed_is_on_the_record_and_a_wrong_name_is_not_a_refusal() {
+        let kernel = Kernel::new(nachalnik::Config::default());
+        // one answer, for the untouched copy, and nothing left for the treated one
+        kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse::text(
+            "kirov",
+        )])));
+        kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+        let origin = Arc::new(Origin::of(&Subject::new(kernel.clone())).expect("a provider"));
+        let journal: Journal = Arc::new(Mutex::new(Vec::new()));
+        let anchor = Arc::new(kernel);
+        let inspect = Inspect::new(
+            &anchor,
+            origin,
+            Probe::new(
+                "which?",
+                Reading::Choice(vec!["kirov".to_owned(), "omsk".to_owned()]),
+            ),
+            [],
+            2,
+            journal.clone(),
+        );
+        let test = |without: Value| {
+            call(
+                "1",
+                "inspect",
+                json!({ "action": "test", "without": without }),
+            )
+        };
+
+        let wrong = inspect
+            .invoke(
+                &test(json!(["records/nowhere"])),
+                OutputSink::disconnected(),
+            )
+            .await
+            .expect("told, not failed");
+        assert!(wrong.is_error);
+        assert!(journal.lock().is_empty(), "{:?}", journal.lock());
+
+        let failed = inspect
+            .invoke(
+                &test(json!(["records/capacity"])),
+                OutputSink::disconnected(),
+            )
+            .await;
+        assert!(failed.is_err());
+        let journaled = journal.lock().clone();
+        let [
+            Act::Tested {
+                before,
+                after,
+                moved,
+                spend,
+                failed,
+                ..
+            },
+        ] = journaled.as_slice()
+        else {
+            panic!("one test on the record: {journaled:?}");
+        };
+        assert_eq!(before.as_deref(), Some("kirov"));
+        assert_eq!((after, moved), (&None, &None));
+        assert_eq!(
+            spend.requests, 1,
+            "the untouched copy answered and was paid for"
+        );
+        assert!(failed.is_some());
+        assert_eq!(inspect.remaining(), 1);
+    }
 
     /// An item named by its number as a JSON number is the item with that number.
     ///

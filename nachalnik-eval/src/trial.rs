@@ -230,6 +230,7 @@ impl Trial {
             .map(|step| match step {
                 Step::Asked { spend, .. } => *spend,
                 Step::Measured { observation, .. } => observation.spend,
+                Step::Acted(Act::Tested { spend, .. }) => *spend,
                 _ => Spend::default(),
             })
             .sum()
@@ -395,6 +396,21 @@ pub enum Act {
         after: Option<String>,
         /// Whether the two differed.
         moved: Option<bool>,
+        /// What the copies cost.
+        ///
+        /// note: in [`Trial::spend`], beside the subject's own requests and the harness's copies.
+        /// The untouched copy is run once and kept, so it is in the first test's spend and not
+        /// in the ones after it.
+        #[serde(default)]
+        spend: Spend,
+        /// Why the copies could not be run, where they could not.
+        ///
+        /// note: journaled all the same. The subject reached for the handle and a test came off
+        /// its budget, and a record without it would show a question the subject declined to
+        /// instrument; it counts as a test in [`Reached`](crate::Reached), and shows nothing
+        /// about any item.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        failed: Option<String>,
     },
     /// It took items out of its own context.
     Excluded {
@@ -676,5 +692,40 @@ impl Resolution {
     pub fn probability(&self) -> Option<f64> {
         self.confidence
             .map(|c| if self.correct { c } else { 1.0 - c })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nachalnik::{Config, Kernel};
+
+    use super::*;
+
+    /// What a run cost includes the copies the subject's own tests ran.
+    ///
+    /// note: `Act::Tested` carried no spend and `Trial::spend` summed only the subject's requests
+    /// and the harness's copies, so an instrumented run was reported as costing less than it was
+    /// billed - by every test the subject chose to run.
+    #[test]
+    fn a_test_the_subject_ran_is_part_of_what_the_run_cost() {
+        let trial = Trial::new(
+            "instrumented",
+            &Subject::new(Kernel::new(Config::default())),
+        );
+        let spent = |requests: usize| Spend {
+            requests,
+            ..Spend::default()
+        };
+        trial.record(Step::Acted(Act::Tested {
+            without: vec![ContextId(2)],
+            before: None,
+            after: None,
+            moved: None,
+            spend: spent(2),
+            failed: None,
+        }));
+        trial.record(Step::Acted(Act::Looked { items: 7 }));
+
+        assert_eq!(trial.spend().requests, 2);
     }
 }
