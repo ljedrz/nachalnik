@@ -32,6 +32,9 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
+  Landlock governs TCP from ABI 4, which is Linux 6.7: below that the ruleset comes back
+  `Partial`, the files are still confined, the network is not, and the permissions tab says
+  "partly confined".
   The `landlock` crate has no UDP right to hand a ruleset, ABI 10 and the kernel's own
   `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, and the readmes say so rather than rounding it up.
   The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
