@@ -89,6 +89,32 @@ fn an_operation_that_does_nothing_does_not_spend_an_undo() {
     assert_eq!(kernel.item(a).unwrap().state, ContextState::Active);
 }
 
+/// A recount that moves no figure leaves the items as they were, to an undo as much as anybody.
+///
+/// note: `kamchatka` recounts after every turn, so an item a recount copied without changing
+/// read as changed on every undo after it: undoing one push named the whole context.
+#[test]
+fn a_recount_that_moves_no_figure_changes_nothing_an_undo_reports() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.recount();
+
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    let Some(Event::ContextUndone {
+        removed, changed, ..
+    }) = events.try_recv().ok()
+    else {
+        panic!("an undo is a context change like any other")
+    };
+    assert_eq!(removed, vec![b]);
+    assert!(
+        changed.is_empty(),
+        "{a} was recounted to the figure it had, which is not a change: {changed:?}"
+    );
+}
+
 #[test]
 fn an_undo_says_what_it_did() {
     let kernel = kernel();

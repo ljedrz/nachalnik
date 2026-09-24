@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A recount that moves no figure is not a change an undo reports.** `Kernel::recount` copied
+  every item the undo history shared, whether or not its count moved, and `context.undone` names
+  an item that is no longer the same allocation as changed - so after a recount, undoing one push
+  named the whole context. An item is copied now only when one of its figures moves.
 - **A context limit of `0` refuses nothing.** `Budget::fraction_used` read `0` as unknown and the
   check that refuses an oversized request read it as a limit every request is over, so an
   endpoint listing a model's context as `0` had every request refused.

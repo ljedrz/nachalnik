@@ -705,9 +705,17 @@ impl Context {
     }
 
     /// Recounts every item's tokens.
+    ///
+    /// note: priced before it is touched, because `Arc::make_mut` copies an item the undo history
+    /// shares, and a copy is what [`Kernel::undo`](crate::Kernel::undo) reads as a change. A
+    /// recount that moves no figure is not one.
     pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) {
         for item in &mut self.items {
-            measure(Arc::make_mut(item), counter);
+            let figures = figures(item, counter);
+            if figures != (item.tokens, item.uncounted) {
+                let item = Arc::make_mut(item);
+                (item.tokens, item.uncounted) = figures;
+            }
         }
     }
 
@@ -804,6 +812,10 @@ impl Context {
 /// recounted `tokens` is worse than no field at all: it reads as a definite "everything here is
 /// priced" while the tokens beside it have just been rewritten by a different counter.
 fn measure(item: &mut ContextItem, counter: &dyn TokenCounter) {
-    item.tokens = counter.count_item(item);
-    item.uncounted = counter.uncounted_item(item);
+    (item.tokens, item.uncounted) = figures(item, counter);
+}
+
+/// The two figures [`measure`] puts on an item, for a path that has to know whether they moved.
+fn figures(item: &ContextItem, counter: &dyn TokenCounter) -> (usize, usize) {
+    (counter.count_item(item), counter.uncounted_item(item))
 }
