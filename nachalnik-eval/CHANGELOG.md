@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A subject that answered nothing is not reported as fooled.** `Repair` checked its premise with
+  "the answer while carrying the note is not the one the records support", which an unreadable or
+  cut-off answer also satisfies, so a ladder whose first rung said nothing passed the check
+  silently. It holds only for a readable wrong answer. Nothing scores the check, so no score
+  moves.
 - **A copy that gave no answer is not counted as one that moved.** `Change::divergence` counted an
   unreadable copy as differing from the control, so an ablation whose copies all failed to answer
   measured the largest influence there is, and `Attribution`, which ranks notes by it, could

@@ -615,6 +615,27 @@ async fn saying_what_is_wrong_changes_nothing_and_changing_it_does() {
 }
 
 #[tokio::test]
+async fn a_subject_that_answered_nothing_was_not_fooled() {
+    // a model with no rules and nothing readable to say, so the answer while carrying the note is
+    // unreadable: not the one the records support, and not the one the falsehood does either
+    let model = Arc::new(Rulebook::new(&[], "I would rather not say."));
+    let subject = subject(model);
+    let experiment = Repair::new().on(&DEPOT, &CANCELLED).replicates(1);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("an unreadable answer does not stop the ladder");
+
+    let fooled = trial
+        .checks()
+        .into_iter()
+        .find(|check| check.what.starts_with("the falsehood fooled the subject"))
+        .expect("the ladder checks its premise");
+    assert!(!fooled.held, "{}", fooled.detail);
+}
+
+#[tokio::test]
 async fn the_ladder_is_run_from_scratch_three_times_so_a_rung_has_something_to_pair() {
     // the default, and the reason it is the default: a rung is one answer per dossier, so without
     // this the five-dossier set gives each paired contrast five items and nothing the analysis

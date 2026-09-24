@@ -355,7 +355,11 @@ impl Repair {
                 "the falsehood fooled the subject on `{}` (run {run})",
                 dossier.name
             ),
-            carrying.key().as_deref() != Some(dossier.answer),
+            // a wrong answer, and not a missing one: a subject that answered nothing while
+            // carrying the note has shown nothing about what the note did to it
+            carrying
+                .key()
+                .is_some_and(|answered| answered != dossier.answer),
             format!(
                 "carrying the note it answered `{}`, and the records support `{}`; a subject the \
                  falsehood never fooled has nothing here to fix",
