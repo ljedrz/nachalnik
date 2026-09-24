@@ -267,7 +267,8 @@ impl OpenAiCompatible {
         self.requests.lock().clone()
     }
 
-    /// How many HTTP requests this has made, retries counted separately.
+    /// How many requests for an answer this has sent, retries counted separately; a model
+    /// listing or a probe is not one.
     pub fn attempts(&self) -> usize {
         self.attempts.load(Ordering::SeqCst)
     }

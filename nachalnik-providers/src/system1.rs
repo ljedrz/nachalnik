@@ -619,7 +619,7 @@ pub struct Jev {
     base_url: Mutex<String>,
     api_key: String,
     model: Mutex<String>,
-    /// Every HTTP request this has made, never reset.
+    /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
 }
@@ -682,7 +682,8 @@ impl Jev {
         self.model.lock().clone()
     }
 
-    /// How many HTTP requests this has made, retries counted separately.
+    /// How many requests for an answer this has sent, retries counted separately; a model
+    /// listing or a probe is not one.
     pub fn attempts(&self) -> usize {
         self.attempts.load(Ordering::SeqCst)
     }

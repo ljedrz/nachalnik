@@ -51,7 +51,7 @@ pub struct Gemini {
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
     configured: Option<usize>,
-    /// Every HTTP request this has made, never reset.
+    /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
 }
@@ -97,7 +97,8 @@ impl Gemini {
         self.model.lock().clone()
     }
 
-    /// How many HTTP requests this has made, retries counted separately.
+    /// How many requests for an answer this has sent, retries counted separately; a model
+    /// listing or a probe is not one.
     pub fn attempts(&self) -> usize {
         self.attempts.load(Ordering::SeqCst)
     }
