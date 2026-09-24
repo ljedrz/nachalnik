@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Gemini reports a turn that ran out of room as `Length`, even beside a call.** A turn that asked
+  for a tool and hit `MAX_TOKENS` came back as `ToolUse`, which hid the one thing said nowhere
+  else; the calls run from the blocks either way. The OpenAI dialect already did this.
+
 - **`system1::Answer::confidence` is `None` for an answer that gave none.** A choice or score
   with no `confidence` was held as `NaN` and handed out as `Some(NaN)`, so a caller reading "no
   confidence" as `None` got a figure it printed as "NaN% sure", and one that serialised it wrote

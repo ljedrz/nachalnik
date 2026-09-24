@@ -635,9 +635,11 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
             // from the calls rather than from this, so saying so costs the turn nothing
             Some("cut off") => StopReason::Other("cut off".to_owned()),
             Some(blocked) if blocked.starts_with("blocked: ") => StopReason::Refusal,
+            // and so is running out of room, which is said nowhere else either, and which the
+            // OpenAI dialect reports as `Length` whether or not the turn asked for anything
+            Some("MAX_TOKENS") => StopReason::Length,
             _ if asked => StopReason::ToolUse,
             Some("STOP") => StopReason::EndTurn,
-            Some("MAX_TOKENS") => StopReason::Length,
             Some("SAFETY" | "PROHIBITED_CONTENT" | "BLOCKLIST" | "SPII") => StopReason::Refusal,
             Some(other) => StopReason::Other(other.to_lowercase()),
             None => StopReason::Other("unreported".to_owned()),

@@ -581,3 +581,20 @@ fn a_function_response_needs_no_separator() {
         "nothing was appended to a field that is not text"
     );
 }
+
+/// A turn that ran out of room says so, even when it asked for a tool on the way.
+///
+/// note: the calls are in the blocks and run from there either way; `ToolUse` hid that the turn was
+/// cut at the output limit, which is said nowhere else.
+#[tokio::test]
+async fn a_turn_that_ran_out_of_room_says_so_beside_its_call() {
+    let response = answered(concat!(
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":",
+        "{\"name\":\"read\",\"args\":{}}},{\"text\":\"and then\"}]},",
+        "\"finishReason\":\"MAX_TOKENS\"}]}\n\n",
+    ))
+    .await;
+
+    assert_eq!(response.stop, StopReason::Length);
+    assert_eq!(response.calls().count(), 1, "and the call is still there");
+}
