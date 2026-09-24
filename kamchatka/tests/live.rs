@@ -1183,11 +1183,7 @@ macro_rules! introspecting {
 
 /// A directory of its own, so that a `read` cannot wander into the repository.
 fn workdir(name: &str) -> std::path::PathBuf {
-    // the process id in the name, so that two models being run against this at once do not each
-    // clear the other's files out from under it
     let dir = common::scratch(&format!("live-{name}"));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("a directory");
 
     // resolved, because `Reach` canonicalises what it is handed and compares: on a machine whose
     // temporary directory is a symlink, an uncanonicalised `workdir` reaches nothing
