@@ -159,6 +159,7 @@ impl Subject {
 
 /// What a subject said, and what saying it cost.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Said {
     /// The words, as the context recorded them.
     pub text: String,
@@ -190,6 +191,7 @@ pub struct Said {
 /// back. Where a provider reports nothing, these stay at zero and [`Spend::requests`] still
 /// counts.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Spend {
     /// How many requests were answered.
     pub requests: usize,

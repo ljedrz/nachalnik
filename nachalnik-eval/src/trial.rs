@@ -362,6 +362,7 @@ pub enum Step {
 /// while measuring nothing whatever. Measured, not assumed: a dossier's causal structure is a
 /// property of the dossier *and the subject*, and it has to be established for each one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Check {
     /// What was being checked, in a few words.
     pub what: String,
@@ -535,6 +536,7 @@ impl std::fmt::Display for Kind {
 /// that a report can be re-scored - with different bins, or with the unreadable answers counted
 /// another way - without the run having to be paid for again.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Resolution {
     /// Which family of claim this is.
     pub about: Kind,
