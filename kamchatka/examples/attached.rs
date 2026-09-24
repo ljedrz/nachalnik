@@ -105,6 +105,22 @@ async fn main() -> Result<(), String> {
         return Ok(());
     }
 
+    // note: the questions already open are refused here, because they are never coming as records:
+    // the stream starts after `seq`, and theirs were written before it. Left standing, the line
+    // below would wait behind them for the whole of `PATIENCE`
+    for request in &attached.asking {
+        println!("? {} wanted {}; refusing", request.tool, request.args);
+        protocol::write(
+            &mut write,
+            &Command::Decide {
+                id: request.id,
+                grant: Grant::Deny,
+                remember: false,
+            },
+        )
+        .await?;
+    }
+
     println!("ask: {question}");
     protocol::write(&mut write, &Command::Submit { line: question }).await?;
 
