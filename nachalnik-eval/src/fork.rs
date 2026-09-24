@@ -277,6 +277,7 @@ struct Copy {
 
 /// What the copies said under one condition.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Observation {
     /// What was moved, in words.
     pub intervention: String,
@@ -434,6 +435,7 @@ impl Observation {
 
 /// What one intervention did to the answer, measured against a control.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Change {
     /// What the control copies answered.
     pub before: Option<String>,

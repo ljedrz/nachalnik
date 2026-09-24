@@ -18,6 +18,15 @@ minor bump may break you.
   the message, `Error::kind` gives one, and `Outcome::of` takes a `Failure`. A report written with
   the message alone still reads, as `ErrorKind::Unknown`, and so does a kind this version has no
   name for.
+- **The structs this crate answers with are `#[non_exhaustive]`**: `Scores`, `Interval`, `Bin`,
+  `Gain`, `Depth`, `Depths`, `Stage`, `Family`, `Paired`, `Deference`, `Surface`, `Cohort`,
+  `Reached`, `Outcome`, `Instrument`, `Observation`, `Change`, `Applied`, `Said`, `Spend`,
+  `Resolution` and `Check`. `Scores` had gained fields since release, and a struct literal of it
+  elsewhere broke each time; a field added to any of these is not a break from here on. Each is
+  built by the crate - `Resolution::new`, `Instrument::of`, `Surface::of` and the rest - so
+  nothing that went through those changes. What a caller writes stays open: `Report`, which
+  `bench` assembles from outcomes as they land, `Faced`, `Labelled`, and the material - `Plant`,
+  `Errand`, `Rift`, `Dossier` and `Note`.
 
 ### changed
 

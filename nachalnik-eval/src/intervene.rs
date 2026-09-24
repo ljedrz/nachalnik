@@ -229,6 +229,7 @@ impl Intervention {
 /// things to tell whoever reads the record, and a measurement whose intervention silently did
 /// nothing is worse than one that failed.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Applied {
     /// The items that were moved.
     pub touched: Vec<ContextId>,

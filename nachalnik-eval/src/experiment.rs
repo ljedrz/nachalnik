@@ -32,6 +32,7 @@ use crate::{
 /// rather than pretending. That is the honest answer for a third-party experiment this crate has
 /// never seen.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Instrument {
     /// The version of the material, as its author states it.
     pub version: String,
@@ -162,6 +163,7 @@ pub trait Experiment: Send + Sync {
 
 /// Everything one experiment found out about one subject.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Outcome {
     /// The experiment.
     pub experiment: String,

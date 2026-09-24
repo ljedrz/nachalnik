@@ -39,6 +39,7 @@ pub const BINS: usize = 5;
 /// where "no" scores a hundred percent; [`Scores::skill`] is how much of the room above that the
 /// subject actually took. An accuracy reported without them is a number that cannot be read.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Scores {
     /// How many claims were tested.
     pub n: usize,
@@ -122,6 +123,7 @@ const Z95: f64 = 1.959_963_984_540_054;
 
 /// A range a figure is somewhere inside.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Interval {
     /// The bottom of it.
     pub low: f64,
@@ -239,6 +241,7 @@ fn clustering(measured: &[&Resolution], hits: usize) -> (usize, Option<f64>, Opt
 
 /// One band of confidence, and how often claims made at it were right.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Bin {
     /// The bottom of the band.
     pub from: f64,
@@ -440,6 +443,7 @@ fn over_or_under(gap: f64) -> &'static str {
 /// is also why the figure is noisy: at the default battery of six, one claim is seventeen points of
 /// accuracy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Gain {
     /// Before it was told anything.
     pub before: Scores,
@@ -511,6 +515,7 @@ impl fmt::Display for Gain {
 
 /// The scores at one remove of self-reference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Depth {
     /// How many removes: `1` is a claim about its own next answer, `2` a claim about what a copy
     /// of it would claim, and so on.
@@ -525,6 +530,7 @@ pub struct Depth {
 /// accuracy holds from one remove to three is doing something different from one that is right
 /// about itself and wrong about a copy of itself, and the second is much the commoner result.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Depths(pub Vec<Depth>);
 
 impl Depths {
@@ -575,6 +581,7 @@ impl fmt::Display for Depths {
 /// ladder is read through: the same claims, asked with no evidence available, with evidence
 /// available, and after the subject has acted on it. What is worth reading is the difference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Stage {
     /// What the stage is called.
     pub name: String,
@@ -612,6 +619,7 @@ impl Stage {
 
 /// The scores for one family of claim.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Family {
     /// The family.
     pub kind: Kind,
@@ -646,6 +654,7 @@ impl Family {
 /// and in which direction*. Four items that all improved and none that regressed is a result; four
 /// that improved while four others fell over is noise wearing the same average.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Paired {
     /// The stage the claims were first made at.
     pub before: String,
@@ -785,6 +794,7 @@ pub struct Faced {
 /// itself, and a subject that will not believe its own instrument has been given a tool and not a
 /// capability.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Deference {
     /// Items where it made a claim, ran a test, and was asked again.
     pub faced: usize,
@@ -876,6 +886,7 @@ impl fmt::Display for Deference {
 /// Within items that all do nothing there is nothing left to be right about, and a difference
 /// between the halves cannot be knowledge.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Surface {
     /// Inert items whose note carried a figure.
     pub numeric: usize,
@@ -1088,6 +1099,7 @@ impl fmt::Display for Surface {
 /// not be measured at all - gated out under §8, or run and failed - is not a model that disagreed,
 /// so it leaves the denominator rather than counting against the direction.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Cohort {
     /// How many models were offered to the test.
     pub models: usize,
@@ -1167,6 +1179,7 @@ impl fmt::Display for Cohort {
 /// This is why [`Step::Granted`] exists: the denominator is questions the subject *could* have
 /// instrumented, which the record cannot work out from the acts alone.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct Reached {
     /// Questions asked at a stage, after handles had been granted.
     pub offered: usize,
