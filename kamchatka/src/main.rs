@@ -231,9 +231,9 @@ async fn session() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     // the servers have to outlive every session this run has, not just the first: dropping one
-    // takes its child process, and its tools, with it. A restart installs the tools they already
-    // offer into the new kernel rather than spawning them again - the handshake is a round trip
-    // and a `npx` server is seconds of it
+    // takes its child process with it, and leaves its tools unable to answer. A restart installs
+    // the tools they already offer into the new kernel rather than spawning them again - the
+    // handshake is a round trip and a `npx` server is seconds of it
     #[cfg(feature = "mcp")]
     let servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
         .await

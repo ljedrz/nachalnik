@@ -351,10 +351,13 @@ fn the_program_offers_a_spawned_servers_tools() {
 }
 
 /// Two servers that would offer tools under the same names are refused, rather than one quietly
-/// taking the other's place.
+/// taking the other's place - and the refusal leaves the kernel as it found it.
 ///
 /// note: the same server twice is the plainest way to get there, and two `npx` lines with no
 /// `name=` are the commonest: both are named for their program.
+///
+/// note: the first server's tools are the ones that would be left behind, registered under a
+/// server the `Err` has already dropped.
 #[tokio::test]
 async fn two_servers_under_one_name_are_refused() {
     let wired = Setup {
@@ -378,4 +381,6 @@ async fn two_servers_under_one_name_are_refused() {
             .is_err_and(|why| why.contains("name=command")),
         "{refused:?}"
     );
+    let left = wired.app.kernel.tool_ids();
+    assert!(left.is_empty(), "{left:?}");
 }

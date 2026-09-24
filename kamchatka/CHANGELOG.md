@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`mcp::attach` installs nothing until every server has answered.** A name collision was refused
+  only after the second server's tools had replaced the first's, and a spec that failed part way
+  left the earlier servers' tools registered while their servers went with the `Err`.
 - **A streamed fragment no longer copies the whole context list to find the item its line
   follows.** Only a fragment that starts a new line asks, and it reads the last identifier in
   place.
