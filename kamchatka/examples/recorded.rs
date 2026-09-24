@@ -32,7 +32,7 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    Block, Capability, Content, ContextItem, ContextKind, Event, Grant, Kernel, LinearProjector,
+    Block, Capability, ContextItem, ContextKind, Event, Grant, Kernel, LinearProjector,
 };
 use nachalnik_providers::Dialect;
 
@@ -45,9 +45,16 @@ fn task() -> String {
     })
 }
 
-const BRIEF: &str = "You are working in a Rust workspace on this machine, through a shell.
+/// What it is told, with the budget it really has.
+///
+/// note: the budget written in from `KAMCHATKA_CONTEXT_LIMIT`, which is what the provider is held to.
+/// A brief saying ten thousand over a session limited to some other figure is a model told one
+/// number and shown another by its own `budget` call.
+fn brief(budget: usize) -> String {
+    format!(
+        "You are working in a Rust workspace on this machine, through a shell.
 
-You have a hard context budget of 10,000 tokens for this whole task, and tool output here is \
+You have a hard context budget of {budget} tokens for this whole task, and tool output here is \
 large: one careless command will spend most of it. Four tools let you do something about that.
 
 `context` reads your own state and changes it: `budget` says where you stand and which items are \
@@ -63,7 +70,9 @@ your own answer before you give it, and `ask` puts a question of your own to the
 was asked permission for. `setup` says what this session is running with: which model, which \
 tools, and what the policy will refuse before you ask.
 
-Check your budget before and after anything expensive. Answer only when you are sure.";
+Check your budget before and after anything expensive. Answer only when you are sure."
+    )
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let budget: usize = std::env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
-        .ok_or("set KAMCHATKA_CONTEXT_LIMIT (the default brief tells the model 10000)")?;
+        .ok_or("set KAMCHATKA_CONTEXT_LIMIT, the context budget the model is held to")?;
 
     // two dialects, one trait. `DIALECT=openai` points this at anything OpenAI-compatible -
     // OpenRouter, ollama, a proxy - and the only thing downstream that changes is whether the
@@ -141,7 +150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // turned off: which tools a session offers is one list, and this is what the control
         // arm's looks like
         tools: (!introspecting).then(|| vec!["fs".to_owned(), "shell".to_owned()]),
-        system: Some(std::env::var("BRIEF").unwrap_or_else(|_| BRIEF.to_owned())),
+        system: Some(std::env::var("BRIEF").unwrap_or_else(|_| brief(budget))),
         ..Default::default()
     }
     .wire(provider)?;
@@ -333,7 +342,3 @@ fn trim(text: &str, limit: usize) -> String {
         text.len() - cut
     )
 }
-
-/// Silences the unused-import warning for `Content` when the shape of this changes.
-#[allow(dead_code)]
-fn _unused(_: Content) {}
