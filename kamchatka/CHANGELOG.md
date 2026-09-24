@@ -34,6 +34,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A message sent into a turn that fails, or into a `/step` that comes to rest, goes into the
+  context when it ends.** It stayed waiting, so the next message sent ran first and the waiting
+  one went in after that turn, or never.
 - **`--connect` asks a question again when its answer went down with the connection**, instead of
   forgetting it and leaving the session waiting on an answer the client could no longer give.
 - **A `shell` call dropped before its command ends removes the command's temporary directory**, as

@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use kamchatka::{
-    app::{App, Did, Overlay, Speaker},
+    app::{App, Did, Outcome, Overlay, Speaker},
     headless::Headless,
     tools::{Careful, Subject},
     wiring::{Setup, Wired},
@@ -589,6 +589,60 @@ async fn a_line_into_a_running_turn_says_it_is_queued() {
         1,
         "the second line went into the context while a turn was running"
     );
+}
+
+/// The user messages in a session's context, in order.
+fn said(app: &App) -> Vec<String> {
+    app.kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "user")
+        .map(|item| item.content.to_text().into_owned())
+        .collect()
+}
+
+/// A line queued into a turn that fails goes in when it fails, and is not overtaken by the next.
+#[tokio::test]
+async fn a_line_queued_into_a_failed_turn_goes_in_before_the_next_one() {
+    // nothing scripted, so every request fails
+    let Wired {
+        mut app,
+        mut finished,
+        ..
+    } = wired(Vec::new());
+
+    app.submit("first").await;
+    assert_eq!(app.submit("second").await.did, Did::Queued);
+    let outcome = finished.recv().await.expect("the turn reported nothing");
+    assert!(
+        matches!(outcome, Outcome::Failed(_)),
+        "the turn did not fail"
+    );
+    app.on_outcome(outcome);
+    assert!(!app.busy, "a failure started a turn for the waiting line");
+
+    app.submit("third").await;
+    assert_eq!(said(&app), ["first", "second", "third"]);
+}
+
+/// And the same after a step, which rests without a turn to wait for.
+#[tokio::test]
+async fn a_line_queued_into_a_step_goes_in_before_the_next_one() {
+    let Wired {
+        mut app,
+        mut finished,
+        ..
+    } = wired(vec![ModelResponse::text("one")]);
+
+    app.submit("/step first").await;
+    assert_eq!(app.submit("second").await.did, Did::Queued);
+    let outcome = finished.recv().await.expect("the step reported nothing");
+    assert!(matches!(outcome, Outcome::Stepped(_)), "it was not a step");
+    app.on_outcome(outcome);
+    assert!(!app.busy, "a step started a turn for the waiting line");
+
+    app.submit("third").await;
+    assert_eq!(said(&app), ["first", "second", "third"]);
 }
 
 /// A deadline ends a session that is waiting on an input that is never going to say anything.

@@ -848,11 +848,21 @@ impl App {
         // note: a turn that stopped to ask a question has not ended - the call it is asking about
         // still has a result to come - and a message pushed now would land between the call and
         // that result, which is a place a request cannot have one
-        let ended = matches!(outcome, Outcome::Stopped(ref state) if !matches!(state, State::Deciding { .. }));
+        //
+        // note: a failure has ended it as far as a waiting message is concerned, and so has a step
+        // that came to rest. Left waiting, the message is overtaken by the next one sent, which
+        // finds the session resting and runs at once - and goes in after that one's turn, or never
+        // if there is no next turn. A step that stopped at `Ready` has calls still to run, and the
+        // message waits for their results rather than landing between them and their calls
+        let ended = match &outcome {
+            Outcome::Stopped(state) => !matches!(state, State::Deciding { .. }),
+            Outcome::Stepped(state) => matches!(state, State::Idle | State::Finished { .. }),
+            Outcome::Failed(_) => true,
+        };
         // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
         // not the moment to start something else; either way what was typed waits for `/continue`
         let interrupted = std::mem::take(&mut self.interrupting);
-        let carry_on = ended && !interrupted;
+        let carry_on = ended && !interrupted && matches!(outcome, Outcome::Stopped(_));
         match outcome {
             Outcome::Failed(e) => self.say_error(e),
             // note: a turn stopping to ask says nothing here, and opens nothing. The question is
@@ -896,7 +906,7 @@ impl App {
         }
 
         // a message somebody sent into this turn has waited for it to end; now it goes in, and
-        // unless the turn was stopped or stepped it gets a turn of its own
+        // unless the turn was stopped, stepped or failed it gets a turn of its own
         //
         // note: `caught_up` because the line saying it was waiting is a live one - it was said
         // when there was no item to say it from - and pushing is what gives it one. The item is
