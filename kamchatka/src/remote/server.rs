@@ -1157,9 +1157,9 @@ where
                     // when the fragment was emitted. Reconstructing the true interleaving would
                     // mean flushing one record per non-progress event - exact, and a linear scan
                     // of the log per event, per client. It is not worth it: a fragment whose item
-                    // has already arrived is a fragment the item supersedes, and every client in
-                    // this workspace already drops one on those grounds. The terminal does it
-                    // under the name `Entry::transient`
+                    // has already arrived is a fragment the item supersedes. The terminal drops
+                    // one on those grounds, under the name `Entry::transient`; `--connect` prints
+                    // the answer from fragments alone, so a late one is printed late there
                     flush(kernel, &mut last, write).await?;
                     if protocol::is_progress(&event) && !progress_recorded {
                         protocol::write(write, &Message::Progress { after: last, event }).await?;
