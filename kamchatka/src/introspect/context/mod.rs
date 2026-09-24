@@ -688,6 +688,15 @@ fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>]) -> String {
     )
 }
 
+/// Whether this session was resumed from a snapshot, which `session.resumed` in its log says.
+pub(super) fn resumed(kernel: &Kernel) -> bool {
+    kernel.with_history(|session| {
+        session
+            .records()
+            .any(|record| matches!(record.event, Event::SessionResumed { .. }))
+    })
+}
+
 /// One item's row: its label, then whatever else is worth knowing on one line.
 fn row(item: &ContextItem, going: &Going) -> String {
     let glimpsed = glimpse(&item.content.to_text());

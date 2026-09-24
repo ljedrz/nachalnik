@@ -25,6 +25,11 @@ minor bump may break you.
 - **An argument that is not text is refused as what it is, not as missing.** An `action` sent as a
   list, or a `path` sent as a number, was answered "the `action` argument is required" - about a
   call that had one. The refusal now names what arrived.
+- **An `undo` after a resume says the model's earlier changes were not carried over.** What
+  `context` walks back is kept by the process, not in the snapshot, so a model that excluded
+  something before a restart and asked to undo it afterwards was told only that the person has an
+  undo of their own - which read as though the exclusion had been theirs. It now also says the
+  session was resumed and that `restore` puts an item back.
 - **A served session no longer tells its clients how the host answers questions.** With no screen,
   `--serve` said the headless opening into the conversation, so every client that attached read
   that a question nobody can be asked is answered `deny` - the host's `--on-ask`, which a served

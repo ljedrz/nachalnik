@@ -701,11 +701,23 @@ impl Changes {
         };
 
         let mut out = match put_back.is_empty() {
-            true => format!(
-                "there was nothing of yours to walk {direction}. `undo` and `redo` only move the \
-                 changes this tool made; the person you work with has an undo of their own, and \
-                 it is not this one.\n"
-            ),
+            true => {
+                let mut said = format!(
+                    "there was nothing of yours to walk {direction}. `undo` and `redo` only move \
+                     the changes this tool made; the person you work with has an undo of their \
+                     own, and it is not this one.\n"
+                );
+                // note: the journal is this process's and a snapshot does not carry it, so after
+                // a resume the model's own earlier changes are not in it either - and without
+                // this the answer reads as though they had been the person's
+                if super::resumed(kernel) {
+                    said.push_str(
+                        "This session was resumed from a snapshot, and the changes this tool made \
+                         before that were not carried over; `restore` puts an item back by name.\n",
+                    );
+                }
+                said
+            }
             false => format!(
                 "walked {} of your own change(s) {direction}, because: {reason}\n  {}\n",
                 put_back.len(),

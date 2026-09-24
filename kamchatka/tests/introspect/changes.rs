@@ -839,8 +839,49 @@ async fn undo_with_nothing_of_its_own_says_whose_undo_it_is_not() {
 
     let said = answered(&kernel);
     assert!(said.contains("nothing of yours to walk back"), "{said}");
+    assert!(!said.contains("resumed"), "nobody resumed this: {said}");
     // the person's exclusion is exactly where they left it
     assert_eq!(kernel.items()[0].state, ContextState::Excluded);
+}
+
+/// After a resume, an `undo` with nothing to walk says the earlier changes were not carried over.
+///
+/// note: the journal is the process's, so a model that excluded something before a restart and
+/// asks to undo it afterwards was told only whose undo this is not - which reads as though the
+/// exclusion had been the person's.
+#[tokio::test]
+async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
+    use std::sync::Arc;
+
+    let first = nachalnik::Kernel::new(nachalnik::Config::default());
+    let read = first.push(ContextItem::file("read.rs", "..."));
+    first.set_state([read], ContextState::Excluded, Some("done with it".into()));
+
+    let kernel = nachalnik::Kernel::resume(nachalnik::Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(nachalnik::test::ScriptedProvider::new(one_turn(
+        vec![call(
+            "c1",
+            "context",
+            json!({ "action": "undo", "reason": "put it back" }),
+        )],
+    ))));
+    let policy = Arc::new(kamchatka::tools::Careful::new());
+    policy.set(
+        &kamchatka::tools::Subject::parse("context"),
+        nachalnik::Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor =
+        kamchatka::introspect::install(&kernel, policy, kamchatka::tools::Limits::default());
+    kernel.push(ContextItem::user("undo that"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("nothing of yours to walk back"), "{said}");
+    assert!(said.contains("resumed from a snapshot"), "{said}");
+    assert!(said.contains("`restore`"), "{said}");
+    assert_eq!(kernel.item(read).unwrap().state, ContextState::Excluded);
 }
 
 #[tokio::test]
