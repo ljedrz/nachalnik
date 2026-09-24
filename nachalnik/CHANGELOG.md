@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A push while a turn is recorded does not split the turn from the answer to a call nobody can
+  run.** That answer joins the checkpoint the turn was recorded under, and the number was read
+  again after the turn let go of the context; a push from another thread in between took it, and
+  one `undo` took the answer with the push and left the turn's call unanswered.
 - **What a request cost is told to the counter that estimated it.** `TokenCounter::observe` went
   to whichever counter was installed when the answer arrived, so one swapped in while a request
   was out learned an estimate it never made - for `Calibrating`, a correction worked out from

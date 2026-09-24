@@ -19,7 +19,7 @@ use crate::{
     tool::ToolSpec,
 };
 
-use super::{Kernel, Restore, State};
+use super::{Batch, Kernel, Restore, State};
 
 impl Kernel {
     /// Builds and sends a request, records the answer, and prepares whatever it asked for.
@@ -149,11 +149,17 @@ impl Kernel {
         // note: the reasoning is recorded on the turn that produced it, so that it is counted
         // and prunable like everything else, and so that a provider whose API insists on seeing
         // its own thinking again can get it back; whether it is *sent* is the projector's call
+        //
+        // note: recorded as the first of a batch, so the checkpoint it takes is written down under
+        // the lock that took it. An answer to a call nobody can run joins that checkpoint, and read
+        // again afterwards the number could be a push that landed in between - one `undo` would
+        // then take the answer with the push and leave the turn's call unanswered
         let content = response.content.clone().unwrap_or_default();
-        let item = self.add_item(
+        let mut turn = Batch::default();
+        let item = self.add_in(
             ContextItem::assistant(content, response.tool_calls.clone())
                 .with_reasoning(response.reasoning.clone()),
-            true,
+            &mut turn,
         );
         self.emit(Event::ModelFinished {
             stop: response.stop.clone(),
@@ -170,7 +176,7 @@ impl Kernel {
             self.transition(&mut self.0.machine.lock(), to.clone());
             to
         } else {
-            self.prepare_calls(&calls).await
+            self.prepare_calls(&calls, turn).await
         };
         restore.disarm();
 

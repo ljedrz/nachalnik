@@ -28,12 +28,12 @@ impl Kernel {
     /// [`Kernel::decide`] could fail purely because the client was quick about it - which it
     /// would, if a request were announced while the policy was still being consulted about the
     /// *next* call in the batch.
-    pub(super) async fn prepare_calls(&self, calls: &[ToolCall]) -> State {
+    ///
+    /// `turn` is the batch the turn asking for them was recorded in, which an answer to a call
+    /// nobody can run joins.
+    pub(super) async fn prepare_calls(&self, calls: &[ToolCall], mut turn: Batch) -> State {
         let mut prepared = Vec::with_capacity(calls.len());
         let mut announcements = Vec::with_capacity(calls.len());
-        // the checkpoint the turn was recorded under, a moment ago, which an answer to a call
-        // nobody can run joins
-        let mut turn = Batch(Some(self.0.context.read().taken()));
 
         for call in calls {
             self.emit(Event::ToolRequested {

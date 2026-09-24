@@ -701,3 +701,52 @@ async fn an_interrupt_is_announced_before_a_step_can_spend_it() {
     );
     assert!(!kernel.is_interrupted(), "and the step spent it");
 }
+
+/// A push that lands while a turn is being recorded does not split the turn from the answer to a
+/// call nobody can run.
+///
+/// note: the answer joins the checkpoint the turn was recorded under, and that number used to be
+/// read again after the turn had let go of the context - by when a push from another thread could
+/// have taken the next one. One `undo` then took the answer and the push and left the turn with a
+/// call nobody answered. The race is narrow, so it is run many times over; a kernel that gets it
+/// right cannot fail this, and one that gets it wrong failed every run of it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_push_mid_turn_does_not_split_a_turn_from_its_answer() {
+    for _ in 0..500 {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::tool_calls(vec![call("c1", "nosuch", json!({}))]),
+        ])));
+        kernel.set_policy(Arc::new(AllowAll));
+        kernel.push(ContextItem::user("go"));
+
+        // a push the moment the turn is recorded, which is the window
+        let mut events = kernel.subscribe();
+        let other = kernel.clone();
+        let pusher = std::thread::spawn(move || {
+            while let Ok(event) = events.blocking_recv() {
+                if matches!(event, Event::ContextAdded { .. }) {
+                    other.push(ContextItem::user("from elsewhere"));
+                    return;
+                }
+            }
+        });
+        kernel.step().await.expect("the step ran");
+        pusher.join().expect("the pusher finished");
+
+        let items = kernel.items();
+        let turn = items[1].id;
+        let answer = items
+            .iter()
+            .find(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+            .expect("the unknown call was answered")
+            .id;
+
+        assert!(kernel.undo().unwrap());
+        assert_eq!(
+            kernel.item(turn).is_some(),
+            kernel.item(answer).is_some(),
+            "one undo took the answer to a call and left the turn that asked it, or the reverse"
+        );
+    }
+}
