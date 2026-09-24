@@ -34,6 +34,8 @@ minor bump may break you.
 
 ### fixed
 
+- **`--connect` asks a question again when its answer went down with the connection**, instead of
+  forgetting it and leaving the session waiting on an answer the client could no longer give.
 - **A `shell` call dropped before its command ends removes the command's temporary directory**, as
   it already killed the command's process group. It was left behind with whatever the command
   wrote there.

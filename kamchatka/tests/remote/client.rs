@@ -358,6 +358,108 @@ async fn a_client_does_not_wait_for_an_answer_the_dead_socket_took_with_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// An answer the socket took with it leaves the question open, and the client asks it again.
+///
+/// note: the question was asked in a record the client had already seen, so the resume does not
+/// send it again and there is no projection to carry it. The proxy swallows the `decide` and cuts
+/// the first connection; the input closes once the client is back, so what answers the question
+/// is the client's own `on_ask` - which it can only do if it still knows the question is open.
+#[tokio::test]
+async fn an_answer_the_dead_socket_took_with_it_is_asked_again() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("refused"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+    let Ok(Address::Tcp(host)) = protocol::address(&session.at) else {
+        panic!("the suite serves a port");
+    };
+    let host = host.to_owned();
+
+    let proxy = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", proxy.local_addr().expect("its own address"));
+    let (connected, mut reconnected) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    tokio::spawn(async move {
+        let mut nth = 0;
+        while let Ok((down, _)) = proxy.accept().await {
+            let up = TcpStream::connect(&host).await.expect("the session went");
+            nth += 1;
+            let _ = connected.send(nth);
+            let (down_r, mut down_w) = down.into_split();
+            let (mut up_r, mut up_w) = up.into_split();
+            let (die, dying) = tokio::sync::oneshot::channel::<()>();
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = tokio::io::copy(&mut up_r, &mut down_w) => {}
+                    _ = dying => {}
+                }
+            });
+            tokio::spawn(async move {
+                let mut lines = BufReader::new(down_r).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if nth == 1 && line.contains("\"do\":\"decide\"") {
+                        let _ = die.send(());
+
+                        return;
+                    }
+                    if up_w
+                        .write_all(format!("{line}\n").as_bytes())
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            });
+        }
+    });
+
+    let (mut watch, _) = Peer::attached(&session.at).await;
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"go\n").await.expect("could not type");
+        watch.until_record("permission.requested").await;
+        feed.write_all(b"y\n").await.expect("could not type");
+        while reconnected.recv().await != Some(2) {}
+        drop(feed);
+        watch.drop_it().await;
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("the connection went; attaching again from record"),
+        "the socket was never cut: {prose}"
+    );
+    assert!(prose.contains("peek: deny"), "{prose}");
+    let (watch, attached) = Peer::attached(&session.at).await;
+    assert!(
+        attached.asking.is_empty(),
+        "the client left a question it had forgotten: {:?}",
+        attached.asking
+    );
+    watch.drop_it().await;
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A session that has gone is waited for longer each time, rather than every quarter of a second.
 ///
 /// note: what the waits growing stands for is `GIVE_UP`, which is a minute and too long to wait

@@ -67,6 +67,16 @@ pub struct Client<'a> {
     session: Option<String>,
     /// The questions waiting on somebody, oldest first.
     asking: VecDeque<PermissionRequest>,
+    /// The questions this has answered and not yet seen decided, oldest first.
+    ///
+    /// note: kept until the `permission.decided` record rather than forgotten with the answer,
+    /// because an answer can die in a socket the session never read. A resume is sent the records
+    /// after the last one this client saw, and the question was asked before that - so a question
+    /// dropped here is one the session goes on waiting for and this client can no longer answer.
+    /// What the resume leaves undecided goes back on `asking` once the attach is answered.
+    answering: VecDeque<PermissionRequest>,
+    /// Whether this connection opened with a resume that has not been answered yet.
+    resuming: bool,
     /// What a question is answered with once there is nobody left here to answer it.
     ///
     /// note: the same flag `--headless` reads, and it reaches the same two states for the same
@@ -126,6 +136,8 @@ impl<'a> Client<'a> {
             last: 0,
             session: None,
             asking: VecDeque::new(),
+            answering: VecDeque::new(),
+            resuming: false,
             busy: false,
             outstanding: 0,
             detaching: false,
@@ -228,6 +240,7 @@ impl<'a> Client<'a> {
         // note: `since` is sent only where this client has a session to name it against. After a
         // first attach it has a conversation on the screen already, and asking for the projection
         // again would print the whole of it a second time above the records that carry on from it
+        self.resuming = self.session.is_some();
         let attach = match &self.session {
             Some(session) => Command::Attach {
                 since: Some(self.last),
@@ -438,8 +451,13 @@ impl<'a> Client<'a> {
             Message::Done { busy, .. } => {
                 self.busy = busy;
                 self.answered();
-
-                Ok(())
+                // note: the resume's answer rather than its first record, because the records it
+                // missed are sent ahead of it - and one of them may be the decision this is about
+                // to ask again
+                match std::mem::take(&mut self.resuming) {
+                    true => self.reopened(),
+                    false => Ok(()),
+                }
             }
             Message::Missed { frames } => {
                 self.fresh_line()?;
@@ -480,6 +498,7 @@ impl<'a> Client<'a> {
                 if about == "attach" {
                     self.session = None;
                     self.last = 0;
+                    self.resuming = false;
                 }
                 self.fresh_line()?;
                 self.tell(&format!("{about}: {error}"))
@@ -521,6 +540,7 @@ impl<'a> Client<'a> {
         // question raised before this client existed was asked in a record it will never be sent.
         // This is the case the projection exists for, in miniature
         self.asking = attached.asking.iter().cloned().collect();
+        self.answering.clear();
         let asking: Vec<_> = self.asking.iter().cloned().collect();
         for request in &asking {
             self.question(request)?;
@@ -584,6 +604,7 @@ impl<'a> Client<'a> {
                 id, tool, grant, ..
             } => {
                 self.asking.retain(|waiting| waiting.id != *id);
+                self.answering.retain(|waiting| waiting.id != *id);
                 self.fresh_line()?;
                 self.tell(&format!("{tool}: {grant}"))?;
             }
@@ -592,6 +613,22 @@ impl<'a> Client<'a> {
         }
 
         self.prose.flush().map_err(|e| e.to_string())
+    }
+
+    /// Asks again whatever this answered on a connection that went before the session decided it.
+    fn reopened(&mut self) -> Result<(), String> {
+        let lost: Vec<_> = self.answering.drain(..).collect();
+        for request in lost.iter().rev() {
+            self.asking.push_front(request.clone());
+        }
+        if !lost.is_empty() {
+            self.fresh_line()?;
+        }
+        for request in &lost {
+            self.question(request)?;
+        }
+
+        Ok(())
     }
 
     /// Prints a question, and the three answers to it.
@@ -644,6 +681,7 @@ impl<'a> Client<'a> {
                 && let Some(request) = self.asking.pop_front()
             {
                 let id = request.id;
+                self.answering.push_back(request);
 
                 return self
                     .say_to(
@@ -738,10 +776,12 @@ impl<'a> Client<'a> {
                 "nobody is here to answer for `{}`, so it is answered `{}`",
                 request.tool, self.on_ask
             ))?;
+            let id = request.id;
+            self.answering.push_back(request);
             self.say_to(
                 write,
                 Command::Decide {
-                    id: request.id,
+                    id,
                     grant: self.on_ask,
                     // note: never. A standing rule outlives this client and this turn, and a rule
                     // nobody typed is the one kind the policy should not learn from - least of all
