@@ -15,6 +15,10 @@
 #![cfg(any(feature = "gemini", feature = "openai"))]
 
 use nachalnik_providers::Endpoint;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -26,11 +30,19 @@ use tokio::{
 /// probed and then the listing is read, and a server that hung up after the first would have the
 /// second fail and the notice go missing for a reason that is not the one under test.
 async fn serving(body: &'static str) -> String {
+    counting(body).await.0
+}
+
+/// [`serving`], and how many requests it has answered.
+async fn counting(body: &'static str) -> (String, Arc<AtomicUsize>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let at = listener.local_addr().expect("its address");
+    let answered = Arc::new(AtomicUsize::new(0));
+    let counted = answered.clone();
 
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
+            counted.fetch_add(1, Ordering::SeqCst);
             let mut discard = [0u8; 4096];
             let _ = socket.read(&mut discard).await;
             let _ = socket
@@ -47,7 +59,7 @@ async fn serving(body: &'static str) -> String {
         }
     });
 
-    format!("http://{at}")
+    (format!("http://{at}"), answered)
 }
 
 /// A listing in both dialects' spellings at once, serving one model and not the other.
@@ -145,4 +157,24 @@ async fn an_address_that_lists_no_parameters_does_not_inherit_the_last_ones() {
         provider.info().parameters
     );
     assert!(provider.lists_every_parameter());
+}
+
+/// A switch reads the listing once, for the limit and the names both.
+///
+/// note: the probe and the check for the model each fetched it, so every `/model` and every
+/// `/provider` paid for the same listing twice - on OpenRouter, every model it serves.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_switch_reads_the_listing_once() {
+    let provider =
+        nachalnik_providers::OpenAiCompatible::new("stranger", "http://127.0.0.1:1", "not-a-key");
+    let (address, answered) = counting(SERVES).await;
+
+    provider.set_endpoint(address, None).await;
+    assert!(provider.take_notice().is_some(), "the check still ran");
+    assert_eq!(answered.load(Ordering::SeqCst), 1);
+
+    provider.set_model("elsewhere").await;
+    assert!(provider.take_notice().is_some(), "the check still ran");
+    assert_eq!(answered.load(Ordering::SeqCst), 2);
 }

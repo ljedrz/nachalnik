@@ -406,8 +406,7 @@ impl OpenAiCompatible {
         // only overwrites the list where the new listing has one of its own
         self.parameters.lock().clear();
         *self.every_parameter.lock() = true;
-        self.probe().await;
-        self.say_if_the_model_is_not_there().await;
+        self.switched().await;
     }
 
     /// Every model this endpoint says it serves, if it will say.
@@ -416,15 +415,38 @@ impl OpenAiCompatible {
     /// proxy may serve no listing at all, and treating a silence as a denial would be inventing a
     /// restriction nobody stated.
     pub async fn models(&self) -> Vec<String> {
-        let base = self.endpoint();
-        let listed = self.listed_names(&format!("{base}/models"), true).await;
+        let listing = self
+            .listing(&format!("{}/models", self.endpoint()), true)
+            .await;
+        self.models_in(listing.as_ref()).await
+    }
+
+    /// [`Self::models`], given what the conventional listing already said.
+    async fn models_in(&self, listing: Option<&Value>) -> Vec<String> {
+        let listed = listing.map(names_in).unwrap_or_default();
         if !listed.is_empty() {
             return listed;
         }
-        match base.strip_suffix("/openai") {
-            Some(native) => self.listed_names(&format!("{native}/models"), false).await,
+        match self.endpoint().strip_suffix("/openai") {
+            Some(native) => self
+                .listing(&format!("{native}/models"), false)
+                .await
+                .as_ref()
+                .map(names_in)
+                .unwrap_or_default(),
             None => listed,
         }
+    }
+
+    /// What a switch of model or address asks the new one: its limit, and whether it serves the
+    /// model at all - from one read of the listing, which answers both.
+    async fn switched(&self) {
+        let listing = self
+            .listing(&format!("{}/models", self.endpoint()), true)
+            .await;
+        self.probe_in(listing.as_ref()).await;
+        let listed = self.models_in(listing.as_ref()).await;
+        self.say_if_the_model_is_not_there(&listed);
     }
 
     /// Puts a notice up if the model is not one the endpoint lists.
@@ -432,9 +454,8 @@ impl OpenAiCompatible {
     /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
     /// somebody's API prose in it. Switching address and model are two commands and it is easy to
     /// do one of them.
-    async fn say_if_the_model_is_not_there(&self) {
+    fn say_if_the_model_is_not_there(&self, listed: &[String]) {
         let model = self.model.lock().clone();
-        let listed = self.models().await;
         if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
             return;
         }
@@ -451,8 +472,8 @@ impl OpenAiCompatible {
         ));
     }
 
-    /// The identifiers in a listing, however that listing spells them.
-    async fn listed_names(&self, url: &str, bearer: bool) -> Vec<String> {
+    /// A model listing, if the address answers with one.
+    async fn listing(&self, url: &str, bearer: bool) -> Option<Value> {
         // note: a header rather than `?key=`, which is also what Google's native API takes. A key
         // in a URL is a key in every log a proxy keeps, and what sends it here is only a base
         // ending in `/openai` - which is not only Google's
@@ -460,24 +481,15 @@ impl OpenAiCompatible {
             true => self.client.get(url).bearer_auth(&self.api_key),
             false => self.client.get(url).header("x-goog-api-key", &self.api_key),
         };
-        let Ok(response) = request.timeout(crate::ASKING).send().await else {
-            return Vec::new();
-        };
-        let Ok(body) = response.json::<Value>().await else {
-            return Vec::new();
-        };
 
-        body["data"]
-            .as_array()
-            .or_else(|| body["models"].as_array())
-            .map(|entries| {
-                entries
-                    .iter()
-                    .filter_map(|entry| entry["id"].as_str().or_else(|| entry["name"].as_str()))
-                    .map(|name| name.strip_prefix("models/").unwrap_or(name).to_owned())
-                    .collect()
-            })
-            .unwrap_or_default()
+        request
+            .timeout(crate::ASKING)
+            .send()
+            .await
+            .ok()?
+            .json::<Value>()
+            .await
+            .ok()
     }
 
     /// Switches models, and forgets the context limit that belonged to the old one.
@@ -491,8 +503,7 @@ impl OpenAiCompatible {
         *self.context_limit.lock() = self.configured;
         self.parameters.lock().clear();
         *self.every_parameter.lock() = true;
-        self.probe().await;
-        self.say_if_the_model_is_not_there().await;
+        self.switched().await;
     }
 
     /// Takes whatever the provider last wanted to say for itself, if anything.
@@ -507,20 +518,29 @@ impl OpenAiCompatible {
     /// context is is measured against this number. An unknown limit is reported as unknown rather
     /// than guessed at, which is the honest answer but not a useful one.
     pub async fn probe(&self) {
+        let listing = self
+            .listing(&format!("{}/models", self.endpoint()), true)
+            .await;
+        self.probe_in(listing.as_ref()).await;
+    }
+
+    /// [`Self::probe`], given what the conventional listing already said.
+    async fn probe_in(&self, listing: Option<&Value>) {
         // a limit somebody set for themselves is a decision about what to measure against; it is
         // not a statement about which parameters the model takes, so the listing is still worth
         // reading. Only the limit is left alone
         let settled = self.context_limit.lock().is_some();
 
         let base = self.endpoint();
-        let mut limit = self.listed_limit(&format!("{base}/models"), true).await;
+        let mut limit = listing.and_then(|body| self.listed_limit(body));
 
         // an OpenAI-compatible listing does not have to carry a context length, and Google's does
         // not; its native one does, one path up
         if limit.is_none()
             && let Some(native) = base.strip_suffix("/openai")
         {
-            limit = self.listed_limit(&format!("{native}/models"), false).await;
+            let listing = self.listing(&format!("{native}/models"), false).await;
+            limit = listing.and_then(|body| self.listed_limit(&body));
         }
         // ollama's does not either, and the number its `/api/show` advertises is the wrong one
         if limit.is_none()
@@ -587,24 +607,8 @@ impl OpenAiCompatible {
     }
 
     /// Looks the model up in a listing and returns whatever context limit it advertises.
-    async fn listed_limit(&self, url: &str, bearer: bool) -> Option<usize> {
+    fn listed_limit(&self, body: &Value) -> Option<usize> {
         let model = self.model.lock().clone();
-        // note: a header rather than `?key=`, which is also what Google's native API takes. A key
-        // in a URL is a key in every log a proxy keeps, and what sends it here is only a base
-        // ending in `/openai` - which is not only Google's
-        let request = match bearer {
-            true => self.client.get(url).bearer_auth(&self.api_key),
-            false => self.client.get(url).header("x-goog-api-key", &self.api_key),
-        };
-        let body = request
-            .timeout(crate::ASKING)
-            .send()
-            .await
-            .ok()?
-            .json::<Value>()
-            .await
-            .ok()?;
-
         // `data` is the OpenAI shape, `models` the native Google one
         let entries = body["data"]
             .as_array()
@@ -651,6 +655,21 @@ impl OpenAiCompatible {
             .or_else(|| entry["inputTokenLimit"].as_u64())
             .map(|limit| limit as usize)
     }
+}
+
+/// The identifiers in a listing, however that listing spells them.
+fn names_in(body: &Value) -> Vec<String> {
+    body["data"]
+        .as_array()
+        .or_else(|| body["models"].as_array())
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| entry["id"].as_str().or_else(|| entry["name"].as_str()))
+                .map(|name| name.strip_prefix("models/").unwrap_or(name).to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[async_trait]

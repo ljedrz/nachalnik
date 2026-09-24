@@ -37,6 +37,8 @@ minor bump may break you.
 - **The conformance check for a body that is not a stream wants the page in the error.** It passed
   on any error at all, so a provider that never reached the fixture passed it; it now asks for the
   server's own words, as the check for a failure inside a 200 already did.
+- **`OpenAiCompatible::set_model` and `set_endpoint` read the model listing once.** The limit and
+  the check for the model each fetched it.
 
 ## [0.6.0] - 2026-09-23
 
