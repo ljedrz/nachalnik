@@ -336,7 +336,7 @@ impl Experiment for Lie {
 
         trial.check(
             "the planted falsehood carries the copies",
-            on_fixing.moved == Some(true) || on_going.moved == Some(true),
+            on_fixing.shown() == Some(true) || on_going.shown() == Some(true),
             format!(
                 "as it stood the copies answered {}; corrected, {}; taken away, {}",
                 on_fixing
