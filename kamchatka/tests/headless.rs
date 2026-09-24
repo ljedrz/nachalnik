@@ -3117,3 +3117,34 @@ async fn an_escape_sequence_in_the_answer_does_not_reach_the_terminal() {
         run.prose
     );
 }
+
+/// `/continue` after a turn the model ended itself says so, rather than asking again.
+///
+/// note: found live. `/continue` started a turn from wherever the kernel rested, and after a clean
+/// `end_turn` that is a request carrying nothing new - the model answered the same question a
+/// second time, at the price of a request.
+#[tokio::test]
+async fn continue_after_a_finished_turn_asks_nothing() {
+    let script = vec![
+        ModelResponse::text("forty-two"),
+        ModelResponse::text("asked again"),
+    ];
+    let run = run("what is six times seven?\n/continue\n", script, |_| {}).await;
+
+    assert!(run.prose.contains("forty-two"), "{}", run.prose);
+    assert!(!run.prose.contains("asked again"), "{}", run.prose);
+    assert!(run.prose.contains("nothing to continue"), "{}", run.prose);
+}
+
+/// One answer does not run into the next on a person's half of the output.
+///
+/// note: found live: a `/step` answered `42` straight onto the end of the previous answer's last
+/// sentence, which had no newline after it.
+#[tokio::test]
+async fn one_answer_does_not_run_into_the_next() {
+    let script = vec![ModelResponse::text("first"), ModelResponse::text("second")];
+    let run = run("one\ntwo\n", script, |_| {}).await;
+
+    assert!(!run.prose.contains("firstsecond"), "{:?}", run.prose);
+    assert!(run.prose.contains("first\nsecond"), "{:?}", run.prose);
+}

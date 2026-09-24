@@ -5,7 +5,8 @@
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
 use nachalnik::{
-    Calibration, ContextId, ContextItem, ContextKind, ContextState, selectors::Selector,
+    Calibration, ContextId, ContextItem, ContextKind, ContextState, State, StopReason,
+    selectors::Selector,
 };
 
 use crate::{app::text::thousands, tools::Limits};
@@ -125,7 +126,22 @@ impl App {
             // owns it and the loop puts the new one in its place; see `App::restart`
             "restart" => self.restart(),
             "help" | "?" => self.help(),
-            "continue" => self.start_turn(),
+            // note: not after a turn the model ended of its own accord. There is no rest of it to
+            // run: the request would be the conversation again with nothing new at its end, which
+            // spends a request on the model repeating itself - and a request ending on a model
+            // turn is one some endpoints refuse outright. A turn that ran out of room or was cut
+            // short does have a rest, and carries on
+            "continue" => match self.kernel.state() {
+                State::Finished {
+                    stop: StopReason::EndTurn | StopReason::Refusal,
+                    ..
+                } => self.say(
+                    Speaker::Note,
+                    "the model ended its turn, so there is nothing to continue; a message is what \
+                     starts the next one",
+                ),
+                _ => self.start_turn(),
+            },
             // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
             // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
             // a button nothing was obliged to draw. Two loops here have a line and nothing else,

@@ -22,6 +22,15 @@ minor bump may break you.
 
 ### fixed
 
+- **`/continue` after a turn the model ended says there is nothing to continue.** It started a
+  turn from wherever the runtime rested, and after a clean end that is a request with nothing new
+  at the end of it: the model answered the same question again, for a request, and some endpoints
+  refuse a request that ends on a model turn. A turn that ran out of room or was cut short still
+  carries on.
+
+- **Headless, one answer starts on a line of its own.** A new answer's first fragment was written
+  straight after the last one, whose final sentence usually has no newline after it.
+
 - **The compactor keeps a tool result the model has not been shown yet, while the request fits.**
   It took the results after the model's last turn for the threshold like any other, so a search
   that fitted the limit was elided on its way in and the model ran it again for a marker - eight

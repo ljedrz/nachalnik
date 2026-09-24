@@ -520,7 +520,8 @@ impl<'a> Headless<'a> {
     /// would print the same news twice in two wordings. What is left is what nothing else says: the
     /// model's words, which `App` files under a speaker `echo` skips precisely so that this one can
     /// stream them, and the two tool lines, which the terminal draws from the context and a
-    /// headless run has no other sight of.
+    /// headless run has no other sight of. A request prints nothing and ends the line the last
+    /// answer left open, so that one answer does not run into the next.
     fn say(&mut self, event: &Event) -> Result<(), String> {
         // no newline after a fragment: this arrives in pieces and is a sentence being written.
         // Everything below it is a whole line, so each of them ends that one first
@@ -531,6 +532,11 @@ impl<'a> Headless<'a> {
             self.mid_line = !text.ends_with('\n');
 
             return write!(self.prose, "{text}").map_err(|e| e.to_string());
+        }
+        // a new request is a new answer, which starts on a line of its own: the last one very
+        // likely ended mid-line, and the first fragment of this one was written straight after it
+        if matches!(event, Event::ModelRequested { .. }) {
+            return self.fresh_line();
         }
         if !matches!(
             event,
