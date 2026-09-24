@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A chat past 65,535 rows still shows its end.** The scroll offset went to the terminal
+  library as a 16-bit number, which wraps, so a long enough session following its newest line
+  showed rows from near its beginning. The chat, the trace, a question's arguments and the
+  overlays hand over only the rows that fit.
 - **The `context` tool's warning after a batch is put away no longer calls it pruning.** The
   line pointing at `note` said a note is written "where pruning cannot reach it", which is the
   word for a move the tool took away; it says the note is an item of its own that the move does

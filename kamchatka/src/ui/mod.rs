@@ -240,6 +240,15 @@ pub(super) struct Scrolled {
     area: Rect,
 }
 
+/// The rows of a scrolled pane that fit in it, from `at` down.
+///
+/// note: the rows themselves rather than all of them and an offset, because the offset
+/// `Paragraph::scroll` takes is a `u16`. Past 65,535 rows it wrapped, and a chat following its
+/// bottom showed rows from near its beginning.
+pub(super) fn in_view<T>(rows: Vec<T>, at: usize, area: Rect) -> Vec<T> {
+    rows.into_iter().skip(at).take(area.height.into()).collect()
+}
+
 /// Draws a scrollbar down the window's right-hand border, when there is anything to scroll.
 ///
 /// note: on the border rather than in a column of its own. A tab that gave up a column would be

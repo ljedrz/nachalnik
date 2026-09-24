@@ -34,7 +34,7 @@ use crate::{
     },
 };
 
-use super::{Scrolled, faint, quiet};
+use super::{Scrolled, faint, in_view, quiet};
 
 // ------------------------------------------------------------------------------ the conversation
 
@@ -229,7 +229,7 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
     let at = app.scroll.min(bottom);
     let total = lines.len();
 
-    frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
+    frame.render_widget(Paragraph::new(in_view(lines, at, inner)), inner);
 
     Scrolled {
         position: at,
@@ -824,7 +824,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
     let at = bottom - app.trace_scroll;
     let total = lines.len();
 
-    frame.render_widget(Paragraph::new(lines).scroll((at as u16, 0)), inner);
+    frame.render_widget(Paragraph::new(in_view(lines, at, inner)), inner);
 
     Scrolled {
         position: at,

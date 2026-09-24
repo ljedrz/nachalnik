@@ -1764,3 +1764,19 @@ async fn what_a_command_exited_with_is_visible_without_reading_it() {
         assert_ne!(under, expected, "only the exit line is coloured: {said:?}");
     }
 }
+
+/// A conversation taller than a screen's row count can say still ends at its newest line.
+///
+/// note: the offset went to ratatui as a `u16`, which wraps: past 65,535 rows a chat following
+/// the bottom showed rows from somewhere near its beginning instead.
+#[tokio::test]
+async fn a_conversation_past_sixty_five_thousand_rows_still_shows_its_end() {
+    let mut harness = Harness::new([]);
+    let mut long: String = (0..70_000).map(|n| format!("row {n}\n")).collect();
+    long.push_str("the newest line");
+    harness.app.kernel.push(ContextItem::user(long));
+
+    let screen = harness.screen();
+    assert!(harness.app.follow);
+    assert!(screen.contains("the newest line"), "{screen}");
+}

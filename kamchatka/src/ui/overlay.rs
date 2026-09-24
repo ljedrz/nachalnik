@@ -19,7 +19,7 @@ use crate::{
     ui::text::{refit, wrapped},
 };
 
-use super::{Scrolled, faint, markdown::command, quiet, scrollbar};
+use super::{Scrolled, faint, in_view, markdown::command, quiet, scrollbar};
 
 /// Whatever is on top of everything else.
 ///
@@ -400,7 +400,7 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
     frame.render_widget(Paragraph::new(head), above);
-    frame.render_widget(Paragraph::new(args).scroll((at as u16, 0)), middle);
+    frame.render_widget(Paragraph::new(in_view(args, at, middle)), middle);
     frame.render_widget(Paragraph::new(foot.join("\n")), below);
 
     scrollbar(
@@ -564,10 +564,7 @@ fn panel(
     if strip > 0 {
         frame.render_widget(Paragraph::new(Line::from(tabs(pages, page))), above);
     }
-    frame.render_widget(
-        Paragraph::new(lines.join("\n")).scroll((at as u16, 0)),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(in_view(lines, at, inner).join("\n")), inner);
 
     scrollbar(
         frame,
