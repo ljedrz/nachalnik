@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A copy that gave no answer is not counted as one that moved.** `Change::divergence` counted an
+  unreadable copy as differing from the control, so an ablation whose copies all failed to answer
+  measured the largest influence there is, and `Attribution`, which ranks notes by it, could
+  credit a subject for naming an inert one. It counts copies that gave another answer, over every
+  copy, as `agreement` does. A run recorded before this keeps the figures it was scored with.
 - **An elision is described as one.** `Intervention::describe` said an `Elided` intervention
   left a copy "with the content of 4 taken", which is not the word the variant, the schema or
   the runtime use; it says "with 4 elided".

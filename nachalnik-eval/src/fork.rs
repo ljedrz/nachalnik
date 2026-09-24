@@ -346,10 +346,15 @@ impl Observation {
         let after = self.majority();
         let divergence = match &before {
             Some(before) if !self.answers.is_empty() => {
+                // note: a copy that gave some *other* answer. One that gave none did not move,
+                // for the reason `moved` is `None` over it - and counted as moving, an ablation
+                // whose copies all failed to answer measured the most influence there is. It
+                // stays in the denominator, as it does in `agreement`
                 let differed = self
                     .answers
                     .iter()
-                    .filter(|answer| answer.key().as_deref() != Some(before.as_str()))
+                    .filter_map(Answer::key)
+                    .filter(|key| key.as_ref() != before.as_str())
                     .count();
                 rounded(differed as f64 / self.answers.len() as f64)
             }
@@ -379,7 +384,8 @@ pub struct Change {
     /// Whether the answer moved; `None` when either side could not be read, because "the copies
     /// did not answer" is not the same finding as "the answer held".
     pub moved: Option<bool>,
-    /// The share of treated copies that differed from the control's answer.
+    /// The share of treated copies that gave an answer other than the control's; a copy that gave
+    /// none is not one of them.
     ///
     /// note: the continuous version of [`Change::moved`], and the one worth ranking items by:
     /// with three replicates an item that moved two copies out of three is doing more work than
@@ -406,5 +412,42 @@ impl Change {
     /// it. It is worth something from two replicates up.
     pub fn clears_the_noise(&self) -> bool {
         self.divergence > self.instability
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn saying(answers: Vec<Answer>) -> Observation {
+        Observation {
+            intervention: String::new(),
+            applied: Applied::default(),
+            repairs: Vec::new(),
+            items: 0,
+            said: vec![String::new(); answers.len()],
+            answers,
+            spend: Spend::default(),
+        }
+    }
+
+    /// A copy that gave no answer did not give a different one.
+    ///
+    /// note: `divergence` counted an unreadable copy as one that moved, so an ablation whose copies
+    /// all failed to answer measured the largest influence there is - and `Attribution` ranks by
+    /// it, crediting a subject that named an inert note. `moved` already said `None` for the same
+    /// copies, because "the copies did not answer" is not "the answer changed".
+    #[test]
+    fn copies_that_did_not_answer_did_not_move() {
+        let control = saying(vec![Answer::Choice("kirov".to_owned()); 2]);
+
+        let silent = saying(vec![Answer::Unreadable, Answer::Unreadable]).against(&control);
+        assert_eq!(silent.moved, None);
+        assert_eq!(silent.divergence, 0.0);
+
+        // and one that did move is counted against every copy, readable or not
+        let half =
+            saying(vec![Answer::Choice("omsk".to_owned()), Answer::Unreadable]).against(&control);
+        assert_eq!(half.divergence, 0.5);
     }
 }
