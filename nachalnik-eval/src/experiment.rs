@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     abreast::{Governor, Pace, together},
     error::Result,
-    score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface},
+    score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface, unaided},
     subject::{Spend, Subject},
     trial::{Check, Resolution, Step, Trial},
 };
@@ -214,6 +214,9 @@ pub struct Outcome {
     ///
     /// note: the primary endpoint. `None` where the experiment resolved no counterfactual claims
     /// about a dossier's own notes, which is every experiment that asks something else.
+    ///
+    /// note: over the claims made without handles in reach. A claim made with a test in reach is
+    /// the test's answer copied out, and H1 is about what a subject reports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface: Option<Surface>,
     /// Whether it reached for the handles it was given.
@@ -255,7 +258,7 @@ impl Outcome {
 
         let deference = Deference::over(&trial.faceds());
         let reached = Reached::over(&steps);
-        let surface = Surface::over(&resolutions, crate::suite::dossier::surface);
+        let surface = Surface::over(unaided(&steps), crate::suite::dossier::surface);
 
         Self {
             experiment: trial.experiment().to_owned(),
@@ -357,8 +360,17 @@ impl Report {
     /// else's - and every one of those claims is about an item whose ablation either moved the
     /// answer or did not. Reading them apart would leave the endpoint computed over many items in
     /// one column and a handful in another, when the model is the unit.
+    ///
+    /// note: over the claims each outcome made without handles in reach, as [`Outcome::surface`]
+    /// is. A report written before that rule is read under it too, since the stages and the grants
+    /// it needs are in the record.
     pub fn surface(&self) -> Surface {
-        Surface::over(self.resolutions(), crate::suite::dossier::surface)
+        Surface::over(
+            self.outcomes
+                .iter()
+                .flat_map(|outcome| unaided(&outcome.steps)),
+            crate::suite::dossier::surface,
+        )
     }
 
     /// What the run says it measured, where its outcomes agree about it.

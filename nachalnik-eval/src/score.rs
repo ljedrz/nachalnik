@@ -919,6 +919,10 @@ impl Surface {
     /// note: `reads` answers "does this note carry a figure, and was it written to be inert?" for
     /// a material and a label, and is handed in rather than looked up here so that this file knows
     /// nothing about dossiers. An item whose note cannot be found is left out of every count.
+    ///
+    /// note: it counts every claim it is handed. [`Outcome`](crate::Outcome) and
+    /// [`Report::surface`](crate::Report::surface) hand it only the ones made without handles in
+    /// reach, and a caller computing the endpoint over a record should too.
     pub fn over<'a>(
         resolutions: impl IntoIterator<Item = &'a Resolution>,
         reads: impl Fn(&str, &str) -> Option<(bool, bool)>,
@@ -1180,6 +1184,46 @@ pub struct Reached {
     pub rate: Option<f64>,
     /// The 95% Wilson interval around that.
     pub interval: Option<Interval>,
+}
+
+/// The claims in a record that were made without handles in reach: what the primary endpoint is
+/// computed over.
+///
+/// note: H1 is about what a subject *reports*, and a claim made with a test in reach is the test
+/// tool's answer copied out - the preregistration demotes the instrumented stages for exactly that
+/// reason. Taken with the rest, the ladder counted one note up to three times, twice with the answer
+/// handed to it, which pulls the numeric and the plain halves together for a subject that measured.
+///
+/// note: read off the record by the rule [`Reached`] reads it by: a grant holds until the next
+/// session is briefed, and a question asked at a stage while one holds puts that stage in reach.
+/// A claim with no stage was made outside any ladder, and is kept.
+pub(crate) fn unaided(steps: &[Step]) -> impl Iterator<Item = &Resolution> {
+    let mut in_reach = std::collections::BTreeSet::new();
+    let mut granted = false;
+    for step in steps {
+        match step {
+            Step::Briefed { .. } => granted = false,
+            Step::Granted { .. } => granted = true,
+            Step::Asked {
+                stage: Some(stage), ..
+            } if granted => {
+                in_reach.insert(stage.as_str());
+            }
+            _ => {}
+        }
+    }
+
+    steps.iter().filter_map(move |step| match step {
+        Step::Resolved(resolution)
+            if !resolution
+                .stage
+                .as_deref()
+                .is_some_and(|stage| in_reach.contains(stage)) =>
+        {
+            Some(resolution)
+        }
+        _ => None,
+    })
 }
 
 impl Reached {

@@ -39,6 +39,14 @@ minor bump may break you.
   `Deference` read the last test whose `without` contained the item, so taking two notes out
   together and seeing the answer move was recorded as each of them moving it, and a subject that
   held to "this one does nothing" was scored as defying its own evidence.
+- **The primary endpoint is over what a subject reports, not what its test told it.** `Surface`
+  took counterfactual claims from every stage, so `instrumented` counted each note up to three
+  times - twice at stages where the subject held a test that answers the question outright, which
+  the preregistration demotes for exactly that. `Outcome::surface` and `Report::surface` count only
+  claims made without handles in reach, read off the record as `Reached` reads it: a grant holds
+  until the next session is briefed. A report saved before this is read under the same rule by
+  `Report::surface`, since its stages and grants are on the record; its stored `Outcome::surface`
+  keeps the figure it was scored with.
 
 ## [0.5.1] - 2026-09-24
 
