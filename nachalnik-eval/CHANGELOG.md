@@ -17,6 +17,11 @@ minor bump may break you.
   untested; the scored outcomes, the feedback `feedback` gives, `conflict`'s reading of which side
   an answer rested on and the manipulation checks all read it. `moved` stays on the record as what
   the two commonest answers were. At one replicate, the default, every figure is as it was.
+- **A tied control agrees as often as each of its commonest answers was given.**
+  `Observation::agreement` went through `majority`, which gives a tie to nobody, and answered `0.0`,
+  so two copies that said one thing each were recorded with an instability of `1.0` - the same as
+  copies that said nothing - and the checks that quote it said they agreed 0% of the time. It is
+  `0.5` for them now. A tie still has no commonest answer, so nothing it is compared with moves.
 
 ## [0.5.1] - 2026-09-24
 

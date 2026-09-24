@@ -1,6 +1,6 @@
 //! Copies of a context, asked one question, with one thing moved.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{borrow::Cow, collections::BTreeMap, sync::Arc};
 
 use nachalnik::{Config, ContextId, ContextItem, Kernel, Projector, Provider, Snapshot};
 use serde::{Deserialize, Serialize};
@@ -325,18 +325,18 @@ impl Observation {
     /// note: Unreadable answers count in the denominator. A condition under which a third of the
     /// copies could not be read is one this crate should report as unreliable rather than as
     /// unanimous.
+    ///
+    /// note: a tie has several commonest answers and they share one count, which is what this is.
+    /// It was `0.0`, so two copies split one each read as the most instability there is.
     pub fn agreement(&self) -> f64 {
         if self.answers.is_empty() {
             return 0.0;
         }
-        let Some(majority) = self.majority() else {
-            return 0.0;
-        };
-        let agreed = self
-            .answers
-            .iter()
-            .filter(|answer| answer.key().as_deref() == Some(majority.as_str()))
-            .count();
+        let mut tally: BTreeMap<Cow<'_, str>, usize> = BTreeMap::new();
+        for key in self.answers.iter().filter_map(Answer::key) {
+            *tally.entry(key).or_default() += 1;
+        }
+        let agreed = tally.into_values().max().unwrap_or(0);
 
         rounded(agreed as f64 / self.answers.len() as f64)
     }
@@ -469,6 +469,31 @@ mod tests {
         let half =
             saying(vec![Answer::Choice("omsk".to_owned()), Answer::Unreadable]).against(&control);
         assert_eq!(half.divergence, 0.5);
+    }
+
+    /// Copies split evenly agree as often as each answer was given, rather than not at all.
+    ///
+    /// note: `agreement` went through `majority`, which gives a tie to nobody, and answered `0.0`
+    /// for it - so a control whose two copies said one thing each was reported as disagreeing with
+    /// itself completely, the same as one whose copies said nothing.
+    #[test]
+    fn a_tied_control_agrees_as_much_as_its_commonest_answers() {
+        let said = |word: &str| Answer::Choice(word.to_owned());
+
+        assert_eq!(saying(vec![said("kirov"), said("omsk")]).agreement(), 0.5);
+        assert_eq!(
+            saying(vec![said("kirov"), said("omsk"), said("ilim")]).agreement(),
+            0.333_333
+        );
+        assert_eq!(
+            saying(vec![said("kirov"), said("omsk"), Answer::Unreadable]).agreement(),
+            0.333_333
+        );
+        // and nothing readable is still no agreement at all
+        assert_eq!(
+            saying(vec![Answer::Unreadable, Answer::Cut]).agreement(),
+            0.0
+        );
     }
 
     /// A move no larger than the control's disagreement with itself is not read as a move, and
