@@ -22,6 +22,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The screen is drawn when something changed, not on every tick.** An idle session redrew
+  the whole chat eight times a second, and a streamed answer got a frame per fragment, so a
+  stream arriving faster than frames fell behind and lost events to the live view. A frame now
+  follows a key, an event - with whatever else is queued behind it - or an outcome; a tick
+  draws only for the busy line's clock, an open question, a notice, or once a second.
 - **A long chat stops redrawing every answer it holds on every frame.** The chat rendered every
   model answer's markdown, tables and highlighted code again on each frame, a keystroke or a
   streamed fragment included, which in a session of a few thousand items took longer than the

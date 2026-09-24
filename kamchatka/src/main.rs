@@ -39,9 +39,18 @@ use kamchatka::{app::Outcome, ui};
 #[cfg(feature = "tui")]
 use nachalnik::Event;
 
-/// How often the screen is redrawn when nothing at all is happening.
+/// How often the loop looks for what arrives with no event to carry it: a notice, the busy line's
+/// clock, an advisor's rating.
 #[cfg(feature = "tui")]
 const TICK: std::time::Duration = std::time::Duration::from_millis(120);
+
+/// How many ticks go by with nothing to draw before the screen is drawn anyway.
+///
+/// note: a floor under the rule that a frame is drawn only when something changed, for whatever
+/// changes without saying so. Missing one of those costs a second of a stale screen rather than a
+/// screen that waits for a key.
+#[cfg(feature = "tui")]
+const HEARTBEAT: u32 = 8;
 
 fn main() -> Result<()> {
     // before anything else, and before a runtime exists: this is the mode the `shell` tool
@@ -578,7 +587,7 @@ async fn run(
     server: Option<&mut remote::Server>,
     mut serving: Option<&mut remote::Serving>,
 ) -> Result<()> {
-    use tokio::sync::broadcast::error::RecvError;
+    use tokio::sync::broadcast::error::{RecvError, TryRecvError};
     use tokio_stream::StreamExt as _;
 
     let mut keys = EventStream::new();
@@ -586,6 +595,12 @@ async fn run(
     // raw mode makes `ctrl+c` a key, so these are the only signals this loop is sent
     let mut terminations =
         kamchatka::stopping::Terminated::new().context("could not listen for a request to end")?;
+    // note: a frame only when something changed. Drawing is the dearest thing this loop does,
+    // and drawn on every tick an idle session with a long chat kept a core busy; drawn once per
+    // event, a stream arriving faster than frames fell behind the broadcast and lost events.
+    // Every branch below but the tick can change something, so every branch but the tick says so
+    let mut stale = true;
+    let mut quiet_ticks = 0;
 
     loop {
         // before the frame, so that what a client is told and what the screen shows are one look at
@@ -593,13 +608,17 @@ async fn run(
         if let Some(serving) = &mut serving {
             serving.pump(app);
         }
-        terminal.draw(|frame| ui::draw(frame, app))?;
+        if stale {
+            terminal.draw(|frame| ui::draw(frame, app))?;
+            (stale, quiet_ticks) = (false, 0);
+        }
         // after the frame rather than before it, so the line saying what was handed over is on
         // the screen by the time the terminal has it
         if let Some(text) = app.clipboard.take()
             && let Err(why) = kamchatka::clipboard::hand_over(&text)
         {
             app.say(Speaker::Note, why);
+            stale = true;
         }
         if app.leaving() {
             return Ok(());
@@ -615,14 +634,28 @@ async fn run(
                 Some(Err(e)) => return Err(e).context("the terminal stopped talking"),
                 None => return Ok(()),
             },
-            event = events.recv() => match event {
-                Ok(event) => app.on_event(event),
-                // the screen is the live view; the session log is the one that keeps everything
-                Err(RecvError::Lagged(missed)) => app.say(
-                    Speaker::Note,
-                    format!("{missed} events went by too fast to draw; /save has them all"),
-                ),
-                Err(RecvError::Closed) => return Ok(()),
+            event = events.recv() => {
+                // with whatever else is already queued behind it, so that one frame shows all of
+                // it. Only what is queued now: a stream that keeps coming still gets a frame
+                let queued = events.len();
+                let mut event = event;
+                for _ in 0..=queued {
+                    match event {
+                        Ok(event) => app.on_event(event),
+                        // the screen is the live view; the session log is the one that keeps
+                        // everything
+                        Err(RecvError::Lagged(missed)) => app.say(
+                            Speaker::Note,
+                            format!("{missed} events went by too fast to draw; /save has them all"),
+                        ),
+                        Err(RecvError::Closed) => return Ok(()),
+                    }
+                    match events.try_recv() {
+                        Ok(next) => event = Ok(next),
+                        Err(TryRecvError::Lagged(missed)) => event = Err(RecvError::Lagged(missed)),
+                        Err(TryRecvError::Empty | TryRecvError::Closed) => break,
+                    }
+                }
             },
             Some(outcome) = finished.recv() => {
                 // the turn's last events are still in the queue behind this, and `select!` picks
@@ -692,6 +725,7 @@ async fn run(
             _ = ticks.tick() => {
                 if let Some(notice) = app.provider.take_notice() {
                     app.say(Speaker::Note, notice);
+                    stale = true;
                 }
                 // note: on the tick as well as on an event, because an advisor has things to say
                 // when nothing is happening - a local one loads a checkpoint before the first
@@ -699,9 +733,17 @@ async fn run(
                 #[cfg(feature = "shell-advisor")]
                 if let Some(notice) = app.advisor.as_ref().and_then(|advised| advised.notice()) {
                     app.say(Speaker::Note, notice);
+                    stale = true;
                 }
+                // the two things on the screen that move with nothing to announce them: the busy
+                // line's clock, and a question's rating, which the advisor writes from a task of
+                // its own
+                quiet_ticks += 1;
+                stale |= app.busy || app.asking() || quiet_ticks >= HEARTBEAT;
+                continue;
             }
         }
+        stale = true;
     }
 }
 
