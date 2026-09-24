@@ -710,8 +710,12 @@ async fn a_provider_that_watches_stops_a_request_in_flight() {
     );
 }
 
-/// A tool that notices it is not wanted and returns what it has.
-struct Diligent;
+/// A tool that notices it is not wanted and returns what it has. Halfway through it says so and
+/// waits to be let go, so that a stop can be asked for while it is running.
+struct Diligent {
+    halfway: Arc<tokio::sync::Notify>,
+    go_on: Arc<tokio::sync::Notify>,
+}
 
 #[async_trait]
 impl nachalnik::Tool for Diligent {
@@ -726,6 +730,10 @@ impl nachalnik::Tool for Diligent {
     ) -> Result<nachalnik::ToolOutput, BoxError> {
         let mut done = String::new();
         for n in 0..10 {
+            if n == 5 {
+                self.halfway.notify_one();
+                self.go_on.notified().await;
+            }
             if output.is_interrupted() {
                 return Ok(nachalnik::ToolOutput::new(format!("{done}[stopped]")));
             }
@@ -759,22 +767,28 @@ impl nachalnik::Tool for Stopper {
 #[tokio::test]
 async fn a_tool_that_watches_stops_partway_and_still_answers_its_call() {
     let (kernel, _) = permissive([
-        ModelResponse::tool_calls(vec![
-            call("c1", "stop", json!({})),
-            call("c2", "count", json!({})),
-        ]),
+        ModelResponse::tool_calls(vec![call("c1", "count", json!({}))]),
         ModelResponse::text("never asked"),
     ]);
-    let stopper = Arc::new(Stopper(std::sync::OnceLock::new()));
-    assert!(stopper.0.set(kernel.clone()).is_ok(), "set once");
-    kernel.add_tool(stopper);
-    kernel.add_tool(Arc::new(Diligent));
+    let (halfway, go_on) = (
+        Arc::new(tokio::sync::Notify::new()),
+        Arc::new(tokio::sync::Notify::new()),
+    );
+    kernel.add_tool(Arc::new(Diligent {
+        halfway: halfway.clone(),
+        go_on: go_on.clone(),
+    }));
     kernel.push(ContextItem::user("go"));
-
-    // the first call presses the button; the second one starts anyway, because the kernel only
-    // skips the calls it has not begun - and this one notices for itself
     assert!(matches!(kernel.step().await.unwrap(), State::Ready { .. }));
-    assert_eq!(kernel.step().await.unwrap(), State::Idle);
+
+    // the button is pressed while the call is running, which the kernel can do nothing about
+    // because it only skips the calls it has not begun - so this one has to notice for itself
+    let (state, ()) = tokio::join!(kernel.step(), async {
+        halfway.notified().await;
+        kernel.interrupt();
+        go_on.notify_one();
+    });
+    assert_eq!(state.unwrap(), State::Idle);
 
     let results: Vec<String> = kernel
         .items()
@@ -783,12 +797,10 @@ async fn a_tool_that_watches_stops_partway_and_still_answers_its_call() {
         .map(|item| item.content.to_text().into_owned())
         .collect();
     assert_eq!(
-        results.len(),
-        2,
-        "every call is answered, however it ended: {results:?}"
+        results,
+        ["01234[stopped]"],
+        "the call is answered with what the tool had when it stopped"
     );
-
-    kernel.remove_tool("stop");
 }
 
 #[tokio::test]
