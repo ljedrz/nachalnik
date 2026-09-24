@@ -616,6 +616,14 @@ async fn this_crates_provider_can_do_a_tool_call() {
     println!("  state: {state:?}");
     println!("  said:  {}", answer(&app).trim().replace('\n', " "));
     assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    // and the call was made, which is what the name says: a model that answered without it
+    // finishes a turn just the same
+    assert!(
+        kernel.items().iter().any(
+            |item| matches!(&item.kind, ContextKind::ToolResult { tool, .. } if tool == "secret")
+        ),
+        "the turn finished without calling the tool"
+    );
 }
 
 /// `/models` asks the endpoint what it serves, because the ids are the endpoint's own and
