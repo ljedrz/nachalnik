@@ -22,6 +22,9 @@ minor bump may break you.
   points at `tool:fs`, and the tool's description and the selector help say it too.
 - **`fs` called with no `action` says it has none.** It answered "`nothing` is not something `fs`
   does", naming a word nobody sent.
+- **An argument that is not text is refused as what it is, not as missing.** An `action` sent as a
+  list, or a `path` sent as a number, was answered "the `action` argument is required" - about a
+  call that had one. The refusal now names what arrived.
 - **A served session no longer tells its clients how the host answers questions.** With no screen,
   `--serve` said the headless opening into the conversation, so every client that attached read
   that a question nobody can be asked is answered `deny` - the host's `--on-ask`, which a served

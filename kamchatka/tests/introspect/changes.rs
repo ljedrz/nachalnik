@@ -1756,3 +1756,28 @@ async fn a_select_that_is_not_a_string_is_refused_and_an_empty_file_one_says_why
         said[2]
     );
 }
+
+/// An `action` that is not a string is refused as what it is, not as missing.
+///
+/// note: `the \`action\` argument is required`, said about a call that has one, sends a model to
+/// add an argument it already wrote rather than to fix the one it got wrong.
+#[tokio::test]
+async fn an_action_that_is_not_a_string_is_not_called_missing() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": ["note", "the answer is 42"], "reason": "remember it" }),
+        ),
+        call("c2", "context", json!({ "reason": "remember it" })),
+    ]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(said[0].contains("a list"), "{}", said[0]);
+    assert!(said[0].contains("nothing was done"), "{}", said[0]);
+    assert!(!said[0].contains("required"), "{}", said[0]);
+    assert!(said[1].contains("is required"), "{}", said[1]);
+}

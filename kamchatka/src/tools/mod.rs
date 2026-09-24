@@ -75,11 +75,32 @@ pub mod domains {
 
 use crate::tools::search::Looking;
 
-/// Reads the named argument, or explains which one is missing.
+/// Reads the named argument, or explains which one is missing or what arrived instead.
+///
+/// note: a value that is not text is refused as what it is rather than as missing. Told the
+/// argument is required, a model that wrote one goes looking for an argument it did not leave out.
 fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
-    args[name]
-        .as_str()
-        .ok_or_else(|| format!("the `{name}` argument is required").into())
+    match &args[name] {
+        Value::String(text) => Ok(text),
+        Value::Null => Err(format!("the `{name}` argument is required").into()),
+        other => Err(format!(
+            "`{name}` is text, and this one is {}; nothing was done",
+            what(other)
+        )
+        .into()),
+    }
+}
+
+/// What kind of JSON value arrived, for a refusal that names it without copying it back.
+pub(crate) fn what(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "`true` or `false`",
+        Value::Number(_) => "a number",
+        Value::String(_) => "text",
+        Value::Array(_) => "a list",
+        Value::Object(_) => "an object",
+    }
 }
 
 /// A whole number argument, what was left out, or what was passed where one belonged.
@@ -337,4 +358,26 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
         Arc::new(fs::Fs::new(reach, looking, limits)),
         Arc::new(shell),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::arg;
+
+    /// A text argument that arrived as something else is refused as that, not as missing.
+    #[test]
+    fn an_argument_that_is_not_text_is_not_called_missing() {
+        let wrong = arg(&json!({ "path": 7 }), "path").expect_err("a number is not a path");
+        assert_eq!(
+            wrong.to_string(),
+            "`path` is text, and this one is a number; nothing was done"
+        );
+
+        let missing = arg(&json!({}), "path").expect_err("nothing is not a path");
+        assert_eq!(missing.to_string(), "the `path` argument is required");
+
+        assert_eq!(arg(&json!({ "path": "a.rs" }), "path").ok(), Some("a.rs"));
+    }
 }

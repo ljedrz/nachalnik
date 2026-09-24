@@ -140,11 +140,19 @@ pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> Str
     }
 }
 
-/// The action the call names, or the fact that it names none.
+/// The action the call names, or the fact that it names none or names it with something else.
+///
+/// note: one that is not a string is refused as what it is, for the reason `tools::arg` gives.
 fn action(args: &Value) -> Result<&str, BoxError> {
-    args["action"]
-        .as_str()
-        .ok_or_else(|| "the `action` argument is required".into())
+    match &args["action"] {
+        Value::String(named) => Ok(named),
+        Value::Null => Err("the `action` argument is required".into()),
+        other => Err(format!(
+            "`action` is one word, and this one is {}; nothing was done",
+            crate::tools::what(other)
+        )
+        .into()),
+    }
 }
 
 /// What to say about an action nobody implements.
