@@ -102,17 +102,32 @@ impl Compactor for Summarizer {
             tools: Vec::new(),
             params: Params::new(),
         };
-        let summary = self
+        // note: a summarizer that fails is not a reason to leave the context over its limit. The
+        // results are elided without one, and the reason says so - elided is not destroyed, so
+        // nothing is lost that `restore` cannot bring back
+        let (summary, missing) = match self
             .provider
             .respond(request, DeltaSink::disconnected())
             .await
-            .ok()?
-            .content?;
+        {
+            Ok(ModelResponse {
+                content: Some(said),
+                ..
+            }) => (Some(ContextItem::summary(said)), String::new()),
+            Ok(_) => (
+                None,
+                "; no summary, because the summarizer said nothing".to_owned(),
+            ),
+            Err(e) => (
+                None,
+                format!("; no summary, because the summarizer failed: {e}"),
+            ),
+        };
 
         Some(CompactionPlan {
-            summary: Some(ContextItem::summary(summary)),
+            summary,
             reason: format!(
-                "the context reached {}% of the {}-token limit",
+                "the context reached {}% of the {}-token limit{missing}",
                 (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
                 budget.limit.unwrap_or_default(),
             ),
