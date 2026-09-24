@@ -11,7 +11,7 @@ use rmcp::{RoleClient, ServiceExt, service::RunningService, transport::IntoTrans
 
 use crate::{
     Error, Result,
-    tool::{McpTool, Trust, spec_of, tool_id},
+    tool::{McpTool, Trust, spec_of, text_of, tool_id},
 };
 
 /// The most pages one listing reads, of tools or of resources; see `Server::tools` and
@@ -278,21 +278,15 @@ impl Server {
             let parts: Vec<(bool, String)> = read
                 .contents
                 .iter()
-                .map(|content| {
-                    let value = serde_json::to_value(content).unwrap_or_default();
-                    match value.get("text").and_then(serde_json::Value::as_str) {
-                        Some(text) => (true, text.to_owned()),
-                        None => (
-                            false,
-                            format!(
-                                "[a part with no text ({}), not carried into the context]",
-                                value
-                                    .get("mimeType")
-                                    .and_then(serde_json::Value::as_str)
-                                    .unwrap_or("no media type given")
-                            ),
+                .map(|content| match text_of(content) {
+                    Ok(text) => (true, text.to_owned()),
+                    Err(media) => (
+                        false,
+                        format!(
+                            "[a part with no text ({}), not carried into the context]",
+                            media.unwrap_or("no media type given")
                         ),
-                    }
+                    ),
                 })
                 .collect();
             let text: Vec<String> = match parts.iter().any(|(text, _)| *text) {

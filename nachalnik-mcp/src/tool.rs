@@ -16,7 +16,7 @@ use rmcp::{
     RoleClient,
     model::{
         CallToolRequest, CallToolRequestParams, CallToolResult, ClientRequest, ContentBlock,
-        ServerResult, ToolAnnotations,
+        ResourceContents, ServerResult, ToolAnnotations,
     },
     service::{Peer, PeerRequestOptions},
 };
@@ -241,9 +241,12 @@ fn output_of(result: CallToolResult) -> ToolOutput {
                     audio.mime_type
                 )
             }
-            ContentBlock::Resource(resource) => match embedded_text(resource) {
-                Some(text) => text,
-                None => "[an embedded resource, not carried into the context]".to_owned(),
+            ContentBlock::Resource(resource) => match text_of(&resource.resource) {
+                Ok(text) => text.to_owned(),
+                Err(media) => format!(
+                    "[an embedded resource ({}), not carried into the context]",
+                    media.unwrap_or("no media type given")
+                ),
             },
             ContentBlock::ResourceLink(link) => format!("[a resource: {}]", link.uri),
             // `ContentBlock` is `#[non_exhaustive]`: a kind of content this crate has not heard
@@ -265,11 +268,19 @@ fn output_of(result: CallToolResult) -> ToolOutput {
     }
 }
 
-/// The text of an embedded resource, if it has any.
-fn embedded_text(resource: &rmcp::model::EmbeddedResource) -> Option<String> {
-    match serde_json::to_value(&resource.resource).ok()? {
-        Value::Object(map) => map.get("text")?.as_str().map(str::to_owned),
-        _ => None,
+/// The text of one part of a resource, or the media type of a part that has none.
+///
+/// note: one reading for both places a resource arrives - embedded in a call's result, and read
+/// on its own by `Server::resources` - so that the two say the same of the same part. Matched on
+/// the type rather than read out of its JSON, which copied the whole of a blob to find that it
+/// had no text.
+pub(crate) fn text_of(contents: &ResourceContents) -> Result<&str, Option<&str>> {
+    match contents {
+        ResourceContents::TextResourceContents { text, .. } => Ok(text),
+        ResourceContents::BlobResourceContents { mime_type, .. } => Err(mime_type.as_deref()),
+        // `#[non_exhaustive]`: a kind of part this crate has not heard of is one with no text it
+        // can read, rather than one that vanishes
+        _ => Err(None),
     }
 }
 

@@ -26,6 +26,10 @@ minor bump may break you.
 
 ### changed
 
+- **An embedded resource with no text names its media type**, as a resource read on its own
+  already did: "[an embedded resource (application/pdf), not carried into the context]". The two
+  read a resource's parts through one function now, by type rather than through its JSON, which
+  copied the whole of a blob to find it had no text.
 - **What a failed call says is what happened.** A call that could not be sent - the connection
   gone - said the server "refused" it, which sends a model looking for what it did wrong; it
   says the call could not be sent. An interrupted call said the server "was told to stop" whether

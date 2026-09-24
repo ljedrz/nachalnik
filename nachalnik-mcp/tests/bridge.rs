@@ -99,10 +99,13 @@ impl ServerHandler for Bench {
             }
             "counts" => CallToolResult::structured(json!({ "files": 3, "ok": true })),
             "explodes" => CallToolResult::error(vec![ContentBlock::text("it blew up")]),
-            "draws" => CallToolResult::success(vec![ContentBlock::image(
-                "aGVsbG8=".to_owned(),
-                "image/png".to_owned(),
-            )]),
+            "draws" => CallToolResult::success(vec![
+                ContentBlock::image("aGVsbG8=".to_owned(), "image/png".to_owned()),
+                ContentBlock::resource(
+                    ResourceContents::blob("JVBERi0=", "file:///report.pdf")
+                        .with_mime_type("application/pdf"),
+                ),
+            ]),
             other => return Err(ErrorData::invalid_params(format!("no tool {other}"), None)),
         };
 
@@ -438,6 +441,8 @@ async fn content_that_cannot_be_text_is_named_rather_than_dropped() {
         text.contains("not carried into the context"),
         "a gap would be worse than a sentence saying what is missing: {text}"
     );
+    // and an embedded resource says what it was, as one read on its own does
+    assert!(text.contains("application/pdf"), "{text}");
 }
 
 #[tokio::test]
