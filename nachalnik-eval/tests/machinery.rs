@@ -7,9 +7,9 @@
 
 use nachalnik::{Config, ContextId, ContextItem, ContextState, Kernel, ModelInfo, StopReason};
 use nachalnik_eval::{
-    Act, Answer, Cohort, Deference, Experiment, Faced, Instrument, Intervention, Kind, Paired,
-    Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step, Subject, Surface, per_model,
-    suite,
+    Act, Answer, Cohort, Deference, Error, ErrorKind, Experiment, Faced, Failure, Instrument,
+    Intervention, Kind, Paired, Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step,
+    Subject, Surface, per_model, suite,
     suite::dossier::{ALL as ALL_DOSSIERS, DEPOT, Expected, MILL},
     suite::{ERRANDS, LISTING, PLANTED, RIFTS},
 };
@@ -1366,6 +1366,28 @@ fn report_of(model: &str, at: u64, measured: bool) -> Report {
     });
 
     serde_json::from_value(json).expect("a report round-trips from its own shape")
+}
+
+#[test]
+fn a_failure_says_which_error_it_was_and_an_old_one_still_reads() {
+    // note: `Outcome::failed` was the message alone, so a sweep telling a provider that fell over
+    // from a subject that ran out of requests had to read the words
+    let kept = Failure::from(&Error::Exhausted);
+    assert_eq!(kept.kind, ErrorKind::Exhausted);
+    let written = serde_json::to_value(&kept).unwrap();
+    assert_eq!(serde_json::from_value::<Failure>(written).unwrap(), kept);
+
+    // a report from before kinds were kept holds a string, and one from a later version may name
+    // a kind this one has never heard of: both read, and say they do not know
+    let old: Failure =
+        serde_json::from_value(serde_json::json!("the runtime failed: 503")).unwrap();
+    assert_eq!(old.kind, ErrorKind::Unknown);
+    assert_eq!(old.to_string(), "the runtime failed: 503");
+    let later: Failure = serde_json::from_value(
+        serde_json::json!({ "kind": "melted", "message": "the endpoint melted" }),
+    )
+    .unwrap();
+    assert_eq!(later.kind, ErrorKind::Unknown);
 }
 
 #[test]
