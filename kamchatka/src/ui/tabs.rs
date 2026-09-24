@@ -12,6 +12,8 @@
 //! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
 //! a screenful of it buries the one line that says what can happen without stopping.
 
+use std::{cell::Cell, collections::HashMap};
+
 use nachalnik::{ContextId, ContextItem, ContextKind, ContextState, Verdict};
 use ratatui::{
     Frame,
@@ -60,6 +62,9 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         .filter(|item| item.calls().any(|call| waiting.contains(&call.id)))
         .map(|item| item.id)
         .collect();
+    // what the answers came to on the last frame, and what they come to on this one; see `Drawn`
+    let mut kept = DRAWN.take().at(width);
+    let mut fresh = HashMap::new();
     for said in app.conversation(&items, going) {
         let item = said.item;
 
@@ -126,51 +131,16 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         // is whatever the tool said, and running it through a renderer would be inventing
         // structure the tool did not put there
         if speaker == Speaker::Model {
-            let split = chunks(&said);
-            let last = split.len().saturating_sub(1);
-            for (nth, chunk) in split.into_iter().enumerate() {
-                // a fenced block gets a rule down its left rather than a slab of background,
-                // which is the one thing a terminal cannot do without knowing the theme - and its
-                // tokens in colours chosen the same way
-                let prose = match chunk {
-                    // a fixed shape, laid out to the window rather than to its contents; see
-                    // `draw_table`
-                    Chunk::Table(block) => {
-                        if let Some(parsed) = table(block) {
-                            separate(&mut lines);
-                            lines.extend(draw_table(&parsed, width));
-                            if nth < last {
-                                separate(&mut lines);
-                            }
-                            continue;
-                        }
-                        block
-                    }
-                    Chunk::Code { language, body } => {
-                        // a blank line either side, where the markdown renderer would have put
-                        // one had it drawn the block
-                        separate(&mut lines);
-                        lines.extend(highlighted(language, body, width));
-                        if nth < last {
-                            separate(&mut lines);
-                        }
-                        continue;
-                    }
-                    Chunk::Prose(prose) => prose,
-                };
-
-                for line in tui_markdown::from_str_with_options(prose, &markdown()).lines {
-                    // an *indented* block still arrives this way; the fenced ones never reach here
-                    match line.style == Markdown.code() {
-                        true => lines.extend(gutter(&line, width)),
-                        false => match rule(&line) {
-                            // a horizontal rule, drawn rather than spelled `---`
-                            true => lines.push(Line::styled("─".repeat(width), faint())),
-                            false => lines.extend(refit(&line, width)),
-                        },
-                    }
+            let answer = match fresh.get(said.as_ref()) {
+                Some(answer) => answer,
+                None => {
+                    let (text, answer) = kept
+                        .remove_entry(said.as_ref())
+                        .unwrap_or_else(|| (said.to_string(), answer(&said, width)));
+                    fresh.entry(text).or_insert(answer)
                 }
-            }
+            };
+            lines.extend(answer.iter().cloned());
             lines.push(Line::default());
             continue;
         }
@@ -219,6 +189,11 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         lines.push(Line::default());
     }
 
+    DRAWN.set(Drawn {
+        width,
+        answers: fresh,
+    });
+
     // what the last frame measured is what the scrolling keys are working against
     app.rendered = lines.len();
     app.viewport = inner.height as usize;
@@ -235,6 +210,96 @@ pub(super) fn draw_chat(frame: &mut Frame, app: &mut App, going: &Going, inner: 
         position: at,
         total,
         area: inner,
+    }
+}
+
+/// The model's answers as the last frame drew them, and the width it drew them at.
+///
+/// note: kept from one frame to the next because an answer - its markdown, its tables and above
+/// all its highlighted code - is the dearest thing on the chat to draw, and on nearly every frame
+/// it is the same as it was. Held by the text rather than by the item, so an answer still arriving
+/// is drawn afresh as it grows, and dropped when a frame does not draw it.
+#[derive(Default)]
+struct Drawn {
+    width: usize,
+    answers: HashMap<String, Vec<Line<'static>>>,
+}
+
+impl Drawn {
+    /// What is kept for a frame of this width: all of it, or nothing if the width changed.
+    fn at(self, width: usize) -> HashMap<String, Vec<Line<'static>>> {
+        match self.width == width {
+            true => self.answers,
+            false => HashMap::new(),
+        }
+    }
+}
+
+thread_local! {
+    static DRAWN: Cell<Drawn> = Cell::default();
+}
+
+/// A model's answer, drawn: its markdown rendered, its tables laid out and its code highlighted.
+fn answer(said: &str, width: usize) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    let split = chunks(said);
+    let last = split.len().saturating_sub(1);
+    for (nth, chunk) in split.into_iter().enumerate() {
+        // a fenced block gets a rule down its left rather than a slab of background,
+        // which is the one thing a terminal cannot do without knowing the theme - and its
+        // tokens in colours chosen the same way
+        let prose = match chunk {
+            // a fixed shape, laid out to the window rather than to its contents; see
+            // `draw_table`
+            Chunk::Table(block) => {
+                if let Some(parsed) = table(block) {
+                    separate(&mut lines);
+                    lines.extend(draw_table(&parsed, width));
+                    if nth < last {
+                        separate(&mut lines);
+                    }
+                    continue;
+                }
+                block
+            }
+            Chunk::Code { language, body } => {
+                // a blank line either side, where the markdown renderer would have put
+                // one had it drawn the block
+                separate(&mut lines);
+                lines.extend(highlighted(language, body, width));
+                if nth < last {
+                    separate(&mut lines);
+                }
+                continue;
+            }
+            Chunk::Prose(prose) => prose,
+        };
+
+        for line in tui_markdown::from_str_with_options(prose, &markdown()).lines {
+            // an *indented* block still arrives this way; the fenced ones never reach here
+            match line.style == Markdown.code() {
+                true => lines.extend(gutter(&line, width).into_iter().map(owned)),
+                false => match rule(&line) {
+                    // a horizontal rule, drawn rather than spelled `---`
+                    true => lines.push(Line::styled("─".repeat(width), faint())),
+                    false => lines.extend(refit(&line, width).into_iter().map(owned)),
+                },
+            }
+        }
+    }
+    lines
+}
+
+/// A line that owns its words, to be kept past the text it was drawn from.
+fn owned(line: Line<'_>) -> Line<'static> {
+    Line {
+        spans: line
+            .spans
+            .into_iter()
+            .map(|span| Span::styled(span.content.into_owned(), span.style))
+            .collect(),
+        style: line.style,
+        alignment: line.alignment,
     }
 }
 

@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A long chat stops redrawing every answer it holds on every frame.** The chat rendered every
+  model answer's markdown, tables and highlighted code again on each frame, a keystroke or a
+  streamed fragment included, which in a session of a few thousand items took longer than the
+  frame. An answer is drawn once for the width it is shown at and kept while it is on the chat.
 - **A chat past 65,535 rows still shows its end.** The scroll offset went to the terminal
   library as a 16-bit number, which wraps, so a long enough session following its newest line
   showed rows from near its beginning. The chat, the trace, a question's arguments and the
