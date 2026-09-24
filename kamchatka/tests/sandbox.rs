@@ -705,11 +705,12 @@ async fn a_stopped_command_stops_and_says_so_at_once() {
         &dir,
         [
             // three processes: the shell, what it is waiting on, and one of its own that would
-            // outlive it. The file is how a command that carried on regardless says so afterwards
+            // outlive it. `carried-on.txt` is how a command that carried on regardless says so
+            // afterwards, and `started.txt` says all three are there to be stopped
             ModelResponse::tool_calls(vec![call(
                 "1",
                 "shell",
-                json!({ "cmd": "(sleep 2; touch carried-on.txt) & sleep 20" }),
+                json!({ "cmd": "(sleep 2; touch carried-on.txt) & touch started.txt; sleep 20" }),
             )]),
             ModelResponse::text("stopped"),
         ],
@@ -720,8 +721,16 @@ async fn a_stopped_command_stops_and_says_so_at_once() {
         let kernel = kernel.clone();
         async move { kernel.turn().await }
     });
-    // long enough for the call to have been decided and the command to be running
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    // an interrupt before the command is running stops nothing, and would pass for one that
+    // stopped everything
+    let waited = std::time::Instant::now();
+    while !dir.join("started.txt").exists() {
+        assert!(
+            waited.elapsed() < Duration::from_secs(10),
+            "the command never started"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     kernel.interrupt();
 
     tokio::time::timeout(Duration::from_secs(5), running)
