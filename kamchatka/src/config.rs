@@ -72,7 +72,8 @@ pub struct Settings {
     /// key - a settings file asking for `contxt` and quietly getting a session with no context
     /// tool is the failure worth naming.
     pub tools: Option<Vec<String>>,
-    /// Whether to run the `shell` tool unconfined.
+    /// Whether to run with no confinement at all, as `--no-sandbox` does: the shell unconfined,
+    /// and `fs` no longer held to the working directory.
     pub no_sandbox: Option<bool>,
     /// Paths outside the working directory the tools may also read and write.
     pub sandbox_allow: Option<Vec<PathBuf>>,
