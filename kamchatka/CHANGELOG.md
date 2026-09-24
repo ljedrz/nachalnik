@@ -30,6 +30,8 @@ minor bump may break you.
 
 ### fixed
 
+- **A confined command whose temporary directory could not be made is given no `TMPDIR`**, as
+  documented, rather than the directory it could not be made in.
 - **An `undo` of several steps can walk past a pin it put back itself.** Which pins were the
   model's was read once before the walk, so walking back a `pin` and the `restore` after it
   stopped halfway, left the item pinned, and called the model's own pin the person's.

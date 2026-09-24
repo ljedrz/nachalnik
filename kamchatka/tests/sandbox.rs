@@ -312,6 +312,34 @@ fn a_command_cannot_write_outside_it() {
     assert!(said_tmp.contains("scratch"), "{said_tmp}");
 }
 
+/// A command whose temporary directory could not be made is given no `TMPDIR`, rather than the one
+/// it could not be made in.
+#[test]
+fn a_command_with_no_temporary_directory_is_given_no_tmpdir() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    if !enforced() {
+        return;
+    }
+    let closed = common::scratch("closed-tmpdir");
+    std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o500)).expect("closed");
+    if std::fs::create_dir(closed.join("probe")).is_ok() {
+        eprintln!("skipped: a directory this cannot write in is one root can");
+        return;
+    }
+
+    let output = Command::new(program())
+        .args(sandbox(workdir("no-tmpdir"), true, false).argv("printf %s \"${TMPDIR-none}\""))
+        .env("TMPDIR", &closed)
+        .output()
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&output.stdout);
+    std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o700)).expect("reopened");
+
+    assert!(output.status.success(), "{said}");
+    assert_eq!(said, "none");
+}
+
 /// Truncation is a write, and it does not go through `open`.
 ///
 /// note: `truncate(2)` takes a path and never opens the file, so `WriteFile` does not cover it -

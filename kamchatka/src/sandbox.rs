@@ -1336,9 +1336,13 @@ pub fn run_if_asked() -> Option<i32> {
 
     let mut command = std::process::Command::new("sh");
     command.arg("-c").arg(&cmd).current_dir(&sandbox.workdir);
-    if let Some(scratch) = &scratch {
-        command.env("TMPDIR", scratch);
-    }
+    // note: and taken away where there is none, as `make_scratch` says. What this program was
+    // handed is the directory the scratch could not be made in, and passing it on would tell the
+    // command it has somewhere to write where it most likely has not
+    match &scratch {
+        Some(scratch) => command.env("TMPDIR", scratch),
+        None => command.env_remove("TMPDIR"),
+    };
     // note: a ruleset is in force here - an unconfined run has already returned - and that is the
     // only case this is for. Unconfined, git can read its own configuration, and pointing it
     // elsewhere would take a person's identity and aliases away for nothing
