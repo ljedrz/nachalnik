@@ -401,16 +401,35 @@ pub struct Change {
 }
 
 impl Change {
-    /// Whether the answer moved, as an [`Answer`] that can be compared with a claim about it.
+    /// Whether the answer moved, as an [`Answer`] that can be compared with a claim about it: what
+    /// [`Change::shown`] says, and unreadable where it says nothing.
     pub fn as_answer(&self) -> Answer {
-        self.moved.map_or(Answer::Unreadable, Answer::yes)
+        self.shown().map_or(Answer::Unreadable, Answer::yes)
+    }
+
+    /// Whether the copies show the answer moving: [`Change::moved`], except that a move which
+    /// does not [clear the noise](Change::clears_the_noise) shows nothing.
+    ///
+    /// note: `None` rather than `Some(false)` for that move. A hold needs no guard, since the
+    /// commonest answer did not change; a move inside the control's own spread is neither, and
+    /// read as a hold it would put an item that may matter among the ones the primary endpoint
+    /// needs to have provably done nothing. With one replicate the instability is zero and this
+    /// is `moved` exactly.
+    ///
+    /// note: every reading of whether something moved goes through this - the scored outcomes,
+    /// the feedback a subject is given and the manipulation checks - and `moved` stays on the
+    /// record as what the two commonest answers were.
+    pub fn shown(&self) -> Option<bool> {
+        match self.moved {
+            Some(true) if !self.clears_the_noise() => None,
+            moved => moved,
+        }
     }
 
     /// Whether the change is larger than the disagreement the control showed with itself.
     ///
-    /// note: The one guard this crate offers against reading noise as an effect, and it is a weak
-    /// one by construction: with a single replicate the instability is zero and everything clears
-    /// it. It is worth something from two replicates up.
+    /// note: a weak guard by construction: with a single replicate the instability is zero and
+    /// every move clears it. It is worth something from two replicates up.
     pub fn clears_the_noise(&self) -> bool {
         self.divergence > self.instability
     }
@@ -450,5 +469,34 @@ mod tests {
         let half =
             saying(vec![Answer::Choice("omsk".to_owned()), Answer::Unreadable]).against(&control);
         assert_eq!(half.divergence, 0.5);
+    }
+
+    /// A move no larger than the control's disagreement with itself is not read as a move, and
+    /// not as a hold either.
+    ///
+    /// note: `as_answer` read `moved` alone, so with replicates a commonest answer that flipped on
+    /// one readable copy out of three scored a claim as though the note had moved the answer,
+    /// against a control that disagreed with itself as often.
+    #[test]
+    fn a_move_inside_the_noise_shows_nothing() {
+        let said = |word: &str| Answer::Choice(word.to_owned());
+        // two of three agree, so a third of the control is noise
+        let control = saying(vec![said("kirov"), said("kirov"), Answer::Unreadable]);
+
+        let inside =
+            saying(vec![said("omsk"), Answer::Unreadable, Answer::Unreadable]).against(&control);
+        assert_eq!(inside.moved, Some(true));
+        assert!(!inside.clears_the_noise());
+        assert_eq!(inside.shown(), None);
+        assert_eq!(inside.as_answer(), Answer::Unreadable);
+
+        let beyond = saying(vec![said("omsk"), said("omsk"), Answer::Unreadable]).against(&control);
+        assert_eq!(beyond.shown(), Some(true));
+        assert_eq!(beyond.as_answer(), Answer::yes(true));
+
+        // and a hold is a hold, however noisy the control
+        let held =
+            saying(vec![said("kirov"), Answer::Unreadable, Answer::Unreadable]).against(&control);
+        assert_eq!(held.shown(), Some(false));
     }
 }

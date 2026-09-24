@@ -507,9 +507,9 @@ impl Experiment for Conflict {
 
         // which side the answer was actually made of is a measurement here rather than a design
         // decision, and it is only readable where exactly one of the two ablations moved anything
-        match (on_rift.moved, on_disputed.moved) {
+        match (on_rift.shown(), on_disputed.shown()) {
             (Some(true), Some(false)) | (Some(false), Some(true)) => {
-                let (carried, item) = match on_rift.moved == Some(true) {
+                let (carried, item) = match on_rift.shown() == Some(true) {
                     true => (self.rift.label, rift.id),
                     false => (self.rift.against, disputed),
                 };

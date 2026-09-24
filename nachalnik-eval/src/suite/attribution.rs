@@ -249,7 +249,7 @@ impl Attribution {
         // subject has measured nothing about its self-knowledge
         let moved: Vec<&str> = measured
             .iter()
-            .filter(|(_, _, change)| change.moved == Some(true))
+            .filter(|(_, _, change)| change.shown() == Some(true))
             .map(|(label, ..)| label.as_str())
             .collect();
         trial.check(
@@ -286,7 +286,7 @@ impl Attribution {
         for note in dossier.notes {
             if let Some((_, _, change)) = measured.iter().find(|(label, ..)| label == note.label) {
                 let expected = matches!(note.expected, Expected::Moves);
-                if change.moved == Some(!expected) {
+                if change.shown() == Some(!expected) {
                     trial.note(format!(
                         "the dossier expected `{}` to {}, and it did not",
                         note.label,
@@ -418,9 +418,17 @@ impl Experiment for Attribution {
 }
 
 /// The notes whose removal moved the answer furthest, when any of them did.
+///
+/// note: only a change that clears the noise can lead. Ranked on divergence alone, a note whose
+/// removal moved the copies no more than the control moves itself could be the one the subject
+/// was scored against.
 fn leaders(measured: &[(String, ContextId, Change)]) -> Option<Vec<String>> {
-    let most = measured
-        .iter()
+    let clear = || {
+        measured
+            .iter()
+            .filter(|(_, _, change)| change.clears_the_noise())
+    };
+    let most = clear()
         .map(|(_, _, change)| change.divergence)
         .fold(0.0f64, f64::max);
     if most <= 0.0 {
@@ -428,8 +436,7 @@ fn leaders(measured: &[(String, ContextId, Change)]) -> Option<Vec<String>> {
     }
 
     Some(
-        measured
-            .iter()
+        clear()
             .filter(|(_, _, change)| change.divergence >= most)
             .map(|(label, ..)| label.clone())
             .collect(),
@@ -450,4 +457,45 @@ fn ranking(measured: &[(String, ContextId, Change)]) -> String {
         .map(|(label, _, change)| format!("{label} {:.2}", change.divergence))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn change(divergence: f64, instability: f64) -> Change {
+        Change {
+            before: Some("kirov".to_owned()),
+            after: Some("omsk".to_owned()),
+            moved: Some(true),
+            divergence,
+            instability,
+        }
+    }
+
+    /// The note the subject is scored against is one whose removal moved the copies by more than
+    /// the control moved itself.
+    ///
+    /// note: `leaders` took the largest divergence whatever the noise, so with replicates a note
+    /// that moved one copy in three against a control that disagreed with itself as often was the
+    /// one a subject had to have named.
+    #[test]
+    fn a_change_inside_the_noise_does_not_lead() {
+        let noisy = [
+            (
+                "records/capacity".to_owned(),
+                ContextId(2),
+                change(0.5, 0.5),
+            ),
+            ("records/rail".to_owned(), ContextId(3), change(0.34, 0.0)),
+        ];
+        assert_eq!(leaders(&noisy), Some(vec!["records/rail".to_owned()]));
+
+        let all_noise = [(
+            "records/capacity".to_owned(),
+            ContextId(2),
+            change(0.5, 0.5),
+        )];
+        assert_eq!(leaders(&all_noise), None);
+    }
 }

@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A move inside the control's own noise is not read as one.** `Change::as_answer` read `moved`
+  alone and `Attribution` ranked notes on divergence whatever the noise, so with replicates a
+  commonest answer that flipped on one readable copy in three scored a claim as though the note
+  had moved the answer, against a control that disagreed with itself as often. `Change::shown` is
+  `moved` where the change clears the noise and nothing where it does not, so such a claim is
+  untested; the scored outcomes, the feedback `feedback` gives, `conflict`'s reading of which side
+  an answer rested on and the manipulation checks all read it. `moved` stays on the record as what
+  the two commonest answers were. At one replicate, the default, every figure is as it was.
+
 ## [0.5.1] - 2026-09-24
 
 ### fixed

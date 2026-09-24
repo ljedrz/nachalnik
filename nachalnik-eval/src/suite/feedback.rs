@@ -180,7 +180,7 @@ impl Feedback {
             verdicts.push(Verdict {
                 label: (*label).to_owned(),
                 said: claim,
-                moved: change.moved,
+                moved: change.shown(),
                 correct: resolution.correct,
                 measured: resolution.measured,
             });
