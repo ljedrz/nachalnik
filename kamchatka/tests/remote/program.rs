@@ -1168,22 +1168,27 @@ async fn the_trace_goes_out_as_the_pane_draws_it() {
     served.ended().await.1.expect("the session failed");
 }
 
-/// An endpoint that takes its time answering, so that a command can be caught in flight.
+/// An endpoint that takes its time answering, so that a command can be caught in flight, and says
+/// when a request has reached it.
 ///
 /// note: a closed port will not do. A refused connection comes back at once, and what this needs
 /// is a window - the one a `/models` at an endpoint that has gone quiet opens for real.
-async fn slow_endpoint(after: Duration) -> String {
+async fn slow_endpoint(after: Duration) -> (String, Arc<tokio::sync::Notify>) {
     use tokio::io::AsyncReadExt as _;
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("a port");
     let at = listener.local_addr().expect("its address");
+    let asked = Arc::new(tokio::sync::Notify::new());
+    let told = asked.clone();
     tokio::spawn(async move {
         while let Ok((mut socket, _)) = listener.accept().await {
+            let told = told.clone();
             tokio::spawn(async move {
                 let mut buf = vec![0u8; 8192];
                 let _ = socket.read(&mut buf).await;
+                told.notify_one();
                 tokio::time::sleep(after).await;
                 let body = r#"{"data":[{"id":"a-slow-model"}]}"#;
                 let _ = socket
@@ -1201,7 +1206,7 @@ async fn slow_endpoint(after: Duration) -> String {
         }
     });
 
-    format!("http://{at}/v1")
+    (format!("http://{at}/v1"), asked)
 }
 
 /// The kernel is still heard while one client's command waits on an endpoint.
@@ -1214,13 +1219,14 @@ async fn slow_endpoint(after: Duration) -> String {
 /// who arrived later with a trace full of holes and nothing anywhere saying so.
 ///
 /// note: more items than the channel is deep, because the failure is a capacity exceeded rather
-/// than an ordering; `Config::event_queue_depth` is 1024. And pushed a moment after the command
-/// goes out, so that they land while it is in flight rather than before the loop has taken it.
+/// than an ordering; `Config::event_queue_depth` is 1024. And pushed once the command's request has
+/// reached the endpoint, so that they land while it is in flight rather than before the loop has
+/// taken it - where a loop that stopped listening would pass.
 #[tokio::test]
 async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
     use nachalnik::ContextItem;
 
-    let endpoint = slow_endpoint(Duration::from_millis(400)).await;
+    let (endpoint, asked) = slow_endpoint(Duration::from_millis(400)).await;
     let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
     let (mut peer, _) = Peer::attached(&session.at).await;
 
@@ -1228,7 +1234,9 @@ async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
         line: "/models".to_owned(),
     })
     .await;
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::time::timeout(PATIENCE, asked.notified())
+        .await
+        .expect("the command never reached the endpoint");
     // note: yielding between them, and the test is wrong without it. `Kernel::push` is not async
     // and `#[tokio::test]` is one thread, so a tight loop of them never lets the session's task run
     // at all - and a channel that overflowed because nobody was *scheduled* would fail this whether
