@@ -17,7 +17,8 @@ minor bump may break you.
 - **A whole answer with no `choices` is an error, not an empty turn.** `OpenAiCompatible` with
   `streaming(false)` took any JSON body without an `error` in it as a completion, so a proxy's
   `{"status":"ok"}` finished the turn with nothing said and a stop reason of `unreported`. It
-  is refused with the start of the body, as a server that ignored `stream: true` already was.
+  is refused with the start of the body, as a server that ignored `stream: true` already was, and
+  so is a `choices` array with nothing in it.
 
 - **`[DONE]` ends a stream.** It was skipped as a line that is not JSON, so a server that sent it
   and kept the connection open had a finished answer wait out the whole stall bound and then

@@ -140,6 +140,27 @@ async fn a_body_with_no_choices_is_not_an_answer() {
     );
 }
 
+/// And one whose `choices` is empty is not an answer either.
+#[tokio::test]
+async fn a_body_with_no_choice_in_its_choices_is_not_an_answer() {
+    const EMPTY: &str = "{\"object\":\"chat.completion\",\"choices\":[]}";
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        OpenAiCompatible::new("proxy", whole_server(EMPTY).await, "no key needed").streaming(false),
+    ));
+    kernel.push(ContextItem::user("go"));
+
+    kernel
+        .step()
+        .await
+        .expect_err("a body with no choice in it is not an answer");
+    assert!(
+        kernel.last_response().is_none(),
+        "nothing was recorded as said"
+    );
+}
+
 /// Answers one request with `body`, in one write.
 async fn whole_server(body: &'static str) -> String {
     busy_then(body, body).await

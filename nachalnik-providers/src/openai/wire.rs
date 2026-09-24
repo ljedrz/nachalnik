@@ -185,7 +185,7 @@ impl Provider for OpenAiCompatible {
             // note: held to what the streamed path holds a whole body to, below. A good status
             // with JSON that is not a completion - a proxy's own `{"status":"ok"}` - is not an
             // answer with nothing in it, and taken as one it finishes the turn with nothing said
-            Sent::Whole(payload) if payload["choices"].is_array() => {
+            Sent::Whole(payload) if completion(&payload) => {
                 return Ok(whole(payload, self.thinking_in_content));
             }
             Sent::Whole(payload) => {
@@ -201,9 +201,7 @@ impl Provider for OpenAiCompatible {
             Read::Interrupted => Ok(interrupted()),
             // a server that ignored `stream: true` and answered whole has still answered
             Read::Unstreamed(body) => match serde_json::from_str::<Value>(&body) {
-                Ok(payload) if payload["choices"].is_array() => {
-                    Ok(whole(payload, self.thinking_in_content))
-                }
+                Ok(payload) if completion(&payload) => Ok(whole(payload, self.thinking_in_content)),
                 _ => Err(not_a_stream(&body)),
             },
         }
@@ -465,6 +463,16 @@ fn said_and_thought(
             .filter(|thought| !thought.is_empty())
             .map(Content::text),
     )
+}
+
+/// Whether a JSON body is a completion: one with a choice in it to read.
+///
+/// note: a choice rather than the array. `choices: []` is the array and no answer, and read as one
+/// it is the empty turn the check is there to refuse.
+fn completion(body: &Value) -> bool {
+    body["choices"]
+        .as_array()
+        .is_some_and(|choices| !choices.is_empty())
 }
 
 /// Reads a whole answer - one JSON body, no fragments - into a turn.
