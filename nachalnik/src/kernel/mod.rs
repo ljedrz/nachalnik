@@ -1172,10 +1172,13 @@ impl Kernel {
     /// there and never reached the model, and recording it took a checkpoint that made the undone
     /// turn unreachable. Decide the calls, or cancel them with [`Kernel::cancel_pending_calls`],
     /// first.
+    ///
+    /// note: an undo that takes away the answer [`State::Finished`] names moves the machine to
+    /// [`State::Idle`]. Left `Finished`, the state would name an item that is not there.
     pub fn undo(&self) -> Result<bool> {
         // the machine first, for the lock order, and held with the context so that no turn starts
         // between the look and the undo
-        let machine = self.0.machine.lock();
+        let mut machine = self.0.machine.lock();
         if Self::holds_calls(&machine.state) {
             return Err(Error::Busy);
         }
@@ -1184,12 +1187,17 @@ impl Kernel {
         let Some(diff) = context.undo().then(|| Self::diff(&before, context.items())) else {
             return Ok(false);
         };
+        let answer_gone =
+            matches!(machine.state, State::Finished { item, .. } if diff.gone.contains(&item));
 
         self.emit(Event::ContextUndone {
             items: diff.items,
             removed: diff.gone,
             changed: diff.changed,
         });
+        if answer_gone {
+            self.transition(&mut machine, State::Idle);
+        }
 
         Ok(true)
     }

@@ -520,3 +520,27 @@ async fn a_batch_is_one_undo_whatever_happened_between_its_results() {
         .count();
     assert_eq!(results, 3);
 }
+
+/// Undoing the answer a finished turn names leaves the machine resting on nothing, not on it.
+///
+/// note: `Finished` carries the item the turn ended on, and an undo is allowed from it. Walking
+/// that answer back left the state naming an item `Kernel::item` no longer has - and a client that
+/// reads the state to decide what `/continue` means refused, over an answer that was gone.
+#[tokio::test]
+async fn undoing_the_answer_a_turn_ended_on_leaves_the_machine_idle() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([ModelResponse::text(
+        "an answer",
+    )])));
+    kernel.push(ContextItem::user("a question"));
+    let nachalnik::State::Finished { item, .. } = kernel.turn().await.expect("the turn ran") else {
+        panic!("a text answer finishes the turn")
+    };
+
+    assert!(kernel.undo().unwrap());
+    assert!(
+        kernel.item(item).is_none(),
+        "the answer was what the undo took"
+    );
+    assert_eq!(kernel.state(), nachalnik::State::Idle);
+}

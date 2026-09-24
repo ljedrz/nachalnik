@@ -16,6 +16,9 @@ minor bump may break you.
 
 ### fixed
 
+- **Undoing the answer a finished turn names leaves the machine `Idle`.** `State::Finished`
+  carries the item the turn ended on, and an undo from it that took that item away left the state
+  naming an item `Kernel::item` no longer had.
 - **A recount that moves no figure is not a change an undo reports.** `Kernel::recount` copied
   every item the undo history shared, whether or not its count moved, and `context.undone` names
   an item that is no longer the same allocation as changed - so after a recount, undoing one push
