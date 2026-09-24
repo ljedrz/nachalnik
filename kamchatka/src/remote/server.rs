@@ -770,8 +770,20 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
             // reference to a program the reader is not using. The flag is a fact about whoever just
             // asked. See `App::help`
             let keys = std::mem::replace(&mut app.keys, false);
+            let proposing = app.proposed.is_none();
             let reply = app.submit(&line).await;
             app.keys = keys;
+            // `/compact` asks, and a client has no keys to answer with - nor, in a session with no
+            // screen, has anybody. Taken, as `Headless` takes it and for its reason: this is
+            // somebody's own line, and one answered with a question nobody can reach has been
+            // refused the thing it asked for, and holds up every later `/compact` besides. The
+            // list goes out first, in the session's voice, so what was taken was said
+            if proposing && let Some(proposed) = app.proposed.clone() {
+                let rows: Vec<String> =
+                    proposed.rows.iter().map(|row| format!("· {row}")).collect();
+                app.say(Speaker::Note, rows.join("\n"));
+                app.take_proposal(true).await;
+            }
             if let Some(lost) = replacing {
                 app.say(
                     Speaker::Note,

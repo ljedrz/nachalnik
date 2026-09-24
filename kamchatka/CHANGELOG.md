@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A client's `/compact` is taken and said, as it is headless.** It left the proposal standing
+  as a question no client could see or answer, and a served session with no screen had nobody
+  who could, so every later `/compact` was refused as already waiting. The list goes out in the
+  session's voice and the pass is taken, which is what the guide says a remote `/compact` does.
 - **`context` and `log` read `"true"` in quotes as true.** `pin` on a note and `whole` on
   `context`'s `look` and on `log` were read as booleans only, so a quoted `"true"` - which the
   `fs` tools take - left a note unpinned or answered with a sample, and nothing said the

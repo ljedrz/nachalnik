@@ -306,3 +306,80 @@ async fn a_client_can_arrive_in_the_middle_of_an_answer() {
     .await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// A client's `/compact` is taken, as it is down a pipe, rather than left as a question.
+///
+/// note: a client has no keys to answer the proposal with, and a served session with no screen has
+/// nobody who does. Left standing, the question also refused every later `/compact` as "already
+/// waiting for an answer", for the rest of the session.
+#[tokio::test]
+async fn a_compact_from_a_client_is_taken_and_said() {
+    use nachalnik::{Content, ContextItem, ContextState, ToolCall};
+
+    let session = served(vec![], |app| {
+        app.kernel
+            .set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+                threshold: 0.0,
+                target: 0.0,
+            })));
+        let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+        app.kernel.push(ContextItem::user("what is in big.rs?"));
+        app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![call.clone()],
+        ));
+        app.kernel.push(ContextItem::tool_result(
+            call.id,
+            "read",
+            Content::text("x".repeat(40_000)),
+            false,
+        ));
+        app.kernel.push(ContextItem::assistant(
+            Content::text("it is forty thousand x"),
+            vec![],
+        ));
+    })
+    .await;
+
+    let said = |wanted: &'static [&'static str]| {
+        move |message: &Message| {
+            matches!(message, Message::Said { text, .. }
+                if wanted.iter().any(|it| text.contains(it)))
+        }
+    };
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "/compact".to_owned(),
+    })
+    .await;
+    // the list, in the session's voice, which is what says what was taken
+    peer.until(said(&["· [3]"])).await;
+    assert!(
+        session
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.state == ContextState::Elided),
+        "and it was taken"
+    );
+
+    // and nothing is left standing in the way of the next one
+    peer.send(Command::Submit {
+        line: "/compact".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(said(&["already waiting", "found nothing", "would take"]))
+        .await;
+    assert!(
+        !matches!(heard.last(), Some(Message::Said { text, .. }) if text.contains("already waiting")),
+        "{heard:?}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
