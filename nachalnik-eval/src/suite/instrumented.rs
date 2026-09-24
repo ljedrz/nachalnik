@@ -506,6 +506,8 @@ mod tests {
             before: Some("kirov".to_owned()),
             after: Some(if moved { "omsk" } else { "kirov" }.to_owned()),
             moved: Some(moved),
+            spend: crate::Spend::default(),
+            failed: None,
         }
     }
 

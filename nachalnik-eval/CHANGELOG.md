@@ -7,6 +7,12 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Act::Tested` has a `spend` and a `failed`.** Both are `serde(default)`, so a saved report
+  reads as it was; an `Act::Tested` written as a struct literal elsewhere - a handle of somebody
+  else's pushing onto a `Journal` - needs the two fields.
+
 ### changed
 
 - **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two
@@ -19,6 +25,16 @@ minor bump may break you.
 
 ### fixed
 
+- **What a run cost includes the copies the subject's own tests ran.** `Act::Tested` carried no
+  spend and `Trial::spend` summed the subject's requests and the harness's copies, so an
+  instrumented run was reported as costing less than it was billed, by every test the subject ran.
+- **A test whose copies could not be run is on the record.** Each copy's error returned before
+  the journal was written, so a test that came off the subject's budget left no trace, and the
+  question it followed read as one the subject declined to instrument. It is an `Act::Tested` with
+  nothing moved and `failed` saying why, and the subject is still shown the error.
+- **A name `inspect` does not know is not a refusal.** It was journaled as `Act::Refused`, which is
+  what a subject was not allowed to have, where `amend` journals nothing for the same mistake; so
+  `Reached::refusals` counted a typo in one handle and not in the other. Neither journals it.
 - **A move inside the control's own noise is not read as one.** `Change::as_answer` read `moved`
   alone and `Attribution` ranked notes on divergence whatever the noise, so with replicates a
   commonest answer that flipped on one readable copy in three scored a claim as though the note

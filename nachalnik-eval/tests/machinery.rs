@@ -1085,6 +1085,8 @@ fn the_instrumentation_rate_counts_only_questions_the_subject_could_have_instrum
             before: None,
             after: None,
             moved: Some(true),
+            spend: Spend::default(),
+            failed: None,
         }),
         // offered and ignored
         asked(Some("retested")),
@@ -1099,6 +1101,8 @@ fn the_instrumentation_rate_counts_only_questions_the_subject_could_have_instrum
             before: None,
             after: None,
             moved: Some(false),
+            spend: Spend::default(),
+            failed: None,
         }),
     ];
 
