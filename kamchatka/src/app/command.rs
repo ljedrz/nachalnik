@@ -696,9 +696,14 @@ impl App {
     /// replacing them, settling on a scale that is neither model's. It is reset through
     /// `Kernel::recalibrate` because that recounts the items as well, which is the half that keeps
     /// the `sending` column and the budget on one scale.
+    ///
+    /// note: and what has been said once about the endpoint - that it hides its reasoning, that it
+    /// reports no usage - because it was said about the endpoint that is gone, and the next one may
+    /// be just the same.
     fn forget_the_last_model(&mut self) {
         self.anchor = None;
         self.kernel.recalibrate(Calibration::default());
+        (self.thought_unseen, self.unreported) = (false, false);
     }
 
     /// Puts something into the context that the model should have and does not have to answer.

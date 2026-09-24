@@ -1004,6 +1004,24 @@ async fn a_ceiling_over_an_endpoint_that_reports_nothing_says_so() {
     assert!(run.prose.contains("no usage on this one"), "{}", run.prose);
 }
 
+/// And again for the next model, which may be just as silent.
+#[tokio::test]
+async fn a_ceiling_over_the_next_endpoint_that_reports_nothing_says_so_again() {
+    let script = vec![
+        ModelResponse::text("no usage on this one"),
+        ModelResponse::text("nor on this one"),
+    ];
+    let run = run_capped("go\n/model something-else\ngo\n", script, 1000, |_| {}).await;
+
+    assert!(run.prose.contains("nor on this one"), "{}", run.prose);
+    assert_eq!(
+        run.prose.matches("reports no usage").count(),
+        2,
+        "{}",
+        run.prose
+    );
+}
+
 /// A response that was interrupted carries no figures, and that is not the endpoint's silence.
 ///
 /// note: a stream cut short never reaches the chunk its usage rides on, so after a ctrl+c or a

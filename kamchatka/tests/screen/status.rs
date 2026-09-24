@@ -107,6 +107,36 @@ async fn a_model_that_hides_its_reasoning_is_remarked_on_once() {
     );
 }
 
+/// And said again for the next model, because what it describes is the endpoint, and the endpoint
+/// changed.
+#[tokio::test]
+async fn a_change_of_model_is_remarked_on_afresh() {
+    let thinking = || ModelResponse {
+        usage: Some(Usage {
+            output_tokens: Some(500),
+            reasoning_tokens: Some(400),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    };
+    let mut harness = Harness::new([thinking(), thinking()]);
+
+    harness.send("go").await;
+    harness.settle().await;
+    harness.send("/model something-else").await;
+    harness.send("go").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert_eq!(
+        screen
+            .matches("charged for reasoning it does not send back")
+            .count(),
+        2,
+        "the second model hides its reasoning too, and nothing said so: {screen}"
+    );
+}
+
 /// A provider that reports no reasoning is not a provider reporting none of it, and the line that
 /// would say so must not appear for the ordinary case.
 #[tokio::test]

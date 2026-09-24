@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A change of model says again what it says once about an endpoint.** That a model is charged
+  for reasoning it does not send back, and that an endpoint reports no usage under a spend
+  ceiling, are said once, and were never said again after `/model` or `/provider` - so the
+  second of two such endpoints went unremarked.
 - **The screen is drawn when something changed, not on every tick.** An idle session redrew
   the whole chat eight times a second, and a streamed answer got a frame per fragment, so a
   stream arriving faster than frames fell behind and lost events to the live view. A frame now
