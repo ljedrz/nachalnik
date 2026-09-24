@@ -131,10 +131,10 @@ fn prompt(text: &str) -> Option<String> {
 /// Reports what each model is about to be sent, and whether it is the same thing.
 ///
 /// note: The claim is checked twice, and neither check takes the runtime's word for it: the
-/// first fingerprint runs over the serialized messages of [`Kernel::preview_request`], which are
-/// the messages of the next request, and the second over only the items the user put there. The
-/// first stops matching as soon as the models have said anything, because by then the contexts
-/// differ, and the report says so rather than hiding it.
+/// first fingerprint runs over the whole of [`Kernel::preview_request`] serialized - messages,
+/// tools and parameters, which is the next request - and the second over only the items the user
+/// put there. The first stops matching as soon as the models have said anything, because by then
+/// the contexts differ, and the report says so rather than hiding it.
 fn report_inputs(contenders: &[Contender], payloads: bool) -> Result<(), BoxError> {
     heading("INPUTS · what each model is about to be sent");
     println!(
@@ -146,6 +146,7 @@ fn report_inputs(contenders: &[Contender], payloads: bool) -> Result<(), BoxErro
     let mut common = Vec::new();
     for contender in contenders {
         let request = contender.kernel.preview_request()?;
+        let print = fingerprint(&serde_json::to_vec(&request)?);
         let budget = contender.kernel.budget();
 
         // the items the user put there, which stay identical however the answers diverge
@@ -166,10 +167,10 @@ fn report_inputs(contenders: &[Contender], payloads: bool) -> Result<(), BoxErro
                 .limit
                 .map(thousands)
                 .unwrap_or_else(|| "?".to_owned()),
-            fingerprint(&serde_json::to_vec(&request.messages)?),
+            print,
         );
 
-        requests.push(fingerprint(&serde_json::to_vec(&request.messages)?));
+        requests.push(print);
         common.push(fingerprint(&serde_json::to_vec(&mine)?));
     }
 
