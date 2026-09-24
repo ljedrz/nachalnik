@@ -36,6 +36,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A call refused by a rule because it named no operation is told so.** A call whose `action`
+  could not be read declares everything its tool does, so `--deny fs:write` refused a call that
+  meant to read, and the model was told only that a standing rule refused it - and retried the
+  same call. The refusal now says first that the call named no operation, and what it held
+  instead, so arguments one level too deep read as the mistake they are.
 - **The context tab with `f` on projects the context once a frame.** It built the request a second
   time to decide which rows to list, beside the one the frame had already built for the rest of
   the screen.

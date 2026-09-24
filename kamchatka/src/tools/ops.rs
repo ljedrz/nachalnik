@@ -429,8 +429,9 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
 
     // the same reading the tool will do, so that a call this cannot place is one the tool could
     // not place either. Arguments that never parsed are their own answer and are given it there
-    let named = inner(&request.args)
-        .ok()
+    let args = inner(&request.args).ok();
+    let named = args
+        .as_ref()
         .and_then(|args| args["action"].as_str().map(str::to_owned));
     let why = match named {
         Some(action) if ops.contains(&action.as_str()) => return None,
@@ -440,8 +441,11 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
             ops.len(),
             spec.id
         ),
+        // what it held instead, which is the thing to fix: arguments one level too deep read as
+        // a call with no `action`, and naming the key they are under says where they went
         None => format!(
-            "the call names no operation, so it is judged against all {} `{}` has",
+            "the call names no operation{}, so it is judged against all {} `{}` has",
+            held(&request.args, args.as_deref()),
             ops.len(),
             spec.id
         ),
@@ -451,6 +455,22 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         "{why} - a rule about one of them, like `{}:{}`, does not answer it",
         spec.capabilities[0].domain, ops[0]
     ))
+}
+
+/// What a call that named no operation held where its arguments go, for saying so.
+fn held(given: &Value, args: Option<&Value>) -> String {
+    let keys: Vec<String> = args
+        .and_then(Value::as_object)
+        .map(|it| it.keys().map(|key| format!("`{key}`")).collect())
+        .unwrap_or_default();
+    let place = match given.get(WRAPPER).is_some() {
+        true => format!("its `{WRAPPER}` holds"),
+        false => "its arguments are".to_owned(),
+    };
+    match keys.is_empty() {
+        true => String::new(),
+        false => format!(" - {place} {} and no `action`", keys.join(", ")),
+    }
 }
 
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named

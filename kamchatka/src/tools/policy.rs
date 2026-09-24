@@ -13,7 +13,8 @@ use std::{
 };
 
 use nachalnik::{
-    Capability, Domain, PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait,
+    Capability, Domain, PermissionPolicy, PermissionRequest, ToolCallId, ToolSpec, Verdict,
+    async_trait,
 };
 use parking_lot::Mutex;
 
@@ -367,6 +368,14 @@ pub struct Careful {
     /// decided before any of them runs, so one `yes` past the bound drops the first, and that
     /// command runs with the network cut after somebody allowed it.
     networked: Mutex<BTreeSet<ToolCallId>>,
+    /// What each of the session's own tools declares, by its identifier.
+    ///
+    /// note: for the one refusal a rule is the wrong thing to blame. A call whose operation cannot
+    /// be read declares everything its tool does, and a rule about one of those then refuses a
+    /// call that meant to do another; saying only the rule sends a model to retry the same call,
+    /// when what is wrong is its arguments. Knowing the tool's declaration is how a refusal can
+    /// tell - see `ops::unnamed_operation` - and it is told here by whoever installs the tools.
+    offered: Mutex<BTreeMap<String, ToolSpec>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
     /// note: the policy is the only thing that knows this, and nothing carries it out: the
@@ -418,6 +427,7 @@ impl Careful {
                     .collect(),
             ),
             networked: Mutex::new(BTreeSet::new()),
+            offered: Mutex::new(BTreeMap::new()),
             refusals: Mutex::new(VecDeque::new()),
         }
     }
@@ -669,6 +679,12 @@ impl Careful {
             .collect()
     }
 
+    /// Remembers what one of the session's own tools declares, so that a call to it that names no
+    /// operation is refused saying so.
+    pub fn offers(&self, spec: ToolSpec) {
+        self.offered.lock().insert(spec.id.clone(), spec);
+    }
+
     /// Records that a tool came from an MCP server, so that calls to it are answerable as that
     /// server as well as by what they do.
     ///
@@ -739,6 +755,16 @@ impl PermissionPolicy for Careful {
             let why = match blamed.is_empty() {
                 true => "the policy refused it".to_owned(),
                 false => format!("refused by {}", blamed.join(" and ")),
+            };
+            // the arguments first, where they are why the rule applied at all
+            let widened = self
+                .offered
+                .lock()
+                .get(&request.tool)
+                .and_then(|spec| super::ops::unnamed_operation(spec, request));
+            let why = match widened {
+                Some(widened) => format!("{widened}; {why}"),
+                None => why,
             };
 
             // nobody is obliged to read these; a session that never does should not grow a queue

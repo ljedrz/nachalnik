@@ -376,6 +376,64 @@ async fn a_call_that_names_no_operation_says_why_the_rule_missed_it() {
     );
 }
 
+/// A call a standing rule refused because it named no operation is told that, not only the rule.
+///
+/// note: the refusal reached the model as `refused by \`fs:write\` and \`fs:edit\`. That is a
+/// standing rule`, for a call that only meant to read, and a model told that retries the same
+/// call: the rule is the wrong thing to blame, and the arguments are the thing to fix. The real
+/// `fs`, wired, because what is being checked is that the policy knows what the session's own
+/// tools declare.
+#[tokio::test]
+async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none() {
+    let wired = Setup {
+        tools: Some(vec!["fs".to_owned()]),
+        compact: None,
+        deny: vec![Subject::Capability(Capability::fs("write"))],
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired;
+    // the arguments one level too deep, as a model once wrote every call of a whole session
+    app.kernel.set_provider(Arc::new(ScriptedProvider::new(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fs",
+            json!({ "call": { "item": { "action": "read", "path": "Cargo.toml" } } }),
+        )]),
+        ModelResponse::text("told why"),
+    ])));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, "read it\n".as_bytes())
+        .await
+        .expect("the run failed");
+
+    let told: Vec<String> = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("names no operation"), "{}", told[0]);
+    assert!(
+        told[0].contains("`item`"),
+        "and says what the call held instead: {}",
+        told[0]
+    );
+}
+
 /// `--on-ask allow` is the other answer, and the tool runs.
 #[tokio::test]
 async fn the_other_answer_lets_it_run() {

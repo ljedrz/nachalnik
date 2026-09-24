@@ -553,6 +553,9 @@ impl Setup {
         // rather than a kernel the tools hold
         let introspect =
             building.then(|| introspect::install(&kernel, policy.clone(), limits.clone()));
+        for spec in kernel.tool_specs() {
+            policy.offers(spec);
+        }
 
         if let Some(system) = self.system {
             kernel.push(ContextItem::system(system).pinned());
