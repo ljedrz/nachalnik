@@ -668,6 +668,11 @@ async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
             "context",
             json!({ "action": "look", "ids": [shot.0] }),
         ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "look", "select": "user" }),
+        ),
     ]))));
 
     kernel.turn().await.expect("the turn failed");
@@ -678,7 +683,7 @@ async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
         .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
         .map(|item| item.content.to_text().into_owned())
         .collect();
-    assert_eq!(said.len(), 3, "{said:?}");
+    assert_eq!(said.len(), 4, "{said:?}");
     assert!(
         said[0].contains("every figure above is a floor"),
         "{}",
@@ -689,6 +694,15 @@ async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
         said[2].contains("1 piece(s) nothing here can price"),
         "{}",
         said[2]
+    );
+    // a listing narrowed by a selector is the same listing, and the picture no cheaper in it
+    assert!(said[3].contains("a `+` is a floor"), "{}", said[3]);
+    assert!(
+        said[3]
+            .lines()
+            .any(|line| line.contains("user_message") && line.contains("0+")),
+        "and the picture's own row carries the mark: {}",
+        said[3]
     );
 }
 

@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`context` with `look` and a `select` marks what it cannot price.** The rows a selector matched
+  showed an image as costing nothing, with no `+` and no word that the total was a floor, where the
+  full listing said both.
 - **`mcp::attach` installs nothing until every server has answered.** A name collision was refused
   only after the second server's tools had replaced the first's, and a spec that failed part way
   left the earlier servers' tools registered while their servers went with the `Err`.

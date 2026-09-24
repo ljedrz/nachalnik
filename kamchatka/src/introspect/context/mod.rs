@@ -487,15 +487,7 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>)
             item.id.0,
             item.state.to_string(),
             item.kind.name(),
-            // a `+` where part of it is unpriced, as the context tab marks it, so that the two
-            // things `0` can mean are not one figure
-            match item.uncounted {
-                0 => thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
-                _ => format!(
-                    "{}+",
-                    thousands(going.costs.get(&item.id).copied().unwrap_or(0))
-                ),
-            },
+            figure(item, &going),
             match going.held_back(item) {
                 0 => String::new(),
                 held => thousands(held),
@@ -503,12 +495,7 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>)
             row(item, &going),
         ));
     }
-    if items.iter().any(|item| item.uncounted != 0) {
-        out.push_str(
-            "\na `+` is a floor: part of that item is content nothing here can put a number on, \
-             so it and the total going cost more than they say\n",
-        );
-    }
+    out.push_str(floor(&items));
 
     // note: the second sentence is there because the columns are easy to read wrong. Asked what
     // it could free, a model names the turn holding the most of its own thinking and offers to
@@ -523,6 +510,30 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>)
     );
 
     out
+}
+
+/// What one row says an item is sending: its figure, with a `+` where part of it is unpriced.
+///
+/// note: marked as the context tab marks it, so that the two things `0` can mean are not one
+/// figure. One function for both tables, because a `look` narrowed by a selector is the same
+/// listing and a picture in it is no cheaper there.
+fn figure(item: &ContextItem, going: &Going) -> String {
+    let figure = thousands(going.costs.get(&item.id).copied().unwrap_or(0));
+    match item.uncounted {
+        0 => figure,
+        _ => format!("{figure}+"),
+    }
+}
+
+/// The line under a table that says what its `+` means, where any row carries one.
+fn floor(items: &[Arc<ContextItem>]) -> &'static str {
+    match items.iter().any(|item| item.uncounted != 0) {
+        true => {
+            "\na `+` is a floor: part of that item is content nothing here can put a number on, \
+             so it and the total going cost more than they say\n"
+        }
+        false => "",
+    }
 }
 
 /// The rows of the items a class comes to, which is the set a change naming the same class takes.
@@ -597,7 +608,7 @@ fn matched(
             item.id.0,
             item.state.to_string(),
             item.kind.name(),
-            thousands(going.costs.get(&item.id).copied().unwrap_or(0)),
+            figure(item, &going),
             match going.held_back(item) {
                 0 => String::new(),
                 held => thousands(held),
@@ -606,6 +617,7 @@ fn matched(
         ));
     }
 
+    out.push_str(floor(&carried));
     out.push_str(&format!(
         "\na change naming the same `select` takes these{}. Giving them up frees what they are \
          `sending` and none of what they are holding; `look` with `ids` reads any of them back in \
