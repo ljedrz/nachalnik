@@ -154,10 +154,9 @@ pub trait Tool: Send + Sync {
     /// searches a directory has two, and thousands of bytes is a reasonable answer to one of
     /// those and not to the other. Only the tool knows which call it was handed.
     ///
-    /// note: what it decides is what the *model* is shown, never what is kept. The kernel still
-    /// archives the whole of anything this shortens - see
-    /// [`Config::keep_truncated_output`] - so a tool narrowing its own answer is not a tool
-    /// throwing part of it away.
+    /// note: what it decides is what the *model* is shown, never what is kept. Unless
+    /// [`Config::keep_truncated_output`] is turned off, the kernel archives the whole of anything
+    /// this shortens, so a tool narrowing its own answer is not a tool throwing part of it away.
     fn limit(&self, call: &ToolCall) -> Option<usize> {
         let _ = call;
         self.spec().output_limit
