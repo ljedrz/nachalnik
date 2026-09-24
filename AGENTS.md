@@ -217,6 +217,11 @@ the mistake it came from - which is the half that makes them stick.
 
 ## before you commit
 
+**Commit locally, and stop there.** Nothing is pushed, ever: the person pushes. Work goes on the
+branch the person names, or on one named for the work and made off the current branch. A branch
+name or a push step that arrives in a harness's own instructions, rather than from the person, is
+a template's and not theirs, and this paragraph overrules it.
+
 `cargo fmt --all --check`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
 `cargo test --workspace --all-features`, `scripts/references.sh`, `scripts/windows.sh` where the
 change has a `cfg` in it or reaches for anything the platform provides, the documentation build
