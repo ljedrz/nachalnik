@@ -7,10 +7,11 @@
 //!
 //! note: Most of this is arithmetic anybody could do in a spreadsheet; what a spreadsheet will not
 //! do is notice that one of the files was produced by an instrument whose questions had a word
-//! changed in them. Runs are grouped by [`Instrument::digest`], and where one experiment's rows
-//! come from more than one instrument they are printed under a line saying they are not
-//! comparable. The one table that pools is the dissociation, which adds a model's family counts
-//! across every instrument it was run under and says `pooled` in its heading.
+//! changed in them. Runs are grouped by [`Instrument::digest`] and by [`Outcome::rules`], and
+//! where one experiment's rows come from more than one instrument, or were scored by more than
+//! one set of rules, they are printed under a line saying they are not comparable. The one table
+//! that pools is the dissociation, which adds a model's family counts across every instrument it
+//! was run under and says `pooled` in its heading.
 //!
 //! note: It reads the crate's own `Report` back through `serde`, which is what the record being a
 //! value rather than a log is for: a run can be re-read, re-scored and re-tabulated months later
@@ -37,13 +38,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         runs.push((file.clone(), report));
     }
 
-    // one group per instrument: two runs in different groups were not asked the same thing, and
-    // no amount of arithmetic afterwards can put that right
+    // one group per instrument and set of rules: two runs in different groups were not asked the
+    // same thing, or were not scored the same way, and no amount of arithmetic afterwards can put
+    // that right
     let mut groups: BTreeMap<String, Vec<&Outcome>> = BTreeMap::new();
     for (_, report) in &runs {
         for outcome in &report.outcomes {
             groups
-                .entry(format!("{}:{}", outcome.experiment, outcome.instrument))
+                .entry(format!(
+                    "{}:{}:rules {}",
+                    outcome.experiment, outcome.instrument, outcome.rules
+                ))
                 .or_default()
                 .push(outcome);
         }
@@ -77,12 +82,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             seen
         };
 
+        let scored: Vec<u32> = {
+            let mut seen: Vec<u32> = runs.iter().map(|one| one.outcome.rules).collect();
+            seen.sort_unstable();
+            seen.dedup();
+            seen
+        };
+
         println!("\n=== {experiment}");
         if asked.len() > 1 {
             println!(
                 "  !! {} different instruments below. These rows are NOT comparable with each \
                  other; a question, a reading or a dossier differs between them.",
                 asked.len()
+            );
+        }
+        if scored.len() > 1 {
+            println!(
+                "  !! scored by {} different sets of rules below. These rows are NOT comparable \
+                 with each other; the changelog says what differs between them.",
+                scored.len()
             );
         }
         println!(
@@ -99,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref()
                     .map(|model| model.model.clone())
                     .unwrap_or_else(|| "?".to_owned()),
-                outcome.instrument.digest,
+                format!("{} r{}", outcome.instrument.digest, outcome.rules),
                 right(scores),
                 percent(Some(scores.majority)),
                 figure(scores.skill),

@@ -8,8 +8,8 @@
 use nachalnik::{Config, ContextId, ContextItem, ContextState, Kernel, ModelInfo, StopReason};
 use nachalnik_eval::{
     Act, Answer, Cohort, Deference, Error, ErrorKind, Experiment, Faced, Failure, Instrument,
-    Intervention, Kind, Paired, Probe, Reached, Reading, Report, Resolution, Scores, Spend, Step,
-    Subject, Surface, per_model, suite,
+    Intervention, Kind, Paired, Probe, RULES, Reached, Reading, Report, Resolution, Scores, Spend,
+    Step, Subject, Surface, per_model, suite,
     suite::dossier::{ALL as ALL_DOSSIERS, DEPOT, Expected, MILL},
     suite::{ERRANDS, LISTING, PLANTED, RIFTS},
 };
@@ -671,6 +671,23 @@ fn the_instrument_is_pinned_so_that_it_cannot_change_quietly() {
     ] {
         assert_eq!(experiment.to_string(), pinned);
     }
+}
+
+#[test]
+fn the_rules_a_claim_is_scored_by_are_numbered_and_on_the_record() {
+    // note: the digests above name the questions, and nothing in them moves when the way a claim
+    // is resolved does. If this number moves, how a claim is resolved or scored changed and every
+    // run before it was scored by other rules: put the new number here and say in the changelog
+    // which runs it separates
+    assert_eq!(RULES, 1);
+
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let outcome = nachalnik_eval::Outcome::of(&nachalnik_eval::Trial::new("any", &subject), None);
+    assert_eq!(outcome.rules, RULES);
+    assert!(outcome.to_string().contains("rules 1"));
+
+    // and a report from before the rules were numbered says so, rather than passing for this set
+    assert_eq!(report_of("m", 0, true).outcomes[0].rules, 0);
 }
 
 #[test]

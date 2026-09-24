@@ -128,8 +128,9 @@ $ cargo run -p nachalnik-eval --example pool    -- eval-runs/*/*/report.json
 **`compare`** puts runs side by side and refuses to pretend that runs asked different questions
 are comparable. Everything else it does is arithmetic anybody could do in a spreadsheet; what a
 spreadsheet will not do is notice that one of the files came from an instrument with a word
-changed in it. Runs are grouped by `Instrument::digest`, and where one experiment's rows come from
-more than one instrument they are printed under a line saying they are not comparable.
+changed in it. Runs are grouped by `Instrument::digest` and by `Outcome::rules`, the rules their
+claims were scored by, and where one experiment's rows come from more than one of either they are
+printed under a line saying they are not comparable.
 
 **`pool`** computes the figures that are about *models*. `bench` measures one model, and every
 figure it prints is computed over items that share a dossier and are therefore not independent.
