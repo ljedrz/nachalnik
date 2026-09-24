@@ -8,7 +8,7 @@
 //! It prints where its session listens and the address a browser reaches the page at.
 //!
 //! ```console
-//! $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- \
+//! $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone --features shell-advisor -- \
 //!     --advise --allow fs:read "have a look around"
 //! ```
 //!
@@ -130,6 +130,8 @@ async fn main() -> Result<(), String> {
     // than from where the first one had got to. The task owns the `App`, so the loop and the
     // record at the end of it have to be in here with it
     let message = (!args.message.is_empty()).then(|| args.message.join(" "));
+    #[cfg(feature = "mcp")]
+    let mcp = args.mcp.clone();
     let bound = at.clone();
     let session = tokio::spawn(async move {
         let base = setup.clone();
@@ -138,6 +140,11 @@ async fn main() -> Result<(), String> {
             mut events,
             mut finished,
         } = setup.wire(provider.clone())?;
+        // the servers outlive every session of the run, and a restart installs what they offer
+        // into the new kernel rather than spawning them again - as `main.rs` does, and for its
+        // reasons
+        #[cfg(feature = "mcp")]
+        let servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &mcp).await?;
 
         let mut first = true;
         let outcome = loop {
@@ -182,6 +189,20 @@ async fn main() -> Result<(), String> {
                 finished: reported,
             } = wired;
             (app, events, finished) = (fresh, replaced, reported);
+            #[cfg(feature = "mcp")]
+            for server in &servers {
+                match server.install(&app.kernel).await {
+                    Ok(installed) => {
+                        for tool in &installed.added {
+                            app.policy.came_from(tool, server.name());
+                        }
+                    }
+                    Err(e) => app.say(
+                        Speaker::Error,
+                        format!("`{}` would not list its tools again: {e}", server.name()),
+                    ),
+                }
+            }
             // the first thing the new session says, because it is the only place the old one's
             // name and the file it went to are still written down
             app.say(Speaker::Note, said);
