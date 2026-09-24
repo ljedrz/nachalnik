@@ -139,7 +139,7 @@ async fn invoke(kernel: &Kernel, id: &str, args: serde_json::Value) -> nachalnik
 }
 
 #[tokio::test]
-async fn a_failure_the_server_reports_reaches_the_model_as_one() {
+async fn a_failure_the_server_reports_comes_back_as_an_error_result() {
     let server = foreign!("py");
     let kernel = Kernel::new(Config::default());
     server.install(&kernel).await.unwrap();
@@ -148,7 +148,7 @@ async fn a_failure_the_server_reports_reaches_the_model_as_one() {
     assert_eq!(worked.content.to_text(), "QUIET");
     assert!(!worked.is_error);
 
-    // `isError` on the wire is an error result in the context, not a broken loop
+    // `isError` on the wire is an error result in the server's own words, not a failed call
     let failed = invoke(&kernel, "py__explodes", json!({})).await;
     assert!(failed.is_error);
     assert_eq!(failed.content.to_text(), "it went wrong over here");
