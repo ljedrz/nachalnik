@@ -225,22 +225,20 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
         });
     };
 
-    // note: whether `ids` was *given*, rather than whether it came to anything. `ids: []` beside a
-    // selector is the same call as any other that names items twice, not a selector on its own
-    if !args["ids"].is_null() {
+    // note: whether `ids` named anything, rather than whether it was given. `ids: []` names no
+    // items, so reading the selector alone answers exactly the call that was made - and a model
+    // that fills every optional list with `[]` sends one beside every selector it writes, and was
+    // refused for it again and again. What `ids()` cannot read is refused above, so a list that
+    // comes to nothing here is one that was empty
+    if let Some(first) = numbers.first() {
         return Err(format!(
             "`ids` and `select` in one call, and nothing was done. They are two ways of saying \
              which items - `ids: {}` is those by number, `select: \"{input}\"` is a class of them \
              - and reading one of the two would have answered a call you did not make. Send \
-             whichever you meant{}.",
+             whichever you meant; a selector takes an item number too, so `select: \"{}\"` is \
+             that one item.",
             serde_json::Value::Array(numbers.iter().map(|id| json!(id.0)).collect::<Vec<_>>()),
-            match numbers.first() {
-                Some(id) => format!(
-                    "; a selector takes an item number too, so `select: \"{}\"` is that one item",
-                    id.0
-                ),
-                None => String::new(),
-            }
+            first.0
         ));
     }
 

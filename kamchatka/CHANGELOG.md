@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **An empty `ids` beside a `select` is a selector.** `context` refused a call naming items two
+  ways whenever `ids` was given at all, so `look` with `ids: []` and `select: "all"` was refused as
+  naming items twice when the list named none. A model that fills every optional list with `[]`
+  was refused on each such call, and resent it unchanged. A list with a number in it beside a
+  selector is still refused.
+
 ## [0.15.1] - 2026-09-24
 
 ### security

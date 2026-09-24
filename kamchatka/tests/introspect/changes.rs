@@ -720,6 +720,10 @@ async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
 /// how a call that named none arrives too. `search` then searched the whole context, and a call
 /// giving `ids` *and* `select` went through as a `select`, the refusal for naming items twice
 /// having found no numbers to object to. A duplicate was counted twice in what a move reported.
+///
+/// note: an empty `ids` beside a selector is a selector. It names nothing, so nothing is named
+/// twice, and a model that fills every optional list with `[]` was refused on every `look` it
+/// wrote with a `select`; a list with a number in it is still refused.
 #[tokio::test]
 async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -737,6 +741,11 @@ async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
             "c3",
             "context",
             json!({ "action": "look", "ids": [], "select": "all:files" }),
+        ),
+        call(
+            "c4",
+            "context",
+            json!({ "action": "look", "ids": [1], "select": "all:files" }),
         ),
     ]));
 
@@ -756,9 +765,14 @@ async fn an_id_that_is_not_one_is_refused_rather_than_dropped() {
     assert!(!said[1].contains("2 item(s)"), "{}", said[1]);
 
     assert!(
-        said[2].contains("`ids` and `select` in one call"),
-        "an empty `ids` is still `ids`: {}",
+        !said[2].contains("nothing was done") && said[2].contains("big.rs"),
+        "an empty `ids` names nothing, so the selector is the call: {}",
         said[2]
+    );
+    assert!(
+        said[3].contains("`ids` and `select` in one call"),
+        "a number and a selector name items twice: {}",
+        said[3]
     );
 }
 
