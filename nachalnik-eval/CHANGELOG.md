@@ -36,7 +36,8 @@ minor bump may break you.
   scored under, a report from before reads as `0`, and `compare` groups by it and says when one
   experiment's rows were scored by more than one set. This release is rules `1`: a run scored by
   `0` is not comparable with one scored by `1` on any experiment whose claims the fixes below
-  touch, and `Report::surface`, which re-reads the steps, gives an old report the new endpoint.
+  touch. `Report::surface` re-reads an old report's steps under the new rule for which claims the
+  endpoint counts, but the claims themselves were resolved by the old rules.
 
 ### changed
 
