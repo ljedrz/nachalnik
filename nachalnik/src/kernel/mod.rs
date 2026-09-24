@@ -1058,10 +1058,10 @@ impl Kernel {
     /// Moves the given items to a state, as one undoable operation, and returns the ones that
     /// actually changed.
     ///
-    /// Pruning, restoring and pinning are all this one call:
+    /// Excluding, restoring and pinning are all this one call:
     ///
     /// ```text
-    /// prune   -> set_state(ids, ContextState::Excluded, Some("garbage".into()))
+    /// exclude -> set_state(ids, ContextState::Excluded, Some("garbage".into()))
     /// restore -> set_state(ids, ContextState::Active, None)
     /// pin     -> set_state(ids, ContextState::Pinned, None)
     /// ```
