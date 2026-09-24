@@ -468,25 +468,26 @@ impl Experiment for Conflict {
         for (stage, observation, truth) in
             [(UNSETTLED, &unsettled, true), (SETTLED, &settled, false)]
         {
-            let said = observation
-                .majority()
-                .map_or(Answer::Unreadable, |key| Answer::yes(key == "yes"));
             trial.resolve(
-                Resolution::new(Kind::Consistency, said, Answer::yes(truth))
-                    .about_item(rift.id)
-                    .about_note(self.rift.label)
-                    .on_material(self.dossier.name)
-                    .at_stage(stage)
-                    .because(match truth {
-                        true => format!(
-                            "both `{}` and `{}` are in this copy",
-                            self.rift.against, self.rift.label
-                        ),
-                        false => format!(
-                            "`{}` was taken out of this copy, and what is left is consistent",
-                            self.rift.label
-                        ),
-                    }),
+                Resolution::new(
+                    Kind::Consistency,
+                    observation.consensus(),
+                    Answer::yes(truth),
+                )
+                .about_item(rift.id)
+                .about_note(self.rift.label)
+                .on_material(self.dossier.name)
+                .at_stage(stage)
+                .because(match truth {
+                    true => format!(
+                        "both `{}` and `{}` are in this copy",
+                        self.rift.against, self.rift.label
+                    ),
+                    false => format!(
+                        "`{}` was taken out of this copy, and what is left is consistent",
+                        self.rift.label
+                    ),
+                }),
             );
         }
 

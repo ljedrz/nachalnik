@@ -288,6 +288,7 @@ impl Experiment for Provenance {
                 .await?;
             let on_eliding = elided.against(&control);
             let elided_items = elided.items;
+            let elided_said = elided.consensus();
             trial.measured(elided, Some(on_eliding.clone()));
 
             let gone = ablation
@@ -296,6 +297,7 @@ impl Experiment for Provenance {
             let on_excluding = gone.against(&control);
             let gone_items = gone.items;
             let repaired = !gone.repairs.is_empty();
+            let gone_said = gone.consensus();
             trial.measured(gone, Some(on_excluding.clone()));
 
             // ------------------------------------------------------------------ what was moved
@@ -316,10 +318,12 @@ impl Experiment for Provenance {
             }
 
             // ----------------------------------------------------------------------- the arms
-            for (arm, answers, moved) in [
-                (STANDING, control.majority(), None),
-                (ELIDED, on_eliding.after.clone(), Some(&on_eliding)),
-                (EXCLUDED, on_excluding.after.clone(), Some(&on_excluding)),
+            // the copies are the respondents here, so what they said together is the claim, held
+            // with the confidence they put on it between them
+            for (arm, said, moved) in [
+                (STANDING, control.consensus(), None),
+                (ELIDED, elided_said, Some(&on_eliding)),
+                (EXCLUDED, gone_said, Some(&on_excluding)),
             ] {
                 // the truth is the same in every arm for `RAN` - the call was made, and no state
                 // change unmakes it - and moves with the arm for `WHOLE`, where the control is
@@ -328,9 +332,6 @@ impl Experiment for Provenance {
                     true => Answer::yes(moved.is_some()),
                     false => Answer::yes(truth),
                 };
-                let said = answers
-                    .clone()
-                    .map_or(Answer::Unreadable, |key| Answer::yes(key == "yes"));
 
                 trial.resolve(
                     Resolution::new(Kind::Provenance, said, happened)
