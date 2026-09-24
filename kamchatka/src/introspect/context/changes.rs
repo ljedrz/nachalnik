@@ -646,7 +646,7 @@ impl Changes {
         let mut touched = Vec::new();
         // taken before the journal, and copied, so that the two locks are never held in this
         // order anywhere - `note_pin` below holds the other one on its own
-        let mine = self.pinned.lock().clone();
+        let mut mine = self.pinned.lock().clone();
         {
             let mut journal = self.journal.lock();
             for _ in 0..steps {
@@ -666,8 +666,17 @@ impl Changes {
                 let Some(inverse) = step.inverse else {
                     continue;
                 };
+                // note: the copy is kept current as the walk goes, because the next step asks
+                // `protected` against it. Read once, a pin this step put back would be the
+                // person's to the step after it, and walking back a `pin` and the `restore` that
+                // followed would stop halfway and call the model's own pin a promise
                 if let Undoing::States(states) = &inverse {
-                    touched.extend(states.iter().map(|(id, ..)| *id));
+                    for (id, ..) in states {
+                        touched.push(*id);
+                        if let Some(item) = kernel.item(*id) {
+                            hold(&mut mine, *id, item.state, item.note.clone());
+                        }
+                    }
                 }
                 match back {
                     true => journal.undone.push(inverse),
@@ -731,12 +740,21 @@ impl Changes {
 
     /// Remembers whether this tool is the one holding an item pinned, and with what note.
     fn note_pin(&self, id: ContextId, state: ContextState, note: Option<String>) {
-        let mut mine = self.pinned.lock();
-        match state {
-            ContextState::Pinned => mine.insert(id, note),
-            _ => mine.remove(&id),
-        };
+        hold(&mut self.pinned.lock(), id, state, note);
     }
+}
+
+/// Writes down whether the model holds an item pinned, in whichever copy of the set is at hand.
+fn hold(
+    mine: &mut crate::introspect::Mine,
+    id: ContextId,
+    state: ContextState,
+    note: Option<String>,
+) {
+    match state {
+        ContextState::Pinned => mine.insert(id, note),
+        _ => mine.remove(&id),
+    };
 }
 
 /// The state each of the four moves leaves an item in.

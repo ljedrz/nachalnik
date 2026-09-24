@@ -674,6 +674,46 @@ async fn walking_back_says_where_each_item_ended_up() {
     assert!(walked.contains("2 now active"), "{walked}");
 }
 
+/// A walk of several steps knows a pin it put back itself is its own, for the steps after it.
+///
+/// note: which pins are the model's was read once, before the walk, so a step that put the model's
+/// own pin back left the next step reading it as the person's - and walking back a `pin` and the
+/// `restore` after it stopped halfway, pinned, and called the pin a promise it could not break.
+#[tokio::test]
+async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "pin", "ids": [1], "reason": "I need this" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "undo", "steps": 2, "reason": "neither" }),
+        ),
+    ]));
+
+    let file = kernel.push(ContextItem::file("maybe.rs", "..."));
+    kernel.push(ContextItem::user("think about it"));
+    kernel.turn().await.expect("the turn failed");
+
+    let walked = all_answers(&kernel).last().unwrap().clone();
+    assert!(!walked.contains("a pin is a promise"), "{walked}");
+    assert!(
+        walked.contains("walked 2 of your own change(s) back"),
+        "{walked}"
+    );
+    let item = kernel.item(file).unwrap();
+    assert_eq!(item.state, ContextState::Active);
+    assert_eq!(item.note, None);
+}
+
 /// A number that is not an item number is refused, and the same number twice is one item.
 ///
 /// note: `ids` dropped whatever it could not read, so `[-1]` arrived as no items at all - which is

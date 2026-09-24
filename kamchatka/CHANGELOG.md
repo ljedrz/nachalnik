@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **An `undo` of several steps can walk past a pin it put back itself.** Which pins were the
+  model's was read once before the walk, so walking back a `pin` and the `restore` after it
+  stopped halfway, left the item pinned, and called the model's own pin the person's.
 - **`context` with `look` and a `select` marks what it cannot price.** The rows a selector matched
   showed an image as costing nothing, with no `+` and no word that the total was a floor, where the
   full listing said both.
