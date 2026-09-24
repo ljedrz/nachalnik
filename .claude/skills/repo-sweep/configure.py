@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Writes the two kamchatka settings files a sweep runs under, for one model.
 
-usage: configure.py MODEL [--limit TOKENS] [--out DIR]
+usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEPS)
 
 Without --limit, the model's context length is read from the endpoint's `/models` listing
 (KAMCHATKA_BASE_URL, OpenRouter's shape). The budget the prompts hold the model to, and the
@@ -100,8 +100,8 @@ def main() -> None:
     limit = int(args[args.index("--limit") + 1]) if "--limit" in args else listed_limit(model)
     if not limit:
         sys.exit(f"no context length for {model}; pass --limit TOKENS")
-    out = args[args.index("--out") + 1] if "--out" in args else os.path.join(
-        os.environ.get("TMPDIR", "/tmp"), "sweeps"
+    out = args[args.index("--out") + 1] if "--out" in args else os.environ.get(
+        "SWEEPS", os.path.join(os.environ.get("TMPDIR", "/tmp"), "sweeps")
     )
     os.makedirs(out, exist_ok=True)
 
