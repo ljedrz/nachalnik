@@ -6,7 +6,7 @@
 //! surface.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use nachalnik::{ContextItem, ContextState, Grant, Verdict};
+use nachalnik::{ContextId, ContextItem, ContextState, Grant, Verdict};
 use ratatui_textarea::CursorMove;
 
 use super::{
@@ -190,10 +190,15 @@ impl App {
     }
 
     /// Keys that belong to the context pane.
-    pub(super) fn context_key(&mut self, key: KeyEvent, count: &str) {
+    pub(super) fn context_key(
+        &mut self,
+        key: KeyEvent,
+        count: &str,
+        drawn: Option<Vec<ContextId>>,
+    ) {
         // what is on the screen, not what is in the context: with `f` on, the rows between two
         // items are gone and moving by one row has to mean the next row somebody can see
-        let items = self.listed();
+        let items = drawn.unwrap_or_else(|| self.listed().iter().map(|item| item.id).collect());
         if items.is_empty() {
             // there is nothing to pick, and the keys that are not about a row still have to work.
             // `f` puts the rows back; `u` and `U` are the way back from whatever emptied the pane,
@@ -223,7 +228,11 @@ impl App {
             return;
         }
         self.selected = self.selected.min(items.len() - 1);
-        let picked = items[self.selected].clone();
+        // the item as it is now rather than as it was drawn, which a running turn may have
+        // changed since. One the context no longer holds is not on the next frame either
+        let Some(picked) = self.kernel.item(items[self.selected]) else {
+            return;
+        };
 
         match key.code {
             KeyCode::Char('/') => self.search = Some(Search::new()),
@@ -243,7 +252,7 @@ impl App {
             // Bare `G` is the last item, as everywhere else
             KeyCode::End | KeyCode::Char('G') => {
                 self.selected = match count.parse::<u64>() {
-                    Ok(id) => match items.iter().position(|item| item.id.0 == id) {
+                    Ok(id) => match items.iter().position(|item| item.0 == id) {
                         Some(at) => at,
                         // there is a difference between an item that does not exist and one this
                         // tab is not currently showing, and only one of them is somebody's typo

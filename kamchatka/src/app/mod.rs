@@ -448,6 +448,14 @@ pub struct App {
     /// Where the context pane is scrolled to, which it keeps between frames.
     #[cfg(feature = "tui")]
     pub list: ratatui::widgets::ListState,
+    /// The context rows the last frame drew, until the next key.
+    ///
+    /// note: what the context keys count rows in, so that a key does not filter the whole
+    /// context again to find the rows the frame has just found - with a search open, that doubled
+    /// what every key cost. Only the first key after a frame reads them: whatever it changed, no
+    /// frame has drawn yet, so the key after it filters afresh.
+    #[cfg(feature = "tui")]
+    pub(crate) drawn: Option<Vec<ContextId>>,
     /// What is on top, if anything.
     pub overlay: Option<Overlay>,
     /// The first transcript line on screen.
@@ -689,6 +697,8 @@ impl App {
             sending_only: false,
             #[cfg(feature = "tui")]
             list: ratatui::widgets::ListState::default(),
+            #[cfg(feature = "tui")]
+            drawn: None,
             overlay: None,
             scroll: 0,
             follow: true,
@@ -1748,6 +1758,8 @@ impl App {
             return;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        // taken by every key, whichever handler it reaches; see the field
+        let drawn = self.drawn.take();
 
         // before anything else, including whatever is on top: these two mean the same thing
         // wherever they are pressed, and an overlay that took them for its own would be answering
@@ -1850,7 +1862,7 @@ impl App {
                 // a question is on the screen and has not been given the keys, so the prompt is
                 // not on the screen either and there is nothing here for a key to do
                 (Tab::Chat, Focus::Input) if self.asking() => self.locked_key(key),
-                (Tab::Context, Focus::Body) => self.context_key(key, &count),
+                (Tab::Context, Focus::Body) => self.context_key(key, &count, drawn),
                 (Tab::Trace, Focus::Body) => self.trace_key(key),
                 (Tab::Permissions, Focus::Body) => self.permissions_key(key),
                 _ => self.input_key(key).await,

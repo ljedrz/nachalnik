@@ -355,6 +355,7 @@ pub(super) fn draw_context(
     area: Rect,
 ) -> Scrolled {
     let items = app.listed();
+    app.drawn = Some(items.iter().map(|item| item.id).collect());
     let held_back = app.kernel.items().len() - items.len();
     if items.is_empty() {
         // the empties are not the same, and each has its own way out of it.

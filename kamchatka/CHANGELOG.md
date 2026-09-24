@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A key on the context tab no longer filters the whole context again.** Every key recomputed the
+  rows the frame had just drawn, which with a search open doubled what a key cost in a long
+  session. The first key after a frame counts rows in what that frame drew.
 - **A long chat stops copying every answer into every frame.** The answers kept from one frame to
   the next were copied whole into each frame and all but a screenful thrown away, which cost more
   than drawing the rest of the chat. A frame now points at the answers it keeps and makes lines

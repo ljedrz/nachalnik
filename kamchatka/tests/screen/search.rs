@@ -130,6 +130,9 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     let all = harness.app.listed().len();
     assert!(all >= 2, "not enough items: {all}");
 
+    // a frame of every row, and then a query no frame has drawn: the keys count the rows the
+    // query left, not the ones the last frame drew before it was typed
+    harness.flat();
     press(&mut harness, KeyCode::Char('/')).await;
     type_in(&mut harness, "assistant").await;
 
@@ -138,6 +141,13 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     assert!(kept.len() < all, "and the user turn should not");
 
     // the row the keys are on is a row that is still on the screen
+    press(&mut harness, KeyCode::End).await;
+    assert_eq!(
+        harness.app.selected,
+        kept.len() - 1,
+        "end is the last of {} filtered row(s)",
+        kept.len()
+    );
     press(&mut harness, KeyCode::Down).await;
     assert!(
         harness.app.selected < kept.len(),
