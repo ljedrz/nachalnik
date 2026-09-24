@@ -33,6 +33,15 @@ pub fn scratch(name: &str) -> PathBuf {
     dir
 }
 
+/// A scratch directory with one file in it, `inside.txt`, for a test that reads, writes or confines
+/// a workspace of its own.
+pub fn workdir(name: &str) -> PathBuf {
+    let dir = scratch(name);
+    std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
+
+    dir
+}
+
 /// An endpoint the program can be pointed at, which answers the model listing and then hands out
 /// these bodies, one per request, as a stream.
 ///
@@ -102,12 +111,25 @@ pub async fn endpoint(answers: Vec<String>) -> String {
     format!("http://{at}/v1")
 }
 
+/// One streamed answer for [`endpoint`], with what it cost on the end of it.
+#[cfg(unix)]
+pub fn answer(text: &str) -> String {
+    use serde_json::json;
+
+    format!(
+        "data: {}\n\ndata: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": text},
+               "finish_reason": null}]}),
+        json!({"id": "1", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+               "usage": {"prompt_tokens": 700, "completion_tokens": 500, "total_tokens": 1200}})
+    )
+}
+
 /// The binary under test.
 ///
 /// note: what cargo sets for exactly this, rather than the test binary's own path with `deps`
 /// taken off it. It knows the extension, it knows where the profile put the binary, and it cannot
 /// be wrong about either.
-#[cfg(unix)]
 pub fn program() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }

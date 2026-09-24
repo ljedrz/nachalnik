@@ -21,14 +21,6 @@ use serde_json::json;
 
 mod common;
 
-/// The binary under test.
-///
-/// note: what cargo sets for exactly this; see `common::program`, which this cannot be, because
-/// that one is `cfg(unix)` and this suite runs anywhere.
-fn program() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
-}
-
 /// A directory with no settings file in it, which is where every run below is started from.
 ///
 /// note: this suite's own working directory is the crate root, and the crate root is where the
@@ -82,7 +74,7 @@ fn spawn(
     env: &[(&str, &str)],
     keyed: bool,
 ) -> (bool, String) {
-    let mut command = Command::new(program());
+    let mut command = Command::new(common::program());
     command
         .current_dir(dir)
         .args(["--no-record"])
@@ -605,7 +597,7 @@ fn a_directory_with_no_file_in_it_reads_none() {
 /// no flag at all.
 #[test]
 fn print_config_hands_over_a_file_this_program_would_accept() {
-    let out = Command::new(program())
+    let out = Command::new(common::program())
         .arg("--print-config")
         .output()
         .expect("the binary under test is built");
@@ -631,7 +623,7 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     // program starts - so a program that looked for a settings file first read an empty one
     let empty = common::scratch("print-into");
     std::fs::write(empty.join("kamchatka.json"), "").expect("the file the shell truncated");
-    let out = Command::new(program())
+    let out = Command::new(common::program())
         .current_dir(&empty)
         .arg("--print-config")
         .output()

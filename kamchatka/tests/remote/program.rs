@@ -36,7 +36,8 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
     // every test that calls it. At the top it is an unresolved import on Windows
     use crate::connect;
 
-    let base = crate::common::endpoint(vec![answer("what the other end reads")]).await;
+    let base =
+        crate::common::endpoint(vec![crate::common::answer("what the other end reads")]).await;
     let dir = crate::common::scratch("served");
     let socket = dir.join("kamchatka.sock");
 
@@ -334,18 +335,6 @@ fn the_phone_example_writes_every_session_out() {
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
-}
-
-/// One SSE answer, in the shape the provider actually reads.
-#[cfg(unix)]
-fn answer(text: &str) -> String {
-    format!(
-        "data: {}\n\ndata: {}",
-        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": text},
-               "finish_reason": null}]}),
-        json!({"id": "1", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-               "usage": {"prompt_tokens": 700, "completion_tokens": 500, "total_tokens": 1200}})
-    )
 }
 
 /// A client asked for a session that is not there says so, rather than trying five times.
@@ -669,7 +658,10 @@ async fn quitting_from_a_client_reads_as_an_ending() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
-    let base = crate::common::endpoint(vec![answer("reached through a port nobody chose")]).await;
+    let base = crate::common::endpoint(vec![crate::common::answer(
+        "reached through a port nobody chose",
+    )])
+    .await;
 
     let mut host = tokio::process::Command::new(crate::common::program())
         .args(["--no-record", "-m", "nothing", "--serve", "tcp:127.0.0.1:0"])

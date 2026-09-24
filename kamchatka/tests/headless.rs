@@ -1106,13 +1106,7 @@ async fn an_interrupted_response_does_not_say_the_endpoint_reports_nothing() {
 /// which is the auto-detection doing its job, and the announcement is on stderr where it belongs.
 #[test]
 fn the_program_runs_headless_and_keeps_its_streams_apart() {
-    // the test binary lives beside it
-    let mut program = std::env::current_exe().expect("a test binary has a path");
-    program.pop();
-    if program.ends_with("deps") {
-        program.pop();
-    }
-    program.push("kamchatka");
+    let program = common::program();
 
     let out = std::process::Command::new(&program)
         .args(["-m", "nothing-serves-this", "--no-record", "hello"])
@@ -1176,12 +1170,7 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
     )
     .expect("written");
 
-    let mut program = std::env::current_exe().expect("a test binary has a path");
-    program.pop();
-    if program.ends_with("deps") {
-        program.pop();
-    }
-    program.push("kamchatka");
+    let program = common::program();
 
     let out = std::process::Command::new(&program)
         .args(["--headless", "--no-record", "-r"])
@@ -1484,7 +1473,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
                     "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
                 ]}, "finish_reason": "tool_calls"}]})
             ),
-            answer("done"),
+            common::answer("done"),
         ])
         .await;
 
@@ -1754,7 +1743,7 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_nobody_is_reading_still_writes_its_record() {
-    let base = common::endpoint(vec![answer("said to nobody")]).await;
+    let base = common::endpoint(vec![common::answer("said to nobody")]).await;
     let dir = common::scratch("unread");
 
     let mut child = std::process::Command::new(common::program())
@@ -1868,7 +1857,7 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_spend_ceiling_stops_the_program_itself() {
-    let base = common::endpoint(vec![answer("as much as it likes")]).await;
+    let base = common::endpoint(vec![common::answer("as much as it likes")]).await;
 
     let out = std::process::Command::new(common::program())
         .args([
@@ -1903,7 +1892,7 @@ async fn the_spend_ceiling_stops_the_program_itself() {
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
-    let base = common::endpoint(vec![answer("something to keep")]).await;
+    let base = common::endpoint(vec![common::answer("something to keep")]).await;
     let dir = common::scratch("recorded");
 
     let out = std::process::Command::new(common::program())
@@ -1996,18 +1985,6 @@ fn a_run_that_fails_still_records_an_ending() {
         .next_back()
         .expect("a record");
     assert_eq!(last.event.name(), "session.finished");
-}
-
-/// One streamed answer, with what it cost on the end of it.
-#[cfg(unix)]
-fn answer(text: &str) -> String {
-    format!(
-        "data: {}\n\ndata: {}",
-        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": text},
-               "finish_reason": null}]}),
-        json!({"id": "1", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-               "usage": {"prompt_tokens": 700, "completion_tokens": 500, "total_tokens": 1200}})
-    )
 }
 
 /// A build with no screen runs headless at a terminal, rather than panicking at one.
@@ -2851,9 +2828,9 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
 /// note: `TMPDIR` is the whole isolation. `record` writes under the temporary directory, so a run
 /// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.
 ///
-/// note: and `#[cfg(unix)]` is that sentence's other half, alongside `common::program` being
-/// gated the same way. Windows reads `TMP` and `TEMP` and not `TMPDIR`, so the child would record
-/// into the real temporary directory and this would count somebody else's sessions - or none.
+/// note: and `#[cfg(unix)]` is that sentence's other half. Windows reads `TMP` and `TEMP` and not
+/// `TMPDIR`, so the child would record into the real temporary directory and this would count
+/// somebody else's sessions - or none.
 #[cfg(unix)]
 #[test]
 fn restart_writes_the_session_out_and_starts_another() {

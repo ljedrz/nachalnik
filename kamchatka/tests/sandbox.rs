@@ -36,25 +36,13 @@ use serde_json::json;
 
 mod common;
 
-/// The binary under test, which is also the thing that confines itself.
-fn program() -> PathBuf {
-    // the test binary lives beside it
-    let mut path = std::env::current_exe().expect("a test binary has a path");
-    path.pop();
-    if path.ends_with("deps") {
-        path.pop();
-    }
-
-    path.join("kamchatka")
-}
-
 /// Runs a command under the given sandbox, returning its output and whether it succeeded.
 ///
 /// note: spawned rather than run in one call, and the temporary directory removed afterwards,
 /// because that is what the `shell` tool does: a confined process cannot remove its own, and a
 /// test that skipped it would leave one behind per command and prove nothing about the tool.
 fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
-    let child = Command::new(program())
+    let child = Command::new(common::program())
         .args(sandbox.argv(cmd))
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -68,14 +56,6 @@ fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
     said.push_str(&String::from_utf8_lossy(&output.stderr));
 
     (output.status.success(), said)
-}
-
-/// A workspace of its own, so nothing here can touch the repository.
-fn workdir(name: &str) -> PathBuf {
-    let dir = common::scratch(name);
-    std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
-
-    dir
 }
 
 fn sandbox(workdir: PathBuf, writable: bool, network: bool) -> Sandbox {
@@ -102,7 +82,7 @@ fn sockets() -> bool {
 
 /// Whether this machine can enforce any of it; the tests say so and stop rather than failing.
 fn enforced() -> bool {
-    match available(&program()) {
+    match available(&common::program()) {
         Confinement::Full => true,
         other => {
             eprintln!("skipped: {other}");
@@ -120,7 +100,7 @@ fn enforced() -> bool {
 /// write, so the sentence that can be certain is the one written before anything runs.
 #[test]
 fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
-    let dir = workdir("sandbox-read-only-said");
+    let dir = common::workdir("sandbox-read-only-said");
     let policy = Arc::new(Careful::new());
 
     let said = |policy: &Arc<Careful>| {
@@ -129,7 +109,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             extra: Vec::new(),
             readable: Vec::new(),
             policy: policy.clone(),
-            confiner: Some(program()),
+            confiner: Some(common::program()),
             limits: Limits::default(),
         }
         .spec()
@@ -164,7 +144,7 @@ fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
         return;
     }
 
-    let dir = workdir("sandbox-unopenable");
+    let dir = common::workdir("sandbox-unopenable");
     let shut = dir.join("shut");
     std::fs::create_dir_all(&shut).expect("a directory");
     std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
@@ -195,7 +175,7 @@ fn a_command_can_read_and_write_inside_the_working_directory() {
     if !enforced() {
         return;
     }
-    let dir = workdir("inside");
+    let dir = common::workdir("inside");
     let sandbox = sandbox(dir.clone(), true, false);
 
     let (ok, said) = run(
@@ -220,13 +200,16 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
     // sessions disproved by reading `/etc/passwd` through this with nothing refusing them - and
     // the test that sounded like it covered the claim reaches for a home directory, which is not
     // in `SYSTEM` and so was never the case in question
-    let (ok, said) = run(&sandbox(workdir("system"), true, false), "cat /etc/passwd");
+    let (ok, said) = run(
+        &sandbox(common::workdir("system"), true, false),
+        "cat /etc/passwd",
+    );
     assert!(ok, "the system directories are readable on purpose: {said}");
     assert!(said.contains("root:"), "{said}");
 
     // readable, and no more than that
     let (wrote, said) = run(
-        &sandbox(workdir("system"), true, false),
+        &sandbox(common::workdir("system"), true, false),
         "touch /etc/kamchatka-probe",
     );
     assert!(!wrote, "a system directory is not writable: {said}");
@@ -245,7 +228,7 @@ fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
         return;
     }
     let (ok, said) = run(
-        &sandbox(workdir("environ"), true, false),
+        &sandbox(common::workdir("environ"), true, false),
         "cat /proc/self/environ > /dev/null && echo own && cat /proc/$PPID/environ > /dev/null",
     );
     assert!(said.contains("own"), "its own is readable: {said}");
@@ -260,7 +243,7 @@ fn a_command_cannot_read_private_files_outside_it() {
     // outside the working directory *and* outside the system paths, which is the part somebody
     // installing this actually cares about
     let (ok, said) = run(
-        &sandbox(workdir("read"), true, false),
+        &sandbox(common::workdir("read"), true, false),
         "cat /home/*/.bashrc",
     );
 
@@ -287,7 +270,7 @@ fn a_command_cannot_write_outside_it() {
     let escape = std::env::temp_dir().join("kamchatka-escaped.txt");
     let _ = std::fs::remove_file(&escape);
     let (ok, said) = run(
-        &sandbox(workdir("write-out"), true, false),
+        &sandbox(common::workdir("write-out"), true, false),
         &format!("echo escaped > {}", escape.display()),
     );
     assert!(!ok, "the whole of /tmp is not writable: {said}");
@@ -295,7 +278,7 @@ fn a_command_cannot_write_outside_it() {
 
     let elsewhere = PathBuf::from("/etc/kamchatka-escaped.txt");
     let (ok_etc, said_etc) = run(
-        &sandbox(workdir("write-etc"), true, false),
+        &sandbox(common::workdir("write-etc"), true, false),
         &format!("echo escaped > {}", elsewhere.display()),
     );
     assert!(!ok_etc, "writing to /etc should fail: {said_etc}");
@@ -305,7 +288,7 @@ fn a_command_cannot_write_outside_it() {
     // ... and a temporary file made the way a program actually makes one still works, or a
     // compiler would not run under this at all
     let (ok_tmp, said_tmp) = run(
-        &sandbox(workdir("write-tmpdir"), true, false),
+        &sandbox(common::workdir("write-tmpdir"), true, false),
         "echo scratch > \"$TMPDIR/t.txt\" && cat \"$TMPDIR/t.txt\"",
     );
     assert!(ok_tmp, "{said_tmp}");
@@ -328,8 +311,10 @@ fn a_command_with_no_temporary_directory_is_given_no_tmpdir() {
         return;
     }
 
-    let output = Command::new(program())
-        .args(sandbox(workdir("no-tmpdir"), true, false).argv("printf %s \"${TMPDIR-none}\""))
+    let output = Command::new(common::program())
+        .args(
+            sandbox(common::workdir("no-tmpdir"), true, false).argv("printf %s \"${TMPDIR-none}\""),
+        )
         .env("TMPDIR", &closed)
         .output()
         .expect("the binary under test is built");
@@ -352,7 +337,7 @@ fn a_command_cannot_truncate_a_file_outside_the_working_directory() {
     if !enforced() {
         return;
     }
-    let dir = workdir("truncate");
+    let dir = common::workdir("truncate");
     let outside = common::scratch("truncate-outside").join("whole.txt");
     std::fs::write(&outside, "the whole of it").expect("a file outside");
 
@@ -379,7 +364,7 @@ fn a_command_can_truncate_a_file_inside_it() {
     if !enforced() {
         return;
     }
-    let dir = workdir("truncate-inside");
+    let dir = common::workdir("truncate-inside");
     let (ok, said) = run(
         &sandbox(dir.clone(), true, false),
         "python3 -c \"import os;os.truncate('inside.txt',0)\" 2>&1",
@@ -399,7 +384,7 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     if !enforced() {
         return;
     }
-    let dir = workdir("readonly");
+    let dir = common::workdir("readonly");
 
     let (ok, said) = run(&sandbox(dir.clone(), false, false), "echo x > nope.txt");
 
@@ -416,7 +401,7 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
     if !enforced() {
         return;
     }
-    let dir = workdir("network");
+    let dir = common::workdir("network");
 
     // the way a model asks for the network, which a policy reading the command would also catch
     let (ok, said) = run(
@@ -463,7 +448,7 @@ fn a_udp_datagram_still_goes_out_and_every_sentence_about_it_says_so() {
     let port = socket.local_addr().expect("it is bound").port();
 
     let (ok, said) = run(
-        &sandbox(workdir("udp"), true, false),
+        &sandbox(common::workdir("udp"), true, false),
         &format!(
             "python3 -c \"import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\
              .sendto(b'out', ('127.0.0.1', {port}))\" 2>&1"
@@ -507,7 +492,7 @@ fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
     let listening = UnixListener::bind(&outside).expect("a socket outside the working directory");
 
     let (ok, said) = run(
-        &sandbox(workdir("connect"), true, false),
+        &sandbox(common::workdir("connect"), true, false),
         &connect_to(&outside),
     );
 
@@ -527,7 +512,7 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     if !enforced() || !sockets() {
         return;
     }
-    let dir = workdir("connect-inside");
+    let dir = common::workdir("connect-inside");
     let inside = dir.join("s.sock");
     let listening = UnixListener::bind(&inside).expect("a socket in the working directory");
 
@@ -553,7 +538,7 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
     let socket = opened.join("s.sock");
     let listening = UnixListener::bind(&socket).expect("a socket in the readable directory");
 
-    let mut readable = sandbox(workdir("connect-read"), true, false);
+    let mut readable = sandbox(common::workdir("connect-read"), true, false);
     readable.readable = vec![opened];
     let (ok, said) = run(&readable, &connect_to(&socket));
 
@@ -579,7 +564,7 @@ fn two_paths_go_in_as_one_flag() {
         return;
     }
 
-    let mut child = Command::new(program())
+    let mut child = Command::new(common::program())
         .args([
             "-m",
             "nothing-serves-this",
@@ -629,7 +614,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),
         readable: Vec::new(),
-        confiner: Some(program()),
+        confiner: Some(common::program()),
     }));
 
     kernel
@@ -641,7 +626,7 @@ async fn a_command_takes_its_temporary_directory_with_it() {
         return;
     }
     let kernel = confined_agent(
-        &workdir("scratch"),
+        &common::workdir("scratch"),
         [
             ModelResponse::tool_calls(vec![call(
                 "1",
@@ -681,14 +666,14 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
     if !enforced() {
         return;
     }
-    let dir = workdir("dropped-scratch");
+    let dir = common::workdir("dropped-scratch");
     let shell = Shell {
         limits: Limits::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),
         readable: Vec::new(),
-        confiner: Some(program()),
+        confiner: Some(common::program()),
     };
     let args = json!({ "cmd": "printf %s \"$TMPDIR\" > where.txt; sleep 20" });
 
@@ -715,7 +700,7 @@ async fn a_stopped_command_stops_and_says_so_at_once() {
     if !enforced() {
         return;
     }
-    let dir = workdir("interrupt");
+    let dir = common::workdir("interrupt");
     let kernel = confined_agent(
         &dir,
         [
@@ -767,10 +752,10 @@ fn a_path_opened_for_reading_is_not_a_path_that_can_be_written() {
     if !enforced() {
         return;
     }
-    let outside = workdir("read-only-extra");
+    let outside = common::workdir("read-only-extra");
     std::fs::write(outside.join("settings.toml"), "default = stable").expect("something to read");
 
-    let mut sandbox = sandbox(workdir("read-only-home"), true, false);
+    let mut sandbox = sandbox(common::workdir("read-only-home"), true, false);
     sandbox.readable = vec![outside.clone()];
 
     let (ok, said) = run(
@@ -825,10 +810,10 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
 
     // a home of its own, out of reach like the real one, with a configuration in it that exists.
     // A file that is merely absent is not the case that breaks git
-    let home = workdir("git-home");
+    let home = common::workdir("git-home");
     std::fs::write(home.join(".gitconfig"), "[user]\n\tname = someone\n").expect("a configuration");
 
-    let dir = workdir("git-repo");
+    let dir = common::workdir("git-repo");
     for args in [
         vec!["init", "-q"],
         vec![
@@ -868,7 +853,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
     // spawned it knows the identifier. These two used to call `output()` and then remove
     // `scratch_for(std::process::id())` - this test's own identifier, naming a directory that
     // never existed - so every run of this file left two of the child's behind for good
-    let spawned = Command::new(program())
+    let spawned = Command::new(common::program())
         .args(confined.argv("git log -n 1 --oneline"))
         .env("HOME", &home)
         .env_remove("GIT_CONFIG_GLOBAL")
@@ -898,7 +883,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
     // ... and opened up, it is git's own configuration again rather than nothing
     let mut opened = confined.clone();
     opened.readable = vec![home.join(".gitconfig")];
-    let spawned = Command::new(program())
+    let spawned = Command::new(common::program())
         .args(opened.argv("git config --get user.name"))
         .env("HOME", &home)
         .env_remove("GIT_CONFIG_GLOBAL")
@@ -926,12 +911,12 @@ async fn the_shell_tool_accounts_for_a_refusal_it_caused() {
     }
     // outside the working directory and outside the system paths, readable by whoever runs this,
     // so that the only thing standing between the command and the file is the ruleset
-    let elsewhere = workdir("out-of-reach");
+    let elsewhere = common::workdir("out-of-reach");
     let secret = elsewhere.join("secret.txt");
     std::fs::write(&secret, "hunter2").expect("something to be refused");
 
     let kernel = confined_agent(
-        &workdir("accounted"),
+        &common::workdir("accounted"),
         [
             ModelResponse::tool_calls(vec![call(
                 "1",

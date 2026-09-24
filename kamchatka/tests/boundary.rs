@@ -23,19 +23,11 @@ use kamchatka::{
 
 mod common;
 
-/// A workspace of its own, so nothing here can touch the repository.
-fn workdir(name: &str) -> PathBuf {
-    let dir = common::scratch(name);
-    std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
-
-    dir
-}
-
 #[test]
 fn the_file_tools_are_held_to_the_same_boundary() {
     use kamchatka::sandbox::{Access, Reach};
 
-    let dir = workdir("reach").canonicalize().expect("it exists");
+    let dir = common::workdir("reach").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
         extra: vec![PathBuf::from("/usr/share")],
@@ -250,7 +242,7 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
 fn a_refusal_names_what_was_opened_up() {
     use kamchatka::sandbox::{Access, Reach};
 
-    let dir = workdir("named").canonicalize().expect("it exists");
+    let dir = common::workdir("named").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
         extra: vec![PathBuf::from("/usr/share")],
@@ -291,7 +283,7 @@ fn a_refusal_names_what_was_opened_up() {
 fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
     use kamchatka::sandbox::{Access, Reach};
 
-    let dir = workdir("tilde").canonicalize().expect("it exists");
+    let dir = common::workdir("tilde").canonicalize().expect("it exists");
     let reach = Reach {
         workdir: dir.clone(),
         extra: Vec::new(),
@@ -394,7 +386,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
 fn the_scratch_directory_is_never_somebody_elses() {
     use kamchatka::sandbox::make_scratch;
 
-    let root = workdir("scratch-name");
+    let root = common::workdir("scratch-name");
     let (elsewhere, path) = (root.join("elsewhere"), root.join("kamchatka-0"));
     std::fs::create_dir_all(&elsewhere).expect("somewhere to point at");
     std::fs::write(elsewhere.join("secret.txt"), "hunter2").expect("something in it");
@@ -509,7 +501,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
     // ... and a path that has been opened up is not the confinement either. A real directory,
     // because a root that is not there is not one this opens up - the same answer `Reach::allows`
     // gives, and for the same reason
-    let opened_up = workdir("opened-up");
+    let opened_up = common::workdir("opened-up");
     let mut opened = confined.clone();
     opened.readable = vec![opened_up.clone()];
     assert_eq!(

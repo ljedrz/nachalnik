@@ -28,6 +28,8 @@ use nachalnik::{
 use nachalnik_providers::OpenAiCompatible;
 use serde_json::json;
 
+mod common;
+
 /// `name=command` for the Python server, or `None` when it cannot be run here.
 fn spec() -> Option<String> {
     if std::process::Command::new("python3")
@@ -303,13 +305,7 @@ async fn a_dropped_server_fails_its_calls_instead_of_hanging() {
 fn the_program_offers_a_spawned_servers_tools() {
     let spec = spec!();
 
-    // the test binary lives beside it
-    let mut program = std::env::current_exe().expect("a test binary has a path");
-    program.pop();
-    if program.ends_with("deps") {
-        program.pop();
-    }
-    program.push("kamchatka");
+    let program = common::program();
 
     let mut child = std::process::Command::new(&program)
         .args(["-m", "nothing-serves-this", "--no-record", "--mcp", &spec])
