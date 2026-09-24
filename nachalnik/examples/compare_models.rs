@@ -39,11 +39,11 @@ use nachalnik::{
     BoxError, Config, ContextItem, Kernel, ModelResponse, StopReason, Usage, selectors::Selector,
 };
 
-// the formatting helpers and the environment, shared with the `panel` example
+// the formatting helpers, `--save` and the environment, shared with the `panel` example
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{thousands, wrap};
+use common::{save, thousands, wrap};
 
 const USAGE: &str = "\
 usage: compare [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
@@ -333,36 +333,6 @@ fn report(contenders: &[Contender], answers: &[Answer], estimates: &[usize], wid
     }
 }
 
-/// Writes every session where it can be read back: the log as it happened, the snapshot as it
-/// ended up.
-fn save(contenders: &[Contender], dir: &str) -> Result<(), BoxError> {
-    std::fs::create_dir_all(dir)?;
-
-    for contender in contenders {
-        let slug: String = contender
-            .model
-            .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect();
-
-        let log: Vec<String> = contender
-            .kernel
-            .history()
-            .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<_, _>>()?;
-        std::fs::write(format!("{dir}/{slug}.jsonl"), log.join("\n"))?;
-        std::fs::write(
-            format!("{dir}/{slug}.json"),
-            serde_json::to_vec_pretty(&contender.kernel.snapshot())?,
-        )?;
-
-        println!("  wrote {dir}/{slug}.jsonl and {dir}/{slug}.json");
-    }
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     let (mut models, mut files, mut system, mut save_to) = (Vec::new(), Vec::new(), None, None);
@@ -477,7 +447,10 @@ async fn main() -> Result<(), BoxError> {
 
     if let Some(dir) = save_to {
         heading("SAVED");
-        save(&contenders, &dir)?;
+        save(
+            contenders.iter().map(|c| (c.model.as_str(), &c.kernel)),
+            &dir,
+        )?;
         println!(
             "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` picks any of them up."
         );

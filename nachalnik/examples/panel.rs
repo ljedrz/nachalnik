@@ -43,11 +43,11 @@ use nachalnik::{
 use parking_lot::Mutex;
 use serde_json::json;
 
-// the formatting helpers and the environment, shared with the `compare_models` example
+// the formatting helpers, `--save` and the environment, shared with the `compare_models` example
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{thousands, wrap};
+use common::{save, thousands, wrap};
 
 const WIDTH: usize = 78;
 
@@ -372,35 +372,6 @@ fn report_contexts(panel: &[Panelist]) {
             );
         }
     }
-}
-
-/// Writes every panelist's session where it can be read back.
-fn save(panel: &[Panelist], dir: &str) -> Result<(), BoxError> {
-    std::fs::create_dir_all(dir)?;
-
-    for panelist in panel {
-        let slug: String = panelist
-            .model
-            .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { '-' })
-            .collect();
-
-        let log: Vec<String> = panelist
-            .kernel
-            .history()
-            .iter()
-            .map(serde_json::to_string)
-            .collect::<Result<_, _>>()?;
-        std::fs::write(format!("{dir}/{slug}.jsonl"), log.join("\n"))?;
-        std::fs::write(
-            format!("{dir}/{slug}.json"),
-            serde_json::to_vec_pretty(&panelist.kernel.snapshot())?,
-        )?;
-
-        println!("  wrote {dir}/{slug}.jsonl and {dir}/{slug}.json");
-    }
-
-    Ok(())
 }
 
 // ------------------------------------------------------------------------------------- the run
@@ -737,7 +708,7 @@ async fn main() -> Result<(), BoxError> {
 
     if let Some(dir) = save_to {
         heading("SAVED");
-        save(&panel, &dir)?;
+        save(panel.iter().map(|p| (p.model.as_str(), &p.kernel)), &dir)?;
         println!(
             "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` carries any of them \
              on."
