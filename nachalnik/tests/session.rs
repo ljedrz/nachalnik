@@ -693,6 +693,27 @@ fn an_identifier_two_items_share_is_given_a_new_one() {
     );
 }
 
+/// Items out of order are named as a problem, because resuming puts them back in order - which
+/// changes the conversation the model is shown.
+#[test]
+fn items_out_of_order_are_named_before_resume_sorts_them() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("one"));
+    kernel.push(ContextItem::user("two"));
+    let mut snapshot = kernel.snapshot();
+    assert!(snapshot.problems().is_empty(), "{:?}", snapshot.problems());
+    snapshot.items.swap(0, 1);
+    let problems = snapshot.problems();
+    assert!(
+        problems.iter().any(|it| it.contains("comes after")),
+        "{problems:?}"
+    );
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    let ids: Vec<_> = resumed.items().iter().map(|item| item.id.0).collect();
+    assert_eq!(ids, [1, 2], "the repair the problem warned of");
+}
+
 /// Numbers at the top of what a `u64` holds are named as a problem, and resuming one anyway is
 /// not a panic.
 #[test]

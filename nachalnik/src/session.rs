@@ -239,19 +239,27 @@ impl Snapshot {
     /// note: what [`Kernel::resume`] would have to repair or could not, for a caller that would
     /// rather refuse a snapshot than resume a repaired one. A snapshot is a record, and one read
     /// back from a file may have been edited, merged or written by something else. Resuming
-    /// repairs what it can - an identifier two items share, or `0`, gets the next free one, and
-    /// every call the items name is reserved whether or not `used_calls` lists it - and cannot
-    /// repair a number too near the top of a `u64` to count on from.
+    /// repairs what it can - an identifier two items share, or `0`, gets the next free one, items
+    /// out of order are sorted by identifier, and every call the items name is reserved whether or
+    /// not `used_calls` lists it - and cannot repair a number too near the top of a `u64` to count
+    /// on from.
     pub fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
 
         let mut held = std::collections::HashSet::new();
+        let mut highest_so_far = 0;
         for item in &self.items {
             if item.id.0 == 0 {
                 problems.push("an item has no identifier (0)".to_owned());
             } else if !held.insert(item.id) {
                 problems.push(format!("two items are both numbered {}", item.id));
+            } else if item.id.0 < highest_so_far {
+                problems.push(format!(
+                    "item {} comes after item {highest_so_far}, and would be moved before it",
+                    item.id
+                ));
             }
+            highest_so_far = highest_so_far.max(item.id.0);
         }
 
         let used: std::collections::HashSet<_> = self.used_calls.iter().collect();

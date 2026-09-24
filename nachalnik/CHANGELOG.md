@@ -19,6 +19,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`Snapshot::problems` names items out of order.** `Kernel::resume` sorts a snapshot's items by
+  identifier, which changes the conversation the model is shown, and a snapshot whose items were
+  out of order came back with no problem named - so a caller refusing a repaired snapshot resumed a
+  reordered one.
 - **A push while a turn is recorded does not split the turn from the answer to a call nobody can
   run.** That answer joins the checkpoint the turn was recorded under, and the number was read
   again after the turn let go of the context; a push from another thread in between took it, and
