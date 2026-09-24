@@ -33,6 +33,7 @@ use crate::{
     tools::{
         Limits, domains,
         ops::{Arg, Op, actions, inner, schema, unread},
+        yes_or_no,
     },
 };
 
@@ -256,7 +257,7 @@ impl Query {
         }
 
         let mut query = Self {
-            whole: args["whole"].as_bool().unwrap_or(false),
+            whole: yes_or_no(args, "whole")?,
             ..Self::default()
         };
 

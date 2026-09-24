@@ -114,6 +114,20 @@ fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
 
 /// A yes-or-no argument, read the same way and refused the same way.
 fn truth(args: &Value, name: &str) -> Result<bool, String> {
+    yes_or_no(args, name).map_err(|refusal| {
+        format!(
+            "{refusal} Nothing was searched, rather than something being searched for \
+             differently than you asked."
+        )
+    })
+}
+
+/// A yes-or-no argument to any tool here: a boolean, or the word in quotes, and `false` left out.
+///
+/// note: shared, because the introspection tools read `false` into a quoted `"true"` for as long
+/// as they had their own `as_bool().unwrap_or(false)` - `pin` left a note unpinned and `whole`
+/// read a sample - which is the swallowed argument the note on [`whole`] is about.
+pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
     let value = &args[name];
     if value.is_null() {
         return Ok(false);
@@ -122,15 +136,12 @@ fn truth(args: &Value, name: &str) -> Result<bool, String> {
         return Ok(yes);
     }
     match value.as_str().map(str::trim) {
-        Some("true") => return Ok(true),
-        Some("false") => return Ok(false),
-        _ => {}
+        Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        _ => Err(format!(
+            "`{name}` is true or false and this one is `{value}`."
+        )),
     }
-
-    Err(format!(
-        "`{name}` is true or false and this one is `{value}`. Nothing was searched, rather than \
-         something being searched for differently than you asked."
-    ))
 }
 
 /// What a call's output is cut at when nothing more specific is said, in bytes.

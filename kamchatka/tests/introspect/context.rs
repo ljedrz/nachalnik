@@ -40,6 +40,36 @@ async fn look_lists_every_item_with_its_state_and_why() {
     );
 }
 
+/// `whole` written in quotes is read as the word it is, and one that is neither is refused.
+#[tokio::test]
+async fn the_whole_of_an_item_can_be_asked_for_in_quotes() {
+    let long = format!("HEAD-MARKER\n{}\nTAIL-MARKER", "noise line\n".repeat(2_000));
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "look", "ids": [1], "whole": "true" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "look", "ids": [1], "whole": "yes" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("noise.log", long));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let results = answers_from(&kernel, &["context"]);
+    assert!(
+        !results[0].contains("bytes not shown"),
+        "{:.400}",
+        results[0]
+    );
+    assert!(results[1].contains("true or false"), "{}", results[1]);
+}
+
 #[tokio::test]
 async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for() {
     // the trap this closes: reading an item copies it into the context, so asking to see a big

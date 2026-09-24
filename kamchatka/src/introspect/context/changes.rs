@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use crate::{
     app::text::{beyond_a_prompt, thousands},
     introspect::{ids, named, protected, unknown},
+    tools::yes_or_no,
 };
 
 use super::{CHANGES, Pinned};
@@ -554,7 +555,12 @@ impl Changes {
         // reporting a clash between two names the model never picked.
         let named = args["label"].as_str();
         let label = named.unwrap_or("note");
-        let pin = args["pin"].as_bool().unwrap_or(false);
+        let pin = match yes_or_no(args, "pin") {
+            Ok(pin) => pin,
+            Err(refusal) => {
+                return ToolOutput::error(format!("{refusal} Nothing was written down."));
+            }
+        };
 
         // read before the push, so the new item is not one of its own clashes
         let clashes: Vec<ContextId> = match named {

@@ -22,6 +22,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`context` and `log` read `"true"` in quotes as true.** `pin` on a note and `whole` on
+  `context`'s `look` and on `log` were read as booleans only, so a quoted `"true"` - which the
+  `fs` tools take - left a note unpinned or answered with a sample, and nothing said the
+  argument had been passed over. They are read as `fs` reads them, and a value that is neither
+  word is refused.
 - **A change of model says again what it says once about an endpoint.** That a model is charged
   for reasoning it does not send back, and that an endpoint reports no usage under a spend
   ceiling, are said once, and were never said again after `/model` or `/provider` - so the

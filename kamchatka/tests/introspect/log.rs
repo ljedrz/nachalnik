@@ -784,3 +784,35 @@ async fn a_drained_log_blames_the_drain_rather_than_a_snapshot() {
         "and does not offer the wrong cause: {said}"
     );
 }
+
+/// `whole` written in quotes is read as the word it is.
+#[tokio::test]
+async fn a_whole_record_can_be_asked_for_in_quotes() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise",
+                "ids": [1],
+                "content": "the parser is in src/parse.rs",
+                "reason": "I wrote down the wrong path",
+            }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "ids": [1], "whole": "true" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs\nand the lexer is in src/lex.rs",
+    ));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    assert!(said[0].contains("src/lex.rs"), "{}", said[0]);
+}

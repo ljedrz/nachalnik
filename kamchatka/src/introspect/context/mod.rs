@@ -30,6 +30,7 @@ use crate::{
     tools::{
         Limits, domains,
         ops::{Arg, Op, action_of, actions, inner, schema, unread},
+        yes_or_no,
     },
 };
 
@@ -330,6 +331,10 @@ impl Tool for Context {
                     Ok(named) => named,
                     Err(refusal) => return Ok(ToolOutput::error(refusal)),
                 };
+                let whole = match yes_or_no(args, "whole") {
+                    Ok(whole) => whole,
+                    Err(refusal) => return Ok(ToolOutput::error(refusal)),
+                };
                 Ok(ToolOutput::new(match named.select {
                     Some(select) => matched(
                         &kernel,
@@ -338,11 +343,7 @@ impl Tool for Context {
                         &self.pinned.lock(),
                         own_turn(&kernel, &call.id),
                     ),
-                    None => look(
-                        &kernel,
-                        &named.ids,
-                        args["whole"].as_bool().unwrap_or(false),
-                    ),
+                    None => look(&kernel, &named.ids, whole),
                 }))
             }
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),

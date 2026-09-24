@@ -1583,3 +1583,33 @@ async fn a_name_taken_many_times_over_names_some_and_counts_the_rest() {
     );
     assert!(last.contains("`label:status` now names 6"), "{last}");
 }
+
+/// A `pin` written in quotes is read, and one that is neither word writes nothing.
+///
+/// note: `pin` was read with `as_bool`, so `"true"` - which the `fs` tools take - left the note
+/// unpinned and nothing said the argument had been passed over.
+#[tokio::test]
+async fn a_note_pinned_in_quotes_is_pinned() {
+    let note = |id, label, pin| {
+        call(
+            id,
+            "context",
+            json!({"action": "note", "label": label, "content": "a finding", "pin": pin,
+                   "reason": "keeping it"}),
+        )
+    };
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        note("c1", "quoted", json!("true")),
+        note("c2", "worded", json!("yes")),
+    ]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn ran");
+
+    let find = |label| kernel.items().into_iter().find(|item| item.label == label);
+    assert_eq!(find("quoted").expect("written").state, ContextState::Pinned);
+    assert!(
+        find("worded").is_none(),
+        "a `pin` it could not read wrote nothing"
+    );
+}
