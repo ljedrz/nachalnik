@@ -180,6 +180,48 @@ async fn request_reports_what_is_going_and_what_was_left_out() {
     assert!(!said.contains("hunter2"), "{said}");
 }
 
+/// A turn that only called a tool is as big as the arguments it sent, not as the nothing it said.
+#[tokio::test]
+async fn request_sizes_a_message_by_what_it_sends() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "request" }),
+    )]));
+
+    kernel.push(ContextItem::user("write it"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "w1",
+            "fs",
+            json!({ "action": "write", "content": "x".repeat(5_000) }),
+        )],
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("w1".into()),
+        "fs",
+        "wrote it",
+        false,
+    ));
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let row = said
+        .lines()
+        .find(|line| line.trim_start().starts_with("2  assistant"))
+        .unwrap_or_else(|| panic!("no row for the turn that wrote: {said}"));
+    let bytes: usize = row
+        .split_whitespace()
+        .nth(2)
+        .map(|figure| figure.replace(',', ""))
+        .and_then(|figure| figure.parse().ok())
+        .unwrap_or_else(|| panic!("no size on {row:?}"));
+    assert!(bytes > 5_000, "{row}");
+}
+
 /// The two ways an item goes missing are answered differently, so they are reported apart.
 ///
 /// note: an orphaned tool result is the case. Its state says `active` and it is costing nothing,

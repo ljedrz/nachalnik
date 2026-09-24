@@ -30,6 +30,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`context request` sizes a message by what it sends.** The `bytes` column counted the text a
+  message said, so a turn that only called a tool read as `0` however large its arguments, its
+  thinking was not counted, and a picture was as long as its name. It now counts the content, the
+  calls and the reasoning, as the token count beside it does.
 - **A `shell` command that leaves something running on its standard output still answers.**
   `sleep 60 & echo started` held the call for a minute, and a server started with `&` held it
   until somebody pressed escape: the output was read to its end, and a background job keeps it

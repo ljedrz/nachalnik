@@ -19,8 +19,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use nachalnik::{
-    Block, BoxError, Capability, ContextId, ContextItem, ContextKind, Event, Kernel, OutputSink,
-    Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    Block, BoxError, Capability, Content, ContextId, ContextItem, ContextKind, Event, Kernel,
+    OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
 };
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -1204,11 +1204,21 @@ fn request(kernel: &Kernel) -> String {
             .as_ref()
             .map(|c| c.to_text())
             .unwrap_or_default();
+        // note: what goes out rather than what was said, which is what `to_text` answers: a turn
+        // that only calls a tool says nothing and sends its arguments, and a picture's text is
+        // its name. A turn carried as blocks holds its calls and its thinking in its content
+        let bytes = message.content.as_ref().map_or(0, Content::byte_len)
+            + message
+                .tool_calls
+                .iter()
+                .map(ToolCall::byte_len)
+                .sum::<usize>()
+            + message.reasoning.as_ref().map_or(0, Content::byte_len);
         out.push_str(&format!(
             "{:>4}  {:<10}  {:>8}  {}\n",
             index + 1,
             message.role.as_str(),
-            thousands(said.len()),
+            thousands(bytes),
             glimpse(&said),
         ));
     }
