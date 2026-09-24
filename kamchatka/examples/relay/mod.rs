@@ -135,9 +135,17 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> R
             stream(&mut write, session, tabs, named, tab, since).await
         }
         ("POST", "/do") => {
-            let body = body(&mut reader, &request).await?;
-            let command: Command =
-                serde_json::from_slice(&body).map_err(|e| format!("that is not a command: {e}"))?;
+            // a command that cannot be read is answered rather than hung up on, so that the page
+            // reports a refusal and not a network that failed
+            let command = match body(&mut reader, &request).await.and_then(|body| {
+                serde_json::from_slice::<Command>(&body)
+                    .map_err(|e| format!("that is not a command: {e}"))
+            }) {
+                Ok(command) => command,
+                Err(e) => {
+                    return reply(&mut write, "400 Bad Request", "text/plain", e.as_bytes()).await;
+                }
+            };
             let sent = tabs
                 .lock()
                 .expect("the tabs are not poisoned")
