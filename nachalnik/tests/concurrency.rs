@@ -193,7 +193,62 @@ impl nachalnik::Tool for Slow {
     }
 }
 
+/// A tool that says it has started and then waits to be let go, and says when it ran.
+///
+/// note: a seam rather than a sleep, for the reason [`Held`] gives. An interrupt timed by a sleep
+/// that overshot the calls lands after they have all finished, and a test about what an interrupt
+/// does to running calls passes without one having run.
+struct Gated {
+    started: tokio::sync::mpsc::UnboundedSender<()>,
+    gate: Arc<tokio::sync::Semaphore>,
+}
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Gated {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("slow", "takes its time")
+    }
+
+    async fn invoke(
+        &self,
+        call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        let _ = self.started.send(());
+        self.gate.acquire().await?.forget();
+
+        Ok(nachalnik::ToolOutput::new(format!("{} ran", call.id)))
+    }
+}
+
+/// [`three_slow_calls`] with [`Gated`] calls: the kernel, a signal per call that starts, and the
+/// gate that lets them finish.
+fn three_gated_calls(
+    parallel: bool,
+) -> (
+    Kernel,
+    tokio::sync::mpsc::UnboundedReceiver<()>,
+    Arc<tokio::sync::Semaphore>,
+) {
+    let (started, starts) = tokio::sync::mpsc::unbounded_channel();
+    let gate = Arc::new(tokio::sync::Semaphore::new(0));
+    let tool = Gated {
+        started,
+        gate: gate.clone(),
+    };
+
+    (three_calls(parallel, Arc::new(tool)), starts, gate)
+}
+
 fn three_slow_calls(parallel: bool) -> Kernel {
+    three_calls(
+        parallel,
+        Arc::new(Slow(std::time::Duration::from_millis(150))),
+    )
+}
+
+/// Three calls to `slow`, whichever tool is answering to the name.
+fn three_calls(parallel: bool, tool: Arc<dyn nachalnik::Tool>) -> Kernel {
     let kernel = Kernel::new(Config {
         parallel_tool_calls: parallel,
         ..Default::default()
@@ -207,7 +262,7 @@ fn three_slow_calls(parallel: bool) -> Kernel {
         ModelResponse::text("done"),
     ])));
     kernel.set_policy(Arc::new(AllowAll));
-    kernel.add_tool(Arc::new(Slow(std::time::Duration::from_millis(150))));
+    kernel.add_tool(tool);
     kernel.push(ContextItem::user("go"));
 
     kernel
@@ -331,15 +386,15 @@ fn tool_results_text(kernel: &Kernel) -> Vec<String> {
 /// which is the guarantee a caller has to reason about when the tool is somebody else's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn run_in_turn_an_interrupt_stops_the_calls_that_had_not_started() {
-    let kernel = three_slow_calls(false);
+    let (kernel, mut starts, gate) = three_gated_calls(false);
 
     let interrupting = {
         let kernel = kernel.clone();
         tokio::spawn(async move {
-            // long enough to be inside the first 150ms call, short enough to be nowhere near the
-            // second
-            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            // inside the first call, and nowhere near the second
+            starts.recv().await.unwrap();
             kernel.interrupt();
+            gate.add_permits(3);
         })
     };
     kernel.turn().await.unwrap();
@@ -363,13 +418,17 @@ async fn run_in_turn_an_interrupt_stops_the_calls_that_had_not_started() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
-    let kernel = three_slow_calls(true);
+    let (kernel, mut starts, gate) = three_gated_calls(true);
 
     let interrupting = {
         let kernel = kernel.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            // all three running, none finished
+            for _ in 0..3 {
+                starts.recv().await.unwrap();
+            }
             kernel.interrupt();
+            gate.add_permits(3);
         })
     };
     kernel.turn().await.unwrap();
@@ -396,14 +455,21 @@ struct SlowInfo {
     name: &'static str,
     asked: std::sync::atomic::AtomicUsize,
     gate: parking_lot::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    /// Told each time `info` is asked, with how many times that is.
+    told: std::sync::mpsc::Sender<usize>,
 }
 
 impl SlowInfo {
-    fn new(name: &'static str, gate: Option<std::sync::mpsc::Receiver<()>>) -> Arc<Self> {
+    fn new(
+        name: &'static str,
+        gate: Option<std::sync::mpsc::Receiver<()>>,
+        told: std::sync::mpsc::Sender<usize>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             name,
             asked: std::sync::atomic::AtomicUsize::new(0),
             gate: parking_lot::Mutex::new(gate),
+            told,
         })
     }
 }
@@ -411,7 +477,9 @@ impl SlowInfo {
 #[nachalnik::async_trait]
 impl nachalnik::Provider for SlowInfo {
     fn info(&self) -> nachalnik::ModelInfo {
-        if self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst) == 1
+        let asked = self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let _ = self.told.send(asked + 1);
+        if asked == 1
             && let Some(gate) = self.gate.lock().take()
         {
             let _ = gate.recv();
@@ -432,8 +500,10 @@ impl nachalnik::Provider for SlowInfo {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn two_clients_swapping_a_component_are_logged_in_the_order_they_applied() {
     let (open, gate) = std::sync::mpsc::channel();
+    let (told_first, first_asked) = std::sync::mpsc::channel();
+    let (told_third, third_asked) = std::sync::mpsc::channel();
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(SlowInfo::new("first", Some(gate)));
+    kernel.set_provider(SlowInfo::new("first", Some(gate), told_first));
     let mut events = kernel.subscribe();
 
     // the swap that replaces `first` waits inside the call describing it, which is made under the
@@ -442,14 +512,19 @@ async fn two_clients_swapping_a_component_are_logged_in_the_order_they_applied()
     // is not installed
     let second = {
         let kernel = kernel.clone();
-        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("second", None)))
+        let (told, _) = std::sync::mpsc::channel();
+        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("second", None, told)))
     };
-    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+    // `first` asked the second time is the swap to `second`, held under the lock
+    while first_asked.recv().unwrap() < 2 {}
 
     let third = {
         let kernel = kernel.clone();
-        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("third", None)))
+        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("third", None, told_third)))
     };
+    // `third` asked once is its swap about to take the lock. Nothing marks a thread as waiting on
+    // one, so a moment more is what puts it there
+    third_asked.recv().unwrap();
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
     open.send(()).unwrap();
 
