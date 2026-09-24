@@ -1454,15 +1454,7 @@ impl Kernel {
             if let Some(item) = summary.filter(|_| moved) {
                 let id = context.add(item, &*counter);
                 let item = context.item(id).expect("the item was just added");
-                announcements.push(Event::ContextAdded {
-                    id,
-                    kind: item.kind.name().to_owned(),
-                    source: item.source.clone(),
-                    label: item.label.clone(),
-                    tokens: item.tokens,
-                    because: item.included_because.clone(),
-                    meta: item.meta.clone(),
-                });
+                announcements.push(addition(item));
                 added = Some(Removed {
                     id,
                     label: item.label.clone(),
@@ -1821,16 +1813,7 @@ impl Kernel {
     ) -> ContextId {
         let id = context.add(item, counter);
         let item = context.item(id).expect("the item was just added");
-
-        self.emit(Event::ContextAdded {
-            id,
-            kind: item.kind.name().to_owned(),
-            source: item.source.clone(),
-            label: item.label.clone(),
-            tokens: item.tokens,
-            because: item.included_because.clone(),
-            meta: item.meta.clone(),
-        });
+        self.emit(addition(item));
 
         id
     }
@@ -1869,6 +1852,22 @@ impl Kernel {
             appeared,
             changed,
         }
+    }
+}
+
+/// The event announcing an item that has just been added.
+///
+/// note: one function for both places an item comes in - an ordinary push and a compaction's
+/// summary - so that what the record says about a new item cannot differ by which one added it.
+fn addition(item: &ContextItem) -> Event {
+    Event::ContextAdded {
+        id: item.id,
+        kind: item.kind.name().to_owned(),
+        source: item.source.clone(),
+        label: item.label.clone(),
+        tokens: item.tokens,
+        because: item.included_because.clone(),
+        meta: item.meta.clone(),
     }
 }
 
