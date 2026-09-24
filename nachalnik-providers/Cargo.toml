@@ -1,6 +1,6 @@
 [package]
 name = "nachalnik-providers"
-version = "0.6.0"
+version = "0.6.1"
 description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions and Gemini dialects, streamed, retried and interruptible - and a System One client for TypeSafe's jev, which answers typed questions instead of turns."
 documentation = "https://docs.rs/nachalnik-providers"
 readme = "README.md"
