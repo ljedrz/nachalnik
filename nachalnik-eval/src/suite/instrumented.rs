@@ -480,9 +480,50 @@ fn said_yes(answer: &Answer) -> Option<bool> {
 }
 
 /// What the subject's own last experiment on an item showed, where it ran one.
-fn showed_by(acts: &[Act], id: nachalnik::ContextId) -> Option<bool> {
+///
+/// note: an experiment on that item alone. One that took several out together says what removing
+/// all of them does, and nothing about which of them did it - credited to each, it counted a
+/// subject that stood by its claim about an inert note as ignoring evidence it never had.
+fn showed_by(acts: &[Act], id: ContextId) -> Option<bool> {
     acts.iter().rev().find_map(|act| match act {
-        Act::Tested { without, moved, .. } if without.contains(&id) => *moved,
+        Act::Tested { without, moved, .. }
+            if !without.is_empty() && without.iter().all(|taken| *taken == id) =>
+        {
+            *moved
+        }
         _ => None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tested(without: &[u64], moved: bool) -> Act {
+        Act::Tested {
+            without: without.iter().copied().map(ContextId).collect(),
+            before: Some("kirov".to_owned()),
+            after: Some(if moved { "omsk" } else { "kirov" }.to_owned()),
+            moved: Some(moved),
+        }
+    }
+
+    /// A test is evidence about an item only when that item is all it took out.
+    ///
+    /// note: `showed_by` matched any test whose `without` contained the item, so taking two notes
+    /// out together and seeing the answer move was recorded as each of them moving it, and
+    /// `Deference` scored a subject that held to "this one does nothing" as defying its own test.
+    #[test]
+    fn a_test_of_several_items_shows_nothing_about_one() {
+        assert_eq!(showed_by(&[tested(&[2, 3], true)], ContextId(2)), None);
+        assert_eq!(
+            showed_by(&[tested(&[2, 3], true), tested(&[2], false)], ContextId(2)),
+            Some(false)
+        );
+        // the item named twice is still the item alone, and the last such test is the one read
+        assert_eq!(
+            showed_by(&[tested(&[2], false), tested(&[2, 2], true)], ContextId(2)),
+            Some(true)
+        );
+    }
 }
