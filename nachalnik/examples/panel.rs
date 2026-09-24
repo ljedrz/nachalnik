@@ -532,6 +532,16 @@ async fn main() -> Result<(), BoxError> {
         models.len()
     );
 
+    // read once and before anybody is asked anything: a file named on the command line and not
+    // read is a question the panel rules on without what it was meant to see
+    let files: Vec<(String, String)> = files
+        .into_iter()
+        .map(|path| match std::fs::read_to_string(&path) {
+            Ok(content) => (path, content),
+            Err(e) => bail(&format!("could not read {path}: {e}")),
+        })
+        .collect();
+
     let mut panel = Vec::with_capacity(models.len());
     for provider in common::providers(&models).await? {
         let model = provider.model();
@@ -546,17 +556,12 @@ async fn main() -> Result<(), BoxError> {
         kernel.add_tool(Arc::new(Ballot { slot: slot.clone() }));
 
         kernel.push(ContextItem::instruction("panel rules", rules.clone()).pinned());
-        for path in &files {
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    kernel.push(
-                        ContextItem::file(path, content)
-                            .because("the user named it on the command line")
-                            .pinned(),
-                    );
-                }
-                Err(e) => eprintln!("could not read {path}: {e}"),
-            }
+        for (path, content) in &files {
+            kernel.push(
+                ContextItem::file(path, content.clone())
+                    .because("the user named it on the command line")
+                    .pinned(),
+            );
         }
         kernel.push(ContextItem::user(format!(
             "Round 1 of {rounds}. Nobody has read anybody yet. Answer, then call \
@@ -570,6 +575,13 @@ async fn main() -> Result<(), BoxError> {
             rounds: Mutex::new(Vec::new()),
             peers: Mutex::new(HashMap::new()),
         });
+    }
+    // before the rounds rather than after them, where a mistyped chair would have been noticed
+    // - or not - once every round had been paid for
+    if let Some(wanted) = &chair
+        && !panel.iter().any(|panelist| &panelist.model == wanted)
+    {
+        bail(&format!("--chair {wanted} is not on the panel"));
     }
     let panel = Arc::new(panel);
 

@@ -421,7 +421,9 @@ async fn main() -> Result<(), BoxError> {
                     .because("the user named it on the command line")
                     .pinned(),
             ),
-            Err(e) => eprintln!("could not read {path}: {e}"),
+            // refused rather than skipped: a comparison run without a file somebody named is one
+            // that paid for every model's answer to a different question
+            Err(e) => bail(&format!("could not read {path}: {e}")),
         }
     }
     for contender in &contenders {
