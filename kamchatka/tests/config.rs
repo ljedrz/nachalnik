@@ -746,3 +746,19 @@ fn a_rule_nothing_is_judged_under_is_refused() {
         );
     }
 }
+
+/// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
+///
+/// note: it was a ceiling of nothing, reached before the first request: a headless run read no
+/// lines and ended without saying why.
+#[test]
+fn a_spend_of_nothing_is_no_ceiling() {
+    let (ok, said) = run(&["--spend", "0"], "/spend\n");
+    assert!(ok, "{said}");
+    assert!(said.contains("no ceiling"), "{said}");
+
+    let path = settings("spend-zero", r#"{ "spend": 0 }"#);
+    let (ok, said) = run(&["--config-file", &path], "/spend\n");
+    assert!(ok, "{said}");
+    assert!(said.contains("no ceiling"), "{said}");
+}

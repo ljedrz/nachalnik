@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--spend 0` is no ceiling, as `/spend 0` is.** It was a ceiling of nothing, reached before
+  the first request, so a session given it refused every turn - headless, it read no lines and
+  ended without saying why. The settings file's `spend` is read the same way.
 - **Two MCP servers whose tools would share names are refused at startup.** The second quietly
   replaced the first one's tools - two `npx` lines with no `name=` are both named `npx` - though
   the bridge reports what an install replaced. It is refused like a failed handshake, and the

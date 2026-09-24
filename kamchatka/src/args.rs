@@ -208,8 +208,9 @@ pub struct Args {
     #[arg(long, value_name = "SECONDS")]
     pub deadline: Option<u64>,
 
-    /// Stop the session once the provider has charged this many tokens for it, in and out. Time is
-    /// not the only thing a run nobody is watching can spend; `/spend` changes it while it runs.
+    /// Stop the session once the provider has charged this many tokens for it, in and out; `0` is
+    /// no ceiling. Time is not the only thing a run nobody is watching can spend; `/spend` changes
+    /// it while it runs.
     #[arg(long, value_name = "TOKENS")]
     pub spend: Option<u64>,
 
@@ -459,7 +460,9 @@ impl Args {
             refuse_oversized: !self.send_oversized,
             record: !self.no_record,
             compact: Some(self.compact),
-            spend: self.spend,
+            // note: `0` is no ceiling, as `/spend 0` and `--requests 0` say it: a ceiling of nothing
+            // would be a session that refuses its first turn without saying why
+            spend: self.spend.filter(|it| *it > 0),
             confine: !self.no_sandbox,
             reachable: self.sandbox_allow.clone(),
             readable: self.sandbox_read.clone(),
