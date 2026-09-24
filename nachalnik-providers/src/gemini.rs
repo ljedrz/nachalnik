@@ -33,8 +33,8 @@ use serde_json::{Map, Value, json};
 
 use crate::{
     Dialect, Endpoint, install_crypto,
-    reading::{Events, Read, Stopped, not_a_stream, read},
-    same_model,
+    reading::{Events, Read, Stopped, not_a_stream},
+    refused, same_model,
     waiting::{Asking, Sent, interrupted, sent},
 };
 
@@ -485,17 +485,14 @@ impl Provider for Gemini {
                 .json(&body)
         };
         let mut streamed = Streamed::default();
-        let mut response = match sent(&asking, &self.attempts, limit, true, sending).await? {
-            Sent::Interrupted => return Ok(interrupted()),
-            Sent::Streaming(response) => response,
+        match sent(&asking, &self.attempts, limit, true, sending, &mut streamed).await? {
+            Sent::Interrupted => Ok(interrupted()),
             // never asked for here, and read as what it would be if it came
-            Sent::Whole(payload) => return unstreamed(payload.to_string(), streamed, &deltas),
-        };
-
-        match read(&mut response, &asking, limit, &mut streamed).await? {
-            Read::Events(events, stopped) => Ok(answer(streamed, events, stopped)),
-            Read::Interrupted => Ok(interrupted()),
-            Read::Unstreamed(body) => unstreamed(body, streamed, &deltas),
+            Sent::Whole(payload) => unstreamed(payload.to_string(), streamed, &deltas),
+            Sent::Streamed(Read::Events(events, stopped)) => Ok(answer(streamed, events, stopped)),
+            Sent::Streamed(Read::Interrupted) => Ok(interrupted()),
+            Sent::Streamed(Read::Unstreamed(body)) => unstreamed(body, streamed, &deltas),
+            Sent::Streamed(Read::Refused { said, .. }) => Err(refused(said, limit)),
         }
     }
 }

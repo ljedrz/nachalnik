@@ -47,6 +47,20 @@ pub(crate) enum Read {
     /// A body in which nothing was an event and which was not an error object either: the whole
     /// of it, for the dialect to read as a whole answer if it is one.
     Unstreamed(String),
+    /// A refusal that came where the answer should have: an error object as the first event of a
+    /// stream, or as the whole of a body that was not one.
+    ///
+    /// note: an answer rather than an error, because it is the same refusal a status would have
+    /// been, and [`sent`](crate::waiting::sent) waits a transient one out the same way. OpenRouter
+    /// sends its status before the model has produced anything, so a rate limit it meets after
+    /// that - once its own failover has run out - can only arrive here. Nothing has been handed
+    /// to the caller yet, so sending the request again repeats nothing.
+    Refused {
+        /// The code inside the error object, or `0` where it names none.
+        code: u64,
+        /// What the server said.
+        said: String,
+    },
 }
 
 /// Reads a stream to its end, handing each event to `events` as it arrives.
@@ -169,7 +183,16 @@ pub(crate) async fn read(
             };
             // an upstream failure - a rate limit, a dead provider - reported as an event rather
             // than as a status, sometimes after the answer has started
+            //
+            // note: only the first event is a refusal to wait out. After one, something has been
+            // handed on and kept, and a second attempt would say it again
             if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
+                if seen.is_empty() {
+                    return Ok(Read::Refused {
+                        code: error["code"].as_u64().unwrap_or_default(),
+                        said: failure(error),
+                    });
+                }
                 return Err(refused(failure(error), limit));
             }
 
@@ -218,7 +241,10 @@ pub(crate) async fn read(
     if let Ok(payload) = serde_json::from_str::<Value>(&body)
         && let Some(error) = payload.get("error").filter(|error| !error.is_null())
     {
-        return Err(refused(failure(error), limit));
+        return Ok(Read::Refused {
+            code: error["code"].as_u64().unwrap_or_default(),
+            said: failure(error),
+        });
     }
 
     Ok(Read::Unstreamed(body))

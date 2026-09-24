@@ -340,3 +340,107 @@ async fn a_long_line_in_many_pieces_is_read_in_a_moment() {
         started.elapsed()
     );
 }
+
+/// Answers each request with the next of `bodies` as a 200 stream, the last one for ever after,
+/// and counts the requests.
+async fn in_turn(bodies: Vec<&'static str>, requests: Arc<AtomicUsize>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let n = requests.fetch_add(1, Ordering::SeqCst);
+            let body = bodies[n.min(bodies.len() - 1)];
+            let mut discard = [0u8; 16384];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A refusal that arrives where the stream should have - its first event, or the whole of a body
+/// that was not one - is waited out, as the same refusal as a status is; one that arrives after
+/// the answer has started is not.
+///
+/// note: OpenRouter sends its `200` before the model has produced anything, so a rate limit it
+/// meets after that - once its own failover has run out - can only arrive inside the stream, and
+/// the event below is the shape its documentation gives. It ended the turn as a provider failure,
+/// where the same `429` as a status was waited out. After the answer has started, something has
+/// been handed on, and a second attempt would say it again.
+#[tokio::test]
+async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
+    const LIMITED: &str = "data: {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\",\
+         \"metadata\":{\"error_type\":\"rate_limit_exceeded\"}},\
+         \"choices\":[{\"index\":0,\"delta\":{\"content\":\"\"},\"finish_reason\":\"error\"}]}\n\n";
+    const REFUSED: &str = "data: {\"error\":{\"code\":400,\"message\":\"no such parameter\"}}\n\n";
+    // the same refusal as the whole of a body that was never a stream
+    const WHOLE: &str = "{\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\"}}";
+
+    for (dialect, answer, partial) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"here\"},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"he\"}}]}\n\n\
+             data: {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\"}}\n\n",
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"here\"}]},\
+             \"finishReason\":\"STOP\"}]}\n\n",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"he\"}]}}]}\n\n\
+             data: {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\"}}\n\n",
+        ),
+    ] {
+        let provider = |url: &str| dialects(url).into_iter().find(|(d, _)| *d == dialect);
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = in_turn(vec![LIMITED, answer], requests.clone()).await;
+        let Some((_, waited)) = provider(&url) else {
+            continue;
+        };
+        let response = asked(waited).await.expect("the second attempt is answered");
+        assert_eq!(said(&response), "here", "{dialect}");
+        assert_eq!(requests.load(Ordering::SeqCst), 2, "{dialect}");
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = in_turn(vec![WHOLE, answer], requests.clone()).await;
+        let (_, whole) = provider(&url).expect("built above");
+        let response = asked(whole).await.expect("the second attempt is answered");
+        assert_eq!(
+            said(&response),
+            "here",
+            "{dialect}: a refusal as a whole body"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 2, "{dialect}");
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = in_turn(vec![partial, answer], requests.clone()).await;
+        let (_, started) = provider(&url).expect("built above");
+        let error = asked(started)
+            .await
+            .expect_err("a refusal once the answer has started");
+        assert!(error.contains("Rate limit exceeded"), "{dialect}: {error}");
+        assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}: sent once");
+
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = in_turn(vec![REFUSED, answer], requests.clone()).await;
+        let (_, refused) = provider(&url).expect("built above");
+        let error = asked(refused)
+            .await
+            .expect_err("a refusal that does not pass");
+        assert!(error.contains("no such parameter"), "{dialect}: {error}");
+        assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}: sent once");
+    }
+}

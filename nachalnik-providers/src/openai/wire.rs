@@ -17,7 +17,8 @@ use serde_json::{Value, json};
 
 use crate::{
     openai::OpenAiCompatible,
-    reading::{Events, Read, Stopped, not_a_stream, read},
+    reading::{Events, Read, Stopped, not_a_stream},
+    refused,
     waiting::{Asking, Sent, interrupted, sent},
 };
 
@@ -180,30 +181,38 @@ impl Provider for OpenAiCompatible {
             )
             .json(&body)
         };
-        let mut response = match sent(&asking, &self.attempts, limit, streaming, sending).await? {
-            Sent::Interrupted => return Ok(interrupted()),
+        let mut streamed = Streamed::default();
+        match sent(
+            &asking,
+            &self.attempts,
+            limit,
+            streaming,
+            sending,
+            &mut streamed,
+        )
+        .await?
+        {
+            Sent::Interrupted => Ok(interrupted()),
             // note: held to what the streamed path holds a whole body to, below. A good status
             // with JSON that is not a completion - a proxy's own `{"status":"ok"}` - is not an
             // answer with nothing in it, and taken as one it finishes the turn with nothing said
             Sent::Whole(payload) if completion(&payload) => {
-                return Ok(whole(payload, self.thinking_in_content));
+                Ok(whole(payload, self.thinking_in_content))
             }
             Sent::Whole(payload) => {
                 let short: String = payload.to_string().chars().take(300).collect();
-                return Err(format!("the answer was not a completion: {short}").into());
+                Err(format!("the answer was not a completion: {short}").into())
             }
-            Sent::Streaming(response) => response,
-        };
-
-        let mut streamed = Streamed::default();
-        match read(&mut response, &asking, limit, &mut streamed).await? {
-            Read::Events(events, stopped) => Ok(self.answer(streamed, events, stopped)),
-            Read::Interrupted => Ok(interrupted()),
+            Sent::Streamed(Read::Events(events, stopped)) => {
+                Ok(self.answer(streamed, events, stopped))
+            }
+            Sent::Streamed(Read::Interrupted) => Ok(interrupted()),
             // a server that ignored `stream: true` and answered whole has still answered
-            Read::Unstreamed(body) => match serde_json::from_str::<Value>(&body) {
+            Sent::Streamed(Read::Unstreamed(body)) => match serde_json::from_str::<Value>(&body) {
                 Ok(payload) if completion(&payload) => Ok(whole(payload, self.thinking_in_content)),
                 _ => Err(not_a_stream(&body)),
             },
+            Sent::Streamed(Read::Refused { said, .. }) => Err(refused(said, limit)),
         }
     }
 }

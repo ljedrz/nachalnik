@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::{
     RETRIES, out_of_quota,
-    reading::{complaint, failure},
+    reading::{Events, Read, complaint, failure, read},
     refused,
 };
 
@@ -275,8 +275,9 @@ pub(crate) enum Sent {
     Interrupted,
     /// A whole answer, read.
     Whole(Value),
-    /// A response whose body is still arriving.
-    Streaming(reqwest::Response),
+    /// A stream, read to its end - never [`Read::Refused`], which is waited out or returned as
+    /// the error it is.
+    Streamed(Read),
 }
 
 /// Why an attempt is worth making again, if the retry rules agree.
@@ -308,13 +309,16 @@ enum Busy {
 ///
 /// note: a whole answer is read *here* rather than by the caller, because the OpenAI dialect's
 /// other way of saying 429 is an `error` object inside a perfectly good 200 - and a limit
-/// reported that way is exactly as worth waiting out as one reported as a status.
+/// reported that way is exactly as worth waiting out as one reported as a status. A stream is
+/// read here for the same reason: its way of saying it is an `error` as its first event, and
+/// `events` is untouched by an attempt that ended that way.
 pub(crate) async fn sent(
     asking: &Asking<'_>,
     attempts: &AtomicUsize,
     limit: Option<usize>,
     streaming: bool,
     request: impl Fn() -> reqwest::RequestBuilder,
+    events: &mut impl Events,
 ) -> Result<Sent, BoxError> {
     // nothing arrives until the whole answer does, when it is not a stream, so the silence that
     // means "this has stalled" is a much longer one
@@ -345,8 +349,16 @@ pub(crate) async fn sent(
                 Busy::Unsent(reason)
             }
             Err(reason) => return Err(reason.giving_up(asking.model)),
-            Ok(response) if streaming && response.status().is_success() => {
-                return Ok(Sent::Streaming(response));
+            Ok(mut response) if streaming && response.status().is_success() => {
+                match read(&mut response, asking, limit, events).await? {
+                    Read::Refused { code, said } => Busy::Refused {
+                        code,
+                        transient: passing(code) && !out_of_quota(&said),
+                        said,
+                        asked: None,
+                    },
+                    other => return Ok(Sent::Streamed(other)),
+                }
             }
             Ok(response) => {
                 let status = response.status();
