@@ -511,6 +511,19 @@ Referenced from [AGENTS.md](AGENTS.md).
   snapshot, so after a resume every pin is the person's and the model is refused unpinning its
   own. That fails safe. Keeping it needs the pin's author written down, in `meta` for instance.
 
+- **The model's undo history after a resume.** What `context`'s `undo` walks is kept by the process
+  and not in the snapshot, so a resumed session has nothing of the model's to walk back, and a
+  change it made before the restart comes back only by `restore`; the refusal says so. It is the
+  question above for a second thing the tool remembers about its own changes: whether that
+  journal is written into the snapshot, and what an entry naming an item a person has changed
+  since means once it is read back.
+
+- **`log` stops at the resume.** A resumed session's log begins at `session.resumed`, so `log read`
+  cannot answer for anything before the restart, though the record written beside the snapshot
+  holds all of it; `App::recall` reads that file for `context.replaced` and nothing else. Reaching
+  further means the tool reading a file the kernel does not hold, and every answer saying which of
+  its records came from there.
+
 - **A headless run resumed already over its spend ceiling ends without saying why.** Nothing in
   its output names the ceiling, so the run reads as one that simply stopped.
 
@@ -609,3 +622,40 @@ Referenced from [AGENTS.md](AGENTS.md).
   `transparency` says everything it shows is in its one file. `panel` handles `State::Deciding`,
   which its one tool, asking for nothing, can never reach; the arm is a defensive branch or dead
   code, with the unreachable `Deny` beside it.
+
+- **A context the model's own turns have filled.** `Trim` takes only tool results, so at a small
+  limit a session can reach a point where nothing is left for it to take: what remains is the
+  model's turns and the tool schemas every request carries, the kernel refuses to send a request
+  over the limit, and a headless run ends on "the last turn failed". A session that only talks
+  gets there first. One way out is for compaction to elide the oldest assistant turns as a last
+  resort, which changes what `Trim` promises and leaves the projector to repair any results
+  whose call it took. The other is to give the model a request of its own to free room, which
+  needs room held back for that request, since it is over the limit too.
+
+- **Forks asked in one turn read each other.** `fork` copies the context as it stands when the
+  call runs, and a turn's calls run one after another, so the second of two forks asked together
+  is handed the first one's answer. `without` refuses an item that does not exist yet, so it
+  cannot keep out a sibling that has not run. Leaving out results produced in the same turn by
+  default is one fix; taking one copy for every fork of a turn, before any of them runs, is the
+  other.
+
+- **`fs read` has no range.** It takes a path and nothing else, so a file past the 32,000-byte
+  output limit comes back cut, with the whole kept as an archived item, and a model that wants
+  the rest reads it through `shell` with `sed -n`. An `offset` and a line count on `read` would
+  answer that inside the tool and its policy, and would add to a description every request pays
+  for; the decision is whether that toll is worth what `shell` already does.
+
+- **A stream that fails after it has started loses what it said.** An `error` event after the
+  answer has begun ends the turn with the error, and what had streamed - already handed on as
+  deltas - is not kept, where a stream the transport cut off keeps it and stops as `cut off`.
+  OpenRouter sends one when a stream stays quiet too long, as `Upstream idle timeout exceeded`,
+  and its failover stops once part of an answer is out, so the error is final either way. Keeping
+  the partial the way a cut-off is kept, with the server's sentence as the notice, is one choice;
+  the other is that an answer the server disowned is not an answer.
+
+- **The fuzzing and soak harnesses are not in the repository.** What drove `kamchatka` headless
+  and served with a live model, mined the records for errors and checked them, and what soaked
+  `nachalnik-providers` against OpenRouter through a fault-injecting proxy, all live outside it.
+  Committed, a campaign could be run again after a change rather than rebuilt; the cost is a
+  key, hours of wall-clock time, and Python beside a workspace whose scripts are shell, so where
+  they go and in what language is the decision.
