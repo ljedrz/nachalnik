@@ -36,6 +36,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A call whose arguments are a level too deep is read as the call.** `{"call": {"item":
+  {"action": "read", ...}}}` named no operation as written, so it was judged against everything
+  the tool does and refused, or told `action` was missing; a model that wrote every call that way
+  spent whole sessions refused. A wrapper whose one entry is an object naming an `action` is read
+  through, by the rules and by the tool alike, as a wrapper written as text already was.
 - **A call refused by a rule because it named no operation is told so.** A call whose `action`
   could not be read declares everything its tool does, so `--deny fs:write` refused a call that
   meant to read, and the model was told only that a standing rule refused it - and retried the

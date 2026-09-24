@@ -390,7 +390,26 @@ pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
         ));
     }
 
-    Ok(inside)
+    Ok(deeper(inside))
+}
+
+/// The call inside a wrapper whose one entry is the call, and otherwise the wrapper as it is.
+///
+/// note: a model has written every call of a session a level too deep, `{"call": {"item": {...}}}`,
+/// under a key nothing asked for. One entry holding an object that names an `action` can be
+/// nothing but the call; anything else - an `action` beside it, a second entry, no `action`
+/// inside - is left as written and answered as a call whose operation cannot be read.
+fn deeper(inside: Cow<'_, Value>) -> Cow<'_, Value> {
+    let one = inside
+        .as_object()
+        .filter(|entries| entries.len() == 1)
+        .and_then(|entries| entries.values().next())
+        .filter(|only| only.get("action").is_some_and(Value::is_string))
+        .cloned();
+    match one {
+        Some(call) => Cow::Owned(call),
+        None => inside,
+    }
 }
 
 /// The operation a call names, if it names one of these.
@@ -813,6 +832,34 @@ mod tests {
         assert!(refusal.contains("as text"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
         assert!(refusal.contains("read the file"), "{refusal}");
+    }
+
+    /// A wrapper whose one entry is the call, a level too deep, is read as the call.
+    ///
+    /// note: a model once wrote every call of a session as `{"call": {"item": {...}}}`, and read
+    /// as written each named no operation - judged against everything the tool does, and refused
+    /// or answered with `the \`action\` argument is required`, which it did not understand. One
+    /// entry holding an object that names an `action` is as unambiguous as the flat shape. Two
+    /// entries, or one with no `action` in it, are not read through: that is a call whose
+    /// arguments are somewhere else, and it is answered as one.
+    #[test]
+    fn a_call_one_level_too_deep_is_still_a_call() {
+        let deep = json!({ WRAPPER: { "item": { "action": "read", "path": "x" } } });
+        let read = inner(&deep).expect("deep");
+        assert_eq!(read["action"], json!("read"));
+        assert_eq!(read["path"], json!("x"));
+
+        let beside = json!({ WRAPPER: { "item": { "action": "read" }, "path": "x" } });
+        assert_eq!(
+            inner(&beside).expect("read as written")["action"],
+            Value::Null
+        );
+
+        let nameless = json!({ WRAPPER: { "item": { "path": "x" } } });
+        assert_eq!(
+            inner(&nameless).expect("read as written")["path"],
+            Value::Null
+        );
     }
 
     /// Arguments that never parsed are answered as that, not as an argument nobody gave.
