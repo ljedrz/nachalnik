@@ -22,6 +22,11 @@ minor bump may break you.
   so two copies that said one thing each were recorded with an instability of `1.0` - the same as
   copies that said nothing - and the checks that quote it said they agreed 0% of the time. It is
   `0.5` for them now. A tie still has no commonest answer, so nothing it is compared with moves.
+- **An attribution that named no note is scored wrong, and one that was cut off is counted as
+  cut.** Both came back unmeasured: a subject that named none of the notes, or several, left the
+  denominator, where `lie` and `conflict` score the same refusal as wrong, and a turn that ran out
+  of room was neither scored nor counted in `Scores::cut`. Where no note moved the answer there is
+  still nothing to attribute, and the claim is untested.
 
 ## [0.5.1] - 2026-09-24
 
