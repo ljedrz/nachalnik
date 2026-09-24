@@ -660,8 +660,10 @@ fn to_wire(message: &Message) -> Value {
     if let Some(content) = &message.content {
         // note: only on a user turn. `tool` content is a string in this dialect whatever is in
         // it, so a tool that returned a picture sends the sentence naming it - which is what
-        // `nachalnik-mcp` does and is better than a 400
-        wire["content"] = match parts_of(content).filter(|_| message.role == Role::User) {
+        // `nachalnik-mcp` does and is better than a 400. Asked before the parts are built, which
+        // encode every blob in the message, on every request
+        let user = message.role == Role::User;
+        wire["content"] = match user.then(|| parts_of(content)).flatten() {
             Some(parts) => parts,
             None => json!(content.to_text()),
         };
