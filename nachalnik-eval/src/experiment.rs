@@ -466,6 +466,9 @@ pub async fn evaluate(
     experiments: impl IntoIterator<Item = Arc<dyn Experiment>>,
     make: impl Fn(&str) -> Result<Subject>,
 ) -> Report {
+    // when the run started, as `Report::at` says, and not when it finished: a run is hours long,
+    // and `per_model` ranks by it
+    let at = now();
     let governor = Governor::new(Pace::default());
     let mut outcomes = Vec::new();
 
@@ -492,13 +495,7 @@ pub async fn evaluate(
         outcomes.push(Outcome::of(&trial, failed));
     }
 
-    Report {
-        at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|since| since.as_millis() as u64)
-            .unwrap_or_default(),
-        outcomes,
-    }
+    Report { at, outcomes }
 }
 
 /// The same, with the experiments run at the same time under a shared ceiling on requests.
@@ -539,6 +536,8 @@ pub async fn evaluate_with(
     pace: Pace,
     landed: impl Fn(&Outcome),
 ) -> Report {
+    // before anything runs, for the reason `evaluate` gives
+    let at = now();
     let governor = Governor::new(pace);
 
     // built before anything runs, because `make` is the caller's and there is no reason to hold a
@@ -581,13 +580,15 @@ pub async fn evaluate_with(
     }))
     .await;
 
-    Report {
-        at: SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|since| since.as_millis() as u64)
-            .unwrap_or_default(),
-        outcomes,
-    }
+    Report { at, outcomes }
+}
+
+/// The time now, in milliseconds since the Unix epoch, which is how [`Report::at`] records it.
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|since| since.as_millis() as u64)
+        .unwrap_or_default()
 }
 
 /// Puts a subject's provider under a ceiling, so that everything it goes on to do is under it.

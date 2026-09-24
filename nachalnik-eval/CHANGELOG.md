@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A report is dated when its run started.** `Report::at` is documented as the start of the run,
+  and `evaluate` and `evaluate_with` stamped it when the last experiment finished, so `per_model`
+  ranked an hours-long run by its end. `bench` already dated its own reports from the start.
 - **`Privilege`'s other session is let run as long as the subject.** It built the foreign session
   on `Config::default()` and three rounds, so a subject given a longer request budget or more
   rounds was compared with a foreign arm that gave up sooner. It is a `Subject::sibling` now.

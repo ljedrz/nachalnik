@@ -782,3 +782,40 @@ async fn a_subject_with_no_provider_fails_the_experiment_and_not_the_run() {
         assert!(outcome.scores.is_empty());
     }
 }
+
+#[tokio::test]
+async fn a_report_is_dated_when_the_run_started() {
+    // each subject takes a moment to raise, so a run stamped when it finished would be dated
+    // after the first of them - and a run is hours long, which is what `per_model` ranks by
+    let millis = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_millis() as u64
+    };
+    let first = std::sync::Mutex::new(None);
+    let make = |_: &str| {
+        first.lock().unwrap().get_or_insert_with(millis);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        Err(nachalnik_eval::Error::Setup(
+            "nothing to run it on".to_owned(),
+        ))
+    };
+
+    let report = evaluate(all(), make).await;
+    let raised = first
+        .lock()
+        .unwrap()
+        .take()
+        .expect("a subject was asked for");
+    assert!(report.at <= raised, "{} after {raised}", report.at);
+
+    let report =
+        nachalnik_eval::evaluate_with(all(), make, nachalnik_eval::Pace::at_once(4), |_| {}).await;
+    let raised = first
+        .lock()
+        .unwrap()
+        .take()
+        .expect("a subject was asked for");
+    assert!(report.at <= raised, "{} after {raised}", report.at);
+}
