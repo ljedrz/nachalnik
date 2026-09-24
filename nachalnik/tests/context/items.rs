@@ -169,12 +169,18 @@ fn json_content_is_counted_and_kept_structured() {
 
 #[test]
 fn metadata_is_carried_but_never_interpreted() {
-    let kernel = kernel();
-    let id = kernel.push(
-        ContextItem::file("src/a.rs", "a").with_meta(json!({ "priority": "low", "buffer": 3 })),
-    );
+    let meta = json!({ "priority": "low", "buffer": 3 });
+    let (carried, bare) = (kernel(), kernel());
+    let id = carried.push(ContextItem::file("src/a.rs", "a").with_meta(meta.clone()));
+    bare.push(ContextItem::file("src/a.rs", "a"));
 
-    assert_eq!(kernel.item(id).unwrap().meta["priority"], "low");
+    assert_eq!(carried.item(id).unwrap().meta, meta);
+    // nothing that is sent or counted reads it
+    assert_eq!(carried.project().messages, bare.project().messages);
+    assert_eq!(
+        carried.budget().context_tokens,
+        bare.budget().context_tokens
+    );
 }
 
 #[test]
