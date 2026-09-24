@@ -698,6 +698,19 @@ async fn cancelling_is_logged_as_refusing_and_then_running() {
 
     assert_eq!((decided.len(), finished.len()), (2, 2), "{said:?}");
     assert_eq!((executing.len(), idle.len()), (1, 1), "{said:?}");
+    for at in &decided {
+        assert!(
+            matches!(
+                kernel.history()[before + at].event,
+                Event::PermissionDecided {
+                    grant: nachalnik::Grant::Deny,
+                    source: nachalnik::GrantSource::Cancellation,
+                    ..
+                }
+            ),
+            "a cancelled call is logged as refused, and refused by cancelling"
+        );
+    }
     assert!(decided.iter().all(|at| *at < executing[0]), "{said:?}");
     assert!(finished.iter().all(|at| *at > executing[0]), "{said:?}");
     assert!(finished.iter().all(|at| *at < idle[0]), "{said:?}");
