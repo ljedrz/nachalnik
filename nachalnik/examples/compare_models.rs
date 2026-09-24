@@ -241,9 +241,13 @@ async fn ask(contenders: &[Contender], sequential: bool) -> Vec<Answer> {
         running.spawn(async move { (index, one(kernel).await) });
     }
 
+    // every task is waited for: stopping at one that panicked would drop the set and abort the
+    // ones still asking, which would then be reported as not having finished
     let mut answers: HashMap<usize, Answer> = HashMap::new();
-    while let Some(Ok((index, answer))) = running.join_next().await {
-        answers.insert(index, answer);
+    while let Some(joined) = running.join_next().await {
+        if let Ok((index, answer)) = joined {
+            answers.insert(index, answer);
+        }
     }
 
     (0..contenders.len())

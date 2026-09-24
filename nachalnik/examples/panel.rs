@@ -430,14 +430,26 @@ async fn round(panel: &Arc<Vec<Panelist>>, sequential: bool) -> Vec<Duration> {
     // that this is the *example* spawning tasks, not the kernel - a kernel spawns none unless
     // `Config::parallel_tool_calls` says so
     let mut running = tokio::task::JoinSet::new();
+    let mut spawned = HashMap::new();
     for index in 0..panel.len() {
         let panel = panel.clone();
-        running.spawn(async move { (index, one(&panel, index).await) });
+        let task = running.spawn(async move { one(&panel, index).await });
+        spawned.insert(task.id(), index);
     }
 
+    // note: every task is waited for, and one that panicked is this round's failure for its
+    // panelist rather than a round it is missing. Stopping at the first would drop the set and
+    // abort everybody still speaking, and a panelist a round short has its later answers printed
+    // under the wrong round
     let mut times = vec![Duration::ZERO; panel.len()];
-    while let Some(Ok((index, elapsed))) = running.join_next().await {
-        times[index] = elapsed;
+    while let Some(joined) = running.join_next_with_id().await {
+        match joined {
+            Ok((id, elapsed)) => times[spawned[&id]] = elapsed,
+            Err(e) => panel[spawned[&e.id()]].rounds.lock().push(Turn {
+                trouble: Some(e.to_string()),
+                ..Turn::default()
+            }),
+        }
     }
 
     times
