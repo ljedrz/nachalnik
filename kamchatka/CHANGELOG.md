@@ -29,6 +29,8 @@ minor bump may break you.
 
 ### added
 
+- **`Careful::offers`**: what one of the session's own tools declares, so that a call to it naming
+  no operation is refused saying so. `wiring` tells it about every tool a session starts with.
 - **`mcp::reinstall`**: the tools of servers that are already running, installed into another
   kernel under the rule `attach` holds, with a sentence for each server left out.
 - **`wiring::Flagged`**: where a provider was pointed when the session began, and `restore` to put
