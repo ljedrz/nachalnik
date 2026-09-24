@@ -27,6 +27,8 @@ minor bump may break you.
   to whichever counter was installed when the answer arrived, so one swapped in while a request
   was out learned an estimate it never made - for `Calibrating`, a correction worked out from
   another counter's arithmetic.
+- **`Kernel::budget` prices the tools and the context with one counter.** It asked for the counter
+  once for each half, so a `set_counter` landing between them priced the two by different ones.
 - **Undoing the answer a finished turn names leaves the machine `Idle`.** `State::Finished`
   carries the item the turn ended on, and an undo from it that took that item away left the state
   naming an item `Kernel::item` no longer had.

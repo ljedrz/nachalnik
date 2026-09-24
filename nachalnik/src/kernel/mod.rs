@@ -1256,11 +1256,14 @@ impl Kernel {
 
     /// Returns how much room the next request would take, and how much there is.
     pub fn budget(&self) -> Budget {
-        let tool_tokens = self.tool_tokens();
+        // one counter for both halves, as a request is priced: a `set_counter` landing between
+        // them would otherwise price the tools and the context by two different ones
+        let counter = self.counter();
+        let tool_tokens = self.tool_tokens_with(&*counter);
         let limit = self.model_info().and_then(|i| i.context_limit);
         let reported = self.last_response().and_then(|response| response.usage);
 
-        let context = self.projected().1;
+        let context = self.projected_with(&*counter).1;
 
         Budget {
             context_tokens: context.tokens,

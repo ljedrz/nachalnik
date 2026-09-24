@@ -264,12 +264,7 @@ impl Kernel {
     /// the size of a line where the item behind it may be ten thousand tokens. Summing the items
     /// would have the budget report what the context is holding, which is not what the request
     /// costs - and a compactor that elides would watch the total refuse to move and elide again.
-    pub(super) fn projected(&self) -> (Projection, Cost) {
-        self.projected_with(&*self.counter())
-    }
-
-    /// The same, priced by the counter given.
-    fn projected_with(&self, counter: &dyn TokenCounter) -> (Projection, Cost) {
+    pub(super) fn projected_with(&self, counter: &dyn TokenCounter) -> (Projection, Cost) {
         let projector = self.projector();
         let context = self.0.context.read();
         let projection = projector.project(context.items());
@@ -278,11 +273,9 @@ impl Kernel {
         (projection, cost)
     }
 
-    /// Returns the estimated size of the tool definitions.
-    pub(super) fn tool_tokens(&self) -> usize {
-        let counter = self.counter();
-
-        tool_tokens(&self.tool_specs(), &*counter)
+    /// Returns the estimated size of the tool definitions, priced by the counter given.
+    pub(super) fn tool_tokens_with(&self, counter: &dyn TokenCounter) -> usize {
+        tool_tokens(&self.tool_specs(), counter)
     }
 
     /// Gives every tool call a usable identifier that is unique *within the session*, announcing
