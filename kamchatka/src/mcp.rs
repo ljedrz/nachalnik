@@ -65,6 +65,16 @@ pub async fn attach(
             .install(kernel)
             .await
             .map_err(|e| format!("`{line}` would not list its tools: {e}"))?;
+        // note: refused rather than let stand, as a failed handshake is. Two servers under one
+        // name - two `npx` lines with no `name=` - offer their tools under the same identifiers,
+        // and the second install quietly took the first one's out from under it
+        if !installed.replaced.is_empty() {
+            return Err(format!(
+                "`{line}` offers {} under a name another server's tools already have; give each \
+                 server its own with `name=command`",
+                installed.replaced.join(", ")
+            ));
+        }
         for tool in &installed.added {
             policy.came_from(tool, server.name());
         }

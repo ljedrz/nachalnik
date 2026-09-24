@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Two MCP servers whose tools would share names are refused at startup.** The second quietly
+  replaced the first one's tools - two `npx` lines with no `name=` are both named `npx` - though
+  the bridge reports what an install replaced. It is refused like a failed handshake, and the
+  error says to name each server.
 - **A score the advisor gave with no confidence is not a rating.** It was drawn with a
   confidence of nothing - "NaN% sure" in the panel, and a rating a remote client could not read -
   where the comment beside it said a score and its confidence come together or not at all. It is

@@ -349,3 +349,33 @@ fn the_program_offers_a_spawned_servers_tools() {
         });
     assert!(installed, "the tools arriving is not on the record stream");
 }
+
+/// Two servers that would offer tools under the same names are refused, rather than one quietly
+/// taking the other's place.
+///
+/// note: the same server twice is the plainest way to get there, and two `npx` lines with no
+/// `name=` are the commonest: both are named for their program.
+#[tokio::test]
+async fn two_servers_under_one_name_are_refused() {
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let refused = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[spec!(), spec!()])
+        .await
+        .map(|servers| servers.len());
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|why| why.contains("name=command")),
+        "{refused:?}"
+    );
+}
