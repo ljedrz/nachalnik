@@ -35,6 +35,10 @@ minor bump may break you.
   room were scored as wrong rather than counted in `Scores::cut`. `Observation::consensus` is the
   commonest answer at the copies' pooled probability of it, and `Answer::Cut` when every copy was
   cut off.
+- **A subject's test is evidence about an item only when that item is all it took out.**
+  `Deference` read the last test whose `without` contained the item, so taking two notes out
+  together and seeing the answer move was recorded as each of them moving it, and a subject that
+  held to "this one does nothing" was scored as defying its own evidence.
 
 ## [0.5.1] - 2026-09-24
 
