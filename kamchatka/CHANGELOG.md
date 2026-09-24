@@ -22,6 +22,8 @@ minor bump may break you.
 
 ### fixed
 
+- **`fork ask` refuses to leave out an item that is not there.** It asked the copy with the whole
+  context and paid for the request, as though it had been an ablation.
 - **`log` does not give an item that never existed a history.** Asked about an id the session has
   never held, it said the item was already in the context before the log began; it says there is
   no such item.

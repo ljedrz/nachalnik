@@ -148,6 +148,14 @@ impl Tool for Fork {
                     Ok(without) => without,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
+                // before the request rather than after it: a copy asked without an item that is
+                // not there is the whole context answering again, paid for as an ablation
+                if let Some(missing) = without.iter().find(|id| kernel.item(**id).is_none()) {
+                    return Ok(ToolOutput::error(format!(
+                        "there is no item {missing} to leave out, so the copy was not asked. \
+                         `without` takes the numbers `context` prints"
+                    )));
+                }
                 branch(&kernel, Some(question), &without, &output, &self.forked).await
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),

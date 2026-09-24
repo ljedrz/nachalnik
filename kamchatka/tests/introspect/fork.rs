@@ -266,3 +266,33 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     assert!(ablated.contains("could not read at all"), "{ablated}");
     assert!(!ablated.contains("saw all of them"), "{ablated}");
 }
+
+/// An item to leave out that is not there is refused before a request is spent on the copy.
+#[tokio::test]
+async fn a_fork_told_to_leave_out_an_item_that_is_not_there_is_refused() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fork",
+            json!({ "action": "ask", "question": "and without it?", "without": [999] }),
+        )]),
+        ModelResponse::text("the same as before"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("what do you make of this?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"])[0].clone();
+    assert!(said.contains("999"), "{said}");
+    assert!(
+        !provider
+            .requests()
+            .iter()
+            .any(|request| request.messages.iter().any(|message| message
+                .content
+                .as_ref()
+                .is_some_and(|content| content.to_text().contains("and without it?")))),
+        "the copy was asked anyway"
+    );
+}
