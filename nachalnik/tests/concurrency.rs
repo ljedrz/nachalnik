@@ -307,29 +307,47 @@ async fn a_refusal_still_lands_in_its_own_place() {
         ModelResponse::tool_calls(vec![
             call("c1", "quick", json!({})),
             call("c2", "slow", json!({})),
-            call("c3", "quick", json!({})),
+            call("c3", "refused", json!({})),
         ]),
         ModelResponse::text("done"),
     ])));
-    kernel.set_policy(Arc::new(nachalnik::test::Table::new(
-        nachalnik::Verdict::Allow,
-    )));
+    kernel.set_policy(Arc::new(
+        nachalnik::test::Table::new(nachalnik::Verdict::Allow).rule(
+            nachalnik::Capability::net("reach"),
+            nachalnik::Verdict::Deny,
+        ),
+    ));
     kernel.add_tool(Arc::new(Slow(std::time::Duration::from_millis(100))));
     kernel.add_tool(Arc::new(ConstTool::new("quick", "instant")));
+    kernel.add_tool(Arc::new(
+        ConstTool::new("refused", "ran anyway")
+            .with_capabilities([nachalnik::Capability::net("reach")]),
+    ));
     kernel.push(ContextItem::user("go"));
 
     kernel.turn().await.unwrap();
 
-    // the slow one finished last and is still recorded second
+    // the slow one finished last and is still recorded second, and the refusal, which had
+    // nothing to run, is still recorded third
     let answered: Vec<_> = kernel
         .items()
         .iter()
         .filter_map(|item| match &item.kind {
-            nachalnik::ContextKind::ToolResult { call, .. } => Some(call.0.clone()),
+            nachalnik::ContextKind::ToolResult { call, is_error, .. } => Some((
+                call.0.clone(),
+                *is_error,
+                item.content.to_text().into_owned(),
+            )),
             _ => None,
         })
         .collect();
-    assert_eq!(answered, ["c1", "c2", "c3"]);
+    let ids: Vec<_> = answered.iter().map(|(id, ..)| id.as_str()).collect();
+    assert_eq!(ids, ["c1", "c2", "c3"]);
+    let (_, is_error, text) = &answered[2];
+    assert!(
+        *is_error && text.starts_with("the call was not permitted"),
+        "{answered:?}"
+    );
 }
 
 #[tokio::test]
