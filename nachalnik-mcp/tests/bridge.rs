@@ -626,6 +626,7 @@ async fn the_tools_can_be_looked_at_before_anything_is_registered() {
 #[derive(Clone, Default)]
 struct Wedged {
     endless: bool,
+    arrived: Arc<AtomicUsize>,
     stopped: Arc<AtomicUsize>,
 }
 
@@ -665,6 +666,7 @@ impl ServerHandler for Wedged {
         _request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
+        self.arrived.fetch_add(1, SeqCst);
         context.ct.cancelled().await;
         self.stopped.fetch_add(1, SeqCst);
 
@@ -693,7 +695,7 @@ async fn wedged(handler: Wedged) -> Server {
 #[tokio::test]
 async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
     let handler = Wedged::default();
-    let stopped = handler.stopped.clone();
+    let (arrived, stopped) = (handler.arrived.clone(), handler.stopped.clone());
     let server = wedged(handler).await;
 
     let kernel = kernel();
@@ -709,7 +711,15 @@ async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
         let kernel = kernel.clone();
         async move { kernel.turn().await }
     });
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    // the server sitting on the call is what is being interrupted, so it has to have the call first
+    let waited = std::time::Instant::now();
+    while arrived.load(SeqCst) == 0 {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(5),
+            "the call never reached the server"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
     kernel.interrupt();
     tokio::time::timeout(std::time::Duration::from_secs(5), running)
         .await
