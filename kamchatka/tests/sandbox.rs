@@ -29,7 +29,7 @@ use kamchatka::{
     tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
-    Capability, Config, ContextItem, ContextKind, Kernel, ModelResponse, Tool, Verdict,
+    Capability, Config, ContextItem, ContextKind, Kernel, ModelResponse, OutputSink, Tool, Verdict,
     test::{AllowAll, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -671,6 +671,42 @@ async fn a_command_takes_its_temporary_directory_with_it() {
     assert!(
         !Path::new(scratch).exists(),
         "{scratch} outlived the command it was made for"
+    );
+}
+
+/// A call dropped while its command runs takes the command's temporary directory with it, as it
+/// takes the command.
+#[tokio::test]
+async fn a_dropped_call_takes_its_temporary_directory_with_it() {
+    if !enforced() {
+        return;
+    }
+    let dir = workdir("dropped-scratch");
+    let shell = Shell {
+        limits: Limits::default(),
+        policy: Arc::new(Careful::new()),
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confiner: Some(program()),
+    };
+    let args = json!({ "cmd": "printf %s \"$TMPDIR\" > where.txt; sleep 20" });
+
+    let dropped = tokio::time::timeout(
+        Duration::from_secs(2),
+        shell.invoke(&call("1", "shell", args), OutputSink::disconnected()),
+    )
+    .await;
+    assert!(
+        dropped.is_err(),
+        "the command was meant to still be running"
+    );
+
+    let scratch = std::fs::read_to_string(dir.join("where.txt")).expect("the command said where");
+    assert!(scratch.contains("kamchatka-"), "{scratch}");
+    assert!(
+        !Path::new(&scratch).exists(),
+        "{scratch} outlived the call it was made for"
     );
 }
 

@@ -425,15 +425,17 @@ impl Tool for Shell {
             Ok(child) => child,
             Err(e) => return Ok(ToolOutput::error(format!("could not run `{cmd}`: {e}"))),
         };
-        let running = Running(child.id());
         // the confined child cannot remove its own temporary directory, so this is where that
         // happens; the identifier has to be read now, because a child that has been waited on no
         // longer has one. See `sandbox::scratch_for`
-        let scratch = self
-            .confiner
-            .is_some()
-            .then(|| child.id().map(crate::sandbox::scratch_for))
-            .flatten();
+        let running = Running {
+            group: child.id(),
+            scratch: self
+                .confiner
+                .is_some()
+                .then(|| child.id().map(crate::sandbox::scratch_for))
+                .flatten(),
+        };
 
         // taken out of the child, so that it can still be killed while these are being read
         let stdout = child.stdout.take().expect("stdout was piped");
@@ -585,7 +587,7 @@ impl Tool for Shell {
             Some(waited) => waited,
             None => child.wait().await,
         };
-        running.over();
+        let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
                 Exit::Stopped,
@@ -647,25 +649,34 @@ impl Tool for Shell {
     }
 }
 
-/// The process group of a command still running, killed if the call is dropped before it ends.
+/// The process group of a command still running, killed if the call is dropped before it ends,
+/// and the temporary directory it was given, removed then.
 ///
 /// note: what `kill_on_drop` does for the child alone, done for its group. A call is dropped when
 /// the process is on its way out - a runtime shut down with a turn still going, a panic - and the
 /// group is not sent the terminal's hangup, so without this a `make` or a server the command
 /// started keeps running after the agent is gone, with nothing left to record what it does.
-struct Running(Option<u32>);
+///
+/// note: and the directory for the same reason. The confined child cannot remove it, and left
+/// behind it holds whatever the command wrote there until its identifier comes round again.
+struct Running {
+    group: Option<u32>,
+    scratch: Option<PathBuf>,
+}
 
 impl Running {
-    /// The command has been waited for, so its identifier may already be somebody else's.
-    fn over(mut self) {
-        self.0 = None;
+    /// The command has been waited for, so its identifier may already be somebody else's; hands
+    /// back the temporary directory for the caller to remove without blocking.
+    fn over(mut self) -> Option<PathBuf> {
+        self.group = None;
+        self.scratch.take()
     }
 }
 
 impl Drop for Running {
     fn drop(&mut self) {
         #[cfg(unix)]
-        if let Some(pid) = self.0 {
+        if let Some(pid) = self.group {
             // `std` rather than tokio's, because a drop cannot wait on a future and this may be
             // the last thing the runtime does
             let _ = std::process::Command::new("sh")
@@ -675,6 +686,9 @@ impl Drop for Running {
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .status();
+        }
+        if let Some(scratch) = &self.scratch {
+            let _ = std::fs::remove_dir_all(scratch);
         }
     }
 }

@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A `shell` call dropped before its command ends removes the command's temporary directory**, as
+  it already killed the command's process group. It was left behind with whatever the command
+  wrote there.
 - **A confined command whose temporary directory could not be made is given no `TMPDIR`**, as
   documented, rather than the directory it could not be made in.
 - **An `undo` of several steps can walk past a pin it put back itself.** Which pins were the
