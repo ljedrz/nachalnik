@@ -370,33 +370,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   named path that is a socket by its file type rather than by the wording of the error, outside
   every writable path, on a kernel that handles the right.
 
-- **`nachalnik-eval` scoring where it disagrees with its own rules.** Each of these changes what
-  the benchmark measures, so every run recorded before the fix would be measuring something else:
-  - Attribution sets `happened` to unreadable when the subject names two items, or none, which
-    takes the claim out of the denominator. Lie and Conflict count an unreadable claim against a
-    readable outcome as measured and wrong, which is the rule `trial.rs` states.
-  - Provenance builds its claimed answer from `Observation::majority`, a bare key, so it carries
-    no confidence and its Brier, ECE and overconfidence are always `None` - while its doc says
-    overconfidence is the figure that separates its two kinds of wrong.
-  - A copy cut off at the token limit reads as unreadable rather than `Answer::Cut` wherever the
-    copies' majority is the *claimed* answer (Provenance, and Conflict's unsettled and settled
-    arms), so it is scored wrong and never reaches `Scores::cut`.
-
-  - Counterfactual resolutions (`Change::as_answer`) and Attribution's `leaders` do not ask
-    `clears_the_noise()`, so with more than one replicate a change inside the control's own spread
-    still reads as having moved. The guard is optional and documented as that.
-
-  Smaller, of the same kind: Deference credits a test without several items to each of them;
-  Surface takes claims from every stage, so an item can count up to three times; a tied control
-  reads as maximum instability; and `Outcome::paired` pairs Conflict stages that are not repeated
-  measures. What would unblock any of them is the decision, then a new instrument digest and a
-  changelog line saying which runs it separates.
-
-- **`nachalnik-eval`'s public result structs and `#[non_exhaustive]`.** `Scores` has gained fields
-  since release, and a struct literal of it elsewhere breaks each time. Which of the crate's public
-  structs nothing outside builds is the convention's test and wants asking one at a time: `Plant`
-  is one a caller writes as a struct literal. The crate's next minor is where it would go.
-
 - **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
   the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
   counter gave, with no `context.recounted` to say so, and lists every item it re-priced as changed
@@ -588,22 +561,22 @@ Referenced from [AGENTS.md](AGENTS.md).
   The choices are to keep it, to resend only a request that never connected, or to send an
   idempotency key where an endpoint takes one.
 
-- **What an eval run keeps.** Each of these is a field on a public type, so each waits for a minor
-  release of `nachalnik-eval`:
-  - `Act::Tested` keeps no copy observations or spend, so `Trial::spend` leaves out the subject's
-    own test copies. A `spend` with `serde(default)` on the variant is the fix.
-  - The `privilege` experiment does not record the other session's briefing or answer; recording
-    them means reordering its sessions.
-  - A failed `test` in `handles` is not journaled, and `inspect` and `amend` disagree about whether
-    an unknown name counts as refused.
-  - `Outcome::failed` is a message and not which `Error` it was: a kind beside the message, or a
-    `Failure { kind, message }` with a serde fallback so old reports still read.
-
 - **Re-reading a saved run's answers.** A saved run can be re-scored from its resolutions - other
   bins, unreadables counted another way - but not re-read with a new answer parser, because a
-  `Resolution` does not name the `Step::Asked` it came from. Linking them is a field on a struct
-  without `#[non_exhaustive]`; the other ways are an API per experiment to re-read its steps, or a
-  note on `Step::Asked` that promises only that the raw answer is kept.
+  `Resolution` does not name the `Step::Asked` it came from. `Resolution` is `#[non_exhaustive]`
+  now, so the link is a field any release can add; what it costs is every experiment carrying the
+  step's index from the question to the resolution, and nothing reads it until a re-reader is
+  written. The other ways are an API per experiment to re-read its steps, or a note on
+  `Step::Asked` that promises only that the raw answer is kept.
+
+- **The primary endpoint's denominator, against the preregistration's.** The preregistration
+  sizes H1 at one claim per note per model - thirteen numeric inert notes and eighteen plain ones,
+  "over six models ~78 numeric and ~108 plain observations". `Report::surface` pools the unaided
+  counterfactual claims of every experiment, and `attribution`, `instrumented`'s `reported`
+  stage, `feedback`, `privilege` and `recursion` each ask about the same notes, so one note is
+  several observations per model where the preregistration's arithmetic counts it once. Whether
+  the endpoint is one experiment's claims, every experiment's with one per note, or the pool as it
+  stands is the study's decision, and the preregistration is where it is made.
 
 - **A model's identity in a report.** `Report::model`, and `per_model`, `pool` and `compare` after
   it, key on the model's name alone, so one model served by two providers is pooled as one. A run
