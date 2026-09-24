@@ -841,3 +841,45 @@ async fn a_blank_line_from_a_client_is_not_a_message() {
         "`  /budget` is a command: {prose}"
     );
 }
+
+/// Two answers typed in one breath answer two questions, rather than the first one twice.
+#[tokio::test]
+async fn two_answers_typed_together_answer_two_questions() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![
+            call("c1", "peek", json!({})),
+            call("c2", "poke", json!({})),
+        ]),
+        ModelResponse::text("allowed"),
+    ];
+    let session = served(script, |app| {
+        for name in ["peek", "poke"] {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new(name, "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        }
+    })
+    .await;
+
+    let (mut watch, _) = Peer::attached(&session.at).await;
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"go\n").await.expect("could not type");
+        watch.until_record("permission.requested").await;
+        watch.until_record("permission.requested").await;
+        feed.write_all(b"y\ny\n").await.expect("could not type");
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(input))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(prose.contains("peek: allow"), "{prose}");
+    assert!(prose.contains("poke: allow"), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}

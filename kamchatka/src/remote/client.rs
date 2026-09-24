@@ -632,14 +632,17 @@ impl<'a> Client<'a> {
         write: &mut W,
         line: &str,
     ) -> Result<(), String> {
-        if let Some(request) = self.asking.front() {
+        if !self.asking.is_empty() {
             let answer = match line {
                 "y" => Some((Grant::Allow, false)),
                 "n" => Some((Grant::Deny, false)),
                 "a" => Some((Grant::Allow, true)),
                 _ => None,
             };
-            if let Some((grant, remember)) = answer {
+            // taken off as it is answered, for the reason `settle` gives
+            if let Some((grant, remember)) = answer
+                && let Some(request) = self.asking.pop_front()
+            {
                 let id = request.id;
 
                 return self

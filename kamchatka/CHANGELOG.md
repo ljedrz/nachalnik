@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--connect` answers each question once.** An answer typed at the client left the question at
+  the front of its queue until the record saying it was decided came back, so a second `y` typed
+  before then answered the same question again, was refused, and left the next one unanswered.
 - **`/load` waits for calls set aside to be run or cancelled.** It was refused only while a turn
   ran or a question waited, so after `/step` had left calls in `Ready` it loaded, archived the turn
   that asked for them, and the next step ran them against the loaded context.
