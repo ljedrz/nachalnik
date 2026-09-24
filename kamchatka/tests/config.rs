@@ -747,6 +747,39 @@ fn a_rule_nothing_is_judged_under_is_refused() {
     }
 }
 
+/// A server rule naming no server this run starts is refused where it is given, and says which
+/// servers there are.
+///
+/// note: `--deny-server filess` beside `--mcp files=...` refused nothing, and a headless run given
+/// `--on-ask allow` ran every call to `files` unasked, under a rule that read as given.
+#[cfg(feature = "mcp")]
+#[test]
+fn a_server_rule_naming_no_server_is_refused() {
+    let refused = "is not a server this run starts";
+
+    let (ok, said) = run(&["--mcp", "files=/nowhere", "--deny-server", "filess"], "");
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains(&format!("`filess` {refused}; they are files")),
+        "{said}"
+    );
+    let (ok, said) = run(&["--allow-server", "files"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("it starts none"), "{said}");
+
+    // a server with no name of its own is called after its program, as `attach` calls it
+    let (_, said) = run(
+        &[
+            "--mcp",
+            "/nowhere/files --root /srv",
+            "--deny-server",
+            "files",
+        ],
+        "",
+    );
+    assert!(!said.contains(refused), "{said}");
+}
+
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
 ///
 /// note: it was a ceiling of nothing, reached before the first request: a headless run read no

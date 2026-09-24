@@ -38,28 +38,9 @@ pub async fn attach(
     let mut taken: std::collections::HashSet<String> = kernel.tool_ids().into_iter().collect();
 
     for spec in specs {
-        // `env FOO=bar cmd` is a command rather than a name, which is what the guard is for
-        let (name, line) = match spec.split_once('=') {
-            Some((name, rest))
-                if !name.is_empty()
-                    && !name.contains(char::is_whitespace)
-                    && !name.contains('/') =>
-            {
-                (name.to_owned(), rest.trim())
-            }
-            _ => (String::new(), spec.as_str()),
-        };
-
+        let (name, line) = named(spec);
         let mut words = line.split_whitespace();
         let program = words.next().ok_or("an MCP server needs a command to run")?;
-        let name = match name.is_empty() {
-            false => name,
-            true => std::path::Path::new(program)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or(program)
-                .to_owned(),
-        };
 
         let mut command = tokio::process::Command::new(program);
         command.args(words);
@@ -98,4 +79,30 @@ pub async fn attach(
     }
 
     Ok(servers)
+}
+
+/// The name a server is given by one `--mcp` spec, and the command line that starts it.
+///
+/// note: its own function so that `--allow-server` and `--deny-server` can be held to the names
+/// before anything is spawned, by the same reading `attach` gives them.
+pub(crate) fn named(spec: &str) -> (String, &str) {
+    // `env FOO=bar cmd` is a command rather than a name, which is what the guard is for
+    let (name, line) = match spec.split_once('=') {
+        Some((name, rest))
+            if !name.is_empty() && !name.contains(char::is_whitespace) && !name.contains('/') =>
+        {
+            (name.to_owned(), rest.trim())
+        }
+        _ => (String::new(), spec),
+    };
+    let name = match (name.is_empty(), line.split_whitespace().next()) {
+        (true, Some(program)) => std::path::Path::new(program)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(program)
+            .to_owned(),
+        _ => name,
+    };
+
+    (name, line)
 }

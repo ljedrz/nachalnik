@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### security
 
+- **A server rule naming no server this run starts is refused.** `--deny-server filess` beside
+  `--mcp files=…` matched nothing, and `files` was left to the question - which a headless run
+  with `--on-ask allow` answers yes - under a rule that read as given. An `--allow-server` naming
+  no server is refused the same way, as a rule about a domain no tool declares already is.
 - **A `--sandbox-read` path inside a writable one is refused, rather than drawn as read-only and
   written to.** Landlock only adds to what a process may do and `fs` checked the writable roots
   first, so a read-only path inside the working directory could be written by both tools while

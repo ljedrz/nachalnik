@@ -415,6 +415,32 @@ impl Args {
              `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
             self.compact
         );
+        // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
+        // server rule naming a server this run does not start matches nothing, so a misspelled
+        // `--deny-server` read as given and left the server it meant to the question - which a
+        // headless run with `--on-ask allow` answers yes
+        #[cfg(feature = "mcp")]
+        let servers: Vec<String> = self
+            .mcp
+            .iter()
+            .map(|spec| crate::mcp::named(spec).0)
+            .collect();
+        #[cfg(not(feature = "mcp"))]
+        let servers: Vec<String> = Vec::new();
+        if let Some(unknown) = self
+            .allow_server
+            .iter()
+            .chain(&self.deny_server)
+            .find(|name| !servers.contains(name))
+        {
+            anyhow::bail!(
+                "`{unknown}` is not a server this run starts; {}",
+                match servers.is_empty() {
+                    true => "it starts none".to_owned(),
+                    false => format!("they are {}", servers.join(", ")),
+                }
+            );
+        }
         let resume = match &self.resume {
             Some(path) => {
                 let snapshot: nachalnik::Snapshot = serde_json::from_slice(
