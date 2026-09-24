@@ -5,12 +5,15 @@
 //! is a row whose item is in `preview_request`, and one that says it is not names the reason in
 //! the projector's own words rather than in the screen's.
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 use crossterm::event::KeyCode;
 use kamchatka::app::{Focus, Tab};
 use nachalnik::{
-    Calibration, ContextItem, ContextState, ModelResponse,
+    Calibration, ContextItem, ContextState, ModelResponse, Projection, Projector,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -878,6 +881,42 @@ async fn f_lists_only_what_the_next_request_carries_and_keeps_the_item_it_was_on
     assert!(
         !back.contains("not being sent, hidden by f"),
         "and the header goes back to what it was: {back}"
+    );
+}
+
+/// `f` filters by the projection the frame already made, rather than making another.
+///
+/// note: counted against the same frame with `f` off, so that what else a frame projects for is
+/// not this test's business - only that the toggle adds nothing to it.
+#[tokio::test]
+async fn f_does_not_project_the_context_a_second_time_a_frame() {
+    struct Counted(nachalnik::LinearProjector, AtomicUsize);
+
+    impl Projector for Counted {
+        fn project(&self, items: &[Arc<ContextItem>]) -> Projection {
+            self.1.fetch_add(1, Ordering::Relaxed);
+            self.0.project(items)
+        }
+    }
+
+    let mut harness = Harness::new([]);
+    let counted = Arc::new(Counted(Default::default(), AtomicUsize::new(0)));
+    harness.app.kernel.set_projector(counted.clone());
+    harness.app.kernel.push(ContextItem::user("a question"));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let frame = |harness: &mut Harness| {
+        let before = counted.1.load(Ordering::Relaxed);
+        harness.screen();
+        counted.1.load(Ordering::Relaxed) - before
+    };
+    let unfiltered = frame(&mut harness);
+    harness.press(KeyCode::Char('f')).await;
+    let filtered = frame(&mut harness);
+    assert_eq!(
+        filtered, unfiltered,
+        "a frame with `f` on projected {filtered} time(s), and {unfiltered} with it off"
     );
 }
 

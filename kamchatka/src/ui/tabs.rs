@@ -354,7 +354,7 @@ pub(super) fn draw_context(
     going: &Going,
     area: Rect,
 ) -> Scrolled {
-    let items = app.listed();
+    let items = app.listed_by(going);
     app.drawn = Some(items.iter().map(|item| item.id).collect());
     let held_back = app.kernel.items().len() - items.len();
     if items.is_empty() {

@@ -36,6 +36,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The context tab with `f` on projects the context once a frame.** It built the request a second
+  time to decide which rows to list, beside the one the frame had already built for the rest of
+  the screen.
 - **`/restart` leaves out an MCP server whose tools would take another tool's identifier, and says
   so**, as starting the run refuses it. The servers' tools went back into the new kernel one after
   another, and a server whose list had changed since the run began could displace another's tool

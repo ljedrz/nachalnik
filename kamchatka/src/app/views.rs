@@ -309,21 +309,32 @@ impl App {
     /// holding everything it holds and would have survived this filter as though it were going -
     /// which is the one row somebody with the toggle on would most want to see the truth about.
     pub fn listed(&self) -> Vec<Arc<ContextItem>> {
-        let items = self.kernel.items();
-        let items = match self.sending_only {
-            false => items,
-            true => {
-                let going = self.going();
-                items
-                    .into_iter()
-                    .filter(|item| going.sends_content(item))
-                    .collect()
-            }
-        };
+        match self.sending_only {
+            false => self.searched(self.kernel.items()),
+            true => self.listed_by(&self.going()),
+        }
+    }
 
-        // note: the search goes here, beside `f`, and for the reason `f` is here: this is what the
-        // keys count rows in. A pane filtered on the way to the screen while `context_key` still
-        // indexed the whole context would select the row above the one under the cursor.
+    /// [`App::listed`], with `f` judged by a projection the caller already has.
+    ///
+    /// note: the frame's, so that a redraw with `f` on projects once, as `ui::draw` promises.
+    pub(crate) fn listed_by(&self, going: &Going) -> Vec<Arc<ContextItem>> {
+        let items = self.kernel.items();
+        self.searched(match self.sending_only {
+            false => items,
+            true => items
+                .into_iter()
+                .filter(|item| going.sends_content(item))
+                .collect(),
+        })
+    }
+
+    /// The rows the search leaves of these.
+    ///
+    /// note: the search goes here, beside `f`, and for the reason `f` is here: this is what the
+    /// keys count rows in. A pane filtered on the way to the screen while `context_key` still
+    /// indexed the whole context would select the row above the one under the cursor.
+    fn searched(&self, items: Vec<Arc<ContextItem>>) -> Vec<Arc<ContextItem>> {
         let Some(search) = self.search.as_ref().filter(|_| self.tab == Tab::Context) else {
             return items;
         };
