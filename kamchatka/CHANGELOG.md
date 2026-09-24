@@ -22,6 +22,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A score the advisor gave with no confidence is not a rating.** It was drawn with a
+  confidence of nothing - "NaN% sure" in the panel, and a rating a remote client could not read -
+  where the comment beside it said a score and its confidence come together or not at all. It is
+  a command left unrated, with the reason where the rating would be.
 - **A local advisor's standard error is read for as long as it runs, whatever it writes.** The
   drain read whole lines, so one that was not UTF-8 stopped it for good - after which nothing read
   the pipe and the engine would block on it once it filled - and one with no newline was held

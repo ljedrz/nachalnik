@@ -449,12 +449,7 @@ impl Advised {
         // note: the score and the confidence together or not at all. A score with no confidence
         // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
         // answer is that nothing was said
-        let read = |name: &str| {
-            Some(Rated::of(
-                answers.score(name)?,
-                answers.confidence(name).unwrap_or(0.0),
-            ))
-        };
+        let read = |name: &str| Some(Rated::of(answers.score(name)?, answers.confidence(name)?));
 
         // note: a `noul`'s number is its own confidence, so there is no second field to pair it
         // with and no half-answer to guard against - see `Rated::claimed`
@@ -867,6 +862,42 @@ mod tests {
             advised.why_unrated(&request.call).is_some(),
             "and says it could not rate the command"
         );
+    }
+
+    /// A score that came with no confidence is half an answer, and half an answer is none.
+    ///
+    /// note: it was read with a confidence of `0.0`, which is a rating "0% sure" drawn in the
+    /// panel - or, while the engine handed out `NaN` for the missing figure, "NaN% sure" and a
+    /// message a remote client could not read. Refused, it is a question with a reason beside it
+    /// rather than a rating.
+    #[tokio::test]
+    async fn a_score_with_no_confidence_is_not_a_rating() {
+        struct Half;
+
+        #[async_trait]
+        impl SystemOne for Half {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                Ok(nachalnik_providers::system1::Answers::read(json!({
+                    "model": "half",
+                    "answers": { RATING: { "type": "score", "score": 0.1 } },
+                })))
+            }
+
+            fn named(&self) -> String {
+                "half".to_owned()
+            }
+        }
+
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(Half));
+        let request = asking("shell", Capability::exec("run"));
+
+        assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
+        assert!(advised.rating(&request.call).is_none());
+        assert!(advised.why_unrated(&request.call).is_some());
     }
 
     /// A command of eight stages costs the round trip a command of one costs.
