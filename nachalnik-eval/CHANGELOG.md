@@ -12,6 +12,12 @@ minor bump may break you.
 - **`Act::Tested` has a `spend` and a `failed`.** Both are `serde(default)`, so a saved report
   reads as it was; an `Act::Tested` written as a struct literal elsewhere - a handle of somebody
   else's pushing onto a `Journal` - needs the two fields.
+- **`Outcome::failed` is a `Failure`, which says which error it was.** It was the message alone, so
+  a sweep deciding whether a cell was worth running again - a provider that fell over, against a
+  subject that ran out of requests - had to read the words. `Failure` holds an `ErrorKind` beside
+  the message, `Error::kind` gives one, and `Outcome::of` takes a `Failure`. A report written with
+  the message alone still reads, as `ErrorKind::Unknown`, and so does a kind this version has no
+  name for.
 
 ### changed
 

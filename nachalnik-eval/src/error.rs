@@ -5,6 +5,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 #[cfg(doc)]
 use crate::{Experiment, Subject, evaluate};
 
@@ -54,6 +56,44 @@ impl fmt::Display for Error {
             Self::Setup(what) => write!(f, "the experiment could not be set up: {what}"),
         }
     }
+}
+
+impl Error {
+    /// Which of these it is.
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::Runtime(_) => ErrorKind::Runtime,
+            Self::Silent => ErrorKind::Silent,
+            Self::Undecided => ErrorKind::Undecided,
+            Self::Exhausted => ErrorKind::Exhausted,
+            Self::Setup(_) => ErrorKind::Setup,
+        }
+    }
+}
+
+/// Which [`Error`] it was, as a record keeps it.
+///
+/// note: the variant without what it carries, so that a sweep deciding whether a cell is worth
+/// running again - a provider that fell over, against a subject that ran out of requests - can
+/// match on it rather than on the words of a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ErrorKind {
+    /// [`Error::Runtime`].
+    Runtime,
+    /// [`Error::Silent`].
+    Silent,
+    /// [`Error::Undecided`].
+    Undecided,
+    /// [`Error::Exhausted`].
+    Exhausted,
+    /// [`Error::Setup`].
+    Setup,
+    /// A kind this version has no name for: a report written before kinds were kept, or by a
+    /// later version that stops for a reason this one does not know.
+    #[serde(other)]
+    Unknown,
 }
 
 impl std::error::Error for Error {

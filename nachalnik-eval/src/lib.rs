@@ -129,8 +129,10 @@ pub use async_trait::async_trait;
 
 pub use crate::{
     abreast::{Acquiring, Governor, Pace, Paced, Permit, Permits, together},
-    error::{Error, Result},
-    experiment::{Experiment, Instrument, Outcome, Report, evaluate, evaluate_with, per_model},
+    error::{Error, ErrorKind, Result},
+    experiment::{
+        Experiment, Failure, Instrument, Outcome, Report, evaluate, evaluate_with, per_model,
+    },
     fork::{Ablation, Change, Observation, Origin, PREAMBLE},
     intervene::{Applied, Intervention},
     probe::{Answer, Probe, Reading},

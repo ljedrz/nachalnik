@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     abreast::{Governor, Pace, together},
-    error::Result,
+    error::{Error, ErrorKind, Result},
     score::{Deference, Depths, Family, Gain, Paired, Reached, Scores, Stage, Surface, unaided},
     subject::{Spend, Subject},
     trial::{Check, Resolution, Step, Trial},
@@ -234,12 +234,62 @@ pub struct Outcome {
     /// wrong beside them. Thirty requests into a run is the wrong moment to discover that a
     /// harness treats a timeout as a reason to throw the afternoon away - and a run of this kind
     /// is nearly all requests to somebody else's API, so the timeout is not hypothetical.
-    pub failed: Option<String>,
+    pub failed: Option<Failure>,
+}
+
+/// Why an experiment stopped early.
+///
+/// note: a message was all a report kept, so telling a provider that fell over from a subject
+/// that ran out of requests meant reading the words. A report written that way still reads, as a
+/// failure of [`ErrorKind::Unknown`] kind with its message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "Written")]
+#[non_exhaustive]
+pub struct Failure {
+    /// Which error it was.
+    pub kind: ErrorKind,
+    /// What it said.
+    pub message: String,
+}
+
+impl From<&Error> for Failure {
+    fn from(error: &Error) -> Self {
+        Self {
+            kind: error.kind(),
+            message: error.to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Failure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+/// A [`Failure`] as a report may hold one.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Written {
+    Kept { kind: ErrorKind, message: String },
+    Said(String),
+}
+
+impl From<Written> for Failure {
+    fn from(written: Written) -> Self {
+        match written {
+            Written::Kept { kind, message } => Self { kind, message },
+            Written::Said(message) => Self {
+                kind: ErrorKind::Unknown,
+                message,
+            },
+        }
+    }
 }
 
 impl Outcome {
     /// Reads a trial's record into a scored outcome.
-    pub fn of(trial: &Trial, failed: Option<String>) -> Self {
+    pub fn of(trial: &Trial, failed: Option<Failure>) -> Self {
         let resolutions = trial.resolutions();
         let gain = Gain::over(&resolutions);
         let steps = trial.steps();
@@ -501,7 +551,7 @@ pub async fn evaluate(
         let subject = match make(experiment.name()) {
             Ok(subject) => subject,
             Err(e) => {
-                outcomes.push(unrun(&experiment, e.to_string()));
+                outcomes.push(unrun(&experiment, Failure::from(&e)));
                 continue;
             }
         };
@@ -516,7 +566,7 @@ pub async fn evaluate(
             .run(&subject, &trial)
             .await
             .err()
-            .map(|e| e.to_string());
+            .map(|e| Failure::from(&e));
         outcomes.push(Outcome::of(&trial, failed));
     }
 
@@ -582,7 +632,7 @@ pub async fn evaluate_with(
             let subject = match subject {
                 Ok(subject) => subject,
                 Err(e) => {
-                    let outcome = unrun(&experiment, e.to_string());
+                    let outcome = unrun(&experiment, Failure::from(&e));
                     landed(&outcome);
                     return outcome;
                 }
@@ -595,7 +645,7 @@ pub async fn evaluate_with(
                 .run(&subject, &trial)
                 .await
                 .err()
-                .map(|e| e.to_string());
+                .map(|e| Failure::from(&e));
 
             let outcome = Outcome::of(&trial, failed);
             landed(&outcome);
@@ -632,7 +682,7 @@ fn under(subject: &Subject, governor: &Governor) {
 }
 
 /// An outcome for an experiment that never got as far as being run.
-fn unrun(experiment: &Arc<dyn Experiment>, failed: String) -> Outcome {
+fn unrun(experiment: &Arc<dyn Experiment>, failed: Failure) -> Outcome {
     Outcome {
         experiment: experiment.name().to_owned(),
         instrument: experiment.instrument(),
