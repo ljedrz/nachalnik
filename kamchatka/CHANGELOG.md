@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`log` refuses an `action` that is not text, and a `kinds` entry that is not a name.** The
+  first was read as a bare `read`, and the second was dropped, which narrowed the filter to the
+  names left beside it.
 - **`fs` and `shell` refuse an argument of the wrong kind rather than guess.** A `grep` or `glob`
   whose `path` was not text searched the working directory, a `grep` whose `glob` was not text
   searched every file, and a `shell` call whose `action` was not text ran its command.

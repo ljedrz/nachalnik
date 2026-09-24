@@ -507,6 +507,14 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
             "log",
             json!({ "action": "read", "kinds": ["context.added"], "limit": 3 }),
         ),
+        // an action that is not a word, and a kind that is not a name beside one that is: the
+        // first read as a bare `read`, the second as a narrower filter than the one asked for
+        call("c3", "log", json!({ "action": 7 })),
+        call(
+            "c4",
+            "log",
+            json!({ "action": "read", "kinds": ["context.added", 3] }),
+        ),
     ]));
     kernel.push(ContextItem::user("carry on"));
     kernel.turn().await.expect("the turn failed");
@@ -523,6 +531,13 @@ async fn an_argument_log_does_not_take_is_refused_rather_than_ignored() {
     assert!(said[1].contains("does not take `limit`"), "{}", said[1]);
     assert!(said[1].contains("nothing was done"), "{}", said[1]);
     assert!(!said[1].contains("match"), "{}", said[1]);
+    assert!(said[2].contains("there is no `7`"), "{}", said[2]);
+    assert!(
+        said[3].contains("`kinds` is a list of names"),
+        "{}",
+        said[3]
+    );
+    assert!(!said[3].contains("match"), "{}", said[3]);
 }
 
 /// An item with no beginning in this log is said to have none, which is what `ids` really asks.

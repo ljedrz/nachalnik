@@ -146,8 +146,12 @@ impl Tool for Log {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
         let args = &*args;
-        if let Some(named) = args["action"].as_str().filter(|it| *it != "read") {
-            return Ok(ToolOutput::error(unknown(named, &actions(&self.ops))));
+        let named = &args["action"];
+        if !named.is_null() && named.as_str() != Some("read") {
+            let named = named
+                .as_str()
+                .map_or_else(|| named.to_string(), str::to_owned);
+            return Ok(ToolOutput::error(unknown(&named, &actions(&self.ops))));
         }
         let kernel = self.reach.kernel()?;
 
@@ -287,19 +291,18 @@ impl Query {
                         .to_owned(),
                 );
             };
-            // the same: `kinds: []` is no constraint, and saying so costs nothing
+            // the same: `kinds: []` is no constraint, and saying so costs nothing. An entry that
+            // is not a name is refused with the rest, since dropping it answers a narrower
+            // question than the one asked
             query.kinds = kinds
                 .iter()
-                .filter_map(|kind| kind.as_str())
-                .map(str::to_owned)
-                .collect();
-            if query.kinds.is_empty() && !kinds.is_empty() {
-                return Err(
-                    "`kinds` is a list of names and none of these is one; a bare call lists the \
-                     ones this session holds"
-                        .to_owned(),
-                );
-            }
+                .map(|kind| kind.as_str().map(str::to_owned))
+                .collect::<Option<_>>()
+                .ok_or_else(|| {
+                    "`kinds` is a list of names and not every one of these is one; a bare call \
+                     lists the ones this session holds"
+                        .to_owned()
+                })?;
         }
 
         Ok(query)
