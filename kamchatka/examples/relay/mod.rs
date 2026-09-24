@@ -95,8 +95,12 @@ pub async fn run(session: &str, listen: &str) -> Result<(), String> {
         };
         let _ = browser.set_nodelay(true);
         let (session, tabs, named) = (session.clone(), tabs.clone(), named.clone());
+        // a connection that ends in an error is reported here, because nothing else will: a
+        // browser retries a stream a second later, and a request it could not read is hung up on
         tokio::spawn(async move {
-            let _ = serve(browser, &session, tabs, named).await;
+            if let Err(e) = serve(browser, &session, tabs, named).await {
+                eprintln!("· a browser connection failed: {e}");
+            }
         });
     }
 }
