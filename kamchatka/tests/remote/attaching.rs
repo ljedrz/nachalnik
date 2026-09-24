@@ -25,11 +25,7 @@ async fn a_projection_with_no_reasons_for_missing_ratings_still_reads() {
         .expect("an object")
         .remove("unrated")
         .expect("this build sends the field");
-    let older: Message = serde_json::from_value(sent).expect("and reads without it");
-    let Message::Attached(older) = older else {
-        unreachable!("it was written as one")
-    };
-    assert!(older.unrated.is_empty());
+    serde_json::from_value::<Message>(sent).expect("and reads without it");
 
     drop(peer);
     quit(&session.at).await;

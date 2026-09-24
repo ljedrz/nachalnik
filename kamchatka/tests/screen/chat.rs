@@ -250,7 +250,6 @@ fn step() { let x = 1; }
     assert_eq!(keyword, Color::Magenta);
     assert_eq!(digit, Color::Yellow);
     assert_eq!(comment, Color::Gray);
-    assert_ne!(keyword, digit);
 }
 
 #[tokio::test]

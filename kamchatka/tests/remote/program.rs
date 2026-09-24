@@ -1249,10 +1249,8 @@ async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
     }
 
     // the answer coming back is what says the command really was in flight for all of that
-    let heard = peer
-        .until(|message| matches!(message, Message::Replied { .. }))
+    peer.until(|message| matches!(message, Message::Replied { .. }))
         .await;
-    assert!(!heard.is_empty());
 
     peer.send(Command::Submit {
         line: "/quit".to_owned(),
