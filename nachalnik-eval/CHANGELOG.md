@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`Privilege`'s other session is let run as long as the subject.** It built the foreign session
+  on `Config::default()` and three rounds, so a subject given a longer request budget or more
+  rounds was compared with a foreign arm that gave up sooner. It is a `Subject::sibling` now.
 - **A subject that answered nothing is not reported as fooled.** `Repair` checked its premise with
   "the answer while carrying the note is not the one the records support", which an unreadable or
   cut-off answer also satisfies, so a ladder whose first rung said nothing passed the check

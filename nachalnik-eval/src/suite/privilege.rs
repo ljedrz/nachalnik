@@ -1,11 +1,11 @@
 //! The control that decides whether any of the rest is metacognition: the same claim, about its
 //! own context and about somebody else's.
 
-use nachalnik::{Config, ContextItem, Kernel};
+use nachalnik::ContextItem;
 
 use crate::{
     async_trait,
-    error::{Error, Result},
+    error::Result,
     experiment::{Experiment, Instrument},
     fork::{Ablation, Origin},
     intervene::Intervention,
@@ -132,16 +132,9 @@ impl Experiment for Privilege {
         let blind = [said.asked, said.item];
 
         // --------------------------------------------------------------------- somebody else's
-        let provider = subject.kernel().provider().ok_or_else(|| {
-            Error::Setup("there is no provider to run a second session on".into())
-        })?;
-        let elsewhere = Kernel::new(Config {
-            session_name: Some(format!("{}#elsewhere", subject.kernel().session_name())),
-            ..Config::default()
-        });
-        elsewhere.set_provider(provider);
-        elsewhere.set_params(subject.kernel().params());
-        let elsewhere = Subject::new(elsewhere);
+        // a sibling, so that the other session is let run exactly as long as this one: the arms
+        // are meant to differ by whose context it is and nothing else
+        let elsewhere = subject.sibling("elsewhere")?;
 
         let theirs = self.foreign.install(&elsewhere);
         let their_question = self.foreign.probe();

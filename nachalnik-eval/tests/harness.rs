@@ -6,11 +6,11 @@
 //! that reports any other ranking has a bug in it. That is the one claim about an evaluation of
 //! introspection that can be checked at all, and it can only be checked offline.
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use nachalnik::{Config, Kernel};
 use nachalnik_eval::{
-    Act, Answer, Experiment, Kind, Outcome, Step, Subject, Trial, evaluate, suite,
+    Act, Answer, Error, Experiment, Kind, Outcome, Step, Subject, Trial, evaluate, suite,
     suite::{
         AGAIN, Attribution, CANCELLED, CARRYING, Conflict, DEPOT, Feedback, Instrumented, Lie,
         NOTICED, Privilege, REPAIRED, REPORTED, RETESTED, Recursion, Repair, SETTLED, TESTED,
@@ -21,7 +21,7 @@ use nachalnik_eval::{
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{DEPOT_RULES, FALLBACK, Rulebook};
+use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say};
 
 /// A subject wired to the rulebook.
 fn subject(model: Arc<Rulebook>) -> Subject {
@@ -403,6 +403,45 @@ async fn the_same_claim_is_put_about_its_own_context_and_about_another() {
         own_copies.iter().all(|items| *items <= ceiling),
         "a copy of the first arm read {own_copies:?} items, so it saw more than the dossier"
     );
+}
+
+/// A model that answers the orchard question with a call to a tool nobody has, in a session that
+/// is not carrying the depot's notes - which is to say, in the foreign session only.
+static STALLS_ELSEWHERE: &[Rule] = &[Rule {
+    asked: &["which orchard finishes picking last"],
+    carrying: &[],
+    without: &["handed over in March"],
+    then: Say::Call {
+        tool: "nowhere",
+        args: Cow::Borrowed("{}"),
+    },
+}];
+
+#[tokio::test]
+async fn the_other_session_is_let_run_exactly_as_long_as_the_subject() {
+    // a subject given one request a turn and one turn a question, and a foreign question that
+    // takes two requests: a foreign session held to the same limits gives up on it, where one
+    // on the defaults would have answered and been compared with a subject that could not
+    let kernel = Kernel::new(Config {
+        session_name: Some("subject".to_owned()),
+        max_requests_per_turn: Some(1),
+        ..Config::default()
+    });
+    kernel.set_provider(Arc::new(Rulebook::new(STALLS_ELSEWHERE, FALLBACK)));
+    let subject = Subject::new(kernel).rounds(1);
+
+    let experiment = Privilege::new();
+    let trial = Trial::new(experiment.name(), &subject);
+    let stopped = experiment.run(&subject, &trial).await;
+
+    assert!(matches!(stopped, Err(Error::Exhausted)), "{stopped:?}");
+    // and it was the other session that gave up: the subject had answered its own question
+    let asked = trial
+        .steps()
+        .iter()
+        .filter(|step| matches!(step, Step::Asked { .. }))
+        .count();
+    assert_eq!(asked, 1);
 }
 
 /// Everything the subject did with the handles it was given.
