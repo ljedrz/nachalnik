@@ -240,9 +240,9 @@ impl Snapshot {
     /// rather refuse a snapshot than resume a repaired one. A snapshot is a record, and one read
     /// back from a file may have been edited, merged or written by something else. Resuming
     /// repairs what it can - an identifier two items share, or `0`, gets the next free one, items
-    /// out of order are sorted by identifier, and every call the items name is reserved whether or
-    /// not `used_calls` lists it - and cannot repair a number too near the top of a `u64` to count
-    /// on from.
+    /// out of order are sorted by identifier, a `next_item` that is not past every item is moved
+    /// past them, and every call the items name is reserved whether or not `used_calls` lists it -
+    /// and cannot repair a number too near the top of a `u64` to count on from.
     pub fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
 
@@ -273,6 +273,14 @@ impl Snapshot {
         }
 
         let highest = self.items.iter().map(|item| item.id.0).max().unwrap_or(0);
+        if self.next_item == 0 {
+            problems.push("`next_item` is 0, which is no identifier".to_owned());
+        } else if self.next_item <= highest {
+            problems.push(format!(
+                "`next_item` is {}, which is not past item {highest}",
+                self.next_item
+            ));
+        }
         for (what, number) in [
             ("an item identifier", highest),
             ("`next_item`", self.next_item),

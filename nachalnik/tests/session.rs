@@ -714,6 +714,26 @@ fn items_out_of_order_are_named_before_resume_sorts_them() {
     assert_eq!(ids, [1, 2], "the repair the problem warned of");
 }
 
+/// A `next_item` an item has already reached is named as a problem, because resuming moves it.
+#[test]
+fn a_next_item_the_items_have_passed_is_named() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("one"));
+    kernel.push(ContextItem::user("two"));
+    let mut snapshot = kernel.snapshot();
+    for stale in [0, 1, 2] {
+        snapshot.next_item = stale;
+        let problems = snapshot.problems();
+        assert!(
+            problems.iter().any(|it| it.contains("`next_item`")),
+            "{stale}: {problems:?}"
+        );
+    }
+
+    let resumed = Kernel::resume(Config::default(), snapshot);
+    assert_eq!(resumed.push(ContextItem::user("three")).0, 3);
+}
+
 /// Numbers at the top of what a `u64` holds are named as a problem, and resuming one anyway is
 /// not a panic.
 #[test]

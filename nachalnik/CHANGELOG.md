@@ -23,6 +23,9 @@ minor bump may break you.
   identifier, which changes the conversation the model is shown, and a snapshot whose items were
   out of order came back with no problem named - so a caller refusing a repaired snapshot resumed a
   reordered one.
+- **`Snapshot::problems` names a `next_item` the items have already reached.** `Kernel::resume`
+  moves it past the highest item, and a snapshot with `next_item` at or below an item's
+  identifier, or `0`, came back with no problem named.
 - **A push while a turn is recorded does not split the turn from the answer to a call nobody can
   run.** That answer joins the checkpoint the turn was recorded under, and the number was read
   again after the turn let go of the context; a push from another thread in between took it, and
