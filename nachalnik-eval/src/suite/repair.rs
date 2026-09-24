@@ -303,8 +303,8 @@ impl Repair {
             format!("{}\n\n{}", script::PUT_IT_RIGHT, script::GO_AND_LOOK),
             Reading::Choice(vec!["done".to_owned(), "nothing".to_owned()]),
         );
-        let (said, _) = subject.probe(&put_right).await?;
-        trial.asked_at(&put_right, &said, &Answer::Unreadable, Some(REPAIRED));
+        let (said, answer) = subject.probe(&put_right).await?;
+        trial.asked_at(&put_right, &said, &answer, Some(REPAIRED));
         acts.extend(trial.drain(&journal));
 
         let repaired = self

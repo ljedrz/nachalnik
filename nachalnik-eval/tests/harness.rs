@@ -584,6 +584,19 @@ async fn saying_what_is_wrong_changes_nothing_and_changing_it_does() {
     );
     assert_eq!(paired(TOLD_SO, REPAIRED).gained, 1);
 
+    // and what it said when it was asked to put it right is recorded as what it said
+    let put_right = outcome
+        .steps
+        .iter()
+        .find_map(|step| match step {
+            Step::Asked {
+                question, answer, ..
+            } if question.starts_with(suite::script::PUT_IT_RIGHT) => Some(answer),
+            _ => None,
+        })
+        .expect("it was asked to put it right");
+    assert_eq!(*put_right, Answer::Choice("done".to_owned()));
+
     // and it was the planted note that moved, not something else
     let excluded = did(&outcome)
         .into_iter()

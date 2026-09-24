@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`Repair` records what the subject answered when it was asked to put the context right.** The
+  step was recorded as `Unreadable` whatever came back, so a run's record contradicted the
+  verbatim answer beside it. Nothing scores that answer, so no score moves.
+
 ## [0.5.0] - 2026-09-23
 
 ### breaking
