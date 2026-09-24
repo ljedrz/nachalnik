@@ -325,10 +325,13 @@ async fn a_system_instruction_is_obeyed() {
     let sent = &provider.requests()[0];
     assert_eq!(sent.messages[0].role, Role::System, "the role is mapped");
     assert_eq!(sent.messages[1].role, Role::User);
-    assert!(
-        answer(&kernel).contains("yellow"),
-        "the instruction and the question both arrived: {:?}",
-        answer(&kernel)
+    // case and a closing full stop are forgiven: what shows the instruction arrived is one word
+    // where a model left to itself answers with a sentence
+    let said = answer(&kernel);
+    assert_eq!(
+        said.trim().trim_end_matches(['.', '!']),
+        "yellow",
+        "the instruction and the question both arrived: {said:?}"
     );
 }
 
