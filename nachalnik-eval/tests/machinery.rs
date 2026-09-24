@@ -1661,10 +1661,13 @@ fn a_question_that_needs_an_address_comes_with_a_way_to_look() {
 }
 
 #[test]
-fn every_experiment_fingerprints_the_templates_it_says_it_asks() {
+fn every_experiment_states_the_templates_it_asks() {
     // note: `asks` and `instrument` must be the same list or the fence above measures nothing:
     // a location probe left out of the template list is invisible to it *and* to the digest.
-    // Checked by rewording one template's worth of text and requiring the digest to move.
+    // This checks that the list is there to be read. That the digest covers it is held by
+    // `the_instrument_is_pinned_so_that_it_cannot_change_quietly`: every experiment's
+    // `instrument` reads `asks()`, so a template dropped from what it fingerprints moves a pinned
+    // digest. Nothing catches a new experiment whose `instrument` reads a second list.
     for experiment in suite::all() {
         let stated = experiment.asks();
         assert!(
