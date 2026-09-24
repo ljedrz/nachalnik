@@ -331,7 +331,8 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   kind:assistant_message  every item of that kind
   state:excluded          every item in that state
 
-  file:src/parser.rs      the file with that path
+  file:src/parser.rs      the file attached by that path; one read with a tool is
+                          that tool's result, as below
   tool:grep               every result the `grep` tool produced
   tool:grep:latest        the most recent one; also: tool:grep:first
   tool_result:1842        the item numbered 1842, the same as `1842`

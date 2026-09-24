@@ -1696,3 +1696,63 @@ async fn revise_to_the_same_words_changes_nothing_and_says_so() {
         "an edit that did not happen is credited to the tool"
     );
 }
+
+/// A `select` that is not a string is refused, and a `file:` selector that matched nothing says
+/// what `file:` names.
+///
+/// note: both from sessions driven by a model. An object in `select` dropped out as no selector
+/// at all, and `look` listed the whole context as though it had never been given. And `file:`
+/// with the path of a file the model had read with `fs` matched nothing, because a read is a tool
+/// result and `file:` names attached files - five times across three sessions, with nothing in
+/// the refusal to say why.
+#[tokio::test]
+async fn a_select_that_is_not_a_string_is_refused_and_an_empty_file_one_says_why() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "look", "select": { "item": ["1"] } }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "select": "file:src/main.rs", "reason": "read it" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "elide", "select": "label:nothing-here", "reason": "read it" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    assert!(said[0].contains("not a selector"), "{}", said[0]);
+    assert!(said[0].contains("nothing was done"), "{}", said[0]);
+    assert!(
+        !said[0].contains("items ·"),
+        "nothing was listed: {}",
+        said[0]
+    );
+
+    assert!(
+        said[1].contains("nothing in your context matches"),
+        "{}",
+        said[1]
+    );
+    assert!(said[1].contains("attached"), "{}", said[1]);
+    assert!(said[1].contains("tool:fs"), "{}", said[1]);
+
+    assert!(
+        said[2].contains("nothing in your context matches"),
+        "{}",
+        said[2]
+    );
+    assert!(
+        !said[2].contains("attached"),
+        "only a `file:` gets the hint: {}",
+        said[2]
+    );
+}

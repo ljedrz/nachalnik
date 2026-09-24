@@ -14,6 +14,14 @@ minor bump may break you.
   naming items twice when the list named none. A model that fills every optional list with `[]`
   was refused on each such call, and resent it unchanged. A list with a number in it beside a
   selector is still refused.
+- **A `select` that is not a string is refused.** It dropped out as no selector at all, so `look`
+  with `select: {"item": ["3", "4"]}` listed the whole context as though it had never been given.
+- **A `file:` selector that matches nothing says what `file:` names.** It names files attached to
+  the context, and a path read with `fs` is a tool result that no `file:` matches, so a model
+  eliding what it had read by path was told only that nothing matched. The refusal now says so and
+  points at `tool:fs`, and the tool's description and the selector help say it too.
+- **`fs` called with no `action` says it has none.** It answered "`nothing` is not something `fs`
+  does", naming a word nobody sent.
 
 ## [0.15.1] - 2026-09-24
 

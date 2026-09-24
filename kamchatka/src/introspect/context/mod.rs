@@ -280,8 +280,8 @@ impl Tool for Context {
              item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
              taking the words `look` prints in those columns; `tool:<name>`, optionally `:first` \
-             or `:latest`; `source:<name>`; `file:<path>`; `label:<text>`. Anything else is read \
-             as a label.",
+             or `:latest`; `source:<name>`; `file:<path>`, a file attached rather than read; \
+             `label:<text>`. Anything else is read as a label.",
         )
         .with_schema(self.schema.clone())
         .with_capabilities(
@@ -565,7 +565,8 @@ fn matched(
     if picked.is_empty() {
         return format!(
             "`{select}` is a selector, and nothing in your context matches it. `look` with no \
-             `select` lists what there is.\n"
+             `select` lists what there is.{}\n",
+            crate::introspect::unmatched_file(select)
         );
     }
 

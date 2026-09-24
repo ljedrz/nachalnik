@@ -204,11 +204,20 @@ impl Tool for Fs {
         // can act on is one that names what was wrong. The alternative - dispatching on a default
         // - runs something nobody asked for
         let Some(action) = self.op(call) else {
-            return Ok(ToolOutput::error(format!(
-                "`{}` is not something `fs` does; it does {}",
-                args["action"].as_str().unwrap_or("nothing"),
-                actions(&self.ops).join(", ")
-            )));
+            let does = actions(&self.ops).join(", ");
+            return Ok(ToolOutput::error(match &args["action"] {
+                // a call carrying its arguments and no `action` read as "`nothing` is not
+                // something `fs` does", which names a word nobody sent
+                Value::Null => format!(
+                    "no `action`, and nothing was done; `fs` does {does}, named in `action`"
+                ),
+                other => format!(
+                    "`{}` is not something `fs` does; it does {does}",
+                    other
+                        .as_str()
+                        .map_or_else(|| other.to_string(), str::to_owned)
+                ),
+            }));
         };
 
         if let Some(refusal) = unread(&action, args, &self.ops) {
@@ -315,5 +324,52 @@ mod tests {
 
             assert_eq!(offered, expected, "`{op}` offers the wrong arguments");
         }
+    }
+
+    /// A call with no `action` says so, rather than naming a word nobody sent.
+    ///
+    /// note: from a session driven by a model, which sent `{"glob": "**/Cargo.toml"}` and was told
+    /// that "`nothing` is not something `fs` does".
+    #[tokio::test]
+    async fn a_call_with_no_action_is_told_it_has_none() {
+        let reach = || {
+            Arc::new(Reach {
+                workdir: std::env::temp_dir(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                confined: true,
+            })
+        };
+        let tool = Fs::new(
+            reach(),
+            Looking {
+                reach: reach(),
+                policy: Arc::new(crate::tools::Careful::new()),
+                limits: Limits::default(),
+            },
+            Limits::default(),
+        );
+        let said = |args: Value| {
+            let call = ToolCall::new("c1", "fs", args);
+            let tool = &tool;
+            async move {
+                let out = tool
+                    .invoke(&call, OutputSink::disconnected())
+                    .await
+                    .expect("a tool result");
+                assert!(out.is_error);
+                out.content.to_text().into_owned()
+            }
+        };
+
+        let none = said(serde_json::json!({ "call": { "glob": "**/Cargo.toml" } })).await;
+        assert!(none.contains("no `action`"), "{none}");
+        assert!(!none.contains("`nothing`"), "{none}");
+
+        let unknown = said(serde_json::json!({ "call": { "action": "frobnicate" } })).await;
+        assert!(
+            unknown.contains("`frobnicate` is not something `fs` does"),
+            "{unknown}"
+        );
     }
 }

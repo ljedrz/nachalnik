@@ -218,6 +218,17 @@ pub(crate) struct Named<'a> {
 /// still matches a call carrying both, since nothing in it is exclusive.
 pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<Named<'a>, String> {
     let numbers = ids(args, "ids")?;
+    // note: refused rather than read as no selector. A `select` that is not a string would
+    // otherwise drop out here, and `look` would list everything as though it had never been
+    // given - the call ignoring an argument, answered as a call that did what it was told
+    if !args["select"].is_null() && !args["select"].is_string() {
+        return Err(format!(
+            "`select` holds `{}`, which is not a selector, and nothing was done. A selector is \
+             one string - an item number, `all`, `tool:fs`, `label:notes` - and `ids` takes \
+             numbers.",
+            args["select"]
+        ));
+    }
     let Some(input) = args["select"].as_str().filter(|it| !it.trim().is_empty()) else {
         return Ok(Named {
             select: None,
@@ -251,6 +262,22 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
             "`{input}` is not a selector: {e}\n\n{}",
             crate::help::SELECTORS
         )),
+    }
+}
+
+/// What a refusal adds when the selector that matched nothing was a `file:` one.
+///
+/// note: `file:` names a file attached to the context. A path the model read with `fs` is a tool
+/// result instead, labelled by the tool that produced it, and no `file:` matches it - which is
+/// what nearly every empty `file:` turns out to be, so it is said where the mistake is made.
+pub(crate) fn unmatched_file(select: &str) -> &'static str {
+    match select.trim_start().starts_with("file:") {
+        true => {
+            " `file:` names a file attached to the context; one you read with `fs` is a tool \
+             result, which `tool:fs` names with the others of its kind and `look` numbers one \
+             by one."
+        }
+        false => "",
     }
 }
 
