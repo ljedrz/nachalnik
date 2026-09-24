@@ -1,9 +1,9 @@
 //! Automatic context management that cannot happen behind your back.
 //!
 //! The compactor here is ordinary user code: it decides when the context is too big, asks the
-//! model to summarize what it is about to drop, and hands the kernel a plan. The kernel refuses
-//! to remove anything pinned, applies the rest, and reports exactly what happened - which the
-//! user is then free to undo.
+//! model to summarize what it is about to put away, and hands the kernel a plan. The kernel
+//! refuses to touch anything pinned, applies the rest, and reports exactly what happened - which
+//! the user is then free to undo.
 //!
 //! ```text
 //! cargo run --example compaction
@@ -76,18 +76,21 @@ impl Compactor for Summarizer {
             .collect();
         candidates.sort_by_key(|item| std::cmp::Reverse(item.tokens));
 
+        // note: elided rather than removed, which is what `CompactionPlan::remove` asks of anything
+        // a tool call answers. A removed result takes its call down with it, and the model reads a
+        // conversation in which the call was never made beside a summary saying it was
         let mut used = budget.used();
-        let mut remove = Vec::new();
+        let mut elide = Vec::new();
         let mut text = String::new();
         for item in candidates {
             if used <= target {
                 break;
             }
             used -= item.tokens.min(used);
-            remove.push(item.id);
+            elide.push(item.id);
             text.push_str(&format!("{}:\n{}\n", item.label, item.content.to_text()));
         }
-        if remove.is_empty() {
+        if elide.is_empty() {
             return None;
         }
 
@@ -113,8 +116,8 @@ impl Compactor for Summarizer {
                 (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
                 budget.limit.unwrap_or_default(),
             ),
-            remove,
-            elide: Vec::new(),
+            remove: Vec::new(),
+            elide,
         })
     }
 }
@@ -230,9 +233,9 @@ fn render_report(report: &CompactionReport) {
     println!("   │ why:  {}", report.reason);
     println!("   │");
 
-    if !report.removed.is_empty() {
-        println!("   │ removed, and can be brought back with one `set_state`:");
-        for item in &report.removed {
+    if !report.elided.is_empty() {
+        println!("   │ elided to a marker, and can be brought back with one `set_state`:");
+        for item in &report.elided {
             println!(
                 "   │   [{}] {:<28}{:>8} tokens",
                 item.id,
@@ -378,7 +381,7 @@ async fn main() -> Result<(), BoxError> {
         2,
         "THE NEXT TURN, WHICH COMPACTS FIRST",
         "The compactor runs at the start of the request, and everything it does arrives on the \
-         event stream before the request goes out. It asked to remove both tool results; one of \
+         event stream before the request goes out. It asked to elide both tool results; one of \
          them was pinned.",
     );
     kernel.turn().await?;
@@ -387,13 +390,14 @@ async fn main() -> Result<(), BoxError> {
     stage(
         3,
         "THE CONTEXT AFTERWARDS",
-        "Nothing was destroyed. The dropped result is still an item with an id and a size - it \
-         is simply not being sent - and the summary that replaced it is an ordinary item too.",
+        "Nothing was destroyed. The elided result is still an item with an id and a size - what \
+         goes out in its place is a one-line marker - and the summary beside it is an ordinary \
+         item too.",
     );
     render_context(&kernel, "comfortably under the limit again");
     println!();
     note(&format!(
-        "The pinned item is still {}. The dropped one still holds every one of its {} bytes, \
+        "The pinned item is still {}. The elided one still holds every one of its {} bytes, \
          and putting it back is a `set_state` like any other.",
         kernel.item(pinned).unwrap().state,
         thousands(kernel.item(doomed).unwrap().content.byte_len()),
