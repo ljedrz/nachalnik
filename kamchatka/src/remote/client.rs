@@ -284,7 +284,11 @@ impl<'a> Client<'a> {
                 // the end of it for ever. A `select!` arm over a reader at EOF is ready every time
                 // round the loop, and this one would have spun on it
                 line = typed.next_line(), if !self.detaching => match line {
-                    Ok(Some(line)) => match self.typed(&mut write, line.trim_end()).await {
+                    // note: what `--headless` does with a blank line and with spaces round one,
+                    // for its reason: a blank line sent is a request for nothing, and `  /help`
+                    // would be a message here and a command there
+                    Ok(Some(line)) if line.trim().is_empty() => None,
+                    Ok(Some(line)) => match self.typed(&mut write, line.trim()).await {
                         Ok(()) => None,
                         Err(_) => Some(Left::Dropped),
                     },

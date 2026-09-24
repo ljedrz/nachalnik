@@ -799,3 +799,45 @@ async fn a_command_piped_in_leaves_its_records_behind_before_the_client_goes() {
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// A blank line is nothing and spaces round a line are not part of it, as they are headless.
+///
+/// note: the client sent each line with only its end trimmed, so a blank one was a message - a
+/// request for nothing, answered - and `  /help` was a message here and a command down
+/// `--headless`, which this client stands in for.
+#[tokio::test]
+async fn a_blank_line_from_a_client_is_not_a_message() {
+    let session = served(vec![ModelResponse::text("one")], |_| {}).await;
+
+    let (mut watch, _) = Peer::attached(&session.at).await;
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"\n   \n  /budget\nfirst\n")
+            .await
+            .expect("could not type");
+        watch.until_words("one").await;
+        feed.write_all(b"/quit\n").await.expect("could not type");
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(input))
+        .await
+        .expect("the client failed");
+
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    let asked: Vec<String> = app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(asked, vec!["first".to_owned()], "a blank line was sent");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("the next request"),
+        "`  /budget` is a command: {prose}"
+    );
+}

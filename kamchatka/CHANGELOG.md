@@ -22,6 +22,8 @@ minor bump may break you.
 
 ### fixed
 
+- **`--connect` skips a blank line and trims the rest, as `--headless` does.** A blank line was
+  sent as a message and answered, and `  /help` was a message rather than a command.
 - **`shell` holds output that is not text to its ceiling as it is kept.** A byte that is not
   UTF-8 is kept as the three bytes of `�`, and both streams were measured by the bytes that
   arrived, so a line of standard output just under the 8 MiB ceiling, or standard error up to
