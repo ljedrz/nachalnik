@@ -131,14 +131,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // and one budget a frame, for the same reason: the corner and the context tab's own line are
     // two readings of the request that is about to go, and two walks could disagree about it
     let budget = app.kernel.budget();
-    draw_body(frame, app, &going, &budget, body);
+    let scrolled = draw_body(frame, app, &going, &budget, body);
     if question != 0 {
         // what the frame could really scroll to is what the keys work against from here on, the
         // same write-back the overlay does
         app.question_scroll = draw_question(frame, app, asked);
     }
     match (searching, prompted) {
-        (true, _) => draw_search(frame, app, input),
+        // the rows the context tab just drew are the ones the search found, and filtering the
+        // whole context a second time to count them doubled what every keystroke of a search cost
+        (true, _) => draw_search(
+            frame,
+            app,
+            (app.tab == Tab::Context).then_some(scrolled.total),
+            input,
+        ),
         (false, true) => draw_input(frame, app, input),
         (false, false) => {}
     }
@@ -188,7 +195,13 @@ pub(super) fn faint() -> Style {
 /// two list tabs, by the selected row, which is reversed under the keys and underlined without
 /// them. Both of those sit next to the thing they are describing, which a border a whole window
 /// away does not.
-fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, budget: &Budget, area: Rect) {
+fn draw_body(
+    frame: &mut Frame,
+    app: &mut App,
+    going: &Going,
+    budget: &Budget,
+    area: Rect,
+) -> Scrolled {
     // the chat tab has a second thing the keys can be on, and only while a question is pinned
     // there; on the other three, `Focus::Body` is the only place they ever are
     let asked = app.asked().is_some();
@@ -227,6 +240,8 @@ fn draw_body(frame: &mut Frame, app: &mut App, going: &Going, budget: &Budget, a
         Tab::Permissions => draw_permissions(frame, app, inner),
     };
     scrollbar(frame, area, edge, scrolled);
+
+    scrolled
 }
 
 /// How far through its content a tab is, and the rows it drew that content in.
@@ -430,14 +445,15 @@ fn draw_input(frame: &mut Frame, app: &mut App, area: Rect) {
 /// note: the count is the point of the line as much as the query is. A filter that found nothing
 /// and a filter that found everything look identical from a pane you have scrolled halfway down,
 /// and the number is what tells them apart without scrolling back.
-fn draw_search(frame: &mut Frame, app: &mut App, area: Rect) {
+fn draw_search(frame: &mut Frame, app: &mut App, found: Option<usize>, area: Rect) {
     let Some(search) = &app.search else {
         return;
     };
 
-    let found = match app.tab {
-        Tab::Trace => app.traced().len(),
-        _ => app.listed().len(),
+    let found = match (found, app.tab) {
+        (Some(found), _) => found,
+        (None, Tab::Trace) => app.traced().len(),
+        (None, _) => app.listed().len(),
     };
     let of = match app.tab {
         Tab::Trace => app.trace.len(),

@@ -184,6 +184,9 @@ async fn a_context_row_can_be_filtered_by_its_kind() {
         kept[0].label, "dig",
         "the tool result, not a turn about one"
     );
+    // and the box counts the rows the pane drew, out of everything there is
+    let of = format!("1 of {}", harness.app.kernel.items().len());
+    assert!(harness.flat().contains(&of), "{}", harness.flat());
 
     // and the column it was matched on is not what the row is matched *only* on: the label and
     // the content still work, or this would have traded one half of the haystack for the other
