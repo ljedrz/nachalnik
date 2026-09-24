@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`/load` waits for calls set aside to be run or cancelled.** It was refused only while a turn
+  ran or a question waited, so after `/step` had left calls in `Ready` it loaded, archived the turn
+  that asked for them, and the next step ran them against the loaded context.
 - **An interrupt holds, and one with nothing running is not saved up.** A `/spend` lowered under
   what a turn had already spent stopped nothing, and the turn went on to its next request. An
   interrupt sent while nothing was running - a client's ctrl+c between turns - stayed set, and the

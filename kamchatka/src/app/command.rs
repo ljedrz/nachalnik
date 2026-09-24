@@ -1403,7 +1403,10 @@ impl App {
     /// that came in and once for the ones that were set aside. The loaded items are new items
     /// and are numbered as such: they are what that session said, in this session.
     fn load(&mut self, path: &str) {
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.busy
+            || !self.kernel.pending_permissions().is_empty()
+            || !self.kernel.pending_calls().is_empty()
+        {
             self.say(
                 Speaker::Error,
                 "not while a turn is running or a call is waiting to be answered",

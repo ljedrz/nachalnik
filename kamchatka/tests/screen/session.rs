@@ -712,3 +712,50 @@ async fn a_session_resumed_without_its_record_is_still_a_session() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// A load while calls are decided and waiting does not leave them to run against what it loaded.
+#[tokio::test]
+async fn a_load_does_not_leave_the_set_aside_calls_waiting_to_run() {
+    let dir = common::scratch("load-ready");
+
+    let mut first = Harness::new([ModelResponse::text("4817, noted")]);
+    first.send("remember 4817").await;
+    first.settle().await;
+    first
+        .send(&format!("/save {}", dir.join("before").display()))
+        .await;
+
+    let mut second = Harness::new([nachalnik::ModelResponse::tool_calls(vec![
+        nachalnik::test::call("c1", "look", json!({})),
+    ])]);
+    second
+        .app
+        .kernel
+        .add_tool(Arc::new(nachalnik::test::ConstTool::new(
+            "look",
+            "nothing to see",
+        )));
+    second.send("/step look around").await;
+    second.settle().await;
+    assert_eq!(
+        second.app.kernel.pending_calls().len(),
+        1,
+        "not resting in `Ready`"
+    );
+
+    second
+        .send(&format!("/load {}", dir.join("before.json").display()))
+        .await;
+    let loaded = second
+        .app
+        .kernel
+        .items()
+        .iter()
+        .any(|item| item.is_projected() && item.content.to_text().contains("4817"));
+    assert!(
+        !loaded || second.app.kernel.pending_calls().is_empty(),
+        "the loaded context has the set-aside session's calls waiting to run"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
