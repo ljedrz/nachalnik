@@ -374,9 +374,9 @@ impl Kernel {
 
 /// Counts what a projection costs, which is what a request carrying it would cost.
 ///
-/// note: the one definition of "the projected total", so that [`Kernel::projected`] and
+/// note: the one definition of "the projected total", so that [`Kernel::projected_with`] and
 /// [`Kernel::apply_compaction`] cannot disagree about it. It is counted over the messages that
-/// came out rather than the items that went in, for the reason on [`Kernel::projected`].
+/// came out rather than the items that went in, for the reason on [`Kernel::projected_with`].
 ///
 /// note: the same walk answers both figures. An abstention counted over the *items* would report a
 /// picture inside an elided item as unpriced, when what goes out in its place is a one-line marker

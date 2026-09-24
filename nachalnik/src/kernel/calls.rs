@@ -150,7 +150,8 @@ impl Kernel {
         Ok(State::Idle)
     }
 
-    /// Runs the calls at the same time; see [`Config::parallel_tool_calls`].
+    /// Runs the calls at the same time; see
+    /// [`Config::parallel_tool_calls`](crate::Config::parallel_tool_calls).
     async fn invoke_together(&self, prepared: &[PreparedCall]) -> Vec<ToolOutput> {
         let mut running = tokio::task::JoinSet::new();
         for (index, call) in prepared.iter().enumerate() {
@@ -276,11 +277,11 @@ impl Kernel {
     /// so a context full of them would say `mcp:call` on every row and name none of them.
     ///
     /// note: `None` for a tool that declares one operation, and for a call that named none of the
-    /// ones it declares. A tool that does one thing is described by its own name, and appending
-    /// the one operation it has would be noise on every row; a call naming no operation declares
-    /// all of them, and the tool's name is the honest label for one nobody can place.
-    /// [`ContextKind::ToolResult`] keeps the tool id either way, so `tool:<name>` selects what it
-    /// always did.
+    /// ones it declares. A tool that does one thing is described by its own name, and appending the
+    /// one operation it has would be noise on every row; a call naming no operation declares all of
+    /// them, and the tool's name is the honest label for one nobody can place.
+    /// [`ContextKind::ToolResult`](crate::ContextKind::ToolResult) keeps the tool id either way, so
+    /// `tool:<name>` selects what it always did.
     ///
     /// note: asked here rather than written at the one place a result is recorded, because a
     /// shortened output is recorded as *two* items and both of them are that call. Labelled only
