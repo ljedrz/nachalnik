@@ -762,3 +762,38 @@ fn a_spend_of_nothing_is_no_ceiling() {
     assert!(ok, "{said}");
     assert!(said.contains("no ceiling"), "{said}");
 }
+
+/// A snapshot whose name is a path is not carried on from, because the name is where its record
+/// would be written.
+///
+/// note: resumed, `../../escaped` was the stem the record went under, and the log and the snapshot
+/// were written two directories up from the private one they belong in.
+#[test]
+fn a_snapshot_named_with_a_path_is_not_carried_on_from() {
+    let dir = common::scratch("resumed-named-a-path");
+    let (ok, said) = run_from(&dir, &[], "/save first.json\n");
+    assert!(ok, "{said}");
+
+    let mut snapshot: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("first.json")).expect("saved"))
+            .expect("a snapshot");
+    snapshot["session"] = json!("../../escaped");
+    std::fs::write(dir.join("escaped.json"), snapshot.to_string()).expect("written");
+
+    let (ok, said) = run_from(&dir, &["-r", "escaped.json"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("../../escaped"), "it says which: {said}");
+}
+
+/// A read-only path inside the working directory is refused, because nothing could hold it
+/// read-only: the shell's confinement only ever adds to what it may do.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_read_only_path_inside_the_working_directory_is_refused() {
+    let dir = common::scratch("read-only-inside");
+    std::fs::create_dir_all(dir.join("protected")).expect("a directory");
+
+    let (ok, said) = run_from(&dir, &["--sandbox-read", "protected"], "/tools\n");
+    assert!(!ok, "{said}");
+    assert!(said.contains("--sandbox-read"), "{said}");
+}

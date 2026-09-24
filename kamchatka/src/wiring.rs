@@ -371,6 +371,44 @@ impl Setup {
             }
         }
 
+        // note: the stem of every file `record` and `/save DIR/` write, and a snapshot is a file
+        // anybody could have written. A name that is not one file name puts them somewhere else -
+        // `../../elsewhere` outside the private directory the record is meant to go in
+        let name = self
+            .session_name
+            .as_deref()
+            .or(self.resume.as_ref().map(|it| it.session.as_str()));
+        if let Some(name) = name
+            && std::path::Path::new(name).file_name() != Some(std::ffi::OsStr::new(name))
+        {
+            return Err(format!(
+                "`{name}` is not a session name a file can be written under; a session is named \
+                 by one file name, with no directory in it"
+            ));
+        }
+
+        // note: refused because it cannot be kept. Landlock only ever adds to what a process may
+        // do, so a read-only path inside a writable one is writable to `shell`, and `fs` checks
+        // the writable roots first - while every screen would say it was read-only
+        if self.confine {
+            let workdir = std::env::current_dir()
+                .map_err(|e| format!("could not find the working directory: {e}"))?;
+            let writable: Vec<_> = std::iter::once(&workdir)
+                .chain(self.reachable.iter())
+                .filter_map(|path| path.canonicalize().ok())
+                .collect();
+            if let Some(nested) = self.readable.iter().find(|path| {
+                path.canonicalize()
+                    .is_ok_and(|path| writable.iter().any(|root| path.starts_with(root)))
+            }) {
+                return Err(format!(
+                    "{}: `--sandbox-read` cannot make a path read-only inside one the tools may \
+                     already write in",
+                    nested.display()
+                ));
+            }
+        }
+
         Ok(())
     }
 

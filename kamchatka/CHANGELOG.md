@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### security
 
+- **A `--sandbox-read` path inside a writable one is refused, rather than drawn as read-only and
+  written to.** Landlock only adds to what a process may do and `fs` checked the writable roots
+  first, so a read-only path inside the working directory could be written by both tools while
+  every screen called it read-only.
+- **A session named with a path is refused.** The name is the stem the record and `/save DIR/`
+  write under, and a resumed snapshot whose name was `../../escaped` had its log and snapshot
+  written outside the private directory they belong in.
+
 - **A chain of links too long to follow is refused by `fs`, not taken for a file to be made.**
   The path check follows links up to a bound, and a chain dangling past it had its last link read
   as a file about to be created in the directory it sits in - allowed, and then followed out of
