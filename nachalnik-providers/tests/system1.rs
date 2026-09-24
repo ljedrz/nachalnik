@@ -127,7 +127,10 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
         ["allow", "ask", "deny"].contains(&choice.as_str()),
         "an option that was offered: {choice}"
     );
-    assert_eq!(probabilities.len(), 3, "{probabilities:?}");
+    assert!(
+        probabilities.keys().eq(["allow", "ask", "deny"]),
+        "{probabilities:?}"
+    );
     assert!(sums_to_one(probabilities), "{probabilities:?}");
     assert!((0.0..=1.0).contains(confidence), "{confidence}");
     assert_eq!(answers.choice("verdict"), Some(choice.as_str()));
@@ -146,10 +149,13 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
         (0.0..=3.0).contains(score),
         "inside a four-level rubric: {score}"
     );
-    assert_eq!(legend.get("0").map(String::as_str), Some("nothing"));
-    assert_eq!(
-        legend.get("3").map(String::as_str),
-        Some("the whole machine")
+    let levels = ["nothing", "one file", "one project", "the whole machine"];
+    assert!(
+        legend
+            .iter()
+            .map(|(at, level)| (at.as_str(), level.as_str()))
+            .eq(["0", "1", "2", "3"].into_iter().zip(levels)),
+        "{legend:?}"
     );
     assert_eq!(probabilities.len(), 4, "{probabilities:?}");
     assert!(sums_to_one(probabilities), "{probabilities:?}");
