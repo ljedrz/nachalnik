@@ -468,6 +468,7 @@ impl Tool for Shell {
         // either, so that what is kept is the start of the output with no hole in it
         let (mut dropped, mut full) = (0, false);
         let mut interrupted = false;
+        let mut waited = None;
         loop {
             // the timeout is what makes a command that says nothing at all interruptible; without
             // it this would sit in `read_until` until the child felt like talking. A timed-out
@@ -482,28 +483,8 @@ impl Tool for Shell {
             let mut bounded = (&mut stdout).take(room);
             match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
                 Ok(Ok(0)) => break,
-                Ok(Ok(_)) if full => {
-                    dropped += line.len();
-                    line.clear();
-                }
-                // note: measured as it is kept rather than as it arrived. A byte that is not UTF-8
-                // is kept as the three of `�`, so a line held to the ceiling as it arrived could
-                // be kept at three times it
                 Ok(Ok(_)) => {
-                    let text = String::from_utf8_lossy(&line);
-                    let text = text.strip_suffix('\n').unwrap_or(&text);
-                    let text = text.strip_suffix('\r').unwrap_or(text);
-                    match collected.len() + text.len() + 1 > KEPT {
-                        true => {
-                            full = true;
-                            dropped += line.len();
-                        }
-                        false => {
-                            output.push(format!("{text}\n"));
-                            collected.push_str(text);
-                            collected.push('\n');
-                        }
-                    }
+                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
                     line.clear();
                 }
                 Ok(Err(e)) => {
@@ -517,7 +498,21 @@ impl Tool for Shell {
                     dropped += line.len();
                     line.clear();
                 }
-                Err(_) => {}
+                // note: the end of the command is not the end of its standard output either, and
+                // here there is no draining it: `sleep 60 & echo started` leaves the pipe open for
+                // a minute, and a server started with `&` for ever. So a quiet moment after the
+                // command has gone is the end of what it said
+                Err(_) => {
+                    if let Ok(Some(status)) = child.try_wait() {
+                        keep(&line, &mut collected, &output, &mut full, &mut dropped);
+                        collected.push_str(
+                            "[standard output is still open: something this command started is \
+                             still running]\n",
+                        );
+                        waited = Some(Ok(status));
+                        break;
+                    }
+                }
             }
 
             if output.is_interrupted() {
@@ -532,8 +527,7 @@ impl Tool for Shell {
 
         // note: the end of standard output is not the end of the command. `sleep 5 >&-` has closed
         // it and is still running, so the wait is watched the way the reading was
-        let mut waited = None;
-        while !interrupted {
+        while !interrupted && waited.is_none() {
             match tokio::time::timeout(HEARTBEAT, child.wait()).await {
                 Ok(status) => {
                     waited = Some(status);
@@ -714,6 +708,40 @@ async fn stop(child: &mut tokio::process::Child) {
     let _ = child.start_kill();
 }
 
+/// Keeps one line of standard output, unless the output is already at [`KEPT`].
+///
+/// note: measured as it is kept rather than as it arrived. A byte that is not UTF-8 is kept as the
+/// three of `�`, so a line held to the ceiling as it arrived could be kept at three times it.
+fn keep(
+    line: &[u8],
+    collected: &mut String,
+    output: &OutputSink,
+    full: &mut bool,
+    dropped: &mut usize,
+) {
+    if line.is_empty() {
+        return;
+    }
+    if *full {
+        *dropped += line.len();
+        return;
+    }
+    let text = String::from_utf8_lossy(line);
+    let text = text.strip_suffix('\n').unwrap_or(&text);
+    let text = text.strip_suffix('\r').unwrap_or(text);
+    match collected.len() + text.len() + 1 > KEPT {
+        true => {
+            *full = true;
+            *dropped += line.len();
+        }
+        false => {
+            output.push(format!("{text}\n"));
+            collected.push_str(text);
+            collected.push('\n');
+        }
+    }
+}
+
 /// The same, where there are no process groups.
 #[cfg(not(unix))]
 async fn stop(child: &mut tokio::process::Child) {
@@ -867,9 +895,9 @@ mod tests {
 
     /// A command that finishes and leaves something running still answers.
     ///
-    /// note: the background job inherits standard error, so the pipe stays open for as long as it
-    /// runs. A call that waits for the end of it never answers for a server started with `&`, and
-    /// an `esc` does nothing.
+    /// note: the background job inherits standard error, and standard output unless it is sent
+    /// elsewhere, so the pipes stay open for as long as it runs. A call that waits for the end of
+    /// them never answers for a server started with `&`.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_leaves_something_running_still_answers() {
@@ -877,7 +905,13 @@ mod tests {
 
         assert!(said.starts_with("exit: 0"), "{said}");
         assert!(said.contains("started"), "{said}");
-        assert!(said.contains("still open"), "{said}");
+        assert!(said.contains("standard error is still open"), "{said}");
+
+        let said = ran("sleep 30 & printf 'started\\nno newline'").await;
+
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("started\nno newline"), "{said}");
+        assert!(said.contains("standard output is still open"), "{said}");
     }
 
     /// What a command reported is what its first line says, for every shape the tool writes.

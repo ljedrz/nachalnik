@@ -30,6 +30,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A `shell` command that leaves something running on its standard output still answers.**
+  `sleep 60 & echo started` held the call for a minute, and a server started with `&` held it
+  until somebody pressed escape: the output was read to its end, and a background job keeps it
+  open. A quiet moment after the command itself has ended is now the end of what it said, and the
+  result says the output was still open.
 - **A local advisor slow to load is waited for rather than closed.** The warm-up ran under the
   thirty seconds one question may take, so an engine that needed longer to load its checkpoint was
   closed before its first question and stayed closed for the session. The warm-up now has ten
