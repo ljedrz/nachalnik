@@ -1215,9 +1215,9 @@ impl App {
         // excluded, archived or elided item and misses one the projector repaired away - and that
         // one is holding as much as any of them. Counted here, the sentence is true of all four
         // ways of not being sent, and the context tab is drawing from the same answer
-        let (withheld, out) = self.withheld(&self.going());
-
         let going = self.going();
+        let (withheld, out) = self.withheld(&going);
+
         let anchored = self.anchored(&going, &budget);
         let mut lines = vec![format!(
             "the next request: ~{} tokens, {} of context and {} of tool definitions",
