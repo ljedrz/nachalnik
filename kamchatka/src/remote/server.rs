@@ -1461,10 +1461,10 @@ async fn flush<W: AsyncWrite + Unpin>(
     last: &mut u64,
     write: &mut W,
 ) -> Result<(), String> {
-    // note: asked first because it is a read of one number, and `history_since` is a walk of the
-    // whole log under the lock every emit waits on. This runs for every event, `model.delta`
-    // included, for every connection - and most of those events add no record this connection
-    // has not already been sent
+    // note: asked first because it is a read of one number, where `history_since` searches the log
+    // and copies what follows it under the lock every emit waits on. This runs for every event,
+    // `model.delta` included, for every connection - and most of those events add no record this
+    // connection has not already been sent
     if kernel.last_seq() <= *last {
         return Ok(());
     }
