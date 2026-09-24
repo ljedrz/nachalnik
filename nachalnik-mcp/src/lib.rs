@@ -11,8 +11,6 @@
     feature = "child-process",
     doc = r#"
 ```no_run
-use std::sync::Arc;
-
 use nachalnik::{Config, Kernel};
 use nachalnik_mcp::Server;
 use tokio::process::Command;

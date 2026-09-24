@@ -143,7 +143,8 @@ impl Server {
         self
     }
 
-    /// The name this connection was given, which is also the prefix its tools carry.
+    /// The name this connection was given, which is also the prefix its tools carry unless it was
+    /// built [`without_prefix`](Server::without_prefix).
     pub fn name(&self) -> &str {
         &self.name
     }
