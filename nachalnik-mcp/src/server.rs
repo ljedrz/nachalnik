@@ -14,7 +14,8 @@ use crate::{
     tool::{McpTool, Trust, spec_of, tool_id},
 };
 
-/// The most pages of tools one listing reads; see `Server::tools`.
+/// The most pages one listing reads, of tools or of resources; see `Server::tools` and
+/// `Server::resources`.
 ///
 /// note: far past what a server offers - a page is commonly dozens of tools - and a bound all the
 /// same, since the cursor is the server's to hand back.
@@ -41,6 +42,9 @@ impl Installed {
     /// note: It removes what was actually added, rather than asking the server again and removing
     /// whatever it says today. A server whose tool list has changed in between would otherwise
     /// leave tools behind that nothing can name.
+    ///
+    /// note: by identifier, so a tool installed since under one of the same identifiers is what
+    /// goes. The later install's own `replaced` is what said that identifier was taken.
     pub fn remove_from(&self, kernel: &Kernel) -> usize {
         self.added
             .iter()

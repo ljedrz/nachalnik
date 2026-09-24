@@ -168,18 +168,27 @@ impl Tool for McpTool {
             Ok(handle) => handle,
             // the server is not going to answer this one; that is a failure the model can act on,
             // not a reason to stop the loop
-            Err(e) => return Ok(ToolOutput::error(format!("the MCP server refused: {e}"))),
+            // note: not "refused". The server never saw the call: sending fails when the connection
+            // is gone, and a model told it was refused goes looking for what it did wrong
+            Err(e) => {
+                return Ok(ToolOutput::error(format!(
+                    "the call could not be sent to the MCP server: {e}"
+                )));
+            }
         };
         let answered = loop {
             tokio::select! {
                 answered = &mut handle.rx => break answered,
                 () = tokio::time::sleep(HEARTBEAT) => {
                     if output.is_interrupted() {
-                        let _ = handle.cancel(Some("interrupted".to_owned())).await;
-                        return Ok(ToolOutput::error(
+                        let told = match handle.cancel(Some("interrupted".to_owned())).await {
+                            Ok(()) => "was told to stop",
+                            Err(_) => "could not be told to stop",
+                        };
+                        return Ok(ToolOutput::error(format!(
                             "interrupted while the MCP server was working on it, and the server \
-                             was told to stop; what it had done by then is not known",
-                        ));
+                             {told}; what it had done by then is not known"
+                        )));
                     }
                 }
             }

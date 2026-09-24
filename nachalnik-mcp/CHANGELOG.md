@@ -24,6 +24,15 @@ minor bump may break you.
   reason given there: an absent hint is not a reassurance. A policy refusing the network let
   every unannotated tool through.
 
+### changed
+
+- **What a failed call says is what happened.** A call that could not be sent - the connection
+  gone - said the server "refused" it, which sends a model looking for what it did wrong; it
+  says the call could not be sent. An interrupted call said the server "was told to stop" whether
+  or not the cancellation went out; it says which. `Error::Connect` covers a refused handshake
+  as well as an unreachable server, and says "could not connect" rather than "could not be
+  reached".
+
 ## [0.7.0] - 2026-09-23
 
 ### changed

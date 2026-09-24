@@ -101,7 +101,7 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Connect(e) => write!(f, "the MCP server could not be reached: {e}"),
+            Self::Connect(e) => write!(f, "could not connect to the MCP server: {e}"),
             Self::Request(e) => write!(f, "the MCP server would not answer: {e}"),
         }
     }
