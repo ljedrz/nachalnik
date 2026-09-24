@@ -989,3 +989,72 @@ async fn nothing_is_refused_against_a_limit_nobody_stated() {
     kernel.step().await.expect("it was sent");
     assert_eq!(provider.requests().len(), 1);
 }
+
+/// What a request cost is told to the counter that estimated it, not to one installed meanwhile.
+///
+/// note: `observe` went to whichever counter was installed when the answer arrived. A counter
+/// swapped in while the request was out learned an estimate it never made - which for
+/// `Calibrating` is a correction to its scale worked out from somebody else's arithmetic.
+#[tokio::test]
+async fn a_counter_installed_mid_request_is_not_taught_the_old_ones_estimate() {
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+
+    use nachalnik::{BoxError, DeltaSink, ModelInfo, ModelRequest, Provider, async_trait};
+
+    struct Watching(Arc<AtomicUsize>);
+
+    impl TokenCounter for Watching {
+        fn count(&self, content: &Content) -> usize {
+            content.byte_len()
+        }
+
+        fn observe(&self, _estimated: usize, _reported: usize) {
+            self.0.fetch_add(1, SeqCst);
+        }
+    }
+
+    struct Swapping {
+        kernel: std::sync::OnceLock<Kernel>,
+        taught: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Provider for Swapping {
+        fn info(&self) -> ModelInfo {
+            ModelInfo::new("swapping", "swapping")
+        }
+
+        async fn respond(
+            &self,
+            _request: ModelRequest,
+            _deltas: DeltaSink,
+        ) -> Result<nachalnik::ModelResponse, BoxError> {
+            let kernel = self.kernel.get().expect("wired");
+            kernel.set_counter(Arc::new(Watching(self.taught.clone())));
+            Ok(ModelResponse {
+                usage: Some(Usage {
+                    input_tokens: Some(40),
+                    ..Default::default()
+                }),
+                ..ModelResponse::text("done")
+            })
+        }
+    }
+
+    let taught = Arc::new(AtomicUsize::new(0));
+    let provider = Arc::new(Swapping {
+        kernel: std::sync::OnceLock::new(),
+        taught: taught.clone(),
+    });
+    let kernel = kernel();
+    let _ = provider.kernel.set(kernel.clone());
+    kernel.set_provider(provider);
+    kernel.push(ContextItem::user("a question"));
+    kernel.turn().await.expect("the turn ran");
+
+    assert_eq!(
+        taught.load(SeqCst),
+        0,
+        "the counter swapped in was told what a request it never counted cost"
+    );
+}

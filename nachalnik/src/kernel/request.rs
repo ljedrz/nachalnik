@@ -30,12 +30,16 @@ impl Kernel {
 
         self.maybe_compact().await;
 
+        // the counter that makes the estimate is the one told what it came to, whatever is
+        // installed by the time the answer arrives: one swapped in meanwhile never counted this
+        let counter = self.counter();
+
         // a step that gets this far and then cannot proceed says why, rather than showing up on
         // the stream as a pair of state changes with nothing between them
         let prepared = self
             .provider()
             .ok_or(Error::NoProvider)
-            .and_then(|provider| self.build_request().map(|built| (provider, built)));
+            .and_then(|provider| self.build_request(&*counter).map(|built| (provider, built)));
         let (provider, (request, projection, cost)) = match prepared {
             Ok(prepared) => prepared,
             Err(e) => {
@@ -97,7 +101,7 @@ impl Kernel {
                 if let Some(overrun) = overrun
                     && cost.uncounted == 0
                 {
-                    self.counter().observe(cost.tokens, overrun.tokens as usize);
+                    counter.observe(cost.tokens, overrun.tokens as usize);
                 }
 
                 self.emit(Event::ModelFailed {
@@ -127,7 +131,7 @@ impl Kernel {
         if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens)
             && cost.uncounted == 0
         {
-            self.counter().observe(cost.tokens, reported as usize);
+            counter.observe(cost.tokens, reported as usize);
         }
 
         // a model's tool calls are only useful if their identifiers are, and in practice they
@@ -174,12 +178,14 @@ impl Kernel {
     }
 
     /// Builds the next request, along with the projection it came from and what it costs.
-    pub(super) fn build_request(&self) -> Result<(ModelRequest, Projection, Cost)> {
-        let counter = self.counter();
+    pub(super) fn build_request(
+        &self,
+        counter: &dyn TokenCounter,
+    ) -> Result<(ModelRequest, Projection, Cost)> {
         let tools = self.tool_specs();
-        let tool_tokens = tool_tokens(&tools, &*counter);
+        let tool_tokens = tool_tokens(&tools, counter);
 
-        let (projection, context) = self.projected();
+        let (projection, context) = self.projected_with(counter);
 
         if projection.messages.is_empty() {
             return Err(Error::EmptyProjection);
@@ -253,11 +259,15 @@ impl Kernel {
     /// would have the budget report what the context is holding, which is not what the request
     /// costs - and a compactor that elides would watch the total refuse to move and elide again.
     pub(super) fn projected(&self) -> (Projection, Cost) {
+        self.projected_with(&*self.counter())
+    }
+
+    /// The same, priced by the counter given.
+    fn projected_with(&self, counter: &dyn TokenCounter) -> (Projection, Cost) {
         let projector = self.projector();
-        let counter = self.counter();
         let context = self.0.context.read();
         let projection = projector.project(context.items());
-        let cost = projection_cost(&projection, &*counter);
+        let cost = projection_cost(&projection, counter);
 
         (projection, cost)
     }

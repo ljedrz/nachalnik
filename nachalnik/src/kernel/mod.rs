@@ -1287,7 +1287,8 @@ impl Kernel {
     /// note: The one thing that can still change the request is a [`Compactor`], which runs at
     /// the start of the next [`Kernel::step`] - and says exactly what it did.
     pub fn preview_request(&self) -> Result<ModelRequest> {
-        self.build_request().map(|(request, _, _)| request)
+        self.build_request(&*self.counter())
+            .map(|(request, _, _)| request)
     }
 
     /// Renders the payload the provider would send for the next request, exactly as it would
@@ -1303,7 +1304,7 @@ impl Kernel {
     /// note: The body only. Headers, URLs and credentials never pass through the kernel.
     pub fn preview_payload(&self) -> Result<Option<Value>> {
         let provider = self.provider().ok_or(Error::NoProvider)?;
-        let (request, _, _) = self.build_request()?;
+        let (request, _, _) = self.build_request(&*self.counter())?;
 
         Ok(provider.render(&request))
     }

@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### fixed
 
+- **What a request cost is told to the counter that estimated it.** `TokenCounter::observe` went
+  to whichever counter was installed when the answer arrived, so one swapped in while a request
+  was out learned an estimate it never made - for `Calibrating`, a correction worked out from
+  another counter's arithmetic.
 - **Undoing the answer a finished turn names leaves the machine `Idle`.** `State::Finished`
   carries the item the turn ended on, and an undo from it that took that item away left the state
   naming an item `Kernel::item` no longer had.
