@@ -110,6 +110,36 @@ async fn a_daily_quota_is_told_apart_from_a_server_that_is_merely_busy() {
     );
 }
 
+/// A good status with a body that is not a completion is an error, not an empty answer.
+///
+/// note: the streamed path already refused one - a server that ignored `stream: true` is read
+/// whole only if it carries `choices` - and the path that asked for a whole answer took any JSON
+/// without an `error` in it, so a proxy's `{"status":"ok"}` finished the turn with nothing said.
+#[tokio::test]
+async fn a_body_with_no_choices_is_not_an_answer() {
+    const NOT_ONE: &str = "{\"status\":\"ok\"}";
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        OpenAiCompatible::new("proxy", whole_server(NOT_ONE).await, "no key needed")
+            .streaming(false),
+    ));
+    kernel.push(ContextItem::user("go"));
+
+    let why = kernel
+        .step()
+        .await
+        .expect_err("a body with no choices is not an answer");
+    assert!(
+        why.to_string().contains("\"status\":\"ok\""),
+        "and the error says what came back: {why}"
+    );
+    assert!(
+        kernel.last_response().is_none(),
+        "nothing was recorded as said"
+    );
+}
+
 /// Answers one request with `body`, in one write.
 async fn whole_server(body: &'static str) -> String {
     busy_then(body, body).await

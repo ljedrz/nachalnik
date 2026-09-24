@@ -182,7 +182,16 @@ impl Provider for OpenAiCompatible {
         };
         let mut response = match sent(&asking, &self.attempts, limit, streaming, sending).await? {
             Sent::Interrupted => return Ok(interrupted()),
-            Sent::Whole(payload) => return Ok(whole(&payload, self.thinking_in_content)),
+            // note: held to what the streamed path holds a whole body to, below. A good status
+            // with JSON that is not a completion - a proxy's own `{"status":"ok"}` - is not an
+            // answer with nothing in it, and taken as one it finishes the turn with nothing said
+            Sent::Whole(payload) if payload["choices"].is_array() => {
+                return Ok(whole(payload, self.thinking_in_content));
+            }
+            Sent::Whole(payload) => {
+                let short: String = payload.to_string().chars().take(300).collect();
+                return Err(format!("the answer was not a completion: {short}").into());
+            }
             Sent::Streaming(response) => response,
         };
 
@@ -193,7 +202,7 @@ impl Provider for OpenAiCompatible {
             // a server that ignored `stream: true` and answered whole has still answered
             Read::Unstreamed(body) => match serde_json::from_str::<Value>(&body) {
                 Ok(payload) if payload["choices"].is_array() => {
-                    Ok(whole(&payload, self.thinking_in_content))
+                    Ok(whole(payload, self.thinking_in_content))
                 }
                 _ => Err(not_a_stream(&body)),
             },
@@ -465,7 +474,7 @@ fn said_and_thought(
 /// whose arguments will not parse, a usage report whose reasoning has to be inferred, and thinking
 /// written into the content. The last two go through the same readers on both paths, `usage_of`
 /// and `said_and_thought`, and the first gets the same `_unparsed` answer on both.
-fn whole(body: &Value, inline: bool) -> ModelResponse {
+fn whole(body: Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
 
@@ -510,7 +519,7 @@ fn whole(body: &Value, inline: bool) -> ModelResponse {
             .collect(),
         stop: stop_reason(choice["finish_reason"].as_str()),
         usage: body.get("usage").filter(|u| !u.is_null()).map(usage_of),
-        raw: Some(body.clone()),
+        raw: Some(body),
     }
 }
 
@@ -731,7 +740,7 @@ mod tests {
     #[test]
     fn thinking_under_its_other_name_is_thinking() {
         let answered = whole(
-            &json!({ "choices": [{ "message": {
+            json!({ "choices": [{ "message": {
                 "content": "4", "reasoning_content": "two and two"
             }, "finish_reason": "stop" }] }),
             false,
@@ -766,7 +775,7 @@ mod tests {
     fn arguments_are_what_was_written() {
         let call = |arguments: Value| {
             whole(
-                &json!({ "choices": [{ "message": { "tool_calls": [{
+                json!({ "choices": [{ "message": { "tool_calls": [{
                     "id": "c1", "function": { "name": "ls", "arguments": arguments }
                 }] }, "finish_reason": "tool_calls" }] }),
                 false,
