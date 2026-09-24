@@ -112,6 +112,18 @@ fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     ))
 }
 
+/// A text argument that may be left out, or what was passed where one belonged.
+fn words<'a>(args: &'a Value, name: &str) -> Result<Option<&'a str>, String> {
+    match &args[name] {
+        Value::Null => Ok(None),
+        Value::String(text) => Ok(Some(text)),
+        other => Err(format!(
+            "`{name}` is text and this one is `{other}`. Nothing was searched, rather than \
+             something being searched for differently than you asked."
+        )),
+    }
+}
+
 /// A yes-or-no argument, read the same way and refused the same way.
 fn truth(args: &Value, name: &str) -> Result<bool, String> {
     yes_or_no(args, name).map_err(|refusal| {

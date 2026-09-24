@@ -359,7 +359,11 @@ impl Tool for Shell {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
         let args = &*args;
-        if let Some(named) = args["action"].as_str().filter(|it| *it != "run") {
+        let named = &args["action"];
+        if !named.is_null() && named.as_str() != Some("run") {
+            let named = named
+                .as_str()
+                .map_or_else(|| named.to_string(), str::to_owned);
             return Ok(ToolOutput::error(format!(
                 "`{named}` is not something `shell` does; it does run"
             )));
@@ -719,6 +723,23 @@ async fn stop(child: &mut tokio::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn an_action_that_is_not_a_word_runs_nothing() {
+        let call = ToolCall::new(
+            "c1",
+            "shell",
+            serde_json::json!({ "action": 42, "cmd": "echo ran" }),
+        );
+        let said = unconfined()
+            .invoke(&call, OutputSink::disconnected())
+            .await
+            .expect("the tool answers the call either way")
+            .content
+            .to_text()
+            .into_owned();
+        assert!(said.contains("is not something `shell` does"), "{said}");
+    }
 
     /// A shell with no confinement, in a directory every platform has.
     fn unconfined() -> Shell {

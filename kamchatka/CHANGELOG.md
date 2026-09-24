@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs` and `shell` refuse an argument of the wrong kind rather than guess.** A `grep` or `glob`
+  whose `path` was not text searched the working directory, a `grep` whose `glob` was not text
+  searched every file, and a `shell` call whose `action` was not text ran its command.
 - **`fork ask` refuses to leave out an item that is not there.** It asked the copy with the whole
   context and paid for the request, as though it had been an ablation.
 - **`log` does not give an item that never existed a history.** Asked about an id the session has

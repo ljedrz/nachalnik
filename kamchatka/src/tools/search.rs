@@ -30,7 +30,7 @@ use serde_json::Value;
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, path_matches, truth, whole},
+    tools::{Careful, Limits, arg, path_matches, truth, whole, words},
 };
 
 /// How many matching lines one `grep` answers with.
@@ -353,7 +353,10 @@ impl Grep {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let asked = args["path"].as_str().unwrap_or(".").to_owned();
+        let asked = match words(args, "path") {
+            Ok(path) => path.unwrap_or(".").to_owned(),
+            Err(why) => return Ok(ToolOutput::error(why)),
+        };
         let root = match self.0.reach.allows(&asked, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -380,12 +383,13 @@ impl Grep {
                 )));
             }
         };
-        let only = match args["glob"].as_str() {
-            Some(glob) => match GlobBuilder::new(glob).build() {
+        let only = match words(args, "glob") {
+            Ok(Some(glob)) => match GlobBuilder::new(glob).build() {
                 Ok(built) => Some(built.compile_matcher()),
                 Err(e) => return Ok(ToolOutput::error(format!("`{glob}` is not a glob: {e}"))),
             },
-            None => None,
+            Ok(None) => None,
+            Err(why) => return Ok(ToolOutput::error(why)),
         };
 
         // note: read rather than reached for. `as_u64().unwrap_or(0)` on an argument a model
@@ -681,7 +685,10 @@ impl Glob {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let asked = args["path"].as_str().unwrap_or(".").to_owned();
+        let asked = match words(args, "path") {
+            Ok(path) => path.unwrap_or(".").to_owned(),
+            Err(why) => return Ok(ToolOutput::error(why)),
+        };
         let root = match self.0.reach.allows(&asked, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),

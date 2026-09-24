@@ -597,6 +597,11 @@ async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
             json!({ "pattern": "Kernel", "ignore_case": "yes" }),
             "`ignore_case` is true or false",
         ),
+        (
+            json!({ "pattern": "Kernel", "path": ["src"] }),
+            "`path` is text",
+        ),
+        (json!({ "pattern": "Kernel", "glob": 42 }), "`glob` is text"),
     ] {
         let refused = ask(&dir, "grep", args).await;
         assert!(refused.starts_with(what), "{refused}");
