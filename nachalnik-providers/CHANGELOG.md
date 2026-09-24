@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`system1::Answer::confidence` is `None` for an answer that gave none.** A choice or score
+  with no `confidence` was held as `NaN` and handed out as `Some(NaN)`, so a caller reading "no
+  confidence" as `None` got a figure it printed as "NaN% sure", and one that serialised it wrote
+  `null` where an `f64` was expected.
+
 - **A whole answer with no `choices` is an error, not an empty turn.** `OpenAiCompatible` with
   `streaming(false)` took any JSON body without an `error` in it as a completion, so a proxy's
   `{"status":"ok"}` finished the turn with nothing said and a stop reason of `unreported`. It

@@ -388,7 +388,8 @@ pub enum Answer {
         choice: String,
         /// The whole distribution, which sums to 1.
         probabilities: BTreeMap<String, f64>,
-        /// How sure the model is, from 0 to 1.
+        /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
+        /// [`Answer::confidence`] reports as `None`.
         confidence: f64,
     },
     /// Where on the rubric, which may fall between two levels.
@@ -399,7 +400,8 @@ pub enum Answer {
         legend: BTreeMap<String, String>,
         /// The whole distribution over the level indices, which sums to 1.
         probabilities: BTreeMap<String, f64>,
-        /// How sure the model is, from 0 to 1.
+        /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
+        /// [`Answer::confidence`] reports as `None`.
         ///
         /// note: not a guard against a badly built question. A rubric with one level comes back
         /// `score: 0.0, confidence: 1.0` - the endpoint does not enforce the two the
@@ -453,10 +455,16 @@ impl Answer {
     /// How sure the model is, where the question was one that reports it.
     ///
     /// note: a [`Answer::Noul`] has none, and does not need one: the number *is* the confidence.
+    ///
+    /// note: `None` for an answer that did not say, too. It is held as `NaN`, and handed out as
+    /// one it was a figure between 0 and 1 by type and none by value: a caller reading "no
+    /// confidence" as `None` got a rating it would print as "NaN% sure".
     pub fn confidence(&self) -> Option<f64> {
         match self {
             Self::Noul { .. } => None,
-            Self::Choice { confidence, .. } | Self::Score { confidence, .. } => Some(*confidence),
+            Self::Choice { confidence, .. } | Self::Score { confidence, .. } => {
+                Some(*confidence).filter(|it| !it.is_nan())
+            }
         }
     }
 }
@@ -1008,6 +1016,20 @@ mod tests {
             questions["rubric"]["criteria"],
             json!(["none", "some", "total"])
         );
+    }
+
+    /// An answer that carried no confidence says it has none, rather than handing out `NaN`.
+    #[test]
+    fn a_missing_confidence_is_none() {
+        let read = Answers::read(serde_json::json!({"model": "jev", "answers": {
+            "verdict": {"type": "choice", "choice": "deny", "probabilities": {"deny": 1.0}},
+            "risk": {"type": "score", "score": 1.0},
+        }}));
+
+        assert_eq!(read.choice("verdict"), Some("deny"));
+        assert_eq!(read.confidence("verdict"), None);
+        assert_eq!(read.score("risk"), Some(1.0));
+        assert_eq!(read.confidence("risk"), None);
     }
 
     /// One recorded response, read back into the three answer types.
