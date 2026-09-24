@@ -904,6 +904,28 @@ async fn a_request_over_the_limit_is_refused_before_it_is_sent() {
     );
 }
 
+/// A limit of `0` is not a limit, to the refusal as to the budget.
+///
+/// note: `Budget::fraction_used` already read `0` as unknown, and the refusal read it as a limit
+/// every request is over - so an endpoint listing a model's context as `0` had every request
+/// refused while the budget said there was nothing to measure against.
+#[tokio::test]
+async fn a_limit_of_nought_refuses_nothing() {
+    let kernel = kernel();
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
+            context_limit: Some(0),
+            ..nachalnik::ModelInfo::new("scripted", "scripted")
+        }),
+    );
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("hello"));
+
+    assert_eq!(kernel.budget().fraction_used(), None);
+    kernel.step().await.expect("it was sent");
+    assert_eq!(provider.requests().len(), 1);
+}
+
 /// Turned off, every request goes out and the endpoint has the last word.
 #[tokio::test]
 async fn a_kernel_told_not_to_refuse_sends_it_anyway() {

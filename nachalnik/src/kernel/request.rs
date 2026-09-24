@@ -209,9 +209,15 @@ impl Kernel {
     /// note: a request carrying something the counter could not price is *bigger* than the
     /// figure, never smaller, so the comparison holds in the direction that matters. The estimate
     /// being an estimate is why the whole check is a knob.
+    ///
+    /// note: a limit of `0` is no limit here, as it is to
+    /// [`Budget::fraction_used`](crate::Budget::fraction_used): it is what an endpoint that does
+    /// not know says, and taken at its word it refused every request there was while the budget
+    /// beside it reported the limit as unknown.
     fn oversized(&self, limit: Option<usize>, cost: &Cost) -> Option<Overrun> {
-        let limit = limit
-            .filter(|limit| self.0.config.refuse_oversized_requests && cost.tokens > *limit)?;
+        let limit = limit.filter(|limit| {
+            *limit != 0 && self.0.config.refuse_oversized_requests && cost.tokens > *limit
+        })?;
 
         Some(Overrun {
             tokens: cost.tokens as u64,

@@ -16,6 +16,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A context limit of `0` refuses nothing.** `Budget::fraction_used` read `0` as unknown and the
+  check that refuses an oversized request read it as a limit every request is over, so an
+  endpoint listing a model's context as `0` had every request refused.
+
 - **A `model.changed` recorded before `ModelInfo::parameters` existed reads.** The field came in
   0.3.0 without `serde(default)`, so a log from before it was a parse error at its first model.
 
