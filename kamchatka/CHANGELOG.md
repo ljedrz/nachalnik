@@ -30,6 +30,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A search open on the context tab no longer matches every item on every frame.** Each frame
+  made the whole text of every item and matched it again, which in a long session redrawn several
+  times a second during a turn cost more than the rest of the frame. What a query said about an
+  item is kept until the query or the item changes.
 - **A key on the context tab no longer filters the whole context again.** Every key recomputed the
   rows the frame had just drawn, which with a search open doubled what a key cost in a long
   session. The first key after a frame counts rows in what that frame drew.

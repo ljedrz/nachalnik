@@ -330,7 +330,7 @@ impl App {
 
         items
             .into_iter()
-            .filter(|item| search.matches(&Self::item_text(item)))
+            .filter(|item| search.matches_item(item, Self::item_text))
             .collect()
     }
 

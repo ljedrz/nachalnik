@@ -10,6 +10,9 @@
 //! a pane from lying: a filter that outlived its box would leave a window quietly showing four of
 //! eight hundred events with nothing on screen saying why.
 
+use std::{collections::HashMap, sync::Arc};
+
+use nachalnik::{ContextId, ContextItem};
 use nucleo_matcher::{
     Config, Matcher, Utf32Str,
     pattern::{CaseMatching, Normalization, Pattern},
@@ -33,6 +36,14 @@ pub struct Search {
     /// to avoid. Behind a lock because scoring takes `&mut` and the panes only ever ask through
     /// `&App`; it is uncontended - one thread draws.
     matcher: Mutex<Matcher>,
+    /// What this query said about each context item, and the item it said it about.
+    ///
+    /// note: the context pane is filtered on every frame, and matching an item means the whole of
+    /// its text - which, over a long session redrawn several times a second while a turn runs,
+    /// cost more than the rest of the frame. An answer stands for as long as the query and the
+    /// item do: the item is held and compared by pointer, since a changed item is a new one, and
+    /// the query changing empties this.
+    matched: Mutex<HashMap<ContextId, (Arc<ContextItem>, bool)>>,
 }
 
 impl Search {
@@ -43,6 +54,7 @@ impl Search {
             at: 0,
             pattern: Pattern::default(),
             matcher: Mutex::new(Matcher::new(Config::DEFAULT)),
+            matched: Mutex::default(),
         }
     }
 
@@ -110,6 +122,7 @@ impl Search {
         // uppercase one exact. Typing `Model` to mean `model.requested` and getting nothing would
         // be the surprise; typing `EndTurn` and getting every `endturn` would be the other one
         self.pattern = Pattern::parse(&self.query, CaseMatching::Smart, Normalization::Smart);
+        self.matched.get_mut().clear();
     }
 
     /// Whether a row matches. An empty query matches everything, so opening the box hides nothing.
@@ -123,10 +136,62 @@ impl Search {
             .score(Utf32Str::new(haystack, &mut buf), &mut self.matcher.lock())
             .is_some()
     }
+
+    /// Whether a context item matches, on the text `text` makes of it, asked once per item.
+    pub fn matches_item(
+        &self,
+        item: &Arc<ContextItem>,
+        text: impl FnOnce(&ContextItem) -> String,
+    ) -> bool {
+        if let Some((seen, matched)) = self.matched.lock().get(&item.id)
+            && Arc::ptr_eq(seen, item)
+        {
+            return *matched;
+        }
+        let matched = self.matches(&text(item));
+        self.matched
+            .lock()
+            .insert(item.id, (Arc::clone(item), matched));
+
+        matched
+    }
 }
 
 impl Default for Search {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An item changed under a standing query is matched again, not answered from before.
+    #[test]
+    fn a_changed_item_is_matched_again() {
+        let mut search = Search::new();
+        for c in "needle".chars() {
+            search.push(c);
+        }
+        let text = |item: &ContextItem| item.content.to_text().into_owned();
+
+        let mut item = ContextItem::user("a needle in here");
+        item.id = ContextId(1);
+        let before = Arc::new(item.clone());
+        assert!(search.matches_item(&before, text));
+
+        item.content = "nothing now".into();
+        let after = Arc::new(item);
+        assert!(!search.matches_item(&after, text));
+
+        // and a new query forgets what the old one said
+        for _ in 0.."needle".len() {
+            search.backspace();
+        }
+        for c in "nothing".chars() {
+            search.push(c);
+        }
+        assert!(search.matches_item(&after, text));
     }
 }
