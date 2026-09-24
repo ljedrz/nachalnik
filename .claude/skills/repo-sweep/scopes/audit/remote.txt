@@ -1,0 +1,1 @@
+Correctness audit of kamchatka/src/remote/ (server.rs, client.rs, protocol.rs): several clients on one session, attach and resume by sequence number, record ordering versus the session's voice, questions answered by more than one client, slow or vanished clients, socket permissions, framing limits, and shutdown. Report verified defects only.

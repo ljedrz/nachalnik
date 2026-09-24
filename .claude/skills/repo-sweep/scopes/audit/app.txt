@@ -1,0 +1,1 @@
+Correctness audit of kamchatka/src/app/ and kamchatka/src/headless.rs: every slash command's effect on App and kernel state, what happens when a command arrives while a turn is running, queued lines, interrupts, spend and deadline accounting, /save /load /restart /model /provider, and what headless prints and exits with. Report verified defects only.

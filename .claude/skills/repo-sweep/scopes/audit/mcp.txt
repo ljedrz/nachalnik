@@ -1,0 +1,1 @@
+Correctness audit of nachalnik-mcp/src and kamchatka/src/mcp.rs: tool naming and prefixing, collisions, schema conversion, annotations to capabilities under each Trust mode, result conversion, cancellation, server spawn and stderr capture, pagination, and how kamchatka wires servers in (--mcp, --allow-server, --deny-server, the settings file). Report verified defects only.

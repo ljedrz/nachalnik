@@ -1,0 +1,1 @@
+Performance and code-quality review of nachalnik-eval/src and nachalnik-eval/examples (all files). Focus: per case work (copying whole contexts per mutation, re-projecting per question), duplicated scoring logic, dead code, names and docs that disagree with what the code measures, error handling that loses information.
