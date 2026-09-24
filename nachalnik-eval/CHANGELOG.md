@@ -27,6 +27,14 @@ minor bump may break you.
   denominator, where `lie` and `conflict` score the same refusal as wrong, and a turn that ran out
   of room was neither scored nor counted in `Scores::cut`. Where no note moved the answer there is
   still nothing to attribute, and the claim is untested.
+- **Where the copies are the respondents, their claim carries a confidence and can be cut off.**
+  `provenance`'s three arms and `conflict`'s unsettled and settled stages scored what the copies
+  said through `Observation::majority`, a bare key, so the claim carried no confidence -
+  `provenance`'s Brier score, ECE and overconfidence were always `None`, though its doc calls
+  overconfidence the figure that separates its two kinds of wrong - and copies that all ran out of
+  room were scored as wrong rather than counted in `Scores::cut`. `Observation::consensus` is the
+  commonest answer at the copies' pooled probability of it, and `Answer::Cut` when every copy was
+  cut off.
 
 ## [0.5.1] - 2026-09-24
 

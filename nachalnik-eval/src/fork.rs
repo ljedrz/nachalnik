@@ -320,6 +320,63 @@ impl Observation {
         leaders.next().is_none().then_some(leader.0)
     }
 
+    /// What the copies said between them, as one answer: the commonest one, held with the
+    /// confidence the copies put on it together.
+    ///
+    /// note: for a condition whose copies are the respondents - where what they said is the claim
+    /// being scored rather than the outcome it is scored against. Built from
+    /// [`Observation::majority`], which is a bare key, such a claim carried no confidence and
+    /// could not have been cut off, so every calibration figure over it was `None` and a turn that
+    /// ran out of room was scored as a refusal.
+    ///
+    /// note: the confidence is the copies' pooled probability of the commonest answer: each copy
+    /// that stated one puts it on the answer it gave and the rest on the other, and the mean is
+    /// taken over them. Not the mean confidence of the copies that agreed, which would make two
+    /// copies saying yes at 90 beside one saying no at 90 a yes at 90. It can come out below a
+    /// half, and `Resolution::probability` scores it as the pooled forecast it is.
+    ///
+    /// note: [`Answer::Cut`] only when no copy could be read and every copy was cut off. A copy
+    /// that said something nobody could read is a respondent that did not commit, and makes the
+    /// whole of it `Unreadable`.
+    pub fn consensus(&self) -> Answer {
+        let Some(key) = self.majority() else {
+            return match !self.answers.is_empty() && self.answers.iter().all(Answer::is_cut) {
+                true => Answer::Cut,
+                false => Answer::Unreadable,
+            };
+        };
+        let Some(first) = self
+            .answers
+            .iter()
+            .find(|answer| answer.key().as_deref() == Some(key.as_str()))
+        else {
+            return Answer::Unreadable;
+        };
+        let Answer::Claim { yes, .. } = first else {
+            return first.clone();
+        };
+        let on_it: Vec<f64> = self
+            .answers
+            .iter()
+            .filter_map(|answer| match answer {
+                Answer::Claim {
+                    yes: said,
+                    confidence: Some(confidence),
+                } => Some(match said == yes {
+                    true => *confidence,
+                    false => 1.0 - confidence,
+                }),
+                _ => None,
+            })
+            .collect();
+
+        Answer::Claim {
+            yes: *yes,
+            confidence: (!on_it.is_empty())
+                .then(|| rounded(on_it.iter().sum::<f64>() / on_it.len() as f64)),
+        }
+    }
+
     /// The share of copies that gave the commonest answer; `1.0` when they all agreed.
     ///
     /// note: Unreadable answers count in the denominator. A condition under which a third of the
@@ -493,6 +550,49 @@ mod tests {
         assert_eq!(
             saying(vec![Answer::Unreadable, Answer::Cut]).agreement(),
             0.0
+        );
+    }
+
+    /// The copies' answer, taken as a claim, carries what they were sure of between them, and is
+    /// cut off only when all of them were.
+    ///
+    /// note: `provenance` and `conflict` built the claim from `majority`, a bare key, so no figure
+    /// that needs a confidence was ever computed over it - the doc on `Provenance` calls
+    /// overconfidence the figure that separates its two kinds of wrong - and copies that all ran out
+    /// of room were scored as copies that would not answer.
+    #[test]
+    fn the_copies_consensus_is_the_forecast_they_make_together() {
+        let claim = |yes: bool, confidence: Option<f64>| Answer::Claim { yes, confidence };
+
+        // two say yes at 90 and one says no at 90: yes, at a pooled (0.9 + 0.9 + 0.1) / 3
+        let split = saying(vec![
+            claim(true, Some(0.9)),
+            claim(true, Some(0.9)),
+            claim(false, Some(0.9)),
+        ]);
+        assert_eq!(split.consensus(), claim(true, Some(0.633_333)));
+
+        // pooled over the copies that stated one, and nothing where none did
+        let partly = saying(vec![claim(false, Some(0.8)), claim(false, None)]);
+        assert_eq!(partly.consensus(), claim(false, Some(0.8)));
+        assert_eq!(
+            saying(vec![claim(true, None)]).consensus(),
+            claim(true, None)
+        );
+
+        // cut off, all of them, is cut; cut off beside one that would not commit is not
+        assert_eq!(
+            saying(vec![Answer::Cut, Answer::Cut]).consensus(),
+            Answer::Cut
+        );
+        assert_eq!(
+            saying(vec![Answer::Cut, Answer::Unreadable]).consensus(),
+            Answer::Unreadable
+        );
+        // and a tie is still nobody's
+        assert_eq!(
+            saying(vec![claim(true, Some(0.9)), claim(false, Some(0.9))]).consensus(),
+            Answer::Unreadable
         );
     }
 
