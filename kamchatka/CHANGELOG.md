@@ -30,6 +30,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A local advisor slow to load is waited for rather than closed.** The warm-up ran under the
+  thirty seconds one question may take, so an engine that needed longer to load its checkpoint was
+  closed before its first question and stayed closed for the session. The warm-up now has ten
+  minutes; a question asked meanwhile waits a question's thirty seconds for its turn and goes
+  unrated if it does not get one, leaving the advisor open. Dropping the advisor mid-load lets go
+  of the engine at once.
 - **`log` refuses an `action` that is not text, and a `kinds` entry that is not a name.** The
   first was read as a bare `read`, and the second was dropped, which narrowed the filter to the
   names left beside it.

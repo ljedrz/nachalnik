@@ -48,16 +48,33 @@ use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader},
     process::{Child, ChildStdin, ChildStdout},
-    sync::Mutex,
+    sync::{Mutex, OwnedMutexGuard},
 };
 
 /// How long one question may take before the advisor is given up on.
 ///
 /// note: the same thirty seconds the HTTP client waits, and for the same reason: this is a
 /// permission gate with somebody sitting in front of it, and a local engine that has not
-/// answered in half a minute has hung rather than thought. What a timeout costs here is the
-/// rating of one command - see the failure note on [`Local::ask`].
+/// answered in half a minute has hung rather than thought. A question that times out closes the
+/// advisor for the rest of the session, for the reason on `answered`; one that spent the time
+/// waiting its turn behind another is refused and closes nothing, so what that costs is the
+/// rating of one command.
 const PATIENCE: Duration = Duration::from_secs(30);
+
+/// How long the warm-up may take, which is how long an engine has to load before its first
+/// answer.
+///
+/// note: longer than [`PATIENCE`] because it covers the load as well as the answer, and the first
+/// load can be a download. Under the per-question bound, an engine that needed longer than that
+/// to load was closed before its first question, for good.
+const WARMING: Duration = Duration::from_secs(600);
+
+/// The two bounds, carried by a [`Local`] so that a test can shrink them.
+#[derive(Debug, Clone, Copy)]
+struct Patience {
+    question: Duration,
+    warming: Duration,
+}
 
 /// How many lines of whatever the engine says about itself are kept.
 ///
@@ -111,6 +128,13 @@ pub struct Local {
     /// reported at the tick it arrived has scrolled past by the time a question goes unanswered;
     /// this is what gets hung on that failure.
     said: Arc<Sync<VecDeque<String>>>,
+    /// How long a question may take, and wait for its turn.
+    patience: Duration,
+    /// The warm-up, aborted on drop.
+    ///
+    /// note: it holds the pipe, and so the child, until it ends. Left running, a session that let
+    /// go of its advisor mid-load would keep the engine alive for as long as [`WARMING`].
+    warming: tokio::task::AbortHandle,
 }
 
 /// Asks the engine one trivial question, so that being ready is something it demonstrated.
@@ -121,19 +145,21 @@ pub struct Local {
 /// thing itself, and any engine that can be pointed at this can do it.
 ///
 /// note: not awaited, which is why it is a task. Loading a checkpoint takes seconds
-/// and a session must not wait on an advisor it may never consult - so the warm-up and the first
-/// real question race for the same lock, and whichever arrives second waits for the first. That
-/// is the wait the session was always going to have, spent once.
+/// and a session must not wait on an advisor it may never consult - so the first real question
+/// waits for the warm-up, which is the wait the session was always going to have, spent once.
+/// The lock is taken before the task is spawned: a real question that got there first would be
+/// the engine's first, and meet the load under a question's bound.
 ///
-/// note: it goes through `exchange`, so a warm-up that fails closes the pipe exactly as a real
+/// note: it goes through `answered`, so a warm-up that fails closes the pipe exactly as a real
 /// question would - and says so, with whatever the engine wrote on its stderr attached. It is the
 /// local engine's counterpart to `Jev::probe` at startup: a shim that cannot answer is found
 /// before a permission question depends on it rather than at the first `y`.
 fn warm(
-    pipe: Arc<Mutex<Option<Pipe>>>,
+    mut held: OwnedMutexGuard<Option<Pipe>>,
     notice: Arc<Sync<VecDeque<String>>>,
     said: Arc<Sync<VecDeque<String>>>,
-) {
+    patience: Duration,
+) -> tokio::task::AbortHandle {
     tokio::spawn(async move {
         let body = system1::render(
             MODEL,
@@ -144,10 +170,14 @@ fn warm(
         // note: nothing is done with the answer. What is being checked is that one came back at
         // all, which is what readiness means here; a `ready` that also had to be
         // *correct* would be this program grading an engine on a question it made up
-        if exchange(&pipe, &notice, &said, &body).await.is_ok() {
+        if answered(&mut held, &notice, &said, &body, patience)
+            .await
+            .is_ok()
+        {
             remark(&notice, "the advisor is ready".to_owned());
         }
-    });
+    })
+    .abort_handle()
 }
 
 /// Reads the child's stderr for as long as it has one, keeping the last [`REMEMBERED`] lines.
@@ -266,6 +296,17 @@ impl Local {
     /// and blocking startup on it would make every session pay for an advisor a session might
     /// never consult - the first question waits instead, which is the one place the cost belongs.
     pub fn new(command: &str) -> Result<Self, BoxError> {
+        Self::started(
+            command,
+            Patience {
+                question: PATIENCE,
+                warming: WARMING,
+            },
+        )
+    }
+
+    /// [`Self::new`], with bounds of its own.
+    fn started(command: &str, patience: Patience) -> Result<Self, BoxError> {
         let mut words = command.split_whitespace();
         let program = words
             .next()
@@ -301,13 +342,19 @@ impl Local {
             &notice,
             format!("the advisor `{program}` is not ready yet; you will be told when it is"),
         );
-        warm(pipe.clone(), notice.clone(), said.clone());
+        let held = pipe
+            .clone()
+            .try_lock_owned()
+            .map_err(|_| "the advisor's pipe was taken before it was warmed")?;
+        let warming = warm(held, notice.clone(), said.clone(), patience.warming);
 
         Ok(Self {
             command: command.to_owned(),
             pipe,
             notice,
             said,
+            patience: patience.question,
+            warming,
         })
     }
 
@@ -318,29 +365,59 @@ impl Local {
 
     /// One question and its answer, over the pipe.
     async fn asked(&self, body: &Value) -> Result<Value, BoxError> {
-        exchange(&self.pipe, &self.notice, &self.said, body).await
+        exchange(&self.pipe, &self.notice, &self.said, body, self.patience).await
     }
 }
 
-/// One question and its answer, over a pipe somebody else is holding.
+impl Drop for Local {
+    fn drop(&mut self) {
+        self.warming.abort();
+    }
+}
+
+/// One question and its answer, once the pipe is free.
 ///
-/// note: a function over the three handles rather than a method, because [`Local::new`] fires a
-/// warm-up before there is a `Local` to call one on. What the two callers must share is this
-/// exactly: the same lock, so a warm-up still in flight is a real question's queue rather than a
-/// second writer, and the same closing rule.
+/// note: the wait for the lock is bounded too, by the same `patience`, and running out of it
+/// closes nothing: nothing was written, so the stream is as good as it was. It is what a question
+/// asked while the engine is still loading meets.
+async fn exchange(
+    pipe: &Mutex<Option<Pipe>>,
+    notice: &Sync<VecDeque<String>>,
+    said: &Sync<VecDeque<String>>,
+    body: &Value,
+    patience: Duration,
+) -> Result<Value, BoxError> {
+    let Ok(mut held) = tokio::time::timeout(patience, pipe.lock()).await else {
+        return Err(format!(
+            "the advisor was still busy after {}s, loading or answering another command, so this \
+             one went unrated",
+            patience.as_secs()
+        )
+        .into());
+    };
+
+    answered(&mut held, notice, said, body, patience).await
+}
+
+/// One question and its answer, over a pipe already held.
+///
+/// note: a function over the handles rather than a method, because [`Local::new`] fires a
+/// warm-up before there is a `Local` to call one on. What the two callers share is this: the same
+/// lock, so a warm-up still in flight is a real question's queue rather than a second writer, and
+/// the same closing rule.
 ///
 /// note: every failure here closes the pipe rather than leaving it half-used. A child that died,
 /// a line that did not parse and a question that timed out all leave a stream whose next read is
 /// the answer to the question *before* it - and an advisor answering the previous call's question
 /// is the one failure mode worse than no advisor, because it is a confident answer about the
 /// wrong command. So the pipe is taken, and every later question says the advisor is gone.
-async fn exchange(
-    pipe: &Mutex<Option<Pipe>>,
+async fn answered(
+    held: &mut Option<Pipe>,
     notice: &Sync<VecDeque<String>>,
     said: &Sync<VecDeque<String>>,
     body: &Value,
+    patience: Duration,
 ) -> Result<Value, BoxError> {
-    let mut held = pipe.lock().await;
     let open = held.as_mut().ok_or("the advisor is no longer running")?;
 
     let asking = async {
@@ -362,7 +439,7 @@ async fn exchange(
         why.into()
     };
 
-    match tokio::time::timeout(PATIENCE, asking).await {
+    match tokio::time::timeout(patience, asking).await {
         Ok(Ok(answer)) => Ok(answer),
         Ok(Err(e)) => {
             *held = None;
@@ -372,7 +449,7 @@ async fn exchange(
             *held = None;
             Err(closed(format!(
                 "the advisor did not answer in {}s and was closed",
-                PATIENCE.as_secs()
+                patience.as_secs()
             )))
         }
     }
@@ -834,5 +911,97 @@ for line in sys.stdin:
         // and the second question is refused by the pipe rather than by the child
         let again = asking().await.expect_err("the advisor is gone");
         assert!(again.to_string().contains("no longer running"), "{again}");
+    }
+
+    /// An engine slower to load than a question may take is waited for, and a question asked
+    /// meanwhile goes unrated rather than closing it.
+    ///
+    /// note: the warm-up ran under the per-question bound, so an engine that took longer than
+    /// that to load its checkpoint was closed before its first question and stayed closed for the
+    /// session. The bounds are shrunk here so the test takes a second rather than minutes.
+    #[tokio::test]
+    async fn an_engine_slow_to_load_is_waited_for_and_not_closed() {
+        let shim = "\
+import json, sys, time
+first = True
+for line in sys.stdin:
+    if first:
+        time.sleep(1.0)
+        first = False
+    asked = json.loads(line)
+    out = {n: {'type': 'noul', 'noul': 0.5} for n in asked['questions']}
+    json.dump({'model': 'stub', 'answers': out}, sys.stdout)
+    print()
+    sys.stdout.flush()
+";
+        let at = std::env::temp_dir().join(format!("kamchatka-slow-{}.py", std::process::id()));
+        if std::fs::write(&at, shim).is_err() {
+            return;
+        }
+        let patience = Patience {
+            question: Duration::from_millis(300),
+            warming: Duration::from_secs(20),
+        };
+        let Ok(local) = Local::started(&format!("python3 {}", at.display()), patience) else {
+            let _ = std::fs::remove_file(&at);
+            return;
+        };
+        let asking = || {
+            local.ask(
+                json!({ "cmd": "ls" }),
+                vec![("q".to_owned(), Question::noul("is it?"))],
+            )
+        };
+
+        // behind the warm-up, and not answered in time: this command goes unrated
+        let early = asking().await.expect_err("the engine is still loading");
+        assert!(early.to_string().contains("still busy"), "{early}");
+
+        let mut said = Vec::new();
+        for _ in 0..200 {
+            said.extend(everything(&local));
+            if said.iter().any(|line| line.contains("is ready")) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(!said.iter().any(|line| line.contains("closed")), "{said:?}");
+        assert!(
+            said.iter().any(|line| line.contains("is ready")),
+            "{said:?}"
+        );
+
+        // and the advisor is still there for the next one
+        asking().await.expect("a loaded engine answers");
+
+        let _ = std::fs::remove_file(&at);
+    }
+
+    /// Dropping the advisor mid-warm-up lets go of the engine rather than leaving it to the
+    /// warm-up's bound.
+    #[tokio::test]
+    async fn an_advisor_dropped_while_warming_lets_go_of_its_engine() {
+        let Ok(local) = Local::started(
+            "sleep 30",
+            Patience {
+                question: PATIENCE,
+                warming: WARMING,
+            },
+        ) else {
+            return;
+        };
+        let pipe = Arc::downgrade(&local.pipe);
+
+        drop(local);
+        for _ in 0..40 {
+            if pipe.upgrade().is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(
+            pipe.upgrade().is_none(),
+            "the warm-up still holds the engine"
+        );
     }
 }
