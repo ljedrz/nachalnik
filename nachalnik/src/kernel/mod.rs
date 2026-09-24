@@ -1478,8 +1478,13 @@ impl Kernel {
                 summary: added,
                 reason,
                 tokens_before,
-                tokens_after: projection_cost(&projector.project(context.items()), &*counter)
-                    .tokens,
+                // a pass that moved nothing left the context as it found it, under this same
+                // lock - and it is the pass a compactor with nothing left to take answers with
+                // before every request
+                tokens_after: match moved {
+                    true => projection_cost(&projector.project(context.items()), &*counter).tokens,
+                    false => tokens_before,
+                },
             };
 
             // still under the lock, and the pass's own events before the report of it: see the

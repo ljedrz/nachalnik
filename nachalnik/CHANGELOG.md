@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **A compaction pass that moves nothing does not project the context a second time.** Its
+  `tokens_after` is its `tokens_before`, as it always came to; a compactor whose every candidate is
+  pinned or already elided answers with such a pass before every request.
 - **`Tool::spec`, `Projector::project` and `TokenCounter`'s counting methods say they run under
   the kernel's locks**, and so must not call back into the `Kernel` they are installed in. Nothing
   said so, and a counter or a projector holding a `Kernel` of its own and reading it would wait on
