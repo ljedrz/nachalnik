@@ -172,6 +172,14 @@ impl Trial {
             .collect()
     }
 
+    /// Records the stages that ask the same claims again, earliest first: the ones that are
+    /// paired.
+    pub fn ladder(&self, stages: &[&str]) {
+        self.record(Step::Ladder {
+            stages: stages.iter().map(|stage| (*stage).to_owned()).collect(),
+        });
+    }
+
     /// Records that the subject was given handles.
     pub fn granted(&self, tools: &[&str], budget: usize) {
         self.record(Step::Granted {
@@ -319,6 +327,19 @@ pub enum Step {
         tools: Vec<String>,
         /// How many experiments it was allowed to run.
         budget: usize,
+    },
+    /// The stages that put the same claims to the same respondent again, in the order they are
+    /// climbed.
+    ///
+    /// note: what [`Outcome::paired`](crate::Outcome::paired) pairs, and all it pairs. A stage
+    /// pair is a paired contrast only when it is one subject answering one claim twice.
+    /// `conflict`'s three stages are the subject's own unprompted claim and two sets of copies, one
+    /// of them with the opposite truth, and every pair of them was reported with a McNemar test.
+    /// Declared in the record rather than on [`Experiment`](crate::Experiment), so that whoever
+    /// runs the experiment, and whoever re-reads what it saved, pairs what it declared.
+    Ladder {
+        /// The stages, earliest first.
+        stages: Vec<String>,
     },
     /// The subject was told how it had been doing.
     Told {

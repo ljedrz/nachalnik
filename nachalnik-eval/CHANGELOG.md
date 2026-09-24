@@ -7,6 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two
+  stages it found. `conflict`'s three are the subject's own unprompted claim and two sets of
+  copies, one of them with the opposite truth, and each pair of them was reported as a paired
+  contrast with a McNemar p-value. `Trial::ladder` records `Step::Ladder`, the stages that put the
+  same claims to the same respondent again, and `Outcome::paired` is every ordered pair on one.
+  `instrumented` and `repair` record theirs, so their contrasts are the ones they had; an
+  experiment of somebody else's that wants its stages paired says which.
+
 ### fixed
 
 - **A move inside the control's own noise is not read as one.** `Change::as_answer` read `moved`

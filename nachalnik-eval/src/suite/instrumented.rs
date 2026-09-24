@@ -440,6 +440,7 @@ impl Experiment for Instrumented {
     }
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {
+        trial.ladder(&[REPORTED, RETESTED, TESTED]);
         for (n, dossier) in self.dossiers.iter().enumerate() {
             // the first dossier gets the subject the harness raised; the rest get siblings of it,
             // because a session that has already been asked these questions about other notes
