@@ -168,7 +168,7 @@ impl App {
             text,
             open: false,
             streamed: false,
-            after: self.kernel.items().last().map(|item| item.id),
+            after: self.newest(),
             arriving,
         });
         if speaker == Speaker::User {
@@ -264,6 +264,15 @@ impl App {
         self.say(Speaker::Error, said);
     }
 
+    /// The newest context item, which is what a line said now is anchored to.
+    ///
+    /// note: read through the lock rather than out of [`nachalnik::Kernel::items`], which copies
+    /// the whole list to answer a question about its last entry.
+    fn newest(&self) -> Option<ContextId> {
+        self.kernel
+            .with_context(|context| context.items().last().map(|item| item.id))
+    }
+
     /// Whether something is part-way through arriving.
     fn arriving(&self) -> bool {
         self.loose.last().is_some_and(|entry| entry.open)
@@ -277,7 +286,6 @@ impl App {
     /// one. A message is what somebody came here to read, and it is never shortened; the moment
     /// the turn is recorded the line is dropped and the item is what gets drawn.
     pub(super) fn append(&mut self, speaker: Speaker, fragment: &str) {
-        let after = self.kernel.items().last().map(|item| item.id);
         match self.loose.last_mut() {
             Some(entry) if entry.open && entry.speaker == speaker => {
                 entry.text.push_str(fragment);
@@ -298,6 +306,7 @@ impl App {
                 }
             }
             _ => {
+                let after = self.newest();
                 self.close();
                 self.loose.push(Entry {
                     speaker,

@@ -30,6 +30,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A streamed fragment no longer copies the whole context list to find the item its line
+  follows.** Only a fragment that starts a new line asks, and it reads the last identifier in
+  place.
 - **A search open on the context tab no longer matches every item on every frame.** Each frame
   made the whole text of every item and matched it again, which in a long session redrawn several
   times a second during a turn cost more than the rest of the frame. What a query said about an
