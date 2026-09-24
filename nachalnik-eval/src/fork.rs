@@ -176,8 +176,9 @@ impl Ablation {
             said: Vec::new(),
             spend: Spend::default(),
         };
-        // folded in the order they were asked for, so `applied`, `items` and `repairs` end up
-        // holding what the last replicate found
+        // folded in the order they were asked for. `applied`, `items` and `repairs` are settled
+        // before a copy is asked anything, by the same intervention on the same snapshot through
+        // the same projector, so every copy has the same ones and the last copy's stand for all
         for copy in copies {
             let copy = copy?;
             observation.applied = copy.applied;
@@ -288,7 +289,7 @@ pub struct Observation {
     /// messages; an experiment whose answer moved and whose repairs list is not empty has not
     /// measured what it thinks it measured.
     pub repairs: Vec<String>,
-    /// How many items each copy actually read.
+    /// How many items each copy actually read, which is the same number for every copy.
     pub items: usize,
     /// What each copy answered.
     pub answers: Vec<Answer>,
