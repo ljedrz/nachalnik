@@ -150,7 +150,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   `always` over what the policy actually *consulted* rather than over what the tool declared,
   sweeping the questions already queued behind this one, and driving the turn on afterwards. The
   gate's question has its own, `App::decide_reach`, for the same reason: the kernel never asked it,
-  so the `policy.ruled` it writes is the only record there is of who let a command out.
+  so the `policy.ruled` it writes is the only record there is that a command was let out.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
   exist because its documentation is exact about what it misses, because refusing up front with a
   reason is kinder than letting a command run and fail, and because it is consulted only where the
