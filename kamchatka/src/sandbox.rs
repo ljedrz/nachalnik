@@ -246,7 +246,7 @@ impl Sandbox {
     /// for [`Reach::allows`]. A path that is not there resolves through its parent - which is the
     /// common case, since a command that named a file it could not open often could not `stat`
     /// its directory either.
-    fn reaches(&self, path: &Path) -> bool {
+    fn reaches(&self, path: &Path, scratch: Option<&Path>) -> bool {
         let Some(resolved) = resolve(path) else {
             return false;
         };
@@ -271,6 +271,7 @@ impl Sandbox {
             .iter()
             .map(PathBuf::from)
             .chain(std::iter::once(self.workdir.clone()))
+            .chain(scratch.map(Path::to_path_buf))
             .chain(self.extra.iter().cloned())
             .chain(self.readable.iter().cloned())
             .any(|allowed| match allowed.canonicalize() {
@@ -304,6 +305,16 @@ impl Sandbox {
     /// an output limit cuts from the end, and a note accounting for a permission error is worth
     /// nothing if the truncation takes the note and leaves the error.
     pub fn note_for(&self, stderr: &str) -> Option<String> {
+        self.note_for_in(stderr, None)
+    }
+
+    /// [`Sandbox::note_for`], for a command that was handed `scratch` as its `TMPDIR`.
+    ///
+    /// note: [`confine`] grants that directory what it grants the working directory, so a refusal
+    /// in it is the file's own permissions and blaming the confinement for one is the hedge
+    /// `note_for` exists not to make. It is the caller's to name, because only whoever spawned the
+    /// command knows which directory it was given, and it has to still be there to be compared.
+    pub(crate) fn note_for_in(&self, stderr: &str, scratch: Option<&Path>) -> Option<String> {
         let refusals: Vec<&str> = stderr.lines().filter(|line| refused(line)).collect();
         if refusals.is_empty() {
             return None;
@@ -324,9 +335,9 @@ impl Sandbox {
                 continue;
             }
             // a socket is judged by connecting and nothing else: see `connecting`
-            let (socket, confined) = match self.connecting(Path::new(&path)) {
+            let (socket, confined) = match self.connecting(Path::new(&path), scratch) {
                 Some(refused) => (true, refused),
-                None => (false, !self.reaches(Path::new(&path))),
+                None => (false, !self.reaches(Path::new(&path), scratch)),
             };
             if confined {
                 sockets += usize::from(socket);
@@ -381,7 +392,7 @@ impl Sandbox {
     /// kernel a connection is not something the ruleset is consulted about, even to a socket in a
     /// directory the session cannot read, so blaming the confinement for that directory is
     /// blaming it for a refusal it did not make.
-    fn connecting(&self, path: &Path) -> Option<bool> {
+    fn connecting(&self, path: &Path, scratch: Option<&Path>) -> Option<bool> {
         use std::os::unix::fs::FileTypeExt as _;
 
         let resolved = resolve(path)?;
@@ -393,9 +404,10 @@ impl Sandbox {
         }
         let writable = self
             .writable
-            .then_some(&self.workdir)
+            .then_some(self.workdir.as_path())
             .into_iter()
-            .chain(self.extra.iter())
+            .chain(scratch)
+            .chain(self.extra.iter().map(PathBuf::as_path))
             .any(|root| {
                 root.canonicalize()
                     .is_ok_and(|root| resolved.starts_with(root))
@@ -425,7 +437,7 @@ impl Sandbox {
         let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = global_git_config()
             .into_iter()
             .filter(|path| path.is_file())
-            .partition(|path| self.reaches(path));
+            .partition(|path| self.reaches(path, None));
 
         match missed.is_empty() {
             true => None,
