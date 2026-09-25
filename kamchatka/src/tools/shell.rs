@@ -867,13 +867,17 @@ impl Drop for Running {
     }
 }
 
-/// Stops a running command, and whatever that command started.
+/// Stops a running command, and whatever that command started that is still in its group.
 ///
 /// note: the group rather than the process, because a shell command is rarely one process. `make`
 /// starts a compiler, `npm test` starts a runner, and a signal addressed to the shell alone leaves
 /// those running - confined, since the domain is inherited, but still writing in the working
 /// directory with nothing left that will ever report them. Somebody who pressed escape has been
 /// told it stopped.
+///
+/// note: a process that left the group is not reached. One run under `setsid`, or a daemon that
+/// detaches itself, runs on after the call has said it stopped, confined still. Holding the whole
+/// tree takes a cgroup or a PID namespace per command, and there is neither here.
 ///
 /// note: through `sh`, because signalling a *group* is not in `std`, and this crate keeps its
 /// `unsafe` to [`crate::gate`]. It is the same `sh` the tool is built on, so it brings nothing new
