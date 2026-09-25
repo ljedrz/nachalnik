@@ -514,13 +514,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   whose call it took. The other is to give the model a request of its own to free room, which
   needs room held back for that request, since it is over the limit too.
 
-- **Forks asked in one turn read each other.** `fork` copies the context as it stands when the
-  call runs, and a turn's calls run one after another, so the second of two forks asked together
-  is handed the first one's answer. `without` refuses an item that does not exist yet, so it
-  cannot keep out a sibling that has not run. Leaving out results produced in the same turn by
-  default is one fix; taking one copy for every fork of a turn, before any of them runs, is the
-  other.
-
 - **A stream that fails after it has started loses what it said.** An `error` event after the
   answer has begun ends the turn with the error, and what had streamed - already handed on as
   deltas - is not kept, where a stream the transport cut off keeps it and stops as `cut off`.

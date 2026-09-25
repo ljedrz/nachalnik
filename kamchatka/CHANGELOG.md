@@ -77,6 +77,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Two forks asked in one turn are asked about the same context.** A turn's calls run one after
+  another, so the second fork's copy already held the first one's answer, and two copies meant to
+  be compared differed by it. A fork now leaves out the results of the other calls in the turn
+  that asked for it, and `without` no longer has to name an item that did not exist yet.
 - **The screen no longer freezes at the start of a request, now and then.** Drawing the model's
   name and the turn beginning its request took the provider's two locks in opposite orders, and
   when they met the two threads waited on each other for ever: the screen stopped drawing and
