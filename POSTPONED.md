@@ -311,6 +311,24 @@ Referenced from [AGENTS.md](AGENTS.md).
   "confined" for `Full` and name what a `Partial` one leaves open, or leave the words and make the
   hedge a statement where the kernel is known.
 
+- **What the shell may write under `/dev`.** The ruleset gives a confined command read and write on
+  every file that already exists under `/dev`, so that `/dev/null`, `/dev/tty` and the rest work.
+  That includes the POSIX shared-memory segments in `/dev/shm` of any other process running as the
+  same user: a confined command cannot make a file there, but it can write into one somebody else
+  made. SECURITY.md says nothing about `/dev`. The choice is between narrowing the grant to named
+  devices, which may break a tool that opens one nobody listed; keeping `/dev` and leaving
+  `/dev/shm` out of it; or keeping it and saying so beside the unix-socket paragraph, as another
+  place where writing a file reaches another process.
+
+- **A process that leaves the command's group outlives a stop.** Stopping a call signals the
+  command's process group, and a process run under `setsid`, or a daemon that detaches itself, is in
+  a group of its own: it runs on after the call has said it stopped. It stays confined and gated,
+  and a network attempt it makes after the call is refused unasked, so what it can reach does not
+  grow - but it is still running. Holding the whole tree takes a cgroup per command, which needs
+  one delegated to the user; a PID namespace per command, which needs a user namespace; or
+  becoming a child subreaper and reaping what is orphaned, which is new `unsafe`. Each has a
+  machine it does not work on, and which to fall back from is the decision.
+
 - **`/save` writes with the umask.** A snapshot saved over a file somebody had made private comes
   back readable by whoever the umask allows, where the record the session writes itself is kept in a
   directory only its owner can open. What waits is the rule: whether a save takes the target's
