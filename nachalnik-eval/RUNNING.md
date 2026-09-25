@@ -116,10 +116,12 @@ and a run killed partway keeps every experiment it finished.
 
 ## 📈 reading a sweep back
 
-Two more examples, and neither asks a model anything: they read the saved `report.json` files, so
-the analysis of a sweep costs nothing and can be repeated months later by somebody who was not
-there. That is what `--json` holding every question and every answer verbatim is *for* — a figure
-in a paper should be recomputable from the record.
+Two more examples, and neither asks a model anything: they read the reports `bench` saved, so the
+analysis of a sweep costs nothing and can be repeated months later by somebody who was not there.
+That is what `--json` holding every question and every answer verbatim is *for* — a figure in a
+paper should be recomputable from the record. The runs below were each given a path of their own,
+`--json eval-runs/<study>/<run>/report.json`; without one, `bench` writes
+`bench-<model>-<when>.json` in the working directory.
 
 ```console
 $ cargo run -p nachalnik-eval --example compare -- eval-runs/*/*/report.json
