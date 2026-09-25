@@ -4,7 +4,7 @@
 //! client from whichever flag picked the dialect, the wire format was written in the provider,
 //! and nothing connected them - so `send_reasoning` stayed on for a `to_wire` that has never sent
 //! reasoning, and the budget charged for every turn of thinking the context was holding.
-//! `Endpoint::projection` is the connection, and these are the tests that the two agree.
+//! `Dialect::projection` is the connection, and these are the tests that the two agree.
 
 #![cfg(any(feature = "openai", feature = "gemini"))]
 
