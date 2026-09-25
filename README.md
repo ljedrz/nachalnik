@@ -136,9 +136,9 @@ rather than to serve one: forking a context is `snapshot` and `resume`, what a c
 $ cargo test --workspace
 ```
 
-Every crate has a suite, and each crate's readme says what its own covers. The live ones skip
-themselves when there is no API key. [CONTRIBUTING.md](CONTRIBUTING.md) has the full command set,
-what CI runs, and how to measure whether a test is worth keeping.
+Every published crate has a suite, and its readme, or the `RUNNING.md` beside it, says what that
+covers. The live ones skip themselves when there is no API key. [CONTRIBUTING.md](CONTRIBUTING.md)
+has the full command set, what CI runs, and how to measure whether a test is worth keeping.
 
 Among them is the provider conformance suite. What a provider makes of a stream is not tested one
 provider at a time, because the questions would be the same each time. Every provider in the
