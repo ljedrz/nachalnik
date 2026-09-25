@@ -58,6 +58,14 @@ minor bump may break you.
 
 ### changed
 
+- **The primary endpoint is `attribution`'s claims, one per note.** `Report::surface` pooled the
+  unaided counterfactual claims of every experiment, and `feedback`, `privilege`, `instrumented`
+  and `recursion` ask again about notes `attribution` asks about, so one note of one model was
+  several observations in an endpoint the preregistration sizes at one. `suite::ENDPOINT` names the
+  experiment it is read from; every outcome's own `surface` is still worked out, as a description
+  of that experiment. A report without `attribution` in it has no endpoint, so `per_model` no
+  longer picks a newer run of the other experiments over the one that asked it. A report written
+  before reads the same way.
 - **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two
   stages it found. `conflict`'s three are the subject's own unprompted claim and two sets of
   copies, one of them with the opposite truth, and each pair of them was reported as a paired

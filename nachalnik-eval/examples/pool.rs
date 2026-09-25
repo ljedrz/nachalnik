@@ -17,7 +17,7 @@
 
 use std::{env, fs};
 
-use nachalnik_eval::{Cohort, Kind, Report, Step, Surface, per_model};
+use nachalnik_eval::{Cohort, Kind, Report, Step, Surface, per_model, suite};
 
 /// The default effect size the sign test counts against, in points.
 ///
@@ -32,7 +32,8 @@ usage: pool [--at-least POINTS] REPORT.json..
 
   --at-least POINTS   the registered effect size for the sign test (default 30)
 
-Prints the primary endpoint per model, then the sign test across them.";
+Prints the primary endpoint per model - what `attribution` claimed, one claim per note - then
+the sign test across them.";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut at_least = REGISTERED;
@@ -172,14 +173,18 @@ fn run_of(path: &str) -> &str {
 
 /// Whether a report asked the question the endpoint is read from at all.
 ///
-/// note: it did if it resolved a counterfactual claim; whether that claim says which note it was
-/// about is a different matter. The two together tell "this model was not asked" from "this file
-/// cannot be read for it".
+/// note: it did if the endpoint's experiment resolved a counterfactual claim; whether that claim
+/// says which note it was about is a different matter. The two together tell "this model was not
+/// asked" from "this file cannot be read for it".
 fn asks_it(report: &Report) -> bool {
-    report.outcomes.iter().any(|outcome| {
-        outcome
-            .steps
-            .iter()
-            .any(|step| matches!(step, Step::Resolved(r) if r.about == Kind::Counterfactual))
-    })
+    report
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.experiment == suite::ENDPOINT)
+        .any(|outcome| {
+            outcome
+                .steps
+                .iter()
+                .any(|step| matches!(step, Step::Resolved(r) if r.about == Kind::Counterfactual))
+        })
 }
