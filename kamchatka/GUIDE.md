@@ -306,7 +306,7 @@ and running that through a renderer would be inventing structure it never had.
 | <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | the beginning of the conversation / the end of it |
 | <kbd>home</kbd> / <kbd>end</kbd> | the prompt's own, as in any other line editor |
 | <kbd>ctrl+e</kbd> | follow the newest again |
-| <kbd>tab</kbd> | move between the prompt and the open tab |
+| <kbd>tab</kbd> | move the keys between the prompt and whatever else on the screen wants them; from a tab with no prompt, back to the chat |
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
 | <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived |
 | <kbd>ctrl+c</kbd> | stop what is running either way, and again to leave |
