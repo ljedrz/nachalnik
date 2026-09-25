@@ -84,6 +84,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A pin the model made is still the model's after a resume.** Which pins were its own was kept
+  in memory alone, so a resumed session had every pin the person's and refused the model its own.
+  The `context` tool writes `pinned: {by: "context", note}` into the item's metadata as it pins,
+  which the snapshot carries and the record shows as a `context.annotated`; a pin the person made
+  since, which carries no note, is still theirs.
 - **`Trim` keeps a picture the model has not been shown yet**, as it already kept a text result:
   it goes on the next pass, first, once the model has read it. A screenshot elided on its way in
   was one the model asked for, never saw, and asked for again.

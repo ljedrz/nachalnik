@@ -884,6 +884,57 @@ async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
     assert_eq!(kernel.item(read).unwrap().state, ContextState::Excluded);
 }
 
+/// A pin the model made is still the model's after a resume, and one the person made is still
+/// theirs.
+///
+/// note: the tool remembered its own pins in memory alone, so a resumed session had every pin the
+/// person's - which fails safe, and refused the model an item it had pinned itself. The pin is
+/// written into the item's metadata now, which the snapshot carries.
+#[tokio::test]
+async fn a_pin_the_model_made_is_still_its_own_after_a_resume() {
+    use std::sync::Arc;
+
+    let (first, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "pin", "ids": [1], "reason": "the spec, for the rest of the session" }),
+    )]));
+    let spec = first.push(ContextItem::file("spec.md", "..."));
+    let theirs = first.push(ContextItem::file("theirs.md", "..."));
+    first.set_state([theirs], ContextState::Pinned, None);
+    first.push(ContextItem::user("keep the spec"));
+    first.turn().await.expect("the turn failed");
+    assert_eq!(first.item(spec).unwrap().state, ContextState::Pinned);
+
+    let kernel = nachalnik::Kernel::resume(nachalnik::Config::default(), first.snapshot());
+    kernel.set_provider(Arc::new(nachalnik::test::ScriptedProvider::new(one_turn(
+        vec![call(
+            "c2",
+            "context",
+            json!({ "action": "restore", "ids": [spec.0, theirs.0], "reason": "done with both" }),
+        )],
+    ))));
+    let policy = Arc::new(kamchatka::tools::Careful::new());
+    policy.set(
+        &kamchatka::tools::Subject::parse("context"),
+        nachalnik::Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _resumed =
+        kamchatka::introspect::install(&kernel, policy, kamchatka::tools::Limits::default());
+    kernel.push(ContextItem::user("let them go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert_eq!(
+        kernel.item(spec).unwrap().state,
+        ContextState::Active,
+        "its own pin was refused it: {said}"
+    );
+    assert_eq!(kernel.item(theirs).unwrap().state, ContextState::Pinned);
+    assert!(said.contains("pinned by the person"), "{said}");
+}
+
 #[tokio::test]
 async fn a_reason_is_required_before_anything_changes() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(

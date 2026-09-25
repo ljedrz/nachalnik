@@ -378,10 +378,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   `--parallel`. What waits is the rule: whether the model's undo stops at anything a person did
   since, and what it says when it does.
 
-- **Whose pin it is after a resume.** Which pins the model made is kept in memory and not in the
-  snapshot, so after a resume every pin is the person's and the model is refused unpinning its
-  own. That fails safe. Keeping it needs the pin's author written down, in `meta` for instance.
-
 - **The model's undo history after a resume.** What `context`'s `undo` walks is kept by the process
   and not in the snapshot, so a resumed session has nothing of the model's to walk back, and a
   change it made before the restart comes back only by `restore`; the refusal says so. It is the

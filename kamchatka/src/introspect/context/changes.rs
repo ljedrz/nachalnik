@@ -344,7 +344,7 @@ impl Changes {
             .collect();
         let changed = kernel.set_state(allowed, state, Some(reason.to_owned()));
         for id in &changed.changed {
-            self.note_pin(*id, state, Some(reason.to_owned()));
+            self.note_pin(kernel, *id, state, Some(reason.to_owned()));
         }
         // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
         // that was pinned and is being pinned again for a different reason comes back as changed -
@@ -597,7 +597,7 @@ impl Changes {
         }
         let id = kernel.push(item);
         if pin {
-            self.note_pin(id, ContextState::Pinned, Some(reason.to_owned()));
+            self.note_pin(kernel, id, ContextState::Pinned, Some(reason.to_owned()));
         }
         // the way back from having written it is to put it away; nothing here destroys anything,
         // so an undone note is archived and still listed rather than gone
@@ -687,7 +687,7 @@ impl Changes {
         }
         for id in touched {
             if let Some(item) = kernel.item(id) {
-                self.note_pin(id, item.state, item.note.clone());
+                self.note_pin(kernel, id, item.state, item.note.clone());
             }
         }
 
@@ -752,7 +752,22 @@ impl Changes {
     }
 
     /// Remembers whether this tool is the one holding an item pinned, and with what note.
-    fn note_pin(&self, id: ContextId, state: ContextState, note: Option<String>) {
+    ///
+    /// note: in the item's metadata as well as in `Mine`, because `Mine` is the process's and the
+    /// metadata is the snapshot's. A resumed session had every pin the person's - which fails
+    /// safe, and refused the model a pin it had made itself. `annotate` takes no checkpoint, so a
+    /// pin is still one undo on the person's stack.
+    fn note_pin(&self, kernel: &Kernel, id: ContextId, state: ContextState, note: Option<String>) {
+        if state == ContextState::Pinned
+            && let Some(item) = kernel.item(id)
+        {
+            let mut meta = match item.meta.is_object() {
+                true => item.meta.clone(),
+                false => json!({}),
+            };
+            meta[crate::introspect::PINNED] = json!({ "by": "context", "note": note });
+            let _ = kernel.annotate(id, meta);
+        }
         hold(&mut self.pinned.lock(), id, state, note);
     }
 }

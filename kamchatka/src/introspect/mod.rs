@@ -298,12 +298,28 @@ pub(crate) fn unmatched_file(select: &str) -> &'static str {
 /// item still says what the model wrote.
 type Mine = BTreeMap<ContextId, Option<String>>;
 
+/// The metadata key a pin the model made is written under: `{"by": "context", "note": ...}`.
+const PINNED: &str = "pinned";
+
+/// Whether the item's metadata says the model pinned it, with the note it still carries.
+///
+/// note: what survives a resume, where `Mine` does not. It is the same test `Mine` makes - the pin
+/// is the model's while the item still says what the model wrote - so an item the person unpinned
+/// and pinned again is the person's however its metadata reads: their pin carries no note.
+fn marked_mine(item: &ContextItem) -> bool {
+    let pinned = &item.meta[PINNED];
+    pinned["by"] == "context" && pinned["note"] == serde_json::json!(item.note)
+}
+
 /// Why this item is not the model's to change, if it is not.
 fn protected(item: &ContextItem, mine: &Mine, own_turn: Option<ContextId>) -> Option<String> {
     if matches!(item.kind, ContextKind::System) {
         return Some("a system instruction, which belongs to whoever started this session".into());
     }
-    if item.state == ContextState::Pinned && mine.get(&item.id) != Some(&item.note) {
+    if item.state == ContextState::Pinned
+        && mine.get(&item.id) != Some(&item.note)
+        && !marked_mine(item)
+    {
         return Some("pinned by the person you are working with, and a pin is a promise".into());
     }
     if own_turn == Some(item.id) {
