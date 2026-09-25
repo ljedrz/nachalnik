@@ -49,8 +49,8 @@ import sys
 # note: before `laya` is imported anywhere, which is why it is up here rather than beside the
 # import. laya's own card warns that `transformers` probes for TensorFlow at import and that
 # abseil can then deadlock model construction; what a deadlock costs *here* is the whole
-# session's advisor, silently - the child never answers, the warm-up times out after thirty
-# seconds, and the pipe closes for good. Nothing on this machine needs the TensorFlow path.
+# session's advisor, silently - the child never answers, the warm-up times out after ten
+# minutes, and the pipe closes for good. Nothing on this machine needs the TensorFlow path.
 os.environ.setdefault("USE_TF", "0")
 
 # How much of each request laya is given for the question, and for the whole sequence.
@@ -303,8 +303,9 @@ def probe(command):
     the rubric being hard to read; a good distribution translated into a bad `confidence` is
     this file.
 
-    note: the rubric only, because it is the only thing the program asks: a command the rules
-    are going to ask about, placed for the person answering, and decided by nothing it says.
+    note: both readings of the whole command and none of its stages, which is what
+    `rating_questions` holds: a command the rules are going to ask about, placed for the person
+    answering, and decided by nothing it says.
     """
     from laya import Router
 
