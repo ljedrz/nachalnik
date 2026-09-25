@@ -536,10 +536,9 @@ impl Serving {
                 busy: self.announced,
             }));
         }
-        // and the same rule for the model, which is here because nothing else says it: a switch
-        // finishes inside the provider the kernel already holds, so no record is written and a
-        // client that did not ask for a fresh projection went on naming the model before it. See
-        // `Message::Model`
+        // and the same rule for the model: a switch finishes inside the provider the kernel
+        // already holds, and a client that did not ask for a fresh projection went on naming the
+        // model before it. See `Message::Model`
         //
         // note: asked once rather than once per side of the comparison. `Kernel::model_info` builds
         // a `ModelInfo` each time it is called - two strings and the list of parameters the model
