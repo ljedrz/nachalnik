@@ -92,6 +92,16 @@ const SPOKEN: &str = concat!(
     "\"thoughtSignature\":\"SIG-TEXT\"}]},\"finishReason\":\"STOP\"}]}\n\n",
 );
 
+/// A turn that thinks in three chunks, signed on the middle one, and then answers.
+const SIGNED_THINKING: &str = concat!(
+    "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Nine\",\"thought\":true}]}}]}\n\n",
+    "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" sheep\",\"thought\":true,",
+    "\"thoughtSignature\":\"SIG-THOUGHT\"}]}}]}\n\n",
+    "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".\",\"thought\":true}]}}]}\n\n",
+    "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Counted.\"}]},",
+    "\"finishReason\":\"STOP\"}]}\n\n",
+);
+
 // -------------------------------------------------------------------------------- coming in
 
 #[tokio::test]
@@ -195,6 +205,20 @@ async fn a_signature_rides_on_the_part_it_belongs_to() {
         .and_then(Content::as_blocks)
         .unwrap();
     assert_eq!(blocks[1].extra()["thoughtSignature"], "SIG-TEXT");
+
+    // and on a run of thinking, whichever of its chunks carried it: the chunk after it, carrying
+    // nothing, leaves it where it is
+    let thinking = answered(SIGNED_THINKING).await;
+    let blocks = thinking
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .unwrap();
+    assert_eq!(
+        blocks[0].thought().unwrap().content.to_text(),
+        "Nine sheep."
+    );
+    assert_eq!(blocks[0].extra()["thoughtSignature"], "SIG-THOUGHT");
 }
 
 // -------------------------------------------------------------------------------- going out
