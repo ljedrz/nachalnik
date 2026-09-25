@@ -375,13 +375,13 @@ at. The error is a few percent of the change instead of a few percent of the con
 difference between a thousand tokens and thirty on a context of a hundred thousand.
 
 It also absorbs, exactly and for nothing, the three things the counter is structurally blind to:
-per-message framing, the tool schemas, and any payload it refuses to price. A PDF the counter
-cannot put a number on is inside the provider's figure the moment it has gone out once.
+per-message framing, the tool schemas as they stood when the request went out, and any payload it
+refuses to price. A PDF the counter cannot put a number on is inside the provider's figure the
+moment it has gone out once.
 
-The counter is the runtime's `Calibrating` one: every response tells it what the request it just
-estimated really cost, and it adjusts. `/budget` says from how many requests, by what scale, and
-what its own guesses came to against the provider's count. Over a real session against Gemini
-it went from 13% low to within 0.3%.
+The counter is the runtime's `Calibrating` one: every response to a request it could price in full
+tells it what that request really cost, and it adjusts. `/budget` says from how many requests, by
+what scale, and what its own guesses came to against the provider's count.
 
 So does every request the model refuses for being too long, and that one is worth more than a
 response. What an endpoint charges for is a bill, and an aggregator in front of a model may quote
