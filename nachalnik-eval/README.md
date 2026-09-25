@@ -77,7 +77,7 @@ it stands, one with that note excluded: will they answer differently?" — rathe
 answer change". The two are not the same question whenever the live session and a copy of it
 disagree, and they do disagree: a session has answered a dossier correctly while a copy of the
 identical context followed the false note in it. Every record says which happened, in a line
-that begins `the session answered`.
+that begins `the session`.
 
 And both copies are blinded to the exchange in which the subject already answered
 (`Ablation::blind_to`), because a copy that can read that answer a few items above the repeated
