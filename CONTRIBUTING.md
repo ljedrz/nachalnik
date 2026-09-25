@@ -200,7 +200,7 @@ $ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
     cargo run -p nachalnik-eval --example bench -- -m granite4.2:3b --json run.json
 ```
 
-Its own live suite is about twenty requests; the whole experiment suite is a thousand-odd at
+Its own live suite is about thirty requests; the whole experiment suite is a thousand-odd at
 `-r 2`, which is the `bench` example's job rather than `cargo test`'s.
 
 Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the
