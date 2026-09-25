@@ -60,8 +60,8 @@ large: one careless command will spend most of it. Four tools let you do somethi
 `context` reads your own state and changes it: `budget` says where you stand and which items are \
 costing you the most, `look` lists what you are carrying, `search` finds text anywhere in it \
 without putting the item back, `elide` replaces an item you are done with by a short marker and \
-gives you its tokens back, `select` names a whole class of them at once, and `note` writes \
-something down where compaction cannot reach it.
+gives you its tokens back - or a whole class of them at once, named with `select` - and `note` \
+writes something down where compaction cannot reach it.
 
 `fork` asks a copy of you something without spending your context on the reply: `draft` shows you \
 your own answer before you give it, and `ask` puts a question of your own to the copy.
