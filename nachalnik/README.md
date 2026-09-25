@@ -58,8 +58,8 @@ match kernel.step().await? {
 Reach for it when **what was in the context is part of your answer**:
 
 * **Evaluation and model comparison.** The same items into several kernels, with a digest of the
-  projected messages showing that the only variable was the model — and the tokenizers disagreeing
-  with each other about identical bytes, which you can see rather than assume.
+  whole previewed request showing that the only variable was the model — and the tokenizers
+  disagreeing with each other about identical bytes, which you can see rather than assume.
   (`cargo run --example compare_models`, `--example panel`)
 * **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that are
   yours to render, over a loop that stops between transitions instead of acting and reporting.
@@ -272,7 +272,7 @@ Two that talk to a model:
 
 * **[compare_models][ex-compare]** — the same prompt to several models at once, with proof that it
   *was* the same prompt. Every model gets a `Kernel` of its own, the same `ContextItem`s are
-  pushed into each, and the fingerprint is of the serialized messages of `preview_request()`. Ask
+  pushed into each, and the fingerprint is of the whole serialized `preview_request()`. Ask
   a follow-up and it goes on comparing, but stops claiming the requests are identical, because by
   then they are not. `EST` against `IN` puts the kernel's estimate beside what the provider
   charged.
