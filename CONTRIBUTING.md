@@ -150,8 +150,8 @@ On the same endpoint, `a_reasoning_models_own_turn_comes_back_as_it_went_out` ca
 pass on a re-run: its filter sometimes answers the secret-code-word prompt with a 400 whose body
 is a refusal sentence, which is not a malformed request. `kamchatka`'s suite has a test that
 turns on the model too: `a_resumed_session_carries_on_and_the_endpoint_accepts_it` plants
-`LARKSPUR` in a resumed context and asks which word the model was told to remember, and the shared
-system prompt plants `APRICOT` - so a model that picks the wrong one of two plausible words fails
+`LARKSPUR` in a resumed context and asks which word the model was told to remember, and the
+`secret` tool plants `APRICOT` - so a model that picks the wrong one of two plausible words fails
 a test about *projection*, and the same model passes and fails it on one commit. Attribute a live
 failure to the model before attributing it to the code: re-run it, run it on a second model, and
 `git worktree add` the last tag and run it there before believing anything.
