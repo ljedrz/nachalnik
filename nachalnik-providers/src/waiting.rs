@@ -29,7 +29,7 @@ use crate::{
 ///
 /// note: for the difference between a busy server and one that has said no until tomorrow. A
 /// per-minute limit answers `Retry-After: 5`; a spent daily quota answers with the seconds until
-/// midnight, and sitting through four doublings to discover that wastes the turn and the wait.
+/// midnight, and sitting through three doublings to discover that wastes the turn and the wait.
 pub(crate) const LINGER: Duration = Duration::from_secs(60);
 
 /// How long a stream may say nothing before the provider looks up to check whether it has been
@@ -337,7 +337,7 @@ pub(crate) async fn sent(
             Err(Unsent::Interrupted) => return Ok(Sent::Interrupted),
             // a connection that timed out is a busy server wearing different clothes. A refused
             // connection is *not* this - it is a definite answer, usually an address with nothing
-            // behind it, and making a typo take four doublings to report helps nobody
+            // behind it, and making a typo take three doublings to report helps nobody
             //
             // note: and a whole answer that has not arrived is not this either, unless it never
             // reached the server. Its headers come with its last token, so no answer yet means the

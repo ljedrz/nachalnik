@@ -57,12 +57,12 @@ turn or somebody's money. All three are separated here, and shared by both diale
 - **the silence is reported.** After ten seconds it says so through `Endpoint::take_notice`, and
   again every thirty; after 150 it gives up.
 - **a busy server is retried, a spent quota is not.** A `Retry-After` longer than a minute is a
-  daily limit answering with the seconds until midnight, and sitting through four doublings to
+  daily limit answering with the seconds until midnight, and sitting through three doublings to
   discover that wastes the turn as well as the wait.
 - **an interrupt is an answer, not an error.** It comes back as `StopReason::Other("interrupted")`
   with whatever had arrived, because a red line for doing as asked reads as a bug.
 
-Every request is retried at most four times and **every attempt is billed** — a provider that
+Every request is sent at most four times and **every attempt is billed** — a provider that
 generated nine thousand tokens and then lost the connection has still generated them — which is
 why the retry is for a server that said *busy*, not for a request that is simply large.
 
