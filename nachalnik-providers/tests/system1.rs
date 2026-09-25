@@ -11,7 +11,7 @@
 //! matters most here: that the payload this crate renders is one the service *accepts*, for all
 //! three question types, and that what comes back maps onto the three answer types. A shape
 //! written from a specification and pinned by no live test is exactly what this crate does not
-//! ship - see the `input_audio` note in `waiting.rs`.
+//! ship - see the `input_audio` note in `openai/wire.rs`.
 //!
 //! note: assertion-light about the numbers and assertion-heavy about structure, for the same
 //! reason `nachalnik`'s own live suite is. `rm -rf /` really does come back `deny` at 0.99, and
