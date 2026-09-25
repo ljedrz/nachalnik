@@ -97,13 +97,45 @@ impl Looking {
     /// a file somebody has just answered that question about is not then skipped for the same
     /// rule. The distinction is between what was asked about and what was merely walked over.
     fn barred(&self) -> Vec<String> {
-        self.policy
-            .paths()
-            .into_iter()
-            .filter(|(_, verdict)| *verdict != Verdict::Allow)
-            .map(|(pattern, _)| pattern)
-            .collect()
+        barred(&self.policy)
     }
+}
+
+/// The path rules that are not `allow`, which a walk does not open things under and a link may
+/// not lead past.
+pub(super) fn barred(policy: &Careful) -> Vec<String> {
+    policy
+        .paths()
+        .into_iter()
+        .filter(|(_, verdict)| *verdict != Verdict::Allow)
+        .map(|(pattern, _)| pattern)
+        .collect()
+}
+
+/// The first of `barred` that is about where a link leads and not about the name it was reached
+/// by, if one is.
+///
+/// note: a rule is about a name, and a link is a second name - so `alias -> .env` was read, walked
+/// and written under `.env*: deny` because the name was `alias`. What this does is not make the
+/// rule about targets, which would ask a question about a name the model never wrote: it closes
+/// the side door, and the caller refuses or skips and says the target's name, which is then asked
+/// about like any other. A rule that matches both names was already consulted for the one given,
+/// and is not consulted again.
+///
+/// note: matched against the target relative to the working directory, the way a walk's own paths
+/// are, so a directory rule is about directories in the tree rather than about wherever somebody
+/// happens to keep it.
+pub(super) fn led_past<'a>(
+    named: &str,
+    resolved: &Path,
+    workdir: &Path,
+    barred: &'a [String],
+) -> Option<&'a str> {
+    let target = relative(resolved, &under(workdir));
+    barred
+        .iter()
+        .find(|rule| path_matches(rule, &target) && !path_matches(rule, named))
+        .map(String::as_str)
 }
 
 /// What a walk left behind, and why.
@@ -460,9 +492,12 @@ impl Grep {
 
                 let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
-                // what the walk found under it is barred here. See `Looking::barred`
-                if entry.path() != root.as_path()
-                    && barred.iter().any(|rule| path_matches(rule, &path))
+                // what the walk found under it is barred here. See `Looking::barred`. A link is
+                // barred for where it leads as well, the call's own included: the question was
+                // about its name. See `led_past`
+                if (entry.path() != root.as_path()
+                    && barred.iter().any(|rule| path_matches(rule, &path)))
+                    || led_past(&path, &opening, &workdir, &barred).is_some()
                 {
                     found.skipped.asked += 1;
                     continue;
@@ -716,9 +751,10 @@ impl Glob {
                 if kind.is_dir() {
                     continue;
                 }
+                let mut leads = None;
                 if kind.is_symlink() {
                     match followed(&reach, entry.path()) {
-                        Link::Read(_) => {}
+                        Link::Read(resolved) => leads = Some(resolved),
                         Link::Skip => continue,
                         Link::Refuse => {
                             skipped.links += 1;
@@ -729,9 +765,13 @@ impl Glob {
 
                 let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
-                // what the walk found under it is barred here. See `Looking::barred`
-                if entry.path() != root.as_path()
-                    && barred.iter().any(|rule| path_matches(rule, &path))
+                // what the walk found under it is barred here. See `Looking::barred`, and
+                // `led_past` for a link
+                if (entry.path() != root.as_path()
+                    && barred.iter().any(|rule| path_matches(rule, &path)))
+                    || leads
+                        .as_ref()
+                        .is_some_and(|leads| led_past(&path, leads, &workdir, &barred).is_some())
                 {
                     skipped.asked += 1;
                     continue;

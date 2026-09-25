@@ -147,11 +147,11 @@ impl Fs {
     pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
         let ops = ops();
         Self {
-            read: Read(reach.clone(), limits.clone()),
+            read: Read(reach.clone(), limits.clone(), looking.policy.clone()),
+            write: Write(reach.clone(), looking.policy.clone()),
+            edit: Edit(reach, looking.policy.clone()),
             glob: Glob(looking.clone()),
             grep: Grep(looking),
-            write: Write(reach.clone()),
-            edit: Edit(reach),
             limits,
             schema: Arc::new(schema(&ops)),
             ops,

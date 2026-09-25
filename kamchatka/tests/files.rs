@@ -196,6 +196,61 @@ async fn what_write_put_there_is_what_read_hands_back() {
     );
 }
 
+/// A link to a file a path rule has not allowed is refused by every operation that would open it,
+/// and names the file, so asking for it by that name is the next call; a link to anything else is
+/// the file under a second name.
+///
+/// note: `.env*` is one of the rules a fresh policy holds, as `ask`. A rule is about a name and a
+/// link is another one, so `alias -> .env` was read, written and edited under it because the name
+/// was `alias`.
+#[tokio::test]
+async fn a_link_to_a_file_a_rule_asks_about_is_not_opened_through() {
+    let dir = scratch("files-link-past");
+    std::fs::write(dir.join(".env"), "TOKEN=secret\n").expect("a file");
+    std::fs::write(dir.join("notes.txt"), "plain\n").expect("a file");
+    std::os::unix::fs::symlink(".env", dir.join("alias")).expect("a link");
+    std::os::unix::fs::symlink("notes.txt", dir.join("other")).expect("a link");
+    // a second name the rule also matches, which the policy has already been asked about
+    std::os::unix::fs::symlink(".env", dir.join(".env.local")).expect("a link");
+
+    for (action, args, doing) in [
+        ("read", json!({ "path": "alias" }), "nothing was read"),
+        (
+            "write",
+            json!({ "path": "alias", "content": "x" }),
+            "nothing was written",
+        ),
+        (
+            "edit",
+            json!({ "path": "alias", "old": "secret", "new": "x" }),
+            "nothing was changed",
+        ),
+    ] {
+        let said = ask(&dir, action, args).await;
+        assert!(
+            said.contains("leads to `.env`") && said.contains(doing),
+            "{action}: {said}"
+        );
+        assert!(said.contains("name it as `.env`"), "{action}: {said}");
+        assert!(!said.contains("secret"), "{action} read through it: {said}");
+    }
+    assert_eq!(
+        held(&dir, ".env"),
+        "TOKEN=secret\n",
+        "and nothing was written through it"
+    );
+
+    assert_eq!(
+        ask(&dir, "read", json!({ "path": "other" })).await,
+        "plain\n"
+    );
+    assert_eq!(
+        ask(&dir, "read", json!({ "path": ".env.local" })).await,
+        "TOKEN=secret\n",
+        "the rule matched the name it was asked for by, so it was already asked about"
+    );
+}
+
 /// Lines numbered from 1, each saying which it is.
 fn numbered(count: usize) -> String {
     (1..=count).map(|n| format!("line {n}\n")).collect()

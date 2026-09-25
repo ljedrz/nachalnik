@@ -132,7 +132,8 @@ const SUSPECT: &[&str] = &[
 /// of them changes which file is meant, and none of them may change which rule applies.
 ///
 /// note: what this cannot see is a *symlink*. A rule is about a name, and a name that resolves
-/// somewhere else resolves after this has answered. The boundary that does not care about names
+/// somewhere else resolves after this has answered. `fs` checks where the link led once it has
+/// resolved it - see `search::led_past` - and the boundary that does not care about names at all
 /// is the sandbox, which is the kernel's - see [`crate::sandbox`].
 ///
 /// note: names are compared exactly, because that is how the filesystem here compares them: `.ENV`

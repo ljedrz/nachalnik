@@ -324,12 +324,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   owns the directory, which matters only to a process that can read past the bits anyway - root, or
   one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid.
 
-- **A path rule about a link's name, not its target.** `grep` and `glob` judge a symlink by the
-  name it has in the walk, as `fs read` does, because `Careful` matches names and a rule cannot see
-  a link - so `alias -> .env` is not caught by `.env*`, and the sandbox is the boundary. The walk
-  already holds the resolved target and could check it too; doing so for the walk alone would make
-  it stricter than `read`, and doing it for both is a change to what a path rule is.
-
 - **An `--allow-server` for a server this run does not start.** A server rule naming no server
   is refused, allow and deny alike, as a rule about a domain no tool declares already is. A settings
   file that allows a server is refused with it when the command line's `--mcp` replaces the file's

@@ -453,6 +453,30 @@ async fn glob_past_its_cap_says_there_are_more() {
     );
 }
 
+/// A walk does not open a link to a file a path rule has not allowed, and counts it with the files
+/// the rules kept it out of - the same as it does the file under its own name.
+#[tokio::test]
+async fn a_walk_does_not_follow_a_link_past_a_path_rule() {
+    let dir = scratch("walk-link-past");
+    put(&dir, ".env", "TOKEN=Kernel-of-a-secret\n");
+    put(&dir, "src/kernel.rs", "pub struct Kernel;\n");
+    std::os::unix::fs::symlink("../.env", dir.join("src/alias")).expect("a link");
+
+    let found = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    assert!(!found.contains("secret"), "{found}");
+    assert!(
+        found.contains("skipped: 2 file(s) a path rule says to ask about"),
+        "the file and the link to it: {found}"
+    );
+
+    let listed = ask(&dir, "glob", json!({ "pattern": "**/*" })).await;
+    assert!(!listed.contains("alias"), "{listed}");
+    assert!(
+        listed.contains("skipped: 2 file(s) a path rule says to ask about"),
+        "{listed}"
+    );
+}
+
 #[tokio::test]
 async fn glob_says_when_nothing_matches() {
     let dir = tree("glob-nothing");

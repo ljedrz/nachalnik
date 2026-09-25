@@ -428,9 +428,11 @@ decision, and neither are `context:note`, which adds an item to your context, an
 reasonable thing to want and `fs:read .env: allow` is not, and the difference is a property of the
 file rather than of the tool that opened it. It binds every tool that is handed a path, the walks
 included: a walk cannot *ask*, so what `grep` and `glob` do about a rule that is not `allow` is
-not open the file, and say how many they left alone. A **server** is the odd one out, because it
-is about where a tool came from rather than what it does — which is the one thing about an MCP
-tool that nobody has to take the server's word for.
+not open the file, and say how many they left alone. A link does not take a file out from under
+one: `read`, `write` and `edit` refuse a link to a file a rule has not allowed, naming the file so
+the next call can ask for it by that name, and a walk leaves it out with the rest. A **server** is
+the odd one out, because it is about where a tool came from rather than what it does — which is the
+one thing about an MCP tool that nobody has to take the server's word for.
 
 The most specific rule that has an answer decides, and a refusal above it overrules.
 `--allow context` allows the lot; `--allow context:note` allows a note and says nothing about the
