@@ -196,6 +196,7 @@ policy.changed     context.redone      model.finished     tool.output
 projector.changed  context.annotated   model.failed       tool.finished
 counter.changed    context.recounted   step.failed        permission.requested
 compactor.changed  context.compacted                      permission.decided
+                                                          policy.ruled
 ```
 
 Every one of them carries what a client needs to render it without inferring anything. An undo
