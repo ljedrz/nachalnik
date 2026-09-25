@@ -142,6 +142,8 @@ fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
         (".ssh/", "/home/x/.ssh/config"),
         // a directory rule, which the bare `..` refused below is not
         ("../", "../outside"),
+        // a backslash is part of a name, so this is a file called that
+        ("a\\b", "x/a\\b"),
     ] {
         assert_eq!(
             objection_to(pattern),
@@ -158,7 +160,6 @@ fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
         "src/**",
         "src/*.rs",
         "secrets/*.key",
-        "a\\b",
         "/",
         "",
         "secrets*/",
@@ -745,7 +746,8 @@ fn a_rule_is_about_its_name_exactly() {
     assert!(path_matches(".env*", ".env.local"));
     assert!(!path_matches(".env*", ".ENV"));
     assert!(!path_matches("secrets/", "Secrets/key"));
-    // and a backslash is read as a separator, which can only make a rule apply where it would not
-    assert!(path_matches("secrets/", r"secrets\key"));
+    // and a backslash is part of the name it is in, not a separator
+    assert!(!path_matches("secrets/", r"secrets\key"));
+    assert!(path_matches(r"a\b", r"x/a\b"));
     assert!(path_matches("../", "../outside"));
 }

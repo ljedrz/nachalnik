@@ -137,11 +137,10 @@ const SUSPECT: &[&str] = &[
 ///
 /// note: names are compared exactly, because that is how the filesystem here compares them: `.ENV`
 /// is another file than `.env`, and a rule folded to match it would reach files it was not written
-/// for. A backslash is read as a separator as well, which on Linux can only make a rule apply
-/// where it would not have - the direction a permission rule is allowed to be wrong in.
+/// for. A backslash is a character a name may hold, as it is everywhere else here, and not a
+/// separator.
 pub fn path_matches(pattern: &str, path: &str) -> bool {
-    let path = path.replace('\\', "/");
-    let path = Path::new(&path);
+    let path = Path::new(path);
 
     if let Some(directory) = pattern.strip_suffix('/') {
         return path
@@ -187,11 +186,6 @@ pub fn objection_to(pattern: &str) -> Option<String> {
     // climbs out - so it is only the bare two that are refused
     if matches!(pattern, "." | "..") {
         return objection("cannot match: no file is called that");
-    }
-    if pattern.contains('\\') {
-        return objection(
-            "cannot match: a path is read with `/` between its names, whatever was typed",
-        );
     }
     match pattern.strip_suffix('/') {
         Some(directory) if directory.is_empty() || directory.contains('/') => {
