@@ -35,8 +35,8 @@ use super::{CHANGES, Pinned};
 /// a call asking for a hundred would get sixty-four and read as though it had got a hundred.
 const WALK: u64 = 64;
 
-/// Changes the context: prunes it, rewrites an item, writes something down, walks its own
-/// changes back.
+/// Changes the context: moves items between states, rewrites one, writes something down, walks
+/// its own changes back.
 ///
 /// note: it keeps the set of items it pinned itself, which is the mechanism that stops a model
 /// quietly unpinning what a person pinned. A pin is a promise, and the promise was not made to the
