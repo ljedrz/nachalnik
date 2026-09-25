@@ -485,10 +485,23 @@ fn held(given: &Value, args: Option<&Value>) -> String {
         true => format!("its `{WRAPPER}` holds"),
         false => "its arguments are".to_owned(),
     };
-    match keys.is_empty() {
-        true => String::new(),
-        false => format!(" - {place} {} and no `action`", keys.join(", ")),
-    }
+    // an `action` that is there and is not a name - an object or a list, which is what a call
+    // written in some other syntax arrives as - is said to be what it is: "holds `action` and no
+    // `action`" is the one reading of it that cannot be acted on
+    let what = match args.and_then(|args| args.get("action")) {
+        Some(Value::Object(_)) => "an object",
+        Some(Value::Array(_)) => "a list",
+        Some(Value::Number(_)) => "a number",
+        Some(Value::Bool(_)) => "a truth value",
+        Some(Value::Null) => "null",
+        Some(Value::String(_)) | None => {
+            return match keys.is_empty() {
+                true => String::new(),
+                false => format!(" - {place} {} and no `action`", keys.join(", ")),
+            };
+        }
+    };
+    format!(" - its `action` is {what} rather than the name of one")
 }
 
 /// What is wrong with the arguments a call gave, if anything: an argument the operation it named
@@ -771,6 +784,22 @@ mod tests {
             said.contains("`fs:read`"),
             "and says what a rule that would have answered looks like: {said}"
         );
+
+        let said = unnamed_operation(
+            &spec,
+            &asking(json!({ WRAPPER: { "action": { "action": "read" }, "path": "x" } })),
+        )
+        .expect("an `action` that is not a name places nothing");
+        assert!(
+            said.contains("its `action` is an object"),
+            "and says what it is, rather than that there is none: {said}"
+        );
+        let said = unnamed_operation(
+            &spec,
+            &asking(json!({ WRAPPER: { "action": ["read", "read"], "path": "x" } })),
+        )
+        .expect("nor does a list of them");
+        assert!(said.contains("its `action` is a list"), "{said}");
 
         let said = unnamed_operation(
             &spec,
