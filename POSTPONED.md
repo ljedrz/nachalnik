@@ -292,25 +292,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   those apart is what a bound would have to do, and nothing on the wire carries a client identifier
   to do it with - which is the same thing the arbitration entry above needs first.
 
-- **Saying that a refused `connect` was the confinement.** `Sandbox::note_for` accounts for a
-  permission error a confined command hit, and it says nothing where every path the error names is
-  one the session reaches - because such a refusal is normally the file's own permissions, and a
-  hedge there sends a model looking for a boundary that had nothing to do with it. A socket under
-  `/run` is now exactly that case and the reasoning no longer holds: the session can read it and
-  cannot connect to it, so `docker ps` comes back `Permission denied` with nothing said about why.
-
-  Knowing when to say it is not in the way. This entry once said it was - that the terminal's own
-  process could not ask `confines_unix_sockets`, and the answer belonged to the child - but that
-  function builds a ruleset and applies none, so any process can ask it, and the kernel it answers
-  about is the one the child runs on; `tests/sandbox.rs` asks it the same way. Below 7.1 it answers
-  `false`, and there the refusal really is the socket's own permissions, so the sentence belongs
-  only where it answers `true`.
-
-  What is left is reading a refusal as a `connect`. `Sandbox::reaches` is the reading half of the
-  rule and a socket is held to the writing half, so the note wants a test of its own beside it: a
-  named path that is a socket by its file type rather than by the wording of the error, outside
-  every writable path, on a kernel that handles the right.
-
 - **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
   the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
   counter gave, with no `context.recounted` to say so, and lists every item it re-priced as changed

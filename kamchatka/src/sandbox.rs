@@ -317,9 +317,15 @@ impl Sandbox {
         // each costing a dozen `canonicalize` calls, was minutes of work after the command had
         // already ended, with nothing to interrupt it
         let (mut named, mut mentioned): (Vec<String>, bool) = (Vec::new(), false);
+        let mut sockets = 0;
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
             mentioned = true;
-            if !named.contains(&path) && !self.reaches(Path::new(&path)) {
+            if named.contains(&path) {
+                continue;
+            }
+            let socket = self.refuses_connecting(Path::new(&path));
+            if socket || !self.reaches(Path::new(&path)) {
+                sockets += usize::from(socket);
                 named.push(path);
                 if named.len() == 3 {
                     break;
@@ -334,18 +340,61 @@ impl Sandbox {
                 "[this command ran confined - {self} - so a permission error below may be that \
                  boundary rather than the file's own permissions.]"
             )),
+            // a socket the command could read the path of and not connect to, which "outside what
+            // this session reaches" would be false about
+            (false, _) if sockets == named.len() => Some(format!(
+                "[{} is a socket outside what this session may write, and a confined command may \
+                 connect only to a socket it could have written, so the permission error below \
+                 is the confinement rather than the socket's own permissions. This command runs \
+                 with {self}. Say what you need the socket for and ask for it to be opened up.]",
+                named.join(", "),
+            )),
             (false, _) => Some(format!(
-                "[{} is outside what this session reaches, so the permission error below is the \
+                "[{} is outside what this session reaches{}, so the permission error below is the \
                  confinement rather than the file's own permissions. This command runs with \
                  {self}. Work inside the working directory, or say what you need the path for \
                  and ask for it to be opened up.]",
-                named
-                    .iter()
-                    .map(|path| path.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", "),
+                named.join(", "),
+                match sockets {
+                    0 => "",
+                    _ => " or may connect to",
+                },
             )),
         }
+    }
+
+    /// Whether `path` is a socket a confined command may not connect to, on a kernel that holds it
+    /// to that.
+    ///
+    /// note: the other half of [`Sandbox::reaches`], which asks about reading. A socket is held to
+    /// the writing half of the ruleset, so a session can read the path of one under `/run` and be
+    /// refused the connection - and `docker ps` came back `Permission denied` with nothing said,
+    /// because the path was one the session reaches. By the file's type rather than by the words of
+    /// the error, which a client chooses; and only where [`confines_unix_sockets`] says the kernel
+    /// governs sockets at all, since below that the refusal really is the socket's own permissions.
+    fn refuses_connecting(&self, path: &Path) -> bool {
+        use std::os::unix::fs::FileTypeExt as _;
+
+        let Some(resolved) = resolve(path) else {
+            return false;
+        };
+        if !resolved
+            .metadata()
+            .is_ok_and(|meta| meta.file_type().is_socket())
+        {
+            return false;
+        }
+        let writable = self
+            .writable
+            .then_some(&self.workdir)
+            .into_iter()
+            .chain(self.extra.iter())
+            .any(|root| {
+                root.canonicalize()
+                    .is_ok_and(|root| resolved.starts_with(root))
+            });
+
+        !writable && confines_unix_sockets()
     }
 
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
@@ -469,8 +518,14 @@ fn resolve(path: &Path) -> Option<PathBuf> {
 ///
 /// note: three spellings because three layers write them: a C program's `strerror`, Rust's
 /// `io::Error` display, and the errno name itself. All three are the same refusal.
+///
+/// note: the lowercase spelling too, which is Go's - `docker` says `connect: permission denied`,
+/// and a refused socket is the refusal a Go client is most often the one reporting.
 fn refused(line: &str) -> bool {
-    line.contains("Permission denied") || line.contains("os error 13") || line.contains("EACCES")
+    line.contains("Permission denied")
+        || line.contains("permission denied")
+        || line.contains("os error 13")
+        || line.contains("EACCES")
 }
 
 /// The absolute paths a line of standard error mentions.

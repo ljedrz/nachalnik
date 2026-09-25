@@ -687,6 +687,19 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
         "a socket in a path opened for reading alone was connected to: {said}"
     );
     assert!(said.contains("Permission denied"), "{said}");
+    // and what the shell says about it, on the line `docker` writes - Python's names no path. The
+    // path is one the session reads, which used to be taken for the socket's own permissions and
+    // left without a word
+    let note = readable
+        .note_for(&format!(
+            "dial unix {}: connect: permission denied\n",
+            socket.display()
+        ))
+        .expect("a refused connection is the confinement's");
+    assert!(
+        note.contains(&format!("{} is a socket", socket.display())),
+        "{note}"
+    );
     drop(listening);
 }
 
