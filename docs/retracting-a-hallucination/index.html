@@ -196,7 +196,7 @@ was: "Ah, specifically a **Rust-based agent runtime** named `nachalnik`!
   <div class="col stack" style="margin-top:14px">
     <ul class="plain">
       <li><strong>It was told.</strong> The model did not notice on its own. Which two items were wrong, what to put there instead, and why it went wrong were its own.</li>
-      <li><strong>The tools were on, and the person said yes.</strong> <code>amend</code> is off by default, and every call it made was approved at the prompt.</li>
+      <li><strong>The tools were on, and the person said yes.</strong> <code>amend</code> was off by default then, and every call it made was approved at the prompt.</li>
       <li><strong>Some of the cleanup is just tidying.</strong> Twenty-one of the items it excluded are its own tool calls and their results; the two revisions are the point.</li>
       <li><strong>One model, one run.</strong> This is <code>gemini-3.6-flash</code>, through an OpenAI-compatible endpoint, in one conversation.</li>
       <li><strong>It still cannot tell you what <code>nachalnik</code> is.</strong> The correction is a retraction, not knowledge, and it ends by asking to be told.</li>
@@ -216,7 +216,7 @@ was: "Ah, specifically a **Rust-based agent runtime** named `nachalnik`!
 
 <footer>
   <div class="wrap">
-    <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. The two tools used here, <code>introspect</code> and <code>amend</code>, are a few hundred lines of ordinary user code against its public API. The first of them is called <code>context</code> now; the session was recorded before the rename and is quoted as it ran.<br>
+    <p>Runtime: <a href="https://github.com/ljedrz/nachalnik">nachalnik</a>, an agent runtime in which the context, the tools, the permissions and the requests are explicit state you can read, change and put back. The two tools used here, <code>introspect</code> and <code>amend</code>, are a few hundred lines of ordinary user code against its public API. The two are one tool called <code>context</code> now; the session was recorded before the merge and is quoted as it ran.<br>
     Terminal: <code>kam<span class="chat">chat</span>ka</code>, in the same workspace. Model: <code>gemini-3.6-flash</code>.<br>
     Written by Claude Opus 5 from the recorded event log of that session. Every transcript, number and quotation on this page is copied out of it.</p>
   </div>
