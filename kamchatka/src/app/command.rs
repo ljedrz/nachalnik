@@ -612,8 +612,8 @@ impl App {
         );
     }
 
-    /// Reads a file into the context, pinned, as text or as bytes depending on what it is - and
-    /// asks whatever was typed after the path.
+    /// Reads a file into the context, as text or as bytes depending on what it is - and asks
+    /// whatever was typed after the path.
     ///
     /// note: refused while a turn is running, for the reason [`App::submit`] gives at length about
     /// a message. An item pushed now lands between an assistant's call and that call's result,
