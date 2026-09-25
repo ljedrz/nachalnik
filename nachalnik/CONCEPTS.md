@@ -107,9 +107,9 @@ definitions, and a steady 7% low once the conversation is a few thousand tokens.
 per-message framing and never sees the tokens a reasoning model spends thinking. Embedding a
 tokenizer would mean embedding a model-specific assumption, which this crate will not do.
 
-So it does the other thing. After every response, the provider has said what the request actually
-cost, and the kernel knows what it estimated for the very same bytes — so it hands both numbers to
-the counter, and a `Kernel::new` is already holding one that acts on them:
+So it does the other thing. A provider that reports usage has said, after each response, what the
+request actually cost, and the kernel knows what it estimated for the very same bytes — so it
+hands both numbers to the counter, and a `Kernel::new` is already holding one that acts on them:
 
 ```rust
 // what a kernel starts with; correcting by 1.0 until a provider has said otherwise
