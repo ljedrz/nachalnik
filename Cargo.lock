@@ -1342,6 +1342,7 @@ dependencies = [
  "grep-searcher",
  "ignore",
  "landlock",
+ "libc",
  "nachalnik",
  "nachalnik-mcp",
  "nachalnik-providers",

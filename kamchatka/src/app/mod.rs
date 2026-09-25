@@ -15,8 +15,8 @@ use std::{
 #[cfg(feature = "tui")]
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use nachalnik::{
-    Content, ContextId, ContextItem, ContextState, Delta, Event, Grant, GrantSource, Kernel,
-    PermissionId, PermissionRequest, State, StopReason, Tool, Usage, Verdict,
+    Capability, Content, ContextId, ContextItem, ContextState, Delta, Event, Grant, GrantSource,
+    Kernel, PermissionId, PermissionRequest, State, StopReason, Tool, Usage, Verdict,
 };
 use nachalnik_providers::Dialect;
 #[cfg(feature = "tui")]
@@ -26,7 +26,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     sandbox::Confinement,
-    tools::{Careful, Limits},
+    tools::{Careful, Limits, Subject},
 };
 
 mod command;
@@ -1640,6 +1640,49 @@ impl App {
         Ok(())
     }
 
+    /// Answers a running command that reached for the network, and writes the answer down.
+    ///
+    /// note: the counterpart of [`App::decide`] for the question the kernel does not ask, and it is
+    /// where all three loops answer one for the same reason that one exists: an answer is more
+    /// than the command hearing it. It is a `policy.ruled` in the record - the kernel has no event
+    /// for this question, so the rule is the paper trail - and with `remember` it is `net:reach`
+    /// allowed from here on, which lets through every command already waiting on the same
+    /// question.
+    ///
+    /// note: the command reads the answer, not the model: its sockets open or come back
+    /// `Permission denied`, and the result it hands the model says which the person chose.
+    pub fn decide_reach(&mut self, id: u64, grant: Grant, remember: bool) -> Result<(), String> {
+        if remember && grant != Grant::Allow {
+            return Err(
+                "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
+                 or `--deny`"
+                    .to_owned(),
+            );
+        }
+        let allow = grant == Grant::Allow;
+        self.policy.reaching().answer(id, allow)?;
+
+        let subject = Subject::Capability(Capability::net("reach"));
+        if remember {
+            self.policy.set(&subject, Verdict::Allow);
+            for waiting in self.policy.reaching().waiting() {
+                let _ = self.policy.reaching().answer(waiting.id, true);
+            }
+        }
+        self.kernel.record_rule(
+            subject.to_string(),
+            match allow {
+                true => Verdict::Allow,
+                false => Verdict::Deny,
+            },
+            None,
+            !remember,
+        );
+        self.acted = true;
+
+        Ok(())
+    }
+
     /// What the *program* has said since the last look, for a loop that has to print it.
     ///
     /// note: only [`Speaker::Note`] and [`Speaker::Error`]. The model's own words arrive as
@@ -2000,6 +2043,16 @@ impl App {
         self.kernel.pending_permissions().into_iter().next()
     }
 
+    /// The running command waiting to hear whether it may reach the network, if one is.
+    ///
+    /// note: the other kind of question a tool waits on, and the one the kernel knows nothing
+    /// about: it is asked while the call runs rather than before, by the gate holding the
+    /// command's first attempt at an internet socket. See [`crate::gate`] and
+    /// [`App::decide_reach`].
+    pub fn reached(&self) -> Option<crate::tools::Reached> {
+        self.policy.reaching().first()
+    }
+
     /// Whether anything is standing in the prompt's place, waiting to be answered.
     ///
     /// note: the two kinds are a tool waiting on a decision and a compaction waiting on one, and
@@ -2007,7 +2060,7 @@ impl App {
     /// there is a prompt at all - cares only that there is one. Which it is, is a question for
     /// the panel that draws it and the key that answers it.
     pub fn asking(&self) -> bool {
-        self.asked().is_some() || self.proposed.is_some()
+        self.asked().is_some() || self.reached().is_some() || self.proposed.is_some()
     }
 
     /// Answers the compaction standing in the prompt's place.

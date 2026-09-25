@@ -519,7 +519,14 @@ impl Setup {
             let program =
                 std::env::current_exe().map_err(|e| format!("could not find myself: {e}"))?;
             if self.confine {
-                confinement = sandbox::available(&program);
+                let probed = sandbox::available(&program);
+                confinement = probed.confinement;
+                // note: only where the shell is confined, which `available` already folds in: the
+                // gate is installed by the child that confines itself, so an unconfined shell has
+                // nothing to hold a call with and goes on being asked about by name
+                if probed.gated {
+                    policy.gate_the_network();
+                }
             }
             let reach = sandbox::Reach {
                 workdir: std::env::current_dir()

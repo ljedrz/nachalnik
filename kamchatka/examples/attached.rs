@@ -121,6 +121,13 @@ async fn main() -> Result<(), String> {
         .await?;
     }
 
+    // and the running commands waiting to hear whether they may reach the network, which are not
+    // the kernel's questions and are never records at all: the session sends the list whenever it
+    // changes. Each is refused once, since the list comes again with it still in it until the
+    // answer lands
+    let mut refused = std::collections::BTreeSet::new();
+    refuse_reaching(&mut write, &attached.reaching, &mut refused).await?;
+
     println!("ask: {question}");
     protocol::write(&mut write, &Command::Submit { line: question }).await?;
 
@@ -177,6 +184,9 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 }
+            }
+            Message::Reaching { waiting } => {
+                refuse_reaching(&mut write, &waiting, &mut refused).await?
             }
             Message::Said { text, .. } => println!("\n· {text}"),
             Message::Failed { about, error } => println!("\n· {about}: {error}"),
@@ -243,4 +253,26 @@ async fn next<R: tokio::io::AsyncRead + Unpin>(
     tokio::time::timeout(PATIENCE, protocol::read(lines))
         .await
         .map_err(|_| format!("the session said nothing for {}s", PATIENCE.as_secs()))?
+}
+
+/// Refuses every running command in the list that has not been refused already.
+async fn refuse_reaching(
+    write: &mut (impl tokio::io::AsyncWrite + Unpin),
+    waiting: &[protocol::Reached],
+    refused: &mut std::collections::BTreeSet<u64>,
+) -> Result<(), String> {
+    for reached in waiting.iter().filter(|reached| refused.insert(reached.id)) {
+        println!("\n? `{}` reached for the network; refusing", reached.cmd);
+        protocol::write(
+            write,
+            &Command::Reach {
+                id: reached.id,
+                grant: Grant::Deny,
+                remember: false,
+            },
+        )
+        .await?;
+    }
+
+    Ok(())
 }

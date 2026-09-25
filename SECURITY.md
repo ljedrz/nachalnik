@@ -33,22 +33,44 @@ Referenced from [AGENTS.md](AGENTS.md).
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
   Landlock governs TCP from ABI 4, which is Linux 6.7: below that the ruleset comes back
-  `Partial`, the files are still confined, the network is not, and the permissions tab says
-  "partly confined".
+  `Partial`, the files are still confined, TCP is left to the gate below where there is one, and
+  the permissions tab says "partly confined".
   The `landlock` crate has no UDP right to hand a ruleset, ABI 10 and the kernel's own
-  `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, and the readmes say so rather than rounding it up.
+  `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, so UDP is the gate's or nobody's, and where there
+  is no gate the words say `no TCP` rather than rounding it up.
   The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
-  stopped call would kill instead of the command. `#![deny(unsafe_code)]` is why it is a re-exec
-  rather than `CommandExt::pre_exec` - and why the UDP rights stay out of reach until the crate
-  exposes them. The `fs` tool, which is not a process - it opens a file, or walks a directory of
-  them - is held to the same boundary by its own code, which is weaker in kind and said to be: a
-  path is resolved, links followed, and checked, and then opened beneath the directory it was
-  allowed under - and a write makes its new file and renames it in a directory opened the same
-  way. On Linux that open is `openat2` with `RESOLVE_BENEATH`, so a component swapped for a link
-  between the check and the open is refused by the kernel; elsewhere, and on a kernel older than
-  5.6, it is an ordinary open and the swap is not caught. A directory swapped in the middle of
-  a walk is only caught at the files opened under it: `glob` lists names, and a name is not
-  refused.
+  stopped call would kill instead of the command. It is a re-exec rather than
+  `CommandExt::pre_exec` because `pre_exec` runs between `fork` and `exec` in a process that has a
+  runtime's threads in it, where almost nothing is safe to call. The `fs` tool, which is not a
+  process - it opens a file, or walks a directory of them - is held to the same boundary by its own
+  code, which is weaker in kind and said to be: a path is resolved, links followed, and checked,
+  and then opened beneath the directory it was allowed under - and a write makes its new file and
+  renames it in a directory opened the same way. On Linux that open is `openat2` with
+  `RESOLVE_BENEATH`, so a component swapped for a link between the check and the open is refused
+  by the kernel; elsewhere, and on a kernel older than 5.6, it is an ordinary open and the swap is
+  not caught. A directory swapped in the middle of a walk is only caught at the files opened under
+  it: `glob` lists names, and a name is not refused.
+- **The network is asked about when a command tries, not when it is named.** On Linux, on x86_64
+  and aarch64, the confined child also installs a seccomp filter - `kamchatka::gate` - that holds
+  every `socket()` for `AF_INET` or `AF_INET6`, which is the first thing any use of the network
+  does, a DNS lookup included, and hands the listener to the process that spawned it. That process
+  answers from `net:reach`: `allow` lets it through, `deny` refuses it with `EACCES`, and `ask`
+  asks the person, once per command, while the call waits. The filter reads only the call's
+  integer arguments - the family's low 32 bits, since that is all the kernel reads - so there is
+  no address a command could change after the answer, and nothing is decided per destination.
+  Where the gate holds, `Careful` stops reading a command for program names, and an allowed
+  `exec:run` runs unasked until a command reaches out. It covers a 32-bit process and an x32 call
+  through their own tables, and refuses `io_uring_setup` outright, since a ring opens a socket
+  without calling `socket()`. What it does not cover: a socket inherited or received over a unix
+  socket from a process outside the confinement - which the unix-socket rule below is what stands
+  in front of - and a family other than the two, such as `AF_PACKET`, which needs a privilege a
+  confined command does not have. An attempt made by something the command left running, after the
+  call is over and with nothing decided, is refused rather than asked, because a question about a
+  command that has ended reaches nothing. Where the gate cannot be installed - off Linux, under
+  `--no-sandbox`, on a kernel that cannot hold a call - the question is read off the command's
+  name, as it was, and the permissions tab says `network not gated`. `gate` is the one module in
+  the workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely
+  without linking the C `libseccomp`, each with its reason beside it.
 - **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
   a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
   The confinement holds a command to its directory and says nothing about what the command was
@@ -126,11 +148,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   a headless run granted a `curl` and then ran it with the network cut, because telling `Careful`
   about a granted command is a separate act from telling the kernel. The other three are honouring
   `always` over what the policy actually *consulted* rather than over what the tool declared,
-  sweeping the questions already queued behind this one, and driving the turn on afterwards.
+  sweeping the questions already queued behind this one, and driving the turn on afterwards. The
+  gate's question has its own, `App::decide_reach`, for the same reason: the kernel never asked it,
+  so the `policy.ruled` it writes is the only record there is of who let a command out.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
-  exist because its documentation is exact about what it misses, and because refusing up front with
-  a reason is kinder than letting a command run and fail. It is no longer what stands between the
-  model and the network. Anything of that shape needs the same treatment.
+  exist because its documentation is exact about what it misses, because refusing up front with a
+  reason is kinder than letting a command run and fail, and because it is consulted only where the
+  gate does not hold. It is not what stands between the model and the network. Anything of that
+  shape needs the same treatment.
 
 ---
 
@@ -143,9 +168,11 @@ what stands in the way, and what does not.
   answer can carry instructions, and the model acts on what it reads, so the model is treated as
   a party that may be steered. It acts only through tools the policy lets run. The `shell` tool is
   confined by Landlock on Linux - files outside the reach, TCP `connect`, and on 7.1 and later a
-  unix socket it could not write - and is not handed this program's keys. The `fs` tool is held to
-  the same reach by its own code, and on Linux opens beneath the directory a path was allowed
-  under. What it can still do: send UDP; read anything the reach includes and put it in the
+  unix socket it could not write - has its internet sockets held by the gate where there is one,
+  and is not handed this program's keys. The `fs` tool is held to the same reach by its own code,
+  and on Linux opens beneath the directory a path was allowed under. What it can still do: send
+  UDP where there is no gate, and reach the network through whatever a person allowed; read
+  anything the reach includes and put it in the
   context, which goes to the provider; spend the session's budget, including on `fork` drafts,
   which the spend ceiling does not count yet (POSTPONED.md). Off Linux, and under `--no-sandbox`,
   the shell is not confined at all and the permission question is the only thing in the way.

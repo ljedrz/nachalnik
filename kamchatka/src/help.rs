@@ -199,7 +199,8 @@ pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys wheneve
 pub const QUESTION: &str =
     "  SOMETHING IS WAITING FOR AN ANSWER - in the prompt's place, on the chat
   tab, which goes red on the tab strip while one is there. A tool asking to
-  run, or the compaction `/compact` proposed
+  run, a running command that reached for the network, or the compaction
+  `/compact` proposed
     tab                 put the keys on it. None of the answers below does
                         anything until you have, and nor does enter
     y / n               once / no
@@ -209,6 +210,9 @@ pub const QUESTION: &str =
                         the calls already waiting behind it
     i                   the exact JSON, and the tool's own definition
     d                   drop every call it is waiting on, and tell it why
+    (a command reaching for the network takes y, a and n, and the answer
+     holds for the rest of that command; a is net:reach allowed from then
+     on. esc stops the turn it is running in, which takes the question too)
     (a compaction takes y, n, esc and the scrolling keys, and nothing else.
      It is holding nothing up: alt+2 to the context tab, p on what should
      stay, back, and answer - the pass is worked out again, so what you kept

@@ -1469,6 +1469,86 @@ async fn restart_ends_it_without_ending_the_program() {
 
 // ------------------------------------------------------------------- the program, and a socket
 
+/// The program finds the gate for itself and puts the shell behind it: a command that opens a
+/// socket under `--allow exec:run` is asked about when it tries, and a run with nobody at it
+/// answers `deny`.
+///
+/// note: through the binary, because the half this is about is `Setup::wire` - the probe finding
+/// that the gate holds, and the policy being told so. Everything past that is tested in process,
+/// where no probe runs.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
+    let probed = kamchatka::sandbox::available(&common::program());
+    if probed.confinement != kamchatka::sandbox::Confinement::Full || !probed.gated {
+        eprintln!("skipped: the network gate does not hold here");
+        return;
+    }
+    let base = common::endpoint(vec![
+        format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+                {"index": 0, "id": "c1", "type": "function", "function": {"name": "shell",
+                 "arguments": "{\"cmd\": \"python3 -c 'import socket; socket.socket()'\"}"}}
+            ]}, "finish_reason": "tool_calls"}]})
+        ),
+        common::answer("refused, then"),
+    ])
+    .await;
+
+    let mut child = std::process::Command::new(common::program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--allow",
+            "exec:run",
+            "go",
+        ])
+        .current_dir(common::workdir("program-gate"))
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    // bounded, because a command left waiting on a question nobody answers is a run that never
+    // ends, and a suite that hangs says nothing about which assertion never came true
+    let watched = watch(child.stderr.take().expect("stderr is a pipe"));
+    let mut stdout = child.stdout.take().expect("stdout is a pipe");
+    let records = std::thread::spawn(move || {
+        let mut records = String::new();
+        let _ = std::io::Read::read_to_string(&mut stdout, &mut records);
+        records
+    });
+    waited_out(&mut child, std::time::Duration::from_secs(30), &watched);
+    let records = records.join().expect("it was read");
+    // what the watcher has read by the time the process has gone may be short of the end, which
+    // is what the line this is looking for is near
+    let waited = std::time::Instant::now();
+    while !watched.lock().contains("reached for the network")
+        && waited.elapsed() < std::time::Duration::from_secs(5)
+    {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let said = watched.lock().clone();
+
+    assert!(
+        said.contains("reached for the network: deny, because nobody is here to be asked"),
+        "{said}"
+    );
+    // `python3` is no name a policy reading the command would have asked about
+    assert!(!said.contains("shell: deny"), "{said}");
+    assert!(
+        records
+            .lines()
+            .any(|line| line.contains("policy.ruled") && line.contains("net:reach")),
+        "{records}"
+    );
+}
+
 /// `ctrl+c` stops a command that is running, and what arrived is kept.
 ///
 /// note: the case this was written to test was a *second* press leaving a turn the first could not
@@ -3396,4 +3476,74 @@ async fn a_ceiling_lowered_under_the_spend_stops_the_running_turn() {
             .any(|item| item.content.to_text().contains("never reached")),
         "the turn asked again after the ceiling was put under what it had spent"
     );
+}
+
+/// A running command that reaches for the network is answered by `--on-ask`, while the turn it is
+/// in is still running, and the answer is in the record and in what the model is handed.
+///
+/// note: the one question a headless run answers while busy. The kernel's questions wait for the
+/// kernel to rest, because answering one mid-turn would decide a question the kernel had not
+/// finished asking; this one holds a call that is already running, so waiting for the rest would
+/// be waiting for the command that is waiting on the answer.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
+    let probed = kamchatka::sandbox::available(&common::program());
+    if probed.confinement != kamchatka::sandbox::Confinement::Full || !probed.gated {
+        eprintln!("skipped: the network gate does not hold here");
+        return;
+    }
+    let dir = common::workdir("headless-gate");
+    let script = vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "cmd": "python3 -c \"import socket; socket.socket()\"" }),
+        )]),
+        ModelResponse::text("it was refused"),
+    ];
+
+    // bounded, because the failure this is about is a command waiting on an answer nobody gives,
+    // and that is a suite that hangs rather than one that fails
+    let run = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        run("fetch it\n", script, |app| {
+            app.policy.gate_the_network();
+            app.policy.set(&Subject::parse("exec:run"), Verdict::Allow);
+            app.kernel.add_tool(Arc::new(kamchatka::tools::Shell {
+                policy: app.policy.clone(),
+                workdir: dir.clone(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                confiner: Some(common::program()),
+                limits: kamchatka::tools::Limits::default(),
+            }));
+        }),
+    )
+    .await
+    .expect("the command was left waiting on a question nobody answered");
+
+    assert!(
+        run.prose
+            .contains("reached for the network: deny, because nobody is here to be asked"),
+        "{}",
+        run.prose
+    );
+    // an allowed `exec:run` is not a question, whatever the command is called
+    assert!(!run.names().contains(&"permission.requested".to_owned()));
+    let ruled = run.log().into_iter().any(|record| {
+        matches!(
+            record.event,
+            nachalnik::Event::PolicyRuled { ref subject, verdict: Verdict::Deny, once: true, .. }
+                if subject == "net:reach"
+        )
+    });
+    assert!(ruled, "the answer is in the record: {:?}", run.names());
+    let told = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .any(|item| item.content.to_text().contains("was asked and said no"));
+    assert!(told, "the model was not told who refused it");
 }

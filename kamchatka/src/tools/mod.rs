@@ -26,6 +26,7 @@ mod files;
 mod fs;
 pub(crate) mod ops;
 mod policy;
+mod reaching;
 mod search;
 mod shell;
 mod trim;
@@ -34,6 +35,7 @@ mod trim;
 pub use crate::tools::advice::{Advised, Rated, Rating};
 pub use crate::tools::{
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
+    reaching::{Reached, Reaching},
     shell::{Exit, Shell, joints},
     trim::Trim,
 };

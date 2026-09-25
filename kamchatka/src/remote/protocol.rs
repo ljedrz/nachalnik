@@ -18,6 +18,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt};
 #[cfg(doc)]
 use crate::app::App;
 use crate::app::{Did, Going, Page, Said, Speaker, Stance};
+pub use crate::tools::Reached;
 
 /// The longest line either end will read before giving up on the connection.
 ///
@@ -72,9 +73,10 @@ pub const VERSION: u32 = 1;
 
 /// What a client asks a session to do.
 ///
-/// note: eight, and the set is meant to stay about this size. Six of them are things a person at
+/// note: nine, and the set is meant to stay about this size. Seven of them are things a person at
 /// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer
-/// a question, move an item, read one, rewrite one - and the other two are the connection itself.
+/// either kind of question, move an item, read one, rewrite one - and the other two are the
+/// connection itself.
 /// Anything a person types is a slash command, which is [`Command::Submit`]: every verb this
 /// program has goes through [`App::submit`], so a protocol with a message per verb would be a
 /// second vocabulary to keep in step with the first. The test for anything new is whether a person
@@ -129,6 +131,23 @@ pub enum Command {
         ///
         /// note: with an allow only. What is remembered is every subject the policy consulted,
         /// as allowed, and a refusal with this on is answered `failed` rather than taken.
+        remember: bool,
+    },
+    /// Answer a running command that reached for the network; see [`Message::Reaching`].
+    ///
+    /// note: beside [`Command::Decide`] rather than folded into it, because the two questions are
+    /// numbered by different things. A `Decide` answers the kernel's question, which the kernel
+    /// numbers and records; this answers one the kernel never asked, raised by the gate while a
+    /// call was running and numbered by the policy that holds it. One command taking either
+    /// identifier would be a client guessing which question a number meant.
+    Reach {
+        /// Which question, as [`Reached::id`] names it.
+        id: u64,
+        /// The answer.
+        grant: Grant,
+        /// Whether to allow the network from here on. This is the `a` key.
+        ///
+        /// note: with an allow only, for the reason `Decide`'s is.
         remember: bool,
     },
     /// Move one item to the next state in the ring: seen, a marker where it was, gone, seen again.
@@ -337,6 +356,22 @@ pub enum Message {
         /// Whether a turn is running.
         busy: bool,
     },
+    /// The running commands waiting to hear whether they may reach the network, sent whenever
+    /// that changes: the whole list, oldest first, and empty once none are.
+    ///
+    /// note: the whole list rather than one arrival at a time, because nothing numbers these on the
+    /// wire. The question is not the kernel's, so it is in no record - see
+    /// [`crate::tools::Reaching`] - and a client that missed an arrival, or the answer somebody
+    /// else gave, would otherwise go on offering a question the session no longer has.
+    /// [`Attached::reaching`] is the same list for a client that has just arrived.
+    ///
+    /// note: an older client reads this as [`Message::Unknown`] and cannot answer it, which leaves
+    /// the command waiting for somebody who can. That is the rule `Unknown` is for, and the
+    /// question is still on every screen that knows it.
+    Reaching {
+        /// The questions, oldest first.
+        waiting: Vec<Reached>,
+    },
     /// Which model the requests are going to, sent whenever that changes.
     ///
     /// note: on the wire as well as in the records, which since `Kernel::provider_changed` say
@@ -471,6 +506,12 @@ pub struct Attached {
     pub items: Vec<Listed>,
     /// Every question waiting on somebody, in the order they were asked.
     pub asking: Vec<PermissionRequest>,
+    /// Every running command waiting to hear whether it may reach the network; see
+    /// [`Message::Reaching`].
+    ///
+    /// note: empty from a session that predates the field, which has no such question to ask.
+    #[serde(default)]
+    pub reaching: Vec<Reached>,
     /// What the advisor made of the ones it was asked about; see [`Judged`].
     ///
     /// note: a list beside the questions rather than a field on them, and empty in every session

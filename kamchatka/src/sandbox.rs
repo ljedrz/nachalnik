@@ -13,15 +13,16 @@
 //! model refused a `curl` can reach the same page with `python3 -c "import urllib.request"`;
 //! under this, that call gets `Permission denied` from the kernel.
 //!
-//! note: and it is TCP that it buys, because TCP is what the `landlock` crate has: `ConnectTcp`
-//! and `BindTcp` are the only two network access rights it exposes. The kernel is no longer the
-//! thing standing in the way - ABI 10, which is Linux 7.2, added `LANDLOCK_ACCESS_NET_BIND_UDP`
-//! and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` - but the crate stops at ABI 9, `AccessNet` is
-//! `#[non_exhaustive]` over a sealed trait, and so those two bits cannot be handed to a ruleset
-//! from out here at all. What is left is the raw syscall, which is `unsafe`, and this workspace
-//! does not have any. So until the crate grows them, a confined command can still send a UDP
-//! datagram, which is enough to put bytes in a DNS query. `no network` here means no TCP, and it
-//! is written that way everywhere it is shown rather than rounded up to something this cannot do.
+//! note: and it is TCP that Landlock buys, because TCP is what the `landlock` crate has:
+//! `ConnectTcp` and `BindTcp` are the only two network access rights it exposes. The kernel grew
+//! UDP rights in ABI 10, which is Linux 7.2, but the crate stops at ABI 9 and `AccessNet` is
+//! `#[non_exhaustive]` over a sealed trait, so those two bits cannot be handed to a ruleset from
+//! out here. The rest of the network is the gate's: [`crate::gate`] stops a confined command's
+//! `socket()` for `AF_INET` and `AF_INET6`, which covers UDP and everything else an internet
+//! socket is for, and either refuses it or holds it while the person is asked. Where the gate
+//! cannot be installed a UDP datagram still goes out, which is enough to put bytes in a DNS query,
+//! and [`Network::NoTcp`] is how that case is written everywhere it is shown rather than rounded
+//! up.
 //! What still holds against the rest is the filesystem: a command that cannot read a file has
 //! nothing to send.
 //!
@@ -35,9 +36,11 @@
 //! [`confines_unix_sockets`] is where that is asked.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
-//! the command. The alternative is `CommandExt::pre_exec`, which is `unsafe`, and this workspace
-//! does not have any. The child is deliberately not a `tokio` program: Landlock restricts the
-//! calling thread, and a single-threaded helper is the one shape where that needs no thought.
+//! the command. The alternative is `CommandExt::pre_exec`, which runs between `fork` and `exec` in
+//! a process that has a `tokio` runtime's threads in it, where almost nothing is safe to call - the
+//! ruleset's own allocations among them. The child is deliberately not a `tokio` program: Landlock
+//! and the gate restrict the calling thread, and a single-threaded helper is the one shape where
+//! that needs no thought.
 
 use std::{
     ffi::OsString,
@@ -58,9 +61,8 @@ pub const EXEC_FLAG: &str = "--confine-and-run";
 /// the system directories are always readable and the interesting question is what is *writable*
 /// and whether the network is reachable - which are the two stances a person actually changes.
 ///
-/// note: "the network" is TCP. The `landlock` crate exposes two network access rights and both
-/// are TCP - the kernel has had UDP rights since ABI 10, the crate has not - so a UDP datagram
-/// still goes out. See the note at the top of this module.
+/// note: "the network" is every internet socket where the gate holds, and TCP where it does not.
+/// See [`Network`], and the note at the top of this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sandbox {
     /// The directory a command may work in; everything outside it is out of reach.
@@ -77,8 +79,69 @@ pub struct Sandbox {
     pub readable: Vec<PathBuf>,
     /// Whether the working directory is writable, or only readable.
     pub writable: bool,
-    /// Whether the command may open a TCP connection.
-    pub network: bool,
+    /// What the command may do about the network.
+    pub network: Network,
+}
+
+/// What a confined command may do about the network, and what refuses it.
+///
+/// note: four rather than open and closed, because two mechanisms stand in the way and they refuse
+/// different things. Landlock refuses a TCP `connect` or `bind`, and tells nobody. The gate - see
+/// [`crate::gate`] - stops `socket()` for `AF_INET` and `AF_INET6`, which is the first thing any
+/// use of the network does, and it can either refuse there or hold the call while somebody is
+/// asked. Where the gate cannot be installed only Landlock is left, and a UDP datagram still goes
+/// out; that is the one this says as `no TCP` rather than rounding it up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Network {
+    /// Nothing refuses it.
+    Open,
+    /// TCP is refused by Landlock, and nothing else is: there is no gate here.
+    NoTcp,
+    /// Every internet socket is refused by the gate, and TCP by Landlock as well.
+    Shut,
+    /// Every internet socket is held by the gate until the person is asked, once per command.
+    ///
+    /// note: Landlock leaves TCP alone here, because a ruleset cannot be lifted and a `yes` has to
+    /// be able to let the connection through. What stands in the way is the gate alone, which is
+    /// why this is never asked for where the gate cannot be installed.
+    Asked,
+}
+
+impl Network {
+    /// Whether Landlock is asked to refuse TCP.
+    #[cfg(target_os = "linux")]
+    fn refuses_tcp(self) -> bool {
+        matches!(self, Self::NoTcp | Self::Shut)
+    }
+
+    /// The word the arguments carry it as.
+    fn word(self) -> &'static str {
+        match self {
+            Self::Open => "net",
+            Self::NoTcp => "nonet",
+            Self::Shut => "shut",
+            Self::Asked => "held",
+        }
+    }
+
+    fn from_word(word: &std::ffi::OsStr) -> Option<Self> {
+        [Self::Open, Self::NoTcp, Self::Shut, Self::Asked]
+            .into_iter()
+            .find(|network| *word == *network.word())
+    }
+}
+
+impl fmt::Display for Network {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Open => "the network reachable",
+            // TCP is the whole of what Landlock can refuse; see the note at the top
+            Self::NoTcp => "no TCP",
+            Self::Shut => "no network",
+            Self::Asked => "the network only once the person you are working with allows it",
+        })
+    }
 }
 
 impl Sandbox {
@@ -86,7 +149,9 @@ impl Sandbox {
     ///
     /// note: the network is reachable only if the stance is an outright `allow`, or if this
     /// particular call was allowed by a person who was asked about it. A stance of `ask` that
-    /// nobody has been asked about yet is not permission.
+    /// nobody has been asked about yet is not permission - and where the gate holds it is not a
+    /// refusal either: the command runs, and is asked about if it reaches out. See
+    /// [`Careful::gates_the_network`].
     pub fn of(
         policy: &Careful,
         workdir: PathBuf,
@@ -94,6 +159,8 @@ impl Sandbox {
         readable: Vec<PathBuf>,
         granted: bool,
     ) -> Self {
+        let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
+
         Self {
             workdir,
             extra,
@@ -102,8 +169,15 @@ impl Sandbox {
             // working directory writable, because a shell that cannot write in it is not one
             // anybody can work with
             writable: policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny,
-            network: granted
-                || policy.stance(&Subject::Capability(Capability::net("reach"))) == Verdict::Allow,
+            network: match (
+                granted || stance == Verdict::Allow,
+                policy.gates_the_network(),
+            ) {
+                (true, _) => Network::Open,
+                (false, false) => Network::NoTcp,
+                (false, true) if stance == Verdict::Deny => Network::Shut,
+                (false, true) => Network::Asked,
+            },
         }
     }
 
@@ -116,10 +190,7 @@ impl Sandbox {
                 true => "rw",
                 false => "ro",
             }),
-            OsString::from(match self.network {
-                true => "net",
-                false => "nonet",
-            }),
+            OsString::from(self.network.word()),
             OsString::from(self.extra.len().to_string()),
         ];
         argv.extend(self.extra.iter().map(|path| path.clone().into()));
@@ -138,7 +209,7 @@ impl Sandbox {
         }
         let workdir = PathBuf::from(argv.next()?);
         let writable = argv.next()? == "rw";
-        let network = argv.next()? == "net";
+        let network = Network::from_word(argv.next()?)?;
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let extra: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
@@ -428,15 +499,7 @@ impl fmt::Display for Sandbox {
         for path in &self.readable {
             write!(f, ", {} read-only", path.display())?;
         }
-        write!(
-            f,
-            ", the system directories read-only, {}",
-            match self.network {
-                true => "the network reachable",
-                // TCP is the whole of what this can refuse; see the note at the top
-                false => "no TCP",
-            }
-        )
+        write!(f, ", the system directories read-only, {}", self.network)
     }
 }
 
@@ -1122,7 +1185,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     let Ok(mut ruleset) = Ruleset::default().handle_access(rights) else {
         return Confinement::Unavailable;
     };
-    if !sandbox.network {
+    if sandbox.network.refuses_tcp() {
         // ABI v4 and up; on an older kernel this is the part that comes back `Partial`.
         //
         // note: named rather than `AccessNet::from_all`, which is the same two rights today and
@@ -1230,24 +1293,47 @@ pub fn make_scratch(path: &Path) -> Option<PathBuf> {
     Some(path.to_path_buf())
 }
 
-/// Whether a confinement would hold here, asked without running anything.
+/// What a probe found here: how much of a ruleset the kernel takes, and whether the network gate
+/// holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Probed {
+    /// How much of the ruleset the kernel took.
+    pub confinement: Confinement,
+    /// Whether the gate went on, and the kernel can hold a call for this process to answer; see
+    /// [`crate::gate`].
+    pub gated: bool,
+}
+
+/// Whether a confinement would hold here, and the gate with it, asked without running anything.
 ///
 /// note: asked in a child, because finding out means applying a ruleset and a process cannot take
 /// one off again. Doing it in the terminal's own process would confine the terminal.
-pub fn available(program: &Path) -> Confinement {
+///
+/// note: the child is asked for [`Network::Shut`], so it installs the gate as it would for a
+/// refusing session, sends the listener down the socket it is handed, and says whether both took.
+/// Nothing reads the listener here, because `exit 0` makes no attempt to answer; it is dropped with
+/// this end of the socket. What the child cannot try is a held call being let through, and
+/// [`crate::gate::holds`] asks the kernel that without installing anything.
+pub fn available(program: &Path) -> Probed {
     let sandbox = Sandbox {
         workdir: std::env::temp_dir(),
         extra: Vec::new(),
         readable: Vec::new(),
         writable: true,
-        network: false,
+        network: Network::Shut,
+    };
+    // where there is no gate the child has nothing to send, fails to install one, and says so
+    let (stdin, _arriving) = match crate::gate::pair() {
+        Ok((stdin, arriving)) => (stdin, Some(arriving)),
+        Err(_) => (std::process::Stdio::null(), None),
     };
     // spawned rather than run to completion in one call, because the answer is read out of a
     // child that has left a directory behind it, and the identifier is how it is found again
     let output = std::process::Command::new(program)
         .args(sandbox.argv("exit 0"))
         .env(REPORT_VAR, "1")
-        .stdin(std::process::Stdio::null())
+        .stdin(stdin)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -1259,17 +1345,25 @@ pub fn available(program: &Path) -> Confinement {
             output
         });
 
-    match output {
-        Ok(output) => match String::from_utf8_lossy(&output.stderr)
+    let reported = output.ok().and_then(|output| {
+        String::from_utf8_lossy(&output.stderr)
             .lines()
-            .find_map(|line| line.strip_prefix(REPORT))
-        {
-            Some("full") => Confinement::Full,
-            Some("partial") => Confinement::Partial,
-            Some("unsupported") => Confinement::Unsupported,
-            _ => Confinement::Unavailable,
-        },
-        Err(_) => Confinement::Unavailable,
+            .find_map(|line| line.strip_prefix(REPORT).map(str::to_owned))
+    });
+    let (took, gate) = match &reported {
+        Some(reported) => reported.split_once(' ').unwrap_or((reported, "")),
+        None => ("", ""),
+    };
+    let confinement = match took {
+        "full" => Confinement::Full,
+        "partial" => Confinement::Partial,
+        "unsupported" => Confinement::Unsupported,
+        _ => Confinement::Unavailable,
+    };
+
+    Probed {
+        confinement,
+        gated: confinement.is_confined() && gate == "gated" && crate::gate::holds(),
     }
 }
 
@@ -1303,14 +1397,24 @@ pub fn run_if_asked() -> Option<i32> {
     let scratch = make_scratch(&scratch_for(std::process::id()));
 
     let confinement = confine(&sandbox, scratch.as_deref());
+    // note: after the ruleset, so that nothing the gate does is outside it, and before the command,
+    // which inherits the filter across `exec` and into everything it starts
+    let gated = match sandbox.network {
+        Network::Shut | Network::Asked => Some(crate::gate::hold()),
+        Network::Open | Network::NoTcp => None,
+    };
     if std::env::var_os(REPORT_VAR).is_some() {
         eprintln!(
-            "{REPORT}{}",
+            "{REPORT}{}{}",
             match confinement {
                 Confinement::Full => "full",
                 Confinement::Partial => "partial",
                 Confinement::Unavailable => "unavailable",
                 Confinement::Unsupported => "unsupported",
+            },
+            match gated {
+                Some(Ok(())) => " gated",
+                _ => "",
             }
         );
     }
@@ -1333,9 +1437,26 @@ pub fn run_if_asked() -> Option<i32> {
         );
         return Some(126);
     }
+    // note: the same guarantee for the gate. Asked to hold the network, the ruleset has left TCP
+    // open for a `yes` to let through, so a command run without the filter would have the network
+    // with nobody asked; and asked to shut it, it would have UDP with the screen saying otherwise.
+    // What the probe found decides whether either is asked for, so this is for the case the probe
+    // did not see - and for a child whose standard input is not a socket to send the listener down
+    if let Some(Err(e)) = &gated {
+        eprintln!(
+            "nothing was run: this program was asked to put the network behind a gate first and \
+             the filter did not take: {e}"
+        );
+        return Some(126);
+    }
 
     let mut command = std::process::Command::new("sh");
     command.arg("-c").arg(&cmd).current_dir(&sandbox.workdir);
+    // standard input was the socket the listener went down, and the command has no business with
+    // it: `shell` gives every command `/dev/null` there
+    if gated.is_some() {
+        command.stdin(std::process::Stdio::null());
+    }
     // note: and taken away where there is none, as `make_scratch` says. What this program was
     // handed is the directory the scratch could not be made in, and passing it on would tell the
     // command it has somewhere to write where it most likely has not

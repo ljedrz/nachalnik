@@ -13,7 +13,7 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::{Peer, records, served};
+use crate::{Peer, Reacher, records, served, streamed};
 
 /// A question raised by a tool is answered from a client, and the turn carries on.
 #[tokio::test]
@@ -157,4 +157,69 @@ async fn a_question_nobody_was_here_for_is_in_the_projection() {
     })
     .await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A running command that reached for the network is sent to every client as it waits, is in the
+/// projection a client arrives to, and is answered from one.
+///
+/// note: the list rather than a record, because the question is not the kernel's and is in no
+/// log; a client attaching while it waits has only the projection to learn of it from, which is
+/// why the second peer attaches late.
+#[tokio::test]
+async fn a_command_reaching_for_the_network_is_answered_from_a_client() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "reacher", json!({}))]),
+        ModelResponse::text("it went"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Reacher(app.policy.clone())));
+    })
+    .await;
+
+    let (mut peer, attached) = Peer::attached(&session.at).await;
+    assert!(attached.reaching.is_empty());
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Reaching { waiting } if !waiting.is_empty()))
+        .await;
+    let Some(Message::Reaching { waiting }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(waiting[0].cmd, "curl x");
+
+    let (mut late, arrived) = Peer::attached(&session.at).await;
+    assert_eq!(arrived.reaching, *waiting, "the projection carries it");
+
+    late.send(Command::Reach {
+        id: waiting[0].id,
+        grant: Grant::Allow,
+        remember: false,
+    })
+    .await;
+    // and everybody hears that it has gone, the one who did not answer included. The turn it held
+    // may well have finished first: the list goes out when the loop next comes round
+    let heard = peer
+        .until(|message| matches!(message, Message::Reaching { waiting } if waiting.is_empty()))
+        .await;
+    if !streamed(&heard).contains("it went") {
+        peer.until_words("it went").await;
+    }
+    let (app, ended) = {
+        peer.send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+        session.ended().await
+    };
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("answered Some(true)")),
+        "the answer reached the command"
+    );
 }

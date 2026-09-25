@@ -180,15 +180,17 @@ impl App {
     /// hand should not have to find its identifier again to use it.
     pub fn answer(&mut self, request: &PermissionRequest, grant: Grant) -> Result<(), String> {
         // saying yes to a command that reaches for the network is permission for *that* command,
-        // and the sandbox has to hear about it. Read through the wrapper, because `shell` takes
-        // its arguments inside a `call` object and there is no `cmd` on the outside of one
+        // and the sandbox has to hear about it.
+        //
+        // note: asked of the policy rather than read off the command here, so that the two cannot
+        // disagree about which calls reached for it: where the gate holds, the policy consults
+        // `net:reach` for no call at all, and a command is asked about when it tries instead
         if grant == Grant::Allow
             && request.capabilities.contains(&Capability::exec("run"))
-            && crate::tools::ops::inner(&request.args)
-                .unwrap_or(std::borrow::Cow::Borrowed(&request.args))
-                .get("cmd")
-                .and_then(|cmd| cmd.as_str())
-                .is_some_and(crate::tools::reaches_the_network)
+            && self
+                .policy
+                .judges(request)
+                .contains(&Subject::Capability(Capability::net("reach")))
         {
             self.policy.grant_the_network(&request.call);
             // the one grant the decision itself does not say: that this call may reach out
@@ -597,8 +599,16 @@ impl App {
             return None;
         }
 
+        // note: the gate is said beside the confinement, because a confined shell without one is
+        // two differences away from a confined shell with one - a UDP datagram goes out, and a
+        // command is asked about by its name rather than when it tries - and neither is on the
+        // screen anywhere else. A gate that could not be installed is the degradation a person
+        // would otherwise never see
         Some(match self.confinement.is_confined() {
-            true => format!("shell: {}", self.confinement),
+            true => match self.policy.gates_the_network() {
+                true => format!("shell: {}, network gated", self.confinement),
+                false => format!("shell: {}, network not gated", self.confinement),
+            },
             false => "shell: a command can do any of these".to_owned(),
         })
     }

@@ -56,7 +56,7 @@ fn question_parts(
     // a tool's question comes first where both are somehow open, because it is the one holding a
     // turn still. A compaction holds nothing: it is somebody's own command, waiting on them
     let Some(request) = app.asked() else {
-        return compaction_parts(app, columns, cut);
+        return reach_parts(app, columns).or_else(|| compaction_parts(app, columns, cut));
     };
     let waiting = app.kernel.pending_permissions().len();
 
@@ -240,6 +240,46 @@ fn worst(_: &App, _: &nachalnik::PermissionRequest) -> Option<(usize, usize)> {
     None
 }
 
+/// A running command that reached for the network, waiting on a `y`.
+///
+/// note: the command whole, where the arguments go, because it is what the question is about and
+/// nothing else is: the call was allowed to run already, so there is no tool, no capability and no
+/// rating to show, and the one fact the panel adds is that it tried. `a` says what it remembers, as
+/// the other panel's does, because `net:reach` allowed is every later command too.
+fn reach_parts(
+    app: &App,
+    columns: usize,
+) -> Option<(Vec<Line<'static>>, Vec<Line<'static>>, Vec<String>)> {
+    let reached = app.reached()?;
+    let waiting = app.policy.reaching().waiting().len();
+
+    let answers = format!(
+        "{}[y] this command   [a] always, for net:reach   [n] no{}",
+        match app.focus == Focus::Body && app.tab == Tab::Chat {
+            true => "",
+            false => "[tab] puts the keys here, and then:\n",
+        },
+        match waiting > 1 {
+            true => format!("\n\n{} more after this one", waiting - 1),
+            false => String::new(),
+        }
+    );
+
+    let head = wrapped(
+        "this command is running and has reached for the network. It waits until it is answered, \
+         and the answer holds for the rest of the command",
+        columns,
+        "",
+    )
+    .into_iter()
+    .map(Line::raw)
+    .chain(std::iter::once(Line::default()))
+    .collect();
+    let shown = command(&reached.cmd, columns, None);
+
+    Some((head, shown, wrapped(&answers, columns, "")))
+}
+
 /// The other question: a compaction pass, listed, waiting on a `y`.
 ///
 /// note: the list goes where a tool's arguments go, so it scrolls the same way and the panel does
@@ -352,15 +392,16 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
         true => Style::default().fg(app.accent),
         false => Style::default().fg(Color::Red),
     };
+    let about = match (app.asked().is_some(), app.reached().is_some()) {
+        (true, _) => "a tool wants to run",
+        (false, true) => "a command wants the network",
+        (false, false) => "what a compaction would take",
+    };
     let block = Block::bordered()
-        .title(
-            match (asking, app.proposed.is_some() && app.asked().is_none()) {
-                (true, false) => " a tool wants to run ".to_owned(),
-                (false, false) => " a tool wants to run · tab ".to_owned(),
-                (true, true) => " what a compaction would take ".to_owned(),
-                (false, true) => " what a compaction would take · tab ".to_owned(),
-            },
-        )
+        .title(match asking {
+            true => format!(" {about} "),
+            false => format!(" {about} · tab "),
+        })
         .border_style(style)
         .padding(ratatui::widgets::Padding::horizontal(1));
     let inner = block.inner(area);

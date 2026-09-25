@@ -96,6 +96,7 @@ pub mod attach;
 pub mod clipboard;
 pub mod config;
 pub mod endpoint;
+pub mod gate;
 pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]

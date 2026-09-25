@@ -639,6 +639,28 @@ impl App {
     /// timer, which only moves the moment a stray letter lands. See the note on
     /// [`App::locked_key`] for what that is protecting against.
     pub(super) async fn question_key(&mut self, key: KeyEvent) {
+        // a running command that reached for the network. Three answers and no more: `esc` is
+        // already what stops the running turn, which takes the command and its question with it,
+        // and there is nothing to drop or look closer at - the command is on the panel whole
+        if self.asked().is_none()
+            && let Some(reached) = self.reached()
+        {
+            let (grant, remembered) = match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => (Grant::Allow, false),
+                KeyCode::Char('a') | KeyCode::Char('A') => (Grant::Allow, true),
+                KeyCode::Char('n') | KeyCode::Char('N') => (Grant::Deny, false),
+                _ => return,
+            };
+            if let Err(e) = self.decide_reach(reached.id, grant, remembered) {
+                self.say(Speaker::Error, e);
+            }
+            if !self.asking() {
+                self.focus = Focus::Input;
+                self.question_scroll = 0;
+            }
+
+            return;
+        }
         // the compaction's own answers, where that is what is standing there. It scrolls with the
         // same keys, because it is the same panel showing a longer list than it has room for
         if self.asked().is_none() && self.proposed.is_some() {

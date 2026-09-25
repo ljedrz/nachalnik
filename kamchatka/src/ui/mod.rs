@@ -204,17 +204,18 @@ fn draw_body(
 ) -> Scrolled {
     // the chat tab has a second thing the keys can be on, and only while a question is pinned
     // there; on the other three, `Focus::Body` is the only place they ever are
-    let asked = app.asked().is_some();
+    let asked = app.asked().is_some() || app.reached().is_some();
 
     let mut strip = Vec::new();
     for tab in Tab::ALL {
         if !strip.is_empty() {
             strip.push(Span::styled("│", faint()));
         }
-        // note: `chat` goes red while a tool is waiting to be told whether it may run. The
-        // question is pinned there rather than laid over the screen, which is what makes it
-        // possible to walk away from it and look at what it is about - so something has to say,
-        // from the other three tabs, that walking back is what the session is waiting for
+        // note: `chat` goes red while a tool is waiting to be told whether it may run, or a
+        // running command whether it may reach the network. The question is pinned there rather
+        // than laid over the screen, which is what makes it possible to walk away from it and
+        // look at what it is about - so something has to say, from the other three tabs, that
+        // walking back is what the session is waiting for
         strip.push(Span::styled(
             format!(" {} ", tab.name()),
             match (tab == app.tab, tab == Tab::Chat && asked) {

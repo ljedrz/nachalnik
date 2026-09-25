@@ -257,6 +257,7 @@ const asked = document.getElementById("asked");
 const rating = document.getElementById("rating");
 
 let asking = [];        // the questions waiting on somebody, oldest first
+let reaching = [];      // the running commands waiting to hear whether they may reach the network
 let open = null;        // the bubble a model is still writing into
 let streaming = false;  // whether the fragments arriving still belong to anything
 let wanted = new Set(); // items already asked about, so nothing is asked about twice
@@ -716,15 +717,22 @@ function aside(into, text) {
 
 function showQuestion() {
   const next = asking[0];
-  question.classList.toggle("open", !!next);
-  prompt.style.display = next ? "none" : "flex";
+  // a running command that reached for the network is the other kind, and the kernel's comes first
+  // where both are waiting, as it does on the terminal's panel
+  const reached = !next && reaching[0];
+  question.classList.toggle("open", !!(next || reached));
+  prompt.style.display = next || reached ? "none" : "flex";
   // the tab strip goes red upstairs and this is the same sentence: from another view a question is
   // not what you are looking at, but it is the thing the session has stopped for
-  document.getElementById("view").classList.toggle("asked", !!next);
+  document.getElementById("view").classList.toggle("asked", !!(next || reached));
   if (next) {
     asked.textContent =
       `${next.tool}(${JSON.stringify(next.args)})\nit declares ` +
       (next.capabilities.length ? next.capabilities.join(", ") : "nothing");
+  } else if (reached) {
+    asked.textContent =
+      `${reached.cmd}\nis running and has reached for the network; the answer holds for the rest ` +
+      "of it, and always allows the network from now on";
   }
   band(next);
 }
@@ -768,10 +776,13 @@ function band(next) {
 
 document.getElementById("answers").onclick = (e) => {
   const grant = e.target.dataset.grant;
-  if (!grant || !asking.length) return;
+  if (!grant || !(asking.length || reaching.length)) return;
   send({
-    do: "decide",
-    id: asking[0].id,
+    // note: two commands because the two questions are numbered by different things - the kernel's
+    // by the kernel, a running command's by the policy holding it - and the one on the panel is
+    // the one being answered
+    do: asking.length ? "decide" : "reach",
+    id: asking.length ? asking[0].id : reaching[0].id,
     grant: grant === "deny" ? "deny" : "allow",
     remember: grant === "always",
   });
@@ -835,10 +846,13 @@ function heard(m) {
       streaming = m.busy;
       conversation(m.conversation);
       asking = m.asking;
+      reaching = m.reaching ?? [];
       showQuestion();
       working(m.busy);
       break;
     }
+    // the whole list whenever it changes, since nothing numbers these on the stream
+    case "reaching": reaching = m.waiting; showQuestion(); break;
     case "record": happened(m.event); break;
     case "progress": {
       // note: dropped unless something is actually arriving, and that is not a nicety. A fragment

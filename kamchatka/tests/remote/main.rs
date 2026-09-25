@@ -389,3 +389,28 @@ fn connect(socket: &std::path::Path, typed: &[u8]) -> std::process::Output {
         .wait_with_output()
         .expect("the client did not finish")
 }
+
+/// A stand-in for a gated `shell`: it asks what the gate asks when a command reaches for the
+/// network, and says what it was told.
+pub(crate) struct Reacher(pub(crate) Arc<kamchatka::tools::Careful>);
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Reacher {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("reacher", "reaches for the network")
+    }
+
+    async fn invoke(
+        &self,
+        call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        let answer = self
+            .0
+            .reaching()
+            .ask(call.id.clone(), "curl x".into())
+            .await;
+
+        Ok(nachalnik::ToolOutput::new(format!("answered {answer:?}")))
+    }
+}

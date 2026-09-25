@@ -175,6 +175,8 @@ impl<'a> Headless<'a> {
         let mut said = 0;
         // and the generation that mark belongs to, since `/cleanup` starts the sequence again
         let mut cleared = app.cleared();
+        // what wakes the loop for a running command's question, which is no event of the kernel's
+        let mut reaching = app.policy.reaching().subscribe();
 
         // note: an async block rather than the loop alone, so that every way out of it - a
         // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
@@ -193,6 +195,13 @@ impl<'a> Headless<'a> {
             // reason
             if !app.busy && app.asked().is_some() {
                 self.answer(app)?;
+            }
+            // note: and a running command's question on sight, busy or not, because it is not the
+            // kernel's. It arrives while the call runs and holds the call until it is answered, so
+            // waiting for the kernel to rest would be waiting for the command that is waiting on
+            // this
+            if app.reached().is_some() {
+                self.answer_reaching(app)?;
             }
             self.flush(app, &mut written)?;
             self.echo(app, &mut said, &mut cleared)?;
@@ -378,6 +387,8 @@ impl<'a> Headless<'a> {
                         None => std::future::pending().await,
                     }
                 } => app.quit = true,
+                // answered at the top of the loop, like the kernel's questions
+                Ok(()) = reaching.changed() => {}
             }
         } Ok(()) }.await;
 
@@ -492,6 +503,30 @@ impl<'a> Headless<'a> {
             if let Some(widened) = widened {
                 writeln!(self.prose, "  {widened}").map_err(|e| e.to_string())?;
             }
+        }
+
+        Ok(())
+    }
+
+    /// Answers every running command waiting to hear whether it may reach the network.
+    ///
+    /// note: through [`App::decide_reach`], for the reason [`Headless::answer`] goes through
+    /// `App::decide`: the answer is written down there, and a loop that answered the command alone
+    /// would leave the record with a command that reached out and nothing saying who let it.
+    fn answer_reaching(&mut self, app: &mut App) -> Result<(), String> {
+        for waiting in app.policy.reaching().waiting() {
+            // the command may have ended in the moment since the look, which is nothing to report
+            if app.decide_reach(waiting.id, self.on_ask, false).is_err() {
+                continue;
+            }
+            self.fresh_line()?;
+            writeln!(
+                self.prose,
+                "· `{}` reached for the network: {}, because nobody is here to be asked",
+                crate::app::text::one_line(&waiting.cmd),
+                self.on_ask
+            )
+            .map_err(|e| e.to_string())?;
         }
 
         Ok(())

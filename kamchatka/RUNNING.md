@@ -109,7 +109,9 @@ it; it never ends anybody's session on the way out, and `/quit` is how you say y
 stderr — so it is a drop-in for it in a script. It answers a permission question with the same
 three letters the panel takes, `y`, `n` and `a`; `ctrl+c` stops the turn and a second one detaches;
 and `?4` prints what item 4 actually holds, which is the one thing a stream of records can never
-say, because [the log names things rather than copying them](#-embedding-it).
+say, because [the log names things rather than copying them](#-embedding-it). A running command
+that [reaches for the network](#-the-network-when-a-command-tries) is answered with the same three
+letters, once the kernel's own questions are.
 
 **Where it listens is the whole of its authentication, so it refuses to listen anywhere else.**
 There is no bearer token in this protocol and there is not going to be one: it carries a `shell`
@@ -939,3 +941,38 @@ read as the whole boundary, and a path opened up with `--sandbox-allow` would be
 never tried. So a refused path is answered with every place the session reaches, each marked
 read-write or read-only, and told to work where it does or to ask for the path to be opened up and
 say what it needs it for.
+
+## 🌐 the network, when a command tries
+
+On Linux, where the shell is confined, a command is asked about the network when it opens an
+internet socket rather than for what it is called. The child that confines itself installs a
+seccomp filter after the ruleset, and the filter holds every `socket()` for `AF_INET` or `AF_INET6`
+until this program answers — from `net:reach` where it says `allow` or `deny`, and from you where it
+says `ask`, once per command. So `--allow exec:run` runs `git status` without a question and asks
+about `python3 fetch.py` the moment it looks a name up, which reading the command could never have
+told apart.
+
+A run with nobody at it answers with `--on-ask`, while the turn is still running — the command is
+waiting on the answer, so waiting for the turn would be waiting for ever:
+
+```console
+$ kamchatka --headless --allow exec:run 'fetch the release notes'
+```
+
+says on stderr which command reached out and what it was answered, and the tool result the model
+reads says it was asked and refused. A `--connect` client
+answers the same way once its input has closed, and a served session sends the question to every
+client as it waits: `reaching` is the list, whole each time it changes, and `reach` answers one of
+them the way `decide` answers the kernel's. They are two commands because the two questions are
+numbered by different things — the kernel's by the kernel, and a running command's by the policy
+holding it. `examples/browser.html` draws either kind in the same panel.
+
+`deny` is every internet socket refused, so UDP as well, which the ruleset alone cannot refuse —
+and a refused lookup comes back from most programs as `Temporary failure in name resolution`,
+which is why the tool result says what it was.
+
+Where the filter cannot be installed — not Linux, not x86_64 or aarch64, `--no-sandbox`, or a
+kernel that cannot hold a call — the program goes back to reading the command: a short list of
+programs whose point is the network, a question about them before they run, and UDP not refused.
+The permissions tab ends its shell line with `network gated` or `network not gated`, so which one
+a session has is on the screen rather than something to work out.
