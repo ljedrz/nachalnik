@@ -87,11 +87,11 @@ which is what makes it work for tools this program has never heard of:
 $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
-Those arrive through [`nachalnik-mcp`][nachalnik-mcp] declaring what their annotations claim and
-nothing else, and where they *came from* is a subject of its own: `--allow-server files` is one
-server and not the next one. The `name=` is worth giving, because it is what that grant names —
-without it the name comes from the program, which for most of the servers people actually run is
-`npx`.
+Those arrive through [`nachalnik-mcp`][nachalnik-mcp] declaring `mcp:call` and nothing else,
+whatever their annotations claim, and where they *came from* is a subject of its own:
+`--allow-server files` is one server and not the next one. The `name=` is worth giving, because it
+is what that grant names — without it the name comes from the program, which for most of the
+servers people actually run is `npx`.
 
 `fs`'s `grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason
 they exist is the subject they ride. Finding a symbol used to mean `exec:run`, which subsumes every
