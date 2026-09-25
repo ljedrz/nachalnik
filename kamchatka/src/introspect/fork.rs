@@ -13,8 +13,8 @@
 //! compactor and one request.
 
 use nachalnik::{
-    BoxError, Capability, Config, ContextId, ContextItem, ContextState, Delta, Event, Kernel,
-    OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    BoxError, Capability, Config, ContextId, ContextItem, ContextKind, ContextState, Delta, Event,
+    Kernel, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, async_trait,
 };
 use serde_json::Value;
 use std::{
@@ -136,7 +136,7 @@ impl Tool for Fork {
             return Ok(ToolOutput::error(refusal));
         }
         match action {
-            "draft" => branch(&kernel, None, &[], &output, &self.forked).await,
+            "draft" => branch(&kernel, &call.id, None, &[], &output, &self.forked).await,
             "ask" => {
                 let Some(question) = args["question"].as_str() else {
                     return Ok(ToolOutput::error(
@@ -156,7 +156,15 @@ impl Tool for Fork {
                          `without` takes the numbers `context` prints"
                     )));
                 }
-                branch(&kernel, Some(question), &without, &output, &self.forked).await
+                branch(
+                    &kernel,
+                    &call.id,
+                    Some(question),
+                    &without,
+                    &output,
+                    &self.forked,
+                )
+                .await
             }
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
@@ -177,12 +185,20 @@ impl Tool for Fork {
 /// visible as is the text it streams, relayed into this tool's own [`OutputSink`], so a person
 /// watching the terminal sees a fork thinking rather than a tool that has gone quiet.
 ///
+/// note: a copy of the context as the turn that asked for it left it, not as it stands when this
+/// call runs. A turn's calls run one after another, so two forks asked together would otherwise
+/// differ by the first one's answer - the second handed what the first said, which is the
+/// comparison two forks are asked for spoiled - and `without` cannot keep out a result that does
+/// not exist yet. So the results of the other calls in the same turn are left out, excluded
+/// rather than deleted like a `without`, and not counted among the items asked about.
+///
 /// note: and what it was charged, added to `forked` for the session's ceiling. Read off the fork's
 /// own log once its turn is over, whatever the turn came to, rather than off the stream the relay
 /// reads: the relay is stopped as soon as the turn ends, and a figure it had not reached yet would
 /// be spent and never counted.
 async fn branch(
     kernel: &Kernel,
+    asking: &ToolCallId,
     question: Option<&str>,
     without: &[ContextId],
     output: &OutputSink,
@@ -193,8 +209,26 @@ async fn branch(
     };
 
     let mut snapshot = kernel.snapshot();
+    let siblings: std::collections::HashSet<ToolCallId> = snapshot
+        .items
+        .iter()
+        .find(|item| item.calls().any(|call| &call.id == asking))
+        .map(|turn| {
+            turn.calls()
+                .map(|call| call.id.clone())
+                .filter(|call| call != asking)
+                .collect()
+        })
+        .unwrap_or_default();
     let mut left_out = Vec::new();
     for item in &mut snapshot.items {
+        if let ContextKind::ToolResult { call, .. } = &item.kind
+            && siblings.contains(call)
+        {
+            item.state = ContextState::Excluded;
+            item.note = Some("answered in the same turn this fork was asked in".into());
+            continue;
+        }
         if without.contains(&item.id) {
             // excluded rather than deleted, so the fork's own account of itself can still name
             // the item by the number this session knows it by

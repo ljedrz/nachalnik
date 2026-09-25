@@ -124,6 +124,53 @@ async fn a_fork_is_asked_a_question_without_the_items_it_was_told_to_leave_out()
     );
 }
 
+/// Two forks asked in one turn are asked about the same context: the second is not handed what the
+/// first one said.
+///
+/// note: a turn's calls run one after another, so the second fork's copy was taken with the
+/// first's answer already in it - two copies meant to be compared, differing by one of their
+/// answers. `without` could not keep it out, because the item did not exist when it was written.
+#[tokio::test]
+async fn forks_asked_in_one_turn_do_not_read_each_other() {
+    let (kernel, provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c1",
+                "fork",
+                json!({ "action": "ask", "question": "one way?" }),
+            ),
+            call(
+                "c2",
+                "fork",
+                json!({ "action": "ask", "question": "the other way?" }),
+            ),
+        ]),
+        ModelResponse::text("THE FIRST COPY'S ANSWER"),
+        ModelResponse::text("the second copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("which way?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let text = |n: usize| -> String {
+        provider.requests()[n]
+            .messages
+            .iter()
+            .filter_map(|message| message.content.as_ref())
+            .map(|content| content.to_text().into_owned())
+            .collect()
+    };
+    assert!(text(2).contains("the other way?"), "{}", text(2));
+    assert!(
+        !text(2).contains("THE FIRST COPY'S ANSWER"),
+        "the second fork read the first: {}",
+        text(2)
+    );
+    // and the session itself has both, as it should
+    assert!(text(3).contains("THE FIRST COPY'S ANSWER"), "{}", text(3));
+}
+
 #[tokio::test]
 async fn a_fork_that_asks_for_a_tool_says_so_rather_than_answering_blank() {
     // what a real model does when handed a copy of a context full of tool traffic and no tools:
