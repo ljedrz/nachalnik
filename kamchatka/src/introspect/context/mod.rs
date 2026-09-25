@@ -373,11 +373,15 @@ impl Tool for Context {
             op if CHANGES.contains(&op) => {
                 let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
                 else {
-                    return Ok(ToolOutput::error(
-                        "`reason` is required by everything that changes something: it becomes \
-                         the item's note, and it is what the person at the terminal reads when \
-                         they ask why something is not in the request",
-                    ));
+                    // note: "nothing was done" first, because the rest is why and not what. A
+                    // model that read only the why took it for a remark about a note it had
+                    // written, and went on to put away the results the note was written from
+                    return Ok(ToolOutput::error(format!(
+                        "`reason` is required by everything that changes something, and nothing \
+                         was done: call `{op}` again with one. It becomes the item's note, and it \
+                         is what the person at the terminal reads when they ask why something is \
+                         not in the request"
+                    )));
                 };
 
                 Ok(self.changes.make(&kernel, call, args, op, reason))
