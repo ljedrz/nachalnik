@@ -206,7 +206,7 @@ fn a_request_does_not_copy_the_context_to_build_itself() {
 
 #[test]
 fn a_result_follows_the_call_it_answers_whatever_lands_between_them() {
-    // the failure this closes: a tool that writes something into the context - `amend note`, in
+    // the failure this closes: a tool that writes something into the context - `context note`, in
     // kamchatka - pushes its item while the turn that called it is still collecting results. The
     // item lands between the assistant message and the results, and every OpenAI-compatible API
     // refuses the request: "an assistant message with 'tool_calls' must be followed by tool
