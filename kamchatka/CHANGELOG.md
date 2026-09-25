@@ -75,7 +75,8 @@ minor bump may break you.
 - **`fs` says it does not go through a shell, rather than that there is no shell here.** The note
   on `~` read as a fact about the session, and a live model offered `shell` beside it said it had
   no way to run a command. The walks' "with no shell in front of them" is now "not through `find`
-  or `grep`", for the same reason.
+  or `grep`", and the refusal of a `~` path says `fs` does not go through a shell, for the same
+  reason.
 - **`fork` says its answer comes back to the model alone, and that forks in one turn are
   independent.** It said "nobody has read what it said", which a person watching the fork stream
   would dispute; and a model asking two forks together had nothing telling it the second would not

@@ -689,9 +689,9 @@ impl Reach {
         if path.starts_with('~') {
             return Err(format!(
                 "{path}: `~` is not expanded here, and this path will be refused again exactly as \
-                 it stands. There is no shell in front of these tools, so `~` was read as a \
-                 directory of that name rather than as a home directory. Say the path in full, or \
-                 relative to {}.",
+                 it stands. `fs` does not go through a shell, so `~` was read as a directory of \
+                 that name rather than as a home directory. Say the path in full, or relative to \
+                 {}.",
                 self.workdir.display()
             ));
         }

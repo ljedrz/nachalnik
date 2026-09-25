@@ -309,6 +309,12 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
             !refused.contains("./~"),
             "and offers no second path to reach for: {refused}"
         );
+        // note: and the shell it names is `fs`'s, for the reason `PATH_ARG` gives: "no shell in
+        // front of these tools" reads as a fact about the session beside a `shell` tool
+        assert!(
+            refused.contains("`fs` does not go through a shell") && !refused.contains("no shell"),
+            "and says it is `fs` that has no shell, not the session: {refused}"
+        );
     }
 
     // the security half: expanding it would have `--no-sandbox` hand over a real home directory on
