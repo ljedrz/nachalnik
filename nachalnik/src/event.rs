@@ -142,11 +142,13 @@ pub enum Event {
         tokens_after: usize,
         /// What it said before.
         ///
-        /// note: This is the one event that carries content, and the rule it follows is: the log
-        /// records what nothing else can recover. A [`Event::ContextAdded`] needs no content,
-        /// because the item is still in the context and in any [`Snapshot`](crate::Snapshot). A
-        /// replacement is different - it is the only operation that overwrites an item's content,
-        /// and without this the old text would exist nowhere once it fell out of the undo window.
+        /// note: This is the one event that carries content without being asked to -
+        /// [`Config::record_payloads`] and [`Config::record_progress`] are how a caller asks for
+        /// more - and the rule it follows is: the log records what nothing else can recover. A
+        /// [`Event::ContextAdded`] needs no content, because the item is still in the context and
+        /// in any [`Snapshot`](crate::Snapshot). A replacement is different - it is the only
+        /// operation that overwrites an item's content, and without this the old text would exist
+        /// nowhere once it fell out of the undo window.
         ///
         /// note: It is also what keeps [`Event::ModelRequested`] honest. That names the items a
         /// request was built from rather than copying their contents, which is what makes the log
