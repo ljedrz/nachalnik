@@ -763,8 +763,8 @@ megabytes away could not look at any of it without undoing the saving it had jus
 make the archive write-only from the agent's side, which is not what *nothing is destroyed* is
 supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
 item. A search answers with how many lines say the text, what taking them all would cost, and which
-items they are in, with each one's state; `take` shows that many of the lines, and the answer says
-that searching an archived item left it archived.
+items they are in, with each one's state; `take` shows that many of the lines, and an answer
+without it says that searching an archived item left it archived.
 
 Case is ignored, because a model that searched for `landlock` in a context full of `Landlock` and
 was told there were no matches has been told something false about itself, silently — the one
