@@ -906,8 +906,8 @@ checkout elsewhere and a scratch directory are one flag: `--sandbox-allow /srv/r
 **A daemon you talk to over a socket needs one too**, on Linux 7.1 and up. A confined command may
 connect to a unix socket only where it could have written one, so the session bus, the compositor
 and a container daemon all come back `Permission denied`, because each of them runs what it is
-asked outside the confinement. Hand over the socket rather than the directory it
-sits in:
+asked outside the confinement. Where the error names the socket the shell says which it was, and
+the way out is to hand over the socket rather than the directory it sits in:
 
 ```console
 $ kamchatka --sandbox-allow /run/docker.sock -m …

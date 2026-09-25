@@ -537,6 +537,56 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
     assert!(made.contains("/dev/made-up-by-a-test"), "{made}");
 }
 
+/// A refused connection to a socket outside what the session may write is the confinement where the
+/// kernel governs sockets, and the socket's own permissions where it does not; one the session may
+/// write is never the confinement.
+///
+/// note: the socket's path is readable either way, which is why the rule for files said nothing:
+/// a socket is held to the writing half. This asks the same kernel `tests/sandbox.rs` confines
+/// against, and answers for both kinds.
+#[test]
+fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
+    use std::os::unix::net::UnixListener;
+
+    let workdir = common::workdir("socket-accounts");
+    let inside = workdir.join("s.sock");
+    let outside = common::scratch("socket-accounts-out").join("s.sock");
+    let _held = (
+        UnixListener::bind(&inside).expect("a socket inside"),
+        UnixListener::bind(&outside).expect("a socket outside"),
+    );
+    let confined = Sandbox {
+        workdir,
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+    };
+    let refused = |socket: &std::path::Path| {
+        confined.note_for(&format!(
+            "dial unix {}: connect: permission denied\n",
+            socket.display()
+        ))
+    };
+
+    assert_eq!(
+        refused(&inside),
+        None,
+        "one it may write is its own permissions"
+    );
+    match kamchatka::sandbox::confines_unix_sockets() {
+        true => {
+            let note = refused(&outside).expect("the kernel refused it, not the socket");
+            assert!(note.contains("is a socket outside"), "{note}");
+        }
+        false => assert_eq!(
+            refused(&outside),
+            None,
+            "the kernel does not govern sockets"
+        ),
+    }
+}
+
 /// A refusal naming a path that climbs out of the working directory past a directory that is not
 /// there is the boundary, as `Reach::allows` has it, rather than a path inside.
 #[test]

@@ -90,6 +90,12 @@ minor bump may break you.
 - **A refusal naming a path that climbs out past a missing directory is the boundary**, as `fs`
   already had it. `/work/missing/../../outside` kept its `..`s behind the working directory's prefix
   and was taken for a path inside, so nothing was said about it.
+- **A refused connection to a socket is said to be the confinement.** A socket under `/run` is
+  one the session can read the path of and, on Linux 7.1 and up, not connect to, and the rule that
+  a refusal of a readable path is the file's own permissions left `docker ps` with a bare
+  `Permission denied`. A socket outside what the session may write is now named as the boundary,
+  by its file type, only on a kernel that governs sockets; and Go's lowercase `permission denied`
+  counts as a refusal, which is how `docker` spells one.
 - **Two forks asked in one turn are asked about the same context.** A turn's calls run one after
   another, so the second fork's copy already held the first one's answer, and two copies meant to
   be compared differed by it. A fork now leaves out the results of the other calls in the turn
