@@ -31,6 +31,14 @@ minor bump may break you.
 
 ### added
 
+- **`fs read` takes `from` and `lines`, and a long file is read in parts.** A file past the output
+  limit came back cut at a byte, with `[... N bytes truncated ...]` and nothing saying where it had
+  broken off, so reading on meant guessing a `sed -n` through `shell` - an `exec:run` call, for a
+  file the session could already read. `read` now stops at the last whole line under the limit
+  (`/limit fs:read`) and its first line names those lines and the `from` to read on with. A file
+  past 8 MiB, which was refused, is read a part at a time like any other, and says that more
+  follows where it would take too long to count how much. A file that fits, read whole, comes back
+  as it always has.
 - **A command is asked about the network when it tries, rather than for what it is called.** On
   Linux, on x86_64 and aarch64, the confined child installs a seccomp filter - the new `gate`
   module - that holds every `socket()` for `AF_INET` or `AF_INET6` until the program answers: from
