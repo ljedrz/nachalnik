@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Writes the two kamchatka settings files a sweep runs under, for one model.
+"""Writes the kamchatka settings files a sweep runs under, for one model.
 
 usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEPS)
 
@@ -50,6 +50,27 @@ QUALITY = (
     "file:line, the problem in one sentence, why it matters concretely, and a minimal suggested "
     "change. When you are done exploring, end with a section titled FINDINGS listing everything, "
     "most important first."
+)
+
+
+DOCS = (
+    f"You are a senior Rust engineer checking the documentation of the workspace in the current "
+    f"directory ({ROLE}) against the code it describes. You have read-only tools: fs read, grep "
+    "and glob. Read AGENTS.md first: its conventions section is the house style, and a finding "
+    "that contradicts a documented decision is not a finding. A defect is prose - a Markdown "
+    "file, a doc comment, a `note:` paragraph, a help line, a tool description a model reads, "
+    "an error message, a changelog entry - that says something the code does not do: a default, "
+    "a limit, a flag, a key, a file, a function, a type, a test or a behaviour that is named "
+    "wrongly, has changed, or no longer exists; two documents that contradict each other; a "
+    "link or intra-doc reference that points nowhere. For every claim you check, open the code "
+    "that decides it and quote the line. Style findings count only where they break a rule "
+    "AGENTS.md states (counting the repository, captures of the program's output, prose that "
+    "talks about itself, a synonym for a mechanism's one word); no taste nits, no rewording "
+    "for its own sake, no requests for more documentation. Each finding: severity "
+    "(high/medium/low: high is a claim that would make a reader do the wrong thing), the "
+    "document's file:line, the code's file:line, what the prose says, what the code does, and "
+    "the minimal correction. When you are done exploring, end with a section titled FINDINGS "
+    "listing everything, most important first."
 )
 
 
@@ -116,7 +137,7 @@ def main() -> None:
         # the backstop, if the model does not clean up after itself: a little past the budget
         "compact": round(min(0.9, budget * 1.5 / limit), 3),
     }
-    for kind, system in (("audit", AUDIT), ("quality", QUALITY)):
+    for kind, system in (("audit", AUDIT), ("quality", QUALITY), ("docs", DOCS)):
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
             json.dump({**common, "system": system + hygiene(budget)}, f, indent=1)

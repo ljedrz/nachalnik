@@ -1,6 +1,6 @@
 ---
 name: repo-sweep
-description: Run a full code sweep of this workspace - audit, performance and code quality, and test quality - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Use when asked for "a full repo sweep using kamchatka and model X", or for sweeps, audits or reviews driven by kamchatka.
+description: Run a full code sweep of this workspace - audit, performance and code quality, test quality and documentation - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Use when asked for "a full repo sweep using kamchatka and model X", or for sweeps, audits or reviews driven by kamchatka.
 ---
 
 # a kamchatka-driven sweep
@@ -35,7 +35,7 @@ export KAMCHATKA_TEST_MODEL=<model>       # for kamchatka's live suite
 EOF
 )
 source $SWEEPS/key.env
-python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json and quality.json
+python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, quality.json and docs.json
 cargo build --release -p kamchatka        # sweeps run the release binary; rebuild before a batch
 ```
 
@@ -51,13 +51,15 @@ cargo build --release -p kamchatka        # sweeps run the release binary; rebui
 ## 2. sweep
 
 Scopes are in `scopes/`: `audit/` (correctness against INVARIANTS.md), `quality/` (performance and
-code quality), `tests/` (test code only). Each is one module or one concern, names its files and
-lists concrete failure classes - narrow scopes are what made the findings real.
+code quality), `tests/` (test code only), `docs/` (prose against the code it describes). Each is
+one module or one concern, names its files and lists concrete failure classes - narrow scopes are
+what made the findings real.
 
 ```sh
 $SKILL/launch.sh audit a $SKILL/scopes/audit/*.txt
 $SKILL/launch.sh quality q $SKILL/scopes/quality/*.txt
 $SKILL/launch.sh tests t $SKILL/scopes/tests/*.txt
+$SKILL/launch.sh docs d $SKILL/scopes/docs/*.txt
 $SKILL/wait.sh a-kernel a-context ...     # in the background; you are woken when it returns
 ```
 
