@@ -103,7 +103,13 @@ async fn the_native_dialect_says_it_too_when_the_address_changes_on_its_own() {
     assert!(said.contains("stranger"), "{said}");
 
     let resident = Gemini::new("resident", "http://unused.invalid", "no key needed");
-    assert_eq!(moved_to(&resident, serving(SERVES).await).await, None);
+    let address = serving(SERVES).await;
+    assert_eq!(moved_to(&resident, address.clone()).await, None);
+
+    // and asked through the trait a client holds, it is where it was moved, under the name it had
+    let moved: &dyn Endpoint = &resident;
+    assert_eq!(moved.endpoint(), address);
+    assert_eq!(moved.model(), "resident");
 }
 
 /// An endpoint that lists nothing has not said the model is absent, and neither dialect may read
