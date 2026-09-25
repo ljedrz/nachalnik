@@ -73,7 +73,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   name, as it was, and the permissions tab says so: `network not gated` beside a confined shell,
   and `a command can do any of these` under `--no-sandbox`. `gate` is the one module in the
   workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely without
-  linking the C `libseccomp`, each with its reason beside it.
+  linking the C `libseccomp`, the descriptor one of them returns and the all-zero notification
+  another is handed, each with its reason beside it.
 - **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
   a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
   The confinement holds a command to its directory and says nothing about what the command was

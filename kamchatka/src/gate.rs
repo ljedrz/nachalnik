@@ -12,9 +12,10 @@
 //! note: the one module in this crate that writes `unsafe`. `seccomp(2)` and the notification
 //! `ioctl`s have no safe wrapper that does not link the C `libseccomp`, which every target a
 //! release ships would then have to build, the static one included. What is unsafe is four system
-//! calls and a `prctl` on values this module owns, and taking ownership of the descriptor one of
-//! them returns, each with its reason beside it. Everything else - the socket pair, handing a
-//! descriptor over, polling - goes through `rustix`, which is safe.
+//! calls and a `prctl` on values this module owns, taking ownership of the descriptor one of them
+//! returns, and the all-zero notification another is handed, each with its reason beside it.
+//! Everything else - the socket pair, handing a descriptor over, polling - goes through `rustix`,
+//! which is safe.
 //!
 //! note: a filter is a program written against one architecture's system call numbers, and these
 //! are x86_64's and aarch64's, which are the two this crate builds for. What reads the command for
