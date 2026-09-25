@@ -792,6 +792,22 @@ mod tests {
         assert_eq!(streamed.reasoning, "two and two");
     }
 
+    /// A summary that arrives a second time is kept once.
+    ///
+    /// note: an endpoint may summarise one stretch of reasoning more than once, and appending each
+    /// copy would show the reader the same paragraph twice as if the model had thought it twice.
+    #[test]
+    fn a_summary_that_arrives_twice_is_kept_once() {
+        let mut streamed = Streamed::default();
+        let deltas = DeltaSink::disconnected();
+        let summary = json!({ "choices": [{ "delta": {} }],
+            "reasoning_summary": { "content": "working out the budget", "status": "complete" } });
+
+        streamed.event(&summary, &deltas);
+        streamed.event(&summary, &deltas);
+        assert_eq!(streamed.reasoning, "working out the budget");
+    }
+
     /// No arguments written is a call with no arguments, and an object sent as one is taken as it
     /// is; only text that is not JSON is `_unparsed`.
     ///
