@@ -26,18 +26,23 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    /// The kernel is in the middle of a request or of running tools, and cannot start another.
+    /// The kernel is in the middle of a turn, and cannot start another or undo what it acts on.
     ///
     /// note: See [`Kernel::state`]: [`State::Requesting`] and [`State::Executing`] are the two
-    /// states in which somebody else is already driving the loop.
+    /// states in which somebody else is already driving the loop, and the two in which
+    /// [`Kernel::step`] is refused. [`Kernel::undo`] and [`Kernel::redo`] are refused in
+    /// [`State::Deciding`] and [`State::Ready`] as well, for the reason `undo` gives, and nothing
+    /// takes the machine out of those two but a decision, a step or
+    /// [`Kernel::cancel_pending_calls`].
     ///
     /// note: There is deliberately nothing here to wait on. A kernel that handed out a "tell me
     /// when you are free" future would be choosing a queueing policy - who gets it next, and what
     /// becomes of whoever asked first - and no one answer suits every client. What it offers
     /// instead is the fact: every transition is an
     /// [`Event::StateChanged`](crate::Event::StateChanged). Waiting is
-    /// [`Kernel::subscribe`](crate::Kernel::subscribe) and a loop until [`State::is_busy`] stops
-    /// being true; a client that would rather refuse than queue reports this and moves on.
+    /// [`Kernel::subscribe`](crate::Kernel::subscribe) and a loop until the state is one the
+    /// refused call is taken in - for a step, until [`State::is_busy`] stops being true; a client
+    /// that would rather refuse than queue reports this and moves on.
     Busy,
     /// [`Kernel::step`] was called without a [`Provider`] being set.
     NoProvider,
