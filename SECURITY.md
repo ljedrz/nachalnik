@@ -127,7 +127,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   shell, so `read ~/.gitconfig` would join a directory literally called `~` onto the working
   directory and come back `No such file or directory` - the same trap as the one below, since a
   model believes an absent file and concludes the home directory is empty. Expanding it is the
-  wrong fix: under `--no-sandbox` `Reach::allows` returns the path untouched, so `~/.ssh/id_rsa`
+  wrong fix: under `--no-sandbox` `Reach::allows` returns the path unchecked, so `~/.ssh/id_rsa`
   would resolve for real on a path the model wrote. It is refused with a sentence instead, before
   the unconfined early return, and the argument's own description says the rule so the refusal is
   not a surprise. `shell` is the other way round - `sh -c` does expand it, and the confinement
