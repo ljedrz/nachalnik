@@ -119,13 +119,13 @@ Calibrating::new(BytesPerToken::default())
 kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
-`Calibrating` converges on the first response worth learning from and settles there — measured over
-a growing conversation, it took that steady 7% error to within 1%. What it learned is a number you
-can look at (`calibration()`), not a fudge factor buried in the kernel. It ignores requests too
-small to have a systematic error in them, because a percentage drawn from a handful of tokens is
-noise. And it corrects what is counted *from then on*: figures already recorded on items do not
-silently rewrite themselves. `Kernel::recount` rewrites them when you ask, and says so on the
-event stream.
+`Calibrating` keeps one ratio over every response worth learning from, so it settles rather than
+chasing the last request — measured over a growing conversation, it took that steady 7% error to
+within 1%. What it learned is a number you can look at (`calibration()`), not a fudge factor
+buried in the kernel. It ignores requests too small to have a systematic error in them, because a
+percentage drawn from a handful of tokens is noise. And it corrects what is counted *from then
+on*: figures already recorded on items do not silently rewrite themselves. `Kernel::recount`
+rewrites them when you ask, and says so on the event stream.
 
 The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
 supplies the facts and your code supplies the judgement.
