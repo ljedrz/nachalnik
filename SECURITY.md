@@ -201,6 +201,7 @@ what stands in the way, and what does not.
   your own closes the one syscall before that. A served loopback port is not: every account on the
   machine can connect to one, and a connection is the `shell` tool running as the person serving -
   so where other people share the machine, `--serve unix:PATH` is the one that keeps them out.
-- **Size.** What a tool keeps of one call stops at `tools::KEPT`, so a command that writes without
-  end, or a file larger than anybody meant to read, cannot fill the process, the archive or a save.
+- **Size.** What a tool keeps of one call stops at `tools::KEPT`, on each of a command's two
+  streams, so a command that writes without end, or a file larger than anybody meant to read,
+  cannot fill the process, the archive or a save.
   What a tool from an MCP server returns is that server's to bound.
