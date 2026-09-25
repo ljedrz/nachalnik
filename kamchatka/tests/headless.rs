@@ -3103,8 +3103,9 @@ fn restart_writes_the_session_out_and_starts_another() {
 ///
 /// note: a link where the directory should be is the case one user can arrange; the other - a
 /// directory somebody else made first - needs a second user, and it is the same refusal. What it
-/// promises is that nothing is written through the link and that the sentence says why and what
-/// to do instead, which is the only thing a person running this is told.
+/// promises is that nothing is written through the link, not even the mode the directory is given,
+/// and that the sentence says why and what to do instead, which is the only thing a person running
+/// this is told.
 #[test]
 fn a_record_directory_that_is_a_link_is_refused_in_words() {
     let dir = std::env::temp_dir().join(format!("kamchatka-linked-{}", std::process::id()));
@@ -3112,6 +3113,14 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
     let elsewhere = dir.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).expect("a directory to point at");
     std::os::unix::fs::symlink(&elsewhere, dir.join("kamchatka")).expect("a link");
+    let mode = |path: &std::path::Path| {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::metadata(path)
+            .expect("the target")
+            .permissions()
+            .mode()
+    };
+    let before = mode(&elsewhere);
 
     let mut child = std::process::Command::new(common::program())
         .args(["--headless"])
@@ -3148,6 +3157,11 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
         std::fs::read_dir(&elsewhere).expect("the target").count(),
         0,
         "something was written through the link"
+    );
+    assert_eq!(
+        mode(&elsewhere),
+        before,
+        "the directory behind the link was made private"
     );
 
     let _ = std::fs::remove_dir_all(&dir);

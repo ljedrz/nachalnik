@@ -732,20 +732,29 @@ pub fn record(app: &App) -> Result<Recorded, String> {
     dir.push("kamchatka");
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
     {
-        use std::os::unix::fs::PermissionsExt as _;
+        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 
-        // it may already exist from an earlier run, made before this did it; either way, this is
-        // the run that is about to write a transcript into it
-        let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700));
-
-        // note: and then looked at, because the temporary directory is everybody's and this name
-        // is fixed. One somebody else made there first is one the line above cannot make private
-        // - it fails, and is ignored - so without this the transcript would go into a directory
-        // they can read, and a link they left at a predictable name would be followed. A real
-        // directory that nobody but its owner can enter is one this user owns, or one it cannot
-        // write in at all
-        let private = std::fs::symlink_metadata(&dir)
-            .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0);
+        // note: opened without following a link, and made private and looked at through what was
+        // opened, because the temporary directory is everybody's and this name is fixed. A link
+        // somebody left at it is refused before anything is done through it, a chmod of what it
+        // points at included. A directory somebody else made there first is one the chmod cannot
+        // make private - it fails, and is ignored - so without the look the transcript would go
+        // into a directory they can read. A real directory that nobody but its owner can enter is
+        // one this user owns, or one it cannot write in at all
+        let private = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(
+                (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32,
+            )
+            .open(&dir)
+            .is_ok_and(|opened| {
+                // it may already exist from an earlier run, made before this did it; either way,
+                // this is the run that is about to write a transcript into it
+                let _ = opened.set_permissions(std::fs::Permissions::from_mode(0o700));
+                opened
+                    .metadata()
+                    .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0)
+            });
         if !private {
             return Err(format!(
                 "{} is not a directory only you can enter, so the session was not recorded \
