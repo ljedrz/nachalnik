@@ -53,8 +53,8 @@ without it.
   gets spread over the bytes it can, and prose beside one screenshot ends up reading high while
   the screenshot still reads nothing. And whatever a counter *would* need in order to price a
   payload goes in `Blob::meta`, which the kernel never reads - on the blob rather than the item,
-  because the budget is counted over projected messages and a `Message` carries a `Content` and
-  nothing else a counter can see.
+  because the budget is counted over projected messages and a `Message` carries an item's
+  `Content` and not its metadata.
 
   This crate carries no vendor formula and is not going to. A dialect is a shape that changes
   over years and a price list is a per-model fact that changes whenever a vendor ships a model,

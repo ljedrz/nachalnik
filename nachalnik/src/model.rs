@@ -95,8 +95,8 @@ pub struct Blob {
     /// place to put the inputs instead.
     ///
     /// note: on the blob rather than on the item, because a budget is counted over the
-    /// *projected messages*, and a [`Message`] carries a [`Content`] and nothing else a counter
-    /// could read. A fact left on `ContextItem::meta` reaches
+    /// *projected messages*, and a [`Message`] carries an item's [`Content`] and not its
+    /// metadata. A fact left on `ContextItem::meta` reaches
     /// [`TokenCounter::count_item`](crate::TokenCounter::count_item) and never reaches the figure
     /// a [`Compactor`](crate::Compactor) acts on.
     ///
