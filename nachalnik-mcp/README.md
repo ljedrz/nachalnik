@@ -63,7 +63,7 @@ identifier.
 | MCP | in the context |
 | --- | --- |
 | text blocks | joined, as text |
-| `structuredContent` | `Content::Json` — a server that returned structure meant it |
+| `structuredContent` | `Content::Json` in place of any blocks — a server that returned structure meant it |
 | `isError` | `ToolOutput::error`, handed to the model rather than stopping the loop |
 | images, audio, resources | *named*, not dropped: `[an image (image/png), not carried into the context]` |
 

@@ -216,7 +216,8 @@ impl Tool for McpTool {
 fn output_of(result: CallToolResult) -> ToolOutput {
     let failed = result.is_error.unwrap_or(false);
 
-    // a server that returned structured content meant it; it goes in as structure
+    // a server that returned structured content meant it; it goes in as structure, and the
+    // blocks beside it - which MCP says should repeat it as text - are not read
     if let Some(structured) = result.structured_content {
         let content = Content::json(structured);
         return match failed {
