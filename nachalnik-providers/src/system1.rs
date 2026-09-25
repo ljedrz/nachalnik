@@ -201,10 +201,10 @@ pub enum Question {
         instructions: Value,
         /// The options, each optionally described.
         ///
-        /// note: a list of pairs rather than a map, so that the payload carries them in the order
-        /// they were written. It becomes a JSON object either way and the model is not promised
-        /// an order; what this is for is the person reading [`Jev::render`] beside the code that
-        /// built it.
+        /// note: a list of pairs rather than a map, so that the question keeps the options in the
+        /// order they were written. The payload is a JSON object either way, whose keys go out
+        /// sorted unless something in the build turns on `serde_json`'s `preserve_order`, and the
+        /// model is not promised an order.
         options: Vec<(String, Option<String>)>,
     },
     /// An ordered rubric, answered with a position on it that may fall between two levels.
