@@ -95,6 +95,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A change refused for want of a `reason` says that nothing was done.** It said only why a
+  reason is asked for, and a model read that as a remark about a note it had written, then put
+  away the results the note was written from. It now says nothing was done and which operation to
+  call again.
 - **The selector help names `tool:fs`.** It offered `tool:grep`, and `grep` is an operation of
   `fs` rather than a tool, so the example it gave, shown to the model on a bad `select` too,
   matched nothing.

@@ -1038,6 +1038,34 @@ async fn a_reason_is_required_before_anything_changes() {
     assert_eq!(kernel.items()[0].state, ContextState::Active);
 }
 
+/// A note refused for want of a reason says it was not written, and what to call.
+///
+/// note: the refusal used to be only the reason a reason is asked for, and a model read it as a
+/// remark about a note it had written: it went straight on to elide the results the note was
+/// written from, and what it had found was gone.
+#[tokio::test]
+async fn a_note_without_a_reason_says_it_was_not_written() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "note", "content": "the finding" }),
+    )]));
+    kernel.push(ContextItem::user("write that down"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("nothing was done"), "{said}");
+    assert!(said.contains("call `note` again"), "{said}");
+    assert!(
+        kernel
+            .items()
+            .iter()
+            .all(|item| item.content.to_text() != "the finding"),
+        "and nothing was"
+    );
+}
+
 /// The word for the move is the action, and it is the word the result is read back in.
 ///
 /// note: these five used to be one `prune` action with a `state` argument, which put the word for
