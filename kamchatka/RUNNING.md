@@ -480,8 +480,8 @@ let reply = wired.app.submit("/budget").await;
 ```
 
 `headless::Headless` is one loop over that, and the program's own is the other. A host with an
-event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event`, and
-hands in a line whenever it has one.
+event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event` and
+`wired.finished` into `on_outcome`, and hands in a line whenever it has one.
 
 `spend` above is the one thing a host gets whether it asks or not. `on_event` is the door every
 loop comes through, so that is where the provider's own figures are added up; once they pass the
