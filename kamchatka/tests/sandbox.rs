@@ -1187,8 +1187,8 @@ async fn a_command_is_asked_about_when_it_reaches_for_the_network_and_not_before
         "{said}"
     );
     assert!(
-        said.contains("was asked and let it"),
-        "the model is told whose answer it was: {said}"
+        said.contains("let through when it was asked about"),
+        "the model is told it was an answer: {said}"
     );
     assert_eq!(heard(&socket), ["one", "two"]);
     assert_eq!(
@@ -1199,7 +1199,7 @@ async fn a_command_is_asked_about_when_it_reaches_for_the_network_and_not_before
     assert!(policy.reaching().waiting().is_empty());
 }
 
-/// A no refuses every internet socket the command asks for, and the model is told who said it.
+/// A no refuses every internet socket the command asks for, and the model is told it was an answer.
 #[tokio::test]
 async fn a_no_refuses_every_socket_the_command_asks_for() {
     if !gated() {
@@ -1214,7 +1214,7 @@ async fn a_no_refuses_every_socket_the_command_asks_for() {
     assert_eq!(answers.asked(), 1);
     assert_eq!(said.matches("refused 13").count(), 2, "{said}");
     assert!(heard(&socket).is_empty(), "a datagram got out after a no");
-    assert!(said.contains("was asked and said no"), "{said}");
+    assert!(said.contains("refused when it was asked about"), "{said}");
     // near the top, where an output limit cutting from the end cannot take it
     assert!(
         said.lines()

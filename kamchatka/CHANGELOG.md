@@ -36,7 +36,9 @@ minor bump may break you.
   the network`, and takes `y`, `a` and `n`; a headless run answers it with `--on-ask` while the
   turn is still running, a `--connect` client once its input has closed, and a served session
   sends it to every client as `reaching` and takes `reach` back. The answer is a `policy.ruled`
-  for `net:reach`, and the tool result the model reads says who let the command out or refused it.
+  for `net:reach`, and the tool result the model reads says whether the command was let out or
+  refused, and whether by an answer or by a standing rule - not who answered, which may have been
+  `--on-ask`.
   Where the gate holds, `Careful` stops reading a command for program names, so an allowed
   `exec:run` runs `git status` unasked and a script that opens a socket is asked about. Where it
   cannot be installed nothing changes. `App::reached`, `App::decide_reach` and `Careful::reaching`

@@ -3513,11 +3513,10 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
         )
     });
     assert!(ruled, "the answer is in the record: {:?}", run.names());
-    let told = run
-        .app
-        .kernel
-        .items()
-        .iter()
-        .any(|item| item.content.to_text().contains("was asked and said no"));
-    assert!(told, "the model was not told who refused it");
+    let told = run.app.kernel.items().iter().any(|item| {
+        item.content
+            .to_text()
+            .contains("refused when it was asked about")
+    });
+    assert!(told, "the model was not told it was refused");
 }
