@@ -50,6 +50,12 @@ minor bump may break you.
   claimed. A report written before this names no questions, so re-reading one reads its answers
   again and moves none of its claims.
 
+- **`Report::served_by`: the provider a run reached its model through**, beside `Report::model`,
+  which stays the model's name alone. `per_model` keys on the name, so one model reached through
+  two providers is one row: a sign test counts models as independent, and the same weights reached
+  two ways are not. `pool` says when a model's reports came through more than one endpoint and it
+  counted one of them.
+
 ### changed
 
 - **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two

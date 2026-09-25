@@ -570,11 +570,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   the endpoint is one experiment's claims, every experiment's with one per note, or the pool as it
   stands is the study's decision, and the preregistration is where it is made.
 
-- **A model's identity in a report.** `Report::model`, and `per_model`, `pool` and `compare` after
-  it, key on the model's name alone, so one model served by two providers is pooled as one. A run
-  measures one model by design; keying on the provider as well changes what `Report::model`
-  returns.
-
 - **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
   constructor, so it stays unless a minor release wants the surface smaller.
 

@@ -1342,13 +1342,18 @@ fn the_endpoint_is_what_a_subject_reports_and_not_what_its_test_told_it() {
 
 /// A report holding one counterfactual claim about a named note, at a given time.
 fn report_of(model: &str, at: u64, measured: bool) -> Report {
+    report_through("p", model, at, measured)
+}
+
+/// The same, with the model reached through a provider of the caller's naming.
+fn report_through(provider: &str, model: &str, at: u64, measured: bool) -> Report {
     let json = serde_json::json!({
         "at": at,
         "outcomes": [{
             "experiment": "attribution",
             "instrument": { "version": "4", "material": ["depot"], "digest": "x" },
             "checks": [],
-            "model": serde_json::to_value(ModelInfo::new("p", model)).unwrap(),
+            "model": serde_json::to_value(ModelInfo::new(provider, model)).unwrap(),
             "params": {},
             "spend": { "requests": 1, "input": 1, "output": 1, "reasoning": 0 },
             "scores": Scores::default(),
@@ -1437,6 +1442,20 @@ fn a_run_that_measured_nothing_never_displaces_one_that_did() {
         (report_of("b/two", 1, true), "z"),
     ]);
     assert_eq!(two.len(), 2);
+}
+
+#[test]
+fn one_model_through_two_providers_is_one_model() {
+    // a sign test counts models as independent, and the same weights reached two ways are not
+    let direct = report_through("https://api.example/v1", "a/one", 1, true);
+    let routed = report_through("https://router.example/v1", "a/one", 2, true);
+    assert_eq!(direct.model(), routed.model());
+    assert_ne!(direct.served_by(), routed.served_by());
+
+    let picked = per_model([(direct, "direct"), (routed, "routed")]);
+    assert_eq!(picked.len(), 1);
+    assert_eq!(picked[0].0, "a/one");
+    assert_eq!(picked[0].1.served_by(), Some("https://router.example/v1"));
 }
 
 #[test]
