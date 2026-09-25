@@ -442,10 +442,10 @@ fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>)
 
     let budget = kernel.budget();
     // note: the undo depth is reported and named as somebody else's on purpose. It is the stack
-    // behind the `u` key in the terminal, it holds everything that has ever happened to this
-    // context, and this tool's own `undo` does not touch it - a figure that big, sitting
-    // unlabelled beside an operation called `undo`, would be an invitation to try to walk back
-    // the person's work
+    // behind the `u` key in the terminal, it holds the latest changes to this context by
+    // anybody, as many as `Config::context_undo_depth` keeps, and this tool's own `undo` does not
+    // touch it - that figure, sitting unlabelled beside an operation called `undo`, would be an
+    // invitation to try to walk back the person's work
     let theirs = kernel.with_context(|context| context.undo_len());
     let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
