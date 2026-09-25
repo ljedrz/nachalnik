@@ -1434,7 +1434,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         "a row nothing here declares is marked as one: {marked}"
     );
     // a screen tall enough for the whole table and the sentence under it: there is a row per
-    // subject now, and the default viewport shows the first twenty-five of thirty-three
+    // subject now, which is more than the default viewport holds
     let whole = harness
         .sized(120, 60)
         .replace(['│', '┌', '┐', '└', '┘', '─'], " ")
