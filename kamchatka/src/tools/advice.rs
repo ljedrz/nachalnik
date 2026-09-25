@@ -37,8 +37,8 @@ use crate::tools::Careful;
 
 /// How many calls' worth of advice is kept for the screen to read back.
 ///
-/// note: the same bound and the same reason as [`Careful`]'s own: nobody is obliged to read
-/// these, and a session that never does should not grow a queue.
+/// note: bounded for the same reason as [`Careful`]'s own: nobody is obliged to read these, and a
+/// session that never does should not grow a queue.
 const REMEMBERED: usize = 32;
 
 /// How long one argument may be before it is cut, in bytes.
