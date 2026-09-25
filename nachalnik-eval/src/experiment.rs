@@ -558,12 +558,30 @@ impl Report {
     ///
     /// note: `None` when the outcomes disagree, which would mean a report holding two models -
     /// something the runner cannot produce and a hand-edited file could.
+    ///
+    /// note: the model's name alone, and not the provider it was reached through, because this is
+    /// what [`per_model`] keys on and a model is the unit a sign test counts. The same weights
+    /// reached through two endpoints are one model measured twice, not two independent ones, and
+    /// keying on the pair would put both in one cohort. [`Report::served_by`] says which endpoint.
     pub fn model(&self) -> Option<&str> {
+        self.agreed(|model| model.model.as_str())
+    }
+
+    /// The provider the run reached its model through, where its outcomes agree about it.
+    ///
+    /// note: a provider's own label, which is whatever the caller named it - `bench` names it by
+    /// its base URL. An aggregator is one provider here however many upstreams it routed to.
+    pub fn served_by(&self) -> Option<&str> {
+        self.agreed(|model| model.provider.as_str())
+    }
+
+    /// One field of what the outcomes say they measured, where they all say the same.
+    fn agreed(&self, field: impl Fn(&ModelInfo) -> &str) -> Option<&str> {
         let named: Vec<&str> = self
             .outcomes
             .iter()
             .filter_map(|outcome| outcome.model.as_ref())
-            .map(|model| model.model.as_str())
+            .map(field)
             .collect();
         let first = named.first()?;
 
@@ -622,6 +640,10 @@ impl fmt::Display for Report {
 /// alone, a re-run stopped early by a provider's budget limit would replace a completed run as
 /// that model's newest report, and the model would drop out of the pooled table with only a "not
 /// measured" to show for it.
+///
+/// note: keyed on [`Report::model`], so one model reached through two providers is one row, and
+/// the report picked may be either provider's. That is the reading a sign test over models
+/// needs; a caller that wants to know a choice was made compares [`Report::served_by`].
 pub fn per_model<T>(reports: impl IntoIterator<Item = (Report, T)>) -> Vec<(String, Report, T)> {
     let mut best: BTreeMap<String, (Report, T, bool)> = BTreeMap::new();
     for (report, tag) in reports {

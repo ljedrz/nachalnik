@@ -65,6 +65,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let report: Report = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
         loaded.push((report, path.clone()));
     }
+    // one row per model and not per endpoint, which is what makes the rows independent; but a
+    // model measured through two endpoints had one of them picked for it, and that is said
+    let mut endpoints: std::collections::BTreeMap<&str, std::collections::BTreeSet<&str>> =
+        Default::default();
+    for (report, _) in &loaded {
+        if let (Some(model), Some(endpoint)) = (report.model(), report.served_by()) {
+            endpoints.entry(model).or_default().insert(endpoint);
+        }
+    }
+    let reached: Vec<String> = endpoints
+        .iter()
+        .filter(|(_, seen)| seen.len() > 1)
+        .map(|(model, seen)| {
+            format!(
+                "{model} (through {})",
+                seen.iter().copied().collect::<Vec<_>>().join(", ")
+            )
+        })
+        .collect();
+
     let runs = per_model(loaded);
 
     let surfaces: Vec<Surface> = runs.iter().map(|(_, report, _)| report.surface()).collect();
@@ -109,6 +129,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "\n  {} run(s) predate the endpoint and carry no material on their claims: {}",
             stale.len(),
             stale.join(", ")
+        );
+    }
+
+    if !reached.is_empty() {
+        println!(
+            "\n  measured through more than one endpoint, and counted once, from the run above: {}",
+            reached.join("; ")
         );
     }
 
