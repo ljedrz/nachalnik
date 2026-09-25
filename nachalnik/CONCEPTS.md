@@ -205,14 +205,18 @@ why. A seam being swapped names what went out and what came in — because "the 
 replaced" leaves a reader unable to say what was projecting the requests on either side of that
 line, and that is the question a log is for.
 
-`Kernel::subscribe` is the live stream; `Kernel::history` is the complete, append-only session
-log (both written under one lock, so their order agrees). Records are plain `serde` types, so
-persisting a session is one line per event.
+`Kernel::subscribe` is the live stream; `Kernel::history` is the append-only session log (both
+written under one lock, so their order agrees), which keeps `model.delta` and `tool.output` only
+when `Config::record_progress` is on. Records are plain `serde` types, so persisting a session is
+one line per event.
 
 The log stays small by *naming* things rather than copying them: `model.requested` records the
 context ids a request was projected from, not the messages. The one event that carries content is
 `context.replaced`, and it follows the rule that makes the rest work — the log records what nothing
-else can recover. An added item is still in the context; overwritten text is nowhere. The log is
+else can recover. An added item is still in the context; overwritten text is nowhere. An item's
+metadata is copied too, into `context.added` and `context.annotated`, because it is a hint a
+compactor decides by and nothing else keeps the one an annotation replaced. `model.payload`
+holds the rendered request, and is written only when `Config::record_payloads` is on. The log is
 unbounded on purpose (a capped append-only log is not one), and `drain_history` is how a
 long-running session stays affordable: you take the records, you write them somewhere, the kernel
 lets go. Nothing disappears behind your back.
