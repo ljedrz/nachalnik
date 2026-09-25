@@ -1155,7 +1155,7 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     // a selector it got wrong is answered with the whole grammar, so the next attempt is an
     // informed one rather than another guess
     assert!(answers[1].contains("is not a selector"), "{answers:?}");
-    assert!(answers[1].contains("tool:grep:latest"), "{answers:?}");
+    assert!(answers[1].contains("tool:fs:latest"), "{answers:?}");
     assert!(answers[1].contains("state:excluded"), "{answers:?}");
 }
 

@@ -321,8 +321,8 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
 /// The selector language, shown by `/exclude` with nothing to exclude.
 ///
 /// note: Kept beside the help rather than derived from the crate, because `Selector` is a parser
-/// and a parser cannot tell you what it would have accepted. It is the same list as the type's
-/// own documentation, and the tests check that a few of these really do parse.
+/// and a parser cannot tell you what it would have accepted. It lists the forms the type's own
+/// documentation does, and the tests check that a few of these really do parse.
 pub(crate) const SELECTORS: &str = "  17                      the item with that number
   all                     every item, whatever state it is in
 
@@ -337,8 +337,8 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
 
   file:src/parser.rs      the file attached by that path; one read with a tool is
                           that tool's result, as below
-  tool:grep               every result the `grep` tool produced
-  tool:grep:latest        the most recent one; also: tool:grep:first
+  tool:fs                 every result the `fs` tool produced
+  tool:fs:latest          the most recent one; also: tool:fs:first
   tool_result:1842        the item numbered 1842, the same as `1842`
   label:cargo test        every item with exactly that label
   src/parser.rs           anything else is taken as a label

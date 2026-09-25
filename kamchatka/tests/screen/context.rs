@@ -352,10 +352,10 @@ async fn a_selector_with_nothing_to_select_teaches_the_language() {
     // an error saying the empty string is not a selector is true and useless; the grammar has
     // ten forms and this is where somebody goes looking for them
     let screen = harness.sized(110, 40);
-    assert!(screen.contains("tool:grep:latest"), "{screen}");
+    assert!(screen.contains("tool:fs:latest"), "{screen}");
     assert!(screen.contains("state:excluded"), "{screen}");
     // and the forms it advertises really are forms
-    for form in ["all", "state:excluded", "tool:grep:latest", "17"] {
+    for form in ["all", "state:excluded", "tool:fs:latest", "17"] {
         assert!(
             form.parse::<nachalnik::selectors::Selector>().is_ok(),
             "the help offers `{form}`, which does not parse"

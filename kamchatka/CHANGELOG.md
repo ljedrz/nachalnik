@@ -95,6 +95,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The selector help names `tool:fs`.** It offered `tool:grep`, and `grep` is an operation of
+  `fs` rather than a tool, so the example it gave, shown to the model on a bad `select` too,
+  matched nothing.
 - **A value the settings file gets wrong is refused naming the file.** A parse error always said
   which file, but what was refused after it was read - a `border` that is not a colour, an `on-ask`
   that is not a word - said only "the settings file", and there are two places one can be found.
