@@ -1391,6 +1391,12 @@ mod tests {
         assert_eq!(content.to_text(), "hello");
     }
 
+    /// A cut lands on a character boundary, with room for the note and without it.
+    ///
+    /// note: on text where every index is a boundary neither walk down to one ever runs, so the
+    /// text is `każdy`, which has an index inside a character every six bytes. 21 is one of them,
+    /// and too small for the note at any cut: it is the walk that spends the budget on content
+    /// alone.
     #[test]
     fn truncation_does_not_split_a_character() {
         let mut content = Content::text("każdy".repeat(50));
@@ -1398,5 +1404,30 @@ mod tests {
         // getting this far is what proves it: slicing inside a character would have panicked
         assert!(content.to_text().contains("truncated by an output limit"));
         assert!(content.byte_len() <= 60);
+
+        let text = "każdy".repeat(50);
+        assert!(!text.is_char_boundary(21));
+        let (dropped, content) = within(move || {
+            let mut content = Content::text(text);
+            (content.truncate_to(21), content)
+        })
+        .expect("the walk down to a boundary ends");
+        assert_eq!(content.to_text(), "każdykażdykażdyka");
+        assert_eq!(dropped, Some(300 - 20));
+    }
+
+    /// Runs `f` on another thread, and answers `None` if it has not come back within five seconds.
+    ///
+    /// note: a walk that never ends is a suite that never finishes rather than a test that fails;
+    /// bounding the wait is what turns one into the other. The thread is left to run rather than
+    /// killed, and the process ends with the suite.
+    fn within<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+        let (sent, received) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = sent.send(f());
+        });
+        received
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .ok()
     }
 }
