@@ -218,7 +218,8 @@ fn ops() -> Vec<Op> {
         Op::these(
             &["undo", "redo"],
             "`undo` walks back through the changes *you* made here, and `redo` walks forward \
-             again through what `undo` took back. Neither touches anything you did not do.",
+             again through what `undo` took back. Neither touches anything you did not do, and \
+             an item somebody else has changed since you did is left as it is now.",
             vec![
                 Arg::whole(
                     "steps",

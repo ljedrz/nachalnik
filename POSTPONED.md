@@ -365,19 +365,18 @@ Referenced from [AGENTS.md](AGENTS.md).
   whatever the lag took. Reading spend from the log, which drops nothing, rather than from the
   broadcast is the fix.
 
-- **The model's `undo` against a person's later change.** The `context` tool's own undo puts an
-  item back where the model had left it, and respects a pin, but not a person's later exclusion or
-  edit of the same item - one after the model's `revise`, too. Its undo of a move over several
-  states takes several kernel checkpoints, and its journal takes no operation lock under
-  `--parallel`. What waits is the rule: whether the model's undo stops at anything a person did
-  since, and what it says when it does.
+- **The model's `undo` in the person's undo history.** The `context` tool's own undo of a move over
+  several states takes one kernel checkpoint per state, because `set_state` moves one state at a
+  time and the kernel has no operation that moves several at once - so walking back one change of
+  the model's can cost the person several undos. And its journal takes no operation lock under
+  `--parallel`, so two `context` calls running together can record and walk back in either order.
+  The first needs a multi-state operation in the core; the second is a lock around each call.
 
 - **The model's undo history after a resume.** What `context`'s `undo` walks is kept by the process
   and not in the snapshot, so a resumed session has nothing of the model's to walk back, and a
-  change it made before the restart comes back only by `restore`; the refusal says so. It is the
-  question above for a second thing the tool remembers about its own changes: whether that
-  journal is written into the snapshot, and what an entry naming an item a person has changed
-  since means once it is read back.
+  change it made before the restart comes back only by `restore`; the refusal says so. Writing the
+  journal into the snapshot is the change, and an entry read back from one meets the rule a live
+  one does: an item that no longer looks the way the entry left it is left alone.
 
 - **`log` stops at the resume.** A resumed session's log begins at `session.resumed`, so `log read`
   cannot answer for anything before the restart, though the record written beside the snapshot

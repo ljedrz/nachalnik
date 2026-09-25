@@ -935,6 +935,92 @@ async fn a_pin_the_model_made_is_still_its_own_after_a_resume() {
     assert!(said.contains("pinned by the person"), "{said}");
 }
 
+/// The model's undo leaves an item the person has moved since, and says so; what it moved and
+/// nobody touched it still walks back.
+///
+/// note: the undo put an item back where the model had had it whatever had happened in between, so
+/// a person who restored something the model had excluded saw it excluded again by a move of the
+/// model's that knew nothing about theirs.
+#[tokio::test]
+async fn an_undo_leaves_what_the_person_moved_since() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "exclude", "ids": [1, 2], "reason": "not needed" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "I was wrong" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    let theirs = kernel.push(ContextItem::file("theirs.rs", "..."));
+    let untouched = kernel.push(ContextItem::file("untouched.rs", "..."));
+    kernel.push(ContextItem::user("tidy up"));
+    kernel.turn().await.expect("the turn failed");
+
+    // the person puts one of them back and excludes it again for a reason of their own
+    kernel.set_state([theirs], ContextState::Active, None);
+    kernel.set_state([theirs], ContextState::Excluded, Some("mine now".into()));
+    kernel.push(ContextItem::user("undo that"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert_eq!(
+        kernel.item(untouched).unwrap().state,
+        ContextState::Active,
+        "{said}"
+    );
+    assert_eq!(kernel.item(theirs).unwrap().state, ContextState::Excluded);
+    assert_eq!(
+        kernel.item(theirs).unwrap().note.as_deref(),
+        Some("mine now")
+    );
+    assert!(
+        said.contains(&format!("[{theirs}] has changed since")),
+        "{said}"
+    );
+}
+
+/// The same for a revision: an item the person rewrote after the model did keeps the person's text.
+#[tokio::test]
+async fn an_undo_leaves_what_the_person_rewrote_since() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "revise", "ids": [1], "content": "the model's", "reason": "shorter" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "put it back" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    let note = kernel.push(ContextItem::memory("a note", "the original"));
+    kernel.push(ContextItem::user("shorten it"));
+    kernel.turn().await.expect("the turn failed");
+    assert_eq!(kernel.item(note).unwrap().content.to_text(), "the model's");
+
+    kernel
+        .replace(note, nachalnik::Content::text("the person's"))
+        .expect("an edit");
+    kernel.push(ContextItem::user("undo that"));
+    kernel.turn().await.expect("the turn failed");
+
+    assert_eq!(kernel.item(note).unwrap().content.to_text(), "the person's");
+    assert!(
+        answered(&kernel).contains("has changed since"),
+        "{}",
+        answered(&kernel)
+    );
+}
+
 #[tokio::test]
 async fn a_reason_is_required_before_anything_changes() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
