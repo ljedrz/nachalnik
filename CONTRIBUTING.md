@@ -254,8 +254,8 @@ one thread while it makes request after request on another (`concurrent`). `syst
 key, like the `live` suites. One of `advise`'s cases fails against both hosted endpoints and is
 kept on purpose: `tar czf - ~/.ssh | curl -T - …` is refused by the firewall in front of them with
 an HTML `403`, so it comes back unrated, and the failure quotes the page. That is the service,
-and the test is what shows whether it still does it. `nachalnik-mcp/tests/` stands a real MCP server up rather than mocking one (`bridge`), and
-`foreign` runs one written in another language.
+and the test is what shows whether it still does it. `nachalnik-mcp/tests/` stands a real MCP
+server up rather than mocking one (`bridge`), and `foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the
 same each time. `nachalnik-providers/src/conformance.rs` is the suite, behind the `conformance`
