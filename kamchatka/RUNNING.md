@@ -277,8 +277,8 @@ nowhere to put an order. Everything downstream then reads a turn that has been t
 The context pane reads such a turn out in the order it was produced — the thinking, the sentence,
 the call — and `context` hands the agent the same blocks, numbered, with the signed ones marked. It
 is only worth having because the order is really in there: the runtime records it as
-`Content::Blocks`, counts it, prunes it and elides it like any other content, and
-`LinearProjector::send_blocks` sends it back the same way.
+`Content::Blocks`, counts it, prunes it and elides it like any other content, and a
+`LinearProjector` with `send_blocks` set, as `--gemini`'s is, sends it back the same way.
 
 Signatures are the other half. Gemini signs the parts of a turn and answers
 `400 Function call is missing a thought_signature` to a request that returns one without it — and
