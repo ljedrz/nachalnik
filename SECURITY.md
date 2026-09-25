@@ -70,9 +70,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   call is over and with nothing decided, is refused rather than asked, because a question about a
   command that has ended reaches nothing. Where the gate cannot be installed - under
   `--no-sandbox`, or on a kernel that cannot hold a call - the question is read off the command's
-  name, as it was, and the permissions tab says `network not gated`. `gate` is the one module in
-  the workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely
-  without linking the C `libseccomp`, each with its reason beside it.
+  name, as it was, and the permissions tab says so: `network not gated` beside a confined shell,
+  and `a command can do any of these` under `--no-sandbox`. `gate` is the one module in the
+  workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely without
+  linking the C `libseccomp`, each with its reason beside it.
 - **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
   a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
   The confinement holds a command to its directory and says nothing about what the command was

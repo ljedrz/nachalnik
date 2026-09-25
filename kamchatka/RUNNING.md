@@ -977,5 +977,6 @@ which is why the tool result says what it was.
 Where the filter cannot be installed — `--no-sandbox`, or a kernel that cannot hold a call — the
 program goes back to reading the command: a short list of
 programs whose point is the network, a question about them before they run, and UDP not refused.
-The permissions tab ends its shell line with `network gated` or `network not gated`, so which one
-a session has is on the screen rather than something to work out.
+The permissions tab ends a confined shell's line with `network gated` or `network not gated`, so
+which one a session has is on the screen rather than something to work out; under `--no-sandbox`
+the line is `shell: a command can do any of these` instead.
