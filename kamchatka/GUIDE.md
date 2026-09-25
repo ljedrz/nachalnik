@@ -614,10 +614,14 @@ that is not `allow` stops a walk opening that file, because "ask me first" is no
 nine hundred files can honour. The path the call *names* is judged the way `read`'s is, so
 `grep` in `.env` is a question exactly as reading it is.
 
-`glob` is the same walk with a different question: `**/*.rs` in, matching paths out, in
-alphabetical order. Both are deterministic — two identical searches give the same answer in the
-same order, which matters because the answer becomes a context item, and two items differing only
-in their order are two items nobody can diff and a budget pays for twice.
+`glob` is the same walk with a different question: `**/*.rs` in, matching paths out, in the shape
+`ls -R` prints them — a directory and a `:`, the names in it that matched, and a blank line before
+the next. A pattern that matches most of a tree is the usual one, and written out whole the
+directories were most of its answer; a model reads `ls -R` without being taught it, and one that
+now and then reads a bare name as a path loses a call, not a screenful. Both are deterministic —
+two identical searches give the same answer in the same order, which matters because the answer
+becomes a context item, and two items differing only in their order are two items nobody can diff
+and a budget pays for twice.
 
 **A long file is read in parts, and `read` says where each one ends.** Past the output limit —
 32,000 bytes, unless `/limit fs:read` says otherwise — it stops at the last whole line that fits,

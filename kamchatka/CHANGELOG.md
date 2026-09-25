@@ -62,6 +62,12 @@ minor bump may break you.
 
 ### changed
 
+- **`glob` answers in the shape of `ls -R`.** Every matching path came back whole on a line of its
+  own, so a pattern matching most of a tree - the usual one - spent most of its answer writing the
+  same directories again. Each directory is now written once, as `ls -R` writes it, followed by
+  the names in it that matched: on this repository's first 200 Rust files, 43% fewer bytes. The
+  directories come in the order `ls -R` walks them, so `src` and the files in it come before
+  `src/app`, where the paths were alphabetical before. The tool's description says the shape.
 - **A confined command cannot set up an `io_uring`**, where the gate holds. A ring opens a socket
   without calling `socket()`, so `io_uring_setup` is answered `ENOSYS`, which is what a program
   that can use one falls back from.

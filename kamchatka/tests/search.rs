@@ -379,11 +379,45 @@ async fn glob_lists_what_matches_in_order() {
     let dir = tree("glob-order");
     let said = ask(&dir, "glob", json!({ "pattern": "**/*.rs" })).await;
 
-    assert_eq!(said, "2 path(s)\nsrc/app/keys.rs\nsrc/kernel.rs");
+    assert_eq!(said, "2 path(s)\nsrc:\nkernel.rs\n\nsrc/app:\nkeys.rs");
 
     // `*` crosses a separator, so the short spelling finds the same files
     let short = ask(&dir, "glob", json!({ "pattern": "*.rs" })).await;
     assert_eq!(short, said);
+}
+
+/// `glob` answers in the shape `ls -R` prints: a directory and a `:`, the names in it, and a blank
+/// line before the next - the working directory as `.`, first, and a directory before the ones
+/// under it, each written once however many of its files matched.
+#[tokio::test]
+async fn glob_answers_the_way_ls_r_does() {
+    let dir = tree("glob-ls");
+    put(&dir, "src/app/mouse.rs", "fn click() {}\n");
+    put(&dir, "src/zebra/stripes.rs", "fn stripe() {}\n");
+    put(&dir, "top.rs", "fn top() {}\n");
+    // `.` sorts before `/`, so a string comparison would put this before `src/app`; `ls -R`
+    // finishes with `src` first
+    put(&dir, "src.old/was.rs", "fn was() {}\n");
+
+    let said = ask(&dir, "glob", json!({ "pattern": "*" })).await;
+    assert_eq!(
+        said,
+        "7 path(s)\n\
+         .:\nnotes.md\ntop.rs\n\n\
+         src:\nkernel.rs\n\n\
+         src/app:\nkeys.rs\nmouse.rs\n\n\
+         src/zebra:\nstripes.rs\n\n\
+         src.old:\nwas.rs"
+    );
+
+    // pointed at one file, it is that file under its own directory
+    let one = ask(
+        &dir,
+        "glob",
+        json!({ "pattern": "*", "path": "src/app/keys.rs" }),
+    )
+    .await;
+    assert_eq!(one, "1 path(s)\nsrc/app:\nkeys.rs");
 }
 
 #[tokio::test]
