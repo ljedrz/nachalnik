@@ -394,23 +394,13 @@ async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() 
     assert!(listed.contains("not yours"), "{listed}");
 }
 
-/// A turn whose thinking the endpoint will not take back is ranked by what it sends.
-///
-/// note: the model-facing half of the figure the pane was missing. Under any OpenAI-compatible
-/// endpoint an assistant turn's reasoning is held and never sent, so a turn that thought at
-/// length holds tens of thousands of tokens and puts a few hundred into the request - and a list
-/// headed "the most expensive item(s) actually going into it", ranked by what each item *holds*,
-/// put it at the top. That is an offer of 25,903 tokens for an elision that frees a thousand,
-/// under a note whose whole point is that it does not offer what giving something up would not
-/// buy. It ranks on the column that decides now, and says what the row is holding beside it.
 /// Every state `budget` says the model sets is one this tool has an action for.
 ///
 /// note: `budget` named `archived` among "three states you set" for as long as `archive` was an
 /// action, and went on naming it after `archive` was merged into `exclude` and the word left the
 /// vocabulary. A tool that tells a model about a state and gives it no way to reach one is the
 /// exact failure the moves were renamed to close - two models in a row spent a call each asking
-/// for an `action` called `restore` before it was one. The check is against `CHANGES` rather than
-/// against a list written here, so the sentence cannot outlive the word again.
+/// for an `action` called `restore` before it was one.
 #[tokio::test]
 async fn budget_promises_no_state_the_vocabulary_cannot_reach() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -444,6 +434,15 @@ async fn budget_promises_no_state_the_vocabulary_cannot_reach() {
     assert!(said.contains("archived"), "{said}");
 }
 
+/// A turn whose thinking the endpoint will not take back is ranked by what it sends.
+///
+/// note: the model-facing half of the figure the pane was missing. Under any OpenAI-compatible
+/// endpoint an assistant turn's reasoning is held and never sent, so a turn that thought at
+/// length holds tens of thousands of tokens and puts a few hundred into the request - and a list
+/// headed "the most expensive item(s) actually going into it", ranked by what each item *holds*,
+/// put it at the top. That is an offer of 25,903 tokens for an elision that frees a thousand,
+/// under a note whose whole point is that it does not offer what giving something up would not
+/// buy. It ranks on the column that decides now, and says what the row is holding beside it.
 #[tokio::test]
 async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
