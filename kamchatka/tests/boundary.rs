@@ -162,8 +162,10 @@ fn the_file_tools_are_held_to_the_same_boundary() {
 /// rather than followed - for reading, and for writing, which would create or empty a file there.
 ///
 /// note: the swap is done by hand between the two calls, which is the whole of what a race is:
-/// something else writing to the directory after `allows` has looked at it. Linux only, because
-/// `openat2` is what refuses it and elsewhere the open is an ordinary one.
+/// something else writing to the directory after `allows` has looked at it. `openat2` is what
+/// refuses it, so on a kernel without one - older than 5.6, or behind a container filter that
+/// refuses the call - the open is an ordinary one and this fails, which is the right way for that
+/// kernel to be found out.
 #[test]
 fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     use kamchatka::sandbox::{Access, Reach};

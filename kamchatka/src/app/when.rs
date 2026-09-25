@@ -19,8 +19,8 @@ use time::{OffsetDateTime, UtcOffset};
 ///
 /// note: `None` twice over, and they mean different things that the pane renders the same way.
 /// Not yet set is a test or an embedder that never went through `main`; set to `None` is a
-/// platform that would not say. Either way the clock falls back to UTC and says so, because a
-/// column of times that is silently two hours out is worse than one that admits which zone it is
+/// system whose zone could not be read. Either way the clock falls back to UTC and says so, because
+/// a column of times that is silently two hours out is worse than one that admits which zone it is
 /// in.
 static LOCAL_OFFSET: OnceLock<Option<i32>> = OnceLock::new();
 
