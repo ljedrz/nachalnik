@@ -93,7 +93,8 @@ model reads a conversation in which it asked for something and can no longer see
 Dropping the result outright would have forced the projector to drop the call with it, since a call
 with no result is a request most providers reject, and the model would then be reading a
 conversation in which it never asked at all. What an elided item holds beyond its marker is counted
-as held back rather than spent, and <kbd>space</kbd> spends it again.
+as held back rather than spent, and <kbd>space</kbd> twice — out altogether, then back to all of
+it — spends it again.
 
 The marker the model reads says one more thing than the row has room for: *reading it again
 would put the same tokens back into a context that had no room for them — ask for the part you
