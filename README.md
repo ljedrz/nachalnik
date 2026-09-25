@@ -154,6 +154,9 @@ through a context:
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
 ```
 
+`kamchatka`'s live suite does not read that key, and skips without the ones it does read;
+[CONTRIBUTING.md](CONTRIBUTING.md) lists each suite's.
+
 The figures in these readmes are measurements — what a request really cost, what a counter guessed
 against what a provider charged, what a session did — taken against a real API where they say so.
 There is no tally of the repository itself: `cargo test --workspace` and the tree have one that
