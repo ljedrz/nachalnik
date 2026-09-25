@@ -27,14 +27,18 @@ use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
 /// working directory. `Reach::allows` says it again at the point of failure, which is the half
 /// that actually lands - a description is what makes the refusal legible when it arrives.
 ///
+/// note: "`fs` does not go through a shell" rather than "there is no shell here", which is the same
+/// fact about `fs` and reads as one about the session: a live model offered `shell` beside it
+/// said it had no way to run a command.
+///
 /// note: and the literal-`~` spelling is here rather than in that refusal. A refusal is read
 /// under pressure to try something else, so every concrete path in one is read as a path to try:
 /// offered `./~` beside a refusal about `~/notes.txt`, a model reads `./~`, a file it neither
 /// wanted nor had. A schema is read while choosing, which is when a rare spelling is worth knowing
 /// and nobody is about to act on it.
 pub(super) const PATH_ARG: &str = "absolute, or relative to the working directory. `~` is not \
-                        expanded - there is no shell here - and a path starting with one is \
-                        refused; a file whose name really is `~` is `./~`";
+                        expanded, since `fs` does not go through a shell, and a path starting \
+                        with one is refused; a file whose name really is `~` is `./~`";
 
 pub(super) struct Read(
     pub(super) Arc<Reach>,

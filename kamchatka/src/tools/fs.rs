@@ -60,7 +60,9 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "glob",
-            "finds paths without opening anything",
+            "finds paths without opening anything. Name the extension you are after - `*.rs` \
+             rather than `*` - since a listing of everything stops at the cap, often before the \
+             file you wanted",
             vec![
                 Arg::text("pattern", GLOB_ARG).needed(),
                 Arg::text("path", WHERE),
