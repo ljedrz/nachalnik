@@ -217,7 +217,7 @@ pub const KEPT: usize = 8 * 1024 * 1024;
 /// small session and a large one with many more tools registered: `fs:write` and `fs:edit` are a
 /// line each, `context:revise` says what it replaced without quoting it, `context:note` and
 /// `setup:model` and `setup:policy` are a short paragraph, and `context:budget` is a fixed report
-/// with the four most expensive rows under it. Everything else grows with what the session holds,
+/// with the ten most expensive rows under it. Everything else grows with what the session holds,
 /// `context:look` and `log`'s records most of all.
 ///
 /// note: what a lower number buys where a limit never fires anyway. It is a tripwire: the seven
