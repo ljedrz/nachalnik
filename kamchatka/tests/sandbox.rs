@@ -671,6 +671,36 @@ fn a_shut_gate_refuses_a_datagram_as_well_as_a_connection() {
     );
 }
 
+/// Where Landlock confines and the kernel can hold a call, the probe finds the gate.
+///
+/// note: every other test of the gate asks the probe first and skips where it says no, so a gate
+/// that never went on would read as a machine without one and pass the lot. Here the probe's no is
+/// the failure - and what the program does with that no is leave every session reading command
+/// lines for program names.
+///
+/// note: skipped in a process already under a seccomp filter, which is where a suite run from
+/// kamchatka's own shell is: the kernel refuses a second listener below a filter that has one.
+#[test]
+fn the_probe_finds_the_gate_wherever_the_kernel_can_hold_a_call() {
+    if !enforced() {
+        return;
+    }
+    let status = std::fs::read_to_string("/proc/self/status").expect("linux says");
+    let filtered = status
+        .lines()
+        .find_map(|line| line.strip_prefix("Seccomp:"))
+        .is_some_and(|mode| mode.trim() != "0");
+    if !kamchatka::gate::holds() || filtered {
+        eprintln!("skipped: this kernel cannot hand this process a listener");
+        return;
+    }
+
+    assert!(
+        available(&common::program()).gated,
+        "the kernel can hold a call here and the probe says the gate did not go on"
+    );
+}
+
 /// What a confined command connects to, in the one spelling every one of these tests uses.
 fn connect_to(socket: &Path) -> String {
     format!(
