@@ -13,7 +13,7 @@
 
 #![cfg(feature = "gemini")]
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use nachalnik::{
     Block, Config, Content, ContextItem, ContextKind, Kernel, LinearProjector, ModelResponse,
@@ -24,6 +24,7 @@ use serde_json::{Value, json};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
+    sync::oneshot,
 };
 
 /// Answers one request with this body, as a stream, and remembers what it was asked.
@@ -621,4 +622,66 @@ async fn a_turn_that_ran_out_of_room_says_so_beside_its_call() {
 
     assert_eq!(response.stop, StopReason::Length);
     assert_eq!(response.calls().count(), 1, "and the call is still there");
+}
+
+/// A turn stopped after it asked for a tool says it was stopped.
+///
+/// note: the call is in the blocks and is decided on from there either way; `ToolUse` would hide
+/// that the rest of the turn never arrived, which is said nowhere else.
+#[tokio::test]
+async fn a_turn_stopped_after_it_asked_for_a_tool_says_so_beside_its_call() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    let (sent, sending) = oneshot::channel();
+
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 16384];
+        let _ = socket.read(&mut discard).await;
+        let event = concat!(
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":",
+            "{\"name\":\"read\",\"args\":{},\"id\":\"call_1\"}}]}}]}\n\n",
+        );
+        let _ = socket
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                     Transfer-Encoding: chunked\r\n\r\n{:x}\r\n{event}\r\n",
+                    event.len()
+                )
+                .as_bytes(),
+            )
+            .await;
+        let _ = socket.flush().await;
+        let _ = sent.send(());
+
+        // and then nothing, for longer than the test waits
+        tokio::time::sleep(Duration::from_secs(600)).await;
+    });
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Gemini::new(
+        "gemini-test",
+        format!("http://{address}"),
+        "no key needed",
+    )));
+    kernel.push(ContextItem::user("go"));
+    let stepping = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.step().await }
+    });
+
+    // written is not yet read: the margin is for the call to arrive before the interrupt does
+    sending.await.expect("the call went out");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    kernel.interrupt();
+    tokio::time::timeout(Duration::from_secs(5), stepping)
+        .await
+        .expect("the interrupt reached the stream")
+        .expect("the step is not a panic")
+        .expect("an interrupted turn is not a failed one");
+
+    let response = kernel.last_response().expect("what arrived is kept");
+    assert_eq!(response.calls().count(), 1, "and the call is in it");
+    assert_eq!(response.stop, StopReason::Other("interrupted".to_owned()));
 }
