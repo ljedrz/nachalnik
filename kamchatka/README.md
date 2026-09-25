@@ -153,7 +153,7 @@ to drive.
 
 Four features, two of them on by default. `--no-default-features --features tui` drops MCP
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
-keys: without it you get the same program, headless, 88 crates lighter.
+keys: without it you get the same program, headless, and none of the crates that draw it.
 
 `advise` is the third and is **off**. It is the client for a System One model — TypeSafe's `jev`,
 which answers typed questions rather than writing text, or an engine on this machine — and nothing
