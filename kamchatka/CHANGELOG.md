@@ -84,6 +84,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The model's `undo` leaves what somebody else moved since.** The `context` tool put an item back
+  where the model had had it whatever had happened to it in between, so a person's exclusion, or
+  their edit of what the model had revised, was walked back by a move that knew nothing about it.
+  Each change now remembers what it left its items as, and an undo leaves any that look different
+  now - saying which, and that the person or compaction changed it. The model's own later changes
+  to an item, restating a pin included, count as its own.
 - **A link past a path rule is not a way round it.** A rule is about a name and a link is a second
   one, so `alias -> .env` was read, written and walked under `.env*` because the name was
   `alias`. `read`, `write` and `edit` now refuse a link to a file a rule has not allowed, naming

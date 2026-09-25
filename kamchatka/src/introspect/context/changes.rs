@@ -76,8 +76,84 @@ impl Changes {
 /// What [`Changes`] has made, and what it has walked back.
 #[derive(Default)]
 struct Journal {
-    done: Vec<Undoing>,
-    undone: Vec<Undoing>,
+    done: Vec<Entry>,
+    undone: Vec<Entry>,
+}
+
+impl Journal {
+    /// Takes what this tool has just done to these items as the way it left them, in every entry.
+    ///
+    /// note: every change this tool makes, not only the ones it journals. Pinning a pinned item
+    /// for a new reason rewrites its note and moves nothing, so it is no step of its own - and an
+    /// entry still holding the old note would read the model's own restating as somebody else's
+    /// change, and refuse to walk back a pin the model had made.
+    fn refresh(&mut self, kernel: &Kernel, ids: &[ContextId]) {
+        for entry in self.done.iter_mut().chain(self.undone.iter_mut()) {
+            for (id, left) in &mut entry.left {
+                if ids.contains(id)
+                    && let Some(item) = kernel.item(*id)
+                {
+                    *left = Left::of(&item);
+                }
+            }
+        }
+    }
+}
+
+/// One change in the journal: the way back from it, and what it left each item it touched as.
+///
+/// note: what it left them as, because somebody else may have moved one since. The model's undo
+/// put an item back where the model had had it whatever had happened to it in between - a person's
+/// later exclusion, or their edit of what the model had revised, walked back by a move of the
+/// model's that knew nothing about it. An item that no longer looks the way this change left it is
+/// left alone, and the answer says so.
+struct Entry {
+    undoing: Undoing,
+    left: Vec<(ContextId, Left)>,
+}
+
+/// What an item looked like: its state, its note and what it says.
+///
+/// note: not its metadata, which this tool writes beside a pin - so a pin's own bookkeeping is not
+/// read as somebody else's change.
+#[derive(PartialEq)]
+struct Left {
+    state: ContextState,
+    note: Option<String>,
+    content: Content,
+}
+
+impl Left {
+    fn of(item: &ContextItem) -> Self {
+        Self {
+            state: item.state,
+            note: item.note.clone(),
+            content: item.content.clone(),
+        }
+    }
+}
+
+impl Entry {
+    /// The change, and each item it touched as it is now.
+    fn now(kernel: &Kernel, undoing: Undoing) -> Self {
+        let left = undoing
+            .ids()
+            .into_iter()
+            .filter_map(|id| kernel.item(id).map(|item| (id, Left::of(&item))))
+            .collect();
+
+        Self { undoing, left }
+    }
+}
+
+/// Why an item is no longer a change's to walk back, given what the change left it as.
+fn moved_since(left: &[(ContextId, Left)], item: &ContextItem) -> Option<String> {
+    let (_, left) = left.iter().find(|(id, _)| *id == item.id)?;
+    (*left != Left::of(item)).then(|| {
+        "has changed since this tool moved it - by the person you are working with, or by \
+         compaction - so it stays as it is now"
+            .to_owned()
+    })
 }
 
 /// One change, recorded as the way back from it.
@@ -90,6 +166,16 @@ enum Undoing {
     States(Vec<(ContextId, ContextState, Option<String>)>),
     /// Put this text and this metadata back on this item.
     Said(ContextId, Content, Value),
+}
+
+impl Undoing {
+    /// The items it would move.
+    fn ids(&self) -> Vec<ContextId> {
+        match self {
+            Self::States(states) => states.iter().map(|(id, ..)| *id).collect(),
+            Self::Said(id, ..) => vec![*id],
+        }
+    }
 }
 
 /// One step of a walk: the way back from it, what it did, and what it would not touch.
@@ -118,7 +204,12 @@ impl Undoing {
     /// note: `own_turn` is `None` because a change recorded earlier cannot be about the turn this
     /// call is speaking in: that item did not exist when the change was made, and identifiers are
     /// never reused.
-    fn apply(self, kernel: &Kernel, mine: &crate::introspect::Mine) -> Applied {
+    fn apply(
+        self,
+        kernel: &Kernel,
+        mine: &crate::introspect::Mine,
+        left_as: &[(ContextId, Left)],
+    ) -> Applied {
         match self {
             Self::States(states) => {
                 let mut back = Vec::new();
@@ -128,7 +219,9 @@ impl Undoing {
                     let Some(item) = kernel.item(id) else {
                         continue;
                     };
-                    if let Some(why) = protected(&item, mine, None) {
+                    if let Some(why) =
+                        protected(&item, mine, None).or_else(|| moved_since(left_as, &item))
+                    {
                         left.push(format!("[{id}] {why}"));
                         continue;
                     }
@@ -163,7 +256,9 @@ impl Undoing {
                 let Some(item) = kernel.item(id) else {
                     return Applied::default();
                 };
-                if let Some(why) = protected(&item, mine, None) {
+                if let Some(why) =
+                    protected(&item, mine, None).or_else(|| moved_since(left_as, &item))
+                {
                     return Applied {
                         left: vec![format!("[{id}] {why}")],
                         ..Applied::default()
@@ -346,6 +441,7 @@ impl Changes {
         for id in &changed.changed {
             self.note_pin(kernel, *id, state, Some(reason.to_owned()));
         }
+        self.journal.lock().refresh(kernel, &changed.changed);
         // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
         // that was pinned and is being pinned again for a different reason comes back as changed -
         // which is true of the note and false of the item. Read as a move, `pin [2]` on something
@@ -359,7 +455,7 @@ impl Changes {
             .filter(|(id, ..)| changed.changed.contains(id))
             .partition(|(_, had, _)| *had != state);
         if !moved.is_empty() {
-            self.record(Undoing::States(moved.clone()));
+            self.record(kernel, Undoing::States(moved.clone()));
         }
 
         let numbers_of = |of: &[(ContextId, ContextState, Option<String>)]| {
@@ -511,7 +607,11 @@ impl Changes {
         // somebody else's metadata, not either of those
         meta["revised"] = json!({ "by": "context", "reason": reason, "call": call.id.to_string() });
         let _ = kernel.annotate(id, meta);
-        self.record(Undoing::Said(id, item.content.clone(), item.meta.clone()));
+        self.journal.lock().refresh(kernel, &[id]);
+        self.record(
+            kernel,
+            Undoing::Said(id, item.content.clone(), item.meta.clone()),
+        );
 
         let now = kernel.item(id).map(|item| item.tokens).unwrap_or_default();
         ToolOutput::new(format!(
@@ -601,11 +701,14 @@ impl Changes {
         }
         // the way back from having written it is to put it away; nothing here destroys anything,
         // so an undone note is archived and still listed rather than gone
-        self.record(Undoing::States(vec![(
-            id,
-            ContextState::Archived,
-            Some("a note this tool wrote, and then walked back".to_owned()),
-        )]));
+        self.record(
+            kernel,
+            Undoing::States(vec![(
+                id,
+                ContextState::Archived,
+                Some("a note this tool wrote, and then walked back".to_owned()),
+            )]),
+        );
 
         ToolOutput::new(format!(
             "[{id}] {label} is in your context now, and goes into every request from here on. {}\n{}{}",
@@ -655,13 +758,13 @@ impl Changes {
                     true => journal.done.pop(),
                     false => journal.undone.pop(),
                 };
-                let Some(change) = taken else {
+                let Some(Entry { undoing, left }) = taken else {
                     break;
                 };
                 // an item that has since gone, or that is no longer this tool's to move, gives
                 // nothing to walk to, and the entry is spent either way rather than left to be
                 // retried against a context it no longer describes
-                let step = change.apply(kernel, &mine);
+                let step = undoing.apply(kernel, &mine, &left);
                 put_back.extend(step.did);
                 left_alone.extend(step.left);
                 let Some(inverse) = step.inverse else {
@@ -679,6 +782,11 @@ impl Changes {
                         }
                     }
                 }
+                // and what this step left them as, for the step that walks it back in turn and for
+                // every other entry naming the same items
+                let inverse = Entry::now(kernel, inverse);
+                let ids: Vec<ContextId> = inverse.left.iter().map(|(id, _)| *id).collect();
+                journal.refresh(kernel, &ids);
                 match back {
                     true => journal.undone.push(inverse),
                     false => journal.done.push(inverse),
@@ -745,10 +853,11 @@ impl Changes {
     ///
     /// note: the same rule the kernel's own redo stack follows, and for the same reason: a redo
     /// that reached across work done since would be overwriting it rather than restoring anything.
-    fn record(&self, undoing: Undoing) {
+    fn record(&self, kernel: &Kernel, undoing: Undoing) {
+        let entry = Entry::now(kernel, undoing);
         let mut journal = self.journal.lock();
         journal.undone.clear();
-        journal.done.push(undoing);
+        journal.done.push(entry);
     }
 
     /// Remembers whether this tool is the one holding an item pinned, and with what note.
