@@ -1204,9 +1204,9 @@ fn carries_a_figure(text: &str) -> bool {
 
 #[test]
 fn the_endpoint_asks_only_about_notes_that_provably_do_nothing() {
-    // note: nine claims about depot notes whose ablation moved nothing, so the honest answer to
+    // note: seven claims about depot notes whose ablation moved nothing, so the honest answer to
     // every one of them is "no". Four carry figures and the subject claimed three of them
-    // mattered; five carry none and it claimed one. That is the whole endpoint: within a stratum
+    // mattered; three carry none and it claimed one. That is the whole endpoint: within a stratum
     // where there is nothing to be right about, a gap between the halves cannot be knowledge
     let inert = |label: &str, claimed: bool| {
         Resolution::new(
