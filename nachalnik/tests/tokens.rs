@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use nachalnik::{
     BytesPerToken, Calibrating, Calibration, Config, Content, ContextItem, ContextKind, Event,
-    Kernel, ModelResponse, Overrun, State, TokenCounter, Usage,
+    Kernel, Message, ModelResponse, Overrun, State, TokenCounter, ToolCall, Usage,
     test::{AllowAll, ConstTool, ScriptedProvider, TooLongProvider, call},
 };
 use serde_json::json;
@@ -58,6 +58,51 @@ fn structured_content_is_counted_like_everything_else() {
 
     let item = ContextItem::new(ContextKind::Reference, "tool", "findings", content);
     assert_eq!(counter.count_item(&item), counter.count(&item.content));
+}
+
+/// An assistant turn costs the sum of what it carries: its words, each call's name, arguments
+/// and whatever the provider attached to it, and its reasoning - as an item, and as the message
+/// it is projected to.
+///
+/// note: a counter charging one token a byte, so that no two parts round to the same figure and a
+/// sum cannot pass for any other arithmetic over them. A call the provider attached nothing to
+/// carries a JSON `null` there, and that is not charged for: it is every ordinary call in a
+/// request.
+#[test]
+fn a_turn_costs_the_sum_of_what_it_carries() {
+    struct EveryByte;
+
+    impl TokenCounter for EveryByte {
+        fn count(&self, content: &Content) -> usize {
+            content.byte_len()
+        }
+    }
+
+    let args = json!({ "path": "src/a.rs" });
+    let extra = json!({ "thoughtSignature": "El4KXAERTTIP" });
+    let signed = vec![ToolCall::new("c1", "peek", args.clone()).with_extra(extra.clone())];
+    let thinking = Some(Content::text("thinking"));
+
+    let item = ContextItem::assistant("done", signed.clone()).with_reasoning(thinking.clone());
+    let message = Message::assistant(Some(Content::text("done")), signed).with_reasoning(thinking);
+    let whole = "done".len()
+        + "peek".len()
+        + args.to_string().len()
+        + extra.to_string().len()
+        + "thinking".len();
+    assert_eq!(EveryByte.count_item(&item), whole);
+    assert_eq!(EveryByte.count_message(&message), whole);
+
+    let bare = vec![ToolCall::new("c1", "peek", args.clone())];
+    let item = ContextItem::assistant("done", bare.clone());
+    let message = Message::assistant(Some(Content::text("done")), bare);
+    let whole = "done".len() + "peek".len() + args.to_string().len();
+    assert_eq!(EveryByte.count_item(&item), whole);
+    assert_eq!(
+        EveryByte.count_message(&message),
+        whole,
+        "nothing was attached to the call, so nothing is charged for it"
+    );
 }
 
 #[test]
