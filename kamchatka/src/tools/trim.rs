@@ -141,10 +141,19 @@ impl Compactor for Trim {
         // keeps the context over the threshold for the rest of the session, so the pass is asked
         // again before every request and refuses again every time. Not naming what may not be
         // taken is what makes the plan `None` instead
+        //
+        // note: and not one whose call is no longer sent, which the projector leaves out and the
+        // kernel will not elide. Named anyway, it was counted into the summary's total as though
+        // it had gone, and the model was told more results were elided than had been
+        let asked: std::collections::HashSet<&nachalnik::ToolCallId> = items
+            .iter()
+            .filter(|item| item.state.is_projected())
+            .flat_map(|item| item.calls().map(|call| &call.id))
+            .collect();
         let candidates = items.iter().filter(|item| {
             item.state.sends_content()
                 && item.state != ContextState::Pinned
-                && matches!(item.kind, ContextKind::ToolResult { .. })
+                && matches!(&item.kind, ContextKind::ToolResult { call, .. } if asked.contains(call))
         });
         // blobs first and unconditionally, which is the one place this pass does not consult a
         // size. A picture is the largest thing in the context and the counter puts it at `0`, so
@@ -153,8 +162,11 @@ impl Compactor for Trim {
         // making a decision, it is reporting one that was made by a gap in the estimate. Taken
         // first, before age is consulted: whatever a byte of prose is worth here, a megabyte of
         // base64 nothing can count is worth less
-        let (blobs, rest): (Vec<_>, Vec<_>) =
-            candidates.partition(|item| carries_blob(&item.content));
+        //
+        // note: except one the model has not been shown yet, for the reason the fresh results
+        // below are kept: a screenshot elided on its way in is a picture the model asked for and
+        // never saw, and asks for again. It goes on the next pass, first, once it has been read
+        //
         // what the model has not been shown yet: the results after its last turn, which it asked
         // for and the request about to go is the first to carry. Taken for the threshold like the
         // rest, a search that fitted the limit was elided on its way in - the model ran it again
@@ -165,8 +177,11 @@ impl Compactor for Trim {
             .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
             .map(|turn| items[turn + 1..].iter().map(|item| item.id).collect())
             .unwrap_or_default();
-        let (fresh, rest): (Vec<_>, Vec<_>) =
-            rest.into_iter().partition(|item| unseen.contains(&item.id));
+        let (fresh, seen): (Vec<_>, Vec<_>) =
+            candidates.partition(|item| unseen.contains(&item.id));
+        let (blobs, rest): (Vec<_>, Vec<_>) = seen
+            .into_iter()
+            .partition(|item| carries_blob(&item.content));
         let limit = budget.limit?;
 
         let mut used = budget.used();

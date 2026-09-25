@@ -84,6 +84,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`Trim` keeps a picture the model has not been shown yet**, as it already kept a text result:
+  it goes on the next pass, first, once the model has read it. A screenshot elided on its way in
+  was one the model asked for, never saw, and asked for again.
+- **`Trim`'s summary counts only what it elided.** It named results whose call was no longer sent,
+  which the kernel does not elide, and counted them into the total the model was told.
 - **A refusal in `/dev` is put down to the right thing.** `/dev` is granted reading and writing
   its files, and a permission error on a device there was blamed on the confinement when it was the
   device's own; a listing of `/dev`, or a file made in it, is still named as the boundary.
