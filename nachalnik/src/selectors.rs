@@ -304,6 +304,31 @@ mod tests {
             Selector::Source("tool_result".into())
         );
         assert_eq!(parse("source:helix"), Selector::Source("helix".into()));
+
+        // every bare word, singular or plural, is the source a constructor in `ContextItem` names.
+        // A word left out would still parse, as a label, and `user` or `system` as a label still
+        // finds the item those constructors made - so it is the parse that tells the two apart
+        for (word, source) in [
+            ("user", "user"),
+            ("users", "user"),
+            ("system", "system"),
+            ("file", "file"),
+            ("files", "file"),
+            ("selection", "selection"),
+            ("selections", "selection"),
+            ("diagnostic", "diagnostic"),
+            ("diagnostics", "diagnostic"),
+            ("tool_result", "tool_result"),
+            ("tool_results", "tool_result"),
+            ("model", "model"),
+            ("memory", "memory"),
+            ("memories", "memory"),
+            ("instruction", "instruction"),
+            ("instructions", "instruction"),
+            ("compaction", "compaction"),
+        ] {
+            assert_eq!(parse(word), Selector::Source(source.into()), "{word}");
+        }
     }
 
     #[test]
