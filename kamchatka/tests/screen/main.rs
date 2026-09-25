@@ -10,9 +10,9 @@
 //! is what the next request would actually contain.
 
 // note: `tests/screen/main.rs` rather than `tests/screen.rs`, because a crate root looks for its
-// submodules beside itself - so the ten below would have to be `tests/chat.rs`, each of them its
+// submodules beside itself - so the ones below would have to be `tests/chat.rs`, each of them its
 // own test binary. Cargo takes a directory with a `main.rs` in it as one target named for the
-// directory, which is what keeps these ten one binary called `screen`. The path to `common` is
+// directory, which is what keeps them one binary called `screen`. The path to `common` is
 // the price: it is shared with every other test in here and stays where they can all reach it.
 #[path = "../common/mod.rs"]
 mod common;
