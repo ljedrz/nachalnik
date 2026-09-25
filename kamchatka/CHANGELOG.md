@@ -74,7 +74,12 @@ minor bump may break you.
   a live model listed a whole tree, met the cap, and guessed a path it had not been shown.
 - **`fs` says it does not go through a shell, rather than that there is no shell here.** The note
   on `~` read as a fact about the session, and a live model offered `shell` beside it said it had
-  no way to run a command.
+  no way to run a command. The walks' "with no shell in front of them" is now "not through `find`
+  or `grep`", for the same reason.
+- **`fork` says its answer comes back to the model alone, and that forks in one turn are
+  independent.** It said "nobody has read what it said", which a person watching the fork stream
+  would dispute; and a model asking two forks together had nothing telling it the second would not
+  see the first's answer.
 - **`glob` stops one past its cap.** It walked the whole tree after its 200th path to say how many
   there were, which on a large tree was most of the call; it now stops at the 201st and says there
   are more, which is what a model acts on whatever the number.
