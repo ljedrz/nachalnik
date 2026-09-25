@@ -113,13 +113,12 @@ the `connect` functions that turn them into a provider and an advisor.
 pipe in the body `Jev` already sends. It is one long-lived child rather than one per question,
 because the open engines load a checkpoint that costs seconds and answers in milliseconds. It is
 here rather than in `nachalnik-providers` because that crate opens sockets and does not spawn
-processes, which is the line `nachalnik-mcp` is on the other side of. It exists because `laya`
-ships no interface to point a base URL at, so `contrib/laya_advisor.py` is the script
-`SYSTEM1_ADVISOR_COMMAND` names, and `contrib/laya_fit.json` the labelled commands its temperatures
-are fitted on. Every failure closes the pipe, because the next read off a
-doubtful stream is the answer to the question before it. Both of the child's streams are held
-rather than inherited: a child sharing the terminal writes over the frame, and a pipe nobody reads
-fills and blocks the child writing to it.
+processes, which is the line `nachalnik-mcp` is on the other side of. It is how `laya` is reached
+today: `contrib/laya_advisor.py` is the script `SYSTEM1_ADVISOR_COMMAND` names, and
+`contrib/laya_fit.json` the labelled commands its temperatures are fitted on. Every failure closes
+the pipe, because the next read off a doubtful stream is the answer to the question before it. Both
+of the child's streams are held rather than inherited: a child sharing the terminal writes over the
+frame, and a pipe nobody reads fills and blocks the child writing to it.
 
 `main.rs` is which loop drives the session, the loop that draws, and where the record went. The
 crate is a library plus a binary so the screen can be drawn against a `TestBackend` in tests, and

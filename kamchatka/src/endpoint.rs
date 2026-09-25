@@ -221,8 +221,9 @@ pub mod advise {
         /// answering a `state` and a map of typed questions at the path [`Jev`] posts to is
         /// reachable from here with these two set and no code at all - an address this program
         /// does not recognise is read as keeping TypeSafe's paths, because that is the shape a
-        /// self-hosted thing has. What it
-        /// does not buy is a *different* wire format; see POSTPONED.md on `laya`.
+        /// self-hosted thing has. What it does not buy is a *different* wire format - laya's own
+        /// server speaks this one, and POSTPONED.md on `laya` says what reaching it here still
+        /// wants.
         pub fn base_url(&self) -> String {
             env::var("KAMCHATKA_SYSTEM1_BASE_URL").unwrap_or_else(|_| {
                 match self {

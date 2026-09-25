@@ -7,9 +7,9 @@
 
     $ python3 laya_advisor.py --probe "ls -la"      # what laya actually answers, verbatim
 
-note: this exists because laya ships no interface to point a base URL at - no HTTP server, no
-CLI, no `python -m laya`. It is a library, so reaching it from another process means a process,
-and this is the smallest one that will do.
+note: a process rather than laya's own HTTP server, `laya-serve`, because nothing has to be
+running before kamchatka starts, and because the answer is built here rather than passed through -
+see below. POSTPONED.md says what pointing kamchatka at `laya-serve` instead still wants.
 
 note: one JSON object per line in, one per line out, in the body kamchatka already builds for the
 hosted engine - `{"model": ..., "state": ..., "questions": {...}}` in, `{"model": ...,

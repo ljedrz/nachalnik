@@ -690,9 +690,10 @@ $ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/lay
 $ kamchatka --advise -m qwen/qwen3-coder
 ```
 
-[`laya`](https://github.com/NandhaKishorM/laya) is a library rather than a service — no HTTP, no
-CLI, nothing to point a base URL at — so the command is an interpreter and a script, and
-`contrib/laya_advisor.py` is the script. Most of it is comments, and the protocol is one JSON
+[`laya`](https://github.com/NandhaKishorM/laya) is a library first, so the command is an
+interpreter and a script, and `contrib/laya_advisor.py` is the script. laya also serves itself over
+HTTP now, as `laya-serve`, at the path the hosted engine uses; POSTPONED.md says what pointing
+`KAMCHATKA_SYSTEM1_BASE_URL` at it still wants. Most of it is comments, and the protocol is one JSON
 object per line in and one per line out, in the body kamchatka already builds for the hosted
 engine, because laya's question dicts and answers use the same three types under the same names.
 

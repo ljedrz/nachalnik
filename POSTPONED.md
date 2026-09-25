@@ -37,9 +37,9 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
   `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
-  *inside* the branch that read it - so while `/models` fetches a list, or the line after a
-  `/model` or `/provider` waits in `App::submit` for the switch to settle, neither branch can be
-  reached. A deadline falling in that window is
+  *inside* the branch that read it - so while `/models` fetches a list, `/compact` works out a
+  pass, or the line after a `/model` or `/provider` waits in `App::submit` for the switch to
+  settle, neither branch can be reached. A deadline falling in that window is
   served when the command returns. The model's own turns are interruptible, which is where a run
   spends its time, so the hole is narrow.
 
@@ -147,34 +147,29 @@ Referenced from [AGENTS.md](AGENTS.md).
   What would unblock it is somebody who can test the boundary on that platform, since CI would
   otherwise be the only thing that ever checked it.
 
-- **A second System One engine, `laya` among them.** The module is `nachalnik-providers::system1`
-  and the variables are `KAMCHATKA_SYSTEM1_*` because the three question types are the *category's*
-  rather than TypeSafe's - a claim to weigh, a closed set, an ordered rubric, under those names.
-  What the module holds is still one HTTP client, `Jev`.
+- **`laya` over HTTP, through `Jev`.** [`laya`](https://github.com/NandhaKishorM/laya) works with
+  `kamchatka` today as a process: `contrib/laya_advisor.py`, named by `SYSTEM1_ADVISOR_COMMAND`,
+  which `advisor::Local` speaks to over a pipe in the body `Jev` sends - RUNNING.md has the
+  commands. laya now serves itself over HTTP as well: `pip install "laya[serve]"` and `laya-serve`
+  answer `POST /v1/systemone`, so `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` reaches it
+  through `Jev` with no Rust written, as an address this program does not recognise is read as
+  keeping TypeSafe's paths.
 
-  The obvious candidate is [`laya`](https://github.com/NandhaKishorM/laya), which is open, has the
-  same three primitives under the same names, answers quickly, and benchmarks itself against
-  `jev-1.13.0` directly. **It is not a service.** It is a Python library - `pip install laya`, a
-  `Router` with a `predict(state, questions)` method - and it publishes no HTTP API at all. So
-  there is nothing to write a client against: the request shape a client would post does not
-  exist yet, and inventing one here would be guessing at somebody else's interface and then
-  shipping the guess.
+  Two things stand between that and recommending it over the pipe, and neither has been tried
+  against a running `laya-serve`.
 
-  What is already there for it, and is the whole of what a third service takes today: an address.
-  `Service::of` reads anything it does not recognise as keeping TypeSafe's paths, because that is
-  the shape a self-hosted one has - so a shim in front of `laya` that answers `state` and
-  `questions` at `/systemone` works through `Jev` with `KAMCHATKA_SYSTEM1_BASE_URL` and
-  `KAMCHATKA_SYSTEM1_MODEL` set and no Rust written at all. Anybody wanting this before the
-  upstream has a wire format should write that shim rather than a client.
+  **The key.** `Jev` will not start without one, and a session talking to OpenRouter with no
+  `KAMCHATKA_SYSTEM1_API_KEY` borrows the conversation's key - and sends it to whatever address
+  `KAMCHATKA_SYSTEM1_BASE_URL` names, so a local `laya-serve` would be handed an OpenRouter
+  credential. A dedicated key keeps it home: laya's own `LAYA_API_KEY`, or anything at all where
+  `laya-serve` checks none. Borrowing is right for OpenRouter's address and nowhere else, and the
+  rule in `endpoint::chosen` does not look at the address yet.
 
-  **A second engine is not a second struct beside `Jev`, because it is not a second *service*.** A
-  library is reached by spawning a process, and this crate does not spawn processes, so a second
-  implementation could never have sat beside `Jev` at all. That is why there is a trait:
-  `system1::SystemOne` is the seam, and `kamchatka::advisor::Local` is on the other end of it,
-  talking to `contrib/laya_advisor.py` over a pipe in the body `Jev` already sends.
-
-  What is still not built is a laya HTTP *client*. What would unblock one is `laya` publishing an
-  HTTP interface, or somebody standardising the body this workspace already sends.
+  **The answer.** `contrib/laya_advisor.py` builds its answer rather than passing laya's through,
+  because laya's `confidence` is its own quantity and read as this program's it drew every command
+  yellow. `laya-serve` passes `predict()` through and says that is `Jev`'s shape; whether its
+  `confidence` is the one `Jev` reads is the thing to check first. If it is not, the recalibration
+  belongs upstream or in `Jev`, and which is the decision.
 
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
   app headers, so a session that borrows its own key for `--advise` is attributed for the
@@ -255,8 +250,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   Worth knowing for whoever picks this up: a file does not reach it. This entry once said `/attach`
   was the way in, and it is not: `/attach`, `-f`, `/note` and an embedder's `ContextItem::file` all
   read in a projection as one line naming the item. What reaches it is a message - one pasted at
-  the desk, one in a session that was loaded, or one an embedder pushes. A client cannot send one,
-  because its own line is held to `MAX_LINE` on the way in.
+  the desk, one of the model's own answers with its reasoning, one in a session that was loaded, or
+  one an embedder pushes. A client cannot send one, because its own line is held to `MAX_LINE` on
+  the way in.
 
 - **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
   The rule on the constant is that a session refuses a version it does not know and serves an older
@@ -307,22 +303,24 @@ Referenced from [AGENTS.md](AGENTS.md).
   says what a screen holds.
 
 - **Calling a partial ruleset confined.** On a kernel that enforces only part of the ruleset
-  Landlock answers `Partial`, and below Linux 6.7 the part it drops is TCP: the files are held and,
-  where the gate cannot be installed, the network is open. The permissions tab says "partly
-  confined", SECURITY.md gives the kernel floor, and the `shell` description hedges with "TCP may be
-  closed" - but a call says nothing, and a person reading "confined" on the status line of a 6.5
-  machine reads more than is there. The
-  choice is between the word and the hedge: keep "confined" for `Full` and name what a `Partial`
-  one leaves open, or leave the words and make the hedge a statement where the kernel is known.
+  Landlock answers `Partial`: below Linux 6.7 what it drops includes TCP, so the files are held and,
+  where the gate cannot be installed, the network is open; below 6.2 it drops more. The permissions
+  tab says "partly confined" and SECURITY.md gives the kernel floor, but the `shell` description the
+  model reads says "It runs confined" for a `Partial` one as for a `Full` one, hedging only with
+  "TCP may be closed", and a call says nothing. The choice is between the word and the hedge: keep
+  "confined" for `Full` and name what a `Partial` one leaves open, or leave the words and make the
+  hedge a statement where the kernel is known.
 
 - **`/save` writes with the umask.** A snapshot saved over a file somebody had made private comes
-  back readable by whoever the umask allows, where the record the session writes itself is kept
-  private. What waits is the rule: whether a save takes the target's existing mode, the record's
-  mode, or the umask a person chose for their shell.
+  back readable by whoever the umask allows, where the record the session writes itself is kept in a
+  directory only its owner can open. What waits is the rule: whether a save takes the target's
+  existing mode, the record's mode, or the umask a person chose for their shell.
 
-- **Which checks the record directory's privacy makes.** It looks at the mode bits and not at who
-  owns the directory, which matters only to a process that can read past the bits anyway - root, or
-  one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid.
+- **Which checks the record directory's privacy makes.** It checks that the path is a directory
+  and not a link, and its mode bits, and not who owns it - which matters only to a process that can
+  read past the bits anyway, root or one holding `CAP_DAC_OVERRIDE`. `std` reads a directory's owner
+  and not the process's own uid, but `libc`, a direct dependency since the network gate, has
+  `geteuid`, so nothing is in the way of the check but deciding what to do about a mismatch.
 
 - **An `--allow-server` for a server this run does not start.** A server rule naming no server
   is refused, allow and deny alike, as a rule about a domain no tool declares already is. A settings
@@ -333,19 +331,22 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A refusal explained by the policy installed now.** A denied call's `why` is asked of whichever
   policy is installed when the explanation is written, so a `set_policy` while calls wait explains a
   refusal with the rules of a policy that did not make it. Keeping the deciding policy beside the
-  call - an `Arc<dyn PermissionPolicy>` in `PreparedCall` - is the fix, and it touches core types.
+  call - an `Arc<dyn PermissionPolicy>` in `PreparedCall` - is the fix, and it is a change inside
+  the kernel: `PreparedCall` is private.
 
-- **Reads that span more than one lock.** `snapshot()` reads the context and then `last_seq` under
-  separate locks, so an event that changes no item - an interrupt, a component setter - can land
-  between them and be named by a snapshot whose items do not reflect it. A request is built from
-  the tools, the projector and the counter read at separate moments; the counter is captured once
-  now, and a concurrent swap of the tools or the projector can still mix versions. Both are
-  closed by taking the reads under one lock, which is a change to the core's locking.
+- **Reads that span more than one lock.** `snapshot()` reads `last_seq` under the context's lock,
+  so its items and its sequence agree, but it reads the parameters and the counter's calibration
+  before taking it - so a `set_params` or a recalibration landing in between is named by a sequence
+  the snapshot does not reflect. A request is built from the tools, the projector with the context,
+  and the parameters, read at separate moments; the counter is captured once, and a concurrent swap
+  of the others can still mix versions. Both are closed by taking the reads under one lock, which is
+  a change to the core's locking.
 
-- **`n` above 1.** The core refuses no parameter, so a request asking for several choices has them
-  merged. Parameters are the caller's to set and the runtime carries them verbatim, which is rule
-  one, so this is written down rather than fixed: a caller that asks for alternatives gets what the
-  provider does with them.
+- **`n` above 1.** The core refuses no parameter, so a request asking for several choices gets the
+  first and loses the rest - or, streamed through the OpenAI dialect, which reads every chunk as the
+  first choice, the choices merged into one. Parameters are the caller's to set and the runtime
+  carries them verbatim, which is rule one, so this is written down rather than fixed: a caller that
+  asks for alternatives gets what the provider does with them.
 
 - **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
   `{label}:\n{text}`, which builds a new string from the item's content each time the context is
@@ -366,9 +367,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   broadcast is the fix.
 
 - **The model's `undo` in the person's undo history.** The `context` tool's own undo of a move over
-  several states takes one kernel checkpoint per state, because `set_state` moves one state at a
-  time and the kernel has no operation that moves several at once - so walking back one change of
-  the model's can cost the person several undos. And its journal takes no operation lock under
+  several states takes one kernel checkpoint for each state and note it puts items back into,
+  because `set_state` moves items into one state at a time and the kernel has no operation that
+  moves several at once - so walking back one change of the model's can cost the person several
+  undos. And its journal takes no operation lock under
   `--parallel`, so two `context` calls running together can record and walk back in either order.
   The first needs a multi-state operation in the core; the second is a lock around each call.
 
@@ -383,9 +385,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   holds all of it; `App::recall` reads that file for `context.replaced` and nothing else. Reaching
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
-
-- **A headless run resumed already over its spend ceiling ends without saying why.** Nothing in
-  its output names the ceiling, so the run reads as one that simply stopped.
 
 - **`--connect` runs one answer into the next.** Two answers in a row can come out on one line in
   the connecting client's output. It is known and not yet fixed.
@@ -421,9 +420,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
 
 - **`structuredContent` and the blocks beside it.** A result that carries structured content is
-  taken from it, and a non-text block beside it goes unnamed. The spec says `content` normally
-  repeats it, and it is documented, so what is lost is only a block the structured half does not
-  cover.
+  taken from it, and every block beside it is dropped, text and otherwise, unnamed. The spec says
+  `content` normally repeats it, and it is documented, so what is lost is only a block the
+  structured half does not cover.
 
 - **`Installed::remove_from` removes by identifier.** A tool installed since under one of the same
   identifiers is the one that goes, which the doc says. Removing only the very tool that was added
@@ -457,10 +456,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   model's turns and the tool schemas every request carries, and the kernel refuses to send a request
   over the limit. The refusal says so - how much compaction could free, and that the rest is the
   model's own turns to exclude by hand - but a headless run has nobody to exclude them, and ends
-  there. A session that only talks gets there first. One way out is for compaction to elide the oldest assistant turns as a last
-  resort, which changes what `Trim` promises and leaves the projector to repair any results
-  whose call it took. The other is to give the model a request of its own to free room, which
-  needs room held back for that request, since it is over the limit too.
+  there. A session that only talks gets there first. One way out is for compaction to elide the
+  oldest assistant turns as a last resort, which changes what `Trim` promises and leaves the
+  projector to repair any results whose call it took. The other is to give the model a request of
+  its own to free room, which needs room held back for that request, since it is over the limit too.
 
 - **A stream that fails after it has started loses what it said.** An `error` event after the
   answer has begun ends the turn with the error, and what had streamed - already handed on as
@@ -474,5 +473,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   and served with a live model, mined the records for errors and checked them, and what soaked
   `nachalnik-providers` against OpenRouter through a fault-injecting proxy, all live outside it.
   Committed, a campaign could be run again after a change rather than rebuilt; the cost is a
-  key, hours of wall-clock time, and Python beside a workspace whose scripts are shell, so where
-  they go and in what language is the decision.
+  key and hours of wall-clock time, and where they go is the decision. Python is not new here -
+  `kamchatka/contrib/`, two test servers and the `repo-sweep` skill under `.claude/skills/` are
+  Python, and that skill already drives `kamchatka --headless` against a live model and mines the
+  records - but `scripts/` is shell, and a campaign that finds errors rather than reviews code is
+  a different thing from the skill.

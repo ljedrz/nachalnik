@@ -1,10 +1,11 @@
 //! A System One engine running on this machine, spoken to over a pipe.
 //!
-//! note: this exists because the open engines are *libraries*. `laya`, the one this was written
-//! against, is `pip install laya` and a `Router` with a `predict` method: no HTTP interface, no
-//! CLI, nothing to point a base URL at. So a local advisor is a process somebody runs, and the
-//! seam it fits is [`SystemOne`](nachalnik_providers::system1::SystemOne) rather than a second
-//! address.
+//! note: a process rather than an address, because an open engine is a library first. `laya`, the
+//! one this was written against, is `pip install laya` and a `Router` with a `predict` method; it
+//! serves itself over HTTP as well now, but a pipe needs nothing running beforehand and lets the
+//! script build the answer rather than pass laya's through. So a local advisor is a process
+//! somebody runs, and the seam it fits is
+//! [`SystemOne`](nachalnik_providers::system1::SystemOne) rather than a second address.
 //!
 //! note: **nothing leaves the machine**, and that is what this changes. Everything `tools::advice`
 //! says about disclosure is about a third party reading a tool's arguments, which for a write is
