@@ -26,6 +26,10 @@ kernel.redo()?;
 `set_state` says what it did to each identifier — `changed`, `unchanged`, `unknown` — because
 "there is no item 12" and "item 12 was already pruned" are different things to tell somebody.
 
+`annotate` is the exception, and takes no undo of its own: metadata rides with the operation it
+describes, so an `undo` takes an annotation back with the operation before it. It is new work all
+the same, so it leaves nothing for a `redo` to put back.
+
 Excluding an item removes it from the *projection*, not from the record. It keeps its identifier,
 stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a `redo`.
 `Elided` is the third answer between in and out: the item stays in the request as a one-line
