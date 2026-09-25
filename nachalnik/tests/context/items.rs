@@ -158,6 +158,10 @@ fn selectors_resolve_against_real_items() {
     assert_eq!(select(&kernel, "kind:tool_result").len(), 3);
     assert_eq!(select(&kernel, "all").len(), 8);
     assert!(select(&kernel, "file:nope.rs").is_empty());
+
+    // a state names the items in it and nothing else: the one pinned, none of those still active
+    kernel.set_state([memory], ContextState::Pinned, None);
+    assert_eq!(select(&kernel, "state:pinned"), vec![memory]);
 }
 
 #[test]
