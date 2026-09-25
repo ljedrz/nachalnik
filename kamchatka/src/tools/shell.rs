@@ -260,19 +260,6 @@ impl Tool for Shell {
         // Landlock comes back with an ordinary permission error and nothing to distinguish it
         // from a file that really is protected, and a model that cannot tell those apart spends
         // its turns trying `sudo`
-        // note: and the paths that were opened up are named, because a model told only about
-        // "the working directory and the system paths" has no reason to try `~/.rustup` even
-        // when somebody opened it for exactly that
-        let opened: Vec<String> = self
-            .extra
-            .iter()
-            .map(|path| format!("{} read-write", path.display()))
-            .chain(
-                self.readable
-                    .iter()
-                    .map(|path| format!("{} read-only", path.display())),
-            )
-            .collect();
 
         // note: the figure rather than "long output", because what a model does about a limit it
         // cannot see is find out by spending it - and read off the table rather than written into
@@ -302,6 +289,24 @@ impl Tool for Shell {
             )
         });
         let read_only = confined.as_ref().is_some_and(|sandbox| !sandbox.writable);
+        // note: and the paths that were opened up are named, because a model told only about
+        // "the working directory and the system paths" has no reason to try `~/.rustup` even
+        // when somebody opened it for exactly that. Read off the confinement the command will run
+        // under rather than off the flags, because a refusal of `fs:write` makes the paths
+        // `--sandbox-allow` opened read-only there, and this is the sentence that says so
+        let (extra, readable) = match &confined {
+            Some(sandbox) => (&sandbox.extra, &sandbox.readable),
+            None => (&self.extra, &self.readable),
+        };
+        let opened: Vec<String> = extra
+            .iter()
+            .map(|path| format!("{} read-write", path.display()))
+            .chain(
+                readable
+                    .iter()
+                    .map(|path| format!("{} read-only", path.display())),
+            )
+            .collect();
         // note: what the stance makes of the network, said as exactly as it is known. Where the
         // gate does not hold a call can still be granted the network on its own, so the sentence
         // there hedges; where it does, a command that reaches out waits on a person, and a model
