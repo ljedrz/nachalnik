@@ -284,15 +284,11 @@ Two that talk to a model:
 ```console
 $ cargo run --example compare_models -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
     -s "answer in at most 40 words" "the biggest downside of Rust's orphan rule?"
-
-INPUTS · what each model is about to be sent
-
-  MODEL                           MSGS   ~TOKENS         LIMIT   REQUEST
-  gemini-3.5-flash-lite              2        22     1,048,576   491ac859ea5e78d4
-  gemini-3.5-flash                   2        22     1,048,576   491ac859ea5e78d4
-
-  identical: every model is sent the same request, byte for byte.
 ```
+
+Before anything is sent, that prints one row per model — its message count, the kernel's token
+estimate, the model's context limit and the fingerprint of its request — and says whether every
+model is about to be sent the same request, byte for byte.
 
 The two networked ones talk through [`nachalnik-providers`][nachalnik-providers], built from the
 environment by `nachalnik-utils`, and share [`examples/common`][ex-common] for two formatting
