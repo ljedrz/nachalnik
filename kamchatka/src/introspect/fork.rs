@@ -95,7 +95,8 @@ impl Tool for Fork {
             "fork",
             "asks a copy of you, on a copy of your context, and costs a request. A fork has no \
              tools: it can think, not act, and it answers once. Nothing it does reaches your \
-             context, and nobody has read what it said.",
+             context: what it says comes back to you alone, to use or drop. Forks asked in one \
+             turn each get the context as that turn found it, not one another's answers.",
         )
         .with_schema(self.schema.clone())
         .with_capabilities(
