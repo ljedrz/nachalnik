@@ -450,11 +450,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   - `wiring::ended` asks whether the last record ended the session and `main::finish` whether any
     did; they differ only after a double `ctrl+c`, and one predicate would serve both.
 
-- **`glob` counts past its cap.** A `glob` shows the first 200 paths and walks the rest of the tree
-  to say how many there were, because the exact total is part of the answer. Stopping at the cap and
-  saying "at least 200", as `grep` says there may be more, would make a glob over a large tree
-  cheaper and give the model a floor instead of a count.
-
 - **`app::when::read_off` returns an `Option` that is always `Some`.** A zone that cannot be read
   falls back to UTC and says so, so there is never a `None`. Returning `When` removes an arm that
   cannot run, and changes the signature of a public function.

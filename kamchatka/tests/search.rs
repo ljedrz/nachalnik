@@ -420,6 +420,39 @@ async fn glob_answers_the_way_ls_r_does() {
     assert_eq!(one, "1 path(s)\nsrc/app:\nkeys.rs");
 }
 
+/// A `glob` past its cap says there are more rather than how many, and one at the cap says nothing
+/// of the kind.
+///
+/// note: it stops at the first path past the cap rather than walking the rest to count them, so
+/// "there are more" is known rather than guessed - the one past the cap was found.
+#[tokio::test]
+async fn glob_past_its_cap_says_there_are_more() {
+    let dir = scratch("glob-cap");
+    for n in 0..200 {
+        put(&dir, &format!("f{n:03}.txt"), "x\n");
+    }
+
+    let at = ask(&dir, "glob", json!({ "pattern": "*.txt" })).await;
+    assert!(at.starts_with("200 path(s)\n"), "{}", &at[..60]);
+    assert!(!at.contains("more"), "{}", &at[..60]);
+
+    put(&dir, "f200.txt", "x\n");
+    let past = ask(&dir, "glob", json!({ "pattern": "*.txt" })).await;
+    let head = past.lines().next().expect("a head");
+    assert!(
+        head.starts_with("200 path(s)") && head.contains("there are more"),
+        "{head}"
+    );
+    assert_eq!(
+        past.lines().filter(|line| line.ends_with(".txt")).count(),
+        200
+    );
+    assert!(
+        !past.contains("f200.txt"),
+        "the one past the cap was listed"
+    );
+}
+
 #[tokio::test]
 async fn glob_says_when_nothing_matches() {
     let dir = tree("glob-nothing");

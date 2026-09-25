@@ -695,9 +695,9 @@ impl Glob {
         let workdir = under(&reach.workdir);
         let sink = output.clone();
 
-        let (paths, all, skipped, stopped) = tokio::task::spawn_blocking(move || {
+        let (paths, more, skipped, stopped) = tokio::task::spawn_blocking(move || {
             let mut paths: Vec<String> = Vec::new();
-            let mut all = 0usize;
+            let mut more = false;
             let mut skipped = Skipped::default();
             let mut stopped = false;
 
@@ -740,30 +740,28 @@ impl Glob {
                     continue;
                 }
 
-                all += 1;
-                if paths.len() < PATHS {
-                    sink.push(format!("{path}\n"));
-                    paths.push(path);
+                // note: one past the cap and no further. Walking the rest of the tree was what
+                // an exact count cost, and on a large tree it was most of the call; what the model
+                // does with "there are more" is the same whatever the number, which is narrow it
+                if paths.len() == PATHS {
+                    more = true;
+                    break;
                 }
+                sink.push(format!("{path}\n"));
+                paths.push(path);
             }
 
-            (paths, all, skipped, stopped)
+            (paths, more, skipped, stopped)
         })
         .await?;
 
-        let head = match (stopped, all) {
-            // note: the cap belongs in this arm as much as in the one below it. Without it, a walk
-            // stopped after its two hundredth path would say how many it had found and hand over
-            // the first two hundred, with nothing accounting for the difference
-            (true, n) if n > paths.len() => format!(
-                "stopped before it finished · {n} path(s) so far · the first {} of them",
-                paths.len()
-            ),
+        let head = match (stopped, paths.len()) {
             (true, n) => format!("stopped before it finished · {n} path(s) so far"),
             (false, 0) => format!("nothing matches `{pattern}` under {asked}"),
-            (false, n) if n > paths.len() => {
-                format!("{n} path(s) · the first {} of them", paths.len())
-            }
+            (false, n) if more => format!(
+                "{n} path(s), which is as many as this lists, and there are more: narrow the \
+                 `pattern` or give a `path`"
+            ),
             (false, n) => format!("{n} path(s)"),
         };
         Ok(ToolOutput::new(said(
