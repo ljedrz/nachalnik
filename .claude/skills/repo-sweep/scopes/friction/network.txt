@@ -1,0 +1,2 @@
+Fetch https://crates.io/api/v1/crates/serde and tell me the latest version of serde.
+If you could not, tell me exactly what stopped you and what I would have to do to let you.

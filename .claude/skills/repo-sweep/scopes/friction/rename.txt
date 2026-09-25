@@ -1,0 +1,2 @@
+In kamchatka/src/tools/ops.rs there is a private function called `held`. Rename it to `what_it_held` everywhere it is used in the workspace, and show me the lines you changed.
+Now add a one-line doc comment above `what_it_held` saying what it returns, matching the style of the doc comments around it.

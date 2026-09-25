@@ -1,0 +1,2 @@
+Write a small bash script at scripts/crates.sh that prints the name and version of every crate in this workspace, one per line, reading them from the Cargo.toml files. Make it executable and run it to show me it works.
+Change the script so it also prints whether each crate has publish = false, and run it again.

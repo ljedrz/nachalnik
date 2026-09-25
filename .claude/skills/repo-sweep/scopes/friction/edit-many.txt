@@ -1,0 +1,2 @@
+In CONTRIBUTING.md, every occurrence of the phrase "a thousand-odd" should become "about a thousand". Make the change and show me each line you changed.
+In the same file, find the paragraph about `nachalnik-eval`'s live suite and rewrite its first sentence to be shorter without losing any fact.

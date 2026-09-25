@@ -1,0 +1,2 @@
+Using the shell, count the lines of Rust under each crate's src directory in this workspace and tell me which crate is largest.
+Now find the five largest .rs files in the whole workspace, with their sizes, using any tool you like.

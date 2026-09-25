@@ -1,0 +1,3 @@
+Read kamchatka/src/app/mod.rs, kamchatka/src/tools/fs.rs and kamchatka/src/tools/shell.rs, and tell me in one paragraph each what they are for.
+Write down what you concluded so it survives, then free up as much of your context as you can without losing it, and tell me how much you freed.
+Go back to kamchatka/src/tools/shell.rs: what does it say about the heartbeat? Answer without reading the file again if you can.

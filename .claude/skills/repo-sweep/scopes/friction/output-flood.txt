@@ -1,0 +1,2 @@
+Run `seq 1 3000000` in the shell and tell me the last number it printed.
+Now run a command that prints every line of every .md file in the workspace, and tell me how many lines there were in total.

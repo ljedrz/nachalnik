@@ -1,0 +1,2 @@
+Work out which crates in this workspace depend on which (from their Cargo.toml files). Before you give me the answer, draft it and check the draft against the files, then give me the final one.
+Ask a copy of yourself that has not seen the Cargo.toml files what it would guess the dependency graph is, and tell me where its guess differs from what you found.

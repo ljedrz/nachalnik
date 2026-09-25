@@ -1,0 +1,2 @@
+Tell me exactly what your next request to the model will contain: how many items, which ones are held back, and the biggest three by cost.
+Read kamchatka/README.md, then tell me how the answer to the first question has changed.

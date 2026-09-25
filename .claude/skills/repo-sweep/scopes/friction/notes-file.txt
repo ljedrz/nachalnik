@@ -1,0 +1,2 @@
+Find every place the constant TRACE_DEPTH is defined or used, and write what you found - file, line and what each use does - into a new file notes/trace-depth.md.
+Add a second section to that file listing every other constant defined in the same file as TRACE_DEPTH, with its value.
