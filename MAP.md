@@ -234,7 +234,7 @@ runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the tur
 model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
 and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is, plus
 `Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
-`experiment.rs` (one trait method, a runner, and `Instrument`), `abreast.rs` (independent work run
+`experiment.rs` (`Experiment`, a runner, and `Instrument`), `abreast.rs` (independent work run
 at once under a ceiling, written here rather than taken from `futures-util` so that nothing enters
 the tree the runtime did not already need), `error.rs` (what can stop a measurement, as against what
 a measurement finds), and `suite/` (the nine experiments, the six dossiers in `dossier.rs`,
