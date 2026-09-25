@@ -84,6 +84,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A link past a path rule is not a way round it.** A rule is about a name and a link is a second
+  one, so `alias -> .env` was read, written and walked under `.env*` because the name was
+  `alias`. `read`, `write` and `edit` now refuse a link to a file a rule has not allowed, naming
+  the file so the next call can ask for it by that name, and `grep` and `glob` leave it out and
+  count it with the files the rules kept them out of. A link whose own name the rule matches was
+  asked about already and is read as before.
 - **A pin the model made is still the model's after a resume.** Which pins were its own was kept
   in memory alone, so a resumed session had every pin the person's and refused the model its own.
   The `context` tool writes `pinned: {by: "context", note}` into the item's metadata as it pins,

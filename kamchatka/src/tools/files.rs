@@ -15,7 +15,7 @@ use crate::sandbox::{Access, Reach};
 use nachalnik::{BoxError, OutputSink, ToolOutput};
 use serde_json::Value;
 
-use crate::tools::{CEILING, KEPT, Limits, arg, number};
+use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
 
 /// What every tool here says about the path it takes.
 ///
@@ -36,7 +36,11 @@ pub(super) const PATH_ARG: &str = "absolute, or relative to the working director
                         expanded - there is no shell here - and a path starting with one is \
                         refused; a file whose name really is `~` is `./~`";
 
-pub(super) struct Read(pub(super) Arc<Reach>, pub(super) Limits);
+pub(super) struct Read(
+    pub(super) Arc<Reach>,
+    pub(super) Limits,
+    pub(super) Arc<Careful>,
+);
 
 impl Read {
     pub(super) async fn invoke(
@@ -44,10 +48,14 @@ impl Read {
         args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let path = match self.0.allows(arg(args, "path")?, Access::Reading) {
+        let named = arg(args, "path")?;
+        let path = match self.0.allows(named, Access::Reading) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        if let Some(refusal) = linked(named, &path, &self.0, &self.2, "read") {
+            return Ok(ToolOutput::error(refusal));
+        }
         let span = match Span::of(args) {
             Ok(span) => span,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -66,6 +74,39 @@ impl Read {
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
+}
+
+/// Why a path is refused for leading, through a link, to a file a path rule has not allowed; see
+/// [`led_past`](super::search::led_past).
+///
+/// note: refused rather than asked about, because the question would be about a name nobody
+/// wrote - and the answer names the target, so asking for it by that name is one call away and is
+/// asked like any other.
+fn linked(
+    named: &str,
+    resolved: &Path,
+    reach: &Reach,
+    policy: &Careful,
+    doing: &str,
+) -> Option<String> {
+    let barred = super::search::barred(policy);
+    let rule = super::search::led_past(named, resolved, &reach.workdir, &barred)?;
+    let target = resolved
+        .strip_prefix(
+            reach
+                .workdir
+                .canonicalize()
+                .unwrap_or_else(|_| reach.workdir.clone()),
+        )
+        .unwrap_or(resolved);
+
+    Some(format!(
+        "`{named}` leads to `{}`, which the path rule for `{rule}` has not allowed, so nothing was \
+         {doing}. A rule is about the name a file is asked for by: name it as `{}` and it is asked \
+         about like any other.",
+        target.display(),
+        target.display(),
+    ))
 }
 
 /// Which lines of a file a `read` asked for.
@@ -316,7 +357,7 @@ async fn write(reach: &Arc<Reach>, path: &Path, content: &str) -> std::io::Resul
         .map_err(std::io::Error::other)?
 }
 
-pub(super) struct Write(pub(super) Arc<Reach>);
+pub(super) struct Write(pub(super) Arc<Reach>, pub(super) Arc<Careful>);
 
 impl Write {
     pub(super) async fn invoke(
@@ -324,11 +365,14 @@ impl Write {
         args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
-        let (path, content) = (arg(args, "path")?, arg(args, "content")?);
-        let path = match self.0.allows(path, Access::Writing) {
+        let (named, content) = (arg(args, "path")?, arg(args, "content")?);
+        let path = match self.0.allows(named, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        if let Some(refusal) = linked(named, &path, &self.0, &self.1, "written") {
+            return Ok(ToolOutput::error(refusal));
+        }
 
         match write(&self.0, &path, content).await {
             Ok(()) => Ok(ToolOutput::new(format!(
@@ -341,7 +385,7 @@ impl Write {
     }
 }
 
-pub(super) struct Edit(pub(super) Arc<Reach>);
+pub(super) struct Edit(pub(super) Arc<Reach>, pub(super) Arc<Careful>);
 
 impl Edit {
     pub(super) async fn invoke(
@@ -350,10 +394,14 @@ impl Edit {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(args, "old")?, arg(args, "new")?);
-        let path = match self.0.allows(arg(args, "path")?, Access::Writing) {
+        let named = arg(args, "path")?;
+        let path = match self.0.allows(named, Access::Writing) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        if let Some(refusal) = linked(named, &path, &self.0, &self.1, "changed") {
+            return Ok(ToolOutput::error(refusal));
+        }
 
         let before = match whole(&self.0, &path).await {
             Ok(before) => before,

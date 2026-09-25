@@ -27,8 +27,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   and that is the property that makes adding one safe. An operation rule is consulted only where one
   exists, so a tool nobody has written a rule about is judged exactly as before. A path rule
   compares names exactly, the way the filesystem here does - `.ENV` is another file than `.env` -
-  and a rule about a domain or an operation no call is judged under is refused where it is given
-  rather than kept.
+  and a link past one is refused by `fs` rather than read, since a link is a second name: `alias
+  -> .env` is refused, named as `.env`, and asking for it by that name is a question like any
+  other. A rule about a domain or an operation no call is judged under is refused where it is
+  given rather than kept.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
