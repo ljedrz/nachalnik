@@ -95,6 +95,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A call whose `action` is not a name says what it is.** An `action` that arrived as an object
+  or a list, which is what a call written in another syntax turns into, was refused as holding
+  `action` and no `action`. It is now named as the object or the list it is.
 - **A change refused for want of a `reason` says that nothing was done.** It said only why a
   reason is asked for, and a model read that as a remark about a note it had written, then put
   away the results the note was written from. It now says nothing was done and which operation to
