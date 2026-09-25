@@ -97,3 +97,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # its input closed, which is how a client ends a session: a test that names a file is told
+    # the server got here, which one that was killed never does
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], "w") as ended:
+            ended.write("ended")
