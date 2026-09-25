@@ -686,11 +686,10 @@ Nothing here has a tokenizer for a picture, and it says so rather than putting a
 number should be: the line the chat prints for an attachment gives its media type and size, the
 tokens the counter could put a figure on, and how many pieces of it nothing here can price.
 
-The gap between that count and the bill is not a rounding. In the live test that pins this, a
-535-byte one-page PDF goes to Gemini through OpenRouter: the counter puts the whole request at
-**19 tokens** and says one piece of it has no number on it, and the provider charges **540**.
-Dividing the base64 by four — the thing the counter refuses to do — would have said 179, which is
-not the answer either. The row on the context tab carries a `+` for the same reason, `/budget`
+The gap between that count and the bill is not a rounding. A request carrying a one-page PDF is one
+the counter puts at a few tokens, saying one piece of it has no number on it, and one the provider
+charges hundreds for; dividing the base64 by four — the thing the counter refuses to do — does not
+land on the bill either. The row on the context tab carries a `+` for the same reason, `/budget`
 counts how many pieces are in that state, and the figure in the corner stops being a floor the
 moment the request has gone out once — because from then on the provider's own number has the
 document inside it. If you want the estimate to be right *before* that, `Kernel::set_counter` takes
