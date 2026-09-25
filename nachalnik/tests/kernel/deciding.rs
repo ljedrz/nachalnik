@@ -144,6 +144,8 @@ async fn a_refused_call_does_not_run_but_the_model_is_told() {
     let said = results[0].content.to_text();
     assert!(said.contains("not permitted"), "{said}");
     assert_ne!(said, "it ran!");
+    // `DenyAll` has nothing to say for itself, so the kernel's own reason stands in for one
+    assert!(said.contains("the permission policy refused it"), "{said}");
 
     // and told *which kind* of refusal it was, because `not permitted` on its own leaves open
     // the one question a refused model has to answer: is trying again worth anything? This one
