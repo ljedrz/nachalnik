@@ -366,6 +366,11 @@ async fn blobs_are_taken_before_anything_else() {
         Content::blob("image/png", "A".repeat(600_000)),
         false,
     ));
+    // and the model has seen it: a picture it has not is kept for its first showing
+    kernel.push(ContextItem::assistant(
+        Content::text("a login screen"),
+        vec![],
+    ));
 
     assert_eq!(
         kernel.item(blob).unwrap().tokens,
@@ -412,6 +417,133 @@ async fn blobs_are_taken_before_anything_else() {
     );
 }
 
+/// A picture the model has not been shown yet is kept for its first showing, where one it has seen
+/// would go first; the older text goes in its place.
+///
+/// note: the rule the fresh text results were already under. A screenshot elided on its way in is
+/// a picture the model asked for and never saw, and it asks for it again - so it goes on the next
+/// pass, once it has been read.
+#[tokio::test]
+async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    let read = call("c1", "read", json!({"path": "big.rs"}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![read.clone()],
+    ));
+    let text = kernel.push(ContextItem::tool_result(
+        read.id.clone(),
+        "read",
+        "x".repeat(4_000),
+        false,
+    ));
+    let shot = call("c2", "screenshot", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![shot.clone()],
+    ));
+    let blob = kernel.push(ContextItem::tool_result(
+        shot.id.clone(),
+        "screenshot",
+        Content::blob("image/png", "A".repeat(600_000)),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("over the threshold on the text alone");
+    assert_eq!(
+        plan.elide,
+        vec![text],
+        "the picture is the model's to see first"
+    );
+
+    // and once the model has answered with it in front of it, it is the first thing to go
+    kernel.apply_compaction(plan);
+    kernel.push(ContextItem::assistant(
+        Content::text("a login screen"),
+        vec![],
+    ));
+    let later = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("a picture that has been seen is taken");
+    assert_eq!(later.elide, vec![blob]);
+}
+
+/// A result whose call is no longer sent is not named, so the summary counts only what goes.
+///
+/// note: the projector leaves such a result out and the kernel will not elide what is not sent,
+/// so naming it moved nothing - and the summary, counted from the plan, told the model one more
+/// result had been elided than had.
+#[tokio::test]
+async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
+    use kamchatka::tools::Trim;
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    let mut results = Vec::new();
+    for n in 0..2 {
+        let read = call(&format!("c{n}"), "read", json!({"path": "big.rs"}));
+        let turn = kernel.push(ContextItem::assistant(
+            Content::text(""),
+            vec![read.clone()],
+        ));
+        let result = kernel.push(ContextItem::tool_result(
+            read.id.clone(),
+            "read",
+            "x".repeat(4_000),
+            false,
+        ));
+        results.push((turn, result));
+    }
+    kernel.push(ContextItem::assistant(Content::text("read both"), vec![]));
+    // the first turn excluded, which takes its result out of the request with it
+    kernel.set_state([results[0].0], ContextState::Excluded, None);
+
+    let trim = Trim {
+        threshold: 0.1,
+        target: 0.05,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("the second result is over the threshold");
+    assert_eq!(plan.elide, vec![results[1].1], "only what is sent");
+    let summary = plan
+        .summary
+        .as_ref()
+        .map(|s| s.content.to_text().into_owned());
+    assert!(
+        summary
+            .as_deref()
+            .is_some_and(|s| s.starts_with("1 earlier tool result(s)")),
+        "{summary:?}"
+    );
+    let report = kernel.apply_compaction(plan);
+    assert_eq!(report.elided.len(), 1);
+}
+
 /// The same, with the budget already where the pass wants it. A blob is not taken because taking
 /// it helps the arithmetic - the arithmetic cannot see it - but because nothing here can say what
 /// it costs, and an unbounded payload nobody can measure is the wrong thing to be carrying on a
@@ -434,6 +566,11 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         "screenshot",
         Content::blob("image/png", "A".repeat(600_000)),
         false,
+    ));
+    // and the model has seen it: a picture it has not is kept for its first showing
+    kernel.push(ContextItem::assistant(
+        Content::text("a login screen"),
+        vec![],
     ));
 
     let trim = Trim {

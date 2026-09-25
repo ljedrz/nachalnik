@@ -457,10 +457,6 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
   constructor, so it stays unless a minor release wants the surface smaller.
 
-- **What `Trim` says and what it takes.** Its summary can count more than it elided when orphaned
-  results are elided with the rest, and it elides a picture whatever the model has seen of it -
-  including one the model has not yet been shown.
-
 - **The examples' own copies, and one arm nothing reaches.** `compaction` and `transparency` keep
   their own `thousands` and line wrapper rather than using `examples/common`, because
   `transparency` says everything it shows is in its one file. `panel` handles `State::Deciding`,
