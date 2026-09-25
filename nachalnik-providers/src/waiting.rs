@@ -716,6 +716,13 @@ mod tests {
             !Unsent::Interrupted.worth_waiting_out(),
             "an interrupt is a decision, not a delay"
         );
+
+        // and the notice before the retry says which of the two it is waiting out: a transport
+        // that gave up, or a server that took the request and never said a word
+        let hung_up = Unsent::Transport(stalled).what_happened();
+        let never_spoke = Unsent::Silent(PATIENCE).what_happened();
+        assert!(!hung_up.is_empty() && !never_spoke.is_empty());
+        assert_ne!(hung_up, never_spoke);
     }
 
     /// note: the sentences a person actually reads when a model goes quiet. What it pins is the
