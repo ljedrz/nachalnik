@@ -766,8 +766,50 @@ impl Glob {
             }
             (false, n) => format!("{n} path(s)"),
         };
-        Ok(ToolOutput::new(said(head, [skipped.line()], &paths)))
+        Ok(ToolOutput::new(said(
+            head,
+            [skipped.line()],
+            &listed(&paths),
+        )))
     }
+}
+
+/// Paths in the shape `ls -R` prints them: each directory's path and a `:`, the names in it one
+/// to a line, and a blank line before the next directory, `.` being the working directory.
+///
+/// note: `ls -R`'s shape exactly, rather than one of this program's own, because it is one a model
+/// has read a great deal of and needs no explaining past a sentence in the tool's description.
+/// What it buys is every directory written once rather than on every line: a `glob` is mostly
+/// asked with a pattern that matches most of a tree, and the prefixes were most of its tokens.
+/// What it costs is a model now and then reading a bare name as a path, which is one failed call
+/// it recovers from - cheaper than paying for the prefixes on every answer.
+///
+/// note: the directories in the order `ls -R` walks them, a directory before those under it, which
+/// is the order `Path` compares in; the names in each in the order the walk found them, which is
+/// by name. What is listed is only what matched, so a directory's subdirectories are not among
+/// its names the way `ls -R` has them.
+fn listed(paths: &[String]) -> Vec<String> {
+    let mut directories: std::collections::BTreeMap<&Path, Vec<&str>> = Default::default();
+    for path in paths {
+        let (directory, name) = match path.rsplit_once('/') {
+            // a path starting with `/`, whose directory is the root
+            Some(("", name)) => (Path::new("/"), name),
+            Some((directory, name)) => (Path::new(directory), name),
+            None => (Path::new("."), path.as_str()),
+        };
+        directories.entry(directory).or_default().push(name);
+    }
+
+    let mut lines = Vec::new();
+    for (directory, names) in directories {
+        if !lines.is_empty() {
+            lines.push(String::new());
+        }
+        lines.push(format!("{}:", directory.display()));
+        lines.extend(names.into_iter().map(str::to_owned));
+    }
+
+    lines
 }
 
 #[cfg(test)]

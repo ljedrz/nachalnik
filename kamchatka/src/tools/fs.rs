@@ -175,7 +175,9 @@ impl Tool for Fs {
                  `.gitignore` and stay out of `.git`, neither of them counted; they do look at \
                  hidden files, and they count everything else they passed over. \
                  At most {MATCHES} matches or {PATHS} paths come back, and a line wider than \
-                 {WIDTH} characters is cut."
+                 {WIDTH} characters is cut. `glob` answers as `ls -R` does, with only the files \
+                 that matched: a directory and `:`, then the names in it, so a file's path is \
+                 its directory's joined to its name."
             ),
         )
         .with_schema(self.schema.clone())
