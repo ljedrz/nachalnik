@@ -95,6 +95,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A permission error in a command's own temporary directory is not blamed on the confinement.**
+  The ruleset grants that directory what it grants the working directory, and the note under the
+  status line called a file or a socket refused by its own permissions there "outside what this
+  session reaches".
 - **A record directory that is a link changes nothing behind it.** The directory was made private
   before it was checked, so a link left at `$TMPDIR/kamchatka` was refused and the directory it
   pointed at was still set to `0700`. It is now opened without following a link, and made private

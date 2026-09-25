@@ -1113,6 +1113,54 @@ async fn the_shell_tool_accounts_for_a_refusal_it_caused() {
     );
 }
 
+/// ... and says nothing about one in the command's own temporary directory, which the ruleset
+/// grants what it grants the working directory.
+///
+/// note: through the tool, because only whoever spawned the command knows which directory it was
+/// given. The socket's refusal is spelled the way `docker` spells one, since Python's names no path.
+#[tokio::test]
+async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
+    if !enforced() {
+        return;
+    }
+    let shell = Shell {
+        limits: Limits::default(),
+        policy: Arc::new(Careful::new()),
+        workdir: common::workdir("scratch-refusal"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confiner: Some(common::program()),
+    };
+
+    let said = through(
+        &shell,
+        "f=\"$TMPDIR/own.txt\"; echo mine > \"$f\"; chmod 000 \"$f\"; cat \"$f\"",
+    )
+    .await;
+    assert!(said.contains("Permission denied"), "{said}");
+    assert!(!said.contains("outside what this session"), "{said}");
+
+    if !sockets() {
+        return;
+    }
+    let said = through(
+        &shell,
+        "python3 -c \"
+import os, socket, sys
+path = os.environ['TMPDIR'] + '/s.sock'
+listening = socket.socket(socket.AF_UNIX)
+listening.bind(path)
+listening.listen()
+os.chmod(path, 0)
+try: socket.socket(socket.AF_UNIX).connect(path)
+except PermissionError: sys.exit('dial unix ' + path + ': connect: permission denied')
+\"",
+    )
+    .await;
+    assert!(said.contains("permission denied"), "{said}");
+    assert!(!said.contains("is a socket outside"), "{said}");
+}
+
 /// A confined shell whose policy knows the gate holds, and the policy, for answering it.
 fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
     let policy = Arc::new(Careful::new());

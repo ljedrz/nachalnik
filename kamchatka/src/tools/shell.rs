@@ -659,9 +659,6 @@ impl Tool for Shell {
             Some(meant),
             "the status line and what it means have come apart"
         );
-        if let Some(scratch) = scratch {
-            let _ = tokio::fs::remove_dir_all(scratch).await;
-        }
 
         // note: under the status line rather than beside the message it explains, for the same
         // reason the status line says whether the command was stopped: an output limit cuts from
@@ -669,11 +666,15 @@ impl Tool for Shell {
         // truncation takes the note and leaves the error. The top of the output survives anything
         let note = match sandbox
             .as_ref()
-            .and_then(|sandbox| sandbox.note_for(&errors))
+            .and_then(|sandbox| sandbox.note_for_in(&errors, scratch.as_deref()))
         {
             Some(note) => format!("{note}\n"),
             None => String::new(),
         };
+        // after the note, which compares against the directory and needs it still there
+        if let Some(scratch) = scratch {
+            let _ = tokio::fs::remove_dir_all(scratch).await;
+        }
         // note: what came of it, where this command reached for the network. Up here with the
         // rest, for the reason they all are, and said because the output alone cannot say it: a
         // refused socket is `Permission denied` from the kernel, the same words a file's own
