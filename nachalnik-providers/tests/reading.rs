@@ -12,7 +12,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use nachalnik::{Config, ContextItem, Kernel, ModelResponse, Provider};
+use nachalnik::{Config, ContextItem, Kernel, ModelResponse, Provider, StopReason};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
@@ -123,6 +123,71 @@ async fn a_last_event_with_nothing_after_it_is_still_read() {
 
         let response = asked(provider).await.expect("an answer");
         assert_eq!(said(&response), "all of it", "{dialect}");
+    }
+}
+
+/// Answers every request with a stream that promises more than `body` and then hangs up, which is
+/// what the transport reads as a body broken off.
+async fn broken_off(body: &'static str) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut discard = [0u8; 16384];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len() + 64
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A stream broken off after the turn said why it ended is a whole turn; one broken off before
+/// that is cut off.
+///
+/// note: the first is a complete answer that lost its trailing bytes, and calling it cut off
+/// invents a fault the model did not have. The second is here so that the first is known to have
+/// been broken off at all.
+#[tokio::test]
+async fn a_stream_broken_off_after_its_finish_is_a_whole_turn() {
+    for (dialect, finished, unfinished) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"},\"finish_reason\":\"stop\"}]}\n\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\n",
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\
+             \"finishReason\":\"STOP\"}]}\n\n",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]}}]}\n\n",
+        ),
+    ] {
+        for (body, stop) in [
+            (finished, StopReason::EndTurn),
+            (unfinished, StopReason::Other("cut off".to_owned())),
+        ] {
+            let url = broken_off(body).await;
+            let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect)
+            else {
+                continue;
+            };
+
+            let response = asked(provider).await.expect("what arrived is kept");
+            assert_eq!(said(&response), "all of it", "{dialect}");
+            assert_eq!(response.stop, stop, "{dialect}");
+        }
     }
 }
 
