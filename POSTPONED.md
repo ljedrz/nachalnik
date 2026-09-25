@@ -561,14 +561,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   The choices are to keep it, to resend only a request that never connected, or to send an
   idempotency key where an endpoint takes one.
 
-- **Re-reading a saved run's answers.** A saved run can be re-scored from its resolutions - other
-  bins, unreadables counted another way - but not re-read with a new answer parser, because a
-  `Resolution` does not name the `Step::Asked` it came from. `Resolution` is `#[non_exhaustive]`
-  now, so the link is a field any release can add; what it costs is every experiment carrying the
-  step's index from the question to the resolution, and nothing reads it until a re-reader is
-  written. The other ways are an API per experiment to re-read its steps, or a note on
-  `Step::Asked` that promises only that the raw answer is kept.
-
 - **The primary endpoint's denominator, against the preregistration's.** The preregistration
   sizes H1 at one claim per note per model - thirteen numeric inert notes and eighteen plain ones,
   "over six models ~78 numeric and ~108 plain observations". `Report::surface` pools the unaided

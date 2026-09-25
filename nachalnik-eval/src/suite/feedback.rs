@@ -114,8 +114,8 @@ impl Feedback {
                 &script::fill(script::EXCLUDED, &[("label", label)]),
             );
             let (said, claim) = subject.probe(&probe).await?;
-            trial.asked(&probe, &said, &claim);
-            claims.push(claim);
+            let asked = trial.asked(&probe, &said, &claim);
+            claims.push((claim, asked));
         }
 
         let ablation = Ablation::new(question)
@@ -140,7 +140,7 @@ impl Feedback {
         // from `origin`, frozen before any claim was made, so none can see another's. The labels
         // that name nothing are dropped before the fan-out rather than skipped inside it, so what
         // comes back lines up with what went in
-        let sweep: Vec<(&&str, Answer, ContextId)> = battery
+        let sweep: Vec<(&&str, (Answer, usize), ContextId)> = battery
             .iter()
             .zip(claims)
             .filter_map(|(label, claim)| id_of(&notes, label).map(|id| (label, claim, id)))
@@ -156,13 +156,14 @@ impl Feedback {
             .await;
 
         let mut verdicts = Vec::with_capacity(battery.len());
-        for ((label, claim, id), observation) in sweep.into_iter().zip(observed) {
+        for ((label, (claim, asked), id), observation) in sweep.into_iter().zip(observed) {
             let observation = observation?;
             let change = observation.against(&control);
             trial.measured(observation, Some(change.clone()));
 
             let resolution = trial.resolve(
                 Resolution::new(Kind::Counterfactual, claim.clone(), change.as_answer())
+                    .answering(asked)
                     .about_item(id)
                     .on_material(dossier.name)
                     .about_note(*label)

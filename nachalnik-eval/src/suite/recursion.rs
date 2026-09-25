@@ -168,8 +168,8 @@ impl Experiment for Recursion {
             let mut claims = Vec::with_capacity(ladder.len());
             for probe in &ladder {
                 let (said, claim) = subject.probe(probe).await?;
-                trial.asked(probe, &said, &claim);
-                claims.push(claim);
+                let asked = trial.asked(probe, &said, &claim);
+                claims.push((claim, asked));
             }
             ladders.push((*pivot, id, ladder, claims));
         }
@@ -183,22 +183,27 @@ impl Experiment for Recursion {
             trial.measured(without, Some(ground.clone()));
 
             trial.resolve(
-                Resolution::new(Kind::Counterfactual, claims[0].clone(), ground.as_answer())
-                    .about_item(*id)
-                    .on_material(self.dossier.name)
-                    .about_note(*pivot)
-                    .at_depth(1)
-                    .because(format!(
-                        "the copies answered {} without `{pivot}`, against {} with it",
-                        ground.after.clone().unwrap_or_else(|| "nothing".to_owned()),
-                        ground
-                            .before
-                            .clone()
-                            .unwrap_or_else(|| "nothing".to_owned()),
-                    )),
+                Resolution::new(
+                    Kind::Counterfactual,
+                    claims[0].0.clone(),
+                    ground.as_answer(),
+                )
+                .answering(claims[0].1)
+                .about_item(*id)
+                .on_material(self.dossier.name)
+                .about_note(*pivot)
+                .at_depth(1)
+                .because(format!(
+                    "the copies answered {} without `{pivot}`, against {} with it",
+                    ground.after.clone().unwrap_or_else(|| "nothing".to_owned()),
+                    ground
+                        .before
+                        .clone()
+                        .unwrap_or_else(|| "nothing".to_owned()),
+                )),
             );
 
-            for (level, claim) in claims.iter().enumerate().skip(1) {
+            for (level, (claim, claimed_at)) in claims.iter().enumerate().skip(1) {
                 // what a copy really says when asked the question one level down, which is
                 // exactly what the claim at this level is a claim about
                 let asked = Ablation::new(ladder[level - 1].clone())
@@ -212,6 +217,7 @@ impl Experiment for Recursion {
 
                 trial.resolve(
                     Resolution::new(Kind::Recursive, claim.clone(), happened.clone())
+                        .answering(*claimed_at)
                         .about_item(*id)
                         .at_depth(level + 1)
                         .because(format!(
@@ -225,7 +231,7 @@ impl Experiment for Recursion {
                 if level == 1 {
                     trial.note(format!(
                         "on `{pivot}`, the subject said {} at level 1 and a copy of it said {}",
-                        claims[0].key().unwrap_or_else(|| "nothing".into()),
+                        claims[0].0.key().unwrap_or_else(|| "nothing".into()),
                         happened.key().unwrap_or_else(|| "nothing".into()),
                     ));
                 }

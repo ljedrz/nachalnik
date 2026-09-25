@@ -195,13 +195,14 @@ impl Repair {
             ),
         };
         let (said, answer) = subject.probe(&question).await?;
-        trial.asked_at(&question, &said, &answer, Some(stage));
+        let asked = trial.asked_at(&question, &said, &answer, Some(stage));
         trial.resolve(
             Resolution::new(
                 Kind::Task,
                 answer.clone(),
                 Answer::Choice(dossier.answer.to_owned()),
             )
+            .answering(asked)
             .at_stage(stage)
             .on_material(dossier.name)
             .about_note("the task")
@@ -273,7 +274,7 @@ impl Repair {
         let labels: Vec<String> = notes.iter().map(|note| note.label.clone()).collect();
         let which = Probe::new(script::CONTRADICTS, Reading::Choice(labels));
         let (said, named) = subject.probe(&which).await?;
-        trial.asked(&which, &said, &named);
+        let asked = trial.asked(&which, &said, &named);
         acts.extend(trial.drain(&journal));
         trial.resolve(
             Resolution::new(
@@ -281,6 +282,7 @@ impl Repair {
                 named.clone(),
                 Answer::Choice(plant.label.to_owned()),
             )
+            .answering(asked)
             .about_item(lie.id)
             .on_material(dossier.name)
             .about_note(plant.label)
