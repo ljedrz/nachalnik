@@ -206,8 +206,9 @@ impl Server {
     /// Puts every tool the server offers into a kernel.
     ///
     /// note: Running it again is how a server whose tool list has grown or changed is picked up -
-    /// every tool it lists comes back in `replaced`, since each one had a tool under its name. A
-    /// tool the server has *stopped* offering is left where it is, for
+    /// every tool it listed before comes back in `replaced`, since each one had a tool under its
+    /// name, and one it has only just started offering is in `added` alone. A tool the server has
+    /// *stopped* offering is left where it is, for
     /// [`Kernel::remove_tool`](nachalnik::Kernel::remove_tool). It is deliberately something you do
     /// rather than something that happens: the model is about to be told what it can do, and that
     /// is not a thing to change underneath a turn.
