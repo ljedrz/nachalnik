@@ -271,6 +271,23 @@ async fn a_list_of_events_is_read_as_the_stream_it_would_have_been() {
     .expect("an answer");
     assert_eq!(said(&response), "one two");
     assert_eq!(response.stop, nachalnik::StopReason::EndTurn);
+
+    // and one event on its own is a list of one
+    let url = server(
+        "200 OK",
+        "Content-Type: application/json\r\n",
+        "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"alone\"}]},\"finishReason\":\"STOP\"}]}",
+        Arc::new(AtomicUsize::new(0)),
+    )
+    .await;
+    let response = asked(Arc::new(nachalnik_providers::Gemini::new(
+        "m",
+        url,
+        "no key needed",
+    )))
+    .await
+    .expect("an answer");
+    assert_eq!(said(&response), "alone");
 }
 
 /// A busy server that asks to be left longer than the provider waits is told so at once, in its
