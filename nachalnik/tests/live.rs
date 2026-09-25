@@ -1326,7 +1326,7 @@ async fn an_interrupt_stops_a_stream_that_is_watching() {
     let (kernel, _) = live!();
 
     // this provider streams when it is asked to, and an answer that arrives in one piece has no
-    // middle to be interrupted in
+    // middle to keep
     let mut params = params(500);
     params.insert("stream".into(), json!(true));
     params.insert("stream_options".into(), json!({ "include_usage": true }));

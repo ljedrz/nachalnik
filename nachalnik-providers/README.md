@@ -73,8 +73,9 @@ why the retry is for a server that said *busy*, not for a request that is simply
 Streamed is the default and is what a person watching wants. `streaming(false)` asks for the
 answer in one piece instead, which is what a benchmark or a batch wants — and is the only way to
 reach some endpoints' non-streaming code, which is not always the same code as their streaming
-code. What it costs is every fragment and, with them, the ability to stop a turn partway: an
-answer that arrives whole has no middle to interrupt.
+code. What it costs is every fragment and, with them, anything to keep from a turn stopped
+partway: an interrupt still ends the wait, but it comes back empty, because an answer that
+arrives whole has no middle to keep.
 
 ```rust
 let provider = OpenAiCompatible::new(model, base_url, key)

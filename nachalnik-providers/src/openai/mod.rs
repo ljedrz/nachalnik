@@ -221,8 +221,9 @@ impl OpenAiCompatible {
     /// note: a whole answer is worth having where nothing is watching one arrive - a benchmark
     /// run, a batch, a test - and it is the only way to reach some endpoints' non-streaming
     /// paths, which are not always the same code as their streaming ones. What it costs is every
-    /// [`nachalnik::DeltaSink`] fragment and, with them, the ability to stop a turn partway: an
-    /// answer that arrives in one piece has no middle to interrupt.
+    /// [`nachalnik::DeltaSink`] fragment and, with them, anything to keep from a turn stopped
+    /// partway: an interrupt still ends the wait, but it comes back empty, because an answer that
+    /// arrives in one piece has no middle to keep.
     #[must_use]
     pub fn streaming(mut self, stream: bool) -> Self {
         self.stream = stream;
