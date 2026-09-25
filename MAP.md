@@ -187,11 +187,12 @@ endpoint says it serves), `openai/wire.rs` (one request sent and read back, stre
 `gemini.rs` (Google's own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint`
 trait both answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
 `reading.rs` (a stream read an event at a time, and a server's sentence out of its error object),
+`markup.rs` (the words out of a body that is not JSON, which `system1.rs` reads too),
 `conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Jev`,
 TypeSafe's engine for typed questions answered with numbers, and the one thing here that is not a
 `Dialect` - it drives no turn). Each dialect is a feature, and what it owns is what its events
-*say*; `waiting.rs` and `reading.rs` are everything else, `pub(crate)` and shared, which is what
-makes them one crate rather than two.
+*say*; `waiting.rs`, `reading.rs` and `markup.rs` are everything else, crate-private and shared,
+which is what makes them one crate rather than two.
 
 This crate **reads no environment**. Where the requests go, which key pays for them and what limit
 to measure against are arguments, and the two callers in this workspace supply them:
