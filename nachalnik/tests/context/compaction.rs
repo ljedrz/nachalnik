@@ -34,14 +34,19 @@ fn a_compaction_that_moves_nothing_does_not_spend_an_undo() {
     assert!(report.removed.is_empty() && report.elided.is_empty());
     assert_eq!(kernel.with_context(|c| c.undo_len()), depth);
 
-    // one whose every candidate is refused, and one naming only what is already a marker
+    // one whose every candidate is refused, and one naming only what is already a marker. The pin
+    // is named twice in each list, and is refused once for each list rather than once a mention
     let report = kernel.apply_compaction(CompactionPlan {
-        remove: vec![pinned],
-        elide: vec![pinned, elided],
+        remove: vec![pinned, pinned],
+        elide: vec![pinned, elided, pinned],
         reason: "an overzealous compactor".into(),
         ..CompactionPlan::default()
     });
-    assert_eq!(report.refused.len(), 2, "the pin is refused for both");
+    assert_eq!(
+        report.refused.len(),
+        2,
+        "the pin is refused for both lists, once each"
+    );
     assert!(report.elided.is_empty(), "and the marker is already one");
     assert_eq!(
         kernel.with_context(|c| c.undo_len()),

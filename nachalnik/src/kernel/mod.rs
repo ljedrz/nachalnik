@@ -1374,9 +1374,12 @@ impl Kernel {
             // what the plan comes to is worked out before anything moves, because the checkpoint
             // has to be taken before the first change and must not be taken at all if there is
             // not going to be one. An id named twice, or in both lists, is moved once and reported
-            // once: removal wins, since it is the larger of the two
+            // once: removal wins, since it is the larger of the two. A pin is refused once per list
+            // that names it, however many times that list does: the report says what each list
+            // asked for, and a pin in both lists asked for two things
             let mut planned = HashSet::new();
             let mut removing = Vec::new();
+            let mut refused_removal = HashSet::new();
             for id in remove {
                 let Some(item) = context.item(id) else {
                     continue;
@@ -1389,13 +1392,16 @@ impl Kernel {
                 if item.state == ContextState::Pinned
                     || paired(item).any(|call| pinned_calls.contains(call))
                 {
-                    refused.push(entry);
+                    if refused_removal.insert(id) {
+                        refused.push(entry);
+                    }
                 } else if carrying.contains(&id) && planned.insert(id) {
                     removing.push(entry);
                 }
             }
 
             let mut eliding = Vec::new();
+            let mut refused_elision = HashSet::new();
             for id in elide {
                 let Some(item) = context.item(id) else {
                     continue;
@@ -1407,7 +1413,9 @@ impl Kernel {
                 };
 
                 if item.state == ContextState::Pinned {
-                    refused.push(entry);
+                    if refused_elision.insert(id) {
+                        refused.push(entry);
+                    }
                     continue;
                 }
                 if !carrying.contains(&id) || item.state.is_elided() || !planned.insert(id) {
