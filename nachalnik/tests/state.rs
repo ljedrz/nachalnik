@@ -173,7 +173,15 @@ async fn deciding_reports_what_is_still_outstanding() {
 
     let state = kernel.decide(requests[1].id, Grant::Deny).unwrap();
     assert!(matches!(state, State::Ready { .. }), "{state:?}");
-    assert!(kernel.decide(requests[1].id, Grant::Allow).is_err());
+
+    // an answered question is not answered twice, and the refusal names the one it was sent
+    let again = kernel.decide(requests[1].id, Grant::Allow).unwrap_err();
+    assert!(
+        again
+            .to_string()
+            .ends_with(&format!(" {}", requests[1].id.0)),
+        "{again}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
