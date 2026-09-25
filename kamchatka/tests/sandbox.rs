@@ -1402,3 +1402,56 @@ async fn a_stopped_command_takes_its_question_with_it() {
         policy.reaching().waiting()
     );
 }
+
+/// An attempt made after the call is over, by something the command left running, is refused
+/// rather than asked about.
+///
+/// note: the question would be about a command that has ended, and its answer would reach nothing.
+/// The refusal is what this pins. It watches the queue as well, for a question put there and
+/// withdrawn at once, which refuses the attempt too - but whether such a question is put before
+/// the end is seen is a race, so that half catches one only some of the time.
+#[tokio::test]
+async fn an_attempt_after_the_call_is_over_is_refused_without_a_question() {
+    if !gated() {
+        return;
+    }
+    let dir = common::workdir("gate-after");
+    let (shell, policy) = gated_shell(&dir);
+    let answers = answering(&policy, true);
+    let questions = policy.reaching().subscribe();
+    let (socket, port) = listening();
+
+    // it waits for the test to say the call is over, rather than for a length of time
+    let cmd = format!(
+        "(for _ in $(seq 200); do [ -e over ] && break; sleep 0.05; done; {}) > later.txt 2>&1 & \
+         echo started",
+        two_datagrams(port)
+    );
+    let said = through(&shell, &cmd).await;
+    assert!(said.contains("started"), "{said}");
+    std::fs::write(dir.join("over"), "").expect("the signal goes in");
+
+    let waited = std::time::Instant::now();
+    let later = loop {
+        let later = std::fs::read_to_string(dir.join("later.txt")).unwrap_or_default();
+        if later.lines().count() >= 2 {
+            break later;
+        }
+        assert!(
+            waited.elapsed() < Duration::from_secs(20),
+            "what the command left running never tried: {later}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+
+    assert_eq!(later.matches("refused 13").count(), 2, "{later}");
+    assert!(
+        heard(&socket).is_empty(),
+        "a datagram got out after the call"
+    );
+    assert_eq!(answers.asked(), 0);
+    assert!(
+        !questions.has_changed().expect("the queue is still there"),
+        "a question was put about a command that had ended"
+    );
+}
