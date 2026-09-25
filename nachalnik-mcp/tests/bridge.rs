@@ -223,6 +223,10 @@ async fn what_the_server_said_about_itself_is_available() {
 
     assert_eq!(server.name(), "files");
     assert!(server.info().is_some(), "the handshake carried its info");
+
+    // and a server in a log line says which one it is
+    let printed = format!("{server:?}");
+    assert!(printed.contains("files"), "{printed}");
 }
 
 /// A name is rewritten to what model providers accept - `[a-zA-Z0-9_-]`, sixty-four of them - and
