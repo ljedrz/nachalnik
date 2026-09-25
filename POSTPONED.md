@@ -561,15 +561,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   The choices are to keep it, to resend only a request that never connected, or to send an
   idempotency key where an endpoint takes one.
 
-- **The primary endpoint's denominator, against the preregistration's.** The preregistration
-  sizes H1 at one claim per note per model - thirteen numeric inert notes and eighteen plain ones,
-  "over six models ~78 numeric and ~108 plain observations". `Report::surface` pools the unaided
-  counterfactual claims of every experiment, and `attribution`, `instrumented`'s `reported`
-  stage, `feedback`, `privilege` and `recursion` each ask about the same notes, so one note is
-  several observations per model where the preregistration's arithmetic counts it once. Whether
-  the endpoint is one experiment's claims, every experiment's with one per note, or the pool as it
-  stands is the study's decision, and the preregistration is where it is made.
-
 - **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
   constructor, so it stays unless a minor release wants the surface smaller.
 

@@ -533,22 +533,24 @@ impl Report {
         Scores::over(self.resolutions())
     }
 
-    /// The primary endpoint over every claim the run made, pooled across its experiments.
+    /// The primary endpoint: what the run's [`suite::ENDPOINT`](crate::suite::ENDPOINT) claimed
+    /// about items that provably do nothing.
     ///
-    /// note: pooled here and not in [`Outcome`], because H1 is a claim about a *model* and the
-    /// experiments are only different ways of putting the same counterfactual to it. `attribution`
-    /// asks about one dossier's notes, `feedback` about two, `privilege` about its own and someone
-    /// else's - and every one of those claims is about an item whose ablation either moved the
-    /// answer or did not. Reading them apart would leave the endpoint computed over many items in
-    /// one column and a handful in another, when the model is the unit.
+    /// note: one experiment's claims, because the endpoint counts one claim per note per model.
+    /// `feedback`, `privilege`, `instrumented` and `recursion` ask again about notes `attribution`
+    /// asks about, and pooling them counted one note several times in a denominator sized at one,
+    /// with the extra weight on whichever notes their batteries share. Each outcome's own
+    /// [`Outcome::surface`] is still worked out, as a description of that experiment, and a
+    /// report with no `attribution` in it has no endpoint.
     ///
-    /// note: over the claims each outcome made without handles in reach, as [`Outcome::surface`]
-    /// is. A report written before that rule is read under it too, since the stages and the grants
-    /// it needs are in the record.
+    /// note: over the claims made without handles in reach, as [`Outcome::surface`] is. A report
+    /// written before that rule is read under it too, since the stages and the grants it needs
+    /// are in the record.
     pub fn surface(&self) -> Surface {
         Surface::over(
             self.outcomes
                 .iter()
+                .filter(|outcome| outcome.experiment == crate::suite::ENDPOINT)
                 .flat_map(|outcome| unaided(&outcome.steps)),
             crate::suite::dossier::surface,
         )

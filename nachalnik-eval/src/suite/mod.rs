@@ -135,6 +135,13 @@ pub(crate) fn said_or_nothing(answer: &Option<String>) -> String {
         .map_or_else(|| "nothing readable".to_owned(), |said| format!("`{said}`"))
 }
 
+/// The experiment whose claims are the primary endpoint, [`Report::surface`](crate::Report::surface).
+///
+/// note: `attribution` because it is the one that asks about every note of every dossier, once
+/// each, with no handles in reach and no feedback before it - which is the count the endpoint is
+/// sized at.
+pub const ENDPOINT: &str = "attribution";
+
 /// The nine experiments, at their default settings.
 ///
 /// note: One copy per condition, which is the cheap end. It is enough to run the whole thing and

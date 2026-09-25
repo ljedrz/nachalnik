@@ -1332,12 +1332,49 @@ fn the_endpoint_is_what_a_subject_reports_and_not_what_its_test_told_it() {
     assert_eq!((surface.numeric, surface.claimed_numeric), (1, 1));
     assert_eq!((surface.plain, surface.claimed_plain), (2, 0));
 
-    // and a report reads it the same way, from the steps it carries
-    let report = Report {
+    // a report's endpoint is one experiment's, and this is not that experiment
+    let mut report = Report {
         at: 0,
         outcomes: vec![outcome],
     };
+    assert!(!report.surface().is_measurable());
+
+    // filed as that experiment, a report reads it the same way, from the steps it carries
+    report.outcomes[0].experiment = suite::ENDPOINT.to_owned();
     assert_eq!(report.surface(), surface);
+}
+
+#[test]
+fn the_endpoint_counts_a_note_once() {
+    // `attribution` and `feedback` both ask about `records/capacity`, a note full of figures that
+    // does nothing; pooled, one note of one model was two observations
+    let outcome = |experiment: &str, claimed: bool| {
+        let subject = Subject::new(Kernel::new(Config::default()));
+        let trial = nachalnik_eval::Trial::new(experiment, &subject);
+        for (label, claimed) in [("records/capacity", claimed), ("records/office", false)] {
+            trial.resolve(
+                Resolution::new(
+                    Kind::Counterfactual,
+                    Answer::yes(claimed),
+                    Answer::yes(false),
+                )
+                .on_material("depot")
+                .about_note(label),
+            );
+        }
+        nachalnik_eval::Outcome::of(&trial, None)
+    };
+    let report = Report {
+        at: 0,
+        outcomes: vec![outcome("attribution", true), outcome("feedback", false)],
+    };
+
+    let surface = report.surface();
+    assert_eq!((surface.numeric, surface.claimed_numeric), (1, 1));
+    assert_eq!((surface.plain, surface.claimed_plain), (1, 0));
+    // and the other experiment's claims are still described where they were made
+    let theirs = report.outcomes[1].surface.as_ref().expect("feedback's own");
+    assert_eq!((theirs.numeric, theirs.claimed_numeric), (1, 0));
 }
 
 /// A report holding one counterfactual claim about a named note, at a given time.
