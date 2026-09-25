@@ -126,7 +126,7 @@ The result that has *already* been cut is recovered a different way: its whole i
 the copy the model was given, and <kbd>space</kbd> on it sends that instead — the projector answers
 one call with one result, so the whole takes the call and the short copy drops out. The whole has a
 ceiling of its own, 8 MiB: past it a command's output is read and let go and the result says how
-much, and `fs` refuses a larger file with a sentence saying how to read a part of it.
+much, and `fs` refuses to edit a larger file with a sentence saying how else to change it.
 
 ## 🐢 one transition at a time
 
