@@ -282,6 +282,71 @@ fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
     assert!(!ok, "the parent's environment was read: {said}");
 }
 
+/// A command cannot take a descriptor out of a process outside its domain, even one that lets
+/// anybody trace it.
+///
+/// note: the gate holds `socket()`, and `pidfd_getfd` is a way to an internet socket without it:
+/// copy one some other process already has. What refuses it is Landlock, which lets a confined
+/// process look into none outside its domain - Yama is out of it here, since the process holding
+/// the socket asked it to let anybody in, and the same command unconfined is the proof.
+#[test]
+fn a_command_cannot_take_a_descriptor_from_a_process_outside_it() {
+    if !enforced() {
+        return;
+    }
+    use std::io::BufRead as _;
+
+    // PR_SET_PTRACER, PR_SET_PTRACER_ANY
+    let mut holding = Command::new("python3")
+        .args([
+            "-c",
+            "import ctypes, os, socket, time
+ctypes.CDLL(None).prctl(0x59616d61, ctypes.c_ulong(-1), 0, 0, 0)
+held = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+print(os.getpid(), held.fileno(), flush=True)
+time.sleep(30)",
+        ])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("python3 is here");
+    let mut line = String::new();
+    std::io::BufReader::new(holding.stdout.take().expect("stdout is a pipe"))
+        .read_line(&mut line)
+        .expect("it says what it holds");
+    let (pid, fd) = line.trim().split_once(' ').expect("a pid and a descriptor");
+    // pidfd_open and pidfd_getfd, numbered the same on x86_64 and aarch64
+    let cmd = format!(
+        "python3 -c \"
+import ctypes
+libc = ctypes.CDLL(None, use_errno=True)
+pidfd = libc.syscall(434, {pid}, 0)
+taken = libc.syscall(438, pidfd, {fd}, 0) if pidfd >= 0 else -1
+print('took' if taken >= 0 else 'refused %d' % ctypes.get_errno())
+\""
+    );
+
+    let unconfined = Command::new("sh")
+        .args(["-c", &cmd])
+        .output()
+        .expect("sh is here");
+    let (_, said) = run(
+        &sandbox(common::workdir("pidfd"), true, Network::NoTcp),
+        &cmd,
+    );
+    let _ = holding.kill();
+    let _ = holding.wait();
+
+    let unconfined = String::from_utf8_lossy(&unconfined.stdout);
+    if !unconfined.contains("took") {
+        eprintln!("skipped: this machine refuses it unconfined as well: {unconfined}");
+        return;
+    }
+    assert!(
+        said.contains("refused") && !said.contains("took"),
+        "a descriptor was taken: {said}"
+    );
+}
+
 #[test]
 fn a_command_cannot_read_private_files_outside_it() {
     if !enforced() {
