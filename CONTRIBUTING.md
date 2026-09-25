@@ -267,7 +267,8 @@ for, so there is nothing for it to agree with.
 - **`note:` paragraphs.** Doc comments state what something is; a paragraph beginning `note:`
   states why it is that way, what was rejected, or what it costs. This is the house style and it
   is most of the value of the docs - match it. `#![deny(missing_docs)]` and `#![deny(unsafe_code)]`
-  are on in every published crate.
+  are on in every published crate, and one module allows `unsafe` back: `kamchatka::gate`, for the
+  seccomp calls nothing wraps safely. Anything else that wants it wants a reason at least as good.
 - **Comments explain the decision, not the mechanics.** If a line needs a comment saying what it
   does, the line is wrong. Existing comments say why the lock is taken there, why the checkpoint
   is skipped, why the number is 256.

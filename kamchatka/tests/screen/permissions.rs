@@ -591,10 +591,21 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
     // ... and when something is, it says what a command can reach instead of what it cannot
     harness.app.confinement = Confinement::Full;
     let screen = harness.sized(120, 30);
-    assert!(screen.contains("shell: confined"), "{screen}");
+    assert!(
+        screen.contains("shell: confined, network not gated"),
+        "{screen}"
+    );
     assert!(
         !screen.contains("can do any of these"),
         "a confined shell cannot: {screen}"
+    );
+    // and whether its network is asked about when it tries, which is the difference between a UDP
+    // datagram going out and not, and nowhere else on the screen
+    harness.app.policy.gate_the_network();
+    let screen = harness.sized(120, 30);
+    assert!(
+        screen.contains("shell: confined, network gated"),
+        "{screen}"
     );
 
     // refusing it outright puts the other rows back in charge either way
@@ -2240,4 +2251,112 @@ async fn a_chord_at_a_question_is_not_the_letter_it_carries() {
     // the letter on its own still answers
     harness.press(KeyCode::Char('a')).await;
     assert!(harness.app.asked().is_none());
+}
+
+/// Asks what the gate would ask about a running command, as a task that waits for the answer.
+fn reaching(harness: &Harness, call: &str, cmd: &str) -> tokio::task::JoinHandle<Option<bool>> {
+    let policy = harness.app.policy.clone();
+    let (call, cmd) = (nachalnik::ToolCallId::from(call), cmd.to_owned());
+
+    tokio::spawn(async move { policy.reaching().ask(call, cmd).await })
+}
+
+/// Waits for the questions to be up, since they are asked from a task of their own.
+async fn until_reached(harness: &Harness, count: usize) {
+    for _ in 0..200 {
+        if harness.app.policy.reaching().waiting().len() == count {
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+    panic!("{count} question(s) never arrived");
+}
+
+/// A running command that reached for the network is asked about in the prompt's place, and the
+/// answer reaches it and is in the record.
+///
+/// note: the question is not the kernel's - it arrives while the call runs, from the gate holding
+/// the command's first internet socket - so what is checked here is that the screen treats it as
+/// the same kind of thing: pinned where the prompt was, the chat tab red, the keys only once `tab`
+/// has put them there, and a `policy.ruled` saying who let it through.
+#[tokio::test]
+async fn a_command_reaching_for_the_network_is_asked_about_where_the_prompt_was() {
+    let mut harness = Harness::new(Vec::new());
+    let asked = reaching(&harness, "c1", "python3 fetch.py");
+    until_reached(&harness, 1).await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("a command wants the network"), "{screen}");
+    assert!(screen.contains("python3 fetch.py"), "{screen}");
+    assert!(screen.contains("[a] always, for net:reach"), "{screen}");
+    assert!(
+        !screen.contains("┌ you "),
+        "the prompt gave up its place: {screen}"
+    );
+    assert_eq!(harness.tab_colour("chat"), Color::Red);
+
+    // a letter at the prompt is not an answer, for the reason the kernel's questions give
+    harness.press(KeyCode::Char('y')).await;
+    assert_eq!(harness.app.policy.reaching().waiting().len(), 1);
+
+    harness.answer(KeyCode::Char('y')).await;
+    assert_eq!(asked.await.expect("it ran"), Some(true));
+    assert!(harness.app.reached().is_none());
+    assert_eq!(harness.app.focus, Focus::Input, "the keys are back");
+    assert_eq!(
+        ruled(&harness),
+        [("net:reach".to_owned(), Verdict::Allow, None, true)],
+        "once, and in the record"
+    );
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::net("reach"))),
+        Verdict::Ask,
+        "and nothing standing was granted by a once"
+    );
+}
+
+/// `always` allows the network from here on, and lets through every command already waiting on
+/// the same question; `n` refuses one command and no more.
+#[tokio::test]
+async fn always_is_the_network_from_here_on_and_no_is_this_command() {
+    let mut harness = Harness::new(Vec::new());
+
+    let refused = reaching(&harness, "c1", "nc example.com 80");
+    until_reached(&harness, 1).await;
+    harness.answer(KeyCode::Char('n')).await;
+    assert_eq!(refused.await.expect("it ran"), Some(false));
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::net("reach"))),
+        Verdict::Ask
+    );
+
+    let first = reaching(&harness, "c2", "curl a");
+    until_reached(&harness, 1).await;
+    let second = reaching(&harness, "c3", "curl b");
+    until_reached(&harness, 2).await;
+    assert!(harness.screen().contains("1 more after this one"));
+
+    harness.answer(KeyCode::Char('a')).await;
+    assert_eq!(first.await.expect("it ran"), Some(true));
+    assert_eq!(second.await.expect("it ran"), Some(true), "swept");
+    assert_eq!(
+        harness
+            .app
+            .policy
+            .stance(&Subject::Capability(Capability::net("reach"))),
+        Verdict::Allow
+    );
+    assert_eq!(
+        ruled(&harness),
+        [
+            ("net:reach".to_owned(), Verdict::Deny, None, true),
+            ("net:reach".to_owned(), Verdict::Allow, None, false),
+        ]
+    );
 }

@@ -11,14 +11,18 @@
 //! records to one, what a person reads to the other. That is what makes `kamchatka --connect` a
 //! drop-in for `kamchatka --headless` in a script, and what lets the same shape of test drive both.
 
-use std::{collections::VecDeque, io::Write, time::Duration};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    io::Write,
+    time::Duration,
+};
 
 use nachalnik::{ContextId, Delta, Event, Grant, PermissionRequest};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
 
 use crate::{
     app::{Speaker, text::one_line},
-    remote::protocol::{self, Address, Attached, Command, Message},
+    remote::protocol::{self, Address, Attached, Command, Message, Reached},
 };
 
 /// How long a dropped connection is picked back up for before this gives up on it.
@@ -75,6 +79,17 @@ pub struct Client<'a> {
     /// dropped here is one the session goes on waiting for and this client can no longer answer.
     /// What the resume leaves undecided goes back on `asking` once the attach is answered.
     answering: VecDeque<PermissionRequest>,
+    /// The running commands waiting to hear whether they may reach the network, oldest first, as
+    /// the session last listed them and less the ones this has answered.
+    reaching: VecDeque<Reached>,
+    /// Which of those this has printed, so that a list sent again prints only what is new in it.
+    told: BTreeSet<u64>,
+    /// Which of those this has answered, so that a list sent before the answer landed does not
+    /// offer the question again.
+    ///
+    /// note: kept rather than cleared, because an identifier is never reused and the list the
+    /// session sends is a snapshot: the one after an answer may still have been taken before it.
+    let_through: BTreeSet<u64>,
     /// Whether this connection opened with a resume that has not been answered yet.
     resuming: bool,
     /// What a question is answered with once there is nobody left here to answer it.
@@ -137,6 +152,9 @@ impl<'a> Client<'a> {
             session: None,
             asking: VecDeque::new(),
             answering: VecDeque::new(),
+            reaching: VecDeque::new(),
+            told: BTreeSet::new(),
+            let_through: BTreeSet::new(),
             resuming: false,
             busy: false,
             outstanding: 0,
@@ -437,6 +455,7 @@ impl<'a> Client<'a> {
 
                 Ok(())
             }
+            Message::Reaching { waiting } => self.reaching(&waiting),
             // note: said rather than swallowed, because it is the one change to a session that
             // nothing else here would show. This client prints the conversation and the records,
             // and a model switch is in neither - so without this, a session that changed model
@@ -545,6 +564,10 @@ impl<'a> Client<'a> {
         for request in &asking {
             self.question(request)?;
         }
+        // and the other kind, printed afresh for the reason these are: whatever was printed before
+        // belongs to a conversation this has just been handed again
+        self.told.clear();
+        self.reaching(&attached.reaching)?;
 
         self.prose.flush().map_err(|e| e.to_string())
     }
@@ -631,6 +654,35 @@ impl<'a> Client<'a> {
         Ok(())
     }
 
+    /// Takes in the list of running commands waiting on the network, and prints the new ones.
+    fn reaching(&mut self, waiting: &[Reached]) -> Result<(), String> {
+        self.reaching = waiting
+            .iter()
+            .filter(|reached| !self.let_through.contains(&reached.id))
+            .cloned()
+            .collect();
+        let fresh: Vec<Reached> = self
+            .reaching
+            .iter()
+            .filter(|reached| !self.told.contains(&reached.id))
+            .cloned()
+            .collect();
+        for reached in fresh {
+            self.told.insert(reached.id);
+            self.fresh_line()?;
+            writeln!(
+                self.prose,
+                "? `{}` is running and has reached for the network\n  it waits for an answer, \
+                 which holds for the rest of it; `y` lets it, `n` refuses, `a` allows the network \
+                 from now on",
+                one_line(&reached.cmd)
+            )
+            .map_err(|e| e.to_string())?;
+        }
+
+        self.prose.flush().map_err(|e| e.to_string())
+    }
+
     /// Prints a question, and the three answers to it.
     fn question(&mut self, request: &PermissionRequest) -> Result<(), String> {
         let capabilities: Vec<_> = request
@@ -695,6 +747,32 @@ impl<'a> Client<'a> {
                     .await;
             }
         }
+        // note: the kernel's question first where both are somehow waiting, which is the order the
+        // panel at a terminal takes them in
+        if self.asking.is_empty() && !self.reaching.is_empty() {
+            let answer = match line {
+                "y" => Some((Grant::Allow, false)),
+                "n" => Some((Grant::Deny, false)),
+                "a" => Some((Grant::Allow, true)),
+                _ => None,
+            };
+            if let Some((grant, remember)) = answer
+                && let Some(reached) = self.reaching.pop_front()
+            {
+                self.let_through.insert(reached.id);
+
+                return self
+                    .say_to(
+                        write,
+                        Command::Reach {
+                            id: reached.id,
+                            grant,
+                            remember,
+                        },
+                    )
+                    .await;
+            }
+        }
         if let Some(id) = line.strip_prefix('?').and_then(|n| n.trim().parse().ok()) {
             return self
                 // the reading rather than the text: `?N` at this client prints an item for
@@ -752,7 +830,7 @@ impl<'a> Client<'a> {
     /// longer come from anywhere. What ends the wait is [`Client::settle`]; this is only
     /// the half that stops it being called rest.
     fn resting(&self) -> bool {
-        !self.busy && self.outstanding == 0 && self.asking.is_empty()
+        !self.busy && self.outstanding == 0 && self.asking.is_empty() && self.reaching.is_empty()
     }
 
     /// Answers whatever is still being asked, once there is nobody here to ask.
@@ -786,6 +864,26 @@ impl<'a> Client<'a> {
                     // note: never. A standing rule outlives this client and this turn, and a rule
                     // nobody typed is the one kind the policy should not learn from - least of all
                     // from a run whose whole distinguishing feature is that nobody was watching it
+                    remember: false,
+                },
+            )
+            .await?;
+        }
+        while let Some(reached) = self.reaching.pop_front() {
+            self.fresh_line()?;
+            self.tell(&format!(
+                "nobody is here to answer whether `{}` may reach the network, so it is answered \
+                 `{}`",
+                one_line(&reached.cmd),
+                self.on_ask
+            ))?;
+            self.let_through.insert(reached.id);
+            self.say_to(
+                write,
+                Command::Reach {
+                    id: reached.id,
+                    grant: self.on_ask,
+                    // never, for the reason the kernel's questions are never remembered here
                     remember: false,
                 },
             )

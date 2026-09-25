@@ -709,3 +709,35 @@ fn a_chain_of_links_too_long_to_follow_is_refused() {
     std::os::unix::fs::symlink(work.join("made.txt"), work.join("s1")).expect("a link");
     assert!(reach.allows("s0", Access::Writing).is_ok());
 }
+
+/// Where the gate holds, a command is not judged against the network by its name, because it is
+/// asked about when it tries instead.
+///
+/// note: the other half of what the gate is for. Read off the name, `curl` is a question even in a
+/// session that allowed `exec:run` - and `git status` is one too, while a script that opens a
+/// socket is not. With the gate the question is the attempt, so an allowed command runs unasked.
+#[test]
+fn a_gated_network_is_not_read_off_the_command() {
+    let policy = Careful::new();
+    let call = ToolCall::new("c1", "shell", json!({ "cmd": "curl https://example.com" }));
+    let curl = PermissionRequest {
+        id: PermissionId(1),
+        call: call.id.clone(),
+        tool: "shell".to_owned(),
+        capabilities: vec![Capability::exec("run")],
+        args: call.args.clone(),
+    };
+    let reach = Subject::Capability(Capability::net("reach"));
+    policy.set(&Subject::parse("exec:run"), Verdict::Allow);
+
+    assert!(policy.judges(&curl).contains(&reach));
+    assert_eq!(policy.verdict(&curl), Verdict::Ask, "read off its name");
+
+    policy.gate_the_network();
+    assert!(!policy.judges(&curl).contains(&reach));
+    assert_eq!(
+        policy.verdict(&curl),
+        Verdict::Allow,
+        "an allowed command runs, and is asked about if it reaches out"
+    );
+}

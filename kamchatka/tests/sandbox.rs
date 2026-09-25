@@ -25,7 +25,7 @@ use std::{
 };
 
 use kamchatka::{
-    sandbox::{Confinement, Sandbox, available},
+    sandbox::{Confinement, Network, Sandbox, available},
     tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
@@ -41,16 +41,43 @@ mod common;
 /// note: spawned rather than run in one call, and the temporary directory removed afterwards,
 /// because that is what the `shell` tool does: a confined process cannot remove its own, and a
 /// test that skipped it would leave one behind per command and prove nothing about the tool.
+///
+/// note: a gated command is answered by whoever spawned it, and here that is this test. It refuses
+/// every attempt, which is what `shell` does for a session that refuses the network; the tests that
+/// answer otherwise go through the tool.
 fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
-    let child = Command::new(common::program())
+    let mut command = Command::new(common::program());
+    command
         .args(sandbox.argv(cmd))
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
+        .stderr(std::process::Stdio::piped());
+    let refusing = matches!(sandbox.network, Network::Shut | Network::Asked).then(|| {
+        let (stdin, arriving) = kamchatka::gate::pair().expect("the gate is built here");
+        command.stdin(stdin);
+        std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("a runtime")
+                .block_on(async move {
+                    if let Ok(Some(listener)) = arriving.listener().await {
+                        while let Some(attempt) = listener.next().await {
+                            listener.answer(attempt, false);
+                        }
+                    }
+                })
+        })
+    });
+    let child = command.spawn().expect("the binary under test is built");
+    drop(command);
     let scratch = kamchatka::sandbox::scratch_for(child.id());
     let output = child.wait_with_output().expect("it was spawned");
     let _ = std::fs::remove_dir_all(&scratch);
+    if let Some(refusing) = refusing {
+        refusing
+            .join()
+            .expect("the refusing ends once the command has");
+    }
 
     let mut said = String::from_utf8_lossy(&output.stdout).into_owned();
     said.push_str(&String::from_utf8_lossy(&output.stderr));
@@ -58,7 +85,7 @@ fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
     (output.status.success(), said)
 }
 
-fn sandbox(workdir: PathBuf, writable: bool, network: bool) -> Sandbox {
+fn sandbox(workdir: PathBuf, writable: bool, network: Network) -> Sandbox {
     Sandbox {
         workdir,
         extra: Vec::new(),
@@ -82,10 +109,21 @@ fn sockets() -> bool {
 
 /// Whether this machine can enforce any of it; the tests say so and stop rather than failing.
 fn enforced() -> bool {
-    match available(&common::program()) {
+    match available(&common::program()).confinement {
         Confinement::Full => true,
         other => {
             eprintln!("skipped: {other}");
+            false
+        }
+    }
+}
+
+/// Whether the gate holds here as well; the tests about it say so and stop, as `enforced` does.
+fn gated() -> bool {
+    match available(&common::program()) {
+        probed if probed.confinement == Confinement::Full && probed.gated => true,
+        _ => {
+            eprintln!("skipped: the network gate does not hold here");
             false
         }
     }
@@ -150,7 +188,7 @@ fn a_path_the_ruleset_cannot_open_costs_its_own_rule_and_no_more() {
     std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
     let outside = common::scratch("sandbox-unopenable-outside");
 
-    let mut asked = sandbox(dir.clone(), true, false);
+    let mut asked = sandbox(dir.clone(), true, Network::NoTcp);
     asked.extra = vec![shut.clone(), dir.join("gone")];
 
     let (ok, said) = run(&asked, "echo ran > ran.txt");
@@ -176,7 +214,7 @@ fn a_command_can_read_and_write_inside_the_working_directory() {
         return;
     }
     let dir = common::workdir("inside");
-    let sandbox = sandbox(dir.clone(), true, false);
+    let sandbox = sandbox(dir.clone(), true, Network::NoTcp);
 
     let (ok, said) = run(
         &sandbox,
@@ -201,7 +239,7 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
     // the test that sounded like it covered the claim reaches for a home directory, which is not
     // in `SYSTEM` and so was never the case in question
     let (ok, said) = run(
-        &sandbox(common::workdir("system"), true, false),
+        &sandbox(common::workdir("system"), true, Network::NoTcp),
         "cat /etc/passwd",
     );
     assert!(ok, "the system directories are readable on purpose: {said}");
@@ -209,7 +247,7 @@ fn the_system_directories_are_readable_and_that_is_where_the_line_is() {
 
     // readable, and no more than that
     let (wrote, said) = run(
-        &sandbox(common::workdir("system"), true, false),
+        &sandbox(common::workdir("system"), true, Network::NoTcp),
         "touch /etc/kamchatka-probe",
     );
     assert!(!wrote, "a system directory is not writable: {said}");
@@ -228,7 +266,7 @@ fn a_command_cannot_read_the_environment_of_the_program_that_ran_it() {
         return;
     }
     let (ok, said) = run(
-        &sandbox(common::workdir("environ"), true, false),
+        &sandbox(common::workdir("environ"), true, Network::NoTcp),
         "cat /proc/self/environ > /dev/null && echo own && cat /proc/$PPID/environ > /dev/null",
     );
     assert!(said.contains("own"), "its own is readable: {said}");
@@ -243,7 +281,7 @@ fn a_command_cannot_read_private_files_outside_it() {
     // outside the working directory *and* outside the system paths, which is the part somebody
     // installing this actually cares about
     let (ok, said) = run(
-        &sandbox(common::workdir("read"), true, false),
+        &sandbox(common::workdir("read"), true, Network::NoTcp),
         "cat /home/*/.bashrc",
     );
 
@@ -270,7 +308,7 @@ fn a_command_cannot_write_outside_it() {
     let escape = std::env::temp_dir().join("kamchatka-escaped.txt");
     let _ = std::fs::remove_file(&escape);
     let (ok, said) = run(
-        &sandbox(common::workdir("write-out"), true, false),
+        &sandbox(common::workdir("write-out"), true, Network::NoTcp),
         &format!("echo escaped > {}", escape.display()),
     );
     assert!(!ok, "the whole of /tmp is not writable: {said}");
@@ -278,7 +316,7 @@ fn a_command_cannot_write_outside_it() {
 
     let elsewhere = PathBuf::from("/etc/kamchatka-escaped.txt");
     let (ok_etc, said_etc) = run(
-        &sandbox(common::workdir("write-etc"), true, false),
+        &sandbox(common::workdir("write-etc"), true, Network::NoTcp),
         &format!("echo escaped > {}", elsewhere.display()),
     );
     assert!(!ok_etc, "writing to /etc should fail: {said_etc}");
@@ -288,7 +326,7 @@ fn a_command_cannot_write_outside_it() {
     // ... and a temporary file made the way a program actually makes one still works, or a
     // compiler would not run under this at all
     let (ok_tmp, said_tmp) = run(
-        &sandbox(common::workdir("write-tmpdir"), true, false),
+        &sandbox(common::workdir("write-tmpdir"), true, Network::NoTcp),
         "echo scratch > \"$TMPDIR/t.txt\" && cat \"$TMPDIR/t.txt\"",
     );
     assert!(ok_tmp, "{said_tmp}");
@@ -313,7 +351,8 @@ fn a_command_with_no_temporary_directory_is_given_no_tmpdir() {
 
     let output = Command::new(common::program())
         .args(
-            sandbox(common::workdir("no-tmpdir"), true, false).argv("printf %s \"${TMPDIR-none}\""),
+            sandbox(common::workdir("no-tmpdir"), true, Network::NoTcp)
+                .argv("printf %s \"${TMPDIR-none}\""),
         )
         .env("TMPDIR", &closed)
         .output()
@@ -342,7 +381,7 @@ fn a_command_cannot_truncate_a_file_outside_the_working_directory() {
     std::fs::write(&outside, "the whole of it").expect("a file outside");
 
     let (_, said) = run(
-        &sandbox(dir, true, false),
+        &sandbox(dir, true, Network::NoTcp),
         &format!(
             "python3 -c \"import os;os.truncate('{}',0)\" 2>&1 || echo refused",
             outside.display()
@@ -366,7 +405,7 @@ fn a_command_can_truncate_a_file_inside_it() {
     }
     let dir = common::workdir("truncate-inside");
     let (ok, said) = run(
-        &sandbox(dir.clone(), true, false),
+        &sandbox(dir.clone(), true, Network::NoTcp),
         "python3 -c \"import os;os.truncate('inside.txt',0)\" 2>&1",
     );
 
@@ -386,13 +425,16 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     }
     let dir = common::workdir("readonly");
 
-    let (ok, said) = run(&sandbox(dir.clone(), false, false), "echo x > nope.txt");
+    let (ok, said) = run(
+        &sandbox(dir.clone(), false, Network::NoTcp),
+        "echo x > nope.txt",
+    );
 
     assert!(!ok, "{said}");
     assert!(said.contains("Permission denied"), "{said}");
     assert!(!dir.join("nope.txt").exists());
     // ... and reading still works, or the shell would be useless
-    let (ok, said) = run(&sandbox(dir, false, false), "cat inside.txt");
+    let (ok, said) = run(&sandbox(dir, false, Network::NoTcp), "cat inside.txt");
     assert!(ok && said.contains("hello"), "{said}");
 }
 
@@ -403,66 +445,116 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
     }
     let dir = common::workdir("network");
 
-    // the way a model asks for the network, which a policy reading the command would also catch
-    let (ok, said) = run(
-        &sandbox(dir.clone(), true, false),
-        "curl -sS --max-time 5 https://example.com",
-    );
-    assert!(!ok, "{said}");
+    // Landlock alone, and the gate in front of it where there is one: both refuse a connection
+    let mut refusing = vec![Network::NoTcp];
+    if available(&common::program()).gated {
+        refusing.push(Network::Shut);
+    }
+    for network in refusing {
+        // the way a model asks for the network, which a policy reading the command would also
+        // catch
+        let (ok, said) = run(
+            &sandbox(dir.clone(), true, network),
+            "curl -sS --max-time 5 https://example.com",
+        );
+        assert!(!ok, "{network:?}: {said}");
 
-    // ... and the way it asks after being refused, which no policy reading a command line catches.
-    // This is the case that made the sandbox worth having: a live model did exactly this
-    let (ok, said) = run(
-        &sandbox(dir, true, false),
-        "python3 -c \"import urllib.request; urllib.request.urlopen('https://example.com')\"",
-    );
-    assert!(!ok, "the second way round has to fail too: {said}");
-    assert!(
-        said.contains("Permission denied") || said.contains("Errno 13"),
-        "{said}"
-    );
+        // ... and the way it asks after being refused, which no policy reading a command line
+        // catches. This is the case that made the sandbox worth having: a live model did exactly
+        // this
+        let (ok, said) = run(
+            &sandbox(dir.clone(), true, network),
+            "python3 -c \"import urllib.request; urllib.request.urlopen('https://example.com')\"",
+        );
+        assert!(
+            !ok,
+            "{network:?}: the second way round has to fail too: {said}"
+        );
+        // under the gate it never gets as far as a connection: looking the name up needs a socket
+        // too, and the refusal of that one reads as a lookup failing - which is why `shell` says
+        // what it was
+        let refused = match network {
+            Network::Shut => said.contains("name resolution"),
+            _ => said.contains("Permission denied") || said.contains("Errno 13"),
+        };
+        assert!(refused, "{network:?}: {said}");
+    }
 }
 
-/// The other half of that, and the reason every sentence about this promises TCP rather than "the
-/// network": a UDP datagram leaves the same confinement untouched.
-///
-/// note: a test that asserts a *hole* is an odd thing until you ask what closes it. The kernel
-/// grew `LANDLOCK_ACCESS_NET_BIND_UDP` and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` in ABI 10,
-/// which is Linux 7.2; the `landlock` crate exposes neither, and `AccessNet` is
-/// `#[non_exhaustive]` over a sealed trait, so there is nothing to hand a ruleset from out here.
-/// The day the crate grows them this fails - and what it is really holding down is the wording.
-/// The readmes, the screen and the tool's own description to the model all promise no more than
-/// TCP, and they may stop saying it on the day this stops passing and not before.
+/// A datagram to a port this test holds, sent from a confined command; what arrived, if anything.
 ///
 /// note: loopback rather than a DNS query, so what it checks is the confinement rather than
 /// whether this machine has a network at all.
-#[test]
-fn a_udp_datagram_still_goes_out_and_every_sentence_about_it_says_so() {
-    if !enforced() {
-        return;
-    }
+fn datagram(network: Network, name: &str) -> (bool, String, Option<Vec<u8>>) {
     let socket = UdpSocket::bind("127.0.0.1:0").expect("a port");
     socket
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .expect("a timeout, so a closed hole is a failure rather than a hang");
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .expect("a timeout, so a refused datagram is an answer rather than a hang");
     let port = socket.local_addr().expect("it is bound").port();
 
     let (ok, said) = run(
-        &sandbox(common::workdir("udp"), true, false),
+        &sandbox(common::workdir(name), true, network),
         &format!(
             "python3 -c \"import socket; socket.socket(socket.AF_INET, socket.SOCK_DGRAM)\
              .sendto(b'out', ('127.0.0.1', {port}))\" 2>&1"
         ),
     );
-    assert!(ok, "{said}");
-
     let mut buf = [0u8; 8];
-    let read = socket.recv_from(&mut buf).map(|(read, _)| read);
+    let arrived = socket
+        .recv_from(&mut buf)
+        .ok()
+        .map(|(read, _)| buf[..read].to_vec());
+
+    (ok, said, arrived)
+}
+
+/// Where there is no gate, a UDP datagram leaves the confinement untouched - which is the reason
+/// every sentence about that case promises no TCP rather than no network.
+///
+/// note: a test that asserts a *hole* is an odd thing until you ask what closes it. The kernel
+/// grew `LANDLOCK_ACCESS_NET_BIND_UDP` and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` in ABI 10,
+/// which is Linux 7.2; the `landlock` crate exposes neither, and `AccessNet` is
+/// `#[non_exhaustive]` over a sealed trait, so there is nothing to hand a ruleset from out here.
+/// The day the crate grows them this fails - and what it is really holding down is the wording of
+/// `Network::NoTcp`, which may stop saying TCP on the day this stops passing and not before.
+#[test]
+fn a_udp_datagram_goes_out_where_there_is_no_gate_and_the_words_say_so() {
+    if !enforced() {
+        return;
+    }
+    let (ok, said, arrived) = datagram(Network::NoTcp, "udp");
+
+    assert!(ok, "{said}");
     assert_eq!(
-        read.ok().map(|read| &buf[..read]),
+        arrived.as_deref(),
         Some(&b"out"[..]),
         "no datagram arrived. If the crate has grown ABI 10's rights and this is now refused, \
          that is good news and every sentence promising only TCP wants rewriting"
+    );
+    assert!(
+        sandbox(PathBuf::from("/w"), true, Network::NoTcp)
+            .to_string()
+            .ends_with("no TCP"),
+        "what the words promise is what holds"
+    );
+}
+
+/// ... and where there is one, the same datagram is refused, which is what lets the words say no
+/// network.
+#[test]
+fn a_shut_gate_refuses_a_datagram_as_well_as_a_connection() {
+    if !gated() {
+        return;
+    }
+    let (ok, said, arrived) = datagram(Network::Shut, "udp-shut");
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("Permission denied"), "{said}");
+    assert_eq!(arrived, None, "a datagram got out past a shut gate");
+    assert!(
+        sandbox(PathBuf::from("/w"), true, Network::Shut)
+            .to_string()
+            .ends_with("no network")
     );
 }
 
@@ -492,7 +584,7 @@ fn a_command_cannot_connect_to_a_unix_socket_it_could_not_write_to() {
     let listening = UnixListener::bind(&outside).expect("a socket outside the working directory");
 
     let (ok, said) = run(
-        &sandbox(common::workdir("connect"), true, false),
+        &sandbox(common::workdir("connect"), true, Network::NoTcp),
         &connect_to(&outside),
     );
 
@@ -516,7 +608,7 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     let inside = dir.join("s.sock");
     let listening = UnixListener::bind(&inside).expect("a socket in the working directory");
 
-    let (ok, said) = run(&sandbox(dir, true, false), &connect_to(&inside));
+    let (ok, said) = run(&sandbox(dir, true, Network::NoTcp), &connect_to(&inside));
 
     assert!(ok, "{said}");
     drop(listening);
@@ -538,7 +630,7 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
     let socket = opened.join("s.sock");
     let listening = UnixListener::bind(&socket).expect("a socket in the readable directory");
 
-    let mut readable = sandbox(common::workdir("connect-read"), true, false);
+    let mut readable = sandbox(common::workdir("connect-read"), true, Network::NoTcp);
     readable.readable = vec![opened];
     let (ok, said) = run(&readable, &connect_to(&socket));
 
@@ -764,7 +856,7 @@ fn a_path_opened_for_reading_is_not_a_path_that_can_be_written() {
     let outside = common::workdir("read-only-extra");
     std::fs::write(outside.join("settings.toml"), "default = stable").expect("something to read");
 
-    let mut sandbox = sandbox(common::workdir("read-only-home"), true, false);
+    let mut sandbox = sandbox(common::workdir("read-only-home"), true, Network::NoTcp);
     sandbox.readable = vec![outside.clone()];
 
     let (ok, said) = run(
@@ -855,7 +947,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         extra: Vec::new(),
         readable: Vec::new(),
         writable: true,
-        network: false,
+        network: Network::NoTcp,
     };
     // spawned rather than run in one call, for the reason `run` is: the directory a confined
     // command gets is named after *that* command, it cannot remove its own, and only whoever
@@ -957,5 +1049,247 @@ async fn the_shell_tool_accounts_for_a_refusal_it_caused() {
     assert!(
         rest.starts_with('['),
         "the note comes before the output: {said}"
+    );
+}
+
+/// A confined shell whose policy knows the gate holds, and the policy, for answering it.
+fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
+    let policy = Arc::new(Careful::new());
+    policy.gate_the_network();
+    let shell = Shell {
+        limits: Limits::default(),
+        policy: policy.clone(),
+        workdir: dir.to_path_buf(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confiner: Some(common::program()),
+    };
+
+    (shell, policy)
+}
+
+/// Answers every question a command asks with `allow`, counting them, until it is dropped.
+struct Answering {
+    asked: Arc<std::sync::atomic::AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Answering {
+    fn asked(&self) -> usize {
+        self.asked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl Drop for Answering {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+fn answering(policy: &Arc<Careful>, allow: bool) -> Answering {
+    let policy = policy.clone();
+    let asked = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut woken = policy.reaching().subscribe();
+    let task = tokio::spawn({
+        let asked = asked.clone();
+        async move {
+            while woken.changed().await.is_ok() {
+                for question in policy.reaching().waiting() {
+                    if policy.reaching().answer(question.id, allow).is_ok() {
+                        asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                }
+            }
+        }
+    });
+
+    Answering { asked, task }
+}
+
+/// Runs one command through the tool, and gives up on it rather than on the suite.
+async fn through(shell: &Shell, cmd: &str) -> String {
+    tokio::time::timeout(
+        Duration::from_secs(20),
+        shell.invoke(
+            &call("1", "shell", json!({ "cmd": cmd })),
+            OutputSink::disconnected(),
+        ),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("`{cmd}` never answered"))
+    .expect("the tool answers either way")
+    .content
+    .to_text()
+    .into_owned()
+}
+
+/// Two datagrams from one command, each on a socket of its own, to a port this test holds; what
+/// arrived.
+fn two_datagrams(port: u16) -> String {
+    format!(
+        "python3 -c \"
+import socket
+for word in (b'one', b'two'):
+    try:
+        socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(word, ('127.0.0.1', {port}))
+        print('sent', word.decode())
+    except OSError as e:
+        print('refused', e.errno)
+\""
+    )
+}
+
+fn listening() -> (UdpSocket, u16) {
+    let socket = UdpSocket::bind("127.0.0.1:0").expect("a port");
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .expect("a timeout");
+    let port = socket.local_addr().expect("it is bound").port();
+
+    (socket, port)
+}
+
+fn heard(socket: &UdpSocket) -> Vec<String> {
+    let mut buf = [0u8; 8];
+    std::iter::from_fn(|| {
+        socket
+            .recv_from(&mut buf)
+            .ok()
+            .map(|(read, _)| String::from_utf8_lossy(&buf[..read]).into_owned())
+    })
+    .collect()
+}
+
+/// A command is asked about when it reaches for the network, once, and not before.
+///
+/// note: the point of the gate. Read off its name, `python3` is not a program that wants the
+/// network and would never have been asked about; `git status` is one and would have been. Here
+/// the question is the attempt itself, and a command that never makes one runs unasked.
+#[tokio::test]
+async fn a_command_is_asked_about_when_it_reaches_for_the_network_and_not_before() {
+    if !gated() {
+        return;
+    }
+    let (shell, policy) = gated_shell(&common::workdir("gate-yes"));
+    let answers = answering(&policy, true);
+
+    let said = through(&shell, "echo quiet").await;
+    assert!(said.starts_with("exit: 0"), "{said}");
+    assert!(!said.contains("reached for the network"), "{said}");
+    assert_eq!(
+        answers.asked(),
+        0,
+        "a command that never reached out was asked about"
+    );
+
+    let (socket, port) = listening();
+    let said = through(&shell, &two_datagrams(port)).await;
+    assert!(
+        said.contains("sent one") && said.contains("sent two"),
+        "{said}"
+    );
+    assert!(
+        said.contains("was asked and let it"),
+        "the model is told whose answer it was: {said}"
+    );
+    assert_eq!(heard(&socket), ["one", "two"]);
+    assert_eq!(
+        answers.asked(),
+        1,
+        "two sockets, and one question about the command"
+    );
+    assert!(policy.reaching().waiting().is_empty());
+}
+
+/// A no refuses every internet socket the command asks for, and the model is told who said it.
+#[tokio::test]
+async fn a_no_refuses_every_socket_the_command_asks_for() {
+    if !gated() {
+        return;
+    }
+    let (shell, policy) = gated_shell(&common::workdir("gate-no"));
+    let answers = answering(&policy, false);
+    let (socket, port) = listening();
+
+    let said = through(&shell, &two_datagrams(port)).await;
+
+    assert_eq!(answers.asked(), 1);
+    assert_eq!(said.matches("refused 13").count(), 2, "{said}");
+    assert!(heard(&socket).is_empty(), "a datagram got out after a no");
+    assert!(said.contains("was asked and said no"), "{said}");
+    // near the top, where an output limit cutting from the end cannot take it
+    assert!(
+        said.lines()
+            .nth(1)
+            .is_some_and(|line| line.starts_with('[')),
+        "{said}"
+    );
+}
+
+/// A session that refuses the network refuses it without asking anybody, and says so.
+#[tokio::test]
+async fn a_refused_network_is_refused_without_a_question_and_said() {
+    if !gated() {
+        return;
+    }
+    let (shell, policy) = gated_shell(&common::workdir("gate-deny"));
+    policy.set(
+        &Subject::Capability(Capability::net("reach")),
+        Verdict::Deny,
+    );
+    let (socket, port) = listening();
+
+    let said = through(&shell, &two_datagrams(port)).await;
+
+    assert!(policy.reaching().waiting().is_empty());
+    assert_eq!(said.matches("refused 13").count(), 2, "{said}");
+    assert!(heard(&socket).is_empty());
+    assert!(said.contains("which this session refuses"), "{said}");
+}
+
+/// A stopped command takes its question with it, rather than leaving one nobody's answer reaches.
+#[tokio::test]
+async fn a_stopped_command_takes_its_question_with_it() {
+    if !gated() {
+        return;
+    }
+    let dir = common::workdir("gate-stopped");
+    let (shell, policy) = gated_shell(&dir);
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call(
+            "1",
+            "shell",
+            json!({ "cmd": "python3 -c \"import socket; socket.socket()\"" }),
+        )]),
+        ModelResponse::text("stopped"),
+    ])));
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.add_tool(Arc::new(shell));
+    kernel.push(ContextItem::user("go"));
+
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+    let waited = std::time::Instant::now();
+    while policy.reaching().first().is_none() {
+        assert!(
+            waited.elapsed() < Duration::from_secs(10),
+            "the command never asked"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    kernel.interrupt();
+
+    tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("a command waiting on a question stops when asked to")
+        .expect("the turn is not a panic")
+        .expect("an interrupted turn is not a failed one");
+    assert!(
+        policy.reaching().waiting().is_empty(),
+        "{:?}",
+        policy.reaching().waiting()
     );
 }

@@ -438,19 +438,25 @@ fn the_scratch_directory_is_never_somebody_elses() {
 
 #[test]
 fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
-    let sandbox = Sandbox {
-        workdir: PathBuf::from("/tmp/work dir"),
-        extra: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
-        readable: vec![PathBuf::from("/opt/three")],
-        writable: false,
-        network: true,
-    };
+    use kamchatka::sandbox::Network;
 
-    let argv = sandbox.argv("echo 'hello world'; ls");
-    let (read_back, cmd) = Sandbox::from_argv(&argv).expect("it is one of ours");
+    // every way the network can be, because each is a word on the command line and a word read
+    // back as another is a command confined the wrong way
+    for network in [Network::Open, Network::NoTcp, Network::Shut, Network::Asked] {
+        let sandbox = Sandbox {
+            workdir: PathBuf::from("/tmp/work dir"),
+            extra: vec![PathBuf::from("/opt/one"), PathBuf::from("/opt/two")],
+            readable: vec![PathBuf::from("/opt/three")],
+            writable: false,
+            network,
+        };
 
-    assert_eq!(read_back, sandbox, "a path with a space in it survives");
-    assert_eq!(cmd, "echo 'hello world'; ls");
+        let argv = sandbox.argv("echo 'hello world'; ls");
+        let (read_back, cmd) = Sandbox::from_argv(&argv).expect("it is one of ours");
+
+        assert_eq!(read_back, sandbox, "a path with a space in it survives");
+        assert_eq!(cmd, "echo 'hello world'; ls");
+    }
     assert!(Sandbox::from_argv(&[]).is_none());
     assert!(Sandbox::from_argv(&["--help".into()]).is_none());
 }
@@ -463,7 +469,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         extra: Vec::new(),
         readable: Vec::new(),
         writable: true,
-        network: false,
+        network: kamchatka::sandbox::Network::NoTcp,
     };
 
     // the shape the live session produced, down to the quotes rustup wraps the path in
@@ -559,7 +565,7 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
         extra: Vec::new(),
         readable: Vec::new(),
         writable: true,
-        network: false,
+        network: kamchatka::sandbox::Network::NoTcp,
     };
     let stderr: String = (0..300_000)
         .map(|nth| format!("/x/{nth}: Permission denied\n"))

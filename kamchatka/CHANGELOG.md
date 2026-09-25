@@ -7,6 +7,41 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **`Sandbox::network` is a `sandbox::Network`**, where it was a `bool`: `Open`, `NoTcp` (Landlock
+  alone, as before), `Shut` and `Asked`, the last two behind the network gate below. A confinement
+  written by hand that said `network: false` says `Network::NoTcp`.
+- **`sandbox::available` hands back a `Probed`**, the `Confinement` it returned before beside
+  whether the gate holds. `available(&program).confinement` is the old answer.
+
+### added
+
+- **A command is asked about the network when it tries, rather than for what it is called.** On
+  Linux, on x86_64 and aarch64, the confined child installs a seccomp filter - the new `gate`
+  module - that holds every `socket()` for `AF_INET` or `AF_INET6` until the program answers: from
+  `net:reach` where it says `allow` or `deny`, and from the person, once per command, where it
+  says `ask`. A running command's question stands in the prompt's place, headed `a command wants
+  the network`, and takes `y`, `a` and `n`; a headless run answers it with `--on-ask` while the
+  turn is still running, a `--connect` client once its input has closed, and a served session
+  sends it to every client as `reaching` and takes `reach` back. The answer is a `policy.ruled`
+  for `net:reach`, and the tool result the model reads says who let the command out or refused it.
+  Where the gate holds, `Careful` stops reading a command for program names, so an allowed
+  `exec:run` runs `git status` unasked and a script that opens a socket is asked about. Where it
+  cannot be installed nothing changes. `App::reached`, `App::decide_reach` and `Careful::reaching`
+  are how an embedder with a loop of its own reaches the question.
+- **A refused network is refused for UDP too**, where the gate holds. Landlock can refuse TCP and
+  nothing else, so a confined command could send a datagram with `net:reach` denied; the gate
+  refuses the socket, and the words that promised `no TCP` there say `no network`.
+- **The permissions tab says whether the network is gated**, after the confinement on the shell's
+  line, so a session that fell back to reading command names says so.
+
+### changed
+
+- **A confined command cannot set up an `io_uring`**, where the gate holds. A ring opens a socket
+  without calling `socket()`, so `io_uring_setup` is answered `ENOSYS`, which is what a program
+  that can use one falls back from.
+
 ### fixed
 
 - **An empty `ids` beside a `select` is a selector.** `context` refused a call naming items two

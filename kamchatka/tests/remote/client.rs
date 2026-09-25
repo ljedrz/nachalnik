@@ -25,7 +25,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{PATIENCE, Peer, Trickle, quit, records, served, served_as, wired};
+use crate::{PATIENCE, Peer, Reacher, Trickle, quit, records, served, served_as, wired};
 
 /// The client's own two streams are the ones `--headless` writes.
 #[tokio::test]
@@ -603,6 +603,56 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
     // the client left and the session did not, which is the whole invariant
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A client whose input has closed answers a running command that reached for the network with
+/// its own `--on-ask`, as it answers the kernel's questions, and waits for the turn it let through.
+#[tokio::test]
+async fn a_client_with_nobody_at_it_answers_a_running_command_with_on_ask() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "reacher", json!({}))]),
+        ModelResponse::text("it went"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Reacher(app.policy.clone())));
+    })
+    .await;
+
+    // bounded, because the failure this is about is a client that never answers, and the command
+    // it leaves waiting holds the turn and the client with it
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Allow, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(&b"go\n"[..])),
+    )
+    .await
+    .expect("the client left the command waiting")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("`curl x` is running and has reached"),
+        "{prose}"
+    );
+    assert!(
+        prose.contains(
+            "nobody is here to answer whether `curl x` may reach the network, so it is \
+             answered `allow`"
+        ),
+        "{prose}"
+    );
+
+    quit(&session.at).await;
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("answered Some(true)")),
+        "the answer reached the command"
+    );
 }
 
 /// What the program says for itself reaches a client, because a command that was silent is a verb

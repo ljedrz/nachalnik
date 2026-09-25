@@ -10,6 +10,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt,
     path::Path,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use nachalnik::{
@@ -17,6 +18,8 @@ use nachalnik::{
     async_trait,
 };
 use parking_lot::Mutex;
+
+use super::reaching::Reaching;
 
 /// Something [`Careful`] holds an opinion about.
 ///
@@ -387,6 +390,11 @@ pub struct Careful {
     /// the one thing this program is not for. So it is written down here, where it is known, and
     /// [`Careful::why`] hands it out.
     refusals: Mutex<VecDeque<(ToolCallId, String)>>,
+    /// Whether a confined command's network is asked about when it tries, rather than read off its
+    /// name; see [`Careful::gate_the_network`].
+    gated: AtomicBool,
+    /// The questions a running command is waiting on, which is where a held attempt is asked.
+    reaching: Reaching,
 }
 
 /// How many refusals are kept for whoever asks why.
@@ -431,7 +439,30 @@ impl Careful {
             networked: Mutex::new(BTreeSet::new()),
             offered: Mutex::new(BTreeMap::new()),
             refusals: Mutex::new(VecDeque::new()),
+            gated: AtomicBool::new(false),
+            reaching: Reaching::new(),
         }
+    }
+
+    /// Says that a confined command's attempt to open an internet socket is held by the gate, so
+    /// that the network is asked about when a command tries rather than from what it is called.
+    ///
+    /// note: told by whoever builds the shell, once the probe has found that the gate holds - see
+    /// [`crate::sandbox::available`]. From then on [`Careful::judges`] stops reading a command for
+    /// program names, and an allowed `exec:run` runs without a question until a command actually
+    /// reaches out.
+    pub fn gate_the_network(&self) {
+        self.gated.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether [`Careful::gate_the_network`] was said.
+    pub fn gates_the_network(&self) -> bool {
+        self.gated.load(Ordering::Relaxed)
+    }
+
+    /// The questions a running command is waiting on.
+    pub fn reaching(&self) -> &Reaching {
+        &self.reaching
     }
 
     /// Everything this policy consults about one call, in the order it reads them out.
@@ -465,7 +496,11 @@ impl Careful {
             .map(Subject::Capability)
             .collect();
 
+        // note: read off the command's name only where the gate does not hold. Where it does, the
+        // question is the command's own attempt, asked while it runs - see `crate::gate` - and a
+        // `net:reach` consulted here as well would ask about `git status` a second time for nothing
         if request.capabilities.contains(&Capability::exec("run"))
+            && !self.gates_the_network()
             && command(&args).is_some_and(reaches_the_network)
         {
             judged.push(Subject::Capability(Capability::net("reach")));
@@ -852,6 +887,10 @@ const NETWORKED: &[&str] = &[
 ];
 
 /// Whether a shell command names one of them.
+///
+/// note: consulted only where the gate does not hold - off Linux, under `--no-sandbox`, and on a
+/// kernel that cannot hold a call - since where it does, a command is asked about when it tries.
+/// See [`Careful::gate_the_network`].
 ///
 /// note: a heuristic over the command as it was written. It catches `curl https://…`,
 /// `pip install x` and `git push`, which is what a model writes when it wants the network, and it

@@ -177,10 +177,16 @@ unicode-width = { version = "0.2", optional = true }
 # policy reading the word `curl`
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
+# the raw system calls behind `gate`, which holds a confined command's attempt to open an internet
+# socket until somebody answers: `seccomp(2)` and the notification `ioctl`s, which no crate wraps
+# safely without linking the C `libseccomp`. Already in the tree under `tokio` and `landlock`, so
+# what this line buys is the right to name it
+libc = "0.2"
 # `openat2` with `RESOLVE_BENEATH`, so that a path the file tools checked cannot be swapped for a
-# link out before it is opened - `std` has no way to ask for it. Already in the tree under the
-# screen, through `crossterm`; this names it for the build without one
-rustix = { version = "1", features = ["fs"] }
+# link out before it is opened - `std` has no way to ask for it. `net` and `event` for the gate's
+# safe half: the socket pair its listener is handed over on, and polling that listener. Already in
+# the tree under the screen, through `crossterm`; this names it for the build without one
+rustix = { version = "1", features = ["event", "fs", "net"] }
 
 # using TypeSafe's `jev` to decide what a full context can afford to lose, against the age order
 # `Trim` really uses. Nothing in the crate does this - it is here to be read and run by somebody

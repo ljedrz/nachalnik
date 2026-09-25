@@ -76,7 +76,9 @@ open one file and to `search.rs` for the two that walk a directory of them with 
 `shell.rs` is the one tool that is a process, and holds `joints` - where one stage of a command
 line ends and the next begins, which the permission question colours. Where a command comes apart
 is a fact about the command rather than about drawing it, so `joints` cannot live in `ui/text.rs`
-beside its one caller, behind `tui`. `policy.rs` is `Careful`, `trim.rs` the compactor, and
+beside its one caller, behind `tui`. `reaching.rs` is the other kind of question: a running
+command that reached for the network, held by the gate and waiting, which `Careful` keeps because
+the shell and the `App` already share it. `policy.rs` is `Careful`, `trim.rs` the compactor, and
 `ops.rs` what a tool that does several things declares - one table of operations, with the schema,
 the refusal and `unread` all made out of it. `mod.rs` holds `Limits`, the domains this program's
 own tools act in, and the argument readers every tool here shares - `arg`, `whole` and `truth`,
@@ -99,7 +101,10 @@ session is running with, and `fork` is a copy of the session, asked something. `
 
 `sandbox.rs` is the Landlock ruleset the `shell` tool is re-executed under, `Reach` for what the
 in-process tools will open, and `Confinement` for every way the first of those can fail to be
-there - see [SECURITY.md](SECURITY.md) before changing any of it. `attach.rs` is one file into the
+there - see [SECURITY.md](SECURITY.md) before changing any of it. `gate.rs` is the seccomp filter
+the same child installs after the ruleset, which holds every internet socket a command opens until
+the process that spawned it answers - the one module in the workspace that writes `unsafe`, and
+Linux on x86_64 and aarch64 only. `attach.rs` is one file into the
 context: the short table of media types this program is prepared to name, and text for everything
 else. `endpoint.rs` is where the requests go: the environment variables this program reads, and
 the `connect` functions that turn them into a provider and an advisor.

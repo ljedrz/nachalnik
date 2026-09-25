@@ -292,6 +292,9 @@ impl Server {
         // nothing local ever asks it anything
         let mut serving = Serving::new(app);
         let mut stopping = false;
+        // what wakes the loop for a running command's question, which is no event of the kernel's;
+        // `pump` at the top is what tells the clients
+        let mut reaching = app.policy.reaching().subscribe();
         let mut failed = None;
         // subscribed once, because a second press arriving while the first is being handled is the
         // one that means leave; see `crate::stopping`
@@ -359,6 +362,7 @@ impl Server {
                 // taken as `/quit`: the turn is stopped and waited for above
                 () = terminations.arrived() => app.quit = true,
                 Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
+                Ok(()) = reaching.changed() => {}
             }
         }
 
@@ -478,6 +482,9 @@ pub struct Serving {
     /// Which model it was talking to then, for the same reason and a worse one; see
     /// [`Message::Model`].
     model: Option<nachalnik::ModelInfo>,
+    /// Which running commands were waiting on the network when anybody was last told; see
+    /// [`Message::Reaching`].
+    reaching: Vec<crate::tools::Reached>,
     /// How many connections have arrived, which is what names them.
     clients: u64,
     /// The connections, so that the session can wait for them on the way out; see
@@ -499,6 +506,7 @@ impl Serving {
             cleared: app.cleared(),
             announced: app.busy,
             model: app.kernel.model_info(),
+            reaching: app.policy.reaching().waiting(),
             clients: 0,
             connections: JoinSet::new(),
         }
@@ -557,6 +565,16 @@ impl Serving {
         if self.model != model {
             self.model = model.clone();
             let _ = self.voice.send(Arc::new(Message::Model { model }));
+        }
+        // and the same again for a command that reached for the network, which is in no record at
+        // all: the question is the gate's, not the kernel's, so this is the only way a client
+        // hears of it
+        let reaching = app.policy.reaching().waiting();
+        if self.reaching != reaching {
+            self.reaching = reaching.clone();
+            let _ = self
+                .voice
+                .send(Arc::new(Message::Reaching { waiting: reaching }));
         }
     }
 
@@ -851,6 +869,22 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                 }),
             }
         }
+        // note: on sight as well, and for a reason of its own: the question holds a call that is
+        // running, so there is no turn unwinding for an answer to land in the middle of
+        Command::Reach {
+            id,
+            grant,
+            remember,
+        } => match app.decide_reach(id, grant, remember) {
+            Ok(()) => Some(Message::Done {
+                about: "reach".to_owned(),
+                busy: app.busy,
+            }),
+            Err(error) => Some(Message::Failed {
+                about: "reach".to_owned(),
+                error,
+            }),
+        },
         // note: only a question about an *earlier* version reaches here. What an item says now
         // is answered by the connection off the kernel, without troubling this loop at all - so
         // `None` here is that one, already answered. The viewer is what keeps the earlier
@@ -969,6 +1003,7 @@ fn project(app: &App) -> Attached {
             .map(|item| Listed::of(item, &going, app.versions(item.id)))
             .collect(),
         asking,
+        reaching: app.policy.reaching().waiting(),
         trace: tracing(app),
         policy: app.policy_name(),
         untold: crate::tools::Careful::untold(),
@@ -1531,6 +1566,7 @@ fn name(command: &Command) -> &'static str {
         Command::Submit { .. } => "submit",
         Command::Interrupt => "interrupt",
         Command::Decide { .. } => "decide",
+        Command::Reach { .. } => "reach",
         Command::Inspect { .. } => "inspect",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",

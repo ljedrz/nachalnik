@@ -8,10 +8,11 @@
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::{
-    BoxError, Capability, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+    BoxError, Capability, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, Verdict,
+    async_trait,
 };
 
-use crate::sandbox::Sandbox;
+use crate::sandbox::{Network, Sandbox};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
@@ -297,19 +298,29 @@ impl Tool for Shell {
         // then every write inside the working directory is the boundary and reads the same way.
         // Standard error does not say whether a refusal was a read or a write, so the sentence
         // that can be certain is this one, before anything is run
-        let read_only = self
-            .confiner
-            .is_some()
-            .then(|| {
-                Sandbox::of(
-                    &self.policy,
-                    self.workdir.clone(),
-                    self.extra.clone(),
-                    self.readable.clone(),
-                    false,
-                )
-            })
-            .is_some_and(|sandbox| !sandbox.writable);
+        let confined = self.confiner.is_some().then(|| {
+            Sandbox::of(
+                &self.policy,
+                self.workdir.clone(),
+                self.extra.clone(),
+                self.readable.clone(),
+                false,
+            )
+        });
+        let read_only = confined.as_ref().is_some_and(|sandbox| !sandbox.writable);
+        // note: what the stance makes of the network, said as exactly as it is known. Where the
+        // gate does not hold a call can still be granted the network on its own, so the sentence
+        // there hedges; where it does, a command that reaches out waits on a person, and a model
+        // that does not know that reads a long silence as a hang
+        let network = match confined.as_ref().map(|sandbox| sandbox.network) {
+            Some(Network::NoTcp) => ", and TCP may be closed",
+            Some(Network::Shut) => ", and it has no network",
+            Some(Network::Asked) => {
+                ", and the first time a command reaches for the network it waits while the person \
+                 you are working with is asked"
+            }
+            _ => "",
+        };
 
         ToolSpec::new(
             "shell",
@@ -320,8 +331,8 @@ impl Tool for Shell {
                 match self.confiner.is_some() {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \
-                         machine's system paths{} and no more, and TCP may be closed - so a \
-                         permission error there is the confinement rather than the command.{}",
+                         machine's system paths{} and no more{network} - so a permission error \
+                         there is the confinement rather than the command.{}",
                         match opened.is_empty() {
                             true => String::new(),
                             false => format!(", and {},", opened.join(" and ")),
@@ -416,8 +427,28 @@ impl Tool for Shell {
         // and killed if this call is dropped before it is over; see `Running`
         command.kill_on_drop(true);
 
+        // note: where the network is held, the child's standard input is the socket the gate's
+        // listener comes back up, and the command itself is given `/dev/null` there by the child -
+        // see `gate::hold`. Everywhere else it is `/dev/null` from the start
+        let network = sandbox.as_ref().map(|sandbox| sandbox.network);
+        let arriving = match network {
+            Some(Network::Shut | Network::Asked) => match crate::gate::pair() {
+                Ok((stdin, arriving)) => {
+                    command.stdin(stdin);
+                    Some(arriving)
+                }
+                Err(e) => {
+                    return Ok(ToolOutput::error(format!(
+                        "could not run `{cmd}`: the network could not be held for a question: {e}"
+                    )));
+                }
+            },
+            _ => {
+                command.stdin(Stdio::null());
+                None
+            }
+        };
         let mut child = match command
-            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -425,6 +456,18 @@ impl Tool for Shell {
             Ok(child) => child,
             Err(e) => return Ok(ToolOutput::error(format!("could not run `{cmd}`: {e}"))),
         };
+        // the child holds its end of the pair now; this one's copy goes with the command, or a
+        // child that ends without sending a listener would never be seen to have ended
+        drop(command);
+        let gatekeeper = arriving.map(|arriving| {
+            Gatekeeper::keep(
+                arriving,
+                self.policy.clone(),
+                &call.id,
+                cmd,
+                network == Some(Network::Shut),
+            )
+        });
         // the confined child cannot remove its own temporary directory, so this is where that
         // happens; the identifier has to be read now, because a child that has been waited on no
         // longer has one. See `sandbox::scratch_for`
@@ -587,6 +630,7 @@ impl Tool for Shell {
             Some(waited) => waited,
             None => child.wait().await,
         };
+        let reached = gatekeeper.and_then(Gatekeeper::over);
         let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
@@ -633,6 +677,31 @@ impl Tool for Shell {
             Some(note) => format!("{note}\n"),
             None => String::new(),
         };
+        // note: what came of it, where this command reached for the network. Up here with the
+        // rest, for the reason they all are, and said because the output alone cannot say it: a
+        // refused socket is `Permission denied` from the kernel, the same words a file's own
+        // permissions produce, and a refused name lookup is `Temporary failure in name
+        // resolution`, which reads as a network having trouble. A model that does not know it was
+        // refused goes looking for another way out rather than asking
+        let refused = "so every internet socket it asked for was refused with `Permission \
+                       denied`, and a name it tried to look up failed the same way";
+        let reached = match reached {
+            Some(Reached::Let) => {
+                "[this command reached for the network, and the person you are working with was \
+                 asked and let it]\n"
+                    .to_owned()
+            }
+            Some(Reached::Refused) => format!(
+                "[this command reached for the network, and the person you are working with was \
+                 asked and said no, {refused}. Say what you need the network for before trying \
+                 again.]\n"
+            ),
+            Some(Reached::Shut) => format!(
+                "[this command reached for the network, which this session refuses, {refused}. \
+                 Work without it, or say what you need it for and ask for it to be allowed.]\n"
+            ),
+            None => String::new(),
+        };
         // and what was not kept, under it for the same reason
         let unkept = match dropped {
             0 => String::new(),
@@ -642,10 +711,114 @@ impl Tool for Shell {
             ),
         };
         let text = format!(
-            "{status}\n{note}{unkept}--- stdout ---\n{collected}\n--- stderr ---\n{errors}"
+            "{status}\n{reached}{note}{unkept}--- stdout ---\n{collected}\n--- stderr ---\n{errors}"
         );
 
         Ok(ToolOutput::new(text))
+    }
+}
+
+/// What came of a command's first attempt to reach the network.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reached {
+    /// The person was asked, and let it.
+    Let,
+    /// The person was asked, and refused it.
+    Refused,
+    /// The session refuses the network, and nobody was asked.
+    Shut,
+}
+
+/// What answers a gated command's attempts to reach the network, for as long as anything the
+/// command started is still making them.
+///
+/// note: a task of its own rather than a branch of the call's loop, because the attempts can
+/// outlast the call: `python3 -m http.server &` leaves a process behind under the same filter, and
+/// once the call is over nothing else would be answering it - and a held call nobody answers is a
+/// process stuck in `socket()` until the listener closes. So the task runs until the kernel says
+/// no process under the filter is left.
+///
+/// note: a command started under a refusal is refused throughout, because Landlock is refusing its
+/// TCP as well and cannot be told otherwise. A command started under a question consults the
+/// stance at its first attempt - an answer of `always` to some other command's question counts -
+/// and asks the person where it is still `ask`, once. Whatever was decided holds for the rest of
+/// the command. Once the call is over there is nobody to ask on its behalf - the panel would be
+/// asking about a command that has ended - so an attempt made after that with nothing decided is
+/// refused.
+struct Gatekeeper {
+    /// What came of the first attempt, where there was one.
+    reached: Arc<parking_lot::Mutex<Option<Reached>>>,
+    /// Said when the call is over.
+    over: tokio::sync::watch::Sender<bool>,
+}
+
+impl Gatekeeper {
+    fn keep(
+        arriving: crate::gate::Arriving,
+        policy: Arc<Careful>,
+        call: &ToolCallId,
+        cmd: &str,
+        refusing: bool,
+    ) -> Self {
+        let reached = Arc::new(parking_lot::Mutex::new(None));
+        let (over, mut ended) = tokio::sync::watch::channel(false);
+        let (call, cmd) = (call.clone(), cmd.to_owned());
+
+        tokio::spawn({
+            let reached = reached.clone();
+            async move {
+                let Ok(Some(listener)) = arriving.listener().await else {
+                    return;
+                };
+                let mut decided = None;
+                while let Some(attempt) = listener.next().await {
+                    let allow = match decided {
+                        Some(allow) => allow,
+                        None => {
+                            let stance = match refusing {
+                                true => Verdict::Deny,
+                                false => policy
+                                    .stance(&super::Subject::Capability(Capability::net("reach"))),
+                            };
+                            // over, or dropped without saying so, which is a call that went
+                            // with the process
+                            let over = *ended.borrow() || ended.has_changed().is_err();
+                            let (allow, came) = match stance {
+                                Verdict::Allow => (true, None),
+                                Verdict::Ask if !over => {
+                                    // the question goes with this future, which is dropped the
+                                    // moment the call is over
+                                    let asking = policy.reaching().ask(call.clone(), cmd.clone());
+                                    let answer = tokio::select! {
+                                        answer = asking => answer,
+                                        _ = ended.wait_for(|over| *over) => None,
+                                    };
+                                    match answer {
+                                        Some(true) => (true, Some(Reached::Let)),
+                                        Some(false) => (false, Some(Reached::Refused)),
+                                        None => (false, None),
+                                    }
+                                }
+                                Verdict::Ask => (false, None),
+                                _ => (false, Some(Reached::Shut)),
+                            };
+                            *reached.lock() = came;
+                            decided = Some(allow);
+                            allow
+                        }
+                    };
+                    listener.answer(attempt, allow);
+                }
+            }
+        });
+
+        Self { reached, over }
+    }
+
+    /// The call is over; hands back what came of the command's first attempt, if it made one.
+    fn over(self) -> Option<Reached> {
+        let _ = self.over.send(true);
+        *self.reached.lock()
     }
 }
 

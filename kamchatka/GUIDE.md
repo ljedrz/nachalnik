@@ -416,7 +416,8 @@ advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
 The line along the bottom opens with the shell, because it is the one thing on this tab that is not
 negotiable. A registered `shell` that is not refused can read, write and reach the network whatever
 the other rows say — so `shell: confined` (or `shell: a command can do any of these`) is what makes
-the rest of the table mean anything.
+the rest of the table mean anything. After it comes `network gated` or `network not gated`: whether
+a command is asked about when it opens a socket, or read off its name before it runs.
 
 Four kinds of row, and the first two are one thing at two depths. A **domain** is what a tool acts
 in — `fs`, `exec`, `context` — and answering for one answers for everything done in it, which is
@@ -437,7 +438,10 @@ rest; `--allow context --deny context:revise` is everything but that one. What a
 do is overrule a refusal — a domain you have *denied* stays denied however finely an operation in
 it is named, because the strictest of everything consulted wins and `--deny` is the last word.
 `net:reach` is the one nothing declares, because a model that wants the network writes `curl` — so
-the row says which shell it reaches, and when.
+the row says which shell it reaches, and when. Where the network is gated, "when" is literal: a
+command is asked about the moment it opens an internet socket, whatever it is called. Where it is
+not, it is a guess from the command's name, and `git status` is asked about while a script that
+opens a socket of its own is not.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or
 <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd> directly, and it takes effect on the next call. Answering
@@ -503,8 +507,8 @@ the trip was for. So the whole gesture is: <kbd>ctrl+t</kbd>, look at the thing,
 It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
 answers for all of it. That includes any calls already queued behind this one: a model that asks
 for three things at once produces three questions, and an "always" that did not reach them would
-go back on itself one keystroke later. <kbd>y</kbd> is this call only — a `curl` allowed once runs
-with the network open for that command and no other.
+go back on itself one keystroke later. <kbd>y</kbd> is this call only — where the network is not
+gated, a `curl` allowed once runs with the network open for that command and no other.
 
 Arguments longer than the box get their own scrolling region between the header and the answers,
 with <kbd>pgup</kbd> and <kbd>pgdn</kbd> moving them; the answers stay where they are. A `revise`
@@ -542,6 +546,33 @@ An `edit` is drawn as a diff, since it is the call where two blocks of near-iden
 above the other and the whole question is which of them is on its way out: the value of `old` is
 red and the value of `new` is green. The names stay in the panel's own colour, so what is green is
 exactly the text that would end up in the file.
+
+### a command that reaches for the network
+
+Where the network is gated, a command is not asked about for what it is called. It runs, and the
+moment it opens an internet socket — a DNS lookup counts — the call is held and the question stands
+in the prompt's place, headed `a command wants the network`, with the command under it:
+
+| key | what happens |
+| --- | --- |
+| <kbd>y</kbd> | this command may, for the rest of it |
+| <kbd>a</kbd> | always: `net:reach` allowed from now on, and for every command already waiting |
+| <kbd>n</kbd> | this command may not, and every socket it asks for is refused |
+
+It is asked once per command: a build that opens a hundred connections is one question. The command
+waits while it is up, and <kbd>esc</kbd> is what it always is while something runs — the turn
+stops, and the command and its question go with it. `tab` puts the keys on it, as on the other
+kind.
+
+What the model is handed says what happened, near the top where an output limit cannot take it:
+that the command reached for the network and that you let it, or said no. A refused lookup comes
+back from the command as `Temporary failure in name resolution`, which reads like a network with a
+problem rather than a network refused, and a model that is not told the difference goes looking for
+another way out.
+
+`deny` refuses every internet socket a command opens without asking — UDP too, which the ruleset
+alone cannot — and says so the same way. `allow` asks nothing. An <kbd>a</kbd> given to one command
+reaches the others still running: one that has not reached out yet goes by it when it does.
 
 ## 🔦 finding things without a shell
 
