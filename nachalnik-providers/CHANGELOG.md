@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
+  context limit, and each held both locks together - `info` taking the limit first and `respond`
+  the model first - so a caller reading `info` on one thread while a request began on another
+  could leave both waiting for ever. A screen drawing the model's name every frame met it now and
+  then. Each lock is now taken and let go in a statement of its own, in both dialects.
 - **A rate limit that arrives inside a stream, before anything else in it, is waited out.**
   OpenRouter sends its `200` before the model has produced anything, so a `429` it meets after
   that - once its own failover has run out - arrives as the stream's first event, and the turn
