@@ -112,3 +112,31 @@ impl std::error::Error for Error {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Both kinds of failure keep the one underneath them, for a caller to walk to or downcast.
+    ///
+    /// note: the `Display` says the same with or without it, so the chain is the only place its
+    /// loss would show.
+    #[test]
+    fn an_error_keeps_the_failure_underneath_it() {
+        let underneath = || -> Box<dyn std::error::Error + Send + Sync> {
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "no such server",
+            ))
+        };
+
+        for (kind, e) in [
+            ("connect", Error::Connect(underneath())),
+            ("request", Error::Request(underneath())),
+        ] {
+            let source = std::error::Error::source(&e)
+                .unwrap_or_else(|| panic!("a {kind} failure says what is under it"));
+            assert!(source.downcast_ref::<std::io::Error>().is_some(), "{kind}");
+        }
+    }
+}
