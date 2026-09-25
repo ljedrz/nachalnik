@@ -3265,7 +3265,8 @@ minor bump may break you.
 - One word per mechanism, in `amend` and at the prompt. The `prune` action with a `state` argument
   put one move's word over five, so "prune to pin it" was the documented way to protect something.
   The five moves are actions now, each named for the state it leaves behind; `/prune` becomes
-  `/exclude` and `/keep` becomes `/pin`. The old spellings are still accepted and undocumented.
+  `/exclude` and `/keep` becomes `/pin`. The old spellings are still accepted, and the help names
+  each as an alias of the new one.
 - The question about an `amend` names each item the way the context tab does, and expands a `select`
   into what it matches. Only for the two tools this program installs itself.
 - A leading `~` is refused in words rather than becoming a directory called `~`. Not expanding is
