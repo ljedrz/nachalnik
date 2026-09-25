@@ -141,7 +141,8 @@ pub struct CompactionReport {
     /// The items that were reduced to a marker, with what they were costing before.
     pub elided: Vec<Removed>,
     /// The items the kernel refused to remove because they are pinned, or are the call or the
-    /// result a pinned item is paired with.
+    /// result a pinned item is paired with - once for each of the two lists that named one,
+    /// however often that list named it.
     pub refused: Vec<Removed>,
     /// The summary item that was added, if any.
     pub summary: Option<Removed>,

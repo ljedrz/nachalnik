@@ -381,11 +381,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   now, and a concurrent swap of the tools or the projector can still mix versions. Both are
   closed by taking the reads under one lock, which is a change to the core's locking.
 
-- **A pin named twice in one compaction list is reported twice.** A pin named in both lists being
-  reported once per list is asserted on purpose; a pin named twice in the *same* list is reported
-  twice as well. Deduplicating within a list is the change, if a report is meant to name each
-  refusal once.
-
 - **`n` above 1.** The core refuses no parameter, so a request asking for several choices has them
   merged. Parameters are the caller's to set and the runtime carries them verbatim, which is rule
   one, so this is written down rather than fixed: a caller that asks for alternatives gets what the

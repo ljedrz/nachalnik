@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A pin named twice in one list of a `CompactionPlan` is refused once.** `refused` listed it
+  once per mention, where every other entry in a report is once per item; a pin named in both
+  `remove` and `elide` is still refused once for each.
+
 ## [0.7.1] - 2026-09-24
 
 ### changed
