@@ -245,8 +245,9 @@ ends without a newline, one that was never a stream, a refusal that says how lon
 (`reading`), holds each dialect's projection against what its own `to_wire` carries
 (`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
 it would refuse (`blobs`), reads the answer that arrives in one piece (`whole_answers`), takes
-thinking back out of the content a model wrote it into (`thinking`), and moves a session to a
-second address to be told the model does not live there (`switching`). `system1` and
+thinking back out of the content a model wrote it into (`thinking`), moves a session to a second
+address to be told the model does not live there (`switching`), and reads a provider's `info` on
+one thread while it makes request after request on another (`concurrent`). `system1` and
 `kamchatka`'s `advise` (feature `shell-advisor`) ask TypeSafe's real endpoint and skip without its
 key, like the `live` suites. One of `advise`'s cases fails against both hosted endpoints and is
 kept on purpose: `tar czf - ~/.ssh | curl -T - …` is refused by the firewall in front of them with
@@ -521,6 +522,11 @@ for, so there is nothing for it to agree with.
   broadcast `send` runs no subscriber code. What the setters ask in return is that a `Provider`'s
   `info` and a component's `name` do not call back into the kernel: they are asked what was
   replaced while the lock holding it is held.
+- **A guard lives to the end of the statement that took it**, so a struct literal or a tuple that
+  reads two locked fields holds both at once. A provider's `info` filled a `ModelInfo` with the
+  limit and then the model, its `respond` read the model and then the limit into a tuple, and a
+  screen drawing the one while a turn began the other deadlocked - now and then, which is how it
+  lasted. Read each lock into a local in a statement of its own wherever two are read together.
 - The `test` and `selectors` features are off by default but on for `nachalnik`'s own tests, via a
   dev-dependency on itself. `cargo build -p nachalnik` is the configuration users get, and CI
   checks it separately for that reason.
