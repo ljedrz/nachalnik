@@ -220,14 +220,6 @@ async fn a_fork_is_told_it_cannot_act() {
     assert!(asked.tools.is_empty(), "and really has none");
 }
 
-/// A fork says whether it actually left anything out, because asking it to pretend is not the same.
-///
-/// note: found live. A session asked a copy what it would conclude "without knowing my earlier
-/// statement about quicksort", passed no `without` at all, got the same answer back, and reported
-/// that as an ablation - the item it named was in front of the copy the whole time. The reply said
-/// "on 9 of your items", which cannot be read as "on all of them", so nothing in it contradicted
-/// the story. The difference between taking an item away and asking a model to disregard it is the
-/// whole of what `fork` is for.
 /// A `draft` carrying `without` is refused, rather than answered without the items it names.
 ///
 /// note: `fork` and `setup` were the two tools that never asked `unread`, and this is the one
@@ -262,6 +254,14 @@ async fn a_draft_that_names_items_to_leave_out_is_refused_rather_than_answered()
     );
 }
 
+/// A fork says whether it actually left anything out, because asking it to pretend is not the same.
+///
+/// note: found live. A session asked a copy what it would conclude "without knowing my earlier
+/// statement about quicksort", passed no `without` at all, got the same answer back, and reported
+/// that as an ablation - the item it named was in front of the copy the whole time. The reply said
+/// "on 9 of your items", which cannot be read as "on all of them", so nothing in it contradicted
+/// the story. The difference between taking an item away and asking a model to disregard it is the
+/// whole of what `fork` is for.
 #[tokio::test]
 async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let (kernel, _provider, _anchor) = agent([
