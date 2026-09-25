@@ -44,9 +44,9 @@ pub use crate::tools::{
 ///
 /// note: one function per domain rather than a constant per operation, because the operations are
 /// each tool's own vocabulary and the domain is the part that has to agree across them. `context`
-/// is the one worth pointing at: two tools act in it - one that reads this session's items and one
-/// that changes them - and a rule about `context` is about the object, not about either tool.
-/// Naming it here is what keeps those two from drifting into two domains.
+/// is the one worth pointing at: one tool both reads this session's items and changes them, and a
+/// rule about `context` is about the object, not about either kind of operation. Naming it here is
+/// what keeps the reading and the changing from drifting into two domains.
 pub mod domains {
     use nachalnik::{Capability, Domain};
 
