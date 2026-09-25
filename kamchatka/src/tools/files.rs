@@ -11,13 +11,11 @@
 
 use std::{path::Path, sync::Arc};
 
+use crate::sandbox::{Access, Reach};
 use nachalnik::{BoxError, OutputSink, ToolOutput};
 use serde_json::Value;
-use tokio::io::AsyncReadExt;
 
-use crate::sandbox::{Access, Reach};
-
-use crate::tools::{KEPT, arg};
+use crate::tools::{CEILING, KEPT, Limits, arg, number};
 
 /// What every tool here says about the path it takes.
 ///
@@ -38,7 +36,7 @@ pub(super) const PATH_ARG: &str = "absolute, or relative to the working director
                         expanded - there is no shell here - and a path starting with one is \
                         refused; a file whose name really is `~` is `./~`";
 
-pub(super) struct Read(pub(super) Arc<Reach>);
+pub(super) struct Read(pub(super) Arc<Reach>, pub(super) Limits);
 
 impl Read {
     pub(super) async fn invoke(
@@ -50,22 +48,240 @@ impl Read {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        let span = match Span::of(args) {
+            Ok(span) => span,
+            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+        };
+        // the row `/limit fs:read` changes, read afresh for every call as the kernel reads it
+        let budget = self.1.of("fs:read").unwrap_or(CEILING);
 
+        let (reach, opened) = (self.0.clone(), path.clone());
+        let read = tokio::task::spawn_blocking(move || read(&reach, &opened, span, budget))
+            .await
+            .map_err(std::io::Error::other);
         // a failure the model should read and react to, rather than one that stops the loop
-        match read(&self.0, &path).await {
-            Ok(content) => Ok(ToolOutput::new(content)),
+        match read.and_then(|read| read) {
+            Ok(Ok(content)) => Ok(ToolOutput::new(content)),
+            Ok(Err(refusal)) => Ok(ToolOutput::error(refusal)),
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
 }
 
-/// The whole of a file `allows` answered for, as text - or, past [`KEPT`], a refusal saying how
-/// to read a part of it.
+/// Which lines of a file a `read` asked for.
+#[derive(Debug, Clone, Copy)]
+struct Span {
+    /// The first, counting from 1.
+    from: u64,
+    /// How many, or every one to the end.
+    lines: Option<u64>,
+}
+
+impl Span {
+    /// What the call asked for, or why that is not something to read.
+    fn of(args: &Value) -> Result<Self, String> {
+        let nothing = " Nothing was read, rather than something other than you asked for.";
+        let from = number(args, "from").map_err(|refusal| format!("{refusal}{nothing}"))?;
+        let lines = number(args, "lines").map_err(|refusal| format!("{refusal}{nothing}"))?;
+        if from == Some(0) {
+            return Err(format!(
+                "`from` counts lines from 1, so 0 is no line.{nothing}"
+            ));
+        }
+        if lines == Some(0) {
+            return Err(format!(
+                "`lines` is how many to read, and 0 reads none; leave it out to read to the end.\
+                 {nothing}"
+            ));
+        }
+
+        Ok(Self {
+            from: from.unwrap_or(1),
+            lines,
+        })
+    }
+
+    /// Whether this is the whole file, which is what a call naming neither argument asks for.
+    fn whole(&self) -> bool {
+        self.from == 1 && self.lines.is_none()
+    }
+}
+
+/// Room kept under the output limit for the line saying which lines these are.
+const HEADER: usize = 256;
+
+/// The lines `span` names of a file `allows` answered for, as text, stopping at the last whole
+/// line that fits `budget` and saying where to read on from; or a sentence saying why there is
+/// nothing to show.
+///
+/// note: cut here, at a line, rather than left to the kernel's output limit, which cuts at a byte
+/// and says only how many went. A model shown that has to guess where the file broke off and read
+/// on through `shell` - an `exec:run` call a session may be asking about, for a file it is allowed
+/// to read. Cut here, the answer names the next line, and `from` reads on from it inside `fs:read`.
+///
+/// note: line by line, keeping only what is shown, so a file of any size can be read a part at a
+/// time; what [`KEPT`] bounds is the counting. A file larger than that is not read to its end to
+/// say how many lines it has, and the answer says that more follow instead of how many.
+///
+/// note: the whole file with nothing added where it fits and nothing narrower was asked for, which
+/// is the answer `read` has always given: a line of bookkeeping on every small file is a toll on
+/// the common case for the sake of the rare one.
+fn read(
+    reach: &Reach,
+    path: &Path,
+    span: Span,
+    budget: usize,
+) -> std::io::Result<Result<String, String>> {
+    let file = reach.open(path, Access::Reading)?;
+    // a size is what a file says about itself, and `/proc` says nothing - so this decides only
+    // whether to count to the end, and a file claiming less than it holds is counted anyway
+    let countable = file.metadata().is_ok_and(|meta| meta.len() <= KEPT as u64);
+    let mut reader = std::io::BufReader::new(file);
+    let room = budget.saturating_sub(HEADER);
+
+    let (mut number, mut kept, mut shown) = (0u64, Vec::new(), None::<(u64, u64)>);
+    let (mut line, mut ended) = (Vec::new(), false);
+    // what stopped the reading short of the span, if something did
+    let mut stopped = None;
+    let last = span.lines.map(|lines| span.from.saturating_add(lines - 1));
+    loop {
+        line.clear();
+        let this = number + 1;
+        let inside = this >= span.from && last.is_none_or(|last| this <= last);
+        let keep = match inside && stopped.is_none() {
+            true => room.saturating_sub(kept.len()),
+            false => 0,
+        };
+        let Some(length) = next_line(&mut reader, &mut line, keep)? else {
+            ended = true;
+            break;
+        };
+        number = this;
+        if this < span.from {
+            continue;
+        }
+        if !inside || stopped.is_some() {
+            // past the span, or past what fits: counted to the end where that is cheap
+            match countable {
+                true => continue,
+                false => break,
+            }
+        }
+        if line.len() < length {
+            stopped = Some(match kept.is_empty() {
+                // a line longer than everything this may show: its start, said to be one
+                true => {
+                    kept.append(&mut line);
+                    shown = Some((this, this));
+                    Stop::Long
+                }
+                false => Stop::Full(this),
+            });
+            continue;
+        }
+        kept.append(&mut line);
+        shown = Some((shown.map_or(this, |(first, _)| first), this));
+    }
+    // the end was reached, so the count is the file's, whichever way it went
+    let total = ended.then_some(number);
+
+    let Some((first, through)) = shown else {
+        return Ok(Err(match number {
+            0 => "the file is empty, so there is no line to start from".to_owned(),
+            _ => format!(
+                "`from` is line {} and the file has {number} line(s); it starts at 1",
+                span.from
+            ),
+        }));
+    };
+    let text = match String::from_utf8(kept) {
+        Ok(text) => text,
+        // a line cut short can end part-way through a character, which is the cut and not the file
+        Err(e) if stopped == Some(Stop::Long) && e.utf8_error().error_len().is_none() => {
+            let valid = e.utf8_error().valid_up_to();
+            let mut kept = e.into_bytes();
+            kept.truncate(valid);
+            String::from_utf8(kept).expect("cut where it stops being valid")
+        }
+        Err(_) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "stream did not contain valid UTF-8",
+            ));
+        }
+    };
+
+    let of = match total {
+        Some(total) => format!(" of {total}"),
+        None => String::new(),
+    };
+    let header = match stopped {
+        None if span.whole() => return Ok(Ok(text)),
+        None => match total {
+            Some(_) => format!("[lines {first}-{through}{of}]"),
+            None => format!("[lines {first}-{through}, and more after them]"),
+        },
+        Some(Stop::Full(next)) => format!(
+            "[lines {first}-{through}{of}: the output limit ({budget} bytes) stops it there - \
+             read on with `from: {next}`]"
+        ),
+        Some(Stop::Long) => format!(
+            "[line {first}{of} is longer than the output limit ({budget} bytes), so this is its \
+             start; `grep` finds what is in it, and `shell` can read the rest]"
+        ),
+    };
+
+    Ok(Ok(format!("{header}\n{text}")))
+}
+
+/// What stopped a `read` short of the lines it was asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stop {
+    /// The output limit, with this line the first that did not fit.
+    Full(u64),
+    /// The first line asked for did not fit on its own.
+    Long,
+}
+
+/// Reads one line into `into`, keeping at most `keep` bytes of it, and says how long the whole
+/// line was; `None` at the end of the file.
+///
+/// note: a line is read through whatever its length, so a file with one enormous line is walked
+/// rather than held.
+fn next_line(
+    reader: &mut impl std::io::BufRead,
+    into: &mut Vec<u8>,
+    keep: usize,
+) -> std::io::Result<Option<usize>> {
+    let mut length = 0;
+    loop {
+        let chunk = reader.fill_buf()?;
+        if chunk.is_empty() {
+            return Ok((length > 0).then_some(length));
+        }
+        let (took, ended) = match chunk.iter().position(|byte| *byte == b'\n') {
+            Some(at) => (at + 1, true),
+            None => (chunk.len(), false),
+        };
+        let room = keep.saturating_sub(into.len());
+        into.extend_from_slice(&chunk[..took.min(room)]);
+        reader.consume(took);
+        length += took;
+        if ended {
+            return Ok(Some(length));
+        }
+    }
+}
+
+/// The whole of a file `edit` is to change, as text - or, past [`KEPT`], a refusal saying how else
+/// to change it.
 ///
 /// note: one byte past the ceiling is read rather than the size asked for first, because a size is
 /// what a file says about itself: `/proc` reports nothing, and a log is larger by the time it has
 /// been read.
-async fn read(reach: &Reach, path: &Path) -> std::io::Result<String> {
+async fn whole(reach: &Reach, path: &Path) -> std::io::Result<String> {
+    use tokio::io::AsyncReadExt as _;
+
     let mut file = tokio::fs::File::from_std(reach.open(path, Access::Reading)?);
     let mut bytes = Vec::new();
     (&mut file)
@@ -78,8 +294,8 @@ async fn read(reach: &Reach, path: &Path) -> std::io::Result<String> {
             _ => "larger".to_owned(),
         };
         return Err(std::io::Error::other(format!(
-            "{size}, more than `fs` reads at once ({KEPT} bytes), so it was not read. Search it \
-             with `grep`, or read a part of it through `shell` - `head`, `tail`, `sed -n`."
+            "{size}, more than `fs` edits at once ({KEPT} bytes), so it was not changed. Change it \
+             through `shell` - `sed -i`."
         )));
     }
 
@@ -139,7 +355,7 @@ impl Edit {
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
 
-        let before = match read(&self.0, &path).await {
+        let before = match whole(&self.0, &path).await {
             Ok(before) => before,
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };

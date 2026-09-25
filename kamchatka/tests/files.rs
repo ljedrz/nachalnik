@@ -22,7 +22,12 @@ use nachalnik::{OutputSink, ToolCall, test::call};
 use serde_json::{Value, json};
 
 /// Calls `fs` the way a session does, and hands back what the model would read.
-async fn ask(dir: &Path, action: &str, mut args: Value) -> String {
+async fn ask(dir: &Path, action: &str, args: Value) -> String {
+    ask_within(dir, Limits::default(), action, args).await
+}
+
+/// [`ask`], with the output limits a session has after `/limit`.
+async fn ask_within(dir: &Path, limits: Limits, action: &str, mut args: Value) -> String {
     let tools = kamchatka::tools::builtin(
         Shell {
             workdir: dir.to_path_buf(),
@@ -38,7 +43,7 @@ async fn ask(dir: &Path, action: &str, mut args: Value) -> String {
             readable: Vec::new(),
             confined: true,
         },
-        Limits::default(),
+        limits,
     );
     let found = tools
         .iter()
@@ -191,32 +196,179 @@ async fn what_write_put_there_is_what_read_hands_back() {
     );
 }
 
-/// A file past the ceiling is refused with a way to read a part of it, rather than read into the
-/// session whole; one at the ceiling is read.
+/// Lines numbered from 1, each saying which it is.
+fn numbered(count: usize) -> String {
+    (1..=count).map(|n| format!("line {n}\n")).collect()
+}
+
+/// A file longer than the output limit stops at the last whole line that fits and names the line
+/// to read on from, and reading on from each one gives back the whole file.
+///
+/// note: the limit is `/limit`'s rather than the default, both so the row a person changes is the
+/// one `read` obeys and so the file can be small enough to walk in a few calls.
 #[tokio::test]
-async fn a_file_past_what_is_kept_is_refused_with_a_way_to_read_part_of_it() {
-    let dir = scratch("files-ceiling");
-    std::fs::write(dir.join("at.txt"), "a".repeat(kamchatka::tools::KEPT)).expect("a file");
-    std::fs::write(dir.join("past.txt"), "a".repeat(kamchatka::tools::KEPT + 1)).expect("a file");
+async fn a_long_file_stops_at_a_line_and_says_where_to_read_on() {
+    let dir = scratch("files-long");
+    let file = numbered(1_000);
+    std::fs::write(dir.join("long.txt"), &file).expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 2_000);
 
-    let read = ask(&dir, "read", json!({ "path": "at.txt" })).await;
+    let (mut from, mut read, mut calls) = (1, String::new(), 0);
+    loop {
+        calls += 1;
+        let said = ask_within(
+            &dir,
+            limits.clone(),
+            "read",
+            json!({ "path": "long.txt", "from": from }),
+        )
+        .await;
+        assert!(said.len() <= 2_000, "{} bytes past the limit", said.len());
+        let (header, body) = said.split_once('\n').expect("a header, then the lines");
+        assert!(header.starts_with(&format!("[lines {from}-")), "{header}");
+        assert!(header.contains("of 1000"), "{header}");
+        read.push_str(body);
+        match header.split_once("`from: ") {
+            Some((_, next)) => {
+                from = next.trim_end_matches("`]").parse().expect("a line number");
+                assert!(body.ends_with('\n'), "it stopped part-way through a line");
+            }
+            None => break,
+        }
+    }
+
+    assert_eq!(read, file, "the parts are not the file");
+    assert!(calls > 1, "the file fitted, so nothing was stopped");
+}
+
+/// `from` and `lines` name the lines read, and the answer says which they are; a file read whole
+/// with room to spare comes back as it is, with nothing added.
+#[tokio::test]
+async fn a_range_is_the_lines_it_names() {
+    let dir = scratch("files-range");
+    std::fs::write(dir.join("ten.txt"), numbered(10)).expect("a file");
+
+    let whole = ask(&dir, "read", json!({ "path": "ten.txt" })).await;
+    assert_eq!(whole, numbered(10));
+
+    let some = ask(
+        &dir,
+        "read",
+        json!({ "path": "ten.txt", "from": 3, "lines": 2 }),
+    )
+    .await;
+    assert_eq!(some, "[lines 3-4 of 10]\nline 3\nline 4\n");
+    // quoted, as models write numbers often enough
+    let tail = ask(&dir, "read", json!({ "path": "ten.txt", "from": "9" })).await;
+    assert_eq!(tail, "[lines 9-10 of 10]\nline 9\nline 10\n");
+    // more asked for than there is is the rest, and says where it ended
+    let past = ask(
+        &dir,
+        "read",
+        json!({ "path": "ten.txt", "from": 8, "lines": 50 }),
+    )
+    .await;
+    assert_eq!(past, "[lines 8-10 of 10]\nline 8\nline 9\nline 10\n");
+}
+
+/// A range that names no line is refused, saying why, and so is one that is not a number.
+#[tokio::test]
+async fn a_range_that_names_no_line_is_refused() {
+    let dir = scratch("files-no-range");
+    std::fs::write(dir.join("ten.txt"), numbered(10)).expect("a file");
+    std::fs::write(dir.join("empty.txt"), "").expect("a file");
+
+    for (args, says) in [
+        (
+            json!({ "path": "ten.txt", "from": 0 }),
+            "counts lines from 1",
+        ),
+        (json!({ "path": "ten.txt", "lines": 0 }), "reads none"),
+        (json!({ "path": "ten.txt", "from": 11 }), "has 10 line(s)"),
+        (
+            json!({ "path": "ten.txt", "from": "three" }),
+            "whole number",
+        ),
+        (json!({ "path": "empty.txt", "from": 1 }), "is empty"),
+    ] {
+        let said = ask(&dir, "read", args.clone()).await;
+        assert!(said.contains(says), "{args}: {said}");
+        assert!(!said.contains("line 1\n"), "{args} read something: {said}");
+    }
+}
+
+/// A file too large to count is read a part at a time all the same, and says more follows rather
+/// than how much; read near its end, it says how many lines it has.
+#[tokio::test]
+async fn a_file_past_what_is_counted_is_read_a_part_at_a_time() {
+    let dir = scratch("files-huge");
+    let lines = kamchatka::tools::KEPT / 16 + 1_000;
+    let file: String = (1..=lines).map(|n| format!("{n:>15}\n")).collect();
+    assert!(file.len() > kamchatka::tools::KEPT);
+    std::fs::write(dir.join("huge.log"), &file).expect("a file");
+
+    let start = ask(&dir, "read", json!({ "path": "huge.log" })).await;
+    let (header, body) = start.split_once('\n').expect("a header");
+    assert!(header.starts_with("[lines 1-"), "{header}");
+    assert!(
+        !header.contains(" of "),
+        "it was counted to the end: {header}"
+    );
+    assert!(header.contains("read on with `from: "), "{header}");
+    assert!(body.starts_with(&format!("{:>15}\n", 1)));
+
+    let end = ask(
+        &dir,
+        "read",
+        json!({ "path": "huge.log", "from": lines - 1, "lines": 5 }),
+    )
+    .await;
     assert_eq!(
-        read.len(),
-        kamchatka::tools::KEPT,
-        "{}",
-        &read[..read.len().min(200)]
+        end,
+        format!(
+            "[lines {}-{lines} of {lines}]\n{:>15}\n{lines:>15}\n",
+            lines - 1,
+            lines - 1
+        )
     );
 
-    let refused = ask(&dir, "read", json!({ "path": "past.txt" })).await;
-    assert!(
-        refused.len() < 1_000,
-        "nothing of it was read: {} bytes",
-        refused.len()
+    let middle = ask(
+        &dir,
+        "read",
+        json!({ "path": "huge.log", "from": 5, "lines": 2 }),
+    )
+    .await;
+    assert_eq!(
+        middle,
+        format!("[lines 5-6, and more after them]\n{:>15}\n{:>15}\n", 5, 6)
     );
+}
+
+/// A line longer than the output limit on its own is shown from its start and said to be cut,
+/// and the cut does not split a character.
+#[tokio::test]
+async fn a_line_longer_than_the_limit_is_shown_from_its_start() {
+    let dir = scratch("files-wide");
+    // three bytes a character, so a cut at an arbitrary byte lands inside one two times in three
+    std::fs::write(
+        dir.join("wide.txt"),
+        format!("{}\nnext\n", "€".repeat(20_000)),
+    )
+    .expect("a file");
+
+    let said = ask(&dir, "read", json!({ "path": "wide.txt" })).await;
+    let (header, body) = said.split_once('\n').expect("a header");
+    assert!(header.contains("line 1 of 2 is longer than"), "{header}");
+    assert!(said.len() <= 32_000, "{} bytes", said.len());
     assert!(
-        refused.contains("was not read") && refused.contains("grep"),
-        "{refused}"
+        !body.is_empty() && body.chars().all(|c| c == '€'),
+        "{}",
+        &body[..30]
     );
+    // and the line after it is where reading on starts
+    let next = ask(&dir, "read", json!({ "path": "wide.txt", "from": 2 })).await;
+    assert_eq!(next, "[lines 2-2 of 2]\nnext\n");
 }
 
 /// `write` and `edit` put a new file where the old one was rather than emptying it first, and the

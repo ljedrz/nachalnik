@@ -619,6 +619,12 @@ alphabetical order. Both are deterministic — two identical searches give the s
 same order, which matters because the answer becomes a context item, and two items differing only
 in their order are two items nobody can diff and a budget pays for twice.
 
+**A long file is read in parts, and `read` says where each one ends.** Past the output limit —
+32,000 bytes, unless `/limit fs:read` says otherwise — it stops at the last whole line that fits,
+and its first line says which lines those are and the `from` to read on with. `from` and `lines`
+read any part of a file, a log too large to hold in memory included. The other way to read a part
+is `sed -n` through `shell`, which is `exec:run` again, for a file the session may already read.
+
 ## 📎 putting something in, with or without a question
 
 `/attach` takes a path and then whatever you want to ask about it, so the file and the question

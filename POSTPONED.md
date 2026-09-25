@@ -526,12 +526,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   default is one fix; taking one copy for every fork of a turn, before any of them runs, is the
   other.
 
-- **`fs read` has no range.** It takes a path and nothing else, so a file past the 32,000-byte
-  output limit comes back cut, with the whole kept as an archived item, and a model that wants
-  the rest reads it through `shell` with `sed -n`. An `offset` and a line count on `read` would
-  answer that inside the tool and its policy, and would add to a description every request pays
-  for; the decision is whether that toll is worth what `shell` already does.
-
 - **A stream that fails after it has started loses what it said.** An `error` event after the
   answer has begun ends the turn with the error, and what had streamed - already handed on as
   deltas - is not kept, where a stream the transport cut off keeps it and stops as `cut off`.

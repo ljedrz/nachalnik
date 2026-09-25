@@ -45,8 +45,18 @@ fn ops() -> Vec<Op> {
     vec![
         Op::new(
             "read",
-            "reads a whole text file",
-            vec![Arg::text("path", "the file to read").needed()],
+            "reads a text file, or some of its lines",
+            vec![
+                Arg::text("path", "the file to read").needed(),
+                Arg::whole(
+                    "from",
+                    "the first line to read, counting from 1; 1 if left out",
+                ),
+                Arg::whole(
+                    "lines",
+                    "how many lines to read from there; to the end if left out",
+                ),
+            ],
         ),
         Op::new(
             "glob",
@@ -137,7 +147,7 @@ impl Fs {
     pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
         let ops = ops();
         Self {
-            read: Read(reach.clone()),
+            read: Read(reach.clone(), limits.clone()),
             glob: Glob(looking.clone()),
             grep: Grep(looking),
             write: Write(reach.clone()),
@@ -286,7 +296,7 @@ mod tests {
     #[test]
     fn an_argument_is_offered_by_the_operations_that_read_it() {
         let wanted = [
-            ("read", vec!["action", "path"]),
+            ("read", vec!["action", "from", "lines", "path"]),
             ("glob", vec!["action", "path", "pattern"]),
             (
                 "grep",
