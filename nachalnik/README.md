@@ -205,7 +205,8 @@ it goes missing.
 side effect in a session happens inside a `Tool` you wrote and registered. So there is nothing here
 to contain, and there will be no sandbox in this crate — containment belongs where the process is
 actually spawned, which is your tool or the program around it. ([`kamchatka`][kamchatka] is the one
-in this workspace that spawns things, so it is the one that confines them, with Landlock.)
+in this workspace that runs the commands a model asks for, so it is the one that confines them,
+with Landlock.)
 
 What the runtime enforces is one thing: a call the `PermissionPolicy` refused is never handed to
 `Tool::invoke`, and the refusal is recorded as an event and as a tool result the model is told
