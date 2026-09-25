@@ -84,6 +84,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A request refused for its length says when compaction cannot free enough.** The sentence
+  pointed at `/compact` whatever the context held, and the compactor takes tool results and
+  nothing else - so a session that had mostly talked was pointed at a command that would find
+  nothing. It now says how much compaction could free at most, how much of the request is the
+  model's own turns, and to exclude the oldest of those by number.
 - **The model's `undo` leaves what somebody else moved since.** The `context` tool put an item back
   where the model had had it whatever had happened to it in between, so a person's exclusion, or
   their edit of what the model had revised, was walked back by a move that knew nothing about it.

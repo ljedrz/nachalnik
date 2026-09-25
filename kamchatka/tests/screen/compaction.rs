@@ -767,6 +767,101 @@ async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
     );
 }
 
+/// A request refused for its length says what to take out, and where compaction could not free
+/// enough it says so and names the model's own turns, which is what fills the context then.
+///
+/// note: the sentence pointed at `/compact` whatever the context held, and the compactor takes
+/// tool results and nothing else - so a session that had mostly talked was pointed at a command
+/// that would find nothing, and a headless run ended on the last turn having failed.
+#[tokio::test]
+async fn a_request_too_long_says_what_compaction_cannot_take() {
+    use nachalnik::Content;
+
+    let said = |harness: &Harness| -> String {
+        harness
+            .app
+            .loose
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let mut talked = Harness::new([]);
+    talked.app.kernel.set_compactor(None);
+    // the projection a session talking to the OpenAI dialect gets, which does not send a turn's
+    // thinking back - so what an item holds and what the request carries come apart
+    talked
+        .app
+        .kernel
+        .set_projector(Arc::new(nachalnik::LinearProjector {
+            send_reasoning: false,
+            ..nachalnik::LinearProjector::default()
+        }));
+    let limit = talked.app.kernel.budget().limit.expect("a limit");
+    for _ in 0..4 {
+        // with a great deal of thinking behind each, which the item counts and the request
+        // does not: a live run said the turns were five times the request they were part of
+        talked.app.kernel.push(
+            ContextItem::assistant(
+                Content::text("a long answer, and another sentence of it. ".repeat(limit / 20)),
+                vec![],
+            )
+            .with_reasoning(Some(Content::text("thinking it over. ".repeat(limit)))),
+        );
+    }
+    talked.send("and then?").await;
+    talked.settle().await;
+    let told = said(&talked);
+    assert!(
+        told.contains("tokens have to go before it is sent"),
+        "{told}"
+    );
+    assert!(told.contains("the model's own turns"), "{told}");
+    assert!(
+        !told.contains("`/compact` says"),
+        "it points at what would find nothing: {told}"
+    );
+    let figure = |before: &str, after: &str| -> usize {
+        let at = told.find(after).expect("the figure is there");
+        let start = told[..at].rfind(before).expect("its start") + before.len();
+        told[start..at]
+            .trim()
+            .replace(',', "")
+            .parse()
+            .expect("a number")
+    };
+    let turns = figure("~", " of what goes out is the model's own turns");
+    let request = figure(
+        "Nothing has read that request:",
+        " is this counter's own estimate",
+    );
+    assert!(
+        turns <= request,
+        "the turns are {turns} of a {request}-token request: {told}"
+    );
+
+    // and where a tool result is what fills it, `/compact` is the way out still
+    let mut searched = Harness::new([]);
+    searched.app.kernel.set_compactor(None);
+    let read = call("c1", "read", json!({ "path": "big.txt" }));
+    searched.app.kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![read.clone()],
+    ));
+    searched.app.kernel.push(ContextItem::tool_result(
+        read.id.clone(),
+        "read",
+        "a line of routine diagnostic output. ".repeat(limit / 4),
+        false,
+    ));
+    searched.send("and then?").await;
+    searched.settle().await;
+    let told = said(&searched);
+    assert!(told.contains("`/compact` says"), "{told}");
+    assert!(!told.contains("the model's own turns"), "{told}");
+}
+
 /// With no compactor there is nothing between the figure and the request, and it does not claim
 /// otherwise.
 #[tokio::test]

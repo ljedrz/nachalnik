@@ -17,7 +17,7 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use nachalnik::{Block, ContextId, ContextItem, ContextKind, Event, Overrun, Record};
+use nachalnik::{Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, Record};
 
 use super::{
     App, Going, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
@@ -239,29 +239,78 @@ impl App {
         let tokens = thousands(overrun.tokens as usize);
         let over = overrun
             .limit
-            .map(|limit| thousands(overrun.tokens.saturating_sub(limit) as usize));
-        let said = match (counted, over) {
-            (true, Some(over)) => format!(
+            .map(|limit| overrun.tokens.saturating_sub(limit) as usize);
+        let remedy = over.map(|over| self.remedy(over));
+        let over = over.map(thousands);
+        let said = match (counted, over, remedy) {
+            (true, Some(over), Some(remedy)) => format!(
                 "the model read that request as {tokens} tokens: ~{over} more than it takes. \
-                 Nothing is sent until that much goes - `/compact` says what a pass would take \
-                 before it takes it, and `/exclude` is the same decision made by hand",
+                 Nothing is sent until that much goes - {remedy}",
             ),
-            (true, None) => format!(
+            (true, ..) => format!(
                 "the model read that request as {tokens} tokens, which is more than it takes",
             ),
-            (false, Some(over)) => format!(
-                "~{over} tokens have to go before it is sent - `/compact` says what a pass would \
-                 take before it takes it, and `/exclude` is the same decision made by hand. \
-                 Nothing has read that request: {tokens} is this counter's own estimate of it, \
-                 and `/budget` says how far it has been corrected",
+            (false, Some(over), Some(remedy)) => format!(
+                "~{over} tokens have to go before it is sent - {remedy}. Nothing has read that \
+                 request: {tokens} is this counter's own estimate of it, and `/budget` says how \
+                 far it has been corrected",
             ),
-            (false, None) => format!(
+            (false, ..) => format!(
                 "nothing has read that request: {tokens} is this counter's own estimate of it, \
                  and `/budget` says how far it has been corrected",
             ),
         };
 
         self.say(Speaker::Error, said);
+    }
+
+    /// What to do about a request `over` tokens past the limit.
+    ///
+    /// note: `/compact` where a pass could free that much, and the model's own turns where it could
+    /// not. The compactor takes tool results and nothing else, so a session that has mostly talked
+    /// fills with what no pass will touch, and a sentence pointing at `/compact` there points at a
+    /// command that will find nothing - which a headless run, where nobody types it, reported as
+    /// the last turn having failed and nothing more.
+    ///
+    /// note: the turns are priced off the request rather than off the items. A reasoning model's
+    /// turn holds its thinking, which the projector does not send back, so the items' own figures
+    /// said the model's turns were several times the size of the request they were part of.
+    fn remedy(&self, over: usize) -> String {
+        let takeable: usize = self.kernel.with_context(|context| {
+            context
+                .items()
+                .iter()
+                .filter(|item| {
+                    item.state.sends_content()
+                        && item.state != ContextState::Pinned
+                        && matches!(item.kind, ContextKind::ToolResult { .. })
+                })
+                .map(|item| item.tokens)
+                .sum()
+        });
+        let counter = self.kernel.counter();
+        let turns: usize = self
+            .kernel
+            .project()
+            .messages
+            .iter()
+            .filter(|message| message.role == nachalnik::Role::Assistant)
+            .map(|message| counter.count_message(message))
+            .sum();
+
+        match takeable >= over {
+            true => "`/compact` says what a pass would take before it takes it, and `/exclude` is \
+                     the same decision made by hand"
+                .to_owned(),
+            false => format!(
+                "compaction can free ~{} at most, since it takes tool results and nothing else, \
+                 and ~{} of what goes out is the model's own turns. `/exclude` the oldest of \
+                 those by number - the context tab lists them with what each costs - and each is \
+                 one `u` from coming back",
+                thousands(takeable),
+                thousands(turns),
+            ),
+        }
     }
 
     /// The newest context item, which is what a line said now is anchored to.

@@ -454,9 +454,10 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A context the model's own turns have filled.** `Trim` takes only tool results, so at a small
   limit a session can reach a point where nothing is left for it to take: what remains is the
-  model's turns and the tool schemas every request carries, the kernel refuses to send a request
-  over the limit, and a headless run ends on "the last turn failed". A session that only talks
-  gets there first. One way out is for compaction to elide the oldest assistant turns as a last
+  model's turns and the tool schemas every request carries, and the kernel refuses to send a request
+  over the limit. The refusal says so - how much compaction could free, and that the rest is the
+  model's own turns to exclude by hand - but a headless run has nobody to exclude them, and ends
+  there. A session that only talks gets there first. One way out is for compaction to elide the oldest assistant turns as a last
   resort, which changes what `Trim` promises and leaves the projector to repair any results
   whose call it took. The other is to give the model a request of its own to free room, which
   needs room held back for that request, since it is over the limit too.
