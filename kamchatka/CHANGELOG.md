@@ -18,7 +18,10 @@ minor bump may break you.
 - **`sandbox::Confinement::Unsupported` is `Confinement::Off`**, which is what it had come to
   mean: nobody asked for a confinement, under `--no-sandbox` or before anything was probed.
 - **Path rules compare names exactly.** `.ENV` and `.env` are two files here, so the folding that
-  made `.env*` catch `.ENV` on macOS and Windows went with those platforms.
+  made `.env*` catch `.ENV` on macOS and Windows went with those platforms. So did reading a
+  backslash as a separator: it is a character a name may hold, as it already was to `fs` and the
+  settings file, so `secrets/` no longer covers `secrets\key`, and a rule with a backslash in it is
+  taken rather than refused.
 - **`stopping::Terminated` takes `SIGTERM` and `SIGHUP`**, and no longer has a Windows half.
 - **`Sandbox::network` is a `sandbox::Network`**, where it was a `bool`: `Open`, `NoTcp` (Landlock
   alone, as before), `Shut` and `Asked`, the last two behind the network gate below. A confinement
