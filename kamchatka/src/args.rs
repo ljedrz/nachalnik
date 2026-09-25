@@ -390,7 +390,11 @@ impl Args {
             .flatten();
         if let Some(path) = args.config_file.clone().or_else(|| found.clone()) {
             let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
-            args = args.under(settings, &matches)?;
+            // the path the way `Settings::read` puts it on its own errors: what `under` refuses
+            // is a value in this file, and there are two places a file can be found
+            args = args
+                .under(settings, &matches)
+                .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
         }
 
         Ok(Given {

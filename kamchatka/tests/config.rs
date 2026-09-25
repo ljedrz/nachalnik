@@ -265,6 +265,7 @@ fn a_border_that_is_not_a_colour_is_refused_by_name() {
 
     assert!(!ok, "a colour nobody can read is not a success");
     assert!(said.contains("`border` in the settings file"), "{said}");
+    assert!(said.contains(&path), "the file is named: {said}");
     assert!(said.contains("six hex digits"), "the form is shown: {said}");
 
     // and one that is a colour is simply taken
