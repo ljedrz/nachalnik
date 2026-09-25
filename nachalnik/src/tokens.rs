@@ -159,10 +159,12 @@ pub trait TokenCounter: Send + Sync {
     /// Reports what a provider charged for a request this counter had estimated.
     ///
     /// note: The kernel calls this after every response that carries
-    /// [`Usage::input_tokens`], with its own estimate of the whole request - context and tool
+    /// [`Usage::input_tokens`], and after every refusal that carries a
+    /// [`TooLong`](crate::TooLong), with its own estimate of the whole request - context and tool
     /// definitions - beside the provider's figure for the same bytes. It is the only feedback
     /// there is: the kernel does not have the model's tokenizer, but it does get told, once per
-    /// request, exactly how wrong it was.
+    /// request, exactly how wrong it was. A request carrying anything this counter could not
+    /// price is not reported at all, because the two figures are then not about the same bytes.
     ///
     /// note: The default does nothing, because deciding what to make of that is not the kernel's
     /// business. [`Calibrating`] is the implementation that acts on it.
