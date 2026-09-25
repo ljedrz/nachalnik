@@ -84,8 +84,8 @@ minor bump may break you.
   `cargo test -p nachalnik-mcp --no-default-features` did not build - and the configuration that
   could not be run is the one this crate documents as the real case, a bridge to a server somebody
   else opened the transport to. The suite is `required-features = ["child-process"]` like
-  `kamchatka`'s three, and the example is under a `cfg_attr` on the same feature and renders where
-  it did. CI checks this crate rather than testing it, so neither was visible there.
+  `kamchatka`'s gated suites, and the example is under a `cfg_attr` on the same feature and renders
+  where it did. CI checks this crate rather than testing it, so neither was visible there.
 
 ## [0.6.0] - 2026-09-17
 
