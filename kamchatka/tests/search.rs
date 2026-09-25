@@ -490,6 +490,22 @@ async fn a_walk_does_not_follow_a_link_past_a_path_rule() {
         "{listed}"
     );
 
+    // the call's own path was asked about by its name, which is `alias`: the root of a walk is
+    // exempt from the rules for that reason, and a link as the root is refused as `read` refuses it
+    for (action, pattern) in [("grep", "."), ("glob", "*")] {
+        let named = ask(
+            &dir,
+            action,
+            json!({ "pattern": pattern, "path": "src/alias" }),
+        )
+        .await;
+        assert!(!named.contains("secret"), "{action}: {named}");
+        assert!(
+            named.contains("`src/alias` leads to `.env`"),
+            "{action}: {named}"
+        );
+    }
+
     // and under `--no-sandbox`, where the reach is not held but the path rules still are. Named
     // in full, so that what is under test is the link and not which directory `.` is
     let root = dir.display().to_string();

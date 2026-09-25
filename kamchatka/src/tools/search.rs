@@ -30,7 +30,7 @@ use serde_json::Value;
 
 use crate::{
     sandbox::{Access, Reach},
-    tools::{Careful, Limits, arg, path_matches, truth, whole, words},
+    tools::{Careful, Limits, arg, files::linked, path_matches, truth, whole, words},
 };
 
 /// How many matching lines one `grep` answers with.
@@ -385,6 +385,11 @@ impl Grep {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        // the call's own path is exempt from the rules below because it was asked about by its
+        // name, and a link's name is not where it leads
+        if let Some(refusal) = linked(&asked, &root, &self.0.reach, &self.0.policy, "searched") {
+            return Ok(ToolOutput::error(refusal));
+        }
 
         // read the way `files_only` is, so that `"true"` in quotes is not a case-sensitive search
         let ignore_case = match truth(args, "ignore_case") {
@@ -493,8 +498,7 @@ impl Grep {
                 let path = relative(entry.path(), &workdir);
                 // the file the *call* named is one the policy has already been asked about; only
                 // what the walk found under it is barred here. See `Looking::barred`. A link is
-                // barred for where it leads as well, the call's own included: the question was
-                // about its name. See `led_past`
+                // barred for where it leads as well. See `led_past`
                 if (entry.path() != root.as_path()
                     && barred.iter().any(|rule| path_matches(rule, &path)))
                     || led_past(&path, &opening, &workdir, &barred).is_some()
@@ -720,6 +724,11 @@ impl Glob {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
+        // the call's own path is exempt from the rules below because it was asked about by its
+        // name, and a link's name is not where it leads
+        if let Some(refusal) = linked(&asked, &root, &self.0.reach, &self.0.policy, "listed") {
+            return Ok(ToolOutput::error(refusal));
+        }
         let matching = match GlobBuilder::new(&pattern).build() {
             Ok(built) => built.compile_matcher(),
             Err(e) => return Ok(ToolOutput::error(format!("`{pattern}` is not a glob: {e}"))),
