@@ -95,6 +95,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A record directory that is a link changes nothing behind it.** The directory was made private
+  before it was checked, so a link left at `$TMPDIR/kamchatka` was refused and the directory it
+  pointed at was still set to `0700`. It is now opened without following a link, and made private
+  and checked through what was opened.
 - **A shell the sandbox could not confine says so.** The permissions tab gave a confinement that
   was asked for and could not be applied - no Landlock in the kernel, or a binary replaced since
   this one started - the same line as `--no-sandbox`, so a person who had passed no flag was told
