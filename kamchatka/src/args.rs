@@ -25,15 +25,16 @@ use crate::{
 
 /// The variables `--help` lists, and what each of them is for.
 ///
-/// note: they are read by [`Args::provider`] rather than declared as arguments, so clap cannot
-/// list them the way it lists `KAMCHATKA_MODEL` beside `--model`. A setting nothing on the screen
-/// mentions is a setting nobody finds, and `--help` is where a person looks for the list.
+/// note: they are read by [`Args::provider`], and the advisor's by `Args::advised`, rather than
+/// declared as arguments, so clap cannot list them the way it lists `KAMCHATKA_MODEL` beside
+/// `--model`. A setting nothing on the screen mentions is a setting nobody finds, and `--help` is
+/// where a person looks for the list.
 ///
-/// note: a function rather than a literal, so that the advisor's three are listed by a build that
+/// note: a function rather than a literal, so that the advisor's four are listed by a build that
 /// has an `--advise` to use them and by no other. A variable named in the help of a program that
 /// reads it nowhere is the same failure as a settings key nothing consults.
 pub fn environment() -> String {
-    /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
+    /// The advisor's four, listed by a build that has an `--advise` and empty in one that does
     /// not.
     #[cfg(feature = "shell-advisor")]
     const ADVISOR: &str = "
