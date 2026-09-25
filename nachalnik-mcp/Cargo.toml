@@ -59,8 +59,9 @@ tokio = { workspace = true, features = ["macros", "time"] }
 
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
-# the one live test: a real model, offered a real server's tools. No version, because this crate
-# is never published and cargo strips a versionless dev-dependency from the manifest
+# the one live test: a real model, offered a real server's tools. No version, because
+# `nachalnik-utils` is never published and cargo strips a versionless dev-dependency from the
+# manifest
 nachalnik-utils = { workspace = true }
 # the identifier rewriting is a pure function with a collision in its history, which is what a
 # generated case and a shrinker are for; see `tool::tests`
