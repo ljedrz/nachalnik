@@ -1650,7 +1650,7 @@ impl App {
     /// question.
     ///
     /// note: the command reads the answer, not the model: its sockets open or come back
-    /// `Permission denied`, and the result it hands the model says which the person chose.
+    /// `Permission denied`, and the result it hands the model says which was answered.
     pub fn decide_reach(&mut self, id: u64, grant: Grant, remember: bool) -> Result<(), String> {
         if remember && grant != Grant::Allow {
             return Err(

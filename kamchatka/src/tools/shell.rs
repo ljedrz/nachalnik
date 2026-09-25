@@ -678,16 +678,20 @@ impl Tool for Shell {
         // refused goes looking for another way out rather than asking
         let refused = "so every internet socket it asked for was refused with `Permission \
                        denied`, and a name it tried to look up failed the same way";
+        //
+        // note: "when it was asked about" and not "the person said", in the kernel's words for its
+        // own questions, because what answered may be `--on-ask` in a run nobody is watching, and
+        // the model repeats whatever this claims about who decided
         let reached = match reached {
             Some(Reached::Let) => {
-                "[this command reached for the network, and the person you are working with was \
-                 asked and let it]\n"
+                "[this command reached for the network, and was let through when it was asked \
+                 about]\n"
                     .to_owned()
             }
             Some(Reached::Refused) => format!(
-                "[this command reached for the network, and the person you are working with was \
-                 asked and said no, {refused}. Say what you need the network for before trying \
-                 again.]\n"
+                "[this command reached for the network, and was refused when it was asked about, \
+                 {refused}. That is an answer to this command rather than a standing rule: say \
+                 what you need the network for before trying again.]\n"
             ),
             Some(Reached::Shut) => format!(
                 "[this command reached for the network, which this session refuses, {refused}. \
@@ -714,9 +718,9 @@ impl Tool for Shell {
 /// What came of a command's first attempt to reach the network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Reached {
-    /// The person was asked, and let it.
+    /// It was asked about, and let through.
     Let,
-    /// The person was asked, and refused it.
+    /// It was asked about, and refused.
     Refused,
     /// The session refuses the network, and nobody was asked.
     Shut,
