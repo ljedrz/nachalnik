@@ -343,14 +343,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   owns the directory, which matters only to a process that can read past the bits anyway - root, or
   one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid.
 
-- **Three small things in the sandbox's accounts.**
-  - `/dev` files are readable and `/dev` listings are not, so `note_for` can blame the boundary for
-    a refusal that was the file's own permissions.
-  - `reaches` and `Reach::allows` treat a leftover `..` differently (`/work/missing/../../outside`),
-    which costs a hint in a contrived case; `reaches` refusing a `ParentDir` component settles it.
-  - `Confinement::complaint` is public and nothing calls it. Removing it is a break of
-    `kamchatka`'s library API, so it goes in a minor release.
-
 - **A path rule about a link's name, not its target.** `grep` and `glob` judge a symlink by the
   name it has in the walk, as `fs read` does, because `Careful` matches names and a rule cannot see
   a link - so `alias -> .env` is not caught by `.env*`, and the sandbox is the boundary. The walk

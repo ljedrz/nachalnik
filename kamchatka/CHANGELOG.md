@@ -17,6 +17,8 @@ minor bump may break you.
   binary is gone from the release, and an aarch64 Linux one is attached beside the x86_64 one.
 - **`sandbox::Confinement::Unsupported` is `Confinement::Off`**, which is what it had come to
   mean: nobody asked for a confinement, under `--no-sandbox` or before anything was probed.
+- **`Confinement::complaint` is gone.** Nothing called it; the `Display` of a `Confinement` is what
+  every view says it with.
 - **Path rules compare names exactly.** `.ENV` and `.env` are two files here, so the folding that
   made `.env*` catch `.ENV` on macOS and Windows went with those platforms. So did reading a
   backslash as a separator: it is a character a name may hold, as it already was to `fs` and the
@@ -82,6 +84,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal in `/dev` is put down to the right thing.** `/dev` is granted reading and writing
+  its files, and a permission error on a device there was blamed on the confinement when it was the
+  device's own; a listing of `/dev`, or a file made in it, is still named as the boundary.
+- **A refusal naming a path that climbs out past a missing directory is the boundary**, as `fs`
+  already had it. `/work/missing/../../outside` kept its `..`s behind the working directory's prefix
+  and was taken for a path inside, so nothing was said about it.
 - **Two forks asked in one turn are asked about the same context.** A turn's calls run one after
   another, so the second fork's copy already held the first one's answer, and two copies meant to
   be compared differed by it. A fork now leaves out the results of the other calls in the turn
