@@ -877,10 +877,7 @@ for line in sys.stdin:
     /// once the stream is doubtful it is closed rather than reused.
     #[tokio::test]
     async fn an_advisor_that_stops_answering_is_closed_rather_than_reused() {
-        let Ok(local) = Local::new("true").map_err(|_| ()) else {
-            // no `true` on this platform; the two tests above cover the rest
-            return;
-        };
+        let local = Local::new("true").expect("`true` is on every Linux");
 
         let asking = || {
             local.ask(

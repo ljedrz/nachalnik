@@ -1,8 +1,8 @@
 # LF in the working tree on every platform.
 #
-# note: Git for Windows checks out CRLF by default, which is invisible to whoever is running it
-# and breaks anything that reads a file and looks for `\n` - `screen.rs` reads `app.rs` to check
-# that every command the prompt answers to is in the help, and on Windows it found no `\n    }\n`
-# to stop at. It would also put CRLF into a crate packaged on that machine, which is a difference
-# nobody would notice until it was on the registry.
+# note: Git for Windows checks out CRLF by default, which is invisible to whoever is running it.
+# The libraries are still built, tested and packaged there, and a crate packaged from such a
+# checkout carries CRLF onto the registry - a difference nobody would notice until it was
+# published. It also breaks a test that reads source looking for `\n`, which is why `kamchatka`'s
+# help test normalises what it reads as well.
 * text=auto eol=lf

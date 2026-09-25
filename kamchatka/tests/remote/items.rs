@@ -382,7 +382,7 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
 /// no screen in the build`, so a served run whose stdout is a pipe is `Server::run` and a served
 /// run on a terminal is `drawn` with a socket beside it. Two loops, each with a `Serving` of its
 /// own, and the one every other test in this file reaches is the first. `script(1)` is a pty and
-/// one process, and it is in the base install of the platform this is gated to.
+/// one process, and it ships with util-linux.
 ///
 /// note: the pair with `a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody`, which
 /// makes the same claim about the other loop and can make it in-process. What cannot be shared is

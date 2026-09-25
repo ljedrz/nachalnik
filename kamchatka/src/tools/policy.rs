@@ -169,8 +169,8 @@ const GRAMMAR: &str = "a path rule is a file name in which `*` stands for any ru
 /// and the refusal says what there is.
 ///
 /// note: refused rather than taught to the matcher. Whole-path patterns bring anchoring, absolute
-/// against relative, `**`, and a separator that means something on one platform - and a pattern
-/// language on a permissions screen is worth more small than complete.
+/// against relative, and `**` - and a pattern language on a permissions screen is worth more small
+/// than complete.
 ///
 /// note: a `*` before the slash is refused too, and that one is legal rather than impossible: a
 /// directory really can be called `sec*`, and the directory branch compares the name as it is

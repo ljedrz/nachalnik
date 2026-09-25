@@ -88,8 +88,8 @@ tokio = { workspace = true, features = [
     "io-std",
     "io-util",
     "macros",
-    # `--serve` and `--connect`: a unix socket where there are any and a loopback port where there
-    # are not. With `socket2` above, which is one method on a port, that is the whole of what
+    # `--serve` and `--connect`: a unix socket, and a loopback port for whatever reaches it through
+    # a tunnel. With `socket2` above, which is one method on a port, that is the whole of what
     # remote control costs - which is why `remote` is not behind a feature of its own the way `tui`
     # and `mcp` are: those exist to keep the drawing's dependencies and a bridge out of a build that
     # wants neither, and a crate `tokio` already builds is nothing to keep out. The other half of the

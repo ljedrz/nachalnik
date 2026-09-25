@@ -129,10 +129,10 @@ const PROBE: Duration = Duration::from_secs(10);
 /// on a host that is not coming back, with the reconnection it was written to do never starting.
 ///
 /// note: a failure is ignored rather than refused. These are an improvement on a connection that
-/// already works, so a platform that will not take one of them is a reason to go without it and not
-/// a reason to refuse somebody a session. The count of probes is left to the operating system:
-/// `socket2` puts it behind a feature and the two that are set here are the two that decide how
-/// soon anybody finds out.
+/// already works, so a kernel that will not take one of them - or a sandbox in front of one - is a
+/// reason to go without it and not a reason to refuse somebody a session. The count of probes is
+/// left to the kernel: `socket2` puts it behind a feature and the two that are set here are the two
+/// that decide how soon anybody finds out.
 pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
     use socket2::{SockRef, TcpKeepalive};
 
@@ -145,13 +145,12 @@ pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
 mod tests {
     use super::*;
 
-    /// Both options can actually be set on a socket on this platform.
+    /// Both options can actually be set on a socket here.
     ///
-    /// note: what this is for is the *platform*, not the logic - there is no logic. `socket2` gates
-    /// `with_interval` on a list of operating systems and `set_tcp_keepalive` behaves differently
-    /// on each of them, so the thing worth checking is that the call this crate makes is one the
-    /// machine it was built for will take. Nothing about the protocol can see either option, so
-    /// this is the only place they are observable at all.
+    /// note: what this is for is the *kernel*, not the logic - there is no logic. The call builds
+    /// wherever this crate does, so what is left to check is that the kernel it runs on takes it.
+    /// Nothing about the protocol can see either option, so this is the only place they are
+    /// observable at all.
     #[tokio::test]
     async fn a_port_takes_both_of_the_options_it_is_given() {
         use socket2::{SockRef, TcpKeepalive};
@@ -169,14 +168,14 @@ mod tests {
             tuned(stream);
             assert!(stream.nodelay().expect("the option was refused"));
             // note: called again here rather than read back off the socket, because `tuned` drops
-            // the answer, deliberately, so that a platform refusing keepalive costs the connection
+            // the answer, deliberately, so that a kernel refusing keepalive costs the connection
             // its probes rather than costing somebody a session. Nothing can observe it afterwards,
             // and the only way to find out whether this machine takes the call is to make it
             assert!(
                 SockRef::from(stream)
                     .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE))
                     .is_ok(),
-                "this platform refused the keepalive `tuned` sets"
+                "this kernel refused the keepalive `tuned` sets"
             );
         }
     }
