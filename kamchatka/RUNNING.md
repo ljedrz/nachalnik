@@ -285,7 +285,7 @@ Signatures are the other half. Gemini signs the parts of a turn and answers
 it signs text parts as well as calls, which a message with three slots has nowhere to keep. Here
 each part's own fields ride back out on the block they arrived on, unread.
 
-Both providers answer one trait, `Endpoint`, so `/model`, `/models`, `/provider` and the status
+Both providers answer one trait, `Dialect`, so `/model`, `/models`, `/provider` and the status
 line work the same against either and nothing above them knows which wire format it got.
 
 ```console

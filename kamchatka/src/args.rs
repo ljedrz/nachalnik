@@ -547,8 +547,8 @@ impl Args {
     /// Where this session's requests go, in whichever dialect was asked for.
     ///
     /// note: two wire formats, one trait. `--gemini` is what a person picks, and everything
-    /// downstream - the kernel, the screen, `/model`, `/provider` - is written against `Endpoint`
-    /// and never finds out which one it got.
+    /// downstream - the kernel, the screen, `/model`, `/provider` - holds a `Dialect` and never
+    /// finds out which one it got.
     ///
     /// note: no model unless one was named. A default means that a session started without `-m`
     /// talks to whatever this program's author picked, at the person's expense and with nothing
