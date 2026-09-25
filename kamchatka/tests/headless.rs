@@ -1642,8 +1642,9 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
 /// reports a tool result by its size and the record names results rather than copying them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
-    let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENAI_API_KEY:-none} ${TYPESAFE_API_KEY:-none} \
-               ${HOME:+home}\" > seen.txt";
+    let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENROUTER_API_KEY:-none} \
+               ${OPENAI_API_KEY:-none} ${KAMCHATKA_SYSTEM1_API_KEY:-none} \
+               ${TYPESAFE_API_KEY:-none} ${HOME:+home}\" > seen.txt";
     for confined in [true, false] {
         let dir = common::scratch(&format!("keys-{confined}"));
         let base = common::endpoint(vec![
@@ -1677,7 +1678,9 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
             .current_dir(&dir)
             .env("KAMCHATKA_BASE_URL", &base)
             .env("KAMCHATKA_API_KEY", "sk-the-session-key")
+            .env("OPENROUTER_API_KEY", "sk-the-router-key")
             .env("OPENAI_API_KEY", "sk-another-key")
+            .env("KAMCHATKA_SYSTEM1_API_KEY", "sk-the-system1-key")
             .env("TYPESAFE_API_KEY", "sk-the-advisor-key")
             .stdin(std::process::Stdio::null())
             .output()
@@ -1694,7 +1697,11 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
                 String::from_utf8_lossy(&ran.stderr)
             )
         });
-        assert_eq!(seen.trim(), "none none none home", "confined: {confined}");
+        assert_eq!(
+            seen.trim(),
+            "none none none none none home",
+            "confined: {confined}"
+        );
     }
 }
 
