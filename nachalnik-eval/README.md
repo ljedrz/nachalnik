@@ -188,9 +188,9 @@ threats to validity travel with it, in its repository.
 | `provenance` | "nothing has been taken out of this conversation", and "did you run anything" | the harness wrote the record, so both answers have a ground truth and no fork is needed | 12 |
 
 The requests are a whole run's at `-r 2` and the default three ladders, subject and copies
-together. `attribution`, `instrumented` and `repair` go over every dossier in `dossier::ALL`,
-which is why they are the bulk of it, and `instrumented` counts the tests a subject chose to run,
-so its figure moves with the model.
+together. `attribution` and `instrumented` go over every dossier in `dossier::ALL` and `repair`
+over the five in `suite::PLANTED`, which is why they are the bulk of it, and `instrumented` counts
+the tests a subject chose to run, so its figure moves with the model.
 
 The material is planted and invented on purpose. It has to be outside every training set, so the
 answer cannot be recalled instead of worked out; it has to have a causal structure somebody
