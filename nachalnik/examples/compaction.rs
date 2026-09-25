@@ -104,7 +104,7 @@ impl Compactor for Summarizer {
         };
         // note: a summarizer that fails is not a reason to leave the context over its limit. The
         // results are elided without one, and the reason says so - elided is not destroyed, so
-        // nothing is lost that `restore` cannot bring back
+        // nothing is lost that a `set_state` cannot bring back
         let (summary, missing) = match self
             .provider
             .respond(request, DeltaSink::disconnected())
