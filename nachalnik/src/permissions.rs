@@ -352,3 +352,36 @@ impl PermissionPolicy for AskAlways {
         Verdict::Ask
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `parse` reads `domain:op` and refuses every spelling that does not name exactly one
+    /// operation in one domain.
+    ///
+    /// note: one case per half of the guard. Each of these would otherwise come back as a
+    /// capability no tool declares, so a rule written with it matches nothing and says nothing.
+    #[test]
+    fn a_capability_names_one_operation_in_one_domain() {
+        assert_eq!(Capability::parse("fs:read"), Ok(Capability::fs("read")));
+
+        for text in [":read", "fs:", "fs:read:all"] {
+            assert!(Capability::parse(text).is_err(), "`{text}` was accepted");
+        }
+    }
+
+    /// A verdict is shown in the word it is stored in.
+    ///
+    /// note: `Display` is what a client puts on a screen and serde is what the log keeps, so a
+    /// person reading one and a program reading the other are reading the same word.
+    #[test]
+    fn a_verdict_is_shown_in_the_word_it_is_stored_in() {
+        for verdict in [Verdict::Allow, Verdict::Ask, Verdict::Deny] {
+            assert_eq!(
+                serde_json::to_value(verdict).unwrap(),
+                Value::String(verdict.to_string())
+            );
+        }
+    }
+}
