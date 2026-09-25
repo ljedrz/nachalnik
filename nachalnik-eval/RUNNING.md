@@ -38,7 +38,8 @@ impl Experiment for Mine {
 
     async fn run(&self, subject: &Subject, trial: &Trial) -> Result<()> {
         let origin = Origin::of(subject)?;                       // freeze the context
-        let (said, claim) = subject.probe(&Probe::claim("...")).await?;
+        let probe = Probe::claim("...");
+        let (said, claim) = subject.probe(&probe).await?;
         trial.asked(&probe, &said, &claim);
 
         let ablation = Ablation::new(question).replicates(2);
