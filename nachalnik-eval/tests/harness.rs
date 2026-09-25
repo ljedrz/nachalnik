@@ -2,7 +2,7 @@
 //!
 //! note: What is being checked here is not a model. It is whether the harness recovers a causal
 //! structure it was never told: the rulebook answers `kirov` when a phrase is in the request and
-//! `omsk` when it is not, so exactly one of the seven planted notes is load-bearing, and a run
+//! `omsk` when it is not, so exactly one of the planted notes is load-bearing, and a run
 //! that reports any other ranking has a bug in it. That is the one claim about an evaluation of
 //! introspection that can be checked at all, and it can only be checked offline.
 
@@ -491,7 +491,7 @@ fn stage<'a>(outcome: &'a Outcome, name: &str) -> &'a nachalnik_eval::Scores {
 async fn a_subject_that_can_test_is_scored_apart_from_one_that_can_only_think() {
     // one dossier and four notes, because the rulebook only has a causal structure for the depot
     // and this test is about the ladder rather than about the material. The default set is six
-    // dossiers and forty-two items, which is what a real run needs and what no offline provider
+    // dossiers and fifty-four items, which is what a real run needs and what no offline provider
     // can stand in for
     let (outcome, _) = run(Instrumented::new().on(&DEPOT).battery(4)).await;
 
