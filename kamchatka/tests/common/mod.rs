@@ -4,8 +4,8 @@
 //!
 //! note: `dead_code` is allowed, and it has to be. A `mod common;` is compiled afresh into every
 //! suite that declares it, so anything here that one suite does not call is unused *in that
-//! binary* - which is seven warnings for a helper two suites share, under a `RUSTFLAGS` that makes
-//! a warning a failure.
+//! binary* - which is a warning in every other suite for a helper two suites share, under a
+//! `RUSTFLAGS` that makes a warning a failure.
 
 #![allow(dead_code)]
 
