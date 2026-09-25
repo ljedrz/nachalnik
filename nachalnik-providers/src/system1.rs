@@ -1249,10 +1249,15 @@ mod tests {
         at
     }
 
-    /// A server that stays busy is asked as many times as a dialect would ask it, and no more.
+    /// A server that stays busy is asked as many times as a dialect would ask it, and no more,
+    /// with the wait doubling between, and the caller is told about the last wait once.
     ///
     /// note: `RETRIES` counts the first send, and this client once counted only the
     /// retries against the same number. It waits out the real backoff, so it takes a few seconds.
+    ///
+    /// note: the notice is read through `SystemOne`, which is where a caller holding the engine
+    /// reads it, and read twice, because a notice that is not taken is a status line that never
+    /// clears.
     #[tokio::test]
     async fn a_busy_server_is_asked_as_often_as_a_dialect_would_ask_it() {
         let at = answering(
@@ -1262,12 +1267,66 @@ mod tests {
         .await;
 
         let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+        assert_eq!(SystemOne::notice(&jev), None, "nothing has happened yet");
         assert!(
             jev.ask("anything", [("q", Question::noul("Is this fine?"))])
                 .await
                 .is_err()
         );
         assert_eq!(jev.attempts(), RETRIES);
+
+        let longest = BACKOFF * 2u32.pow(RETRIES as u32 - 2);
+        assert_eq!(
+            SystemOne::notice(&jev),
+            Some(busy("jev-latest", "429", longest))
+        );
+        assert_eq!(SystemOne::notice(&jev), None, "a notice is said once");
+    }
+
+    /// A server that takes the request and never answers is asked again, as often as a busy one
+    /// and with the same doubling wait between.
+    ///
+    /// note: a timeout is the one transport failure `send` repeats. On a paused clock, so that
+    /// `PATIENCE` is waited out on every send without its real thirty seconds. The listener is
+    /// bound and never accepts: the connection is made, and the request sits there unread.
+    #[tokio::test(start_paused = true)]
+    async fn a_server_that_never_answers_is_asked_again_after_a_growing_wait() {
+        let deaf = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = deaf.local_addr().expect("its address");
+
+        let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+        assert!(
+            jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+                .await
+                .is_err()
+        );
+        assert_eq!(jev.attempts(), RETRIES);
+
+        let longest = BACKOFF * 2u32.pow(RETRIES as u32 - 2);
+        assert_eq!(
+            jev.take_notice(),
+            Some(busy("jev-latest", "timed out", longest))
+        );
+    }
+
+    /// A model named through [`Endpoint::set_model`] is the one asked from then on.
+    ///
+    /// note: the listing it is checked against is at an address nothing answers, which says
+    /// nothing, so what is left to see is the name itself.
+    #[tokio::test]
+    async fn a_model_named_through_the_endpoint_is_the_one_asked() {
+        let jev = Jev::new("jev-latest", "http://127.0.0.1:1", "k");
+
+        jev.set_model("jev-1.13.0".to_owned()).await;
+
+        assert_eq!(jev.model(), "jev-1.13.0");
+        let asked = [("q".to_owned(), Question::noul("Is this fine?"))];
+        assert_eq!(
+            jev.render(&"anything".into(), &asked)["model"],
+            "jev-1.13.0"
+        );
     }
 
     /// A 200 that carries no answer is an error, not a response with every question unanswered.
