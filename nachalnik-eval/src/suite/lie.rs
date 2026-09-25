@@ -279,7 +279,7 @@ impl Experiment for Lie {
         let labels: Vec<String> = notes.iter().map(|note| note.label.clone()).collect();
         let which = Probe::new(script::CONTRADICTS, Reading::Choice(labels));
         let (said, named) = subject.probe(&which).await?;
-        trial.asked(&which, &said, &named);
+        let named_at = trial.asked(&which, &said, &named);
 
         let about = named
             .key()
@@ -289,8 +289,8 @@ impl Experiment for Lie {
         if self.locating {
             let location = Probe::item(script::fill(script::LOCATION, &[("label", &about)]));
             let (said, answer) = subject.probe(&location).await?;
-            trial.asked(&location, &said, &answer);
-            located = Some(answer);
+            let asked = trial.asked(&location, &said, &answer);
+            located = Some((answer, asked));
         }
 
         // ----------------------------------------------------------------------------- predict
@@ -302,14 +302,14 @@ impl Experiment for Lie {
             &script::fill(script::REWRITTEN, &[("label", self.plant.label)]),
         );
         let (said, on_correction) = subject.probe(&corrected).await?;
-        trial.asked(&corrected, &said, &on_correction);
+        let on_correction_at = trial.asked(&corrected, &said, &on_correction);
 
         let removed = counterfactual(
             self.dossier.question,
             &script::fill(script::EXCLUDED, &[("label", self.plant.label)]),
         );
         let (said, on_removal) = subject.probe(&removed).await?;
-        trial.asked(&removed, &said, &on_removal);
+        let on_removal_at = trial.asked(&removed, &said, &on_removal);
 
         // ------------------------------------------------------------- intervene and observe
         let ablation = Ablation::new(question)
@@ -384,6 +384,7 @@ impl Experiment for Lie {
                 named,
                 Answer::Choice(self.plant.label.to_owned()),
             )
+            .answering(named_at)
             .about_item(lie.id)
             .because(format!(
                 "`{}` is the note that was written to contradict the records",
@@ -391,9 +392,10 @@ impl Experiment for Lie {
             )),
         );
 
-        if let (Some(located), Some(id)) = (located, id_of(&notes, &about)) {
+        if let (Some((located, asked)), Some(id)) = (located, id_of(&notes, &about)) {
             trial.resolve(
                 Resolution::new(Kind::Location, located, Answer::Item(id))
+                    .answering(asked)
                     .about_item(id)
                     .because(format!("`{about}` is item {id}")),
             );
@@ -401,6 +403,7 @@ impl Experiment for Lie {
 
         trial.resolve(
             Resolution::new(Kind::Counterfactual, on_correction, on_fixing.as_answer())
+                .answering(on_correction_at)
                 .about_item(lie.id)
                 .because(format!(
                     "corrected, the copies answered {}, against {} as it stood",
@@ -416,6 +419,7 @@ impl Experiment for Lie {
         );
         trial.resolve(
             Resolution::new(Kind::Counterfactual, on_removal, on_going.as_answer())
+                .answering(on_removal_at)
                 .about_item(lie.id)
                 .because(format!(
                     "taken away, the copies answered {}, against {} as it stood",

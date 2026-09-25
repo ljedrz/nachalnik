@@ -10,7 +10,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use nachalnik::{Config, Kernel};
 use nachalnik_eval::{
-    Act, Answer, Error, Experiment, Kind, Outcome, Step, Subject, Trial, evaluate, suite,
+    Act, Answer, Error, Experiment, Kind, Outcome, Reading, Step, Subject, Trial, evaluate, suite,
     suite::{
         AGAIN, Attribution, CANCELLED, CARRYING, Conflict, DEPOT, Feedback, Instrumented, Lie,
         NOTICED, Privilege, REPAIRED, REPORTED, RETESTED, Recursion, Repair, SETTLED, TESTED,
@@ -785,6 +785,103 @@ async fn a_whole_run_reports_and_round_trips() {
     assert!(rendered.contains("recursion"));
     assert!(rendered.contains("privilege"));
     assert!(rendered.contains("guessing would get"));
+}
+
+#[tokio::test]
+async fn a_saved_run_can_be_read_again() {
+    let report = evaluate(all(), |name| {
+        let kernel = Kernel::new(Config {
+            session_name: Some(name.to_owned()),
+            ..Config::default()
+        });
+        kernel.set_provider(Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)));
+
+        Ok(Subject::new(kernel))
+    })
+    .await;
+    let claims = |outcome: &Outcome| -> Vec<nachalnik_eval::Resolution> {
+        outcome
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Resolved(resolution) => Some(resolution.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    // a reading that hears every yes as a no and every no as a yes
+    let contrary = |shape: &Reading, said: &str| match shape.read(said) {
+        Answer::Claim { yes, confidence } => Answer::Claim {
+            yes: !yes,
+            confidence,
+        },
+        other => other,
+    };
+
+    for outcome in &report.outcomes {
+        // read the way it was read, nothing moves: every figure is the steps' and only the steps'
+        assert_eq!(
+            outcome.reread(|shape, said| shape.read(said)),
+            *outcome,
+            "{}",
+            outcome.experiment
+        );
+
+        let again = outcome.reread(contrary);
+        let linked = claims(outcome)
+            .into_iter()
+            .zip(claims(&again))
+            .filter(|(before, after)| {
+                let Some(at) = before.asked else {
+                    assert_eq!(
+                        before, after,
+                        "{}: an unlinked claim moved",
+                        outcome.experiment
+                    );
+                    return false;
+                };
+                let (
+                    Step::Asked {
+                        question, answer, ..
+                    },
+                    Step::Asked { answer: now, .. },
+                ) = (&outcome.steps[at], &again.steps[at])
+                else {
+                    panic!(
+                        "{}: a claim names a step that is not a question",
+                        outcome.experiment
+                    );
+                };
+                // the question it names is the one the claim is the answer to, as read
+                assert_eq!(answer, &before.claimed, "{}", outcome.experiment);
+                if let (Kind::Counterfactual, Some(label)) = (&before.about, &before.label) {
+                    assert!(
+                        question.contains(label.as_str()),
+                        "{question} is not about {label}"
+                    );
+                }
+                assert_eq!(&after.claimed, now);
+                assert_eq!(after.happened, before.happened);
+                if let Answer::Claim { yes, .. } = before.claimed {
+                    assert_eq!(
+                        after.claimed.key().as_deref(),
+                        Some(if yes { "no" } else { "yes" })
+                    );
+                    // an outcome nobody could read makes every claim about it unmeasured
+                    assert_eq!(after.measured, before.measured);
+                    if before.measured {
+                        assert_ne!(after.correct, before.correct);
+                    }
+                }
+                true
+            })
+            .count();
+        // provenance's copies are its respondents, and nothing it scores is a subject's answer
+        match outcome.experiment.as_str() {
+            "provenance" => assert_eq!(linked, 0),
+            name => assert!(linked > 0, "{name} linked no claim to its question"),
+        }
+    }
 }
 
 #[tokio::test]

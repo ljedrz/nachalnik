@@ -14,11 +14,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     abreast::{Governor, Pace, together},
     error::{Error, ErrorKind, Result},
+    probe::{Answer, Reading},
     score::{
-        Deference, Depths, Family, Gain, Paired, RULES, Reached, Scores, Stage, Surface, unaided,
+        Deference, Depths, Faced, Family, Gain, Paired, RULES, Reached, Scores, Stage, Surface,
+        unaided,
     },
     subject::{Spend, Subject},
-    trial::{Check, Resolution, Step, Trial},
+    trial::{Check, Resolution, Step, Trial, spend_of},
 };
 
 /// What identifies the material an experiment used, so that two runs are known to be comparable
@@ -278,6 +280,25 @@ impl fmt::Display for Failure {
     }
 }
 
+/// What an outcome says about the run beside its steps.
+struct Header {
+    experiment: String,
+    instrument: Instrument,
+    model: Option<ModelInfo>,
+    params: Params,
+}
+
+impl From<&Trial> for Header {
+    fn from(trial: &Trial) -> Self {
+        Self {
+            experiment: trial.experiment().to_owned(),
+            instrument: trial.instrument().clone(),
+            model: trial.model().cloned(),
+            params: trial.params().clone(),
+        }
+    }
+}
+
 /// A [`Failure`] as a report may hold one.
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -301,9 +322,77 @@ impl From<Written> for Failure {
 impl Outcome {
     /// Reads a trial's record into a scored outcome.
     pub fn of(trial: &Trial, failed: Option<Failure>) -> Self {
-        let resolutions = trial.resolutions();
+        Self::over(Header::from(trial), trial.steps(), RULES, failed)
+    }
+
+    /// The same outcome with every answer the subject gave read again, and every figure worked
+    /// out again from what the new reading says.
+    ///
+    /// note: what a saved run is kept verbatim for. A reading that was too strict, or too lax, is
+    /// replaced and the run scored again without being paid for twice: each [`Step::Asked`] is
+    /// read again from what was said and the shape it was asked in, and each claim that names its
+    /// question through [`Resolution::asked`] takes the new answer. An answer that never arrived
+    /// stays [`Answer::Cut`](crate::Answer::Cut), since there is nothing to read.
+    ///
+    /// note: a claim with no question named keeps what it claimed, and so does everything the
+    /// run did with an answer while it was running - the next question written out of it, the
+    /// copies asked about it, what a subject was told about how it had done. A re-read changes
+    /// the reading, not the run. `rules` is kept: the claims are resolved as they were, and read
+    /// as they are now.
+    pub fn reread(&self, read: impl Fn(&Reading, &str) -> Answer) -> Self {
+        let mut steps = self.steps.clone();
+        for step in &mut steps {
+            if let Step::Asked {
+                shape,
+                said,
+                answer,
+                ..
+            } = step
+                && !answer.is_cut()
+            {
+                *answer = read(shape, said);
+            }
+        }
+        let answers: Vec<Option<Answer>> = steps
+            .iter()
+            .map(|step| match step {
+                Step::Asked { answer, .. } => Some(answer.clone()),
+                _ => None,
+            })
+            .collect();
+        for step in &mut steps {
+            if let Step::Resolved(resolution) = step
+                && let Some(Some(answer)) = resolution
+                    .asked
+                    .map(|at| answers.get(at).cloned().flatten())
+            {
+                *resolution = resolution.clone().reclaimed(answer);
+            }
+        }
+
+        Self::over(
+            Header {
+                experiment: self.experiment.clone(),
+                instrument: self.instrument.clone(),
+                model: self.model.clone(),
+                params: self.params.clone(),
+            },
+            steps,
+            self.rules,
+            self.failed.clone(),
+        )
+    }
+
+    /// Scores a record.
+    fn over(header: Header, steps: Vec<Step>, rules: u32, failed: Option<Failure>) -> Self {
+        let resolutions: Vec<Resolution> = steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Resolved(resolution) => Some(resolution.clone()),
+                _ => None,
+            })
+            .collect();
         let gain = Gain::over(&resolutions);
-        let steps = trial.steps();
         let stages = Stage::over(&resolutions);
 
         // every ordered pair on a ladder the experiment declared, earlier stage first, and only
@@ -330,18 +419,31 @@ impl Outcome {
             }
         }
 
-        let deference = Deference::over(&trial.faceds());
+        let faceds: Vec<Faced> = steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Faced { faced, .. } => Some(*faced),
+                _ => None,
+            })
+            .collect();
+        let deference = Deference::over(&faceds);
         let reached = Reached::over(&steps);
         let surface = Surface::over(unaided(&steps), crate::suite::dossier::surface);
 
         Self {
-            experiment: trial.experiment().to_owned(),
-            instrument: trial.instrument().clone(),
-            rules: RULES,
-            checks: trial.checks(),
-            model: trial.model().cloned(),
-            params: trial.params().clone(),
-            spend: trial.spend(),
+            experiment: header.experiment,
+            instrument: header.instrument,
+            rules,
+            checks: steps
+                .iter()
+                .filter_map(|step| match step {
+                    Step::Checked(check) => Some(check.clone()),
+                    _ => None,
+                })
+                .collect(),
+            model: header.model,
+            params: header.params,
+            spend: spend_of(&steps),
             scores: Scores::over(&resolutions),
             families: Family::over(&resolutions),
             depths: Depths::over(&resolutions),

@@ -76,14 +76,23 @@ impl Trial {
         self.steps.lock().push(step);
     }
 
-    /// Records a question and the answer read out of it.
-    pub fn asked(&self, probe: &Probe, said: &Said, answer: &Answer) {
-        self.asked_at(probe, said, answer, None);
+    /// Records a question and the answer read out of it, and hands back where in the record it
+    /// went, for [`Resolution::answering`].
+    pub fn asked(&self, probe: &Probe, said: &Said, answer: &Answer) -> usize {
+        self.asked_at(probe, said, answer, None)
     }
 
-    /// Records a question that belonged to a stage of the experiment.
-    pub fn asked_at(&self, probe: &Probe, said: &Said, answer: &Answer, stage: Option<&str>) {
-        self.record(Step::Asked {
+    /// Records a question that belonged to a stage of the experiment, and hands back where in the
+    /// record it went.
+    pub fn asked_at(
+        &self,
+        probe: &Probe,
+        said: &Said,
+        answer: &Answer,
+        stage: Option<&str>,
+    ) -> usize {
+        let mut steps = self.steps.lock();
+        steps.push(Step::Asked {
             question: probe.question.clone(),
             shape: probe.reading.clone(),
             said: said.text.clone(),
@@ -93,6 +102,8 @@ impl Trial {
             spend: said.spend,
             stage: stage.map(str::to_owned),
         });
+
+        steps.len() - 1
     }
 
     /// Records what the copies did, and how it compared with the control.
@@ -224,17 +235,21 @@ impl Trial {
 
     /// What the experiment cost, subject and copies together.
     pub fn spend(&self) -> Spend {
-        self.steps
-            .lock()
-            .iter()
-            .map(|step| match step {
-                Step::Asked { spend, .. } => *spend,
-                Step::Measured { observation, .. } => observation.spend,
-                Step::Acted(Act::Tested { spend, .. }) => *spend,
-                _ => Spend::default(),
-            })
-            .sum()
+        spend_of(&self.steps.lock())
     }
+}
+
+/// What a record cost, subject and copies together.
+pub(crate) fn spend_of(steps: &[Step]) -> Spend {
+    steps
+        .iter()
+        .map(|step| match step {
+            Step::Asked { spend, .. } => *spend,
+            Step::Measured { observation, .. } => observation.spend,
+            Step::Acted(Act::Tested { spend, .. }) => *spend,
+            _ => Spend::default(),
+        })
+        .sum()
 }
 
 /// One thing an experiment did.
@@ -262,7 +277,8 @@ pub enum Step {
         /// note: With the question, this is the whole of what was sent - `Probe::asked` is a
         /// function of the two - and it is also what lets a saved run be *re-read*: the answers
         /// are here verbatim, so a reading that was too strict, or too lax, can be replaced and
-        /// the run scored again without anybody paying for it twice.
+        /// the run scored again without anybody paying for it twice. That is
+        /// [`Outcome::reread`](crate::Outcome::reread).
         shape: Reading,
         /// What it said, verbatim.
         ///
@@ -601,6 +617,16 @@ pub struct Resolution {
     /// would buy an interval the design has not paid for.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<usize>,
+    /// Where in the record the claim was read, where it is one answer exactly as read: the index
+    /// of that [`Step::Asked`] among the outcome's steps.
+    ///
+    /// note: what lets [`Outcome::reread`](crate::Outcome::reread) carry a new reading of an
+    /// answer into the claim made of it. Left empty where the claim is something worked out from
+    /// an answer - a label mapped to the note it names, or several answers put together - because
+    /// a new reading of the words is not a new reading of that, and a claim linked to the answer
+    /// it came from would be replaced by the answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub asked: Option<usize>,
     /// What was compared with what, in one line.
     pub note: String,
 }
@@ -625,7 +651,31 @@ impl Resolution {
             material: None,
             label: None,
             session: None,
+            asked: None,
             note: String::new(),
+        }
+    }
+
+    /// Names the question the claim is the answer to, by where [`Trial::asked`] recorded it.
+    #[must_use]
+    pub fn answering(mut self, step: usize) -> Self {
+        self.asked = Some(step);
+        self
+    }
+
+    /// The same comparison, with the claim read again.
+    ///
+    /// note: what [`Resolution::new`] works out from the claim is worked out again - whether it
+    /// was measured, whether it was right, how sure it was - and nothing else is touched.
+    pub(crate) fn reclaimed(self, claimed: Answer) -> Self {
+        let measured = self.happened.is_readable() && !claimed.is_cut();
+
+        Self {
+            confidence: claimed.confidence(),
+            correct: measured && claimed.agrees_with(&self.happened),
+            measured,
+            claimed,
+            ..self
         }
     }
 

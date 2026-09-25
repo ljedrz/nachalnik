@@ -182,7 +182,7 @@ impl Experiment for Privilege {
         // or more practised than it is for the other
         let ours = self.own.battery(self.battery);
         let others = self.foreign.battery(self.battery);
-        let mut claims: Vec<(Kind, String, Answer)> = Vec::new();
+        let mut claims: Vec<(Kind, String, Answer, usize)> = Vec::new();
         for round in 0..ours.len().max(others.len()) {
             if let Some(label) = ours.get(round) {
                 let probe = counterfactual(
@@ -190,8 +190,8 @@ impl Experiment for Privilege {
                     &script::fill(script::EXCLUDED, &[("label", label)]),
                 );
                 let (said, claim) = subject.probe(&probe).await?;
-                trial.asked(&probe, &said, &claim);
-                claims.push((Kind::Counterfactual, (*label).to_owned(), claim));
+                let asked = trial.asked(&probe, &said, &claim);
+                claims.push((Kind::Counterfactual, (*label).to_owned(), claim, asked));
             }
             if let Some(label) = others.get(round) {
                 let probe = Probe::claim(script::fill(
@@ -209,8 +209,8 @@ impl Experiment for Privilege {
                     ],
                 ));
                 let (said, claim) = subject.probe(&probe).await?;
-                trial.asked(&probe, &said, &claim);
-                claims.push((Kind::Foreign, (*label).to_owned(), claim));
+                let asked = trial.asked(&probe, &said, &claim);
+                claims.push((Kind::Foreign, (*label).to_owned(), claim, asked));
             }
         }
 
@@ -229,7 +229,7 @@ impl Experiment for Privilege {
         note_drift(trial, &their_answer, &their_control);
         trial.measured(their_control.clone(), None);
 
-        for (kind, label, claim) in claims {
+        for (kind, label, claim, asked) in claims {
             let (notes, origin, ablation, control, dossier) = match kind {
                 Kind::Foreign => (&theirs, &their_origin, &there, &their_control, self.foreign),
                 _ => (&mine, &origin, &here, &control, self.own),
@@ -245,6 +245,7 @@ impl Experiment for Privilege {
 
             trial.resolve(
                 Resolution::new(kind, claim, change.as_answer())
+                    .answering(asked)
                     .about_item(id)
                     // the dossier the note came from, which is the foreign one on that arm: a
                     // surface feature is a property of the text, and the text is theirs

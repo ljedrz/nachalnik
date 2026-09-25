@@ -47,7 +47,7 @@ pub const RETESTED: &str = "retested";
 pub const TESTED: &str = "tested";
 
 /// What one question at one stage produced: the claim, and what the subject did before making it.
-type Claim = (&'static str, Answer, Vec<Act>);
+type Claim = (&'static str, Answer, usize, Vec<Act>);
 
 /// Asks the same counterfactual three ways: of a subject with no handles, of that same subject
 /// once it has been given a way to test, and of a fresh subject that has never been asked to
@@ -173,11 +173,11 @@ impl Instrumented {
                 ),
             };
             let (said, claim) = subject.probe(&probe).await?;
-            trial.asked_at(&probe, &said, &claim, Some(stage));
+            let asked = trial.asked_at(&probe, &said, &claim, Some(stage));
             let acts = journal
                 .map(|journal| trial.drain(journal))
                 .unwrap_or_default();
-            claims.push((*label, claim, acts));
+            claims.push((*label, claim, asked, acts));
         }
 
         Ok(claims)
@@ -321,9 +321,10 @@ impl Instrumented {
             trial.measured(observation, Some(change.clone()));
 
             for (stage, claims) in [(REPORTED, &reported), (RETESTED, &retested)] {
-                if let Some((_, claim, _)) = claims.iter().find(|(seen, ..)| seen == label) {
+                if let Some((_, claim, asked, _)) = claims.iter().find(|(seen, ..)| seen == label) {
                     trial.resolve(
                         Resolution::new(Kind::Counterfactual, claim.clone(), change.as_answer())
+                            .answering(*asked)
                             .about_item(id)
                             .about_note(*label)
                             .on_material(dossier.name)
@@ -347,15 +348,15 @@ impl Instrumented {
             let claimed = reported
                 .iter()
                 .find(|(seen, ..)| seen == label)
-                .and_then(|(_, claim, _)| said_yes(claim));
+                .and_then(|(_, claim, ..)| said_yes(claim));
             let restated = retested
                 .iter()
                 .find(|(seen, ..)| seen == label)
-                .and_then(|(_, claim, _)| said_yes(claim));
+                .and_then(|(_, claim, ..)| said_yes(claim));
             let showed = retested
                 .iter()
                 .find(|(seen, ..)| seen == label)
-                .and_then(|(_, _, acts)| showed_by(acts, id));
+                .and_then(|(.., acts)| showed_by(acts, id));
             trial.faced(
                 *label,
                 Some(dossier.name),
@@ -379,9 +380,10 @@ impl Instrumented {
             let elsewhere = elsewhere?;
             let there = elsewhere.against(&fresh_control);
             trial.measured(elsewhere, Some(there.clone()));
-            if let Some((_, claim, _)) = tested.iter().find(|(seen, ..)| seen == label) {
+            if let Some((_, claim, asked, _)) = tested.iter().find(|(seen, ..)| seen == label) {
                 trial.resolve(
                     Resolution::new(Kind::Counterfactual, claim.clone(), there.as_answer())
+                        .answering(*asked)
                         .about_item(fresh_id)
                         .about_note(*label)
                         .on_material(dossier.name)

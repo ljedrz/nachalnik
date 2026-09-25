@@ -167,7 +167,7 @@ impl Attribution {
         // a battery rather than one claim, and at three different offsets on purpose: an error
         // that is always the note's own ordinal is a different finding from an error that
         // wanders, and one claim cannot tell them apart
-        let mut placed: Vec<(String, Answer)> = vec![];
+        let mut placed: Vec<(String, Answer, usize)> = vec![];
         let mut wanted = vec![about.clone()];
         for label in [notes.first(), notes.get(notes.len() / 2), notes.last()]
             .into_iter()
@@ -181,8 +181,8 @@ impl Attribution {
         for label in wanted.iter().take(3).filter(|_| self.locating) {
             let location = Probe::item(script::fill(script::LOCATION, &[("label", label)]));
             let (said, located) = subject.probe(&location).await?;
-            trial.asked(&location, &said, &located);
-            placed.push((label.clone(), located));
+            let asked = trial.asked(&location, &said, &located);
+            placed.push((label.clone(), located, asked));
         }
 
         // --------------------------------------------------------------------------- predict
@@ -196,15 +196,15 @@ impl Attribution {
             }
         }
 
-        let mut claims: Vec<(String, Answer)> = Vec::new();
+        let mut claims: Vec<(String, Answer, usize)> = Vec::new();
         for label in &asked_about {
             let probe = counterfactual(
                 dossier.question,
                 &script::fill(script::EXCLUDED, &[("label", label)]),
             );
             let (said, claim) = subject.probe(&probe).await?;
-            trial.asked(&probe, &said, &claim);
-            claims.push((label.clone(), claim));
+            let asked = trial.asked(&probe, &said, &claim);
+            claims.push((label.clone(), claim, asked));
         }
 
         // ------------------------------------------------------------- intervene and observe
@@ -312,7 +312,7 @@ impl Attribution {
             }),
         );
 
-        for (label, located) in placed {
+        for (label, located, asked) in placed {
             let Some(id) = id_of(&notes, &label) else {
                 continue;
             };
@@ -323,6 +323,7 @@ impl Attribution {
                 + 1;
             trial.resolve(
                 Resolution::new(Kind::Location, located, Answer::Item(id))
+                    .answering(asked)
                     .about_item(id)
                     .because(format!(
                         "`{label}` is item {id}, and the {ordinal} note of {}",
@@ -331,12 +332,13 @@ impl Attribution {
             );
         }
 
-        for (label, claim) in claims {
+        for (label, claim, asked) in claims {
             let Some((_, id, change)) = measured.iter().find(|(seen, ..)| *seen == label) else {
                 continue;
             };
             trial.resolve(
                 Resolution::new(Kind::Counterfactual, claim, change.as_answer())
+                    .answering(asked)
                     .about_item(*id)
                     .on_material(dossier.name)
                     .about_note(&label)

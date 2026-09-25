@@ -40,6 +40,16 @@ minor bump may break you.
   comparable with a `2` everywhere but `repair`. `Report::surface` re-reads an old report's steps under the new rule for which claims the
   endpoint counts, but the claims themselves were resolved by the old rules.
 
+- **`Outcome::reread`: a saved run read again with another reading, and scored again.** Every
+  `Step::Asked` is read again from what was said and the shape it was asked in, every claim that
+  names its question takes the new answer, and every figure is worked out again from the new
+  steps. `Resolution::asked` is where a claim names it, set by `Resolution::answering` from the
+  index `Trial::asked` and `Trial::asked_at` now hand back, and set by every experiment in the suite
+  wherever the claim is one answer exactly as read. A claim worked out from an answer - the note
+  `attribution` scores a naming as, what copies said together - names none and keeps what it
+  claimed. A report written before this names no questions, so re-reading one reads its answers
+  again and moves none of its claims.
+
 ### changed
 
 - **Only the stages an experiment records as a ladder are paired.** `Outcome::of` paired every two

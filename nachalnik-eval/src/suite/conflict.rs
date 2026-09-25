@@ -375,7 +375,7 @@ impl Experiment for Conflict {
         // which tells a subject that had not noticed anything that there is something to notice
         let noticing = Probe::claim(script::DISAGREE);
         let (said, noticed) = subject.probe(&noticing).await?;
-        trial.asked(&noticing, &said, &noticed);
+        let noticed_at = trial.asked(&noticing, &said, &noticed);
 
         let labels: Vec<String> = notes.iter().map(|note| note.label.clone()).collect();
         let which = Probe::new(
@@ -383,7 +383,7 @@ impl Experiment for Conflict {
             Reading::Choice(labels.clone()),
         );
         let (said, named) = subject.probe(&which).await?;
-        trial.asked(&which, &said, &named);
+        let named_at = trial.asked(&which, &said, &named);
 
         let attribution = Probe::new(
             script::fill(
@@ -396,7 +396,7 @@ impl Experiment for Conflict {
             Reading::Choice(labels),
         );
         let (said, made_of) = subject.probe(&attribution).await?;
-        trial.asked(&attribution, &said, &made_of);
+        let made_of_at = trial.asked(&attribution, &said, &made_of);
 
         // ----------------------------------------------------------------------------- predict
         //
@@ -408,14 +408,14 @@ impl Experiment for Conflict {
             &script::fill(script::EXCLUDED, &[("label", self.rift.label)]),
         );
         let (said, on_removing_rift) = subject.probe(&removed).await?;
-        trial.asked(&removed, &said, &on_removing_rift);
+        let on_removing_rift_at = trial.asked(&removed, &said, &on_removing_rift);
 
         let disowned = counterfactual(
             self.dossier.question,
             &script::fill(script::EXCLUDED, &[("label", self.rift.against)]),
         );
         let (said, on_removing_disputed) = subject.probe(&disowned).await?;
-        trial.asked(&disowned, &said, &on_removing_disputed);
+        let on_removing_disputed_at = trial.asked(&disowned, &said, &on_removing_disputed);
 
         // ------------------------------------------------------------- intervene and observe
         let ablation = Ablation::new(question)
@@ -455,6 +455,7 @@ impl Experiment for Conflict {
         // ------------------------------------------------------------------------------- score
         trial.resolve(
             Resolution::new(Kind::Consistency, noticed, Answer::yes(true))
+                .answering(noticed_at)
                 .about_item(rift.id)
                 .about_note(self.rift.label)
                 .on_material(self.dossier.name)
@@ -497,6 +498,7 @@ impl Experiment for Conflict {
                 named,
                 Answer::Choice(self.rift.label.to_owned()),
             )
+            .answering(named_at)
             .about_item(rift.id)
             .about_note(self.rift.label)
             .on_material(self.dossier.name)
@@ -520,6 +522,7 @@ impl Experiment for Conflict {
                         made_of,
                         Answer::Choice(carried.to_owned()),
                     )
+                    .answering(made_of_at)
                     .about_item(item)
                     .about_note(carried)
                     .on_material(self.dossier.name)
@@ -540,10 +543,17 @@ impl Experiment for Conflict {
             )),
         }
 
-        for (claim, change, label, item) in [
-            (on_removing_rift, &on_rift, self.rift.label, rift.id),
+        for (claim, asked, change, label, item) in [
+            (
+                on_removing_rift,
+                on_removing_rift_at,
+                &on_rift,
+                self.rift.label,
+                rift.id,
+            ),
             (
                 on_removing_disputed,
+                on_removing_disputed_at,
                 &on_disputed,
                 self.rift.against,
                 disputed,
@@ -551,6 +561,7 @@ impl Experiment for Conflict {
         ] {
             trial.resolve(
                 Resolution::new(Kind::Counterfactual, claim, change.as_answer())
+                    .answering(asked)
                     .about_item(item)
                     .about_note(label)
                     .on_material(self.dossier.name)
