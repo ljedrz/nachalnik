@@ -1518,7 +1518,7 @@ impl Kernel {
         self.0.machine.lock().state.clone()
     }
 
-    /// Returns the tool calls that are waiting for a decision.
+    /// Returns the permission requests that are waiting for a decision.
     pub fn pending_permissions(&self) -> Vec<PermissionRequest> {
         self.0
             .machine
