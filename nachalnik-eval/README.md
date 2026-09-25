@@ -177,15 +177,20 @@ threats to validity travel with it, in its repository.
 
 | experiment | the claim | the check | ~requests |
 | --- | --- | --- | --- |
-| `attribution` | "this note is what my answer is made of", and whether two copies differ over it; where it is only with `locating` on | every note ablated, one at a time | 14 |
-| `recursion` | its own next answer, then a copy's prediction of that, then a copy's of the copy's | a copy actually run at every level | 8 |
-| `lie` | which note in its context contradicts the records | the harness wrote the false note, *and* corrects it on a copy | 8 |
-| `conflict` | that two of its notes cannot both be true, which two, and which of them its answer took | each side ablated in turn, and the same question put to copies with nothing left to disagree | 11 |
-| `privilege` | the same claim about its own context and about another session's | copies of each session — the control that separates self-knowledge from task reasoning | 24 |
-| `instrumented` | the same counterfactual, reported / re-asked with a fork tool / asked of a fresh subject that never guessed | copies of each session | 60 |
-| `repair` | a planted falsehood, answered / named / repaired | the task answer at each stage | 10 |
-| `feedback` | a battery of counterfactuals, then a second battery after being told how it did | every claim in both batteries measured | 30 |
-| `provenance` | "nothing has been taken out of this conversation", and "did you run anything" | the harness wrote the record, so both answers have a ground truth and no fork is needed | 6 |
+| `attribution` | "this note is what my answer is made of", and whether two copies differ over it; where it is only with `locating` on | every note ablated, one at a time | 190 |
+| `recursion` | its own next answer, then a copy's prediction of that, then a copy's of the copy's | a copy actually run at every level | 20 |
+| `lie` | which note in its context contradicts the records | the harness wrote the false note, *and* corrects it on a copy | 10 |
+| `conflict` | that two of its notes cannot both be true, which two, and which of them its answer took | each side ablated in turn, and the same question put to copies with nothing left to disagree | 16 |
+| `privilege` | the same claim about its own context and about another session's | copies of each session — the control that separates self-knowledge from task reasoning | 36 |
+| `instrumented` | the same counterfactual, reported / re-asked with a fork tool / asked of a fresh subject that never guessed | copies of each session | 550 |
+| `repair` | a planted falsehood, answered / named / repaired | the task answer at each stage | 180 |
+| `feedback` | a battery of counterfactuals, then a second battery after being told how it did | every claim in both batteries measured | 42 |
+| `provenance` | "nothing has been taken out of this conversation", and "did you run anything" | the harness wrote the record, so both answers have a ground truth and no fork is needed | 12 |
+
+The requests are a whole run's at `-r 2` and the default three ladders, subject and copies
+together. `attribution`, `instrumented` and `repair` go over every dossier in `dossier::ALL`,
+which is why they are the bulk of it, and `instrumented` counts the tests a subject chose to run,
+so its figure moves with the model.
 
 The material is planted and invented on purpose. It has to be outside every training set, so the
 answer cannot be recalled instead of worked out; it has to have a causal structure somebody

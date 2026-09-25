@@ -384,11 +384,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
   says what a screen holds.
 
-- **A table of what runs cost, out of date.** The `~requests` column of `nachalnik-eval`'s readme,
-  and the whole-suite figure in its `RUNNING.md`, count requests from before the experiments ran
-  every dossier in `dossier::ALL`. Both are copies of a real run, so what unblocks them is a fresh
-  run rather than an edit.
-
 - **Calling a partial ruleset confined.** On a kernel that enforces only part of the ruleset
   Landlock answers `Partial`, and below Linux 6.7 the part it drops is TCP: the files are held and
   the network is open. The permissions tab says "partly confined", SECURITY.md gives the kernel
