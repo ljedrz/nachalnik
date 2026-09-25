@@ -53,7 +53,7 @@ impl Read {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let named = arg(args, "path")?;
-        let path = match self.0.allows(named, Access::Reading) {
+        let path = match self.0.allows_under(named, Access::Reading, &self.2) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -370,7 +370,7 @@ impl Write {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let (named, content) = (arg(args, "path")?, arg(args, "content")?);
-        let path = match self.0.allows(named, Access::Writing) {
+        let path = match self.0.allows_under(named, Access::Writing, &self.1) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -399,7 +399,7 @@ impl Edit {
     ) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(args, "old")?, arg(args, "new")?);
         let named = arg(args, "path")?;
-        let path = match self.0.allows(named, Access::Writing) {
+        let path = match self.0.allows_under(named, Access::Writing, &self.1) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };

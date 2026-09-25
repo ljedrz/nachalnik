@@ -265,6 +265,70 @@ fn a_refusal_names_what_was_opened_up() {
     );
 }
 
+/// Under a refused `fs:write` the refusal calls the reach read-only, in the words the confinement
+/// uses for the same session.
+///
+/// note: through `tools::builtin`, because the policy reaches the refusal through the tool. `Reach`
+/// alone knows nothing of it, and called the working directory read-write while `shell` in the
+/// same session called it read-only.
+#[tokio::test]
+async fn a_refusal_under_a_refused_write_says_read_only() {
+    use kamchatka::{sandbox::Reach, tools::Subject};
+    use nachalnik::{Capability, OutputSink, Verdict, test::call};
+
+    let dir = common::workdir("named-read-only")
+        .canonicalize()
+        .expect("it exists");
+    let opened = PathBuf::from("/usr/share");
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
+    let tools = kamchatka::tools::builtin(
+        Shell {
+            workdir: dir.clone(),
+            extra: vec![opened.clone()],
+            readable: Vec::new(),
+            policy: policy.clone(),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        Reach {
+            workdir: dir.clone(),
+            extra: vec![opened.clone()],
+            readable: Vec::new(),
+            confined: true,
+        },
+        Limits::default(),
+    );
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` is one of them");
+
+    let refused = fs
+        .invoke(
+            &call(
+                "c1",
+                "fs",
+                serde_json::json!({ "action": "read", "path": "/etc/passwd" }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers")
+        .content
+        .to_text()
+        .into_owned();
+    let confined = Sandbox::of(&policy, dir.clone(), vec![opened], Vec::new(), false).to_string();
+    for said in [
+        format!("{} read-only", dir.display()),
+        "/usr/share read-only".to_owned(),
+    ] {
+        assert!(confined.contains(&said), "{confined}");
+        assert!(refused.contains(&said), "{refused}");
+    }
+    assert!(!refused.contains("read-write"), "{refused}");
+}
+
 /// `~` is not expanded, and the model is told so rather than left with `No such file or directory`.
 ///
 /// note: the same trap as `access(2)` under Landlock, in a second form. Nothing expands `~` for

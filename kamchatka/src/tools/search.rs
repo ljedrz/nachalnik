@@ -381,7 +381,11 @@ impl Grep {
             Ok(path) => path.unwrap_or(".").to_owned(),
             Err(why) => return Ok(ToolOutput::error(why)),
         };
-        let root = match self.0.reach.allows(&asked, Access::Reading) {
+        let root = match self
+            .0
+            .reach
+            .allows_under(&asked, Access::Reading, &self.0.policy)
+        {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
@@ -720,7 +724,11 @@ impl Glob {
             Ok(path) => path.unwrap_or(".").to_owned(),
             Err(why) => return Ok(ToolOutput::error(why)),
         };
-        let root = match self.0.reach.allows(&asked, Access::Reading) {
+        let root = match self
+            .0
+            .reach
+            .allows_under(&asked, Access::Reading, &self.0.policy)
+        {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };

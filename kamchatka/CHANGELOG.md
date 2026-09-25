@@ -95,6 +95,9 @@ minor bump may break you.
 
 ### fixed
 
+- **Under a refused `fs:write`, a refusal from `fs` calls the reach read-only.** It named the
+  working directory and the `--sandbox-allow` paths read-write while `shell` in the same session
+  called them read-only.
 - **A permission error in a command's own temporary directory is not blamed on the confinement.**
   The ruleset grants that directory what it grants the working directory, and the note under the
   status line called a file or a socket refused by its own permissions there "outside what this

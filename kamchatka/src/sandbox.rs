@@ -159,11 +159,7 @@ impl Sandbox {
         granted: bool,
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
-        // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
-        // working directory writable, because a shell that cannot write in it is not one anybody
-        // can work with
-        let writable =
-            policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny;
+        let writable = writes(policy);
         // note: and it reaches the paths `--sandbox-allow` opened, which stay readable. `fs` is
         // refused a write there under the same refusal, so a shell that could still write in them
         // was two tools disagreeing about one path - and the one that could write was the one
@@ -452,6 +448,16 @@ impl Sandbox {
     }
 }
 
+/// Whether the policy leaves the reach writable: a refusal of `write` reaches the shell too, and
+/// anything short of a refusal leaves the working directory writable, because a shell that cannot
+/// write in it is not one anybody can work with.
+///
+/// note: one function for [`Sandbox::of`] and [`Reach`]'s refusals, which describe the same session
+/// and should not come to two answers about it.
+fn writes(policy: &Careful) -> bool {
+    policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny
+}
+
 /// The deepest existing part of a path, resolved, with whatever is left over joined back on.
 ///
 /// note: a file about to be created has no canonical form of its own, and a path handed to
@@ -650,10 +656,18 @@ impl Reach {
     /// note: the spelling is [`Sandbox`]'s, down to the `read-write` after each path, because the
     /// two say the same thing about the same session and a reader should not have to notice which
     /// of them is talking.
-    fn range(&self) -> String {
+    ///
+    /// note: and it is spelled under what the policy makes of writing, as `Sandbox::of` is. A
+    /// refusal of `fs:write` makes every path here read-only for `shell`, and a refusal that went
+    /// on calling them read-write would be two rules for one session.
+    fn range(&self, writing: bool) -> String {
+        let written = match writing {
+            true => "read-write",
+            false => "read-only",
+        };
         std::iter::once(&self.workdir)
             .chain(self.extra.iter())
-            .map(|path| format!("{} read-write", path.display()))
+            .map(|path| format!("{} {written}", path.display()))
             .chain(
                 self.readable
                     .iter()
@@ -696,6 +710,23 @@ impl Reach {
     /// `./~`, a model refused `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG`
     /// instead, which is read while choosing.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
+        self.judged(path, doing, true)
+    }
+
+    /// [`Reach::allows`], with a refusal that says what `policy` makes of writing.
+    ///
+    /// note: what is allowed is the same either way. It is the policy that refuses a write, and it
+    /// does that before a call gets here; this is only the sentence a refusal names the reach in.
+    pub(crate) fn allows_under(
+        &self,
+        path: &str,
+        doing: Access,
+        policy: &Careful,
+    ) -> Result<PathBuf, String> {
+        self.judged(path, doing, writes(policy))
+    }
+
+    fn judged(&self, path: &str, doing: Access, writing: bool) -> Result<PathBuf, String> {
         // the whole string, not any component: `notes.txt~` is a real file and `./~` is how a
         // shell asks for a literal one, so both go through untouched and the message says so
         if path.starts_with('~') {
@@ -779,7 +810,7 @@ impl Reach {
                 "{}: outside what this session reaches, which is {}. Work where it does, or ask \
                  for this path to be opened up and say what you need it for.",
                 path.display(),
-                self.range()
+                self.range(writing)
             )),
         }
     }
