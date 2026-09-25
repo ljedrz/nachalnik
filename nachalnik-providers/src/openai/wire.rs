@@ -78,12 +78,21 @@ fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
 #[async_trait]
 impl Provider for OpenAiCompatible {
     fn info(&self) -> ModelInfo {
+        // note: one lock to a statement, here and in `respond`. A guard lives to the end of the
+        // statement that took it, so a struct literal reading three fields holds all three at once
+        // - and this runs on whatever draws the model's name every frame while `respond` runs on
+        // the turn. Held together in two orders, `context_limit` then `model` here and the reverse
+        // there, the two threads waited on each other for ever at the start of a request
+        let context_limit = *self.context_limit.lock();
+        let parameters = self.parameters.lock().clone();
+        let model = self.model.lock().clone();
+
         ModelInfo {
-            context_limit: *self.context_limit.lock(),
+            context_limit,
             tool_calling: true,
             reasoning: true,
-            parameters: self.parameters.lock().clone(),
-            ..ModelInfo::new(self.label.clone(), self.model.lock().clone())
+            parameters,
+            ..ModelInfo::new(self.label.clone(), model)
         }
     }
 
@@ -162,11 +171,10 @@ impl Provider for OpenAiCompatible {
         // own parameters gets the path it asked for: `render` puts those on last, deliberately
         let streaming = body["stream"] == json!(true);
 
-        let (endpoint, model, limit) = (
-            self.endpoint(),
-            self.model.lock().clone(),
-            *self.context_limit.lock(),
-        );
+        // one lock to a statement; see `info`
+        let endpoint = self.endpoint();
+        let model = self.model.lock().clone();
+        let limit = *self.context_limit.lock();
         let asking = Asking {
             model: &model,
             deltas: &deltas,

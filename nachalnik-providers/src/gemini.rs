@@ -360,11 +360,17 @@ impl Gemini {
 #[async_trait]
 impl Provider for Gemini {
     fn info(&self) -> ModelInfo {
+        // note: one lock to a statement, for the reason the OpenAI dialect's `info` gives: a
+        // struct literal holds every guard it takes until it is done, and `respond` takes the same
+        // two in the other order on another thread
+        let context_limit = *self.context_limit.lock();
+        let model = self.model.lock().clone();
+
         ModelInfo {
-            context_limit: *self.context_limit.lock(),
+            context_limit,
             tool_calling: true,
             reasoning: true,
-            ..ModelInfo::new("google", self.model.lock().clone())
+            ..ModelInfo::new("google", model)
         }
     }
 
@@ -466,11 +472,10 @@ impl Provider for Gemini {
         deltas: DeltaSink,
     ) -> Result<ModelResponse, BoxError> {
         let body = self.render(&request).expect("this provider always renders");
-        let (base, model, limit) = (
-            self.endpoint(),
-            self.model.lock().clone(),
-            *self.context_limit.lock(),
-        );
+        // one lock to a statement; see `info`
+        let base = self.endpoint();
+        let model = self.model.lock().clone();
+        let limit = *self.context_limit.lock();
         let asking = Asking {
             model: &model,
             deltas: &deltas,

@@ -60,6 +60,10 @@ minor bump may break you.
 
 ### fixed
 
+- **The screen no longer freezes at the start of a request, now and then.** Drawing the model's
+  name and the turn beginning its request took the provider's two locks in opposite orders, and
+  when they met the two threads waited on each other for ever: the screen stopped drawing and
+  taking keys, stuck at `asking`, until it was killed. The fix is in `nachalnik-providers`.
 - **An empty `ids` beside a `select` is a selector.** `context` refused a call naming items two
   ways whenever `ids` was given at all, so `look` with `ids: []` and `select: "all"` was refused as
   naming items twice when the list named none. A model that fills every optional list with `[]`
