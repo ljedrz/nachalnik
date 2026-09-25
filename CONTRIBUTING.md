@@ -224,10 +224,12 @@ it), drives the introspection tools through the real loop (`introspect`), serves
 socket and speaks the protocol to it (`remote/`, laid out the same way), runs real commands under a
 real ruleset (`sandbox`, which skips where Landlock does not hold) and works out the boundary
 without spawning anything (`boundary`, which runs wherever the suite does), puts `fs` against real
-files (`files` and `search`), and asks the policy its own questions rather than reading the answers
-off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
-key at every tab with nothing to act on, and both scrolled past their own ends - a frame that panics
-takes the session with it, which is the one failure this program cannot report.
+files (`files` and `search`), measures what `shell` keeps of a command's output against its ceiling
+as the process's peak memory (`ceiling`, a binary of its own so that no other test adds to the
+peak), and asks the policy its own questions rather than reading the answers off the screen
+(`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at every
+tab with nothing to act on, and both scrolled past their own ends - a frame that panics takes the
+session with it, which is the one failure this program cannot report.
 
 `headless` is the program with nothing drawing it, and half of it runs the *binary*: a settings
 file, a signal, a pty, and a session written where it said it was. The program builds its own
