@@ -76,6 +76,34 @@ fn counting_is_replaceable() {
     assert_eq!(kernel.budget().context_tokens, projected.div_ceil(2));
 }
 
+/// A tool definition is charged for its schema as well as for its name and description.
+///
+/// note: the schema is most of what a tool costs to send, and a counter that has no opinion
+/// about JSON prices it as content. Left out, the tool half of the budget is a line of text per
+/// tool.
+#[test]
+fn a_tool_is_charged_for_its_schema() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "path": { "type": "string", "description": "a file to read" },
+            "line": { "type": "integer", "description": "the line to start at" },
+        },
+        "required": ["path"],
+    });
+    let kernel = kernel();
+    kernel.add_tool(Arc::new(
+        ConstTool::new("read", "ok").with_schema(schema.clone()),
+    ));
+
+    let schema_alone = kernel.counter().count(&nachalnik::Content::json(schema));
+    assert!(
+        kernel.budget().tool_tokens > schema_alone,
+        "{} for the tool, {schema_alone} for its schema alone",
+        kernel.budget().tool_tokens
+    );
+}
+
 #[tokio::test]
 async fn the_projection_says_what_is_being_sent_and_what_is_not() {
     let kernel = kernel();
