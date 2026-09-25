@@ -26,7 +26,9 @@ use tokio::process::Command;
 const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
 
 /// Starts the Python server as a child process, or gives up quietly.
-async fn foreign(name: &str) -> Option<Server> {
+///
+/// note: `args` go to the script, which takes one: a file to write when it ends on its own.
+async fn foreign(name: &str, args: &[&std::ffi::OsStr]) -> Option<Server> {
     if std::process::Command::new("python3")
         .arg("--version")
         .output()
@@ -38,7 +40,7 @@ async fn foreign(name: &str) -> Option<Server> {
 
     let script = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/foreign_server.py");
     let mut command = Command::new("python3");
-    command.arg(script);
+    command.arg(script).args(args);
 
     match Server::spawn(name, command).await {
         Ok(server) => Some(server),
@@ -47,8 +49,8 @@ async fn foreign(name: &str) -> Option<Server> {
 }
 
 macro_rules! foreign {
-    ($name:expr) => {
-        match foreign($name).await {
+    ($name:expr $(, $arg:expr)*) => {
+        match foreign($name, &[$($arg.as_ref()),*]).await {
             Some(server) => server,
             None => return,
         }
@@ -154,13 +156,29 @@ async fn a_failure_the_server_reports_comes_back_as_an_error_result() {
     assert_eq!(failed.content.to_text(), "it went wrong over here");
 }
 
+/// A session that is told to end ends, and its server has gone by the time it says so.
+///
+/// note: the server is told by its input closing, and `shutdown` waits for it to finish. A
+/// connection that is only dropped kills it in the background instead, and a caller reading what
+/// the server left behind would find nothing there yet.
 #[tokio::test]
 async fn the_session_ends_when_it_is_told_to() {
-    let server = foreign!("py");
+    // removed first, so that one left by an earlier run cannot answer for this one
+    let ended = std::env::temp_dir().join(format!("nachalnik-mcp-ended-{}", std::process::id()));
+    let _ = std::fs::remove_file(&ended);
+
+    let server = foreign!("py", ended);
     let kernel = Kernel::new(Config::default());
     let installed = server.install(&kernel).await.unwrap();
 
     server.shutdown().await.expect("it goes quietly");
+    let said = std::fs::read_to_string(&ended);
+    let _ = std::fs::remove_file(&ended);
+    assert_eq!(
+        said.ok().as_deref(),
+        Some("ended"),
+        "the server ended on its own before `shutdown` returned"
+    );
 
     // the tools are still registered; the kernel has no idea the server is gone, which is why
     // taking them back out is something the caller does
