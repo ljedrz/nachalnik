@@ -678,7 +678,7 @@ impl App {
             shelved: BTreeMap::new(),
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
-            confinement: Confinement::Unsupported,
+            confinement: Confinement::Off,
             anchor: None,
             pending: Anchor::default(),
             failed: None,
@@ -1806,7 +1806,8 @@ impl App {
     /// Takes in one key press.
     #[cfg(feature = "tui")]
     pub async fn on_key(&mut self, key: KeyEvent) {
-        // windows reports both halves of every press; everywhere else this is already true
+        // a terminal speaking the kitty keyboard protocol reports releases and repeats as well,
+        // and each of those answered as a press is one key doing its work twice
         if key.kind != KeyEventKind::Press {
             return;
         }

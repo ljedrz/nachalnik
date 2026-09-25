@@ -29,11 +29,8 @@ use crate::{PATIENCE, Peer, quit, served, served_at};
 /// that tries to reach a model of its own, and the mode decision - a served run has no screen and
 /// is not a headless one either, and the version of that decision this replaced announced a pipe
 /// nobody had mentioned.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
-    // note: imported here rather than at the top, because `connect` is `#[cfg(unix)]` and so is
-    // every test that calls it. At the top it is an unresolved import on Windows
     use crate::connect;
 
     let base =
@@ -155,7 +152,6 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
 ///
 /// note: `cargo test -p kamchatka` builds the example beside the binary and a run of this suite
 /// alone may not, so the first assertion names that rather than leaving it to a spawn error.
-#[cfg(unix)]
 #[test]
 fn the_phone_example_writes_every_session_out() {
     use std::io::{BufRead as _, Read as _, Write as _};
@@ -662,7 +658,6 @@ async fn quitting_from_a_client_reads_as_an_ending() {
 /// `Stdout` is a `LineWriter` whatever it points at, so `println!` has already flushed by the time
 /// it returns; the flush added here on the strength of that reading failed nothing when it was
 /// taken away again, and was taken away.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
     let base = crate::common::endpoint(vec![crate::common::answer(
@@ -720,8 +715,6 @@ async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
 /// `--connect` at all short of killing it.
 ///
 /// note: a child process, because `ctrl+c` is a *signal* and there is no other way to send one.
-/// `#[cfg(unix)]` for the same reason `ctrl_c_stops_a_headless_run_rather_than_killing_it` is.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
     let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;

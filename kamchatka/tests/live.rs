@@ -1110,7 +1110,7 @@ async fn agent(
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
     let mut app = App::new(kernel, policy, provider, limits.clone(), outcomes);
-    app.confinement = kamchatka::sandbox::Confinement::Unsupported;
+    app.confinement = kamchatka::sandbox::Confinement::Off;
 
     Some((app, limits, finished))
 }

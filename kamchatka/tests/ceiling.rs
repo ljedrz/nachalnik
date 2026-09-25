@@ -5,8 +5,6 @@
 //! binary would add to - and the two here take turns, through `ONE_AT_A_TIME`, for the same
 //! reason.
 
-#![cfg(target_os = "linux")]
-
 mod common;
 
 use std::sync::Arc;

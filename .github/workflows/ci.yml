@@ -50,18 +50,29 @@ jobs:
       - name: references
         run: scripts/references.sh
 
-  # note: three platforms because the crates claim to work on three. `nachalnik` and
-  # `nachalnik-mcp` are pure Rust and ought to build anywhere; `kamchatka` says in its own readme
-  # that away from Linux it still builds and runs with the shell unconfined, and until this ran
-  # that sentence was a claim nothing checked. Its Landlock tests are `cfg(target_os = "linux")`
-  # and simply find nothing to do elsewhere, which is the correct amount of nothing
+  # note: four columns and two kinds of crate. The libraries - the runtime, the providers, the MCP
+  # bridge, the benchmark - are pure Rust and claim to build anywhere, so they are built and tested
+  # on Linux, macOS and Windows. `kamchatka` builds for Linux on x86_64 and aarch64 and nothing
+  # else - its `lib.rs` refuses any other target - so it is left out of the other two columns and
+  # tested on both of its own. The aarch64 column is the only thing that compiles the network
+  # gate's aarch64 filter at all, and its release binary is built on the same runner.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            kamchatka: true
+          - os: ubuntu-24.04-arm
+            kamchatka: true
+          - os: macos-latest
+            kamchatka: false
+            skip: --exclude kamchatka
+          - os: windows-latest
+            kamchatka: false
+            skip: --exclude kamchatka
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -69,7 +80,7 @@ jobs:
 
       # the tests turn every feature on, so nothing else exercises the default build
       - name: default features
-        run: cargo build --workspace --locked
+        run: cargo build --workspace ${{ matrix.skip }} --locked
       # `nachalnik` has to stand up with neither of its features, `kamchatka` without MCP, and the
       # bridge with no transport at all - which is a real configuration: `Server::connect` takes
       # one you opened yourself. One step each, so a failure says which
@@ -83,12 +94,14 @@ jobs:
       # and the settings file. It is the only configuration in which any of that is exercised
       # without one
       - name: kamchatka, no features
+        if: matrix.kamchatka
         run: cargo test -p kamchatka --no-default-features --locked
       # and the one the readme tells an embedder to build: somebody else's tools, no screen. It is
       # a third feature combination rather than either of the two above, and nothing else here
       # compiles it - which is how a settings file naming every key came to be unusable in exactly
       # this configuration, for a day, over an `mcp` key that asked for nothing
       - name: kamchatka, mcp and no screen
+        if: matrix.kamchatka
         run: cargo test -p kamchatka --no-default-features --features mcp --locked
       # a dialect each, the System One client alone, and the one nobody builds on purpose:
       # `waiting.rs` is shared, so a constant only one of them reads is dead code in the
@@ -106,7 +119,7 @@ jobs:
 
       - name: tests
         # the live suites skip themselves without a key, which is how they should behave here
-        run: cargo test --workspace --all-features --locked
+        run: cargo test --workspace ${{ matrix.skip }} --all-features --locked
       - name: the examples that need no key
         run: cargo run -p nachalnik --example transparency --features selectors --locked
       - name: the compacting example

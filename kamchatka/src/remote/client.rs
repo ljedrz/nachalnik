@@ -913,15 +913,10 @@ impl<'a> Client<'a> {
 /// Opens whichever kind of connection the address asks for.
 async fn connect(address: &str) -> Result<Connection, String> {
     match protocol::address(address)? {
-        #[cfg(unix)]
         Address::Unix(path) => tokio::net::UnixStream::connect(path)
             .await
             .map(Connection::Unix)
             .map_err(|e| format!("could not reach {path}: {e}")),
-        #[cfg(not(unix))]
-        Address::Unix(path) => Err(format!(
-            "`unix:{path}`: this is not a unix, so there are no socket files here"
-        )),
         Address::Tcp(host) => tokio::net::TcpStream::connect(host)
             .await
             .map(|stream| {
@@ -939,7 +934,6 @@ async fn connect(address: &str) -> Result<Connection, String> {
 /// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair of
 /// them is not object-safe together in a form `tokio::io::split` will take.
 enum Connection {
-    #[cfg(unix)]
     Unix(tokio::net::UnixStream),
     Tcp(tokio::net::TcpStream),
 }
@@ -948,7 +942,6 @@ enum Connection {
 macro_rules! either {
     ($self:ident, $it:ident => $call:expr) => {
         match std::pin::Pin::into_inner($self) {
-            #[cfg(unix)]
             Connection::Unix($it) => {
                 let $it = std::pin::Pin::new($it);
                 $call

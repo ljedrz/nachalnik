@@ -47,17 +47,10 @@ jobs:
   # a dispatch and a job that needs a skipped job is skipped too. This has to run in both cases:
   # on a tag it is the artifact, and on a dispatch it is the whole point
   #
-  # note: two targets, and each is its own platform's host - so nothing here cross-compiles and
-  # `build-tool: cargo` below is right for both. `macos-latest` has been arm64 since 2024, which
-  # is what makes `aarch64-apple-darwin` the native one; an Intel Mac is a `cargo install` away
-  # and is not worth a third column nobody here can test on.
-  #
-  # note: the Mac binary is **unsigned**, so Gatekeeper quarantines it on download and the first
-  # run is refused until `xattr -d com.apple.quarantine kamchatka`. Signing and notarising needs a
-  # paid Apple Developer account and two secrets in this repository, and neither exists. The
-  # readme says so beside the link rather than leaving somebody to meet it. What this does *not*
-  # claim is a confined shell: away from Linux `confine` answers `Unsupported` and the status line
-  # says so - see POSTPONED.md, which is where that half is written down.
+  # note: two targets, both static musl Linux, and each is built on a runner of its own
+  # architecture - so nothing here cross-compiles and `build-tool: cargo` below is right for both.
+  # `kamchatka` builds for Linux on x86_64 and aarch64 and nothing else; 0.15.1 was the last
+  # version with a Mac binary.
   binary:
     name: the ${{ matrix.what }} binary
     needs: create-release
@@ -71,12 +64,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - what: linux
+          - what: x86_64
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-          - what: mac
-            os: macos-latest
-            target: aarch64-apple-darwin
+          - what: aarch64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -87,16 +80,16 @@ jobs:
       # `musl-tools` is the compiler for it. `CC_` names the target explicitly rather than
       # trusting `cc`'s own guess at which compiler a musl target wants
       - name: the musl C toolchain
-        if: matrix.what == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y musl-tools
 
-      # note: on Linux, static musl rather than glibc, so that what a release attaches runs
-      # wherever the kernel is new enough rather than wherever the distribution is. The
-      # confinement survives it: the whole of `kamchatka`'s suite passes against this target,
-      # Landlock tests included, which is the one thing worth having checked before shipping a
-      # single file that claims to sandbox what it runs.
+      # note: static musl rather than glibc, so that what a release attaches runs wherever the
+      # kernel is new enough rather than wherever the distribution is. The confinement survives
+      # it: `kamchatka`'s suite has passed against the x86_64 target, Landlock tests included,
+      # which is the one thing worth having checked before shipping a single file that claims to
+      # sandbox what it runs. The aarch64 one is the same code, and CI's `ubuntu-24.04-arm` column
+      # runs the suite on that architecture under glibc.
       #
       # note: `build-tool: cargo` because the action would otherwise choose `cross` - the target
       # is not the host, and that is its rule - which means installing `cross` from source and
@@ -106,6 +99,7 @@ jobs:
       - uses: taiki-e/upload-rust-binary-action@v1
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
         with:
           bin: kamchatka
           package: kamchatka

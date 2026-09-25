@@ -21,7 +21,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
 scripts/references.sh                       # every file and test the prose names still exists
-scripts/windows.sh                          # the configurations CI builds on Windows, checked from here
+scripts/windows.sh                          # the libraries as CI builds them on Windows
 ```
 
 These are pre-commit checks and not just CI steps, and the `cargo doc` one is the one that gets
@@ -34,12 +34,14 @@ the method is `invoke` and arrives through a trait, so there is nothing on the t
 name off and nothing but rustdoc to say so. And a public comment linking to a `pub(super)` item,
 which resolves for everyone in the module and for nobody on docs.rs.
 
-`scripts/windows.sh` checks for Windows from here, in the configurations CI's Windows job builds,
-with `cargo xwin` supplying the Microsoft CRT and SDK that `ring`'s C needs. It catches what the
-compiler sees: a helper whose only callers are `#[cfg(unix)]` is dead code there, and under
-`-D warnings` a failed build. It cannot catch what Windows does differently at run time - a
-refused connection to a closed local port takes about two seconds there rather than nothing - so a
-test that waits on the operating system waits for the thing it is about, not for a fixed time.
+`scripts/windows.sh` checks the libraries for Windows from here, in the configurations CI's Windows
+job builds, with `cargo xwin` supplying the Microsoft CRT and SDK that `ring`'s C needs. `kamchatka`
+is not among them: it builds for Linux on x86_64 and aarch64 and refuses any other target in its
+`lib.rs`. It catches what the compiler sees: a helper whose only callers are `#[cfg(unix)]` is dead
+code there, and under `-D warnings` a failed build. It cannot catch what Windows does differently at
+run time - a refused connection to a closed local port takes about two seconds there rather than
+nothing - so a test that waits on the operating system waits for the thing it is about, not for a
+fixed time.
 
 `scripts/references.sh` is the same net for the prose rustdoc does not read: a plain backticked
 name in a comment or a document. A file has to be in the repository, and a test's name, or a path
@@ -219,12 +221,12 @@ calls, the only way to check the handles without paying a model to use them.
 `kamchatka/tests/` draws the screen and reads the characters back (`screen/`, one binary -
 `harness.rs` is the terminal every other file sits at, and they are named for what they read off
 it), drives the introspection tools through the real loop (`introspect`), serves a session over a
-socket and speaks the protocol to it (`remote/`, laid out the same way), runs real commands under
-a real ruleset (`sandbox`, Linux only) and works out the boundary without spawning anything
-(`boundary`, which is the half that runs on every unix), puts `fs` against real files (`files`
-and `search`), and asks the policy its own questions rather than reading the answers off the
-screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every key at
-every tab with nothing to act on, and both scrolled past their own ends - a frame that panics
+socket and speaks the protocol to it (`remote/`, laid out the same way), runs real commands under a
+real ruleset (`sandbox`, which skips where Landlock does not hold) and works out the boundary
+without spawning anything (`boundary`, which runs wherever the suite does), puts `fs` against real
+files (`files` and `search`), and asks the policy its own questions rather than reading the answers
+off the screen (`policy`). `edges` is the sweep: every tab at every window size from 1x1 up, every
+key at every tab with nothing to act on, and both scrolled past their own ends - a frame that panics
 takes the session with it, which is the one failure this program cannot report.
 
 `headless` is the program with nothing drawing it, and half of it runs the *binary*: a settings
@@ -421,10 +423,10 @@ for, so there is nothing for it to agree with.
   number - and the bump commits before it are deliberately left untagged.
 - **One of those tags builds a binary.** `kamchatka-v*` starts `.github/workflows/release.yml`,
   which creates the GitHub release with that version's section of `kamchatka/CHANGELOG.md` as its
-  body and attaches a static `x86_64-unknown-linux-musl` build and an unsigned
-  `aarch64-apple-darwin` one, each with a `sha256` beside it. The other crates are libraries and
-  their artifact is the crates.io tarball, which the `package` job already checks; the workspace
-  `v*` tag builds nothing, since it would be the same binary under a name that does not say so.
+  body and attaches static `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl` builds, each
+  with a `sha256` beside it. The other crates are libraries and their artifact is the crates.io
+  tarball, which the `package` job already checks; the workspace `v*` tag builds nothing, since it
+  would be the same binary under a name that does not say so.
 
   **Two files in the archive: the binary and `kamchatka.json`.** The settings file is worth more
   beside the binary than on a web page, because `cargo install` copies no files and an archive is

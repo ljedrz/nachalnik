@@ -177,9 +177,8 @@ async fn what_write_put_there_is_what_read_hands_back() {
         json!({ "path": "notes/new.md", "content": "one\n" }),
     )
     .await;
-    // the name a component at a time, because the answer carries the path as the operating system
-    // spells it: `notes\new.md` under a `\\?\D:\...` prefix on Windows, where this asked for
-    // `notes/new.md` and failed on the separator rather than on anything it is about
+    // the name a component at a time, because the answer carries the path resolved, with the
+    // working directory in front of it
     for part in ["notes", "new.md"] {
         assert!(
             missing.contains(part),
@@ -226,7 +225,6 @@ async fn a_file_past_what_is_kept_is_refused_with_a_way_to_read_part_of_it() {
 /// note: a new inode is what a rename leaves and an open that truncates does not, which is how
 /// the test can see that the file was never short: a full disk or a killed process between the
 /// truncation and the last byte is not something a test can arrange.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_write_replaces_the_file_rather_than_emptying_it_first() {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -278,7 +276,6 @@ async fn a_write_replaces_the_file_rather_than_emptying_it_first() {
 ///
 /// note: a rename would give this name a new file and leave the other name holding the old
 /// contents, which reads as the write not having happened to whoever looks there.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_file_with_another_link_is_written_where_it_is() {
     use std::os::unix::fs::MetadataExt;
@@ -316,7 +313,6 @@ async fn a_file_with_another_link_is_written_where_it_is() {
 /// note: both are what a rename changed. The new file is made in the directory, which the
 /// read-only file does not protect, so it stepped round the refusal; and its name is longer than
 /// the file's, which `NAME_MAX` can refuse where the file's own name was fine.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_read_only_file_is_refused_and_a_long_name_is_written() {
     use std::os::unix::fs::PermissionsExt;
@@ -350,7 +346,6 @@ async fn a_read_only_file_is_refused_and_a_long_name_is_written() {
 /// note: each call on a thread and a runtime of its own, because what is being tested for blocks a
 /// thread rather than awaiting: a timeout on the same runtime would never get to fire, and the
 /// failure would be a suite that hangs rather than a test that says so.
-#[cfg(unix)]
 #[test]
 fn a_pipe_is_refused_rather_than_waited_on() {
     let dir = scratch("files-pipe");

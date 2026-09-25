@@ -63,14 +63,12 @@ pub struct Server {
 
 /// Whichever kind of socket this is listening on.
 enum Listener {
-    #[cfg(unix)]
     Unix(tokio::net::UnixListener),
     Tcp(tokio::net::TcpListener),
 }
 
 /// Whichever kind of connection just arrived.
 enum Incoming {
-    #[cfg(unix)]
     Unix(tokio::net::UnixStream),
     Tcp(tokio::net::TcpStream),
 }
@@ -146,7 +144,6 @@ impl Server {
     /// takes the file away, so a `SIGKILL` leaves a path every later `--serve` refuses for ever -
     /// and connecting to it distinguishes "a session is using this" from "nothing is" without
     /// taking anything away from anybody.
-    #[cfg(unix)]
     async fn unix(path: &str) -> Result<Self, String> {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
@@ -189,18 +186,6 @@ impl Server {
         })
     }
 
-    /// Not here.
-    ///
-    /// note: `tokio::net::UnixListener` is `cfg(unix)`, and this says so where somebody typed the
-    /// address rather than where the crate would otherwise have failed to compile.
-    #[cfg(not(unix))]
-    async fn unix(path: &str) -> Result<Self, String> {
-        Err(format!(
-            "`unix:{path}`: this is not a unix, so there are no socket files here - use \
-             `tcp:127.0.0.1:PORT`"
-        ))
-    }
-
     /// A port, and only ever a loopback one.
     async fn tcp(host: &str) -> Result<Self, String> {
         let address = tokio::net::lookup_host(host)
@@ -232,7 +217,6 @@ impl Server {
     /// is a reasonable thing to ask for and only the socket knows which port it got.
     pub fn address(&self) -> String {
         match &self.listener {
-            #[cfg(unix)]
             Listener::Unix(listener) => listener
                 .local_addr()
                 .ok()
@@ -263,7 +247,6 @@ impl Server {
     /// properties of a connection, so every accepted one has to be told.
     async fn accept(&self) -> std::io::Result<Incoming> {
         match &self.listener {
-            #[cfg(unix)]
             Listener::Unix(listener) => listener.accept().await.map(|(it, _)| Incoming::Unix(it)),
             Listener::Tcp(listener) => listener.accept().await.map(|(it, _)| {
                 super::tuned(&it);
@@ -654,7 +637,6 @@ impl Serving {
         // list that only grows
         while self.connections.try_join_next().is_some() {}
         match arrived.0 {
-            #[cfg(unix)]
             Incoming::Unix(stream) => {
                 self.connections.spawn(serve(client, stream, kernel, asks));
             }
@@ -718,10 +700,6 @@ impl Drop for Server {
     /// listener is a path every later client is refused at and every later `--serve` refuses as
     /// stale. There is nothing to do for a port.
     fn drop(&mut self) {
-        // there are no socket files off unix, so nothing is ever put here to take away
-        #[cfg(not(unix))]
-        let _ = &self.unlink;
-        #[cfg(unix)]
         if let Some((path, dev, ino)) = &self.unlink {
             use std::os::unix::fs::MetadataExt as _;
 

@@ -38,12 +38,6 @@ const HEARTBEAT: Duration = Duration::from_millis(120);
 /// here, because telling those apart means knowing what the command was and this program would
 /// be guessing. A guess that colours a working pipeline red, or a real failure yellow, is worse
 /// than the number itself.
-///
-/// note: the third is narrower off unix, where there are no signals to report. A Windows shell
-/// hands a killed child back to a native parent as an ordinary exit code - `kill -9` arrives as
-/// `2304` - so a command that was killed reads as one that failed, and it is the same guess to
-/// say otherwise. What is left yellow there is the stop this program does itself, which is not
-/// the platform's to report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Exit {
     /// The command finished and reported success.
@@ -422,7 +416,6 @@ impl Tool for Shell {
 
         // a group of its own, so that stopping the command can stop everything the command
         // started; see `stop`
-        #[cfg(unix)]
         command.process_group(0);
         // and killed if this call is dropped before it is over; see `Running`
         command.kill_on_drop(true);
@@ -848,7 +841,6 @@ impl Running {
 
 impl Drop for Running {
     fn drop(&mut self) {
-        #[cfg(unix)]
         if let Some(pid) = self.group {
             // `std` rather than tokio's, because a drop cannot wait on a future and this may be
             // the last thing the runtime does
@@ -874,12 +866,11 @@ impl Drop for Running {
 /// directory with nothing left that will ever report them. Somebody who pressed escape has been
 /// told it stopped.
 ///
-/// note: through `sh`, because signalling a *group* is not in `std` and this workspace has no
-/// `unsafe` and no libc to reach past it with. It is the same `sh` the tool is built on, so it
-/// brings nothing new into the program. The group is the child's own - `process_group(0)` asked
+/// note: through `sh`, because signalling a *group* is not in `std`, and this crate keeps its
+/// `unsafe` to [`crate::gate`]. It is the same `sh` the tool is built on, so it brings nothing new
+/// into the program. The group is the child's own - `process_group(0)` asked
 /// for that at spawn - and the child has not been waited on yet, so the identifier cannot yet mean
 /// anybody else.
-#[cfg(unix)]
 async fn stop(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         let _ = tokio::process::Command::new("sh")
@@ -929,12 +920,6 @@ fn keep(
     }
 }
 
-/// The same, where there are no process groups.
-#[cfg(not(unix))]
-async fn stop(child: &mut tokio::process::Child) {
-    let _ = child.start_kill();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -956,7 +941,7 @@ mod tests {
         assert!(said.contains("is not something `shell` does"), "{said}");
     }
 
-    /// A shell with no confinement, in a directory every platform has.
+    /// A shell with no confinement, in the temporary directory.
     fn unconfined() -> Shell {
         Shell {
             policy: Arc::new(Careful::new()),
@@ -969,10 +954,6 @@ mod tests {
     }
 
     /// Runs one command, and gives up on it rather than on the suite.
-    ///
-    /// note: `#[cfg(unix)]` because every test that calls it is, and under the `RUSTFLAGS` this
-    /// workspace builds with, a helper nothing calls fails the build on Windows
-    #[cfg(unix)]
     async fn ran(command: &str) -> String {
         let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
         tokio::time::timeout(
@@ -993,7 +974,6 @@ mod tests {
     /// and a group of its own is not sent the terminal's hangup, so without `Running` the
     /// subshell here, which the shell started, finishes and writes the file after nobody is
     /// watching.
-    #[cfg(unix)]
     #[tokio::test]
     async fn a_dropped_call_takes_its_command_with_it() {
         let dir = std::env::temp_dir().join(format!("kamchatka-dropped-{}", std::process::id()));
@@ -1025,7 +1005,6 @@ mod tests {
     /// note: more than a pipe holds follows the byte that is not UTF-8, because that is what makes
     /// this a hang rather than a loss: a reader that stops at the first such line leaves the
     /// command behind it blocked writing into a full pipe that nobody is reading.
-    #[cfg(unix)]
     #[tokio::test]
     async fn output_that_is_not_text_is_read_to_the_end() {
         let said = ran(
@@ -1055,7 +1034,6 @@ mod tests {
     /// note: read to the end rather than stopped at, which the exit status shows: `head` finishes
     /// and the command succeeds, where a reader that stopped reading would leave it blocked on a
     /// full pipe.
-    #[cfg(unix)]
     #[tokio::test]
     async fn output_past_the_ceiling_is_read_and_not_kept() {
         let past = KEPT + 1_000_000;
@@ -1085,7 +1063,6 @@ mod tests {
     /// note: the background job inherits standard error, and standard output unless it is sent
     /// elsewhere, so the pipes stay open for as long as it runs. A call that waits for the end of
     /// them never answers for a server started with `&`.
-    #[cfg(unix)]
     #[tokio::test]
     async fn a_command_that_leaves_something_running_still_answers() {
         let said = ran("sleep 30 > /dev/null & echo started").await;
@@ -1110,16 +1087,6 @@ mod tests {
     ///
     /// note: `kill -9 $$` for the third, because a signal is the only way to leave a status with
     /// no code in it, and SIGKILL is the one a shell cannot decline.
-    ///
-    /// note: and unix-only, because that status does not exist elsewhere. The `sh` on a Windows
-    /// runner is git's, and it reports a signalled child to a native parent as an ordinary exit
-    /// code - `kill -9 $$` comes back `2304`, which is `9 << 8` - so `ExitStatus::code` is `Some`
-    /// there and the tool reads a failure. It is not wrong to: telling a signal wearing an exit
-    /// code from a command that really exited `2304` means knowing what the command was, which is
-    /// the reason `grep`'s `1` is not a fourth `Exit` either. So this case asserts something true
-    /// of one platform, and is run on that one. What is left uncovered off unix is `Stopped`
-    /// through the interrupt - the tests that press the button are `#[cfg(unix)]` in
-    /// `tests/headless.rs` too, for want of a way to send the press.
     #[tokio::test]
     async fn what_a_command_reported_is_what_its_first_line_says() {
         let shell = unconfined();
@@ -1127,7 +1094,6 @@ mod tests {
         for (command, meant) in [
             ("exit 0", Exit::Ok),
             ("exit 3", Exit::Failed),
-            #[cfg(unix)]
             ("kill -9 $$", Exit::Stopped),
         ] {
             let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));

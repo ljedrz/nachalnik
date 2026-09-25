@@ -812,7 +812,6 @@ fn a_snapshot_named_with_a_path_is_not_carried_on_from() {
 
 /// A read-only path inside the working directory is refused, because nothing could hold it
 /// read-only: the shell's confinement only ever adds to what it may do.
-#[cfg(target_os = "linux")]
 #[test]
 fn a_read_only_path_inside_the_working_directory_is_refused() {
     let dir = common::scratch("read-only-inside");

@@ -368,7 +368,6 @@ async fn quit(at: &str) {
 ///
 /// note: no model, no key and no endpoint. A client wires nothing up, and the day this needs one
 /// again is the day `--connect` has stopped being a client.
-#[cfg(unix)]
 fn connect(socket: &std::path::Path, typed: &[u8]) -> std::process::Output {
     use std::io::Write as _;
 

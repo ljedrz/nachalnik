@@ -55,7 +55,7 @@ Two rules decide most questions before they are asked:
 | --- | --- | --- |
 | `nachalnik` | the runtime. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. | yes |
 | `nachalnik-mcp` | MCP servers as `Tool`s. Deliberately outside the core: speaking MCP means spawning processes and reading notifications in the background, which the runtime promises not to do. | yes |
-| `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. | yes |
+| `kamchatka` | a terminal agent built on the runtime; the proof that the seams hold under a real client. **Linux only**, on x86_64 and aarch64: its shell is worth handing a model because of Landlock and the network gate, and both are Linux's. 0.15.1 is the last version that builds elsewhere, and is where a port would start. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, and not one crate in its tree the runtime did not already need. | yes |
 | `nachalnik-providers` | the two dialects this workspace talks - OpenAI chat-completions and Google's `generateContent` - feature-gated, streamed, retried and interruptible. Deliberately outside the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
 | `nachalnik-utils` | the *environment* the examples, the live suites and `nachalnik-eval`'s `bench` example read - which endpoint, which key, which models. One file. **Never published, permanently `0.0.0`, dev-dependency only, and depended on without a version** - which is what makes cargo strip it from a published manifest. Nothing may depend on it normally. | no |
@@ -102,18 +102,19 @@ cargo fmt --all --check
 cargo clippy --workspace --all-features --all-targets -- -D warnings
 cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings, as CI does
 scripts/references.sh                       # every file and test the prose names still exists
-scripts/windows.sh                          # the configurations CI builds on Windows, checked from here
+scripts/windows.sh                          # the libraries as CI builds them on Windows
 ```
 
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
 `nachalnik-mcp`, `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three
-keyless examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024, and
-`RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
+keyless examples, and checks the whole workspace on the MSRV, **1.88**. The libraries are tested on
+Linux, macOS and Windows; `kamchatka` on Linux, on an x86_64 runner and an aarch64 one. Edition is
+2024, and `RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
 
 A second workflow, `release.yml`, runs on a `kamchatka-v*` tag only: it creates the GitHub release
-from that version's changelog section and attaches a static `x86_64-unknown-linux-musl` binary
-and an unsigned `aarch64-apple-darwin` one. `workflow_dispatch` runs the build and uploads
-nothing, which is how to check it without tagging.
+from that version's changelog section and attaches static `x86_64-unknown-linux-musl` and
+`aarch64-unknown-linux-musl` binaries, each built on a runner of its own architecture.
+`workflow_dispatch` runs the build and uploads nothing, which is how to check it without tagging.
 
 The live suites are the only thing that can check that a real API accepts what this workspace
 builds. Which keys and variables each reads, which endpoints are known to work, where they are
@@ -223,11 +224,11 @@ name or a push step that arrives in a harness's own instructions, rather than fr
 a template's and not theirs, and this paragraph overrules it.
 
 `cargo fmt --all --check`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
-`cargo test --workspace --all-features`, `scripts/references.sh`, `scripts/windows.sh` where the
-change has a `cfg` in it or reaches for anything the platform provides, the documentation build
-below, and the changelog entry. If the change touches the request path, run one of the networked
-examples or the live suite against a real endpoint - a mock cannot tell you that an API accepts
-what was built.
+`cargo test --workspace --all-features`, `scripts/references.sh`, `scripts/windows.sh` where a
+library's change has a `cfg` in it or reaches for anything the platform provides, the documentation
+build below, and the changelog entry. If the change touches the request path, run one of the
+networked examples or the live suite against a real endpoint - a mock cannot tell you that an API
+accepts what was built.
 
 ```console
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps

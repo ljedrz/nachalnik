@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Checks the workspace for Windows from here, in the configurations CI's Windows job builds. What
+# Checks the libraries for Windows from here, in the configurations CI's Windows job builds. What
 # it catches is what the compiler sees: a helper whose only callers are `#[cfg(unix)]`, an import
 # only a unix path reaches, a type that does not exist there. What it does not catch is anything
 # Windows does differently at run time - a refused connection there takes seconds rather than
@@ -33,12 +33,12 @@ check() {
     fi
 }
 
-check --workspace
-check --workspace --all-features --all-targets
+# `kamchatka` is not among them: it builds for Linux and nothing else, and says so to any other
+# target in its own `lib.rs`. What this checks is the libraries, which claim to build anywhere
+check --workspace --exclude kamchatka
+check --workspace --exclude kamchatka --all-features --all-targets
 check -p nachalnik --no-default-features
 check -p nachalnik-mcp --no-default-features
-check -p kamchatka --no-default-features --all-targets
-check -p kamchatka --no-default-features --features mcp --all-targets
 check -p nachalnik-providers --all-targets --no-default-features --features gemini
 check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance
 check -p nachalnik-providers --all-targets --no-default-features --features system1

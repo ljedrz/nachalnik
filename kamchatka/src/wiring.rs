@@ -513,7 +513,7 @@ impl Setup {
         // can be offered later and it has to be the same shell. Deciding this from the starting
         // list would make `/tools toggle shell` in a session that started without one an unconfined
         // shell, with nothing on the screen saying so
-        let mut confinement = sandbox::Confinement::Unsupported;
+        let mut confinement = sandbox::Confinement::Off;
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
         if building {
             let program =
@@ -731,7 +731,6 @@ pub fn record(app: &App) -> Result<Recorded, String> {
     let mut dir = std::env::temp_dir();
     dir.push("kamchatka");
     std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -867,7 +866,6 @@ mod tests {
     /// note: `exists` follows a link and answers no for one to a file that is not there, and the
     /// write after it follows the link too - so a link left at a predictable name would be a file
     /// created wherever it pointed.
-    #[cfg(unix)]
     #[test]
     fn a_link_at_the_snapshots_name_is_not_written_through() {
         let dir = std::env::temp_dir().join("kamchatka-unclaimed-link");

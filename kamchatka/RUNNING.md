@@ -944,10 +944,10 @@ say what it needs it for.
 
 ## 🌐 the network, when a command tries
 
-On Linux, where the shell is confined, a command is asked about the network when it opens an
-internet socket rather than for what it is called. The child that confines itself installs a
-seccomp filter after the ruleset, and the filter holds every `socket()` for `AF_INET` or `AF_INET6`
-until this program answers — from `net:reach` where it says `allow` or `deny`, and from you where it
+Where the shell is confined, a command is asked about the network when it opens an internet socket
+rather than for what it is called. The child that confines itself installs a seccomp filter after
+the ruleset, and the filter holds every `socket()` for `AF_INET` or `AF_INET6` until this program
+answers — from `net:reach` where it says `allow` or `deny`, and from you where it
 says `ask`, once per command. So `--allow exec:run` runs `git status` without a question and asks
 about `python3 fetch.py` the moment it looks a name up, which reading the command could never have
 told apart.
@@ -971,8 +971,8 @@ holding it. `examples/browser.html` draws either kind in the same panel.
 and a refused lookup comes back from most programs as `Temporary failure in name resolution`,
 which is why the tool result says what it was.
 
-Where the filter cannot be installed — not Linux, not x86_64 or aarch64, `--no-sandbox`, or a
-kernel that cannot hold a call — the program goes back to reading the command: a short list of
+Where the filter cannot be installed — `--no-sandbox`, or a kernel that cannot hold a call — the
+program goes back to reading the command: a short list of
 programs whose point is the network, a question about them before they run, and UDP not refused.
 The permissions tab ends its shell line with `network gated` or `network not gated`, so which one
 a session has is on the screen rather than something to work out.

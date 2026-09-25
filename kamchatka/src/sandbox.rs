@@ -110,7 +110,6 @@ pub enum Network {
 
 impl Network {
     /// Whether Landlock is asked to refuse TCP.
-    #[cfg(target_os = "linux")]
     fn refuses_tcp(self) -> bool {
         matches!(self, Self::NoTcp | Self::Shut)
     }
@@ -377,7 +376,7 @@ impl Sandbox {
 /// note: `None` where that bound runs out with a link still in hand and no link seen twice. Taken
 /// for a name with nothing behind it, the last link was allowed as a file about to be made in the
 /// directory it sits in, and the open then followed the rest of the chain wherever it went - out
-/// of the directory, on a platform with no `openat2` to stop it there. A loop is not that: every
+/// of the directory, on a kernel with no `openat2` to stop it there. A loop is not that: every
 /// link in it has been seen, it leads nowhere, and the open refuses it, so it is answered where it
 /// is - inside or outside, like any other name.
 fn resolve(path: &Path) -> Option<PathBuf> {
@@ -692,8 +691,8 @@ impl Reach {
     /// path swapped for a link in between would be followed wherever the link pointed. On Linux
     /// this opens with `openat2` and `RESOLVE_BENEATH` from the directory the path was allowed
     /// under, and the kernel will not let the open leave that directory whatever is on disk by
-    /// then, so a swap is refused rather than followed. Elsewhere, and on a kernel that has no
-    /// `openat2`, it is an ordinary open and the window is the one SECURITY.md describes.
+    /// then, so a swap is refused rather than followed. On a kernel that has no `openat2` it is an
+    /// ordinary open and the window is the one SECURITY.md describes.
     ///
     /// note: `path` is what `allows` returned, which is resolved, so a link met on the way is one
     /// that was not there when the path was checked, and refusing it refuses nothing that was
@@ -701,10 +700,9 @@ impl Reach {
     ///
     /// note: and only a regular file. A pipe blocks an open until somebody writes to it, which
     /// nobody will, and the open is not a place an interrupt reaches - so `mkfifo p` and `fs read p`
-    /// was a turn nobody could stop. The path is looked at first, which is what gives every
-    /// platform the same sentence; on Linux the open does not block either, whatever is there by
-    /// then, and what it opened is looked at again before anything reads it. Elsewhere the window
-    /// between the look and the open is the one SECURITY.md describes.
+    /// was a turn nobody could stop. The path is looked at first, which is what the sentence comes
+    /// from; the open does not block either, whatever is there by then, and what it opened is
+    /// looked at again before anything reads it.
     pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
         if std::fs::metadata(path).is_ok_and(|meta| !meta.is_file()) {
             return Err(irregular());
@@ -715,7 +713,6 @@ impl Reach {
             Access::Reading => options.read(true),
             Access::Writing => options.write(true).create(true).truncate(true),
         };
-        #[cfg(target_os = "linux")]
         std::os::unix::fs::OpenOptionsExt::custom_flags(
             &mut options,
             rustix::fs::OFlags::NONBLOCK.bits() as i32,
@@ -853,9 +850,8 @@ fn irregular() -> std::io::Error {
 /// Where the file [`Reach::replace`] writes is made, and renamed from.
 enum Beside {
     /// The directory, opened beneath what it was allowed under.
-    #[cfg(target_os = "linux")]
     Held(rustix::fd::OwnedFd),
-    /// The directory by name, where nothing opens beneath a directory.
+    /// The directory by name, where the kernel will not open beneath one.
     Named(PathBuf),
 }
 
@@ -872,7 +868,6 @@ impl Beside {
                 MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));
             let created = match self {
-                #[cfg(target_os = "linux")]
                 Self::Held(dir) => {
                     use rustix::fs::{Mode, OFlags};
                     rustix::fs::openat(
@@ -899,7 +894,6 @@ impl Beside {
 
     fn rename(&self, from: &std::ffi::OsStr, to: &std::ffi::OsStr) -> std::io::Result<()> {
         match self {
-            #[cfg(target_os = "linux")]
             Self::Held(dir) => Ok(rustix::fs::renameat(dir, from, dir, to)?),
             Self::Named(dir) => std::fs::rename(dir.join(from), dir.join(to)),
         }
@@ -908,7 +902,6 @@ impl Beside {
     /// Takes away a file `create` made; one that cannot be is left, and its name says what it is.
     fn remove(&self, name: &std::ffi::OsStr) {
         let _ = match self {
-            #[cfg(target_os = "linux")]
             Self::Held(dir) => rustix::fs::unlinkat(dir, name, rustix::fs::AtFlags::empty())
                 .map_err(std::io::Error::from),
             Self::Named(dir) => std::fs::remove_file(dir.join(name)),
@@ -917,37 +910,19 @@ impl Beside {
 }
 
 /// Whether another name shares this file, so that renaming over one would part them.
-#[cfg(unix)]
 fn linked(was: &std::fs::Metadata) -> bool {
     std::os::unix::fs::MetadataExt::nlink(was) > 1
 }
 
-#[cfg(not(unix))]
-fn linked(_: &std::fs::Metadata) -> bool {
-    false
-}
-
 /// Whether the file's owner has taken away their own right to write it.
-#[cfg(unix)]
 fn protected(was: &std::fs::Metadata) -> bool {
     std::os::unix::fs::PermissionsExt::mode(&was.permissions()) & 0o200 == 0
 }
 
-#[cfg(not(unix))]
-fn protected(was: &std::fs::Metadata) -> bool {
-    was.permissions().readonly()
-}
-
 /// Whether a new file has the owner and group of the one it would stand in for.
-#[cfg(unix)]
 fn owned_alike(was: &std::fs::Metadata, new: &std::fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt;
     (was.uid(), was.gid()) == (new.uid(), new.gid())
-}
-
-#[cfg(not(unix))]
-fn owned_alike(_: &std::fs::Metadata, _: &std::fs::Metadata) -> bool {
-    true
 }
 
 /// Opens `path` without leaving `root`, or `None` where the kernel will not do that.
@@ -956,7 +931,6 @@ fn owned_alike(_: &std::fs::Metadata, _: &std::fs::Metadata) -> bool {
 /// runtime's seccomp filter answers for `openat2` when it does not know the call. The ordinary open
 /// that follows gives the answer it would have given without this, and the real error where there
 /// is one.
-#[cfg(target_os = "linux")]
 fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<std::fs::File>> {
     use rustix::fs::{Mode, OFlags};
 
@@ -972,14 +946,7 @@ fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<st
     opened_beneath(root, path, flags, mode).map(|opened| opened.map(std::fs::File::from))
 }
 
-/// Nowhere else has an open that stays beneath a directory, so the ordinary one is all there is.
-#[cfg(not(target_os = "linux"))]
-fn beneath(_: &Path, _: &Path, _: Access) -> Option<std::io::Result<std::fs::File>> {
-    None
-}
-
 /// Opens the directory `dir` without leaving `root`, to make files in; `None` as for [`beneath`].
-#[cfg(target_os = "linux")]
 fn directory_beneath(root: &Path, dir: &Path) -> Option<std::io::Result<Beside>> {
     use rustix::fs::{Mode, OFlags};
 
@@ -987,12 +954,6 @@ fn directory_beneath(root: &Path, dir: &Path) -> Option<std::io::Result<Beside>>
         .map(|opened| opened.map(Beside::Held))
 }
 
-#[cfg(not(target_os = "linux"))]
-fn directory_beneath(_: &Path, _: &Path) -> Option<std::io::Result<Beside>> {
-    None
-}
-
-#[cfg(target_os = "linux")]
 fn opened_beneath(
     root: &Path,
     path: &Path,
@@ -1007,7 +968,7 @@ fn opened_beneath(
     // a file allowed on its own - `--sandbox-read notes.txt` - has nothing beneath it to hold an
     // open to, and opening it as a directory refused a file `Reach::allows` had just allowed. The
     // directory it is in is held instead and its name is the one step taken from there: the
-    // place every platform without `openat2` already opens and replaces it from
+    // place a kernel without `openat2` opens and replaces it from as well
     let root = match root.is_file() {
         true => root.parent().unwrap_or(root),
         false => root,
@@ -1046,8 +1007,7 @@ fn opened_beneath(
 /// How much of a [`Sandbox`] the kernel actually agreed to.
 ///
 /// note: a separate value, so that "not confined" is sayable. A sandbox that silently did nothing
-/// on an old kernel, or on a platform that has no Landlock, would be a promise on the screen and
-/// nothing behind it.
+/// on an old kernel would be a promise on the screen and nothing behind it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confinement {
     /// Every restriction asked for is in force.
@@ -1056,8 +1016,8 @@ pub enum Confinement {
     Partial,
     /// Landlock is not available - too old a kernel, or not enabled at boot.
     Unavailable,
-    /// This platform has no Landlock at all.
-    Unsupported,
+    /// Nobody asked for one: `--no-sandbox`, or a session nothing has probed for it.
+    Off,
 }
 
 impl Confinement {
@@ -1074,9 +1034,7 @@ impl Confinement {
             Self::Unavailable => {
                 Some("this kernel has no Landlock, so the shell is not confined at all")
             }
-            Self::Unsupported => {
-                Some("this platform has no Landlock, so the shell is not confined at all")
-            }
+            Self::Off => Some("the sandbox is off, so the shell is not confined at all"),
         }
     }
 }
@@ -1087,16 +1045,12 @@ impl fmt::Display for Confinement {
             Self::Full => "confined",
             Self::Partial => "partly confined",
             Self::Unavailable => "not confined (no Landlock in this kernel)",
-            Self::Unsupported => "not confined (no Landlock on this platform)",
+            Self::Off => "not confined (the sandbox is off)",
         })
     }
 }
 
 /// The directories a command has to be able to read before it can be a command at all.
-///
-/// note: not behind a `cfg`, because [`Sandbox::reaches`] answers on every platform and a
-/// constant that a portable method names cannot be one. Off Linux nothing is confined, so
-/// nothing asks.
 const SYSTEM: &[&str] = &[
     "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
 ];
@@ -1116,7 +1070,6 @@ const SYSTEM: &[&str] = &[
 /// a version number. `HardRequirement` is the level at which a right the kernel does not have is an
 /// error instead of something quietly dropped, and a `Ruleset` that is only built restricts
 /// nothing: this applies no ruleset and confines no process.
-#[cfg(target_os = "linux")]
 pub fn confines_unix_sockets() -> bool {
     use landlock::{AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
 
@@ -1124,12 +1077,6 @@ pub fn confines_unix_sockets() -> bool {
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(AccessFs::ResolveUnix)
         .is_ok()
-}
-
-/// The same, where there is no Landlock.
-#[cfg(not(target_os = "linux"))]
-pub fn confines_unix_sockets() -> bool {
-    false
 }
 
 /// Applies the sandbox to *this* process, returning how much of it the kernel took.
@@ -1148,7 +1095,6 @@ pub fn confines_unix_sockets() -> bool {
 ///
 /// note: `/dev` gets reading and writing of files and nothing else, because `/dev/null` is not
 /// optional and creating things in `/dev` is not something a shell command needs to do.
-#[cfg(target_os = "linux")]
 pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     use landlock::{
         ABI, Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
@@ -1235,12 +1181,6 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     }
 }
 
-/// The same, where there is no Landlock.
-#[cfg(not(target_os = "linux"))]
-pub fn confine(_sandbox: &Sandbox, _scratch: Option<&Path>) -> Confinement {
-    Confinement::Unsupported
-}
-
 /// The temporary directory a confined command is given, named after the process it belongs to.
 ///
 /// note: named after the child rather than made with a random name, so that the process which
@@ -1283,7 +1223,6 @@ pub fn make_scratch(path: &Path) -> Option<PathBuf> {
         let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
         std::fs::create_dir(path).ok()?;
     }
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
 
@@ -1357,7 +1296,6 @@ pub fn available(program: &Path) -> Probed {
     let confinement = match took {
         "full" => Confinement::Full,
         "partial" => Confinement::Partial,
-        "unsupported" => Confinement::Unsupported,
         _ => Confinement::Unavailable,
     };
 
@@ -1409,8 +1347,7 @@ pub fn run_if_asked() -> Option<i32> {
             match confinement {
                 Confinement::Full => "full",
                 Confinement::Partial => "partial",
-                Confinement::Unavailable => "unavailable",
-                Confinement::Unsupported => "unsupported",
+                Confinement::Unavailable | Confinement::Off => "unavailable",
             },
             match gated {
                 Some(Ok(())) => " gated",
@@ -1471,24 +1408,9 @@ pub fn run_if_asked() -> Option<i32> {
         command.env("GIT_CONFIG_GLOBAL", global);
     }
 
-    #[cfg(unix)]
-    let code = {
-        use std::os::unix::process::CommandExt as _;
+    // `exec` returns only when it could not happen at all
+    let failure = std::os::unix::process::CommandExt::exec(&mut command);
+    eprintln!("could not run the command: {failure}");
 
-        // `exec` returns only when it could not happen at all
-        let failure = command.exec();
-        eprintln!("could not run the command: {failure}");
-        127
-    };
-    // there is no Landlock here anyway, so nothing is lost by staying a parent
-    #[cfg(not(unix))]
-    let code = match command.status() {
-        Ok(status) => status.code().unwrap_or(1),
-        Err(e) => {
-            eprintln!("could not run the command: {e}");
-            127
-        }
-    };
-
-    Some(code)
+    Some(127)
 }
