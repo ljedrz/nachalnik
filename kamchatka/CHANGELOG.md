@@ -71,6 +71,11 @@ minor bump may break you.
 - **`glob` stops one past its cap.** It walked the whole tree after its 200th path to say how many
   there were, which on a large tree was most of the call; it now stops at the 201st and says there
   are more, which is what a model acts on whatever the number.
+- **`--deny fs:write` makes the `--sandbox-allow` paths read-only for `shell` too.** `fs` was
+  refused a write there and a command was not, so the two tools disagreed about one path, and the
+  one that could write was the one whose writes nothing checks. They stay readable; a socket among
+  them, which connecting needs write access to, is out of reach with them, and the shell's
+  description names them read-only.
 - **A confined command cannot set up an `io_uring`**, where the gate holds. A ring opens a socket
   without calling `socket()`, so `io_uring_setup` is answered `ENOSYS`, which is what a program
   that can use one falls back from.

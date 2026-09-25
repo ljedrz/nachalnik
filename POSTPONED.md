@@ -339,12 +339,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   private. What waits is the rule: whether a save takes the target's existing mode, the record's
   mode, or the umask a person chose for their shell.
 
-- **An extra writable path under `--deny fs:write`.** `--sandbox-allow` paths stay writable for
-  `shell` when the policy denies `fs:write`, and `fs` is refused them, so the two tools disagree
-  about one path. It is documented beside `Sandbox::of` and the screen draws the path read-write, so
-  nothing is hidden. Moving the extra paths into the readable set when writing is denied, for the
-  ruleset and for the shell's list of what it opened, is the fix if the two tools are to agree.
-
 - **Which checks the record directory's privacy makes.** It looks at the mode bits and not at who
   owns the directory, which matters only to a process that can read past the bits anyway - root, or
   one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid.

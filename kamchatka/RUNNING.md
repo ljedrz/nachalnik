@@ -915,7 +915,9 @@ $ kamchatka --sandbox-allow /run/docker.sock -m …
 
 `--sandbox-allow` rather than `--sandbox-read`, because connecting is the writing half of the rule:
 what comes back from a socket is whatever the process behind it was willing to do. On an older
-kernel there is no such right and every one of them was reachable all along.
+kernel there is no such right and every one of them was reachable all along. Under `--deny
+fs:write` a path given to `--sandbox-allow` is read-only, as the working directory is, and a
+socket among them is out of reach with the rest: refusing writes refuses the writing half here too.
 
 **Git needs no flag.** Under Landlock `access(2)` still answers from the file's own permissions, so
 git would ask whether `~/.gitconfig` is readable, be told yes, open it, get `EACCES` and take the

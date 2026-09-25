@@ -159,15 +159,25 @@ impl Sandbox {
         granted: bool,
     ) -> Self {
         let stance = policy.stance(&Subject::Capability(Capability::net("reach")));
+        // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
+        // working directory writable, because a shell that cannot write in it is not one anybody
+        // can work with
+        let writable =
+            policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny;
+        // note: and it reaches the paths `--sandbox-allow` opened, which stay readable. `fs` is
+        // refused a write there under the same refusal, so a shell that could still write in them
+        // was two tools disagreeing about one path - and the one that could write was the one
+        // whose writes nothing checks
+        let (extra, readable) = match writable {
+            true => (extra, readable),
+            false => (Vec::new(), extra.into_iter().chain(readable).collect()),
+        };
 
         Self {
             workdir,
             extra,
             readable,
-            // a refusal of `write` reaches the shell too; anything short of a refusal leaves the
-            // working directory writable, because a shell that cannot write in it is not one
-            // anybody can work with
-            writable: policy.stance(&Subject::Capability(Capability::fs("write"))) != Verdict::Deny,
+            writable,
             network: match (
                 granted || stance == Verdict::Allow,
                 policy.gates_the_network(),

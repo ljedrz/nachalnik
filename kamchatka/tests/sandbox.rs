@@ -137,12 +137,13 @@ fn gated() -> bool {
 #[test]
 fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
     let dir = common::workdir("sandbox-read-only-said");
+    let opened = common::scratch("sandbox-read-only-said-opened");
     let policy = Arc::new(Careful::new());
 
     let said = |policy: &Arc<Careful>| {
         Shell {
             workdir: dir.clone(),
-            extra: Vec::new(),
+            extra: vec![opened.clone()],
             readable: Vec::new(),
             policy: policy.clone(),
             confiner: Some(common::program()),
@@ -152,9 +153,14 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
         .description
     };
 
+    let open = said(&policy);
     assert!(
-        !said(&policy).contains("read-only in this session"),
+        !open.contains("read-only in this session"),
         "nothing was refused, so nothing is said"
+    );
+    assert!(
+        open.contains(&format!("{} read-write", opened.display())),
+        "{open}"
     );
 
     policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
@@ -162,6 +168,11 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
     assert!(
         refused.contains("The working directory is read-only in this session"),
         "a refused `fs:write` is a read-only working directory: {refused}"
+    );
+    // and the path opened for writing is read-only with it, which is what the command will find
+    assert!(
+        refused.contains(&format!("{} read-only", opened.display())),
+        "{refused}"
     );
 }
 
@@ -434,6 +445,45 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     // ... and reading still works, or the shell would be useless
     let (ok, said) = run(&sandbox(dir, false, Network::NoTcp), "cat inside.txt");
     assert!(ok && said.contains("hello"), "{said}");
+}
+
+/// A refusal of `fs:write` reaches the paths `--sandbox-allow` opened as well as the working
+/// directory: the command can read them and not write them, and the confinement says so.
+///
+/// note: through `Sandbox::of`, which is where the policy becomes a confinement, rather than a
+/// `Sandbox` built by hand. `fs` was already refused the write there, so a shell that could still
+/// make one was the two tools disagreeing about one path.
+#[test]
+fn a_refused_write_stance_reaches_the_paths_opened_for_writing() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("readonly-extra");
+    let opened = common::scratch("readonly-extra-opened");
+    std::fs::write(opened.join("there.txt"), "there\n").expect("a file to read");
+
+    let policy = Careful::new();
+    policy.set(&Subject::Capability(Capability::fs("write")), Verdict::Deny);
+    let sandbox = Sandbox::of(&policy, dir, vec![opened.clone()], Vec::new(), false);
+
+    assert!(sandbox.extra.is_empty(), "{sandbox}");
+    assert!(
+        sandbox
+            .to_string()
+            .contains(&format!("{} read-only", opened.display())),
+        "{sandbox}"
+    );
+    let (ok, said) = run(
+        &sandbox,
+        &format!("echo x > {}", opened.join("nope.txt").display()),
+    );
+    assert!(!ok && said.contains("Permission denied"), "{said}");
+    assert!(!opened.join("nope.txt").exists());
+    let (ok, said) = run(
+        &sandbox,
+        &format!("cat {}", opened.join("there.txt").display()),
+    );
+    assert!(ok && said.contains("there"), "{said}");
 }
 
 #[test]
