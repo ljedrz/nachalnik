@@ -161,6 +161,41 @@ async fn a_body_with_no_choice_in_its_choices_is_not_an_answer() {
     );
 }
 
+/// A whole answer that arrives in pieces is read to its end, rather than refused as too large.
+///
+/// note: the bound on a body is on what has arrived so far, so only an answer in more than one
+/// piece puts the sum to work; one written at once is in the reader's hand before there is
+/// anything to add it to. The answer is well inside the bound, and the pauses between the pieces
+/// are what keep the reader from taking several of them at once.
+#[tokio::test]
+async fn a_whole_answer_in_pieces_is_read_to_its_end() {
+    let said = "a".repeat(1 << 20);
+    let body = format!(
+        concat!(
+            "{{\"choices\":[{{\"message\":{{\"role\":\"assistant\",\"content\":\"{}\"}},",
+            "\"finish_reason\":\"stop\"}}]}}"
+        ),
+        said
+    );
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        OpenAiCompatible::new("in pieces", in_pieces(body).await, "no key needed").streaming(false),
+    ));
+    kernel.push(ContextItem::user("go"));
+    kernel
+        .step()
+        .await
+        .expect("an answer inside the bound is an answer, however it arrives");
+
+    let response = kernel.last_response().expect("the model answered");
+    assert_eq!(
+        response.content.as_ref().map(|c| c.to_text().into_owned()),
+        Some(said),
+        "every piece of it"
+    );
+}
+
 /// Answers one request with `body`, in one write.
 async fn whole_server(body: &'static str) -> String {
     busy_then(body, body).await
@@ -196,6 +231,39 @@ async fn busy_then(first: &'static str, then: &'static str) -> String {
                 )
                 .await;
             let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// Answers every request with `body` a piece at a time, with no length given and a pause after
+/// each piece.
+async fn in_pieces(body: String) -> String {
+    const PIECE: usize = 16 << 10;
+
+    let body = Arc::new(body);
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let body = Arc::clone(&body);
+            tokio::spawn(async move {
+                let _ = socket.set_nodelay(true);
+                let mut discard = [0u8; 8192];
+                let _ = socket.read(&mut discard).await;
+                let _ = socket
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n")
+                    .await;
+                for piece in body.as_bytes().chunks(PIECE) {
+                    if socket.write_all(piece).await.is_err() {
+                        return;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                }
+                let _ = socket.shutdown().await;
+            });
         }
     });
 
