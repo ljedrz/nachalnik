@@ -772,8 +772,8 @@ shape of wrong answer a search must not have. A nil result says what it looked a
 reason.
 
 The other eight operations of **`context`** change it. `elide`, `exclude`, `pin` and `restore` move
-items between the same states the <kbd>space</kbd> key does, and each is named for the state it
-leaves — which is the word you will read back on the item afterwards:
+items between the same states the <kbd>space</kbd> and <kbd>p</kbd> keys do, and each is named for
+the state it leaves — which is the word you will read back on the item afterwards:
 
 * `elide` — for a tool result that has served its purpose. The call stays answered, and the result
   stops costing what it holds.
