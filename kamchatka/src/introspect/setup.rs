@@ -617,9 +617,7 @@ fn said(verdict: Verdict) -> &'static str {
     match verdict {
         Verdict::Allow => "allow",
         Verdict::Deny => "deny",
-        // the runtime's enum is not exhaustive, and `ask` is the honest answer for anything this
-        // build has no word for: it is the one that stops and involves somebody
-        _ => "ask",
+        Verdict::Ask => "ask",
     }
 }
 
