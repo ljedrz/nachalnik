@@ -825,8 +825,8 @@ const NETWORKED: &[&str] = &[
 
 /// Whether a shell command names one of them.
 ///
-/// note: consulted only where the gate does not hold - off Linux, under `--no-sandbox`, and on a
-/// kernel that cannot hold a call - since where it does, a command is asked about when it tries.
+/// note: consulted only where the gate does not hold - under `--no-sandbox`, and on a kernel that
+/// cannot hold a call - since where it does, a command is asked about when it tries.
 /// See [`Careful::gate_the_network`].
 ///
 /// note: a heuristic over the command as it was written. It catches `curl https://…`,

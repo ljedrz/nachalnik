@@ -512,8 +512,9 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
 ///
 /// note: `resolve` peels off what does not exist and stops at a `..` it cannot peel, so the path
 /// came back with its `..`s in it and the working directory at its front - which a comparison by
-/// components passes. On Linux the open that follows refuses it; anywhere that open is an
-/// ordinary one, creating the missing directory in between was a way out.
+/// components passes. Where there is `openat2` the open that follows refuses it; on a kernel
+/// without one, where that open is an ordinary one, creating the missing directory in between was
+/// a way out.
 #[test]
 fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
     use kamchatka::sandbox::{Access, Reach};

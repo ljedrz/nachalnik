@@ -187,8 +187,8 @@ async fn a_save_that_cannot_finish_leaves_the_last_one_alone() {
 ///
 /// note: the *suffix* is the part case does not matter to, and the stem is not - `NOTES.JSON`
 /// names a different file from `notes.json` on any filesystem that cares, and this one is on
-/// Linux. What the suffix buys is the person who typed the extension in caps on a filesystem that
-/// does not care, which is every one outside Linux.
+/// Linux. What the suffix buys is the person who typed the extension in caps, on a filesystem that
+/// would not have cared: a FAT stick, or a directory with ext4's casefold.
 ///
 /// note: driven through `/load`'s own answer rather than by calling the helper, because what the
 /// pair has to agree about is the *file*, and only the command knows which one it opened. The
