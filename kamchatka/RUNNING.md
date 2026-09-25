@@ -416,6 +416,11 @@ A marker costs something too — it is a line of text where the content was — 
 counts what each elision actually recovers and leaves alone any result no bigger than the marker
 that would replace it: eliding a `wrote 412 bytes to …` would make the request *bigger*.
 
+A result carrying a picture or a document is the exception, and goes first whatever its size: the
+counter has no number for it, so no arithmetic would ever pick it. For the same reason the
+compactor is asked before every request that holds anything unpriced, not only past `--compact`.
+One the model has not been shown yet is kept until it has been.
+
 `/compact` asks that same compactor by hand, and shows its answer before anything happens: every
 item it would take, with the identifier, what it is and what it is holding. It then waits, in the
 prompt's place, for <kbd>y</kbd> or <kbd>n</kbd> — pinned rather than modal, like a tool's
