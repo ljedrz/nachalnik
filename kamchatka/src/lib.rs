@@ -1,4 +1,5 @@
-//! A terminal agent built on [`nachalnik`], and a demonstration of what that runtime is for.
+//! A terminal agent for Linux, built on [`nachalnik`], and a demonstration of what that runtime is
+//! for.
 //!
 //! Four tabs, each of which gets the whole window, because each of them is a whole view.
 //! **chat** is the conversation, and every other agent in the terminal has one. **context** is

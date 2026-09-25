@@ -4,12 +4,16 @@
 [![docs.rs](https://docs.rs/kamchatka/badge.svg)](https://docs.rs/kamchatka)
 [![CI](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml/badge.svg)](https://github.com/ljedrz/nachalnik/actions/workflows/ci.yml)
 
-**A terminal agent that gives you full control of the context.**
+**A terminal agent for Linux that gives you full control of the context.**
 
 Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
 ordinary user code — the tools, the permission policy, the compactor, the drawing, and the two
 providers next door in [`nachalnik-providers`][providers]. The runtime supplies the state machine,
 the context and the paper trail.
+
+It builds for Linux, on x86_64 and aarch64, and nothing else: its shell is worth handing a model
+because Landlock confines it and a seccomp filter holds every attempt it makes to reach the network
+until it has an answer, and both are Linux's.
 
 ```console
 $ cargo install kamchatka # or download the released binary
@@ -20,14 +24,15 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ## ❓ who this is for
 
 You're likely to find `kamchatka` compelling if any of these apply to you:
-- you're a Linux user: it builds for Linux on x86_64 and aarch64 and nothing else, because the
-sandbox that makes its shell worth handing a model is Linux's
 - you hate when the agent forgets an important piece of information, or can't trace its reasoning
 back to earlier points in the discussion
 - you're dissatisfied with token accounting and auto-compaction being imprecise and unpredictable
 - you worry about supply-chain attack surface of large codebases
 - you distrust generic community tools hosted by `npm`
 - you want clear, fine-grained control over all the decisions taken by the agent
+- you want the agent's shell sandboxed by the kernel rather than by a list of forbidden commands:
+it writes only where you let it, reads nothing private outside the working directory, and reaches
+the network only when you say so
 - you want a minimalistic agent with negligible OS footprint and a transparent configuration
 - you like to keep detailed, auditable, and local transcripts of past conversations
 
