@@ -355,8 +355,8 @@ are real ones. See the [workspace readme][workspace].
 
 Early, but complete for what it claims to cover: the state machine, the context model,
 permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
-planned: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library. Those belong on
-top of it, and that is what the rest of the workspace is for.
+planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
+Those belong on top of it, and that is what the rest of the workspace is for.
 
 The crate follows [semver](https://semver.org/), and API breakage is to be expected before `1.0`.
 
