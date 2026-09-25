@@ -81,8 +81,8 @@ command that reached for the network, held by the gate and waiting, which `Caref
 the shell and the `App` already share it. `policy.rs` is `Careful`, `trim.rs` the compactor, and
 `ops.rs` what a tool that does several things declares - one table of operations, with the schema,
 the refusal and `unread` all made out of it. `mod.rs` holds `Limits`, the domains this program's
-own tools act in, and the argument readers every tool here shares - `arg`, `whole` and `truth`,
-which `introspect/` reaches for too.
+own tools act in, and the argument readers every tool here shares - `arg`, `whole` and `truth` -
+beside `yes_or_no` and `what`, which `introspect/` reaches for too.
 
 `tools/advice.rs` (feature `shell-advisor`) is what a model is asked about a command somebody is
 about to be asked about, and the one file where what leaves this machine is written down. The
