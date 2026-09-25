@@ -70,6 +70,11 @@ minor bump may break you.
   the names in it that matched: on this repository's first 200 Rust files, 43% fewer bytes. The
   directories come in the order `ls -R` walks them, so `src` and the files in it come before
   `src/app`, where the paths were alphabetical before. The tool's description says the shape.
+  `glob`'s description also says to name the extension being looked for, `*.rs` rather than `*`:
+  a live model listed a whole tree, met the cap, and guessed a path it had not been shown.
+- **`fs` says it does not go through a shell, rather than that there is no shell here.** The note
+  on `~` read as a fact about the session, and a live model offered `shell` beside it said it had
+  no way to run a command.
 - **`glob` stops one past its cap.** It walked the whole tree after its 200th path to say how many
   there were, which on a large tree was most of the call; it now stops at the 201st and says there
   are more, which is what a model acts on whatever the number.
