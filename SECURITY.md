@@ -174,10 +174,9 @@ what stands in the way, and what does not.
   and is not handed this program's keys. The `fs` tool is held to the same reach by its own code,
   and on Linux opens beneath the directory a path was allowed under. What it can still do: send
   UDP where there is no gate, and reach the network through whatever a person allowed; read
-  anything the reach includes and put it in the
-  context, which goes to the provider; spend the session's budget, including on `fork` drafts,
-  which the spend ceiling does not count yet (POSTPONED.md). Under `--no-sandbox` the shell is not
-  confined at all and the permission question is the only thing in the way.
+  anything the reach includes and put it in the context, which goes to the provider; spend the
+  session's budget, including on `fork` drafts. Under `--no-sandbox` the shell is not confined at
+  all and the permission question is the only thing in the way.
 - **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
   reaching the machine as the person who started it. `--serve` binds loopback only and makes its
   socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples
