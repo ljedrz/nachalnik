@@ -323,8 +323,12 @@ impl Sandbox {
             if named.contains(&path) {
                 continue;
             }
-            let socket = self.refuses_connecting(Path::new(&path));
-            if socket || !self.reaches(Path::new(&path)) {
+            // a socket is judged by connecting and nothing else: see `connecting`
+            let (socket, confined) = match self.connecting(Path::new(&path)) {
+                Some(refused) => (true, refused),
+                None => (false, !self.reaches(Path::new(&path))),
+            };
+            if confined {
                 sockets += usize::from(socket);
                 named.push(path);
                 if named.len() == 3 {
@@ -363,8 +367,8 @@ impl Sandbox {
         }
     }
 
-    /// Whether `path` is a socket a confined command may not connect to, on a kernel that holds it
-    /// to that.
+    /// Whether a confined command may not connect to `path`, if it is a socket; `None` if it is
+    /// not one.
     ///
     /// note: the other half of [`Sandbox::reaches`], which asks about reading. A socket is held to
     /// the writing half of the ruleset, so a session can read the path of one under `/run` and be
@@ -372,17 +376,20 @@ impl Sandbox {
     /// because the path was one the session reaches. By the file's type rather than by the words of
     /// the error, which a client chooses; and only where [`confines_unix_sockets`] says the kernel
     /// governs sockets at all, since below that the refusal really is the socket's own permissions.
-    fn refuses_connecting(&self, path: &Path) -> bool {
+    ///
+    /// note: and a socket is judged by this alone, not by [`Sandbox::reaches`] as well. Below that
+    /// kernel a connection is not something the ruleset is consulted about, even to a socket in a
+    /// directory the session cannot read, so blaming the confinement for that directory is
+    /// blaming it for a refusal it did not make.
+    fn connecting(&self, path: &Path) -> Option<bool> {
         use std::os::unix::fs::FileTypeExt as _;
 
-        let Some(resolved) = resolve(path) else {
-            return false;
-        };
+        let resolved = resolve(path)?;
         if !resolved
             .metadata()
             .is_ok_and(|meta| meta.file_type().is_socket())
         {
-            return false;
+            return None;
         }
         let writable = self
             .writable
@@ -394,7 +401,7 @@ impl Sandbox {
                     .is_ok_and(|root| resolved.starts_with(root))
             });
 
-        !writable && confines_unix_sockets()
+        Some(!writable && confines_unix_sockets())
     }
 
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.
