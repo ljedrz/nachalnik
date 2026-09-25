@@ -335,9 +335,10 @@ it goes into the context, and the finished result is shown as its first few line
 keystroke away on the context tab.
 
 Stopping is cooperative rather than a killed process. The provider notices between fragments and
-returns the text it has; the shell tool kills the command — and everything the command started,
-since it runs in a process group of its own — and still answers the call it was given. The partial
-turn ends up in the context like any other, where it can be read, excluded, or left alone.
+returns the text it has; the shell tool kills the command's process group, which is everything the
+command started short of a process that left the group, as one run under `setsid` does, and still
+answers the call it was given. The partial turn ends up in the context like any other, where it can
+be read, excluded, or left alone.
 
 A message sent while a turn is running **waits for the end of it**, and then goes in and gets a
 turn of its own. It says so when you send it: until the turn ends it is on the screen but not yet
