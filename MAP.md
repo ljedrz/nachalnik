@@ -75,8 +75,9 @@ fitting it takes.
 open one file and to `search.rs` for the two that walk a directory of them with ripgrep's engine.
 `shell.rs` is the one tool that is a process, and holds `joints` - where one stage of a command
 line ends and the next begins, which the permission question colours. Where a command comes apart
-is a fact about the command rather than about drawing it, so `joints` cannot live in `ui/text.rs`
-beside its one caller, behind `tui`. `reaching.rs` is the other kind of question: a running
+is a fact about the command rather than about drawing it, so `joints` cannot live in
+`ui/markdown.rs` beside the code that colours them, behind `tui`: `advice.rs` takes a command
+apart at the same places before it runs. `reaching.rs` is the other kind of question: a running
 command that reached for the network, held by the gate and waiting, which `Careful` keeps because
 the shell and the `App` already share it. `policy.rs` is `Careful`, `trim.rs` the compactor, and
 `ops.rs` what a tool that does several things declares - one table of operations, with the schema,
