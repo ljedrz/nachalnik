@@ -62,8 +62,8 @@ stopped it.
 
 ## ⏱️ how fast it is allowed to go
 
-A whole suite against one model is seven hundred-odd requests, and hours of waiting if each one
-waits for the last. Most of that is avoidable. The probes inside a battery — solve, then
+A whole suite against one model is a thousand-odd requests at `-r 2`, and hours of waiting if
+each one waits for the last. Most of that is avoidable. The probes inside a battery — solve, then
 introspect, then predict — are a *conversation*, each question written out of the last answer, so
 they cannot overlap. An ablation sweep is not. Every copy in one is resumed from the `Origin`
 frozen before a single claim was made, so no copy can see another's, and the whole sweep can go at
