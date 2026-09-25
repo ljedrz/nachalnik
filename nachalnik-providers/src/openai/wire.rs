@@ -756,7 +756,7 @@ fn arguments_of(written: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use nachalnik::{ModelRequest, Params};
+    use nachalnik::{ModelRequest, Params, ToolSpec};
 
     use super::*;
 
@@ -846,6 +846,30 @@ mod tests {
             &json!({ "prompt_tokens": 1_000, "completion_tokens": 50, "total_tokens": 1_100 }),
         );
         assert_eq!(usage.output_tokens, Some(100), "{usage:?}");
+    }
+
+    /// A request's tools go out as functions, and a request with none carries no `tools` at all.
+    ///
+    /// note: absent rather than empty. `"tools": []` is a different request from one with no
+    /// field, and it would go out on every request a session makes before it has a tool.
+    #[test]
+    fn tools_are_sent_only_where_there_are_some() {
+        let rendered = |tools: Vec<ToolSpec>| {
+            OpenAiCompatible::new("m", "https://example.invalid/v1", "k")
+                .render(&ModelRequest {
+                    messages: Vec::new(),
+                    tools,
+                    params: Params::new(),
+                })
+                .expect("this provider renders")
+        };
+
+        let body = rendered(vec![ToolSpec::new("write", "writes a file")]);
+        assert_eq!(body["tools"][0]["type"], "function");
+        assert_eq!(body["tools"][0]["function"]["name"], "write");
+        assert_eq!(body["tools"][0]["function"]["description"], "writes a file");
+
+        assert!(rendered(Vec::new()).get("tools").is_none());
     }
 
     /// `stream_options` follows whatever the parameters settled `stream` on, in both directions.
