@@ -15,12 +15,18 @@ use crate::{kernel, select};
 #[test]
 fn items_are_identified_and_counted() {
     let kernel = kernel();
+    assert!(kernel.with_context(|c| c.is_empty()));
+    assert_eq!(kernel.with_context(|c| c.len()), 0);
+
     let system = kernel.push(ContextItem::system("be terse"));
     let file = kernel.push(ContextItem::file("src/parser.rs", "fn parse() {}"));
 
     assert_eq!(system.0, 1);
     assert_eq!(file.0, 2);
     assert_eq!(kernel.items().len(), 2);
+    // and the context's own count agrees with the list it hands out
+    assert!(!kernel.with_context(|c| c.is_empty()));
+    assert_eq!(kernel.with_context(|c| c.len()), 2);
     // the default counter is bytes/4, rounded up
     assert_eq!(
         kernel.item(file).unwrap().tokens,
