@@ -183,3 +183,59 @@ async fn leaving_does_not_take_away_another_sessions_socket() {
     drop(second);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A served socket is made `0600`, since who may connect to it is who may run the `shell` tool.
+#[tokio::test]
+async fn a_served_socket_is_nobody_elses() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = std::env::temp_dir().join(format!("kamchatka-private-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let path = dir.join("s.sock");
+
+    let served = Server::bind(&format!("unix:{}", path.display()))
+        .await
+        .expect("the bind failed");
+    let mode = std::fs::metadata(&path)
+        .expect("the socket is there")
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600, "{mode:o}");
+
+    drop(served);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A socket file in the way is named rather than taken over, and the refusal says whether a
+/// session is behind it, since the two want opposite things done.
+#[tokio::test]
+async fn a_socket_in_the_way_is_named_rather_than_taken() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-in-the-way-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let path = dir.join("s.sock");
+    let at = format!("unix:{}", path.display());
+
+    let live = Server::bind(&at).await.expect("the bind failed");
+    let Err(refused) = Server::bind(&at).await else {
+        panic!("a second session took a live one's socket");
+    };
+    assert!(
+        refused.contains("there is a session listening")
+            && refused.contains(&format!("--connect {at}")),
+        "{refused}"
+    );
+    drop(live);
+
+    // one nothing listens on, as a killed session leaves it
+    drop(std::os::unix::net::UnixListener::bind(&path).expect("a socket file"));
+    let Err(refused) = Server::bind(&at).await else {
+        panic!("a stale socket was taken over");
+    };
+    assert!(
+        refused.contains("nothing is listening on") && refused.contains("remove it"),
+        "{refused}"
+    );
+    assert!(path.exists(), "the refusal took the file away itself");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
