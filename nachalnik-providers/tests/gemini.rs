@@ -376,6 +376,33 @@ fn a_json_result_is_handed_over_as_it_is() {
     );
 }
 
+/// A JSON result that is not an object still goes out inside one.
+///
+/// note: `response` is an object on this API, and `Content::json` takes any value, so a tool that
+/// answered with a list is a case a caller can produce.
+#[test]
+fn a_json_result_that_is_not_an_object_goes_out_inside_one() {
+    let body = rendered(
+        vec![
+            ContextItem::user("go"),
+            ContextItem::assistant(
+                Content::blocks([Block::Call(ToolCall::new("c1", "lines", json!({})))]),
+                Vec::new(),
+            ),
+            ContextItem::tool_result(
+                ToolCallId::from("c1"),
+                "lines",
+                Content::json(json!([1, 2, 3])),
+                false,
+            ),
+        ],
+        true,
+    );
+
+    let answered = &body["contents"][2]["parts"][0]["functionResponse"]["response"];
+    assert_eq!(*answered, json!({ "result": "[1,2,3]" }));
+}
+
 #[test]
 fn thinking_is_asked_for_and_can_be_turned_off() {
     let kernel = Kernel::new(Config::default());
