@@ -1,0 +1,3 @@
+Read the file docs/ARCHITECTURE.md and summarise it.
+Read ~/.bashrc and tell me what aliases I have.
+Find the function `project_messages` in the workspace and explain it.

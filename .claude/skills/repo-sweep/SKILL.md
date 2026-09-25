@@ -1,6 +1,6 @@
 ---
 name: repo-sweep
-description: Run a full code sweep of this workspace - audit, performance and code quality, test quality and documentation - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Use when asked for "a full repo sweep using kamchatka and model X", or for sweeps, audits or reviews driven by kamchatka.
+description: Run a full code sweep of this workspace - audit, performance and code quality, test quality and documentation, and the friction the tools cost a model using them - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Use when asked for "a full repo sweep using kamchatka and model X", or for sweeps, audits or reviews driven by kamchatka.
 ---
 
 # a kamchatka-driven sweep
@@ -141,6 +141,52 @@ cargo run -p nachalnik --example pricing_a_picture --locked
 `scripts/windows.sh` needs `cargo-xwin` and Microsoft's licence accepted - the person's call.
 Then report: commits, what was rejected and why, the new POSTPONED entries. Live testing with the
 model (the kamchatka live suite, the networked examples) comes after the sweeps, not during.
+
+## friction: what the tools cost a model
+
+A different sweep: not a model reading code, but a model *using* the program, and the question is
+where the tools cost it a call. The answers are in the records rather than in anything it says.
+
+```sh
+python3 $SKILL/friction.py $SWEEPS/tmp/kamchatka/*.json     # every snapshot a sweep left, for free
+```
+
+Every snapshot the other sweeps wrote is already a baseline: an error result, bucketed by its text
+with the names and numbers taken out, how often, and what the model did next. The row to act on is
+one the model does not recover from - the same call again, or another tool, and the thing it was
+doing never done.
+
+For the tools a read-only sweep never offers, `scopes/friction/` holds ordinary tasks, one message
+a line, each written to need particular operations without naming them:
+
+```sh
+python3 - <<'EOF'       # $SWEEPS/fr.json: every tool, every domain allowed, a question answered no
+import json, os
+json.dump({"model": "<model>", "requests": 0,
+  "tools": ["fs", "shell", "context", "log", "setup", "fork"],
+  "allow": ["fs", "exec", "context", "log", "setup", "fork"], "on-ask": "deny",
+  "system": "You are a software engineer working in the Rust workspace in the current directory, "
+    "for a person who is not watching and cannot answer questions. Do what each message asks "
+    "with the tools you have, and say plainly when something cannot be done. Do not run cargo: "
+    "there is no toolchain here."}, open(os.environ["SWEEPS"] + "/fr.json", "w"))
+EOF
+for t in $SKILL/scopes/friction/*.txt; do
+    nohup $SKILL/friction.sh f-$(basename $t .txt) $t > /dev/null 2>&1 &
+done
+python3 $SKILL/friction.py $SWEEPS/fr/tmp/kamchatka/*.json
+```
+
+- Each session works in a worktree of its own, removed afterwards; what it changed is kept as
+  `$SWEEPS/fr/NAME.diff`. The network is left to be asked about, so a command that reaches for it
+  meets a real refusal.
+- A read-only session and an open one fail differently: under a policy that allows a few
+  operations, a call nobody can place is refused by the policy before the tool sees it, and that
+  refusal is the sentence the model has to recover from. Read both.
+- The fix is a sentence - a refusal that says nothing was done and what to call, an error that
+  names the right argument - with a test that holds the sentence, and a changelog bullet, since a
+  model reads it. A fix that changes what a tool *does* is a decision.
+- Error counts are not the whole of it. Read the transcripts for an operation a task needed that
+  the model never reached for, or one it used and misread.
 
 ## gotchas
 

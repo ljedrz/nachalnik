@@ -1,0 +1,3 @@
+Create kamchatka/src/scratch/hello.rs containing a function that returns "hello".
+Now edit that file so the function takes a name and returns "hello, NAME". Then replace the word "hello" with "hi" in it.
+Delete the file and the directory you made.

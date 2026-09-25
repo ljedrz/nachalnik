@@ -1,0 +1,2 @@
+In nachalnik/src/tokens.rs, find the doc comment on `TokenCounter::observe` and replace its whole first paragraph with a single sentence that says the same thing.
+Show me the diff of what you changed, using git.

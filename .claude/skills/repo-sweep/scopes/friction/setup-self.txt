@@ -1,0 +1,2 @@
+What model are you, what tools do you have, and what are you allowed to do in this session without asking? Check rather than guess.
+Could you run `curl https://example.com` here? Find out what would happen, and tell me why.

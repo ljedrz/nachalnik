@@ -1,0 +1,2 @@
+Which version of serde, tokio and reqwest does this workspace resolve to? Get it from Cargo.lock.
+How many packages in Cargo.lock come from crates.io, and how many are workspace members?

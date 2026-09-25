@@ -1,0 +1,2 @@
+Read the top-level README.md and AGENTS.md, then tell me what this session has cost so far in tokens, and which of your tool calls was the most expensive.
+Look at your session's own record and tell me every tool call you have made so far, in order, with whether it succeeded.

@@ -1,0 +1,2 @@
+Grep the workspace for "note:" in kamchatka/src/tools and read three of the files that have the most hits.
+Take every result of a file read out of the request in one go, keeping the grep results, and tell me what the request costs now.

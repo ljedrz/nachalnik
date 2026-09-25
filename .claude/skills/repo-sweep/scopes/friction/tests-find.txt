@@ -1,0 +1,2 @@
+Find the test that checks a `border` in the settings file that is not a colour is refused, and explain what it asserts.
+Without running it, tell me which source function it exercises and quote the lines of that function that produce the error.

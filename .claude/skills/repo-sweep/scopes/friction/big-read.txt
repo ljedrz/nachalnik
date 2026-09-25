@@ -1,0 +1,2 @@
+Read nachalnik/src/kernel/mod.rs and explain the state machine it implements: the states, and what moves it from each one to the next. Your context is limited, so keep it tidy as you go.
+Which of the public methods on Kernel are refused while a step is running? Answer from what you read, and check anything you are unsure of.
