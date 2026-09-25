@@ -132,7 +132,9 @@ minor bump may break you.
   a refusal of a readable path is the file's own permissions left `docker ps` with a bare
   `Permission denied`. A socket outside what the session may write is now named as the boundary,
   by its file type, only on a kernel that governs sockets; and Go's lowercase `permission denied`
-  counts as a refusal, which is how `docker` spells one.
+  counts as a refusal, which is how `docker` spells one. Below Linux 7.1 a refused connection is
+  never put down to the confinement, even to a socket in a directory the session cannot read,
+  since the ruleset is not consulted about connecting there at all.
 - **Two forks asked in one turn are asked about the same context.** A turn's calls run one after
   another, so the second fork's copy already held the first one's answer, and two copies meant to
   be compared differed by it. A fork now leaves out the results of the other calls in the turn
