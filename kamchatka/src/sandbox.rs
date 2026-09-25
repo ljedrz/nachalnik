@@ -697,10 +697,6 @@ impl Reach {
         }
 
         let path = PathBuf::from(path);
-        if !self.confined {
-            return Ok(path);
-        }
-
         let absolute = match path.is_absolute() {
             true => path.clone(),
             false => self.workdir.join(&path),
@@ -712,6 +708,12 @@ impl Reach {
                 path.display()
             ));
         };
+        // note: resolved even where nothing is held to the reach, because the path rules still
+        // are, and a link is refused for leading past one by comparing where it leads with the
+        // name it was asked for by. Handed back as it came, the two are the same name
+        if !self.confined {
+            return Ok(resolved);
+        }
         // note: what `resolve` cannot resolve it leaves as it was, and a `..` after a directory
         // that is not there is one of those: `nope/../../../etc/passwd` came back with its `..`s
         // still in it, and a comparison by components found the working directory at the front of

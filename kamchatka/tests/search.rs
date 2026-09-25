@@ -23,6 +23,11 @@ use serde_json::{Value, json};
 
 /// The tools as a session gets them, held to `dir`.
 fn tools(dir: &Path) -> Vec<Arc<dyn Tool>> {
+    tools_within(dir, true)
+}
+
+/// [`tools`], held to `dir` or, as under `--no-sandbox`, not held at all.
+fn tools_within(dir: &Path, confined: bool) -> Vec<Arc<dyn Tool>> {
     kamchatka::tools::builtin(
         Shell {
             workdir: dir.to_path_buf(),
@@ -36,15 +41,24 @@ fn tools(dir: &Path) -> Vec<Arc<dyn Tool>> {
             workdir: dir.to_path_buf(),
             extra: Vec::new(),
             readable: Vec::new(),
-            confined: true,
+            confined,
         },
         Limits::default(),
     )
 }
 
 /// Calls one of them and hands back what the model would read.
-async fn ask(dir: &Path, action: &str, mut args: Value) -> String {
-    let tools = tools(dir);
+async fn ask(dir: &Path, action: &str, args: Value) -> String {
+    answered(dir, true, action, args).await
+}
+
+/// [`ask`], in a session run with `--no-sandbox`.
+async fn ask_unconfined(dir: &Path, action: &str, args: Value) -> String {
+    answered(dir, false, action, args).await
+}
+
+async fn answered(dir: &Path, confined: bool, action: &str, mut args: Value) -> String {
+    let tools = tools_within(dir, confined);
     let found = tools
         .iter()
         .find(|it| it.spec().id == "fs")
@@ -475,6 +489,14 @@ async fn a_walk_does_not_follow_a_link_past_a_path_rule() {
         listed.contains("skipped: 2 file(s) a path rule says to ask about"),
         "{listed}"
     );
+
+    // and under `--no-sandbox`, where the reach is not held but the path rules still are. Named
+    // in full, so that what is under test is the link and not which directory `.` is
+    let root = dir.display().to_string();
+    let found = ask_unconfined(&dir, "grep", json!({ "pattern": "Kernel", "path": root })).await;
+    assert!(!found.contains("secret"), "unconfined: {found}");
+    let listed = ask_unconfined(&dir, "glob", json!({ "pattern": "**/*", "path": root })).await;
+    assert!(!listed.contains("alias"), "unconfined: {listed}");
 }
 
 #[tokio::test]

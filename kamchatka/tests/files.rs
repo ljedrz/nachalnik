@@ -27,7 +27,22 @@ async fn ask(dir: &Path, action: &str, args: Value) -> String {
 }
 
 /// [`ask`], with the output limits a session has after `/limit`.
-async fn ask_within(dir: &Path, limits: Limits, action: &str, mut args: Value) -> String {
+async fn ask_within(dir: &Path, limits: Limits, action: &str, args: Value) -> String {
+    answered(dir, limits, true, action, args).await
+}
+
+/// [`ask`], in a session run with `--no-sandbox`.
+async fn ask_unconfined(dir: &Path, action: &str, args: Value) -> String {
+    answered(dir, Limits::default(), false, action, args).await
+}
+
+async fn answered(
+    dir: &Path,
+    limits: Limits,
+    confined: bool,
+    action: &str,
+    mut args: Value,
+) -> String {
     let tools = kamchatka::tools::builtin(
         Shell {
             workdir: dir.to_path_buf(),
@@ -41,7 +56,7 @@ async fn ask_within(dir: &Path, limits: Limits, action: &str, mut args: Value) -
             workdir: dir.to_path_buf(),
             extra: Vec::new(),
             readable: Vec::new(),
-            confined: true,
+            confined,
         },
         limits,
     );
@@ -248,6 +263,36 @@ async fn a_link_to_a_file_a_rule_asks_about_is_not_opened_through() {
         ask(&dir, "read", json!({ "path": ".env.local" })).await,
         "TOKEN=secret\n",
         "the rule matched the name it was asked for by, so it was already asked about"
+    );
+}
+
+/// And under `--no-sandbox`, where the reach is not held but the path rules still are.
+///
+/// note: named in full, so that what is under test is the link and not which directory a relative
+/// path is joined onto.
+#[tokio::test]
+async fn a_link_past_a_rule_is_refused_without_the_sandbox_too() {
+    let dir = scratch("files-link-past-unconfined");
+    std::fs::write(dir.join(".env"), "TOKEN=secret\n").expect("a file");
+    std::os::unix::fs::symlink(".env", dir.join("alias")).expect("a link");
+    let alias = dir.join("alias").display().to_string();
+
+    for (action, args) in [
+        ("read", json!({ "path": alias })),
+        ("write", json!({ "path": alias, "content": "x" })),
+        (
+            "edit",
+            json!({ "path": alias, "old": "secret", "new": "x" }),
+        ),
+    ] {
+        let said = ask_unconfined(&dir, action, args).await;
+        assert!(said.contains("leads to `.env`"), "{action}: {said}");
+        assert!(!said.contains("secret"), "{action} read through it: {said}");
+    }
+    assert_eq!(
+        held(&dir, ".env"),
+        "TOKEN=secret\n",
+        "and nothing was written through it"
     );
 }
 
