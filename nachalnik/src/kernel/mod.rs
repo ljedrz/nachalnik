@@ -1642,7 +1642,7 @@ impl Kernel {
     /// | from | what happens | to |
     /// | --- | --- | --- |
     /// | [`State::Idle`], [`State::Finished`] | a request is built and sent | `Finished`, `Ready` or `Deciding`; `Idle` if every call named a tool that is not there |
-    /// | [`State::Ready`] | the tools run, in order, and their results are recorded | `Idle` |
+    /// | [`State::Ready`] | the tools run, and their results are recorded in the order the model asked for them | `Idle` |
     /// | [`State::Deciding`] | nothing; the answer has to come from you | `Deciding` |
     /// | [`State::Requesting`], [`State::Executing`] | nothing; [`Error::Busy`] | - |
     /// | any resting state, with an interrupt outstanding | nothing; the interrupt is spent | the same state |

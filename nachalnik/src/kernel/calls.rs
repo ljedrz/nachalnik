@@ -105,7 +105,7 @@ impl Kernel {
         to
     }
 
-    /// Runs the claimed calls, in the order the model asked for them.
+    /// Runs the claimed calls, and records their results in the order the model asked for them.
     pub(super) async fn execute(&self, prepared: Vec<PreparedCall>) -> Result<State> {
         // note: if this future is dropped, the calls it had claimed are gone with it; their
         // results are simply never recorded, and the projector drops the orphaned calls from
