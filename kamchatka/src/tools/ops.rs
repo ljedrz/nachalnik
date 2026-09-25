@@ -187,8 +187,7 @@ pub(crate) fn schema(ops: &[Op]) -> Value {
             let mut one = branch(only);
             // note: the branch's own words where it has any, and the wrapper's where it has not,
             // so that a tool with one shape is never silent about what `call` is. Writing ABOUT
-            // over the top unconditionally would throw away the description a lone branch carries,
-            // such as `setup`'s account of its four operations
+            // over the top unconditionally would throw away the description a lone branch carries
             if one["description"].is_null() {
                 one["description"] = json!(ABOUT);
             }
