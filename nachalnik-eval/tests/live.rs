@@ -20,9 +20,10 @@
 //! a result and not a failure. The one thing they will not tolerate is a run that produces
 //! figures out of nothing.
 //!
-//! note: One experiment, at one copy per condition, which is about fifteen requests. The whole
-//! suite is the `bench` example's job; a test suite that spent sixty requests of somebody's free
-//! tier every time `cargo test` ran would be a bad neighbour.
+//! note: One experiment a test, on one dossier and at one copy per condition, which is about
+//! thirty requests between them. The whole suite is the `bench` example's job; a test suite that
+//! spent a thousand-odd requests of somebody's free tier every time `cargo test` ran would be a bad
+//! neighbour.
 
 use std::sync::Arc;
 
