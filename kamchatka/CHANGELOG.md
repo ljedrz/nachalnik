@@ -95,6 +95,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A shell the sandbox could not confine says so.** The permissions tab gave a confinement that
+  was asked for and could not be applied - no Landlock in the kernel, or a binary replaced since
+  this one started - the same line as `--no-sandbox`, so a person who had passed no flag was told
+  what one who had would be. It now says the shell could not be confined.
 - **A call whose `action` is not a name says what it is.** An `action` that arrived as an object
   or a list, which is what a call written in another syntax turns into, was refused as holding
   `action` and no `action`. It is now named as the object or the list it is.

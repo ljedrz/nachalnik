@@ -608,6 +608,15 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
         "{screen}"
     );
 
+    // and a sandbox that was asked for and could not be applied is not `--no-sandbox`, which a
+    // person chose and needs no telling about
+    harness.app.confinement = Confinement::Unavailable;
+    let screen = harness.sized(120, 30);
+    assert!(
+        screen.contains("shell: could not be confined, so a command can do any of these"),
+        "{screen}"
+    );
+
     // refusing it outright puts the other rows back in charge either way
     harness
         .app

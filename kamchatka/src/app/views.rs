@@ -18,7 +18,7 @@ use nachalnik::{
 };
 
 use super::{App, Going, Tab, Traced, text::thousands, when};
-use crate::tools::Subject;
+use crate::{sandbox::Confinement, tools::Subject};
 
 /// One row of the permissions tab: a capability, a path rule or a rule about one tool action, what
 /// the policy will answer about it, and the tools that would be affected.
@@ -604,12 +604,19 @@ impl App {
         // command is asked about by its name rather than when it tries - and neither is on the
         // screen anywhere else. A gate that could not be installed is the degradation a person
         // would otherwise never see
-        Some(match self.confinement.is_confined() {
-            true => match self.policy.gates_the_network() {
+        //
+        // note: a sandbox that was asked for and could not be applied is not `--no-sandbox`, which
+        // a person chose. Not in `Confinement`'s own words, which blame the kernel: a binary
+        // replaced since this one started comes back `Unavailable` too
+        Some(match self.confinement {
+            Confinement::Full | Confinement::Partial => match self.policy.gates_the_network() {
                 true => format!("shell: {}, network gated", self.confinement),
                 false => format!("shell: {}, network not gated", self.confinement),
             },
-            false => "shell: a command can do any of these".to_owned(),
+            Confinement::Unavailable => {
+                "shell: could not be confined, so a command can do any of these".to_owned()
+            }
+            Confinement::Off => "shell: a command can do any of these".to_owned(),
         })
     }
 
