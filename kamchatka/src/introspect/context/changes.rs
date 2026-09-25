@@ -635,10 +635,10 @@ impl Changes {
     /// and a pin is a promise the kernel keeps even against a `Compactor`. Saying the same thing
     /// out loud in a turn is not a promise about anything.
     ///
-    /// note: the source is `agent`, not `memory` or `user`, so that "who put these 12,000 tokens
-    /// in here?" has an answer on the context pane. It is the item's own field for exactly this,
-    /// and a tool that attributed its writing to somebody else would be the one dishonest thing
-    /// in a program built to show where everything came from.
+    /// note: the source is `agent`, not `memory` or `user`, so that "who put these 12,000 tokens in
+    /// here?" has an answer, on the chat line that records the item and in `look`. It is the item's
+    /// own field for exactly this, and a tool that attributed its writing to somebody else would be
+    /// the one dishonest thing in a program built to show where everything came from.
     ///
     /// note: a note rather than a reasoning block, although a model can already think and thinking
     /// is free. Reasoning belongs to the turn that produced it, so pruning that turn prunes the

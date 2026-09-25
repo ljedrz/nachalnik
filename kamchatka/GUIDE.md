@@ -795,9 +795,9 @@ in — read off the same function the move consults, so a preview and the move i
 disagree.
 
 `revise` rewrites what an item says. `note` writes something into the context — a plan, a
-conclusion, a thing not to try again. A note is attributed to `agent`, so the context pane can say
-who put it there, and it can be pinned so compaction cannot take it. Saying the same thing out
-loud in a turn is not a promise about anything; a pin is.
+conclusion, a thing not to try again. A note is attributed to `agent`, so the chat line that records
+it and `look` can say who put it there, and it can be pinned so compaction cannot take it. Saying
+the same thing out loud in a turn is not a promise about anything; a pin is.
 
 `undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
 <kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
