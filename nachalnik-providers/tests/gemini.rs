@@ -449,6 +449,24 @@ fn thinking_is_asked_for_and_can_be_turned_off() {
     );
 }
 
+/// What this provider says about the model behind it.
+///
+/// note: `tool_calling` and `reasoning` are what a client reads to decide whether to offer tools
+/// and whether to show a thinking pane, and `context_limit` is what a compaction threshold and
+/// `Kernel::budget` are measured against.
+#[test]
+fn the_model_is_described_as_this_dialect_serves_it() {
+    let info = Gemini::new("gemini-test", "http://127.0.0.1:1", "no key")
+        .with_context_limit(Some(8192))
+        .info();
+
+    assert_eq!(info.provider, "google");
+    assert_eq!(info.model, "gemini-test");
+    assert_eq!(info.context_limit, Some(8192), "the limit it was given");
+    assert!(info.tool_calling, "a `functionCall` part is a call");
+    assert!(info.reasoning, "and a `thought` part is thinking");
+}
+
 // ------------------------------------------------------------------------------ the round trip
 
 #[tokio::test]
