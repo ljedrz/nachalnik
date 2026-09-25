@@ -40,7 +40,7 @@ async fn each_tab_takes_the_whole_window_and_the_others_are_not_under_it() {
     harness.send("hello there").await;
     harness.settle().await;
 
-    // the strip names all three wherever you are, so the others are findable
+    // the strip names every tab wherever you are, so the others are findable
     for tab in Tab::ALL {
         harness.tab(tab);
         let screen = harness.screen();
