@@ -10,8 +10,12 @@
 
 use std::sync::Arc;
 
+#[cfg(feature = "gemini")]
+use nachalnik::{Block, Part, ToolCall, ToolCallId};
 use nachalnik::{Config, Content, ContextItem, ContextKind, Kernel, Provider};
 use nachalnik_providers::Dialect;
+#[cfg(feature = "gemini")]
+use serde_json::json;
 
 /// A session holding one assistant turn: a short answer and a long think, which is the usual
 /// ratio for a reasoning model and the reason this matters at all.
@@ -92,4 +96,40 @@ fn the_gemini_dialect_pays_for_the_thinking_it_does_send() {
         kernel.budget().context_tokens > thinking_costs,
         "the request carries the thinking, so the estimate has to as well"
     );
+}
+
+/// A turn recorded as an order goes back out as one, with what was attached to each of its parts.
+///
+/// note: the half of this dialect's projection the budget cannot see, since a turn flattened into
+/// three slots costs the same. The request can: flattened, the signature on a text part has
+/// nowhere to go, and this API answers the next request with `400 Function call is missing a
+/// thought_signature`.
+#[cfg(feature = "gemini")]
+#[test]
+fn the_gemini_dialect_is_handed_a_turn_in_the_order_it_was_recorded() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("what is the weather?"));
+    kernel.push(ContextItem::assistant(
+        Content::blocks([
+            Block::Text(
+                Part::new("Checking.").with_extra(json!({ "thoughtSignature": "SIG-TEXT" })),
+            ),
+            Block::Call(ToolCall::new("call_1", "weather", json!({}))),
+        ]),
+        Vec::new(),
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId::from("call_1"),
+        "weather",
+        "sunny",
+        false,
+    ));
+    let provider = nachalnik_providers::Gemini::new("m", "https://example.invalid", "k");
+    kernel.set_projector(Arc::new(provider.projection()));
+
+    let request = kernel.preview_request().expect("a request");
+    let payload = provider.render(&request).expect("it renders");
+    let parts = &payload["contents"][1]["parts"];
+    assert_eq!(parts[0]["text"], "Checking.");
+    assert_eq!(parts[0]["thoughtSignature"], "SIG-TEXT", "{parts:#?}");
 }
