@@ -224,6 +224,9 @@ async fn a_signature_rides_on_the_part_it_belongs_to() {
 
 // -------------------------------------------------------------------------------- going out
 
+/// A one-pixel PNG, base64, which is what a caller would have handed over.
+const PIXEL: &str = "iVBORw0KGgoAAAANSUhEUg==";
+
 /// The payload this provider would send for a context.
 fn rendered(items: Vec<ContextItem>, send_blocks: bool) -> Value {
     let kernel = Kernel::new(Config::default());
@@ -650,6 +653,56 @@ fn a_function_response_needs_no_separator() {
         parts[1]["text"], "and now?",
         "nothing was appended to a field that is not text"
     );
+}
+
+/// A sentence in front of a picture is left as it was written: the picture is `inline_data`, a
+/// part of its own, and runs into nothing.
+#[test]
+fn a_picture_needs_no_separator() {
+    let body = rendered(
+        vec![
+            ContextItem::memory("note", "the codename is kotelnaya"),
+            ContextItem::user(Content::blob("image/png", PIXEL)),
+        ],
+        true,
+    );
+
+    let parts = body["contents"][0]["parts"].as_array().expect("parts");
+    assert_eq!(parts.len(), 2, "{parts:#?}");
+    assert_eq!(parts[0]["text"], "note:\nthe codename is kotelnaya");
+    assert_eq!(parts[1]["inline_data"]["data"], PIXEL);
+}
+
+/// Thinking that ends one model turn is left exactly as it arrived when the next is merged in
+/// behind it.
+///
+/// note: a `thought` part carries its text under the same key as a sentence, but it is signed,
+/// and a part altered by so much as a blank line is one this API refuses the request over.
+#[test]
+fn a_thought_needs_no_separator() {
+    let body = rendered(
+        vec![
+            ContextItem::user("go"),
+            ContextItem::assistant(
+                Content::blocks([
+                    Block::text("Checking."),
+                    Block::Reasoning(
+                        nachalnik::Part::new("working it out")
+                            .with_extra(json!({ "thoughtSignature": "SIG-THOUGHT" })),
+                    ),
+                ]),
+                Vec::new(),
+            ),
+            ContextItem::assistant("Done.", Vec::new()),
+        ],
+        true,
+    );
+
+    let parts = body["contents"][1]["parts"].as_array().expect("parts");
+    assert_eq!(parts.len(), 3, "{parts:#?}");
+    assert_eq!(parts[1]["text"], "working it out", "{parts:#?}");
+    assert_eq!(parts[1]["thought"], true);
+    assert_eq!(parts[2]["text"], "Done.");
 }
 
 /// A turn that ran out of room says so, even when it asked for a tool on the way.
