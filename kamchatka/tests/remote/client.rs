@@ -1,6 +1,6 @@
 //! `remote::Client`, driven rather than spoken past.
 //!
-//! note: the rest of this suite speaks the protocol directly, so that what it claims is about
+//! note: most of this suite speaks the protocol directly, so that what it claims is about
 //! the *session* rather than about the pair. These are the ones that are about the client:
 //! what it writes where, what it does when the socket goes, and what it makes of an answer it
 //! cannot read.

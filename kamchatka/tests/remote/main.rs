@@ -9,8 +9,9 @@
 //! note: most of these speak the protocol directly rather than through `remote::Client`. That is
 //! deliberate: the claims are about what a *session* offers anybody who attaches, and a test that
 //! could only make them through this crate's own client would be pinning the pair of them
-//! together, which is the one thing a protocol exists not to be. `client.rs` is where the ones
-//! that drive `remote::Client` are, because what they are about is the client.
+//! together, which is the one thing a protocol exists not to be. `client.rs` and `program.rs` are
+//! where the ones that drive `remote::Client` are, against a session served here and against the
+//! binary.
 
 // note: `tests/remote/main.rs` rather than `tests/remote.rs`, for the reason given in
 // `tests/screen/main.rs`: a directory with a `main.rs` in it is one test binary named for the
