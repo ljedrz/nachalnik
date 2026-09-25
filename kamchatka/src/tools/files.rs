@@ -86,7 +86,7 @@ impl Read {
 /// note: refused rather than asked about, because the question would be about a name nobody
 /// wrote - and the answer names the target, so asking for it by that name is one call away and is
 /// asked like any other.
-fn linked(
+pub(super) fn linked(
     named: &str,
     resolved: &Path,
     reach: &Reach,
