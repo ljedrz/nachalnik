@@ -250,6 +250,22 @@ impl Sandbox {
         let Some(resolved) = resolve(path) else {
             return false;
         };
+        // note: a `..` left over is a climb `resolve` could not settle - past a directory that is
+        // not there, `/work/missing/../../outside` keeps its `..`s behind the working directory's
+        // prefix, which a comparison by prefix passes. `Reach::allows` refuses the same path, and
+        // a path refused there is not one to call reached here
+        if resolved
+            .components()
+            .any(|component| component == std::path::Component::ParentDir)
+        {
+            return false;
+        }
+        // note: `/dev` is granted reading and writing its files and nothing else - see `confine` -
+        // so a device that is there was reached and a refusal of it is its own permissions, and a
+        // listing of `/dev` or a file made in it is the boundary
+        if resolved.starts_with("/dev") {
+            return resolved.metadata().is_ok_and(|meta| !meta.is_dir());
+        }
 
         SYSTEM
             .iter()
@@ -1034,18 +1050,6 @@ impl Confinement {
     /// Returns whether a command running under this is actually restricted.
     pub fn is_confined(self) -> bool {
         matches!(self, Self::Full | Self::Partial)
-    }
-
-    /// What to tell somebody, in one line; `None` when everything asked for is in force.
-    pub fn complaint(self) -> Option<&'static str> {
-        match self {
-            Self::Full => None,
-            Self::Partial => Some("the kernel enforced only part of the sandbox"),
-            Self::Unavailable => {
-                Some("this kernel has no Landlock, so the shell is not confined at all")
-            }
-            Self::Off => Some("the sandbox is off, so the shell is not confined at all"),
-        }
     }
 }
 

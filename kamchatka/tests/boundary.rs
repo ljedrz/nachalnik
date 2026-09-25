@@ -509,6 +509,56 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
     );
 }
 
+/// `/dev` is accounted for as it is granted: a device there was reached, so a refusal of it is its
+/// own permissions and nothing is said, while a listing of `/dev` or a file made in it is the
+/// boundary and is named.
+#[test]
+fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
+    let confined = Sandbox {
+        workdir: common::workdir("dev-accounts"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+    };
+
+    assert_eq!(
+        confined.note_for("sh: /dev/null: Permission denied\n"),
+        None,
+        "a device that is there is one the command reached"
+    );
+    let listed = confined
+        .note_for("ls: cannot open directory '/dev': Permission denied\n")
+        .expect("a listing of /dev is the boundary");
+    assert!(listed.contains("/dev is outside"), "{listed}");
+    let made = confined
+        .note_for("touch: cannot touch '/dev/made-up-by-a-test': Permission denied\n")
+        .expect("a file made in /dev is the boundary");
+    assert!(made.contains("/dev/made-up-by-a-test"), "{made}");
+}
+
+/// A refusal naming a path that climbs out of the working directory past a directory that is not
+/// there is the boundary, as `Reach::allows` has it, rather than a path inside.
+#[test]
+fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
+    let workdir = common::workdir("climb-accounts")
+        .canonicalize()
+        .expect("it exists");
+    let confined = Sandbox {
+        workdir: workdir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+    };
+
+    let climbing = workdir.join("missing/../../../../kamchatka-nowhere/secret");
+    let note = confined
+        .note_for(&format!("cat: {}: Permission denied\n", climbing.display()))
+        .expect("it climbed out, so the refusal is the confinement");
+    assert!(note.contains("is outside"), "{note}");
+}
+
 /// A path that climbs with `..` out of a directory that is not there is refused, rather than
 /// checked as though it were still inside.
 ///
