@@ -607,6 +607,14 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
         screen.contains("shell: confined, network gated"),
         "{screen}"
     );
+    // ... and one the kernel took only part of says so, rather than being rounded up to confined
+    // or down to nothing
+    harness.app.confinement = Confinement::Partial;
+    let screen = harness.sized(120, 30);
+    assert!(
+        screen.contains("shell: partly confined, network gated"),
+        "{screen}"
+    );
 
     // and a sandbox that was asked for and could not be applied is not `--no-sandbox`, which a
     // person chose and needs no telling about
