@@ -20,7 +20,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ## ❓ who this is for
 
 You're likely to find `kamchatka` compelling if any of these apply to you:
-- you're a Linux user (the bundled sandbox is Linux-only), or apply your own sandbox in any other OS
+- you're a Linux user: it builds for Linux on x86_64 and aarch64 and nothing else, because the
+sandbox that makes its shell worth handing a model is Linux's
 - you hate when the agent forgets an important piece of information, or can't trace its reasoning
 back to earlier points in the discussion
 - you're dissatisfied with token accounting and auto-compaction being imprecise and unpredictable
@@ -57,11 +58,13 @@ $ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
 $ cargo install --path kamchatka              # from a clone
 ```
 
-Two binaries are attached to a release. The Linux one is static musl and runs wherever the kernel
-is new enough. The Mac one is arm64 and **unsigned**, so Gatekeeper quarantines it and the first
-run is refused until `xattr -d com.apple.quarantine kamchatka` — signing it needs a paid Apple
-Developer account. It also runs the shell unconfined, which is a limit of macOS rather than of the
-download, and the status line says so in as many words.
+Two binaries are attached to a release, x86_64 and aarch64, both static musl, and each runs
+wherever the kernel is new enough.
+
+**0.15.1 is the last version that builds on macOS and Windows.** There its shell ran unconfined
+and the network was asked about by the command's name; everything since leans on Landlock and a
+seccomp filter, which are Linux's. Anybody porting it should start from that tag, where the
+`cfg`s for the other two are still in place.
 
 Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than

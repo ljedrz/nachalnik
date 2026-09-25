@@ -388,15 +388,11 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
 /// makes the same claim about the other loop and can make it in-process. What cannot be shared is
 /// the reaching: `drawn` is in `main.rs`, so this one is about the program or it is about nothing.
 ///
-/// note: linux only, for `script`'s flags - macOS spells it `script -q /dev/null cmd` and windows
-/// has no such thing. The claim is about a loop rather than a platform, and it is the same loop
-/// everywhere.
-///
-/// note: and `tui`, which is the third of the disjuncts above. A screenless build has no `drawn`
+/// note: `tui`, which is the third of the disjuncts above. A screenless build has no `drawn`
 /// to reach, so the pty lands on `Server::run` and the guard for exactly that fires - a test
 /// about a loop that is not in the build, failing to find it. CI builds this crate twice without
 /// a screen, and the rest of this file runs in both.
-#[cfg(all(target_os = "linux", feature = "tui"))]
+#[cfg(feature = "tui")]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
     // note: imported here rather than at the top, because this is the one test in the file behind

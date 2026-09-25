@@ -42,12 +42,9 @@ fn a_credential_rule_is_about_the_file_that_gets_opened() {
     let dir = common::scratch("policy");
     std::fs::create_dir_all(dir.join("sub")).expect("a temporary directory");
     std::fs::write(dir.join(".env"), "TOKEN=hunter2").expect("something worth protecting");
-    // note: a temporary directory is usually reached by a name that is not where it is - `/var` is
-    // a symlink to `/private/var` on macOS, and Windows hands out an 8.3 short name for a profile
-    // directory. What `allows` answers with is the path the file will be opened at, so that is the
-    // name to expect it under. The reach is handed the name as it came, which is the one a person
-    // would have typed, and on Windows is the only form of it that `..` and a forward slash still
-    // mean anything in: a `\\?\` path goes to the system unnormalized.
+    // note: a directory may be reached by a name that is not where it is. What `allows` answers
+    // with is the path the file will be opened at, so that is the name to expect it under; the
+    // reach is handed the name as it came, which is the one a person would have typed.
     let opened_at = dir.canonicalize().expect("the directory was just made");
 
     let reach = Reach {
@@ -208,7 +205,6 @@ fn the_rules_are_about_names_and_a_symlink_is_not_one() {
     std::fs::write(dir.join(".env"), "TOKEN=hunter2").expect("something worth protecting");
 
     // a name with no rule about it, pointing at a file there is one about
-    #[cfg(unix)]
     {
         std::os::unix::fs::symlink(dir.join(".env"), dir.join("notes.txt")).expect("a symlink");
         // the same two names for one directory as above: the reach is given the one it was
@@ -679,7 +675,6 @@ fn a_file_allowed_on_its_own_can_be_opened() {
 /// ends at something that exists is resolved by the system once what is left of it is short
 /// enough. At the bound the last link in hand was read as a file not yet made in the directory it
 /// sits in, and allowed - and the open follows the rest of it out, where there is no `openat2`.
-#[cfg(unix)]
 #[test]
 fn a_chain_of_links_too_long_to_follow_is_refused() {
     let work = common::scratch("chain-work");
@@ -740,4 +735,17 @@ fn a_gated_network_is_not_read_off_the_command() {
         Verdict::Allow,
         "an allowed command runs, and is asked about if it reaches out"
     );
+}
+
+/// A rule is about the name the file has, compared exactly, because that is how this filesystem
+/// compares one: `.ENV` is another file than `.env`, and an `allow` folded to match it would reach
+/// files it was not written for.
+#[test]
+fn a_rule_is_about_its_name_exactly() {
+    assert!(path_matches(".env*", ".env.local"));
+    assert!(!path_matches(".env*", ".ENV"));
+    assert!(!path_matches("secrets/", "Secrets/key"));
+    // and a backslash is read as a separator, which can only make a rule apply where it would not
+    assert!(path_matches("secrets/", r"secrets\key"));
+    assert!(path_matches("../", "../outside"));
 }

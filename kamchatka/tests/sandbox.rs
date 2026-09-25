@@ -4,16 +4,14 @@
 //! because a sandbox is a claim like any other and the only way to check it is to try. A test that
 //! asserted the ruleset was *built* would pass on a kernel that ignored every word of it.
 //!
-//! note: Linux-only, and skipped rather than failed where Landlock is not available - which is
-//! what `Confinement::Unavailable` is for. A machine that cannot enforce this should say so once,
-//! not fail a suite.
+//! note: skipped rather than failed where Landlock is not available - which is what
+//! `Confinement::Unavailable` is for. A machine that cannot enforce this should say so once, not
+//! fail a suite.
 //!
-//! note: everything here starts a process, which is what the gate above is for and what decides
-//! what belongs here. The half that does not is `boundary.rs`: which paths `Reach` admits, what a
-//! refusal names, what a confinement travels as on a command line. That was in this file and
-//! therefore behind this gate, so two platforms of the three ran none of it.
-
-#![cfg(target_os = "linux")]
+//! note: everything here starts a process under a confinement the kernel has to hold, which is
+//! what decides what belongs here. The half that does not is `boundary.rs`: which paths `Reach`
+//! admits, what a refusal names, what a confinement travels as on a command line - all of which
+//! runs whether or not the kernel here confines anything.
 
 use std::{
     net::UdpSocket,

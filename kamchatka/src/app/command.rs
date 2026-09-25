@@ -1600,8 +1600,8 @@ fn no_such_command(name: &str) -> String {
 ///
 /// note: the suffix is matched without regard to case, the way `attach::media_type` reads an
 /// extension - and the stem is left exactly as it was typed, because that half really does name a
-/// different file wherever the filesystem cares. What it buys is `notes.JSON` on a filesystem that
-/// does not, which is the default on macOS and Windows.
+/// different file. What it buys is a suffix typed in capitals still being read as the suffix
+/// `/save` wrote.
 fn without_suffix(path: &str) -> &str {
     for suffix in [".jsonl", ".json"] {
         let Some(at) = path.len().checked_sub(suffix.len()) else {

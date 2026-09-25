@@ -271,7 +271,6 @@ async fn a_walk_that_was_pointed_at_one_file_looks_at_it() {
 /// every answer to every search led with `skipped: 5 symbolic link(s)` - a line claiming something
 /// was withheld when nothing was. What decides is `Reach::allows`, which is the same call, with
 /// the same answer, that `read` makes about the same path.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_link_is_read_where_it_points_inside_and_counted_where_it_points_out() {
     let dir = tree("grep-links");

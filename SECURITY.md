@@ -26,9 +26,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   the strictest of everything consulted wins - so neither can reopen what a capability refused,
   and that is the property that makes adding one safe. An operation rule is consulted only where one
   exists, so a tool nobody has written a rule about is judged exactly as before. A path rule
-  compares names the way the filesystem does - case-blind on macOS and Windows, and on Windows
-  without a trailing dot or a `:stream` - since `.ENV` opens `.env` there; and a rule about a
-  domain or an operation no call is judged under is refused where it is given rather than kept.
+  compares names exactly, the way the filesystem here does - `.ENV` is another file than `.env` -
+  and a rule about a domain or an operation no call is judged under is refused where it is given
+  rather than kept.
 - **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
   Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
@@ -45,15 +45,15 @@ Referenced from [AGENTS.md](AGENTS.md).
   process - it opens a file, or walks a directory of them - is held to the same boundary by its own
   code, which is weaker in kind and said to be: a path is resolved, links followed, and checked,
   and then opened beneath the directory it was allowed under - and a write makes its new file and
-  renames it in a directory opened the same way. On Linux that open is `openat2` with
-  `RESOLVE_BENEATH`, so a component swapped for a link between the check and the open is refused
-  by the kernel; elsewhere, and on a kernel older than 5.6, it is an ordinary open and the swap is
-  not caught. A directory swapped in the middle of a walk is only caught at the files opened under
-  it: `glob` lists names, and a name is not refused.
-- **The network is asked about when a command tries, not when it is named.** On Linux, on x86_64
-  and aarch64, the confined child also installs a seccomp filter - `kamchatka::gate` - that holds
-  every `socket()` for `AF_INET` or `AF_INET6`, which is the first thing any use of the network
-  does, a DNS lookup included, and hands the listener to the process that spawned it. That process
+  renames it in a directory opened the same way. That open is `openat2` with `RESOLVE_BENEATH`,
+  so a component swapped for a link between the check and the open is refused by the kernel; on
+  a kernel older than 5.6 it is an ordinary open and the swap is not caught. A directory swapped
+  in the middle of a walk is only caught at the files opened under it: `glob` lists names, and a
+  name is not refused.
+- **The network is asked about when a command tries, not when it is named.** The confined child
+  also installs a seccomp filter - `kamchatka::gate` - that holds every `socket()` for `AF_INET` or
+  `AF_INET6`, which is the first thing any use of the network does, a DNS lookup included, and
+  hands the listener to the process that spawned it. That process
   answers from `net:reach`: `allow` lets it through, `deny` refuses it with `EACCES`, and `ask`
   asks the person, once per command, while the call waits. The filter reads only the call's
   integer arguments - the family's low 32 bits, since that is all the kernel reads - so there is
@@ -66,8 +66,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   in front of - and a family other than the two, such as `AF_PACKET`, which needs a privilege a
   confined command does not have. An attempt made by something the command left running, after the
   call is over and with nothing decided, is refused rather than asked, because a question about a
-  command that has ended reaches nothing. Where the gate cannot be installed - off Linux, under
-  `--no-sandbox`, on a kernel that cannot hold a call - the question is read off the command's
+  command that has ended reaches nothing. Where the gate cannot be installed - under
+  `--no-sandbox`, or on a kernel that cannot hold a call - the question is read off the command's
   name, as it was, and the permissions tab says `network not gated`. `gate` is the one module in
   the workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely
   without linking the C `libseccomp`, each with its reason beside it.
@@ -174,8 +174,8 @@ what stands in the way, and what does not.
   UDP where there is no gate, and reach the network through whatever a person allowed; read
   anything the reach includes and put it in the
   context, which goes to the provider; spend the session's budget, including on `fork` drafts,
-  which the spend ceiling does not count yet (POSTPONED.md). Off Linux, and under `--no-sandbox`,
-  the shell is not confined at all and the permission question is the only thing in the way.
+  which the spend ceiling does not count yet (POSTPONED.md). Under `--no-sandbox` the shell is not
+  confined at all and the permission question is the only thing in the way.
 - **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
   reaching the machine as the person who started it. `--serve` binds loopback only and makes its
   socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples

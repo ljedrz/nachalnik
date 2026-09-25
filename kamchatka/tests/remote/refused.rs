@@ -60,9 +60,9 @@ async fn an_oversized_frame_closes_the_connection() {
     // note: two endings and the claim is about neither of them on its own. The session writes why
     // and closes, and this peer is still sending when it does - so the receive buffer holds bytes
     // nobody read, and TCP answers that close with a reset. Where the reset wins it takes the
-    // sentence with it, which is what Windows does and what Linux does when the timing goes that
-    // way; the session will not drain the flood to deliver it, because not reading a peer that
-    // floods is the thing under test. What is promised is that the connection ends
+    // sentence with it, which is what happens when the timing goes that way; the session will not
+    // drain the flood to deliver it, because not reading a peer that floods is the thing under
+    // test. What is promised is that the connection ends
     match read {
         Ok(Some(Message::Failed { error, .. })) => {
             assert!(error.contains("over the"), "{error}");
@@ -160,7 +160,6 @@ fn an_address_says_what_kind_of_thing_it_is() {
 }
 
 /// A session leaving takes away its own socket file, and not one another session put there since.
-#[cfg(unix)]
 #[tokio::test]
 async fn leaving_does_not_take_away_another_sessions_socket() {
     let dir = std::env::temp_dir().join(format!("kamchatka-unlink-{}", std::process::id()));

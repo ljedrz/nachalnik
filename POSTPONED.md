@@ -122,60 +122,30 @@ Referenced from [AGENTS.md](AGENTS.md).
   is a different client, and the runtime already supports it; see `Blob::meta` and
   `pricing_a_picture.rs` for the half that is not rendering.
 
-- **Confining the shell on macOS, and the Mac binary that would go with it.** Away from Linux
-  `confine` answers `Unsupported` and the shell runs unconfined, which the readme says and
-  `Confinement` says on the status line. It waits on two things: nobody here can test it, so CI
-  would be the only thing that ever checked the boundary, and the one interface that could carry
-  it is deprecated.
+- **`kamchatka` anywhere but Linux.** It builds for Linux on x86_64 and aarch64 and `lib.rs`
+  refuses every other target, because what makes its shell worth handing a model - Landlock,
+  `openat2` beneath a directory, and the network gate's seccomp filter - is Linux's, and off Linux
+  the shell ran unconfined behind a question read off the command's name. The libraries are not
+  affected and are still tested on macOS and Windows. **0.15.1 is the last version that builds
+  elsewhere**, with a Mac binary, and is where a port starts: the `cfg`s for unix sockets, signals,
+  process groups and a Windows filesystem's spelling of names are all still in place there.
 
-  macOS has one mechanism, Seatbelt - Apple's TrustedBSD MAC layer - and it is the right shape:
-  kernel-level, unprivileged, path-scoped file rules and network rules. Two of its three doors are
-  shut. `sandbox_init(3)` is the self-apply call and the true Landlock analogue: deprecated,
-  private in the form that takes arbitrary SBPL, and `unsafe` FFI. App Sandbox entitlements are
-  what the deprecation notice points at, need code signing, and sandbox the app rather than a
-  child command. `sandbox-exec(1)` is deprecated in its own man page and still shipped and
-  working; `apple/containerization#737` asks for a removal timeline and a replacement and is
-  unanswered.
+  What a port has to bring is a confinement, since a shell with none is the thing this dropped. On
+  macOS that is Seatbelt, reachable without FFI as `exec sandbox-exec -p <profile> -- sh -c <cmd>`
+  from the child this program re-executes - deprecated in its own man page and still shipped, with
+  `apple/containerization#737` asking for a timeline and unanswered. Landlock's paths-with-rights
+  map onto SBPL directly: `(deny default)`, `(allow file-read* (subpath ...))`,
+  `(allow file-write* (subpath ...))`, `(deny network*)`, which covers UDP. A profile applies or it
+  does not, so there is no `Partial`; `SYSTEM` needs a macOS twin (`/System`, `/private/var`,
+  `/Library`); and the profile is generated text, so a working directory holding a `"` wants
+  escaping and a test first. Nothing there can hold a call, so the network would be asked about by
+  name again - `reaches_the_network` is still in `tools::policy` for exactly the kernels that
+  cannot hold one. `birdcage` confines the calling process rather than a child, which leaks past
+  the spawn. A Mac binary is unsigned without a paid Apple Developer account, and quarantined on
+  download until `xattr -d com.apple.quarantine`.
 
-  A backend goes in `confine`'s `cfg(not(target_os = "linux"))` arm. The child this program
-  re-executes would not confine itself; it would `exec sandbox-exec -p <profile> -- sh -c <cmd>`,
-  which is no FFI, no `unsafe` and no dependency. Landlock's paths-with-rights map onto SBPL
-  directly: `(deny default)`, `(allow file-read* (subpath ...))`,
-  `(allow file-write* (subpath ...))`, `(deny network*)`.
-
-  `(deny network*)` covers UDP, which on Linux is the gate's to refuse rather than Landlock's, so a
-  macOS backend says `no network` with no gate beside it - and asks about the network by the
-  command's name, since nothing there can hold a call. There is no `Partial` - a profile applies
-  or it does not - so macOS answers `Full` or `Unavailable`, and `Unavailable` becomes a runtime
-  check for `/usr/bin/sandbox-exec`, which doubles as the warning if Apple pulls it. `SYSTEM` needs
-  a macOS twin: `/System` for the dyld cache, `/private/var`, `/Library`. And the profile is
-  generated text, so a working directory holding a `"` is an injection surface that wants escaping
-  and a test before the rest is worth having.
-
-  `birdcage` covers both platforms and is the wrong fit: it confines the calling process, so the
-  restriction leaks past the spawn, which is the opposite of the re-execution this program does
-  deliberately.
-
-  **The first step is done.** `tests/sandbox.rs` is `#![cfg(target_os = "linux")]`, so everything
-  up to the spawn is in `tests/boundary.rs`, under `#![cfg(unix)]`, where the `macos-latest`
-  column in CI runs it: the `Reach` rules the file tools obey, what a refusal names, the `~`
-  refused in words rather than expanded, the arguments a confinement travels as, what the scratch
-  directory may be made through, and which errors `Sandbox::note_for` will claim. It is
-  `cfg(unix)` rather than nothing at all because those tests are written against `/usr` and
-  `/etc`, and a root with no drive letter is not absolute on Windows.
-
-  The portable half does not include *a command cannot write outside the working directory* or
-  *a `curl` is refused*. Both are a spawned process being stopped, which off Linux nothing does;
-  they are what is left in `sandbox.rs`, and a backend is what would check them.
-
-  **The Mac binary was separable and is shipped.** It is a second entry in the `binary` job's
-  matrix, `aarch64-apple-darwin` on `macos-latest`, through the `upload-rust-binary-action` the
-  Linux one already used; the target is that runner's own host, so nothing cross-compiles.
-  Gatekeeper gates it rather than the build: it is unsigned, so a download is quarantined until
-  `xattr -d com.apple.quarantine`, which `kamchatka`'s readme says beside the link. Signing and
-  notarising needs a paid Apple Developer account and two secrets in this repository, and that is
-  what is still not done - a Homebrew tap is the other way to avoid the quarantine. What the
-  binary does not have is any of the confinement above.
+  What would unblock it is somebody who can test the boundary on that platform, since CI would
+  otherwise be the only thing that ever checked it.
 
 - **A second System One engine, `laya` among them.** The module is `nachalnik-providers::system1`
   and the variables are `KAMCHATKA_SYSTEM1_*` because the three question types are the *category's*
@@ -377,8 +347,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **Which checks the record directory's privacy makes.** It looks at the mode bits and not at who
   owns the directory, which matters only to a process that can read past the bits anyway - root, or
-  one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid. Windows has no ACL step
-  and relies on `%TEMP%` being per-user. At most a line saying the check is unix's.
+  one holding `CAP_DAC_OVERRIDE` - and `std` has no way to ask for the uid.
 
 - **Three small things in the sandbox's accounts.**
   - `/dev` files are readable and `/dev` listings are not, so `note_for` can blame the boundary for

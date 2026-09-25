@@ -193,11 +193,8 @@ pub const SHIPPED: &str = include_str!("../kamchatka.json");
 /// every projection carries, before anything else happens. A session that picked something up is
 /// a session that says which file and where from.
 ///
-/// note: `XDG_CONFIG_HOME` and then `~/.config`, on every platform rather than Windows' own
-/// `%APPDATA%`. The variable is the one the people who set it expect to be read, and this program
-/// is a terminal program whose Windows users are in a shell that sets `HOME` - which is the same
-/// reasoning `home` below is written to, and it errs the same way: somewhere predictable rather than
-/// somewhere clever.
+/// note: `XDG_CONFIG_HOME` and then `~/.config`, which is where the people who set the variable
+/// expect it to be read from.
 pub fn found() -> Option<PathBuf> {
     let beside = PathBuf::from(FILE);
     if beside.is_file() {
@@ -215,23 +212,11 @@ pub fn found() -> Option<PathBuf> {
 
 /// Where the home directory is, according to the environment and nothing else.
 ///
-/// note: `USERPROFILE` as well, because on Windows that is the variable with the answer in it and
-/// `HOME` is usually not set at all - without it, a `~` in a settings file there would be a
-/// directory of that name, silently, on the one platform where nothing else in the program would
-/// say so.
-/// `HOME` is still asked first: a shell that sets it on Windows - an MSYS one does - is a shell
-/// somebody is typing paths into, and that home is the one they mean.
-///
 /// note: the environment and nothing else, for the same reason `~user` is left alone below: the
 /// password database's answer and the one the person running this program is working from are
 /// allowed to differ, and a path that quietly goes somewhere else is worse than one that fails.
 fn home() -> Option<PathBuf> {
-    std::env::var_os("HOME")
-        .or_else(|| match cfg!(windows) {
-            true => std::env::var_os("USERPROFILE"),
-            false => None,
-        })
-        .map(PathBuf::from)
+    std::env::var_os("HOME").map(PathBuf::from)
 }
 
 /// A leading `~`, made into the home directory it stands for.
@@ -249,12 +234,7 @@ fn home() -> Option<PathBuf> {
 /// and a path that is quietly not what it says is worse than one that is obviously wrong.
 ///
 /// note: the home is an argument rather than something this reads for itself, which is what lets
-/// the test below say what it is. A test that took the home from the environment could only run
-/// where the environment has one, which on Windows it usually does not.
-///
-/// note: `is_separator` rather than a literal `/`, so that `~\.cargo` is expanded on the platform
-/// that spells it that way and stays a path called `~\.cargo` on the platform where a backslash
-/// is a character a file may be named with.
+/// the test below say what it is rather than depend on the machine running it.
 fn expanded(path: PathBuf, home: &Path) -> PathBuf {
     let Some(rest) = path.to_str().and_then(|text| text.strip_prefix('~')) else {
         return path;
@@ -263,8 +243,8 @@ fn expanded(path: PathBuf, home: &Path) -> PathBuf {
     match rest.next() {
         // `~` on its own
         None => home.to_path_buf(),
-        // `~/x`, and `~\x` where that is a separator too
-        Some(sep) if std::path::is_separator(sep) => home.join(rest.as_str()),
+        // `~/x`
+        Some('/') => home.join(rest.as_str()),
         // `~stuff`, `~root/.ssh`: a name that starts with the character, and not a home directory
         Some(_) => path,
     }
@@ -304,9 +284,11 @@ mod tests {
 
         assert_eq!(expanded("~".into(), &home), home);
         assert_eq!(expanded("~/.rustup".into(), &home), home.join(".rustup"));
-        // and however this platform spells the separator, which on Windows is the other one
-        let native = format!("~{}.rustup", std::path::MAIN_SEPARATOR);
-        assert_eq!(expanded(native.into(), &home), home.join(".rustup"));
+        // a backslash is a character a name may hold, not a separator
+        assert_eq!(
+            expanded(r"~\.rustup".into(), &home),
+            PathBuf::from(r"~\.rustup")
+        );
         // not a prefix, not somebody else's, and not one in the middle
         assert_eq!(expanded("~stuff".into(), &home), PathBuf::from("~stuff"));
         assert_eq!(

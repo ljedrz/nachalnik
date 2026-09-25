@@ -1,18 +1,10 @@
 //! The boundary as this program works it out and says it, which is everything up to the spawn.
 //!
-//! note: the other half of `sandbox.rs`, and it is here because that file is
-//! `#![cfg(target_os = "linux")]` and these do not need to be. Nothing in here starts a process:
-//! what is under test is which paths `Reach` admits, what a refusal names, what a confinement
-//! travels as on a command line, what the scratch directory is allowed to be made through, and
-//! which errors `Sandbox::note_for` will claim. All of it is arithmetic over paths, and all of it
-//! was running on one platform of the three this crate says it works on - so the `macos-latest`
-//! column was green while checking none of it.
-//!
-//! note: `#![cfg(unix)]` rather than nothing at all. These are written against `/usr`, `/etc` and
-//! a `~`, and a root with no drive letter is not an absolute path on Windows - so what they would
-//! check there is not what they say they check.
-
-#![cfg(unix)]
+//! note: the other half of `sandbox.rs`, and a file of its own because nothing in here needs the
+//! kernel to confine anything. That file skips where Landlock does not hold; these run wherever
+//! the suite does. What is under test is which paths `Reach` admits, what a refusal names, what a
+//! confinement travels as on a command line, what the scratch directory is allowed to be made
+//! through, and which errors `Sandbox::note_for` will claim - all of it arithmetic over paths.
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -172,7 +164,6 @@ fn the_file_tools_are_held_to_the_same_boundary() {
 /// note: the swap is done by hand between the two calls, which is the whole of what a race is:
 /// something else writing to the directory after `allows` has looked at it. Linux only, because
 /// `openat2` is what refuses it and elsewhere the open is an ordinary one.
-#[cfg(target_os = "linux")]
 #[test]
 fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     use kamchatka::sandbox::{Access, Reach};
@@ -391,10 +382,7 @@ fn the_scratch_directory_is_never_somebody_elses() {
     std::fs::create_dir_all(&elsewhere).expect("somewhere to point at");
     std::fs::write(elsewhere.join("secret.txt"), "hunter2").expect("something in it");
 
-    #[cfg(unix)]
     std::os::unix::fs::symlink(&elsewhere, &path).expect("a link where the scratch goes");
-    #[cfg(not(unix))]
-    std::fs::create_dir(&path).expect("a directory where the scratch goes");
 
     let made = make_scratch(&path).expect("it is this test's own, so it gives way");
     assert_eq!(made, path);
@@ -417,7 +405,6 @@ fn the_scratch_directory_is_never_somebody_elses() {
     // and it is the user's own, for the same reason a written session is: what a command leaves in
     // here is whatever it was working on, and a fresh directory under the default umask is one
     // everyone on the machine can read
-    #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt as _;
 

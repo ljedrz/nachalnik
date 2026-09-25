@@ -1304,10 +1304,6 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
 /// had no way to send one. It does: the run is a child process, and `kill -INT` is a command.
 /// What it asserts is the difference between stopping and being killed - the line that says so,
 /// the `session.finished` record at the end of the log, and an exit that is not a failure.
-///
-/// note: `#[cfg(unix)]` because that is where the mechanism is. Windows has `ctrl+c` and no
-/// `kill`, and a test that pretended otherwise would be testing its own shim.
-#[cfg(unix)]
 #[test]
 fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     use std::io::Read as _;
@@ -1476,7 +1472,6 @@ async fn restart_ends_it_without_ending_the_program() {
 /// note: through the binary, because the half this is about is `Setup::wire` - the probe finding
 /// that the gate holds, and the policy being told so. Everything past that is tested in process,
 /// where no probe runs.
-#[cfg(target_os = "linux")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     let probed = kamchatka::sandbox::available(&common::program());
@@ -1561,7 +1556,6 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
 ///
 /// note: the endpoint is a socket rather than a scripted provider because the program builds its
 /// own provider in a process of its own, and a listener is the only seam a child process has.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     let base = common::endpoint(vec![format!(
@@ -1646,7 +1640,6 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
 ///
 /// note: what it saw is written to a file rather than read off the prose, because a headless run
 /// reports a tool result by its size and the record names results rather than copying them.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
     let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENAI_API_KEY:-none} ${TYPESAFE_API_KEY:-none} \
@@ -1707,7 +1700,6 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
 
 /// Reads a child's output into a string as it arrives, so that a test can look at it without
 /// blocking on a pipe that may never say another word.
-#[cfg(unix)]
 fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String>> {
     let said = Arc::new(parking_lot::Mutex::new(String::new()));
     let writing = said.clone();
@@ -1727,7 +1719,6 @@ fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String
 }
 
 /// Presses `ctrl+c` at a child process.
-#[cfg(unix)]
 fn interrupt(pid: u32) {
     let sent = std::process::Command::new("kill")
         .args(["-INT", &pid.to_string()])
@@ -1737,7 +1728,6 @@ fn interrupt(pid: u32) {
 }
 
 /// Waits for a child to leave, or says what it had said when it did not.
-#[cfg(unix)]
 fn waited_out(
     child: &mut std::process::Child,
     within: std::time::Duration,
@@ -1764,7 +1754,7 @@ fn waited_out(
 /// stop, so the first press ends the turn like any other, and `sleep 600` in forty lines of Python
 /// is what shows it. No tool this program ships ignores the interrupt any more, so the second
 /// press - for a tool of an embedder's that does - has nothing here to be shown on.
-#[cfg(all(unix, feature = "mcp"))]
+#[cfg(feature = "mcp")]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_first_press_stops_a_call_the_server_never_answers() {
     if std::process::Command::new("python3")
@@ -1833,7 +1823,6 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
 /// terminal, an ssh drop, `timeout` or `docker stop` wrote no record at all, and a `shell` command,
 /// in a process group of its own and never sent the terminal's hangup, went on running after the
 /// agent. `late.txt` is what the command would have done had it been left to finish.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
     for signal in ["TERM", "HUP"] {
@@ -1928,7 +1917,6 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
 /// note: `kamchatka --headless … 2>&1 | head` gets here once `head` has gone. The closing lines
 /// were printed with the macros that panic on a failed write, and before the record was written,
 /// so the panic took the record with it.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_nobody_is_reading_still_writes_its_record() {
     let base = common::endpoint(vec![common::answer("said to nobody")]).await;
@@ -1970,7 +1958,6 @@ async fn a_run_nobody_is_reading_still_writes_its_record() {
 }
 
 /// Every file under a directory.
-#[cfg(unix)]
 fn walkdir(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut found = Vec::new();
     for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
@@ -1988,7 +1975,6 @@ fn walkdir(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 /// note: the old session is recorded before the new one is wired, and the line naming the file was
 /// dropped when the wiring failed - so the error came out alone, over a record nobody was told
 /// about. A `--file` that has gone since the run started is one way to make the wiring fail.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
     use std::io::Write as _;
@@ -2042,7 +2028,6 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
 /// is the path a person takes - `--spend` on a command line, into `Setup`, into the `App` that
 /// enforces it. The stub reports 1,200 tokens for one answer, which is over any ceiling worth
 /// typing here.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_spend_ceiling_stops_the_program_itself() {
     let base = common::endpoint(vec![common::answer("as much as it likes")]).await;
@@ -2077,7 +2062,6 @@ async fn the_spend_ceiling_stops_the_program_itself() {
 /// checked - the suites all pass `--no-record`, because a test that wrote a file somewhere would
 /// be a test that left one. This reads the path out of the line the program prints, which is also
 /// the only promise made about it: that the line names a file somebody can open.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
     let base = common::endpoint(vec![common::answer("something to keep")]).await;
@@ -2132,7 +2116,6 @@ async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
 /// note: the headless driver ends the session itself, and returned before it got there on a line
 /// it could not read - so the record was written with no `session.finished` in it, which reads as
 /// a process that was killed rather than one that stopped.
-#[cfg(unix)]
 #[test]
 fn a_run_that_fails_still_records_an_ending() {
     use std::io::Write as _;
@@ -2185,7 +2168,7 @@ fn a_run_that_fails_still_records_an_ending() {
 /// note: compiled only where it is true. With `tui` on, this same command would draw a screen and
 /// wait for a key, which is a test that hangs rather than one that passes; without it, there is
 /// nothing to draw and the run is headless whatever stdout is.
-#[cfg(all(target_os = "linux", not(feature = "tui")))]
+#[cfg(not(feature = "tui"))]
 #[test]
 fn a_screenless_build_at_a_terminal_is_a_headless_run() {
     if std::process::Command::new("script")
@@ -2233,7 +2216,6 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
 /// `ctrl+c` have theirs above. The mechanism is tested through the library, with a pipe nobody
 /// writes to; what this adds is the flag, and that the program leaves rather than waiting on the
 /// blocking read that made every early stop hang until yesterday.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deadline_ends_the_program_itself() {
     // stdin is a pipe this test holds and never writes to, so nothing but the deadline can end it
@@ -2969,7 +2951,6 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
 /// note: `/model` switches the provider in place and the restart carries the provider over, so the
 /// new session came up on the old one's switch - where RUNNING.md says a restart goes back to the
 /// flags, the model among them.
-#[cfg(unix)]
 #[test]
 fn a_restart_goes_back_to_the_model_the_flags_named() {
     let dir = std::env::temp_dir().join(format!("kamchatka-reflag-{}", std::process::id()));
@@ -3015,11 +2996,6 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
 ///
 /// note: `TMPDIR` is the whole isolation. `record` writes under the temporary directory, so a run
 /// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.
-///
-/// note: and `#[cfg(unix)]` is that sentence's other half. Windows reads `TMP` and `TEMP` and not
-/// `TMPDIR`, so the child would record into the real temporary directory and this would count
-/// somebody else's sessions - or none.
-#[cfg(unix)]
 #[test]
 fn restart_writes_the_session_out_and_starts_another() {
     let dir = std::env::temp_dir().join(format!("kamchatka-restart-{}", std::process::id()));
@@ -3129,7 +3105,6 @@ fn restart_writes_the_session_out_and_starts_another() {
 /// directory somebody else made first - needs a second user, and it is the same refusal. What it
 /// promises is that nothing is written through the link and that the sentence says why and what
 /// to do instead, which is the only thing a person running this is told.
-#[cfg(unix)]
 #[test]
 fn a_record_directory_that_is_a_link_is_refused_in_words() {
     let dir = std::env::temp_dir().join(format!("kamchatka-linked-{}", std::process::id()));
@@ -3485,7 +3460,6 @@ async fn a_ceiling_lowered_under_the_spend_stops_the_running_turn() {
 /// kernel to rest, because answering one mid-turn would decide a question the kernel had not
 /// finished asking; this one holds a call that is already running, so waiting for the rest would
 /// be waiting for the command that is waiting on the answer.
-#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
     let probed = kamchatka::sandbox::available(&common::program());

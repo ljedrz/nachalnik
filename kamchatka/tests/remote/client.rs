@@ -505,9 +505,8 @@ async fn a_session_that_went_is_waited_for_longer_each_time() {
     let (mut records, mut prose) = (Vec::new(), heard.clone());
     let mut client = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose);
     let client = client.run(&at, BufReader::new(input));
-    // note: until the second wait is announced, rather than for a fixed time. A refused connection
-    // is refused at once on Linux and after about two seconds on Windows, which retries the
-    // handshake first, so a window that fitted one platform's second attempt missed the other's
+    // note: until the second wait is announced, rather than for a fixed time, which would be a
+    // guess at how long a refused connection takes to be refused
     let second = async {
         while heard.text().matches("attaching again").count() < 2 {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;

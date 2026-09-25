@@ -135,86 +135,23 @@ const SUSPECT: &[&str] = &[
 /// somewhere else resolves after this has answered. The boundary that does not care about names
 /// is the sandbox, which is the kernel's - see [`crate::sandbox`].
 ///
-/// note: and a name is compared the way the filesystem here compares it: case-blind on macOS and
-/// Windows, and on Windows as the name the file is opened under, without trailing dots or a
-/// stream. See `Spelling` for why only there.
+/// note: names are compared exactly, because that is how the filesystem here compares them: `.ENV`
+/// is another file than `.env`, and a rule folded to match it would reach files it was not written
+/// for. A backslash is read as a separator as well, which on Linux can only make a rule apply
+/// where it would not have - the direction a permission rule is allowed to be wrong in.
 pub fn path_matches(pattern: &str, path: &str) -> bool {
-    matches_as(pattern, path, Spelling::HERE)
-}
-
-/// [`path_matches`], for a filesystem that spells names this way.
-fn matches_as(pattern: &str, path: &str, spelling: Spelling) -> bool {
     let path = path.replace('\\', "/");
     let path = Path::new(&path);
 
     if let Some(directory) = pattern.strip_suffix('/') {
-        return path.components().any(|component| {
-            component
-                .as_os_str()
-                .to_str()
-                .is_some_and(|name| spelling.same(spelling.opened(name), directory))
-        });
+        return path
+            .components()
+            .any(|component| component.as_os_str().to_str() == Some(directory));
     }
 
     match path.file_name().and_then(|name| name.to_str()) {
-        Some(name) => glob(pattern, spelling.opened(name), spelling),
+        Some(name) => glob(pattern, name),
         None => false,
-    }
-}
-
-/// How the filesystem a rule is checked on compares names.
-///
-/// note: a rule is about the file that gets opened, so it has to agree with the filesystem about
-/// which names are the same file. On macOS and Windows `.ENV` opens `.env`, and on Windows so do
-/// `.env.` and `.env::$DATA` - so a rule compared byte for byte let `fs read .ENV` open the file
-/// `.env*` asks about, without asking. Folding only there rather than everywhere, because where
-/// names differ in case they are different files, and an `allow` rule folded on Linux would
-/// reach files it was not written for. The folding is ASCII: a filesystem folds more than that,
-/// and every rule this program ships is ASCII.
-#[derive(Debug, Clone, Copy)]
-struct Spelling {
-    /// Whether two names that differ only in case are one file.
-    case_blind: bool,
-    /// Whether a name's trailing dots and spaces, and anything from a `:`, are not part of it.
-    windows: bool,
-}
-
-impl Spelling {
-    /// This platform's.
-    const HERE: Self = Self {
-        case_blind: cfg!(any(target_os = "macos", windows)),
-        windows: cfg!(windows),
-    };
-
-    /// The name the filesystem opens for this one.
-    fn opened(self, name: &str) -> &str {
-        match self.windows {
-            // `.` and `..` are not names but steps, and trimming their dots made `../` match nothing
-            true if matches!(name, "." | "..") => name,
-            // a stream of a file is the file, and a trailing dot or space is dropped on the way in
-            true => name
-                .split(':')
-                .next()
-                .unwrap_or(name)
-                .trim_end_matches(['.', ' ']),
-            false => name,
-        }
-    }
-
-    /// Whether two names are one.
-    fn same(self, a: &str, b: &str) -> bool {
-        match self.case_blind {
-            true => a.eq_ignore_ascii_case(b),
-            false => a == b,
-        }
-    }
-
-    /// Whether two bytes of a name are one.
-    fn same_byte(self, a: u8, b: u8) -> bool {
-        match self.case_blind {
-            true => a.eq_ignore_ascii_case(&b),
-            false => a == b,
-        }
     }
 }
 
@@ -280,7 +217,7 @@ pub fn objection_to(pattern: &str) -> Option<String> {
 ///
 /// note: over bytes rather than characters. Both sides are `str`, so equal bytes are equal
 /// characters, and a `*` landing mid-character can only ever be a position the match moves past.
-fn glob(pattern: &str, name: &str, spelling: Spelling) -> bool {
+fn glob(pattern: &str, name: &str) -> bool {
     let (pattern, name) = (pattern.as_bytes(), name.as_bytes());
     let (mut p, mut n) = (0, 0);
     // where the last `*` was, and how much of the name it has been asked to swallow so far
@@ -293,7 +230,7 @@ fn glob(pattern: &str, name: &str, spelling: Spelling) -> bool {
                 swallowed = n;
                 p += 1;
             }
-            Some(c) if spelling.same_byte(*c, name[n]) => {
+            Some(c) if *c == name[n] => {
                 p += 1;
                 n += 1;
             }
@@ -922,60 +859,4 @@ pub fn reaches_the_network(cmd: &str) -> bool {
 
             NETWORKED.contains(&program)
         })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const UNIX: Spelling = Spelling {
-        case_blind: false,
-        windows: false,
-    };
-    const MACOS: Spelling = Spelling {
-        case_blind: true,
-        windows: false,
-    };
-    const WINDOWS: Spelling = Spelling {
-        case_blind: true,
-        windows: true,
-    };
-
-    /// A rule catches every spelling that opens the file it is about, where the filesystem makes
-    /// them one - and no more than that where it does not.
-    ///
-    /// note: compared byte for byte, `.ENV` got past `.env*` on macOS and Windows, where it opens
-    /// `.env`, and on Windows so did `key.pem.` and `key.pem::$DATA`. Each spelling is tried on
-    /// all three, since the platform a test runs on is one of them.
-    #[test]
-    fn a_rule_catches_every_name_that_opens_its_file() {
-        for (pattern, path, unix, macos, windows) in [
-            (".env*", ".ENV", false, true, true),
-            ("*.pem", "keys/Key.PEM", false, true, true),
-            ("id_rsa*", "ID_RSA", false, true, true),
-            ("secrets/", "Secrets/x", false, true, true),
-            ("*.pem", "key.pem.", false, false, true),
-            ("*.pem", "key.pem::$DATA", false, false, true),
-            ("secrets/", "secrets. /x", false, false, true),
-            (".env*", ".env", true, true, true),
-            ("../", "../outside", true, true, true),
-            ("*.pem", "key.txt", false, false, false),
-        ] {
-            assert_eq!(
-                matches_as(pattern, path, UNIX),
-                unix,
-                "{pattern} {path} on unix"
-            );
-            assert_eq!(
-                matches_as(pattern, path, MACOS),
-                macos,
-                "{pattern} {path} on macos"
-            );
-            assert_eq!(
-                matches_as(pattern, path, WINDOWS),
-                windows,
-                "{pattern} {path} on windows"
-            );
-        }
-    }
 }

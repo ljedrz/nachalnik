@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### breaking
 
+- **Linux only, on x86_64 and aarch64.** Any other target is refused with a `compile_error!`
+  saying so. What makes the shell worth handing a model - Landlock, `openat2` beneath a directory
+  and the network gate below - is Linux's, and on macOS and Windows the shell ran unconfined behind
+  a question read off the command's name. **0.15.1 is the last version that builds on macOS and
+  Windows**, and the one to start a port from; POSTPONED.md says what a port would need. The Mac
+  binary is gone from the release, and an aarch64 Linux one is attached beside the x86_64 one.
+- **`sandbox::Confinement::Unsupported` is `Confinement::Off`**, which is what it had come to
+  mean: nobody asked for a confinement, under `--no-sandbox` or before anything was probed.
+- **Path rules compare names exactly.** `.ENV` and `.env` are two files here, so the folding that
+  made `.env*` catch `.ENV` on macOS and Windows went with those platforms.
+- **`stopping::Terminated` takes `SIGTERM` and `SIGHUP`**, and no longer has a Windows half.
 - **`Sandbox::network` is a `sandbox::Network`**, where it was a `bool`: `Open`, `NoTcp` (Landlock
   alone, as before), `Shut` and `Asked`, the last two behind the network gate below. A confinement
   written by hand that said `network: false` says `Network::NoTcp`.

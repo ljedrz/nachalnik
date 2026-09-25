@@ -206,9 +206,8 @@ impl Harness {
     /// spaces collapsed to one.
     ///
     /// note: for asserting on a *sentence* rather than on a line. A phrase that sits comfortably
-    /// on one row here wraps onto two on a machine whose temp directory is
-    /// `/var/folders/df/djsxfhc17x95674wsm_g8s980000gn/T` - which is macOS, and which is how
-    /// `is not a session` became `is not a` and then `session:` and a green test went red on
+    /// on one row here wraps onto two on a machine whose temp directory is a longer path, which is
+    /// how `is not a session` became `is not a` and then `session:` and a green test went red on
     /// somebody else's CI. Anything whose text can contain a path belongs here rather than in
     /// `screen`.
     pub(crate) fn flat(&mut self) -> String {

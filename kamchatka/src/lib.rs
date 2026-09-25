@@ -87,6 +87,20 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+// note: Linux only, on the two architectures the network gate has a filter for. What makes the
+// `shell` tool something a model may be handed is Landlock, `openat2` beneath a directory and the
+// gate, and every one of them is Linux's; elsewhere the shell ran unconfined behind a question
+// read off the command's name. 0.15.1 is the last version that builds anywhere else, and is where
+// to start from for a port.
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+compile_error!(
+    "kamchatka builds for Linux on x86_64 and aarch64 only; 0.15.1 is the last version that \
+     builds anywhere else"
+);
+
 /// A System One engine running on this machine; see `SYSTEM1_ADVISOR_COMMAND`.
 #[cfg(feature = "advise")]
 pub mod advisor;

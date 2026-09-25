@@ -53,12 +53,6 @@ pub fn workdir(name: &str) -> PathBuf {
 /// note: the bodies are SSE because the provider asks for a stream unless told not to, and the
 /// point of these tests is the path the program actually takes. `[DONE]` is appended here so that
 /// a case reads as what the model said rather than as protocol.
-///
-/// note: the imports are the function's rather than the file's, because the function is. Everything
-/// under this `cfg` is gone on Windows, and a `use` at the top that only this reaches is an unused
-/// import there - which under the `RUSTFLAGS` this workspace builds with is a failed build on the
-/// one platform nobody here runs.
-#[cfg(unix)]
 pub async fn endpoint(answers: Vec<String>) -> String {
     use std::sync::{
         Arc,
@@ -112,7 +106,6 @@ pub async fn endpoint(answers: Vec<String>) -> String {
 }
 
 /// One streamed answer for [`endpoint`], with what it cost on the end of it.
-#[cfg(unix)]
 pub fn answer(text: &str) -> String {
     use serde_json::json;
 
@@ -140,7 +133,6 @@ pub fn program() -> std::path::PathBuf {
 /// path in here that is derived: a build's examples are in `examples/` under the directory its
 /// binary is in. `cargo test -p kamchatka` builds them; a run of one suite alone may not, which is
 /// for the caller to say before spawning.
-#[cfg(unix)]
 pub fn example(name: &str) -> std::path::PathBuf {
     program()
         .parent()

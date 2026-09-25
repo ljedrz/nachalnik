@@ -117,7 +117,6 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
 /// the checkpoint it was replacing. A directory nothing may be written in is the failure a test can
 /// arrange; the files in it can still be renamed over, which is why the temporaries are the part
 /// that has to come first.
-#[cfg(unix)]
 #[tokio::test]
 async fn a_save_that_cannot_finish_leaves_the_last_one_alone() {
     use std::os::unix::fs::PermissionsExt;

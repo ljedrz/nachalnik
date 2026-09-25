@@ -509,10 +509,8 @@ mod tests {
     /// The complaint once `lines` of the engine's own output have arrived.
     ///
     /// note: the child writes them before it answers, and the answer can still get here first:
-    /// the ring is filled by its own task, and on windows the pipe is read on a blocking thread
-    /// that returns as soon as it has anything, so two lines written a moment apart reach the
-    /// ring a wake-up apart. Waiting for the first and asserting on the second is a race, and
-    /// windows loses it.
+    /// the ring is filled by its own task, so two lines written a moment apart can reach it a
+    /// wake-up apart. Waiting for the first and asserting on the second is a race.
     async fn complaint_after(local: &Local, lines: usize) -> String {
         for _ in 0..40 {
             if local.said.lock().len() >= lines {
