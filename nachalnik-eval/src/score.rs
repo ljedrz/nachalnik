@@ -44,8 +44,8 @@ pub const RULES: u32 = 2;
 /// How many bins the calibration curve is cut into.
 ///
 /// note: Five, not the ten the literature usually uses. A run of this kind produces tens of
-/// comparisons rather than thousands, and ten bins over forty claims is eight bins with three
-/// things in them and two with nothing - a curve made of noise, reported to two decimal places.
+/// comparisons rather than thousands, and ten bins over forty claims is four things in a bin on
+/// average - a curve made of noise, reported to two decimal places.
 /// Five is the coarsest cut that can still show a subject that is confident and wrong.
 pub const BINS: usize = 5;
 
