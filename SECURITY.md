@@ -120,8 +120,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   parenthesis offering `./~` for the rare file genuinely called that had two models reading `./~`,
   a file neither of them wanted. Rare spellings belong in the argument's description, which is
   read while choosing; the refusal gets the one instruction that applies. Two suites test it:
-  `tests/boundary.rs` pins the sentence, and only the last section of `tests/live.rs` can watch a
-  real model read it, because a scripted provider agrees with every refusal it is handed.
+  `tests/boundary.rs` pins the sentence, and only the section of `tests/live.rs` about `~` can
+  watch a real model read it, because a scripted provider agrees with every refusal it is handed.
 - **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no
   shell, so `read ~/.gitconfig` would join a directory literally called `~` onto the working
   directory and come back `No such file or directory` - the same trap as the one below, since a
