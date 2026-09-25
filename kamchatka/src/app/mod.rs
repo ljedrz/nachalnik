@@ -2025,7 +2025,7 @@ impl App {
         self.cancel_edit();
         // and so does a filter. A query written against the trace means nothing against the
         // context, and one left running on a pane somebody comes back to is a pane showing four
-        // rows of eight hundred with its explanation on another tab
+        // rows of hundreds with its explanation on another tab
         self.search = None;
 
         self.tab = tab;

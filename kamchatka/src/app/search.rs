@@ -8,7 +8,7 @@
 //!
 //! note: the filter only exists while the box is on the screen. Closing it clears it, which keeps
 //! a pane from lying: a filter that outlived its box would leave a window quietly showing four of
-//! eight hundred events with nothing on screen saying why.
+//! hundreds of rows with nothing on screen saying why.
 
 use std::{collections::HashMap, sync::Arc};
 

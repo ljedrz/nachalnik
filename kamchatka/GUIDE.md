@@ -241,7 +241,7 @@ keeps the last few hundred lines. `/save` keeps every event there was, including
 subscriber can ever catch: the kernel's own `session.started`, emitted while it is still being
 constructed.
 
-**<kbd>/</kbd> filters either of those two panes.** Eight hundred events is not a log anybody reads;
+**<kbd>/</kbd> filters either of those two panes.** Four hundred events is not a log anybody reads;
 it is a log somebody scrolls past looking for one line. <kbd>/</kbd> opens a one-row box where the
 prompt would be — these panes are read and operated rather than typed into, so it is not taking
 anything — and what you type filters the rows, fuzzily, counting what it found beside the query. It
@@ -259,13 +259,13 @@ and the clock, so an hour or a date finds what happened in it.
 <kbd>←</kbd> and <kbd>→</kbd> move within the query, so a mistake four letters back is one you can
 go to and fix — <kbd>backspace</kbd> takes out what is behind the cursor and <kbd>delete</kbd> what
 is in front of it, and typing goes in where the cursor is. Everything else stays with the pane,
-deliberately: the point of filtering eight hundred events down to nine is to read the nine, and a
+deliberately: the point of filtering four hundred events down to nine is to read the nine, and a
 box that swallowed the scroll keys would mean closing the search, and so losing the filter, to look
 at what it found. So <kbd>↑</kbd> <kbd>↓</kbd> and the paging still move between the rows
 underneath, and so do <kbd>home</kbd> and <kbd>end</kbd> — which are all that is left of
 <kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it,
 and closing clears it: a filter that outlived its box would leave a window quietly showing four rows
-of eight hundred with nothing on screen saying why. Changing tabs clears it for the same reason.
+of hundreds with nothing on screen saying why. Changing tabs clears it for the same reason.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, under a header that counts the items in and out, names each
