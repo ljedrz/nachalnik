@@ -759,6 +759,44 @@ fn the_budget_says_how_much_of_the_request_nobody_priced() {
     );
 }
 
+/// A picture in a turn's reasoning is disowned like one in its content, on the row as well as in
+/// the budget.
+///
+/// note: the words beside it are priced, so a row that only asked about the content would show
+/// the turn as fully counted with a picture in it.
+#[test]
+fn a_picture_in_a_turn_s_reasoning_is_not_priced_either() {
+    let kernel = kernel();
+    kernel.push(ContextItem::user("what is on the screen?"));
+    let turn = kernel.push(
+        ContextItem::assistant("a modal dialog", Vec::new())
+            .with_reasoning(Some(Content::blob("image/png", "A".repeat(400_000)))),
+    );
+
+    assert_eq!(kernel.item(turn).unwrap().uncounted, 1);
+    assert!(!kernel.budget().fully_counted());
+}
+
+/// A counter that implements `count` alone disowns nothing: a real tokenizer is installed by
+/// writing that one method, and its budget is a measurement rather than a floor.
+#[test]
+fn a_counter_that_only_counts_disowns_nothing() {
+    struct Chars;
+
+    impl TokenCounter for Chars {
+        fn count(&self, content: &Content) -> usize {
+            content.to_text().chars().count()
+        }
+    }
+
+    let kernel = kernel();
+    kernel.set_counter(Arc::new(Chars));
+    let item = kernel.push(ContextItem::user("what is on the screen?"));
+
+    assert_eq!(kernel.item(item).unwrap().uncounted, 0);
+    assert!(kernel.budget().fully_counted());
+}
+
 /// A request the counter could not fully price teaches it nothing, because the difference
 /// between the two numbers is not an error it can attribute.
 ///
