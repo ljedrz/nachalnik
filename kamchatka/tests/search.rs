@@ -14,38 +14,13 @@ mod common;
 use std::{path::Path, sync::Arc};
 
 use common::scratch;
-use kamchatka::{
-    sandbox::Reach,
-    tools::{Careful, Limits, Shell},
-};
+use kamchatka::tools::Limits;
 use nachalnik::{OutputSink, Tool, ToolCall, test::call};
 use serde_json::{Value, json};
 
 /// The tools as a session gets them, held to `dir`.
 fn tools(dir: &Path) -> Vec<Arc<dyn Tool>> {
-    tools_within(dir, true)
-}
-
-/// [`tools`], held to `dir` or, as under `--no-sandbox`, not held at all.
-fn tools_within(dir: &Path, confined: bool) -> Vec<Arc<dyn Tool>> {
-    kamchatka::tools::builtin(
-        Shell {
-            workdir: dir.to_path_buf(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: Arc::new(Careful::new()),
-            confiner: None,
-            limits: Limits::default(),
-        },
-        Reach {
-            workdir: dir.to_path_buf(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            confined,
-        },
-        Limits::default(),
-    )
+    common::builtin(dir, true, Limits::default())
 }
 
 /// Calls one of them and hands back what the model would read.
@@ -59,7 +34,7 @@ async fn ask_unconfined(dir: &Path, action: &str, args: Value) -> String {
 }
 
 async fn answered(dir: &Path, confined: bool, action: &str, mut args: Value) -> String {
-    let tools = tools_within(dir, confined);
+    let tools = common::builtin(dir, confined, Limits::default());
     let found = tools
         .iter()
         .find(|it| it.spec().id == "fs")
