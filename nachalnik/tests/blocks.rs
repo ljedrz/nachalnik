@@ -392,6 +392,12 @@ async fn sending_blocks_carries_the_order_through() {
     assert_eq!(assistant.calls().count(), 2);
     // and nothing was lost, so nothing is reported
     assert!(projection.repairs.is_empty(), "{:?}", projection.repairs);
+    // nor moved: the kernel recorded both results straight behind the turn that asked for them
+    assert!(
+        projection.reordered.is_empty(),
+        "{:?}",
+        projection.reordered
+    );
 }
 
 #[tokio::test]
