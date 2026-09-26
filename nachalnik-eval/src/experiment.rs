@@ -827,7 +827,6 @@ fn unrun(experiment: &Arc<dyn Experiment>, failed: Failure) -> Outcome {
 mod thousands_tests {
     use super::thousands;
 
-    /// note: an unmarked seven-figure count is a number nobody reads at a glance.
     #[test]
     fn a_seven_figure_count_is_readable() {
         assert_eq!(thousands(0u64), "0");
