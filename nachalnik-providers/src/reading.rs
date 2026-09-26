@@ -428,6 +428,13 @@ mod tests {
         assert!(!said.contains('<'), "nor are the tags: {said}");
         assert!(said.len() < page.len() / 2, "and it is shorter: {said}");
 
+        // a skipped element ends at its own closing tag, not at the first one inside it
+        let script = complaint(
+            reqwest::StatusCode::METHOD_NOT_ALLOWED,
+            r#"<script>el.innerHTML = "<p>moving</p>"; go()</script><p>This site has moved.</p>"#,
+        );
+        assert_eq!(script, "405 Method Not Allowed: This site has moved.");
+
         // and so does nothing at all
         assert!(complaint(status, "").contains("429"));
     }
