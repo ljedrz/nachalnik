@@ -1405,6 +1405,40 @@ async fn a_command_is_asked_about_when_it_reaches_for_the_network_and_not_before
     assert!(policy.reaching().waiting().is_empty());
 }
 
+/// A network that is allowed lets a confined command connect over TCP: one the stance allows, and
+/// one the gate held until a person said yes.
+///
+/// note: Landlock is what refuses TCP, and a ruleset cannot be lifted once the command runs. A
+/// confinement that refused TCP here would make an `allow` and a `yes` mean nothing to anything
+/// but a datagram.
+#[tokio::test]
+async fn an_allowed_network_lets_a_confined_command_connect_over_tcp() {
+    if !enforced() {
+        return;
+    }
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = listener.local_addr().expect("it is bound").port();
+    let cmd = format!(
+        "python3 -c \"import socket; \
+         socket.create_connection(('127.0.0.1', {port}), timeout=5)\" 2>&1"
+    );
+
+    let (ok, said) = run(
+        &sandbox(common::workdir("tcp-open"), true, Network::Open),
+        &cmd,
+    );
+    assert!(ok, "{said}");
+
+    if !gated() {
+        return;
+    }
+    let (shell, policy) = gated_shell(&common::workdir("tcp-yes"));
+    let answers = answering(&policy, true);
+    let said = through(&shell, &cmd).await;
+    assert!(said.starts_with("exit: 0"), "{said}");
+    assert_eq!(answers.asked(), 1, "{said}");
+}
+
 /// A no refuses every internet socket the command asks for, and the model is told it was an answer.
 #[tokio::test]
 async fn a_no_refuses_every_socket_the_command_asks_for() {
