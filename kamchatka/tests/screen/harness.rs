@@ -306,3 +306,20 @@ impl Harness {
             .join("\n")
     }
 }
+
+/// A figure with its thousands separated, the way the pane writes one.
+///
+/// note: `thousands` is the pane's own and not something an integration test can reach, so this
+/// is that rule written out again - once, here, rather than inline in each test that needs it.
+pub(crate) fn grouped(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (at, digit) in digits.chars().enumerate() {
+        if at > 0 && (digits.len() - at).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+
+    out
+}
