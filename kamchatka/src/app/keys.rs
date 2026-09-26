@@ -293,17 +293,10 @@ impl App {
             // how much of an item the model gets, in three steps out and one back: all of it,
             // then a marker where it was, then nothing at all
             //
-            // note: the middle step is the one worth having a key for. Taking a tool result out
-            // makes the projector drop the call that asked for it, so the model reads a
-            // conversation it never had; elided, the call keeps its answer and only the content
-            // is gone. Which of the two somebody wants is not something this program can guess -
-            // hiding a result outright is a fair thing to want - so it is a cycle rather than a
-            // decision, the same way the permissions tab cycles a stance through three
-            //
-            // note: the ring itself is [`super::App::cycle`], because the page in
-            // `examples/browser.html` puts a button on every row that does this and the notes it
-            // writes are read by the model. Two callers writing their own words for one act is two
-            // accounts of it in the context
+            // note: the ring itself, and why its middle step earns a key, is [`super::App::cycle`],
+            // because the page in `examples/browser.html` puts a button on every row that does
+            // this and the notes it writes are read by the model. Two callers writing their own
+            // words for one act is two accounts of it in the context
             KeyCode::Char(' ') => {
                 if let Err(e) = self.cycle(picked.id) {
                     self.say(Speaker::Error, e);
