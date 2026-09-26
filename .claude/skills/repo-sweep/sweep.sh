@@ -1,7 +1,7 @@
 #!/bin/bash
 # One headless kamchatka sweep over one scope.
 #
-#   sweep.sh KIND NAME SCOPEFILE      KIND is audit, quality, tests or docs
+#   sweep.sh KIND NAME SCOPEFILE      KIND is audit, quality, tests, docs or compact
 #
 # Writes $SWEEPS/NAME.jsonl (the stream records) and $SWEEPS/NAME.err (the prose, ending in a line
 # `exit N`). Needs configure.py to have written $SWEEPS/audit.json, quality.json and docs.json, the
@@ -17,7 +17,8 @@ case $kind in
     audit) config=$SWEEPS/audit.json; word=audit ;;
     quality|tests) config=$SWEEPS/quality.json; word=review ;;
     docs) config=$SWEEPS/docs.json; word=check ;;
-    *) echo "KIND is audit, quality, tests or docs" >&2; exit 2 ;;
+    compact) config=$SWEEPS/compact.json; word=review ;;
+    *) echo "KIND is audit, quality, tests, docs or compact" >&2; exit 2 ;;
 esac
 cd "$REPO"
 {

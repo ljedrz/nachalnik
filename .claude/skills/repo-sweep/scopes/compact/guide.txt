@@ -1,0 +1,1 @@
+Compactness review of kamchatka/GUIDE.md, against kamchatka/RUNNING.md, kamchatka/README.md and the in-program help (kamchatka/src/help.rs, the key bindings in kamchatka/src/app/keys.rs). Look for sections that repeat each other or another document, and paragraphs that restate the one above. Report verified findings only: open both places before saying one repeats the other.
