@@ -272,11 +272,10 @@ impl Tool for Context {
         ToolSpec::new(
             "context",
             "your own context: what is in it, what it costs, and what you carry into the next \
-             request. Four operations read it and eight change it, and each says what it does. \
-             Nothing destroys anything: every item keeps its number and can be restored. What \
-             is refused is changing a system instruction, the turn you are speaking in, or an \
-             item the person you work with pinned - those are not yours. A pin of your own is, \
-             and `restore` undoes it.\n\
+             request. Four operations read it and eight change it. Nothing destroys anything: \
+             every item keeps its number and can be restored. What is refused is changing a \
+             system instruction, the turn you are speaking in, or an item the person you work \
+             with pinned - those are not yours. A pin of your own is, and `restore` undoes it.\n\
              Where an operation takes a `select`, it is a class of items instead of `ids`: an \
              item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
