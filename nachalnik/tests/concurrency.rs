@@ -6,8 +6,11 @@
 //! itself does several things, which is why compaction is one locked operation rather than a
 //! sequence of them.
 
+mod common;
+
 use std::sync::Arc;
 
+use common::tool_results_text;
 use nachalnik::{
     CompactionPlan, Config, ContextItem, ContextState, Event, Kernel, ModelResponse, State,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
@@ -388,16 +391,6 @@ async fn one_at_a_time_means_one_finishes_before_the_next_starts() {
 }
 
 // ------------------------------------------------------- what an interrupt can still stop, and not
-
-/// Every tool result the kernel recorded, in order.
-fn tool_results_text(kernel: &Kernel) -> Vec<String> {
-    kernel
-        .items()
-        .iter()
-        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
-        .map(|item| item.content.to_text().into_owned())
-        .collect()
-}
 
 /// note: `Slow` never looks at [`OutputSink::is_interrupted`], and that is the point of using it
 /// here. What is being pinned is what the *kernel* can do about a tool that does not cooperate,

@@ -49,3 +49,13 @@ pub fn names(events: &mut Receiver<Event>) -> Vec<String> {
 pub fn count(events: &[Event], name: &str) -> usize {
     events.iter().filter(|e| e.name() == name).count()
 }
+
+/// Every tool result the kernel recorded, in order.
+pub fn tool_results_text(kernel: &Kernel) -> Vec<String> {
+    kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
+        .map(|item| item.content.to_text().into_owned())
+        .collect()
+}
