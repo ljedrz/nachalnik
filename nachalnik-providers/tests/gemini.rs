@@ -487,6 +487,20 @@ fn the_model_is_described_as_this_dialect_serves_it() {
     assert!(info.reasoning, "and a `thought` part is thinking");
 }
 
+/// What the model takes is asked of the address, from the model's own entry.
+#[tokio::test]
+async fn what_the_model_takes_is_asked_of_the_address() {
+    let provider = Gemini::new(
+        "gemini-test",
+        server(r#"{"name":"models/gemini-test","inputTokenLimit":1048576}"#).await,
+        "no key needed",
+    );
+    assert_eq!(provider.info().context_limit, None, "not asked yet");
+
+    provider.probe().await;
+    assert_eq!(provider.info().context_limit, Some(1_048_576));
+}
+
 // ------------------------------------------------------------------------------ the round trip
 
 #[tokio::test]
