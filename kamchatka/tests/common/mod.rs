@@ -88,10 +88,13 @@ pub async fn endpoint(answers: Vec<String>) -> String {
                         None => return std::future::pending().await,
                     },
                 };
+                // `Connection: close` because the socket is shut after one answer. Without it the
+                // client keeps the connection for the next request, and a request that follows a
+                // tool that finishes at once goes out on it before the close arrives, and fails
                 let _ = socket
                     .write_all(
                         format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\r\n{body}",
+                            "HTTP/1.1 200 OK\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                             body.len()
                         )
                         .as_bytes(),
