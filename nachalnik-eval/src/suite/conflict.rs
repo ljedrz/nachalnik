@@ -51,9 +51,8 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{DEPOT, Dossier, id_of},
-        instrument, note_drift, said_or_nothing, script,
+        excluding, instrument, note_drift, said_or_nothing, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -403,17 +402,11 @@ impl Experiment for Conflict {
         // one claim per side, because the interesting answer is the pair. "Neither matters" is a
         // subject saying the disagreement is inert; "both matter" is a subject that has not
         // noticed that only one of them can be carrying an answer at a time
-        let removed = counterfactual(
-            self.dossier.question,
-            &script::fill(script::EXCLUDED, &[("label", self.rift.label)]),
-        );
+        let removed = excluding(self.dossier.question, self.rift.label);
         let (said, on_removing_rift) = subject.probe(&removed).await?;
         let on_removing_rift_at = trial.asked(&removed, &said, &on_removing_rift);
 
-        let disowned = counterfactual(
-            self.dossier.question,
-            &script::fill(script::EXCLUDED, &[("label", self.rift.against)]),
-        );
+        let disowned = excluding(self.dossier.question, self.rift.against);
         let (said, on_removing_disputed) = subject.probe(&disowned).await?;
         let on_removing_disputed_at = trial.asked(&disowned, &said, &on_removing_disputed);
 

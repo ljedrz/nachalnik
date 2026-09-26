@@ -11,9 +11,8 @@ use crate::{
     probe::Answer,
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{DEPOT, Dossier, ORCHARD, id_of},
-        instrument, note_drift, script,
+        excluding, instrument, note_drift, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -109,10 +108,7 @@ impl Feedback {
 
         let mut claims = Vec::with_capacity(battery.len());
         for label in &battery {
-            let probe = counterfactual(
-                dossier.question,
-                &script::fill(script::EXCLUDED, &[("label", label)]),
-            );
+            let probe = excluding(dossier.question, label);
             let (said, claim) = subject.probe(&probe).await?;
             let asked = trial.asked(&probe, &said, &claim);
             claims.push((claim, asked));

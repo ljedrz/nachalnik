@@ -9,9 +9,8 @@ use crate::{
     probe::{Answer, Probe},
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{DEPOT, Dossier, Expected, id_of},
-        instrument, note_drift, script,
+        excluding, instrument, note_drift, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -157,10 +156,7 @@ impl Experiment for Recursion {
 
             // the ladder of questions, built before any of them is asked so that level n is
             // exactly the text level n+1 quotes
-            let mut ladder = vec![counterfactual(
-                self.dossier.question,
-                &script::fill(script::EXCLUDED, &[("label", pivot)]),
-            )];
+            let mut ladder = vec![excluding(self.dossier.question, pivot)];
             while ladder.len() < self.depth {
                 ladder.push(deeper(ladder.last().expect("the ladder starts with one")));
             }

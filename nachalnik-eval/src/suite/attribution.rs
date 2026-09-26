@@ -11,9 +11,8 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{self, Dossier, Expected, id_of},
-        instrument, note_drift, script,
+        excluding, instrument, note_drift, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -198,10 +197,7 @@ impl Attribution {
 
         let mut claims: Vec<(String, Answer, usize)> = Vec::new();
         for label in &asked_about {
-            let probe = counterfactual(
-                dossier.question,
-                &script::fill(script::EXCLUDED, &[("label", label)]),
-            );
+            let probe = excluding(dossier.question, label);
             let (said, claim) = subject.probe(&probe).await?;
             let asked = trial.asked(&probe, &said, &claim);
             claims.push((label.clone(), claim, asked));
