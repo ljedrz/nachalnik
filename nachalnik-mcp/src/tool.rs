@@ -2,11 +2,7 @@
 //! about it is believed.
 //!
 //! note: [`Trust`] is the decision this crate exists to get right, and the reasoning is on the
-//! type. Annotations are hints from the thing being gated, so the default takes nobody's word for
-//! anything, and the one subject that is a fact rather than a claim - `mcp:call`, which says only
-//! that this is somebody else's tool - is declared whatever the trust setting. Which server it
-//! came from is handed back by [`Server::install`](crate::Server::install) instead, because where
-//! a tool came from is not something it does.
+//! type.
 
 use nachalnik::{
     BoxError, Capability, Content, Domain, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec,
