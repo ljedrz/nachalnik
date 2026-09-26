@@ -690,7 +690,21 @@ fn the_probe_finds_the_gate_wherever_the_kernel_can_hold_a_call() {
         .lines()
         .find_map(|line| line.strip_prefix("Seccomp:"))
         .is_some_and(|mode| mode.trim() != "0");
-    if !kamchatka::gate::holds() || filtered {
+    if filtered {
+        eprintln!("skipped: this process is under a filter already");
+        return;
+    }
+    if !kamchatka::gate::holds() {
+        // the kernel's no is taken only where a gate cannot go on either, or a `holds` that said
+        // no everywhere would skip this test everywhere
+        let (ran, said) = run(
+            &sandbox(common::workdir("probe-no-gate"), true, Network::Shut),
+            "true",
+        );
+        assert!(
+            !ran,
+            "the kernel says it cannot hold a call and a gate went on: {said}"
+        );
         eprintln!("skipped: this kernel cannot hand this process a listener");
         return;
     }
