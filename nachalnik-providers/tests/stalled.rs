@@ -481,9 +481,9 @@ async fn a_stream_that_never_ends_a_line_can_still_be_stopped() {
 }
 
 /// Sends a stream's headers, one event if asked for, and then more than this crate reads of one
-/// line without ending it.
+/// response: as one line that never ends, or as lines none of which is an event.
 #[cfg(feature = "openai")]
-async fn endless_line(first: bool) -> String {
+async fn endless(first: bool, lines: bool) -> String {
     use tokio::io::AsyncWriteExt as _;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
@@ -509,7 +509,11 @@ async fn endless_line(first: bool) -> String {
             .concat();
             let _ = socket.write_all(&framed).await;
         }
-        let chunk = vec![b'x'; 1 << 20];
+        // note: not a power of two, so that the ceiling is passed rather than met exactly
+        let mut chunk = vec![b'x'; (1 << 20) + 1];
+        if lines {
+            chunk[1 << 20] = b'\n';
+        }
         let framed = [
             format!("{:x}\r\n", chunk.len()).into_bytes(),
             chunk,
@@ -538,7 +542,7 @@ async fn a_line_that_never_ends_is_not_read_for_ever() {
         let kernel = Kernel::new(Config::default());
         kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
             "endless",
-            endless_line(first).await,
+            endless(first, false).await,
             "no key needed",
         )));
         kernel.push(ContextItem::user("are you there?"));
@@ -565,5 +569,35 @@ async fn a_line_that_never_ends_is_not_read_for_ever() {
                 );
             }
         }
+    }
+}
+
+/// A body of lines that are not events, and a whole answer, are not held for ever either: past the
+/// ceiling each is refused with a sentence.
+///
+/// note: neither has a line left unended for the check above to find. A body that never was a
+/// stream is kept whole for as long as nothing in it is an event, and a whole answer is kept until
+/// it ends, so each has its own ceiling.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_body_that_is_not_a_stream_is_not_read_for_ever() {
+    for streaming in [true, false] {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(
+            nachalnik_providers::OpenAiCompatible::new(
+                "endless",
+                endless(false, true).await,
+                "no key needed",
+            )
+            .streaming(streaming),
+        ));
+        kernel.push(ContextItem::user("are you there?"));
+
+        let said = tokio::time::timeout(Duration::from_secs(60), kernel.turn())
+            .await
+            .unwrap_or_else(|_| panic!("it read for ever, streaming: {streaming}"))
+            .expect_err("more than is read is a failure")
+            .to_string();
+        assert!(said.contains("MiB"), "streaming: {streaming}: {said}");
     }
 }
