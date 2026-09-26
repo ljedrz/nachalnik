@@ -808,6 +808,27 @@ mod tests {
         assert_eq!(streamed.reasoning, "working out the budget");
     }
 
+    /// A whole answer whose thinking is reported only as a summary on the body keeps it as its
+    /// thinking.
+    ///
+    /// note: `mercury-2` asked with `reasoning_summary: true` puts it there rather than on the
+    /// message, and read only off the message the turn has the answer and none of the working.
+    #[test]
+    fn a_summary_on_a_whole_answer_is_its_thinking() {
+        let answered = whole(
+            json!({ "choices": [{ "message": { "content": "9" }, "finish_reason": "stop" }],
+                "reasoning_summary": { "content": "all but 9 means 9 stay", "status": "complete" } }),
+            false,
+        );
+        assert_eq!(
+            answered
+                .reasoning
+                .map(|it| it.to_text().into_owned())
+                .as_deref(),
+            Some("all but 9 means 9 stay")
+        );
+    }
+
     /// No arguments written is a call with no arguments, and an object sent as one is taken as it
     /// is; only text that is not JSON is `_unparsed`.
     ///
