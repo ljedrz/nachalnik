@@ -1,15 +1,5 @@
 //! The half of `context` that changes it: move items, rewrite one, write something down, and walk
 //! any of it back.
-//!
-//! note: a file of its own and not a tool of its own. What is here is everything that is really
-//! about *changing* a context - the journal `undo` walks, the refusals, and the accounting that
-//! says what a change cost. The schema and
-//! the dispatch are next door with the reading half, because that is what a model sees.
-//!
-//! note: what it will not do is undo a person's decisions - a pinned item, a system instruction
-//! and the assistant turn carrying the call in flight are refused, and `undo` walks its own
-//! journal rather than the kernel's stack, which belongs to the person. Both rules are in the
-//! doc comments below, where the code that enforces them is.
 
 use std::cmp::Ordering;
 
