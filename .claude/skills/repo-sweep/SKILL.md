@@ -245,8 +245,15 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 - A `--sandbox-read` on the command line replaces `mt.json`'s list instead of adding to it, and
   cargo loses its toolchain.
 - Run one crate at a time. `kamchatka` is the long one: most of its mutants are Unviable, since its
-  return types mostly have no `Default`, and the `sandbox.rs` mutants around `argv`, `from_argv` and
-  `reaches` are where a runaway was last suspected, so run that file alone at `-j 1` first.
+  return types mostly have no `Default`.
+- The runaway is `Sandbox::argv` replaced with `vec![]` or `vec![Default::default()]`. At start-up
+  `sandbox::available` probes the confinement by running the program with `argv("exit 0")`, and
+  with those arguments gone the child is a whole start-up of its own, which probes again. It is
+  caught, as a timeout, with the cap holding at about a thousand processes. Run `sandbox.rs` alone
+  at `-j 1`, and leave it out of the `--iterate` runs over the rest, or the two run again.
+- `--iterate` rewrites `outcomes.json`, `missed.txt` and `mutants.json` with the current run's
+  mutants only, and `mutants_tasks.py` reads `outcomes.json`. Copy the output directory aside
+  before each further run over it, and make tasks from every copy that still has a miss.
 
 ## gotchas
 
