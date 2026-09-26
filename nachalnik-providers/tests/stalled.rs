@@ -156,6 +156,35 @@ async fn a_model_that_never_answers_at_all_can_still_be_stopped() {
     );
 }
 
+/// A model that has not answered is said so, through `take_notice`, while it is still being waited
+/// for.
+///
+/// note: the notice is the only thing that tells a silence apart from a model thinking hard. On a
+/// paused clock, so that the minute is not sat through.
+#[cfg(feature = "openai")]
+#[tokio::test(start_paused = true)]
+async fn a_model_that_has_not_answered_is_said_so() {
+    let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "deaf",
+        deaf_server().await,
+        "no key needed",
+    ));
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("are you there?"));
+
+    let waiting = tokio::time::timeout(Duration::from_secs(60), kernel.turn()).await;
+    assert!(
+        waiting.is_err(),
+        "nothing answered, so the turn is still waiting"
+    );
+    let notice = provider.take_notice().expect("a minute of silence is news");
+    assert!(
+        notice.contains("deaf") && notice.contains("not answered"),
+        "{notice}"
+    );
+}
+
 #[cfg(feature = "gemini")]
 #[tokio::test]
 async fn the_other_dialect_is_watched_the_same_way() {
