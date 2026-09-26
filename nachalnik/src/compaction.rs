@@ -10,7 +10,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
-use crate::{Context, Event, Kernel};
+use crate::{Event, Kernel};
 use crate::{
     context::{ContextId, ContextItem},
     model::Usage,

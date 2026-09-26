@@ -16,7 +16,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
-use crate::{Context, Kernel};
+use crate::Kernel;
 use crate::{
     context::{ContextId, ContextItem, ContextKind},
     model::{Block, Content, Message, Part, Role, ToolCall, ToolCallId},

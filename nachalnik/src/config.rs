@@ -6,7 +6,7 @@
 //! pushed.
 
 #[cfg(doc)]
-use crate::{Compactor, Event, Kernel, TokenCounter, ToolSpec};
+use crate::{Event, Kernel, TokenCounter, ToolSpec};
 
 /// The kernel's configuration. See the source of [`Config::default`] for the defaults.
 ///
