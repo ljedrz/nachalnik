@@ -206,22 +206,8 @@ impl App {
             // goes, and without these arms the key that would undo it goes with it
             match key.code {
                 KeyCode::Char('f') => self.sending_only = false,
-                KeyCode::Char('u') => {
-                    let note = match self.kernel.undo() {
-                        Ok(true) => "undone",
-                        Ok(false) => "there is nothing to undo",
-                        Err(_) => BUSY_UNDOING,
-                    };
-                    self.say(Speaker::Note, note);
-                }
-                KeyCode::Char('U') => {
-                    let note = match self.kernel.redo() {
-                        Ok(true) => "redone",
-                        Ok(false) => "there is nothing to redo",
-                        Err(_) => BUSY_UNDOING,
-                    };
-                    self.say(Speaker::Note, note);
-                }
+                KeyCode::Char('u') => self.undo(false),
+                KeyCode::Char('U') => self.undo(true),
                 _ => {}
             }
 
@@ -349,22 +335,8 @@ impl App {
                     None => self.selected.min(now.len().saturating_sub(1)),
                 };
             }
-            KeyCode::Char('u') => {
-                let note = match self.kernel.undo() {
-                    Ok(true) => "undone",
-                    Ok(false) => "there is nothing to undo",
-                    Err(_) => BUSY_UNDOING,
-                };
-                self.say(Speaker::Note, note);
-            }
-            KeyCode::Char('U') => {
-                let note = match self.kernel.redo() {
-                    Ok(true) => "redone",
-                    Ok(false) => "there is nothing to redo",
-                    Err(_) => BUSY_UNDOING,
-                };
-                self.say(Speaker::Note, note);
-            }
+            KeyCode::Char('u') => self.undo(false),
+            KeyCode::Char('U') => self.undo(true),
             KeyCode::Enter => {
                 let title = format!(
                     "[{}] {} · {} · {} · {} tokens",
@@ -379,6 +351,22 @@ impl App {
             }
             _ => {}
         }
+    }
+
+    /// `u`, or with `redo` `U`: one operation taken back or put back, and a line saying which.
+    fn undo(&mut self, redo: bool) {
+        let done = match redo {
+            true => self.kernel.redo(),
+            false => self.kernel.undo(),
+        };
+        let note = match (done, redo) {
+            (Ok(true), false) => "undone",
+            (Ok(true), true) => "redone",
+            (Ok(false), false) => "there is nothing to undo",
+            (Ok(false), true) => "there is nothing to redo",
+            (Err(_), _) => BUSY_UNDOING,
+        };
+        self.say(Speaker::Note, note);
     }
 
     /// Every face of a context item worth reading, and which of them to open on.
