@@ -1211,10 +1211,8 @@ impl App {
     fn budget(&mut self) {
         let budget = self.kernel.budget();
         // note: both figures from `Going`, and both from the same one, because they are the two
-        // halves of one sentence. `tokens_withheld` answers this from the states, which counts an
-        // excluded, archived or elided item and misses one the projector repaired away - and that
-        // one is holding as much as any of them. Counted here, the sentence is true of all four
-        // ways of not being sent, and the context tab is drawing from the same answer
+        // halves of one sentence. `App::withheld` says why that is not `tokens_withheld`, and the
+        // context tab is drawing from the same answer
         let going = self.going();
         let (withheld, out) = self.withheld(&going);
 
