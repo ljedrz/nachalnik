@@ -322,11 +322,16 @@ async fn output_limits_are_enforced_and_admitted() {
     let (kernel, _) = permissive([ModelResponse::tool_calls(vec![
         call("c1", "chatty", json!({})),
         call("c2", "verbose", json!({})),
+        call("c3", "exact", json!({})),
     ])]);
     kernel.add_tool(Arc::new(
         ConstTool::new("chatty", "x".repeat(1_000)).with_output_limit(100),
     ));
     kernel.add_tool(Arc::new(ConstTool::new("verbose", "y".repeat(1_000))));
+    // exactly as long as its limit, which is not over it
+    kernel.add_tool(Arc::new(
+        ConstTool::new("exact", "z".repeat(100)).with_output_limit(100),
+    ));
     kernel.push(ContextItem::user("talk"));
 
     let mut events = kernel.subscribe();
@@ -336,7 +341,7 @@ async fn output_limits_are_enforced_and_admitted() {
     // a truncated output is recorded twice: the whole of it, archived, and the truncated copy
     // the model is shown
     let results = tool_results(&kernel);
-    assert_eq!(results.len(), 3, "two results, one of them a pair");
+    assert_eq!(results.len(), 4, "three results, one of them a pair");
 
     let (whole, shown) = (results[0].clone(), results[1].clone());
     assert_eq!(whole.state, ContextState::Archived);
@@ -377,6 +382,11 @@ async fn output_limits_are_enforced_and_admitted() {
         1_000,
         "the untruncated one"
     );
+    assert_eq!(
+        results[3].content.to_text(),
+        "z".repeat(100),
+        "and the one at its limit, whole and alone"
+    );
 
     let finished: Vec<_> = drain(&mut events)
         .into_iter()
@@ -387,7 +397,10 @@ async fn output_limits_are_enforced_and_admitted() {
             _ => None,
         })
         .collect();
-    assert_eq!(finished, vec![(Some(949), Some(whole.id)), (None, None)]);
+    assert_eq!(
+        finished,
+        vec![(Some(949), Some(whole.id)), (None, None), (None, None)]
+    );
 
     // and getting the whole of it back to the model is a state change like any other
     kernel.set_state([shown.id], ContextState::Excluded, Some("too short".into()));
