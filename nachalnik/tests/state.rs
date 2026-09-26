@@ -8,8 +8,8 @@ use std::{sync::Arc, time::Duration};
 use common::{drain, inquisitive, permissive};
 use nachalnik::{
     BoxError, Config, ContextItem, ContextState, DeltaSink, Error, Event, Grant, Kernel, ModelInfo,
-    ModelRequest, ModelResponse, Provider, State, async_trait,
-    test::{AllowAll, ConstTool, ScriptedProvider, call},
+    ModelRequest, ModelResponse, Provider, State, TooLong, async_trait,
+    test::{AllowAll, ConstTool, ScriptedProvider, TooLongProvider, call},
 };
 use parking_lot::Mutex;
 use serde_json::json;
@@ -312,6 +312,26 @@ async fn a_failed_request_leaves_the_context_alone() {
     let events = drain(&mut events);
     assert_eq!(common::count(&events, "model.failed"), 1);
     assert_eq!(transitions(&events), ["requesting", "idle"]);
+}
+
+/// A provider's failure is the source of the error the kernel hands back, so what it failed with
+/// can still be found.
+///
+/// note: the message is quoted in `Display` and nothing else is. A typed failure - here a
+/// [`TooLong`], the one carrying the numbers a session out of room needs - is reachable only by
+/// walking the chain, which is what [`TooLong::of`] does.
+#[tokio::test]
+async fn a_failed_request_has_the_providers_error_underneath_it() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(TooLongProvider::new(2_000, 1_000)));
+    kernel.push(ContextItem::user("hi"));
+
+    let error = kernel.step().await.unwrap_err();
+    assert!(matches!(error, Error::Provider(_)), "{error:?}");
+    assert_eq!(
+        TooLong::of(&error).map(|too_long| too_long.overrun.tokens),
+        Some(2_000)
+    );
 }
 
 /// A provider that is asked to stop and fails rather than handing back what it had - a dropped
