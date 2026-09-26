@@ -721,57 +721,47 @@ impl<'a> Client<'a> {
         write: &mut W,
         line: &str,
     ) -> Result<(), String> {
-        if !self.asking.is_empty() {
-            let answer = match line {
-                "y" => Some((Grant::Allow, false)),
-                "n" => Some((Grant::Deny, false)),
-                "a" => Some((Grant::Allow, true)),
-                _ => None,
-            };
-            // taken off as it is answered, for the reason `settle` gives
-            if let Some((grant, remember)) = answer
-                && let Some(request) = self.asking.pop_front()
-            {
-                let id = request.id;
-                self.answering.push_back(request);
+        let answer = match line {
+            "y" => Some((Grant::Allow, false)),
+            "n" => Some((Grant::Deny, false)),
+            "a" => Some((Grant::Allow, true)),
+            _ => None,
+        };
+        // taken off as it is answered, for the reason `settle` gives
+        if let Some((grant, remember)) = answer
+            && let Some(request) = self.asking.pop_front()
+        {
+            let id = request.id;
+            self.answering.push_back(request);
 
-                return self
-                    .say_to(
-                        write,
-                        Command::Decide {
-                            id,
-                            grant,
-                            remember,
-                        },
-                    )
-                    .await;
-            }
+            return self
+                .say_to(
+                    write,
+                    Command::Decide {
+                        id,
+                        grant,
+                        remember,
+                    },
+                )
+                .await;
         }
         // note: the kernel's question first where both are somehow waiting, which is the order the
         // panel at a terminal takes them in
-        if self.asking.is_empty() && !self.reaching.is_empty() {
-            let answer = match line {
-                "y" => Some((Grant::Allow, false)),
-                "n" => Some((Grant::Deny, false)),
-                "a" => Some((Grant::Allow, true)),
-                _ => None,
-            };
-            if let Some((grant, remember)) = answer
-                && let Some(reached) = self.reaching.pop_front()
-            {
-                self.let_through.insert(reached.id);
+        if let Some((grant, remember)) = answer
+            && let Some(reached) = self.reaching.pop_front()
+        {
+            self.let_through.insert(reached.id);
 
-                return self
-                    .say_to(
-                        write,
-                        Command::Reach {
-                            id: reached.id,
-                            grant,
-                            remember,
-                        },
-                    )
-                    .await;
-            }
+            return self
+                .say_to(
+                    write,
+                    Command::Reach {
+                        id: reached.id,
+                        grant,
+                        remember,
+                    },
+                )
+                .await;
         }
         if let Some(id) = line.strip_prefix('?').and_then(|n| n.trim().parse().ok()) {
             return self
