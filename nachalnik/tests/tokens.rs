@@ -82,6 +82,11 @@ fn a_turn_costs_the_sum_of_what_it_carries() {
     let extra = json!({ "thoughtSignature": "El4KXAERTTIP" });
     let signed = vec![ToolCall::new("c1", "peek", args.clone()).with_extra(extra.clone())];
     let thinking = Some(Content::text("thinking"));
+    assert_eq!(
+        signed[0].byte_len(),
+        "peek".len() + args.to_string().len() + extra.to_string().len(),
+        "and a call measures itself as the same sum"
+    );
 
     let item = ContextItem::assistant("done", signed.clone()).with_reasoning(thinking.clone());
     let message = Message::assistant(Some(Content::text("done")), signed).with_reasoning(thinking);
