@@ -783,6 +783,48 @@ mod tests {
         format!("http://{at}")
     }
 
+    /// Serves each path its own body and `{}` to any other, so what comes back says which address
+    /// was read.
+    async fn routed(routes: &'static [(&'static str, &'static str)]) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                // to the blank line, so a head that arrived in two reads is not a path cut short
+                let mut head = Vec::new();
+                let mut chunk = [0u8; 4096];
+                while !head.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match socket.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                let head = String::from_utf8_lossy(&head);
+                let path = head.split_whitespace().nth(1).unwrap_or_default();
+                let body = routes
+                    .iter()
+                    .find(|(route, _)| *route == path)
+                    .map_or("{}", |(_, body)| *body);
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{at}")
+    }
+
     /// note: the two shapes are quoted from what the two endpoints really answer, trimmed to the
     /// fields being read. The Inception one publishes only the sampling list, and left unread it
     /// leaves `/params` with nothing to say about a parameter `mercury-2.5` ignores.
@@ -827,5 +869,36 @@ mod tests {
 
         assert_eq!(provider.info().context_limit, Some(4096));
         assert!(provider.info().parameters.is_empty());
+    }
+
+    /// An ollama is measured against the context length its running model is served with, read
+    /// off `/api/ps`, since its listing publishes none.
+    ///
+    /// note: its `/api/show` advertises the architecture's maximum instead, and measured against
+    /// that nothing would ever look full while the server dropped the front of the conversation.
+    #[tokio::test]
+    async fn an_ollama_is_measured_by_what_its_running_model_is_served_with() {
+        let at = routed(&[
+            ("/v1/models", r#"{"data":[{"id":"m"}]}"#),
+            (
+                "/api/ps",
+                r#"{"models":[{"name":"m:latest","context_length":4096}]}"#,
+            ),
+        ])
+        .await;
+        let provider = OpenAiCompatible::new("m", format!("{at}/v1"), "no key needed");
+        provider.probe().await;
+
+        assert_eq!(provider.info().context_limit, Some(4096));
+    }
+
+    /// Where the conventional listing says nothing, a base ending in `/openai` is asked one path
+    /// up, which is where Google keeps its native listing.
+    #[tokio::test]
+    async fn a_listing_that_says_nothing_is_asked_for_one_path_up() {
+        let at = routed(&[("/models", r#"{"models":[{"name":"models/gemini-x"}]}"#)]).await;
+        let provider = OpenAiCompatible::new("gemini-x", format!("{at}/openai"), "k");
+
+        assert_eq!(provider.models().await, ["gemini-x"]);
     }
 }
