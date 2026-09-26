@@ -53,14 +53,10 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 ///
 /// note: the policy is handed in rather than read off the kernel, and it is the concrete one this
 /// program ships rather than the trait. [`Setup`] reports what the policy will say *before*
-/// anything is asked, and the only way to get that through [`nachalnik::PermissionPolicy`] is to
-/// run a call through `evaluate` - which [`Careful`] answers by recording the reason it refused,
-/// into a queue of sixty-four that a real refusal is going to read.
-///
-/// note: so a tool that reports state would be writing some, and evicting the explanations a
-/// genuine refusal needs. It reads the same two lists the permissions tab draws instead. What it
-/// cannot know it says so about: the verdicts are labelled as this policy's, beside the name of
-/// whichever one the kernel is actually consulting.
+/// anything is asked, and through [`nachalnik::PermissionPolicy`] that means running a call
+/// through `evaluate`, which [`Careful`] answers by recording a refusal. So it reads [`Careful`]'s
+/// own tables instead; its `permissions` says what that costs a real refusal, and how the answer
+/// names the policy the kernel is actually consulting.
 ///
 /// note: dropping the return value is how the tools are switched off: they hold a [`Weak`] to the
 /// kernel it keeps, and a tool that cannot upgrade its weak handle refuses the call and says why.
