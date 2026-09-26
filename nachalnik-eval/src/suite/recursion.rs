@@ -9,6 +9,7 @@ use crate::{
     probe::{Answer, Probe},
     subject::Subject,
     suite::{
+        copies_agree,
         dossier::{DEPOT, Dossier, Expected, id_of},
         excluding, instrument, note_drift, script,
     },
@@ -135,15 +136,7 @@ impl Experiment for Recursion {
         let control = ablation.observe(&origin, Intervention::Nothing).await?;
         note_drift(trial, &answer, &control);
         trial.measured(control.clone(), None);
-        trial.check(
-            "the copies agree with each other",
-            control.agreement() >= 1.0,
-            format!(
-                "the control copies agreed {:.0}% of the time over {} replicate(s)",
-                control.agreement() * 100.0,
-                control.answers.len()
-            ),
-        );
+        copies_agree(trial, &control, "the control copies");
 
         // ---------------------------------------------------------------------------- predict
         let mut ladders = Vec::new();

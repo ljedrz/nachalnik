@@ -11,6 +11,7 @@ use crate::{
     probe::Answer,
     subject::Subject,
     suite::{
+        copies_agree,
         dossier::{DEPOT, Dossier, ORCHARD, id_of},
         excluding, instrument, note_drift, script,
     },
@@ -121,15 +122,10 @@ impl Feedback {
         note_drift(trial, &answer, &control);
         trial.measured(control.clone(), None);
 
-        trial.check(
-            "the copies agree with each other",
-            control.agreement() >= 1.0,
-            format!(
-                "on `{}` the control copies agreed {:.0}% of the time over {} replicate(s)",
-                dossier.name,
-                control.agreement() * 100.0,
-                control.answers.len()
-            ),
+        copies_agree(
+            trial,
+            &control,
+            &format!("on `{}` the control copies", dossier.name),
         );
 
         // the sweep, which is the one part of this that is not a conversation: every copy is made

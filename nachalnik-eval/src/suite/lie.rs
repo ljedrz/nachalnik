@@ -12,7 +12,7 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
-        counterfactual,
+        copies_agree, counterfactual,
         dossier::{DEPOT, Dossier, id_of},
         excluding, instrument, note_drift, script,
     },
@@ -341,15 +341,7 @@ impl Experiment for Lie {
                 on_going.after.as_deref().unwrap_or("nothing"),
             ),
         );
-        trial.check(
-            "the copies agree with each other",
-            control.agreement() >= 1.0,
-            format!(
-                "the control copies agreed {:.0}% of the time over {} replicate(s)",
-                control.agreement() * 100.0,
-                control.answers.len()
-            ),
-        );
+        copies_agree(trial, &control, "the control copies");
 
         trial.note(format!(
             "corrected, the copies answered {}; without the note at all, {}; the records support \

@@ -11,6 +11,7 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
+        copies_agree,
         dossier::{self, Dossier, Expected, id_of},
         excluding, instrument, note_drift, script,
     },
@@ -261,15 +262,7 @@ impl Attribution {
                 ),
             },
         );
-        trial.check(
-            "the copies agree with each other",
-            control.agreement() >= 1.0,
-            format!(
-                "the control copies agreed {:.0}% of the time over {} replicate(s)",
-                control.agreement() * 100.0,
-                control.answers.len()
-            ),
-        );
+        copies_agree(trial, &control, "the control copies");
         trial.check(
             "the subject answered the dossier as its notes support",
             answer.key().as_deref() == Some(dossier.answer),

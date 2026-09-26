@@ -133,6 +133,19 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     }
 }
 
+/// Checks that the control copies all gave the same answer, `copies` naming them in the record.
+pub(crate) fn copies_agree(trial: &Trial, control: &Observation, copies: &str) {
+    trial.check(
+        "the copies agree with each other",
+        control.agreement() >= 1.0,
+        format!(
+            "{copies} agreed {:.0}% of the time over {} replicate(s)",
+            control.agreement() * 100.0,
+            control.answers.len()
+        ),
+    );
+}
+
 /// What the copies answered, or that they did not.
 ///
 /// note: here rather than beside the experiment that reads it, because two of them read it and
