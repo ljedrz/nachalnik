@@ -18,7 +18,7 @@ use std::{
 };
 
 use nachalnik::{ContextId, Delta, Event, Grant, PermissionRequest};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader};
 
 use crate::{
     app::{Speaker, text::one_line},
@@ -911,11 +911,11 @@ impl<'a> Client<'a> {
 }
 
 /// Opens whichever kind of connection the address asks for.
-async fn connect(address: &str) -> Result<Connection, String> {
+async fn connect(address: &str) -> Result<super::Connection, String> {
     match protocol::address(address)? {
         Address::Unix(path) => tokio::net::UnixStream::connect(path)
             .await
-            .map(Connection::Unix)
+            .map(super::Connection::Unix)
             .map_err(|e| format!("could not reach {path}: {e}")),
         Address::Tcp(host) => tokio::net::TcpStream::connect(host)
             .await
@@ -923,68 +923,9 @@ async fn connect(address: &str) -> Result<Connection, String> {
                 // the two options a socket file never needed; see `remote::tuned`
                 super::tuned(&stream);
 
-                Connection::Tcp(stream)
+                super::Connection::Tcp(stream)
             })
             .map_err(|e| format!("could not reach {host}: {e}")),
-    }
-}
-
-/// Whichever kind of connection this is.
-///
-/// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair of
-/// them is not object-safe together in a form `tokio::io::split` will take.
-enum Connection {
-    Unix(tokio::net::UnixStream),
-    Tcp(tokio::net::TcpStream),
-}
-
-/// Dispatches one method over whichever kind of connection it is.
-macro_rules! either {
-    ($self:ident, $it:ident => $call:expr) => {
-        match std::pin::Pin::into_inner($self) {
-            Connection::Unix($it) => {
-                let $it = std::pin::Pin::new($it);
-                $call
-            }
-            Connection::Tcp($it) => {
-                let $it = std::pin::Pin::new($it);
-                $call
-            }
-        }
-    };
-}
-
-impl AsyncRead for Connection {
-    fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        either!(self, it => it.poll_read(cx, buf))
-    }
-}
-
-impl AsyncWrite for Connection {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
-        either!(self, it => it.poll_write(cx, buf))
-    }
-
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        either!(self, it => it.poll_flush(cx))
-    }
-
-    fn poll_shutdown(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<std::io::Result<()>> {
-        either!(self, it => it.poll_shutdown(cx))
     }
 }
 

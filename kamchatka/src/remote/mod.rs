@@ -102,6 +102,8 @@ pub use server::{Server, Serving, opening};
 
 use std::time::Duration;
 
+use tokio::io::{AsyncRead, AsyncWrite};
+
 /// How long a connection may sit idle before the kernel starts asking whether the peer is there.
 ///
 /// note: short, for a protocol most of whose sessions are idle most of the time. A session waiting
@@ -139,6 +141,65 @@ pub(crate) fn tuned(stream: &tokio::net::TcpStream) {
     let _ = stream.set_nodelay(true);
     let _ = SockRef::from(stream)
         .set_tcp_keepalive(&TcpKeepalive::new().with_time(IDLE).with_interval(PROBE));
+}
+
+/// Whichever kind of connection this is, at either end.
+///
+/// note: an enum implementing the two traits by hand rather than a `Box<dyn>`, because the pair of
+/// them is not object-safe together in a form `tokio::io::split` will take.
+pub(crate) enum Connection {
+    Unix(tokio::net::UnixStream),
+    Tcp(tokio::net::TcpStream),
+}
+
+/// Dispatches one method over whichever kind of connection it is.
+macro_rules! either {
+    ($self:ident, $it:ident => $call:expr) => {
+        match std::pin::Pin::into_inner($self) {
+            Connection::Unix($it) => {
+                let $it = std::pin::Pin::new($it);
+                $call
+            }
+            Connection::Tcp($it) => {
+                let $it = std::pin::Pin::new($it);
+                $call
+            }
+        }
+    };
+}
+
+impl AsyncRead for Connection {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        either!(self, it => it.poll_read(cx, buf))
+    }
+}
+
+impl AsyncWrite for Connection {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        either!(self, it => it.poll_write(cx, buf))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        either!(self, it => it.poll_flush(cx))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        either!(self, it => it.poll_shutdown(cx))
+    }
 }
 
 #[cfg(test)]
