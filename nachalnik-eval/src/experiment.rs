@@ -712,13 +712,10 @@ pub async fn evaluate(
 /// [`evaluate`]'s note is about, and [`Pace`] is the knob that answers it: set it under what the
 /// endpoint allows and the failure does not arise.
 ///
-/// note: a count is not a rate, and [`Pace`] carries both because endpoints publish both.
-/// [`Pace::at_once`] bounds what is in flight; [`Pace::per_minute`] bounds what is *started*, and
-/// spaces them out rather than letting the whole minute's allowance go in its first instant,
-/// because a run inside its rate on average can still take an endpoint down by arriving all at
-/// once. Neither substitutes for the other: eight in flight against a one-second endpoint is about
-/// eight a second, and against a fast one it is eighty. What catches whatever gets past both is
-/// the `Retry-After` handling in whichever [`Provider`](nachalnik::Provider) the caller supplied.
+/// note: [`Pace::per_minute`] spaces what it starts rather than letting the whole minute's
+/// allowance go in its first instant, because a run inside its rate on average can still take an
+/// endpoint down by arriving all at once. What catches whatever gets past [`Pace`] is the
+/// `Retry-After` handling in whichever [`Provider`](nachalnik::Provider) the caller supplied.
 ///
 /// note: `landed` is handed each outcome the moment that experiment finishes, in the order they
 /// finish rather than the order they were given. It is what lets a caller run the whole suite at

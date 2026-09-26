@@ -12,12 +12,10 @@
 //! registered with the caller's reactor. So there is one task, one stack, and no question about
 //! what happens to a spawned request when a run is dropped halfway.
 //!
-//! note: two limits, because endpoints publish two kinds and neither implies the other.
-//! [`Permits`] caps how many requests are *in flight*; [`Rate`] caps how many are *started* in a
-//! window, which is how a free tier words it, and no count of things in flight can stand in for
-//! that - eight at once against a fast endpoint is eighty a second. A rate needs a clock, so this
-//! module uses `tokio::time`; that picks an executor for the caller, and it is only defensible
-//! because [`nachalnik`] already picked the same one for its `JoinSet` and its `broadcast`.
+//! note: two limits, [`Permits`] on what is *in flight* and [`Rate`] on what is *started*, for the
+//! reason [`Pace`] gives. A rate needs a clock, so this module uses `tokio::time`; that picks an
+//! executor for the caller, and it is only defensible because [`nachalnik`] already picked the
+//! same one for its `JoinSet` and its `broadcast`.
 //!
 //! note: what is still not here is what to do when a limit is exceeded anyway. A `429` and its
 //! `Retry-After` are answered in whichever [`Provider`](nachalnik::Provider) the caller supplied,
