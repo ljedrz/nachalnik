@@ -94,12 +94,10 @@ is what that grant names — without it the name comes from the program, which f
 servers people actually run is `npx`.
 
 `fs`'s `grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason
-they exist is the subject they ride. Finding a symbol used to mean `exec:run`, which subsumes every
-other permission — so a session that only wanted to be asked *about* a repository had to hand over
-the one that answers for everything. These are `fs:grep` and `fs:glob`, walk a directory without a
-shell in front of them, honour a `.gitignore`, and cut at a number of matches rather than at bytes,
-saying so where they cut. The path rules bind them too: a walk cannot ask about `.env`, so it does
-not open it and says how many it left alone.
+they exist is the subject they ride: without them, finding a symbol means `exec:run`, which
+subsumes every other permission. As `fs:grep` and `fs:glob`, bound by the same path rules as a
+read, they let a session be asked *about* a repository without handing over the one permission that
+answers for everything — [what they cut and what they skip][guide-find].
 
 Four of them are about the session itself: `context` reads the context and changes it, `log` reads
 the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
@@ -195,6 +193,7 @@ MIT.
 [nachalnik-mcp]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-mcp
 
 [guide]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md
+[guide-find]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-finding-things-without-a-shell
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
 [guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context
