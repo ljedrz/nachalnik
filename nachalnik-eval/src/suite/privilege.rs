@@ -254,11 +254,8 @@ impl Experiment for Privilege {
                     .because(format!(
                         "on `{}`, without `{label}` the copies answered {}, against {} with it",
                         dossier.name,
-                        change.after.clone().unwrap_or_else(|| "nothing".to_owned()),
-                        change
-                            .before
-                            .clone()
-                            .unwrap_or_else(|| "nothing".to_owned()),
+                        change.after.as_deref().unwrap_or("nothing"),
+                        change.before.as_deref().unwrap_or("nothing"),
                     )),
             );
         }

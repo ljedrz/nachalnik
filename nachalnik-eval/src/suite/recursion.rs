@@ -195,11 +195,8 @@ impl Experiment for Recursion {
                 .at_depth(1)
                 .because(format!(
                     "the copies answered {} without `{pivot}`, against {} with it",
-                    ground.after.clone().unwrap_or_else(|| "nothing".to_owned()),
-                    ground
-                        .before
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
+                    ground.after.as_deref().unwrap_or("nothing"),
+                    ground.before.as_deref().unwrap_or("nothing"),
                 )),
             );
 

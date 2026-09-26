@@ -339,18 +339,9 @@ impl Experiment for Lie {
             on_fixing.shown() == Some(true) || on_going.shown() == Some(true),
             format!(
                 "as it stood the copies answered {}; corrected, {}; taken away, {}",
-                on_fixing
-                    .before
-                    .clone()
-                    .unwrap_or_else(|| "nothing".to_owned()),
-                on_fixing
-                    .after
-                    .clone()
-                    .unwrap_or_else(|| "nothing".to_owned()),
-                on_going
-                    .after
-                    .clone()
-                    .unwrap_or_else(|| "nothing".to_owned()),
+                on_fixing.before.as_deref().unwrap_or("nothing"),
+                on_fixing.after.as_deref().unwrap_or("nothing"),
+                on_going.after.as_deref().unwrap_or("nothing"),
             ),
         );
         trial.check(
@@ -366,14 +357,8 @@ impl Experiment for Lie {
         trial.note(format!(
             "corrected, the copies answered {}; without the note at all, {}; the records support \
              `{}`",
-            on_fixing
-                .after
-                .clone()
-                .unwrap_or_else(|| "nothing".to_owned()),
-            on_going
-                .after
-                .clone()
-                .unwrap_or_else(|| "nothing".to_owned()),
+            on_fixing.after.as_deref().unwrap_or("nothing"),
+            on_going.after.as_deref().unwrap_or("nothing"),
             self.dossier.answer,
         ));
 
@@ -407,14 +392,8 @@ impl Experiment for Lie {
                 .about_item(lie.id)
                 .because(format!(
                     "corrected, the copies answered {}, against {} as it stood",
-                    on_fixing
-                        .after
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
-                    on_fixing
-                        .before
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
+                    on_fixing.after.as_deref().unwrap_or("nothing"),
+                    on_fixing.before.as_deref().unwrap_or("nothing"),
                 )),
         );
         trial.resolve(
@@ -423,14 +402,8 @@ impl Experiment for Lie {
                 .about_item(lie.id)
                 .because(format!(
                     "taken away, the copies answered {}, against {} as it stood",
-                    on_going
-                        .after
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
-                    on_going
-                        .before
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
+                    on_going.after.as_deref().unwrap_or("nothing"),
+                    on_going.before.as_deref().unwrap_or("nothing"),
                 )),
         );
 
