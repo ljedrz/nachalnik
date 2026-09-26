@@ -168,10 +168,8 @@ $ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
 $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 ```
 
-It reaches for `remote::protocol` and three plain data types, and for no part of this program that
-runs a session — which is the check on the claim that `protocol` is what moves if something else
-needs to speak this. Its header carries the wire transcript, because a client in another language
-needs the JSON and none of the Rust.
+Its header carries the wire transcript, because a client in another language needs the JSON and
+none of the Rust.
 
 And `examples/gateway.rs` with `examples/browser.html` put the session in a browser, which is the
 one client that cannot reach it on its own: a browser has no TCP, so something has to terminate
