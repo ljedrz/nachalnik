@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::KeyCode;
 use kamchatka::app::Tab;
 use nachalnik::{
     ModelResponse,
@@ -20,18 +20,8 @@ use crate::harness::Harness;
 /// Types a run of characters at whatever has the keys.
 async fn type_in(harness: &mut Harness, text: &str) {
     for c in text.chars() {
-        harness
-            .app
-            .on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
-            .await;
+        harness.press(KeyCode::Char(c)).await;
     }
-}
-
-async fn press(harness: &mut Harness, code: KeyCode) {
-    harness
-        .app
-        .on_key(KeyEvent::new(code, KeyModifiers::NONE))
-        .await;
 }
 
 #[tokio::test]
@@ -44,7 +34,7 @@ async fn slash_filters_the_trace_and_esc_puts_it_back() {
     let all = harness.app.traced().len();
     assert!(all >= 4, "not enough events to filter: {all}");
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     assert!(harness.app.search.is_some(), "`/` should open the box");
     type_in(&mut harness, "modreq").await;
 
@@ -68,7 +58,7 @@ async fn slash_filters_the_trace_and_esc_puts_it_back() {
         "the box should show it: {screen}"
     );
 
-    press(&mut harness, KeyCode::Esc).await;
+    harness.press(KeyCode::Esc).await;
     assert!(harness.app.search.is_none(), "esc should close the box");
     assert_eq!(harness.app.traced().len(), all, "and put every row back");
 }
@@ -86,7 +76,7 @@ async fn a_tab_shortcut_works_while_a_search_is_open() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "model").await;
 
     harness.alt(KeyCode::Char('1')).await;
@@ -111,7 +101,7 @@ async fn the_trace_can_be_searched_by_the_hour_it_happened() {
         .time[..2]
         .to_owned();
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, &hour).await;
 
     assert!(
@@ -133,7 +123,7 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     // a frame of every row, and then a query no frame has drawn: the keys count the rows the
     // query left, not the ones the last frame drew before it was typed
     harness.flat();
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "assistant").await;
 
     let kept = harness.app.listed();
@@ -141,14 +131,14 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     assert!(kept.len() < all, "and the user turn should not");
 
     // the row the keys are on is a row that is still on the screen
-    press(&mut harness, KeyCode::End).await;
+    harness.press(KeyCode::End).await;
     assert_eq!(
         harness.app.selected,
         kept.len() - 1,
         "end is the last of {} filtered row(s)",
         kept.len()
     );
-    press(&mut harness, KeyCode::Down).await;
+    harness.press(KeyCode::Down).await;
     assert!(
         harness.app.selected < kept.len(),
         "selection {} is off the end of {} filtered row(s)",
@@ -184,7 +174,7 @@ async fn a_context_row_can_be_filtered_by_its_kind() {
     let all = harness.app.listed().len();
     assert!(all >= 4, "a call, its result and two turns: {all}");
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "tool_result").await;
 
     let kept = harness.app.listed();
@@ -200,8 +190,8 @@ async fn a_context_row_can_be_filtered_by_its_kind() {
 
     // and the column it was matched on is not what the row is matched *only* on: the label and
     // the content still work, or this would have traded one half of the haystack for the other
-    press(&mut harness, KeyCode::Esc).await;
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Esc).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "bone").await;
     assert!(
         harness.app.listed().iter().any(|i| i.label == "dig"),
@@ -216,7 +206,7 @@ async fn a_filter_does_not_follow_you_to_another_tab() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "zzzz").await;
     assert!(harness.app.traced().is_empty(), "nothing matches `zzzz`");
 
@@ -235,14 +225,14 @@ async fn backspace_widens_the_search_again() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "zzzz").await;
     let none = harness.app.traced().len();
 
-    press(&mut harness, KeyCode::Backspace).await;
-    press(&mut harness, KeyCode::Backspace).await;
-    press(&mut harness, KeyCode::Backspace).await;
-    press(&mut harness, KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
 
     assert_eq!(none, 0);
     assert_eq!(
@@ -268,7 +258,7 @@ async fn the_query_can_be_amended_in_the_middle_of_it() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "mopreq").await;
     assert!(
         harness.app.traced().is_empty(),
@@ -277,9 +267,9 @@ async fn the_query_can_be_amended_in_the_middle_of_it() {
 
     // back over `req` and take out the letter that does not belong, keeping what came after it
     for _ in 0..3 {
-        press(&mut harness, KeyCode::Left).await;
+        harness.press(KeyCode::Left).await;
     }
-    press(&mut harness, KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
 
     let found = harness.app.traced();
     assert!(
@@ -308,19 +298,19 @@ async fn backspace_and_delete_take_out_either_side_of_the_cursor() {
     harness.settle().await;
     harness.tab(Tab::Trace);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "abcd").await;
-    press(&mut harness, KeyCode::Left).await;
-    press(&mut harness, KeyCode::Left).await;
+    harness.press(KeyCode::Left).await;
+    harness.press(KeyCode::Left).await;
 
-    press(&mut harness, KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
     assert_eq!(
         harness.app.search.as_ref().map(|s| s.parts()),
         Some(("a", "cd")),
         "backspace takes the character behind the cursor"
     );
 
-    press(&mut harness, KeyCode::Delete).await;
+    harness.press(KeyCode::Delete).await;
     assert_eq!(
         harness.app.search.as_ref().map(|s| s.parts()),
         Some(("a", "d")),
@@ -328,11 +318,11 @@ async fn backspace_and_delete_take_out_either_side_of_the_cursor() {
     );
 
     // and neither runs off its end of the query
-    press(&mut harness, KeyCode::Backspace).await;
-    press(&mut harness, KeyCode::Backspace).await;
-    press(&mut harness, KeyCode::Left).await;
-    press(&mut harness, KeyCode::Delete).await;
-    press(&mut harness, KeyCode::Delete).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Left).await;
+    harness.press(KeyCode::Delete).await;
+    harness.press(KeyCode::Delete).await;
     assert_eq!(
         harness.app.search.as_ref().map(|s| s.query.as_str()),
         Some(""),
@@ -352,18 +342,18 @@ async fn the_box_leaves_the_rows_their_own_keys() {
     harness.settle().await;
     harness.tab(Tab::Context);
 
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     let rows = harness.app.listed().len();
     assert!(rows >= 2, "not enough items: {rows}");
 
-    press(&mut harness, KeyCode::Down).await;
+    harness.press(KeyCode::Down).await;
     assert_eq!(harness.app.selected, 1, "down still moves between rows");
-    press(&mut harness, KeyCode::Home).await;
+    harness.press(KeyCode::Home).await;
     assert_eq!(
         harness.app.selected, 0,
         "and home is still the first of them"
     );
-    press(&mut harness, KeyCode::End).await;
+    harness.press(KeyCode::End).await;
     assert_eq!(harness.app.selected, rows - 1, "and end the last");
 
     assert_eq!(
@@ -392,7 +382,7 @@ async fn an_empty_pane_says_which_empty_it_is() {
     harness.send("go").await;
     harness.settle().await;
     harness.tab(Tab::Trace);
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "zzzznotathing").await;
     let filtered = harness.sized(120, 30);
     assert!(filtered.contains("esc clears the search"), "{filtered}");
@@ -400,7 +390,7 @@ async fn an_empty_pane_says_which_empty_it_is() {
     // the context pane has three empties rather than two, and `f` is only one of them
     harness.tab(Tab::Context);
     assert!(harness.app.search.is_none(), "changing tabs clears it");
-    press(&mut harness, KeyCode::Char('/')).await;
+    harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, "zzzznotathing").await;
     let context = harness.sized(120, 30);
     assert!(context.contains("esc clears the search"), "{context}");
