@@ -428,6 +428,14 @@ mod tests {
             prop_assert_eq!(sanitize(&once), once);
         }
 
+        /// note: idempotence says a rewrite leaves its own output alone, and a rewrite that turned
+        /// every `-` into `_` would pass it. This says it leaves the server's name alone:
+        /// `list-changes` and `list_changes` are two tools a server may offer side by side.
+        #[test]
+        fn an_acceptable_name_arrives_as_the_server_sent_it(name in "[a-zA-Z0-9_-]{1,64}") {
+            prop_assert_eq!(sanitize(&name), name);
+        }
+
         /// note: stated over every pair of names rather than over one long server name. The
         /// tool's own name is the half that tells one of a server's tools from another, so it is
         /// the half that must arrive whole however long the prefix was.
