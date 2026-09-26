@@ -1,6 +1,6 @@
 ---
 name: repo-sweep
-description: Run a full code sweep of this workspace - audit, performance and code quality, test quality and documentation, and the friction the tools cost a model using them - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Use when asked for "a full repo sweep using kamchatka and model X", or for sweeps, audits or reviews driven by kamchatka.
+description: Run a full code sweep of this workspace - audit, performance and code quality, test quality and documentation, and the friction the tools cost a model using them - with headless kamchatka sessions driven by a given model, verify every finding with agents in scratch worktrees, commit the valid fixes on a dedicated branch and write what needs a person's decision into POSTPONED.md. Also drives tests for the mutants `cargo mutants` finds surviving. Use when asked for "a full repo sweep using kamchatka and model X", for sweeps, audits or reviews driven by kamchatka, or for a mutants sweep.
 ---
 
 # a kamchatka-driven sweep
@@ -187,6 +187,66 @@ python3 $SKILL/friction.py $SWEEPS/fr/tmp/kamchatka/*.json
   model reads it. A fix that changes what a tool *does* is a decision.
 - Error counts are not the whole of it. Read the transcripts for an operation a task needed that
   the model never reached for, or one it used and misread.
+
+## mutants: tests for what `cargo mutants` finds surviving
+
+A third kind of sweep: the work list comes from `cargo mutants` rather than from a model, sessions
+draft the tests, and agents verify them. Everything below `target/agents/` is git-ignored and on
+disk; keep it there rather than on `/tmp`, which is a tmpfs.
+
+1. **Run the crate against its own tests first**, then iterate over the survivors against the whole
+   workspace, since a mutant another crate's tests catch is not a gap:
+   ```sh
+   $SKILL/mutants.sh X-own -p <crate> --all-features -j 6
+   cp -r target/agents/out/X-own target/agents/out/X
+   $SKILL/mutants.sh X --workspace --file '<crate>/src/**/*.rs' --all-features \
+       --test-workspace=true --iterate --timeout 300 -j 4
+   ```
+   `mutants.sh` prints how many outcomes are tainted. Anything but `0 tainted, 0 untested` means
+   `python3 $SKILL/tainted.py target/agents/out/X --strip` and the same `--iterate` run again,
+   until it is. Check the "Found N mutants to test" line against what was expected, and spot-check
+   a few `log/*.log`: `Compiling <crate>` for the mutated crate, and failures that are about the
+   mutated code.
+2. **Sessions**: `python3 $SKILL/mutants_tasks.py target/agents/out/X/mutants.out $SWEEPS/tasks/X 8`,
+   then `queue.sh 4 $SWEEPS/tasks/X/*.txt`, with `SWEEPS=target/agents/sw` and the key sourced.
+   `$SWEEPS/mt.json` is the session settings: every tool but `fs`, `shell` and `context` off, and a
+   `sandbox-read` naming this session's `$CARGO_HOME`, `~/.rustup` and the repository's `.git`.
+   Run `cargo fetch` first when `$CARGO_HOME` is new, because the sessions are offline.
+3. **Verify** with one agent per group of about three sessions, at most four at a time, from
+   `mutants_prompt.md`. Each keeps its verdicts in a file as it goes. A test is kept only when
+   `scripts/mutate.sh` says nothing else caught it.
+4. **Commit** as in section 5, redoing each mutation check yourself. Write every mutant left
+   surviving into the report with its reason: equivalent (the mutated code cannot be told apart
+   from the original by any caller), or the exact edge of a private threshold, which is not
+   pinned.
+
+### what goes wrong
+
+- `CARGO_TARGET_DIR` set in the shell is passed on, so every copy builds into one target and
+  tests run another copy's binary. `mutants.sh` unsets it.
+- `-p <crate>` pins the tested packages and overrides `--test-workspace`. The whole workspace
+  against one crate's mutants is `--workspace --file '<crate>/src/**/*.rs' --test-workspace=true`.
+- The automatic timeout comes from a baseline that ran only the crate's own tests. Pass
+  `--timeout 300` with `--test-workspace`.
+- A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
+  or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
+  one failing test binary does not stop the suite.
+- A whole-workspace copy is about 3 GB. Put the copies on `/home` (`mutants.sh` does), not in a
+  temporary directory with a quota.
+- **A mutant can spawn without end** and fill the user's process limit, and then this session
+  cannot fork and dies. `systemd-run` is out of reach in the confinement, so `mutants.sh` caps the
+  run with `ulimit -u`. A runaway then starves the rest of its own run instead, whose builds fail
+  to fork and are recorded as Unviable, and **`--iterate` skips an Unviable mutant forever**.
+  That is what `tainted.py --strip` undoes.
+- Mutated `kamchatka --headless` binaries ignore SIGTERM and outlive the run. Look for processes
+  under `target/agents/mt/cargo-mutants-*` afterwards and SIGKILL them by pid.
+- The sessions' network gate refuses loopback, so they cannot run a test that serves anything,
+  and a session's claim about one means nothing until an agent has run it.
+- A `--sandbox-read` on the command line replaces `mt.json`'s list instead of adding to it, and
+  cargo loses its toolchain.
+- Run one crate at a time. `kamchatka` is the long one: most of its mutants are Unviable, since its
+  return types mostly have no `Default`, and the `sandbox.rs` mutants around `argv`, `from_argv` and
+  `reaches` are where a runaway was last suspected, so run that file alone at `-j 1` first.
 
 ## gotchas
 
