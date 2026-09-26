@@ -1245,6 +1245,15 @@ mod tests {
         );
     }
 
+    /// `jev` is called by the host it asks, on a screen and in a line saying what advice cost.
+    #[test]
+    fn the_engine_is_named_for_the_host_it_asks() {
+        let named = |base| SystemOne::named(&Jev::new("jev-latest", base, "k"));
+
+        assert_eq!(named(DEFAULT_BASE_URL), "api.typesafe.ai");
+        assert_eq!(named(OPENROUTER_BASE_URL), "openrouter.ai");
+    }
+
     /// Asking nothing is a caller's mistake, and is refused before a request is made.
     #[tokio::test]
     async fn a_request_with_no_questions_in_it_is_not_sent() {
