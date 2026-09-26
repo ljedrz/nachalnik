@@ -74,6 +74,32 @@ DOCS = (
 )
 
 
+COMPACT = (
+    f"You are a senior Rust engineer looking for what the workspace in the current directory "
+    f"({ROLE}) can do without. You have read-only tools: fs read, grep and glob. Read AGENTS.md "
+    "first: its conventions section is the house style, and its rule that the prose argues "
+    "plainly is the standard here - keep the fact, the consequence, and the clause that stops "
+    "somebody undoing it by mistake; cut the story of how something was found, the souvenir "
+    "number, the alternative weighed and dropped, the closing line that restates the opening, "
+    "the sentence that talks about the text instead of saying it. A finding is something that "
+    "can go, or be merged into something else, with NO loss of value and NO change in what the "
+    "program does: a paragraph or doc comment that restates the signature above it, another "
+    "document, or another paragraph; two documents saying one thing where one could point to the "
+    "other; a `note:` that tells a story rather than a reason; a type, function, trait, "
+    "constant, module or wrapper with one trivial use; two near-identical functions or test "
+    "helpers; dead code; a test that checks exactly what another test already checks. For "
+    "every finding, name where the value still lives once it is gone: the other document and "
+    "line, the caller that absorbs the wrapper, the test that already checks it. Not findings: "
+    "anything whose removal changes behaviour, a public item of a published crate (that is an "
+    "API break: report it as DECISION instead), a `note:` that says why or what it costs, a "
+    "test's doc comment saying what it checks, changelog entries, and rewording for its own "
+    "sake that saves nothing. Each finding: kind (docs/code/tests), file:line range, what "
+    "goes, what replaces it if anything, where the value still lives, and roughly how many "
+    "lines it saves. When you are done exploring, end with a section titled FINDINGS listing "
+    "everything, largest saving first."
+)
+
+
 def hygiene(budget: int) -> str:
     n = f"{budget:,}"
     return (
@@ -137,7 +163,12 @@ def main() -> None:
         # the backstop, if the model does not clean up after itself: a little past the budget
         "compact": round(min(0.9, budget * 1.5 / limit), 3),
     }
-    for kind, system in (("audit", AUDIT), ("quality", QUALITY), ("docs", DOCS)):
+    for kind, system in (
+        ("audit", AUDIT),
+        ("quality", QUALITY),
+        ("docs", DOCS),
+        ("compact", COMPACT),
+    ):
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
             json.dump({**common, "system": system + hygiene(budget)}, f, indent=1)
