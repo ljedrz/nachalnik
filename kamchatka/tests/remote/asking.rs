@@ -8,16 +8,12 @@ use std::sync::Arc;
 
 use kamchatka::{
     app::Did,
-    remote::{
-        Server,
-        protocol::{Command, Message},
-    },
-    wiring::Wired,
+    remote::protocol::{Command, Message},
 };
 use nachalnik::{ContextId, ModelResponse, test::call};
 use serde_json::json;
 
-use crate::{Peer, Served, Slow, Trickle, records, served, streamed, wired};
+use crate::{Peer, Slow, Trickle, records, served, streamed};
 
 /// `inspect` says what an item holds, which nothing on the record stream can.
 #[tokio::test]
@@ -250,25 +246,12 @@ async fn an_interrupt_from_a_client_stops_the_turn() {
 /// of it or none.
 #[tokio::test]
 async fn a_client_can_arrive_in_the_middle_of_an_answer() {
-    let Wired {
-        mut app,
-        mut events,
-        mut finished,
-    } = wired(vec![]);
-    app.kernel.set_provider(Arc::new(Trickle {
-        words: (0..12).map(|n| format!("word{n} ")).collect(),
-    }));
-    let mut server = Server::bind("tcp:127.0.0.1:0")
-        .await
-        .expect("nothing would listen");
-    let at = server.address();
-    let kernel = app.kernel.clone();
-    let loop_ = tokio::spawn(async move {
-        let outcome = server.run(&mut app, &mut events, &mut finished).await;
-
-        (app, outcome)
-    });
-    let session = Served { at, kernel, loop_ };
+    let session = served(vec![], |app| {
+        app.kernel.set_provider(Arc::new(Trickle {
+            words: (0..12).map(|n| format!("word{n} ")).collect(),
+        }));
+    })
+    .await;
 
     let (mut peer, _) = Peer::attached(&session.at).await;
     peer.send(Command::Submit {
