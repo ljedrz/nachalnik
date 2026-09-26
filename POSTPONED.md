@@ -270,12 +270,9 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
 
-  **Where the attach and leave lines go is decided: the trace.** `client N attached` and `client N
-  left` went through `App::say`, so they were in `App::loose` and therefore in the conversation of
-  every projection handed out afterwards. A browser reconnecting every second on a flaky link,
-  which is what the relay's `retry: 1000` tells `browser.html` to do, filled the conversation with
-  them until somebody typed `/cleanup`. They are trace lines now, the ring a thing that happens once
-  a second belongs in, and `Attached::trace` carries them so every client still sees them.
+  **Where the attach and leave lines go is decided: the trace**, and not the conversation, for the
+  reason in the note in `Server::attend`. `Attached::trace` carries them, so every client still
+  sees them.
 
   What is left is the count itself. A session will take connections until something else runs out,
   and there is nothing to say what "too many" is: a phone on a bad link is one client making a
