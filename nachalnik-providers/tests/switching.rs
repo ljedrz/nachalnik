@@ -200,3 +200,25 @@ async fn a_switch_reads_the_listing_once() {
     assert!(provider.take_notice().is_some(), "the check still ran");
     assert_eq!(answered.load(Ordering::SeqCst), 2);
 }
+
+/// `jev` is moved the way the two dialects are, through the trait, and says the same thing when
+/// the new address does not list its model.
+///
+/// note: it has no turns, so only the `Endpoint` half of this file's promise applies to it - and
+/// that half is all read through the trait, whose methods share their names with `Jev`'s own.
+#[cfg(feature = "system1")]
+#[tokio::test]
+async fn the_decisions_model_says_it_too_when_the_address_changes() {
+    use nachalnik_providers::system1::Jev;
+
+    let jev = Jev::new("stranger", "http://unused.invalid", "no key needed");
+    let address = serving(SERVES).await;
+    let said = moved_to(&jev, address.clone())
+        .await
+        .expect("an address that does not serve it is worth saying");
+    assert!(said.contains("stranger"), "{said}");
+
+    let moved: &dyn Endpoint = &jev;
+    assert_eq!(moved.endpoint(), address);
+    assert_eq!(moved.model(), "stranger");
+}
