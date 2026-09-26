@@ -1388,4 +1388,40 @@ mod tests {
             assert_eq!(jev.attempts(), 1, "a 200 is not worth asking again");
         }
     }
+
+    /// A body that breaks off is judged by the status that came before it: a refusal is still
+    /// the refusal, and a success is the transport's failure rather than a claim about the answer.
+    ///
+    /// note: both replies promise a `Content-Length` and hang up short of it, which is what a
+    /// proxy giving up or a connection reset looks like. The status is the one part that arrived
+    /// whole, and reporting the transport instead would name a broken network where a key was
+    /// refused, or a malformed answer where a connection broke.
+    #[tokio::test]
+    async fn a_body_that_breaks_off_is_judged_by_the_status_before_it() {
+        let refused = answering(
+            b"HTTP/1.1 401 Unauthorized\r\nContent-Length: 100\r\nConnection: close\r\n\r\n\
+              {\"detail\":",
+        )
+        .await;
+        let cut = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n\
+              {\"model\": \"jev-1",
+        )
+        .await;
+        let ask = |at| async move {
+            Jev::new("jev-latest", format!("http://{at}"), "k")
+                .ask("anything", [("q", Question::noul("Is this fine?"))])
+                .await
+                .expect_err("nothing whole came back")
+        };
+
+        let said = ask(refused).await.to_string();
+        assert!(said.starts_with("401"), "{said}");
+
+        let failed = ask(cut).await;
+        assert!(
+            failed.downcast_ref::<reqwest::Error>().is_some(),
+            "{failed}"
+        );
+    }
 }
