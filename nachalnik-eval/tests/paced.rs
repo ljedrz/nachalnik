@@ -85,7 +85,7 @@ impl Provider for Counting {
     }
 }
 
-fn subject_on(provider: Arc<Counting>, name: &str) -> Subject {
+fn subject_on(provider: Arc<dyn Provider>, name: &str) -> Subject {
     let kernel = Kernel::new(Config {
         session_name: Some(name.to_owned()),
         ..Config::default()
@@ -274,14 +274,7 @@ async fn a_rate_is_a_pace_rather_than_a_quota_spent_at_once() {
 
     let _report = evaluate_with(
         suite::all(),
-        |name| {
-            let kernel = Kernel::new(Config {
-                session_name: Some(name.to_owned()),
-                ..Config::default()
-            });
-            kernel.set_provider(provider.clone());
-            Ok(Subject::new(kernel))
-        },
+        |name| Ok(subject_on(provider.clone(), name)),
         Pace::at_once(8).per(allowed, window),
         |_| {},
     )
