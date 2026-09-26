@@ -637,6 +637,38 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), printed);
 }
 
+/// `--help` names the variables the program reads, and the advisor's only in a build with an
+/// `--advise` to use them.
+///
+/// note: they are read rather than declared as arguments, so clap lists none of them on its own,
+/// and a variable nothing on the screen mentions is one nobody finds.
+#[test]
+fn help_names_the_variables_the_program_reads() {
+    let out = Command::new(common::program())
+        .arg("--help")
+        .output()
+        .expect("the binary under test is built");
+    assert!(out.status.success());
+    let help = String::from_utf8(out.stdout).expect("help is text");
+
+    for variable in [
+        "KAMCHATKA_API_KEY",
+        "KAMCHATKA_BASE_URL",
+        "KAMCHATKA_CONTEXT_LIMIT",
+        "KAMCHATKA_NO_ATTRIBUTION",
+    ] {
+        assert!(help.contains(variable), "no {variable}: {help}");
+    }
+    // the two of the advisor's four that `--advise`'s own line does not name
+    for variable in ["KAMCHATKA_SYSTEM1_BASE_URL", "KAMCHATKA_SYSTEM1_MODEL"] {
+        assert_eq!(
+            help.contains(variable),
+            cfg!(feature = "shell-advisor"),
+            "{variable}: {help}"
+        );
+    }
+}
+
 /// `compact` is a fraction, from the command line or from a file, and a percentage is refused.
 #[test]
 fn a_compaction_threshold_that_is_not_a_fraction_is_refused() {
