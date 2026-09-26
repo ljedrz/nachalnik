@@ -215,6 +215,12 @@ fn the_default_counter_declines_a_blob_rather_than_guessing_at_it() {
     let text = Content::text("a".repeat(400));
     assert_eq!(counter.count(&text), 100);
     assert_eq!(counter.uncounted(&text), 0);
+
+    // and the counter a kernel wraps it in says what it says, since a scale corrects tokens and
+    // cannot price a picture
+    let wrapped = Calibrating::new(counter);
+    assert_eq!(wrapped.uncounted(&blob), 1);
+    assert_eq!(wrapped.uncounted(&text), 0);
 }
 
 /// A picture inside a turn is a picture. The abstention was written as a match on
