@@ -178,6 +178,10 @@ fn naming_nothing_is_not_the_same_as_changing_nothing() {
     assert!(again.changed.is_empty());
     assert_eq!(again.unchanged, vec![a]);
     assert_eq!(again.unknown, vec![ContextId(999)]);
+
+    // and `is_empty` is about what moved, not about how much else the answer has to say
+    assert!(!done.is_empty());
+    assert!(again.is_empty());
 }
 
 #[test]
