@@ -16,11 +16,10 @@ use crate::{
     error::{Error, ErrorKind, Result},
     probe::{Answer, Reading},
     score::{
-        Deference, Depths, Faced, Family, Gain, Paired, RULES, Reached, Scores, Stage, Surface,
-        unaided,
+        Deference, Depths, Family, Gain, Paired, RULES, Reached, Scores, Stage, Surface, unaided,
     },
     subject::{Spend, Subject},
-    trial::{Check, Resolution, Step, Trial, spend_of},
+    trial::{Check, Resolution, Step, Trial, checks_of, faceds_of, resolutions_of, spend_of},
 };
 
 /// What identifies the material an experiment used, so that two runs are known to be comparable
@@ -385,13 +384,7 @@ impl Outcome {
 
     /// Scores a record.
     fn over(header: Header, steps: Vec<Step>, rules: u32, failed: Option<Failure>) -> Self {
-        let resolutions: Vec<Resolution> = steps
-            .iter()
-            .filter_map(|step| match step {
-                Step::Resolved(resolution) => Some(resolution.clone()),
-                _ => None,
-            })
-            .collect();
+        let resolutions = resolutions_of(&steps);
         let gain = Gain::over(&resolutions);
         let stages = Stage::over(&resolutions);
 
@@ -419,14 +412,7 @@ impl Outcome {
             }
         }
 
-        let faceds: Vec<Faced> = steps
-            .iter()
-            .filter_map(|step| match step {
-                Step::Faced { faced, .. } => Some(*faced),
-                _ => None,
-            })
-            .collect();
-        let deference = Deference::over(&faceds);
+        let deference = Deference::over(&faceds_of(&steps));
         let reached = Reached::over(&steps);
         let surface = Surface::over(unaided(&steps), crate::suite::dossier::surface);
 
@@ -434,13 +420,7 @@ impl Outcome {
             experiment: header.experiment,
             instrument: header.instrument,
             rules,
-            checks: steps
-                .iter()
-                .filter_map(|step| match step {
-                    Step::Checked(check) => Some(check.clone()),
-                    _ => None,
-                })
-                .collect(),
+            checks: checks_of(&steps),
             model: header.model,
             params: header.params,
             spend: spend_of(&steps),
