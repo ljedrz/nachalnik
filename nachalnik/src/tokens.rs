@@ -268,9 +268,7 @@ impl TokenCounter for BytesPerToken {
 /// What a [`Calibrating`] counter has learned, and what it is derived from.
 ///
 /// note: `serde`, because this is the one thing a [`Snapshot`](crate::Snapshot) carries on a
-/// counter's behalf. A session that has been running long enough to be worth resuming has also
-/// been running long enough to have learned something, and starting the next process back at
-/// `1.0` would throw it away for no reason anybody asked for.
+/// counter's behalf - [`Snapshot::calibration`](crate::Snapshot::calibration) says why.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Calibration {
     /// The factor applied to the underlying counter's figures; `1.0` until something has been
