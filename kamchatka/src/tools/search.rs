@@ -99,6 +99,21 @@ impl Looking {
     fn barred(&self) -> Vec<String> {
         barred(&self.policy)
     }
+
+    /// Where a walk starts, as the call named it and as it resolved, once the reach and the path
+    /// rules have allowed it; or the refusal, which says nothing was `doing`.
+    fn root(&self, args: &Value, doing: &str) -> Result<(String, PathBuf), String> {
+        let asked = words(args, "path")?.unwrap_or(".").to_owned();
+        let root = self
+            .reach
+            .allows_under(&asked, Access::Reading, &self.policy)?;
+        // the call's own path is exempt from what a walk bars because it was asked about by its
+        // name, and a link's name is not where it leads
+        match linked(&asked, &root, &self.reach, &self.policy, doing) {
+            Some(refusal) => Err(refusal),
+            None => Ok((asked, root)),
+        }
+    }
 }
 
 /// The path rules that are not `allow`, which a walk does not open things under and a link may
@@ -377,23 +392,10 @@ impl Grep {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let asked = match words(args, "path") {
-            Ok(path) => path.unwrap_or(".").to_owned(),
-            Err(why) => return Ok(ToolOutput::error(why)),
-        };
-        let root = match self
-            .0
-            .reach
-            .allows_under(&asked, Access::Reading, &self.0.policy)
-        {
-            Ok(path) => path,
+        let (asked, root) = match self.0.root(args, "searched") {
+            Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
-        // the call's own path is exempt from the rules below because it was asked about by its
-        // name, and a link's name is not where it leads
-        if let Some(refusal) = linked(&asked, &root, &self.0.reach, &self.0.policy, "searched") {
-            return Ok(ToolOutput::error(refusal));
-        }
 
         // read the way `files_only` is, so that `"true"` in quotes is not a case-sensitive search
         let ignore_case = match truth(args, "ignore_case") {
@@ -720,23 +722,10 @@ impl Glob {
         output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let pattern = arg(args, "pattern")?.to_owned();
-        let asked = match words(args, "path") {
-            Ok(path) => path.unwrap_or(".").to_owned(),
-            Err(why) => return Ok(ToolOutput::error(why)),
-        };
-        let root = match self
-            .0
-            .reach
-            .allows_under(&asked, Access::Reading, &self.0.policy)
-        {
-            Ok(path) => path,
+        let (asked, root) = match self.0.root(args, "listed") {
+            Ok(both) => both,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
         };
-        // the call's own path is exempt from the rules below because it was asked about by its
-        // name, and a link's name is not where it leads
-        if let Some(refusal) = linked(&asked, &root, &self.0.reach, &self.0.policy, "listed") {
-            return Ok(ToolOutput::error(refusal));
-        }
         let matching = match GlobBuilder::new(&pattern).build() {
             Ok(built) => built.compile_matcher(),
             Err(e) => return Ok(ToolOutput::error(format!("`{pattern}` is not a glob: {e}"))),
