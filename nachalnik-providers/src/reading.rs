@@ -11,7 +11,7 @@ use nachalnik::{BoxError, DeltaSink};
 use serde_json::Value;
 
 use crate::{
-    markup::unmarked,
+    markup::{status_and_words, unmarked},
     refused,
     waiting::{
         Asking, HEARTBEAT, LARGEST, PATIENCE, Silence, Vigil, gone_quiet, stalled, too_large,
@@ -277,13 +277,7 @@ pub(crate) fn complaint(status: reqwest::StatusCode, body: &str) -> String {
         .and_then(said)
     {
         Some(said) => format!("{status}: {said}"),
-        None => {
-            let short: String = unmarked(body).chars().take(300).collect();
-            match short.is_empty() {
-                true => format!("{status}"),
-                false => format!("{status}: {short}"),
-            }
-        }
+        None => status_and_words(status, body),
     }
 }
 

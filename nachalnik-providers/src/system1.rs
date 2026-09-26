@@ -804,13 +804,8 @@ impl Jev {
             // note: the body's words rather than the body, because what answers here is not
             // always the service. A firewall in front of it refuses a request with a web page,
             // and the page's doctype and stylesheet are not a reason anybody can read
-            let said = complaint(&parsed).unwrap_or_else(|| {
-                let words: String = crate::markup::unmarked(&said).chars().take(300).collect();
-                match words.is_empty() {
-                    true => status.to_string(),
-                    false => format!("{status}: {words}"),
-                }
-            });
+            let said = complaint(&parsed)
+                .unwrap_or_else(|| crate::markup::status_and_words(status, &said));
 
             return Err(said.into());
         }
