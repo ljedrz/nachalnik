@@ -557,3 +557,58 @@ async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
         assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}: sent once");
     }
 }
+
+/// Answers every request with a `429` that names no wait, and notes when each arrived.
+async fn busy(arrived: Arc<std::sync::Mutex<Vec<tokio::time::Instant>>>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            arrived.lock().unwrap().push(tokio::time::Instant::now());
+            let mut discard = [0u8; 16384];
+            let _ = socket.read(&mut discard).await;
+            let body = "{\"error\":{\"code\":429,\"message\":\"slow down\"}}";
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 429 Too Many Requests\r\nContent-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{address}")
+}
+
+/// A busy server that names no wait is left alone for longer each time before it is asked again.
+///
+/// note: asked again at once, a server that has just said it has too many requests gets another.
+/// On a paused clock, so that the doublings are not sat through.
+#[tokio::test(start_paused = true)]
+async fn a_refusal_that_names_no_wait_is_waited_out_for_longer_each_time() {
+    for (dialect, _) in dialects("http://127.0.0.1:1") {
+        let arrived = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let url = busy(arrived.clone()).await;
+        let (_, provider) = dialects(&url)
+            .into_iter()
+            .find(|(d, _)| *d == dialect)
+            .expect("built above");
+
+        asked(provider).await.expect_err("busy every time");
+        let arrived = arrived.lock().unwrap().clone();
+        let waits: Vec<_> = arrived.windows(2).map(|two| two[1] - two[0]).collect();
+        assert!(
+            waits.first().is_some_and(|wait| !wait.is_zero()),
+            "{dialect}: {waits:?}"
+        );
+        assert!(
+            waits.windows(2).all(|two| two[1] > two[0]),
+            "{dialect}: {waits:?}"
+        );
+    }
+}
