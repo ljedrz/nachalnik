@@ -18,24 +18,7 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::harness::Harness;
-
-/// A figure with its thousands separated, the way the pane writes one.
-///
-/// note: `thousands` is the pane's own and not something an integration test can reach, so this
-/// is that rule written out again - once, here, rather than inline in each test that needs it.
-fn grouped(n: usize) -> String {
-    let digits = n.to_string();
-    let mut out = String::new();
-    for (at, digit) in digits.chars().enumerate() {
-        if at > 0 && (digits.len() - at).is_multiple_of(3) {
-            out.push(',');
-        }
-        out.push(digit);
-    }
-
-    out
-}
+use crate::harness::{Harness, grouped};
 
 #[tokio::test]
 async fn every_item_in_the_context_is_on_the_screen_with_what_it_costs() {

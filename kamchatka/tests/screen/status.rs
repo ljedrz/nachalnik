@@ -13,7 +13,7 @@ use nachalnik::{
 };
 use nachalnik_providers::OpenAiCompatible;
 
-use crate::harness::Harness;
+use crate::harness::{Harness, grouped};
 use kamchatka::app::Tab;
 
 #[tokio::test]
@@ -1104,14 +1104,7 @@ async fn the_context_tab_says_how_far_over_the_limit_the_request_is() {
     let over = harness.app.kernel.budget().used() - limit;
     let packed = harness.packed();
     // the same spelling the rest of the screen uses for a figure this size
-    let written = over
-        .to_string()
-        .as_bytes()
-        .rchunks(3)
-        .rev()
-        .map(|chunk| String::from_utf8_lossy(chunk).into_owned())
-        .collect::<Vec<_>>()
-        .join(",");
+    let written = grouped(over);
     assert!(packed.contains(&written), "over by {over}: {packed}");
     assert!(packed.contains("overthelimit"), "{packed}");
 }
