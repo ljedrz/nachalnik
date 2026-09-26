@@ -1605,7 +1605,7 @@ async fn a_picture_goes_out_as_a_picture() {
     // this file and distinctive enough that an answer naming both colours cannot be a guess
     const SQUARE: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAPElEQVR42u3OsQkAAAgEsd9/ad1BLAQDVx9JJacKEBAQEBAQEBAQEBAQ0Gy0dQICAgICAgICAgICAvoFamNX93l2WWcMAAAAAElFTkSuQmCC";
 
-    let Some((kernel, provider)) = vision().await else {
+    let Some((kernel, provider)) = wired_to("NACHALNIK_VISION_MODEL").await else {
         eprintln!("no key in the environment; skipping");
         return;
     };
@@ -1685,7 +1685,7 @@ async fn a_document_goes_out_as_a_document() {
     // one word nothing else in this suite says. `pdftotext` on it prints MARMALADE
     const PDF: &str = "JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgMjIwIDEwMF0vQ29udGVudHMgNCAwIFIvUmVzb3VyY2VzPDwvRm9udDw8L0YxIDUgMCBSPj4+Pj4+ZW5kb2JqCjQgMCBvYmo8PC9MZW5ndGggMzk+PnN0cmVhbQpCVCAvRjEgMjQgVGYgMjAgNDAgVGQgKE1BUk1BTEFERSkgVGogRVQKZW5kc3RyZWFtZW5kb2JqCjUgMCBvYmo8PC9UeXBlL0ZvbnQvU3VidHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2E+PmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1MiAwMDAwMCBuIAowMDAwMDAwMTAxIDAwMDAwIG4gCjAwMDAwMDAyMTEgMDAwMDAgbiAKMDAwMDAwMDI5NSAwMDAwMCBuIAp0cmFpbGVyPDwvU2l6ZSA2L1Jvb3QgMSAwIFI+PgpzdGFydHhyZWYKMzU2CiUlRU9GCg==";
 
-    let Some((kernel, provider)) = document().await else {
+    let Some((kernel, provider)) = wired_to("NACHALNIK_DOCUMENT_MODEL").await else {
         eprintln!("no key or no NACHALNIK_DOCUMENT_MODEL in the environment; skipping");
         return;
     };
@@ -1762,36 +1762,16 @@ async fn a_document_goes_out_as_a_document() {
     );
 }
 
-/// A kernel wired to a model that takes images.
+/// A kernel wired to the model the variable `var` names: one that takes images, or one that reads
+/// documents.
 ///
-/// note: its own name, because `NACHALNIK_TEST_MODEL` is usually text-only and sending a
-/// picture to one of those is a 400 that says nothing about this crate.
-async fn vision() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    let model = env::var("NACHALNIK_VISION_MODEL").ok()?;
-    let provider = Arc::new(
-        nachalnik_utils::provider(&model)
-            .ok()?
-            .labelled("openrouter")
-            .streaming(false)
-            .recording(true),
-    );
-    provider.probe().await;
-
-    let kernel = Kernel::new(Config::default());
-    kernel.set_provider(provider.clone());
-    kernel.set_policy(Arc::new(AllowAll));
-    kernel.set_params(params(500));
-
-    Some((kernel, provider))
-}
-
-/// A kernel wired to a model that reads documents.
-///
-/// note: separate from `vision()` rather than sharing it, because the two capabilities are
-/// separate. Plenty of models take an image and refuse a PDF, and an endpoint that hands PDFs
-/// to a parser charges for that - so this is opted into by name and skipped by default.
-async fn document() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    let model = env::var("NACHALNIK_DOCUMENT_MODEL").ok()?;
+/// note: named rather than `NACHALNIK_TEST_MODEL`, which is usually text-only, and sending a
+/// picture to one of those is a 400 that says nothing about this crate. And one variable per
+/// capability, because the two are separate: plenty of models take an image and refuse a PDF,
+/// and an endpoint that hands PDFs to a parser charges for that - so each is opted into by name
+/// and skipped by default.
+async fn wired_to(var: &str) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
+    let model = env::var(var).ok()?;
     let provider = Arc::new(
         nachalnik_utils::provider(&model)
             .ok()?
