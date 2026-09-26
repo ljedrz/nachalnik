@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Capability, Config, ContextItem, ContextKind, ContextState, Event, Kernel, ModelResponse, Role,
-    State, StopReason,
+    Capability, Config, ContextItem, ContextKind, ContextState, Event, Kernel, ModelResponse,
+    OutputSink, Role, State, StopReason,
     test::{AllowAll, BrokenTool, ConstTool, EchoTool, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -274,6 +274,47 @@ async fn a_running_tool_reports_its_progress() {
         0,
         "progress is broadcast, not recorded"
     );
+}
+
+/// A tool that answers whether the sink it was handed goes anywhere.
+struct Connected;
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Connected {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("connected", "says whether its progress is watched")
+    }
+
+    async fn invoke(
+        &self,
+        _call: &nachalnik::ToolCall,
+        output: OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        Ok(nachalnik::ToolOutput::new(
+            output.is_connected().to_string(),
+        ))
+    }
+}
+
+/// The sink the kernel hands a running tool says it is connected, and a disconnected one says not.
+///
+/// note: a tool asks before building progress only a watcher would see, so a sink that answered
+/// wrongly either way would waste that work or hide it.
+#[tokio::test]
+async fn an_output_sink_says_whether_its_progress_goes_anywhere() {
+    let (kernel, _) = permissive([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "connected",
+        json!({}),
+    )])]);
+    kernel.add_tool(Arc::new(Connected));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.step().await.unwrap();
+    kernel.step().await.unwrap();
+
+    assert_eq!(tool_results(&kernel)[0].content.to_text(), "true");
+    assert!(!OutputSink::disconnected().is_connected());
 }
 
 #[tokio::test]
