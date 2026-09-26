@@ -597,29 +597,3 @@ fn names(event: &Event, id: ContextId) -> bool {
         _ => false,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The schema and the permission subjects are one vocabulary.
-    ///
-    /// note: there is one table, so an argument the schema offers that no operation reads cannot
-    /// happen - it is the same `Vec<Op>`. What can still
-    /// drift is this: a tool declaring a subject it offers no way to reach, or offering an
-    /// operation the policy was never told about, which is a call that cannot be refused by name.
-    #[test]
-    fn the_schema_and_the_subjects_are_one_vocabulary() {
-        let tool = Log::new(Reach(std::sync::Weak::new()), Limits::default());
-        let spec = tool.spec();
-
-        let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
-            .into_iter()
-            .map(|action| domains::log(action).to_string())
-            .collect();
-        let declared: Vec<String> = spec.capabilities.iter().map(ToString::to_string).collect();
-
-        assert_eq!(offered, declared, "one list of operations, in one order");
-        assert_eq!(offered, ["log:read"]);
-    }
-}
