@@ -165,6 +165,22 @@ async fn a_blocked_prompt_is_a_refusal() {
     assert_eq!(response.stop, StopReason::Refusal);
 }
 
+/// An answer the API stopped partway for its own reasons is a refusal too.
+///
+/// note: here the reason is a `finishReason` on a candidate rather than `promptFeedback`, and
+/// reading it as `Other("safety")` would report a turn the client cannot continue as one that
+/// merely ended oddly.
+#[tokio::test]
+async fn an_answer_stopped_for_safety_is_a_refusal() {
+    let response = answered(
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"I will\"}]},\
+         \"finishReason\":\"SAFETY\"}]}\n\n",
+    )
+    .await;
+
+    assert_eq!(response.stop, StopReason::Refusal);
+}
+
 #[tokio::test]
 async fn a_run_of_parts_of_one_kind_is_one_block() {
     let response = answered(SPOKEN).await;
