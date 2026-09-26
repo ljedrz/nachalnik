@@ -355,7 +355,7 @@ impl Tool for Context {
                          everything",
                     ));
                 };
-                let take = match taken(&args["take"]) {
+                let take = match taken(args) {
                     Ok(take) => take,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
@@ -396,28 +396,19 @@ impl Tool for Context {
 /// with a colon and nothing under it, which is a malformed answer rather than a wrong one; and
 /// `take: -3` and `take: "3"` would be `None`, which is the summary that leaving `take` out gives:
 /// the model asked for lines, was given a count, and nothing said its argument had not been read.
-fn taken(value: &serde_json::Value) -> Result<Option<usize>, String> {
-    if value.is_null() {
-        return Ok(None);
+fn taken(args: &Value) -> Result<Option<usize>, String> {
+    match crate::tools::number(args, "take") {
+        // `0` is not an error, because it is a coherent thing to have asked for and the tool has
+        // an answer to it already: the count and the price, which is what a call with no `take`
+        // gets. Refusing it would spend a turn on a call that meant something
+        Ok(take) => Ok(take.filter(|&take| take != 0).map(|take| take as usize)),
+        Err(_) => Err(format!(
+            "`take` is a whole number of lines and this one is `{}`. Nothing was read, rather \
+             than nothing being found: leave it out for the count and the price, which is what \
+             `take: 0` asks for too.",
+            args["take"]
+        )),
     }
-    if let Some(take) = value
-        .as_u64()
-        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
-    {
-        return match take {
-            // not an error, because it is a coherent thing to have asked for and the tool has an
-            // answer to it already: the count and the price, which is what a call with no `take`
-            // gets. Refusing it would spend a turn on a call that meant something
-            0 => Ok(None),
-            take => Ok(Some(take as usize)),
-        };
-    }
-
-    Err(format!(
-        "`take` is a whole number of lines and this one is `{value}`. Nothing was read, rather \
-         than nothing being found: leave it out for the count and the price, which is what \
-         `take: 0` asks for too."
-    ))
 }
 
 /// The context, item by item, or the whole of the named ones.
