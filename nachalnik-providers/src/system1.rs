@@ -1341,10 +1341,17 @@ mod tests {
         assert_eq!(jev.attempts(), RETRIES);
 
         let longest = BACKOFF * 2u32.pow(RETRIES as u32 - 2);
-        assert_eq!(
-            jev.take_notice(),
-            Some(busy("jev-latest", "timed out", longest))
-        );
+        let said = jev.take_notice().expect("the last wait is on the notice");
+        assert_eq!(said, busy("jev-latest", "timed out", longest));
+
+        // and it is a sentence a person can act on: which model, what happened, how long the wait
+        for part in [
+            "jev-latest",
+            "timed out",
+            &format!("{}ms", longest.as_millis()),
+        ] {
+            assert!(said.contains(part), "{said} should say {part}");
+        }
     }
 
     /// A model named through [`Endpoint::set_model`] is the one asked from then on.
