@@ -111,10 +111,9 @@ keyless examples, and checks the whole workspace on the MSRV, **1.88**. The libr
 Linux, macOS and Windows; `kamchatka` on Linux, on an x86_64 runner and an aarch64 one. Edition is
 2024, and `RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
 
-A second workflow, `release.yml`, runs on a `kamchatka-v*` tag only: it creates the GitHub release
-from that version's changelog section and attaches static `x86_64-unknown-linux-musl` and
-`aarch64-unknown-linux-musl` binaries, each built on a runner of its own architecture.
-`workflow_dispatch` runs the build and uploads nothing, which is how to check it without tagging.
+A `kamchatka-v*` tag also runs `release.yml`, which publishes that version as a GitHub release
+with static binaries; [CONTRIBUTING.md](CONTRIBUTING.md) has what it builds and how to check it
+without tagging.
 
 The live suites are the only thing that can check that a real API accepts what this workspace
 builds. Which keys and variables each reads, which endpoints are known to work, where they are
