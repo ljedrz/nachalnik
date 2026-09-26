@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use nachalnik::{
     Block, BytesPerToken, Config, Content, ContextItem, ContextKind, ContextState, Event, Kernel,
-    LinearProjector, ModelResponse, Projector, Role, Snapshot, TokenCounter, ToolCallId,
+    LinearProjector, ModelResponse, Part, Projector, Role, Snapshot, TokenCounter, ToolCallId,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -327,6 +327,52 @@ async fn thinking_after_a_sentence_is_a_loss_when_flattened() {
     ])
     .await;
     assert!(repairs.is_empty(), "{repairs:?}");
+}
+
+/// Two sentences joined into one content slot is a loss when flattened, even in slot order.
+///
+/// note: one thought and the call last, so neither the order nor the count of thoughts gives it
+/// away - the count of sentences is the whole loss.
+#[tokio::test]
+async fn two_sentences_in_one_slot_is_a_loss_when_flattened() {
+    let kernel = kernel_with(vec![
+        Block::reasoning(Content::text("the user wants the weather")),
+        Block::text(Content::text("Checking Warsaw.")),
+        Block::text(Content::text("And now Krakow.")),
+        Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+    ]);
+    kernel.turn().await.expect("the turn ran");
+
+    let repairs = project(&kernel, LinearProjector::default()).repairs;
+    assert!(
+        repairs
+            .iter()
+            .any(|repair| repair.contains("flattened item")),
+        "{repairs:?}"
+    );
+}
+
+/// What a provider attached to a sentence has nowhere to go in a conventional message, and
+/// flattening says it went.
+///
+/// note: one of each block in slot order, so the signature is the whole loss. It is the loss that
+/// matters most: the next request is refused over it.
+#[tokio::test]
+async fn a_signature_on_a_sentence_is_a_loss_when_flattened() {
+    let kernel = kernel_with(vec![
+        Block::reasoning(Content::text("the user wants the weather")),
+        Block::Text(Part::new(Content::text("Checking Warsaw.")).with_extra(json!("sig"))),
+        Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+    ]);
+    kernel.turn().await.expect("the turn ran");
+
+    let repairs = project(&kernel, LinearProjector::default()).repairs;
+    assert!(
+        repairs
+            .iter()
+            .any(|repair| repair.contains("what the provider had attached")),
+        "{repairs:?}"
+    );
 }
 
 #[tokio::test]
