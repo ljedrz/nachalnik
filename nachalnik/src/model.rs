@@ -1394,16 +1394,16 @@ mod tests {
     /// A cut lands on a character boundary, with room for the note and without it.
     ///
     /// note: on text where every index is a boundary neither walk down to one ever runs, so the
-    /// text is `każdy`, which has an index inside a character every six bytes. 21 is one of them,
-    /// and too small for the note at any cut: it is the walk that spends the budget on content
-    /// alone.
+    /// text is `każdy`, which has an index inside a character every six bytes. At a limit of 64
+    /// the note first fits beside a cut at 15, which is one of them. 21 is another, and too small
+    /// for the note at any cut: it is the walk that spends the budget on content alone.
     #[test]
     fn truncation_does_not_split_a_character() {
         let mut content = Content::text("każdy".repeat(50));
-        content.truncate_to(60).unwrap();
+        content.truncate_to(64).unwrap();
         // getting this far is what proves it: slicing inside a character would have panicked
         assert!(content.to_text().contains("truncated by an output limit"));
-        assert!(content.byte_len() <= 60);
+        assert!(content.byte_len() <= 64);
 
         let text = "każdy".repeat(50);
         assert!(!text.is_char_boundary(21));
