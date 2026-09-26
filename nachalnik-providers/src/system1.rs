@@ -1204,6 +1204,33 @@ mod tests {
         assert_eq!(complaint(&fine), None);
     }
 
+    /// An engine that does not override [`SystemOne::notice`] has nothing to say.
+    ///
+    /// note: the default is what the local kind of engine is held to, and a client polls it on
+    /// every tick: anything but `None` from it is a status line that never clears.
+    #[test]
+    fn an_engine_with_no_notice_of_its_own_says_nothing() {
+        struct Quiet;
+
+        #[async_trait]
+        impl SystemOne for Quiet {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<Answers, BoxError> {
+                Err("never asked".into())
+            }
+
+            fn named(&self) -> String {
+                "quiet".to_owned()
+            }
+        }
+
+        let quiet: &dyn SystemOne = &Quiet;
+        assert_eq!(quiet.notice(), None);
+    }
+
     /// A usage block that says nothing is `None` rather than a pair of zeroes.
     #[test]
     fn an_unreported_cost_is_not_a_free_one() {
