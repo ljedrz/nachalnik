@@ -303,9 +303,7 @@ impl Attribution {
             Resolution::new(Kind::Attribution, claimed, happened).because(match &top {
                 Some(top) => format!(
                     "it named `{}`; the ablations put the most influence on {}",
-                    claimed_label
-                        .clone()
-                        .unwrap_or_else(|| "nothing".to_owned()),
+                    claimed_label.as_deref().unwrap_or("nothing"),
                     top.join(", ")
                 ),
                 None => "no note moved the answer, so there was nothing to attribute".to_owned(),
@@ -344,11 +342,8 @@ impl Attribution {
                     .about_note(&label)
                     .because(format!(
                         "without `{label}` the copies answered {}, against {} with it",
-                        change.after.clone().unwrap_or_else(|| "nothing".to_owned()),
-                        change
-                            .before
-                            .clone()
-                            .unwrap_or_else(|| "nothing".to_owned()),
+                        change.after.as_deref().unwrap_or("nothing"),
+                        change.before.as_deref().unwrap_or("nothing"),
                     )),
             );
         }
