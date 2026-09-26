@@ -368,6 +368,15 @@ mod tests {
         assert!(Selector::parse("  ").is_err());
     }
 
+    /// A refusal prints the reason it carries, which is the sentence a client shows.
+    #[test]
+    fn a_refusal_says_why() {
+        assert_eq!(
+            Selector::parse("state:kept").unwrap_err().to_string(),
+            "invalid selector: unknown state `kept`"
+        );
+    }
+
     #[test]
     fn round_trips_through_display() {
         for input in [
