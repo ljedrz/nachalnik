@@ -218,10 +218,8 @@ impl Kernel {
     /// Records what a call produced, keeping the whole of it when a limit shortened it.
     ///
     /// note: every call of a batch is recorded into one [`Batch`] - the shape
-    /// [`Kernel::cancel_pending_calls`] uses, for the reason it gives. Running the calls a turn
-    /// asked for is one thing that happened, and a checkpoint each would let one `undo` leave
-    /// some of them answered and the last one never mentioned - which is also what a checkpoint
-    /// of somebody else's, landing between two of them, would do if it were not folded in.
+    /// [`Kernel::cancel_pending_calls`] uses, for the reason it gives - and a checkpoint somebody
+    /// else takes between two of them is folded in, because it would split the batch the same way.
     fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput, batch: &mut Batch) {
         // an output limit decides what the *model* is shown. It is not permission to throw the
         // rest away, so unless the user has said otherwise the whole of it goes into the context
