@@ -6,18 +6,12 @@
 //! `decide` answers the question a tool is waiting on, `on_event` takes what the kernel says back,
 //! and the session, the tools, the policy and the trace are where they always were.
 //!
-//! note: what a connection needs from this loop is much less than it looks. A [`Kernel`] is a
-//! cheap `Arc` handle, so every connection has one of its own and reads the session log directly -
-//! which means the numbered half of the stream is not something this loop hands out, queues, or is
-//! able to drop. Only the commands that need `&mut App` come through the channel at all - a
-//! projection, a line, an interrupt, a decision, a move, an edit, an earlier version of an item -
-//! and `apply` says which one does not.
-//!
-//! note: so there is **no outbound queue per client anywhere in here**, which is the backpressure
-//! design. A connection that stops reading stops being written to, its broadcast receivers fall
-//! behind, and it is told how many fragments it missed; the records it missed are still in the log,
-//! where it goes back for them by sequence. A slow client therefore costs one socket buffer and
-//! loses exactly the thing that could not have been recovered anyway.
+//! note: what a connection needs from this loop is much less than it looks. Every connection holds
+//! a [`Kernel`] of its own and reads the session log directly, so only the commands that need
+//! `&mut App` come through the channel at all - a projection, a line, an interrupt, a decision, a
+//! move, an edit, an earlier version of an item - and `apply` says which one does not. There is no
+//! outbound queue per client in here, for the reason [`crate::remote`] gives, and a slow client
+//! costs one socket buffer.
 
 use std::{sync::Arc, time::Duration};
 
