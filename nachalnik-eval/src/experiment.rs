@@ -233,9 +233,8 @@ pub struct Outcome {
     pub surface: Option<Surface>,
     /// Whether it reached for the handles it was given.
     ///
-    /// note: read this before the stages. Below the preregistered gate the instrumented stages
-    /// are measuring a model that does not use tools, which is worth knowing and is not what the
-    /// ladder claims to measure.
+    /// note: read this before the stages: [`Reached::clears_the_gate`] says whether they mean
+    /// anything.
     #[serde(default)]
     pub reached: Option<Reached>,
     /// The same, on either side of the feedback, where the experiment gave any.
