@@ -69,12 +69,6 @@ enum Listener {
     Tcp(tokio::net::TcpListener),
 }
 
-/// Whichever kind of connection just arrived.
-enum Incoming {
-    Unix(tokio::net::UnixStream),
-    Tcp(tokio::net::TcpStream),
-}
-
 /// What the session loop says back about one command.
 ///
 /// note: two things, and only an attach has the second. A subscription to the program's own voice
@@ -99,7 +93,7 @@ pub struct Asked(FromClient);
 ///
 /// note: the same shape and for the same reason: [`Server::arrived`] borrows the listener and
 /// [`Serving::attend`] borrows the `App`, so they are two calls with this in between.
-pub struct Arrived(Incoming);
+pub struct Arrived(super::Connection);
 
 /// What reaches the session loop from a connection.
 enum FromClient {
@@ -258,13 +252,16 @@ impl Server {
     /// note: a port gets the two options a socket file has no use for; see [`super::tuned`]. It is
     /// done here rather than on the listener because neither of them is inherited - they are
     /// properties of a connection, so every accepted one has to be told.
-    async fn accept(&self) -> std::io::Result<Incoming> {
+    async fn accept(&self) -> std::io::Result<super::Connection> {
         match &self.listener {
-            Listener::Unix(listener) => listener.accept().await.map(|(it, _)| Incoming::Unix(it)),
+            Listener::Unix(listener) => listener
+                .accept()
+                .await
+                .map(|(it, _)| super::Connection::Unix(it)),
             Listener::Tcp(listener) => listener.accept().await.map(|(it, _)| {
                 super::tuned(&it);
 
-                Incoming::Tcp(it)
+                super::Connection::Tcp(it)
             }),
         }
     }
@@ -632,7 +629,7 @@ impl Serving {
         // own. A socket file is reachable by every confined command below Linux 7.1, and from 7.1
         // by one that may write where it is. A process a command started under a `setsid` of its
         // own is in a session nothing here has seen, and gets through
-        if let Incoming::Unix(stream) = &arrived.0
+        if let super::Connection::Unix(stream) = &arrived.0
             && stream
                 .peer_cred()
                 .ok()
@@ -667,14 +664,8 @@ impl Serving {
         // until it is asked for it, and a browser reconnecting once a second would otherwise be a
         // list that only grows
         while self.connections.try_join_next().is_some() {}
-        match arrived.0 {
-            Incoming::Unix(stream) => {
-                self.connections.spawn(serve(client, stream, kernel, asks));
-            }
-            Incoming::Tcp(stream) => {
-                self.connections.spawn(serve(client, stream, kernel, asks));
-            }
-        }
+        self.connections
+            .spawn(serve(client, arrived.0, kernel, asks));
     }
 
     /// The last of the voice, once the session has ended, and the connections let go of.
