@@ -1654,15 +1654,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
         .expect("the binary under test is built");
 
     let said = watch(child.stderr.take().expect("stderr is a pipe"));
-    let waited = std::time::Instant::now();
-    while !said.lock().contains("⟩ shell(") {
-        assert!(
-            waited.elapsed() < std::time::Duration::from_secs(20),
-            "it never reached the tool: {}",
-            said.lock()
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    until_said(&said, "⟩ shell(", "the tool").await;
 
     let pressed = std::time::Instant::now();
     interrupt(child.id());
@@ -1793,6 +1785,19 @@ fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String
     said
 }
 
+/// Waits for a child to have said `phrase`, or says what it had said when it did not.
+async fn until_said(said: &Arc<parking_lot::Mutex<String>>, phrase: &str, what: &str) {
+    let waited = std::time::Instant::now();
+    while !said.lock().contains(phrase) {
+        assert!(
+            waited.elapsed() < std::time::Duration::from_secs(20),
+            "it never reached {what}: {}",
+            said.lock()
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+}
+
 /// Presses `ctrl+c` at a child process.
 fn interrupt(pid: u32) {
     let sent = std::process::Command::new("kill")
@@ -1865,15 +1870,7 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
         .expect("the binary under test is built");
 
     let said = watch(child.stderr.take().expect("stderr is a pipe"));
-    let waited = std::time::Instant::now();
-    while !said.lock().contains("⟩ py__hang(") {
-        assert!(
-            waited.elapsed() < std::time::Duration::from_secs(20),
-            "it never reached the tool: {}",
-            said.lock()
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
+    until_said(&said, "⟩ py__hang(", "the tool").await;
 
     interrupt(child.id());
     let pressed = std::time::Instant::now();
@@ -1933,15 +1930,7 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
             .spawn()
             .expect("the binary under test is built");
         let said = watch(child.stderr.take().expect("stderr is a pipe"));
-        let waited = std::time::Instant::now();
-        while !said.lock().contains("⟩ shell(") {
-            assert!(
-                waited.elapsed() < std::time::Duration::from_secs(20),
-                "it never reached the command: {}",
-                said.lock()
-            );
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        until_said(&said, "⟩ shell(", "the command").await;
         // a moment for the command to have started, rather than only been asked for
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
