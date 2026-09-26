@@ -418,27 +418,34 @@ async fn counting_deaf_server(requests: Arc<std::sync::atomic::AtomicUsize>) -> 
 #[cfg(feature = "openai")]
 #[tokio::test(start_paused = true)]
 async fn a_whole_answer_still_being_written_is_asked_for_once() {
-    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(
-        nachalnik_providers::OpenAiCompatible::new(
+    // and the same where the client's own timeout ends the wait first, which reaches the provider
+    // as a transport error rather than as a silence it counted
+    for timeout in [None, Some(Duration::from_secs(30))] {
+        let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let kernel = Kernel::new(Config::default());
+        let mut provider = nachalnik_providers::OpenAiCompatible::new(
             "thinking",
             counting_deaf_server(requests.clone()).await,
             "no key needed",
         )
-        .streaming(false),
-    ));
-    kernel.push(ContextItem::user("think hard"));
+        .streaming(false);
+        if let Some(timeout) = timeout {
+            provider =
+                provider.with_client(nachalnik_providers::OpenAiCompatible::client_with(timeout));
+        }
+        kernel.set_provider(Arc::new(provider));
+        kernel.push(ContextItem::user("think hard"));
 
-    let failed = tokio::time::timeout(Duration::from_secs(3600), kernel.turn())
-        .await
-        .expect("it gave up");
-    assert!(failed.is_err(), "an answer that never came is a failure");
-    assert_eq!(
-        requests.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "it was asked for again"
-    );
+        let failed = tokio::time::timeout(Duration::from_secs(3600), kernel.turn())
+            .await
+            .expect("it gave up");
+        assert!(failed.is_err(), "an answer that never came is a failure");
+        assert_eq!(
+            requests.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "it was asked for again, client timeout: {timeout:?}"
+        );
+    }
 }
 
 /// Sends a stream's headers, and then a byte at a time with no newline for as long as it is read.
