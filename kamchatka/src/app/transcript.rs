@@ -390,9 +390,8 @@ impl App {
     /// identifier belongs on which line.
     ///
     /// note: what was said *while* they were arriving is re-anchored to the item rather than
-    /// dropped, because it is not the item's and it did not happen before it. "stopped" is said
-    /// mid-sentence, so the newest item at the time was the question; left there it would read
-    /// above the half-answer it interrupted.
+    /// dropped, because it is not the item's and it did not happen before it; see
+    /// [`Entry::arriving`].
     pub(super) fn caught_up(&mut self, item: ContextId) {
         self.loose.retain(|entry| !entry.transient());
         for entry in &mut self.loose {
