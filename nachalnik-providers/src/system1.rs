@@ -1365,6 +1365,31 @@ mod tests {
         );
     }
 
+    /// A probe says so when the address does not list the model being asked for, and only then.
+    ///
+    /// note: a name that is not listed comes back a 400 on the next question, which is a worse
+    /// place to find out; a name that is listed buys silence, or the notice means nothing.
+    #[tokio::test]
+    async fn a_probe_says_when_the_address_does_not_list_the_model() {
+        let at = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
+              {\"models\":[{\"name\":\"jev-latest\"},{\"name\":\"jev-1.13.0\"}]}",
+        )
+        .await;
+
+        let stranger = Jev::new("jev-nope", format!("http://{at}"), "k");
+        stranger.probe().await;
+        let said = stranger
+            .take_notice()
+            .expect("an unlisted model is worth saying");
+        assert!(said.contains("jev-nope"), "the model asked for: {said}");
+        assert!(said.contains("jev-1.13.0"), "what is served: {said}");
+
+        let resident = Jev::new("jev-latest", format!("http://{at}"), "k");
+        resident.probe().await;
+        assert_eq!(resident.take_notice(), None);
+    }
+
     /// A 200 that carries no answer is an error, not a response with every question unanswered.
     #[tokio::test]
     async fn a_success_that_is_not_an_answer_is_an_error() {
