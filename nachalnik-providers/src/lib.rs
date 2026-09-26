@@ -256,6 +256,21 @@ pub fn install_crypto() {
 mod tests {
     use super::*;
 
+    /// A listed name is the model under either decoration a listing puts on it, each on its own.
+    ///
+    /// note: each decoration is the whole difference for one kind of endpoint - Google lists every
+    /// model under `models/`, and ollama tags a name the session holds bare with `:latest` - so a
+    /// match that needed both would tell every such session its model is not served.
+    #[test]
+    fn a_listed_name_is_the_model_under_either_decoration() {
+        for listed in ["resident", "models/resident", "resident:latest"] {
+            assert!(same_model(listed, "resident"), "{listed}");
+        }
+        for listed in ["models/other", "other:latest"] {
+            assert!(!same_model(listed, "resident"), "{listed}");
+        }
+    }
+
     /// Whose address it is, from either a whole URL or a bare authority.
     ///
     /// note: three things turn this into a decision - app attribution, which of two services a
