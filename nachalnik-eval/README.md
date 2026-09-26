@@ -35,9 +35,6 @@ would get, and, where the claims carried a probability, a Brier score, the calib
 whether the model was over- or under-confident. Then what the experiment cost, in requests and
 tokens.
 
-A model can name the note its answer was made of and not know where that note is, which is why
-`Kind::Location` is scored apart from the rest.
-
 ---
 
 ### 🔬 why any of this is measurable
