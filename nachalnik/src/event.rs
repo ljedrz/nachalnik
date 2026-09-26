@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(doc)]
-use crate::{Config, Provider, Tool};
+use crate::{Config, Provider};
 use crate::{
     compaction::CompactionReport,
     context::{ContextId, ContextState},

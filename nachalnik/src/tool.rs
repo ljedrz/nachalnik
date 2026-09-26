@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 #[cfg(doc)]
-use crate::{Config, Event, Kernel, PermissionPolicy};
+use crate::{Config, Kernel, PermissionPolicy};
 use crate::{
     error::BoxError,
     event::OutputSink,

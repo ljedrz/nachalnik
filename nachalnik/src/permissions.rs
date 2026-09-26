@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use crate::model::{ToolCall, ToolCallId};
 #[cfg(doc)]
-use crate::{Config, Kernel, Tool};
+use crate::{Kernel, Tool};
 
 /// The family of side effect an operation belongs to: what a rule is written about.
 ///

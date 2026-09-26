@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 #[cfg(doc)]
-use crate::{Config, Context, Kernel, Projector, TokenCounter};
+use crate::{Context, Kernel, Projector, TokenCounter};
 use crate::{error::BoxError, event::DeltaSink, tool::ToolSpec};
 
 /// A piece of content: plain text, structured data, or an ordered sequence of [`Block`]s.

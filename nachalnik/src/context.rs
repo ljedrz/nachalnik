@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(doc)]
-use crate::{Compactor, Config, Event, Kernel, Projector};
+use crate::{Compactor, Event, Kernel, Projector};
 use crate::{
     model::{Block, Content, ToolCall, ToolCallId},
     tokens::TokenCounter,
