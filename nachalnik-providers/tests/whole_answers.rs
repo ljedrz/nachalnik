@@ -72,15 +72,23 @@ const ANSWERED: &str = concat!(
 /// answers a *whole* request that its upstream refused with a 200 carrying an `error` object, and
 /// reading only the status makes that a hard failure - the run stops on something that would have
 /// worked in two seconds. Found against OpenRouter; the body below is one of theirs.
+///
+/// note: the wait costs a second request, and `attempts` is where a run finds out what it paid.
+/// What was asked is still one request, and a recording keeps it once.
 #[tokio::test]
 async fn a_rate_limit_inside_a_good_status_is_waited_out_like_any_other() {
-    let kernel = Kernel::new(Config::default());
-    kernel.set_provider(Arc::new(
+    let provider = Arc::new(
         OpenAiCompatible::new("busy", busy_then(LIMITED, ANSWERED).await, "no key needed")
-            .streaming(false),
-    ));
+            .streaming(false)
+            .recording(true),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
     kernel.push(ContextItem::user("go"));
+    let asked = kernel.preview_request().expect("a request");
     kernel.step().await.expect("the second attempt is answered");
+    assert_eq!(provider.attempts(), 2, "the retry is counted too");
+    assert_eq!(provider.requests(), [asked], "and what was asked, once");
 
     let response = kernel.last_response().expect("the model answered");
     assert_eq!(
