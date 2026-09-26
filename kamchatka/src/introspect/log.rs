@@ -31,7 +31,7 @@ use std::sync::Arc;
 use crate::{
     app::text::{thousands, trace_line},
     tools::{
-        Limits, domains,
+        Limits, domains, number,
         ops::{Arg, Op, actions, inner, schema, unread},
         yes_or_no,
     },
@@ -265,8 +265,8 @@ impl Query {
             ..Self::default()
         };
 
-        if !args["take"].is_null() {
-            let take = counted(&args["take"], "take")?;
+        let not_read = |refusal| format!("{refusal} {UNREAD}");
+        if let Some(take) = number(args, "take").map_err(not_read)? {
             if take == 0 {
                 return Err(
                     "`take: 0` asks for no records; leave it out to get the summary, \
@@ -276,9 +276,7 @@ impl Query {
             }
             query.take = Some(take as usize);
         }
-        if !args["since"].is_null() {
-            query.since = Some(counted(&args["since"], "since")?);
-        }
+        query.since = number(args, "since").map_err(not_read)?;
         // note: the reader every tool here shares, so an entry that is not an item number is
         // refused rather than dropped. An *empty* list is no filter, which is how a model passing
         // every argument the schema lists spells one
@@ -513,24 +511,10 @@ impl Query {
     }
 }
 
-/// A count, or what was passed where one belonged.
-///
-/// note: a numeric string is taken as the number, which costs nothing and saves a turn. A word is
-/// not, because a word here is a mistake worth reporting rather than one worth guessing at - and
-/// the wrong answer to give is an empty result, which reads as an empty log.
-fn counted(value: &serde_json::Value, name: &str) -> Result<u64, String> {
-    if let Some(n) = value.as_u64() {
-        return Ok(n);
-    }
-    if let Some(n) = value.as_str().and_then(|s| s.trim().parse::<u64>().ok()) {
-        return Ok(n);
-    }
-
-    Err(format!(
-        "`{name}` is a whole number and this one is `{value}`. Nothing was read, rather than \
-         nothing being found: an empty answer here would have read as an empty log."
-    ))
-}
+/// What a count that could not be read says was not done, which is the part a refusal from
+/// [`number`] leaves to its caller.
+const UNREAD: &str = "Nothing was read, rather than nothing being found: an empty answer here \
+                      would have read as an empty log.";
 
 /// Item numbers, as somebody would read them out.
 fn numbered(ids: &[&ContextId]) -> String {
