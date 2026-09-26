@@ -2103,6 +2103,67 @@ async fn the_request_ceiling_stops_the_program_itself() {
     assert!(!said.contains("paused after"), "{said}");
 }
 
+/// `--forget-truncated` reaches the session: what `setup` tells the model about the rest of a cut
+/// result follows the flag.
+///
+/// note: `setup` reads it off the kernel's own configuration, and nothing else shows it before
+/// something is cut. A model told the whole is archived, in a session that forgets it, goes
+/// looking for content that is not there.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
+    use std::io::Write as _;
+
+    let run = async |name: &str, flags: &[&str]| {
+        let base = common::endpoint(vec![
+            format!(
+                "data: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                    "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                    "function": {"name": "setup", "arguments": "{\"action\": \"policy\"}"}}]},
+                    "finish_reason": "tool_calls"}]})
+            ),
+            common::answer("read"),
+        ])
+        .await;
+        let dir = common::scratch(name);
+        let mut child = std::process::Command::new(common::program())
+            .args([
+                "--headless",
+                "--no-record",
+                "-m",
+                "nothing",
+                "--allow",
+                "setup",
+            ])
+            .args(flags)
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+        // the answer is shown to the model and not printed, so it is read back out of a save
+        child
+            .stdin
+            .take()
+            .expect("stdin is a pipe")
+            .write_all(b"go\n/save saved.json\n")
+            .expect("the lines were sent");
+        let out = child.wait_with_output().expect("the program never ended");
+        let said = String::from_utf8_lossy(&out.stderr);
+
+        std::fs::read_to_string(dir.join("saved.json")).unwrap_or_else(|_| panic!("{said}"))
+    };
+
+    let saved = run("kept-what-was-cut", &[]).await;
+    assert!(saved.contains("archived beside"), "{saved}");
+
+    let saved = run("forgot-what-was-cut", &["--forget-truncated"]).await;
+    assert!(saved.contains("not kept"), "{saved}");
+    assert!(!saved.contains("archived beside"), "{saved}");
+}
+
 /// A run that was not told to keep quiet writes the session out, and says where.
 ///
 /// note: what every real run does at the end, and the one thing about a headless run that nothing
