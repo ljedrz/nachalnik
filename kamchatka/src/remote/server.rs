@@ -518,17 +518,7 @@ impl Serving {
         }
         // the program has one voice and every client hears it, which is most of the difference
         // between a session several people are attached to and several sessions
-        let fresh: Vec<_> = app
-            .notes(self.said)
-            .map(|entry| Message::Said {
-                speaker: entry.speaker,
-                text: entry.text.clone(),
-            })
-            .collect();
-        self.said += fresh.len();
-        for message in fresh {
-            let _ = self.voice.send(Arc::new(message));
-        }
+        self.say(app);
         // note: on a change and nothing else. What closes the gap between a client asking for
         // something and being told what came of it is the *answer* to its command, which every
         // command has and which carries this same figure - see `Message::Done`. A broadcast that
@@ -561,6 +551,17 @@ impl Serving {
             let _ = self
                 .voice
                 .send(Arc::new(Message::Reaching { waiting: reaching }));
+        }
+    }
+
+    /// Says every line of the program's own since the last one said, and moves the mark past them.
+    fn say(&mut self, app: &App) {
+        for entry in app.notes(self.said) {
+            self.said += 1;
+            let _ = self.voice.send(Arc::new(Message::Said {
+                speaker: entry.speaker,
+                text: entry.text.clone(),
+            }));
         }
     }
 
@@ -679,17 +680,8 @@ impl Serving {
     /// does not hold the [`App`]. With a screen built in, an `App` cannot be shared across threads,
     /// and a future holding one across an `await` would make [`Server::run`] one nobody could
     /// spawn.
-    pub fn last(self, app: &App) -> impl Future<Output = ()> + Send + use<> {
-        let last: Vec<_> = app
-            .notes(self.said)
-            .map(|entry| Message::Said {
-                speaker: entry.speaker,
-                text: entry.text.clone(),
-            })
-            .collect();
-        for message in last {
-            let _ = self.voice.send(Arc::new(message));
-        }
+    pub fn last(mut self, app: &App) -> impl Future<Output = ()> + Send + use<> {
+        self.say(app);
 
         // and a command still waiting on the loop is answered with its refusal rather than kept
         // waiting for a loop that has stopped
