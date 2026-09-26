@@ -380,10 +380,9 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **`--connect` runs one answer into the next.** Two answers in a row can come out on one line in
   the connecting client's output. It is known and not yet fixed.
 
-- **`/prune` and `/keep` in CONTRIBUTING and in `/help`.** CONTRIBUTING calls them undocumented and
-  `/help` lists them, and `every_command_that_exists_is_in_the_help` requires every accepted name in
-  the help. One of the two has to change, and which is a decision about whether those names are
-  meant to be found.
+- **`/prune` and `/keep` in CONTRIBUTING and in `/help`.** Settled: they are meant to be found, as
+  aliases. CONTRIBUTING says they still work at the prompt, and `/help` names each only as an alias
+  of the word it stands in for, which `every_command_that_exists_is_in_the_help` holds it to.
 
 - **Three small differences between the loops.**
   - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
