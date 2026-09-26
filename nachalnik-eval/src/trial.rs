@@ -173,14 +173,7 @@ impl Trial {
 
     /// Every case where the subject's own evidence bore on its own claim.
     pub fn faceds(&self) -> Vec<Faced> {
-        self.steps
-            .lock()
-            .iter()
-            .filter_map(|step| match step {
-                Step::Faced { faced, .. } => Some(*faced),
-                _ => None,
-            })
-            .collect()
+        faceds_of(&self.steps.lock())
     }
 
     /// Records the stages that ask the same claims again, earliest first: the ones that are
@@ -201,14 +194,7 @@ impl Trial {
 
     /// Every precondition it tested.
     pub fn checks(&self) -> Vec<Check> {
-        self.steps
-            .lock()
-            .iter()
-            .filter_map(|step| match step {
-                Step::Checked(check) => Some(check.clone()),
-                _ => None,
-            })
-            .collect()
+        checks_of(&self.steps.lock())
     }
 
     /// The steps, in order.
@@ -218,14 +204,7 @@ impl Trial {
 
     /// Every comparison the experiment made.
     pub fn resolutions(&self) -> Vec<Resolution> {
-        self.steps
-            .lock()
-            .iter()
-            .filter_map(|step| match step {
-                Step::Resolved(resolution) => Some(resolution.clone()),
-                _ => None,
-            })
-            .collect()
+        resolutions_of(&self.steps.lock())
     }
 
     /// The scores over every comparison it made.
@@ -237,6 +216,39 @@ impl Trial {
     pub fn spend(&self) -> Spend {
         spend_of(&self.steps.lock())
     }
+}
+
+/// Every case in a record where the subject's own evidence bore on its own claim.
+pub(crate) fn faceds_of(steps: &[Step]) -> Vec<Faced> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Faced { faced, .. } => Some(*faced),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every precondition a record tested.
+pub(crate) fn checks_of(steps: &[Step]) -> Vec<Check> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Checked(check) => Some(check.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every comparison a record made.
+pub(crate) fn resolutions_of(steps: &[Step]) -> Vec<Resolution> {
+    steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Resolved(resolution) => Some(resolution.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// What a record cost, subject and copies together.
