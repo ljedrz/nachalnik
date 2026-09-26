@@ -329,6 +329,37 @@ async fn a_refusal_that_asks_for_a_long_wait_is_reported_rather_than_sat_through
     }
 }
 
+/// A busy server that asks to be left for a minute is waited out, and once the tries run out is not
+/// said to have asked for longer than this waits.
+///
+/// note: only a `Retry-After` longer than a minute is refused at once, and a minute is what a
+/// per-minute limit asks for. On a paused clock, so that the minutes are not sat through.
+#[tokio::test(start_paused = true)]
+async fn a_refusal_that_asks_for_a_minute_is_waited_out() {
+    for (dialect, _) in dialects("http://127.0.0.1:1") {
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = server(
+            "429 Too Many Requests",
+            "Retry-After: 60\r\nContent-Type: application/json\r\n",
+            "{\"error\":{\"code\":429,\"message\":\"Resource has been exhausted.\"}}",
+            requests.clone(),
+        )
+        .await;
+        let (_, provider) = dialects(&url)
+            .into_iter()
+            .find(|(d, _)| *d == dialect)
+            .expect("built above");
+
+        let error = asked(provider).await.expect_err("busy every time");
+        assert!(
+            error.contains("Resource has been exhausted"),
+            "{dialect}: {error}"
+        );
+        assert!(!error.contains("longer than"), "{dialect}: {error}");
+        assert_eq!(requests.load(Ordering::SeqCst), 4, "{dialect}");
+    }
+}
+
 /// `[DONE]` ends the stream, whether or not the server closes the connection after it.
 ///
 /// note: the connection here stays open once the answer is out. Read past `[DONE]` as a line that
