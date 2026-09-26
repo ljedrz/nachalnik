@@ -1,16 +1,11 @@
 //! The four tab bodies, and nothing else: the chrome around them is in `mod.rs` and the panel
 //! that floats over them is in `overlay`.
 //!
-//! note: Four tabs, each of which gets the whole window, because each of them is a whole view.
-//! Every terminal agent in the world has the first one. The second is the point of this program:
-//! the *context*, item by item, with what each one costs, whether it is going into the next
-//! request, and what the model will actually read of it - because in this runtime that is a list
-//! of ordinary values rather than something the harness keeps to itself. The third is the event
-//! stream the session log is made of, as it happens. The fourth is the permission policy, which
-//! is otherwise only ever seen one call at a time, at the moment it is least convenient to think
-//! about - every answer somebody has actually given, and a count of what is still a question. Not
-//! a row per undecided thing: `ask` is what this policy does when nobody has told it anything, and
-//! a screenful of it buries the one line that says what can happen without stopping.
+//! note: four tabs, each of which gets the whole window, because each of them is a whole view;
+//! what each one is for is on [the crate root](crate). The fourth is every answer somebody has
+//! given the policy and a count of what is still a question, not a row per undecided thing: `ask`
+//! is what this policy does when nobody has told it anything, and a screenful of it buries the one
+//! line that says what can happen without stopping.
 
 use std::{cell::Cell, collections::HashMap, rc::Rc};
 
