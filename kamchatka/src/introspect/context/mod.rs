@@ -373,14 +373,13 @@ impl Tool for Context {
             op if CHANGES.contains(&op) => {
                 let Some(reason) = args["reason"].as_str().filter(|it| !it.trim().is_empty())
                 else {
-                    // note: "nothing was done" first, because the rest is why and not what. A
-                    // model that read only the why took it for a remark about a note it had
-                    // written, and went on to put away the results the note was written from
+                    // note: it says nothing was done and what to call again. A refusal that gave
+                    // only why a reason is asked for was taken for a remark about a note the
+                    // model had written, and it went on to put away the results the note was
+                    // written from. The why is `WHY`, which the schema carries on every request
                     return Ok(ToolOutput::error(format!(
                         "`reason` is required by everything that changes something, and nothing \
-                         was done: call `{op}` again with one. It becomes the item's note, and it \
-                         is what the person at the terminal reads when they ask why something is \
-                         not in the request"
+                         was done: call `{op}` again with one"
                     )));
                 };
 
