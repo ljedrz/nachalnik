@@ -97,7 +97,7 @@ impl Session {
         self.records.len()
     }
 
-    /// Returns whether nothing has been recorded yet.
+    /// Returns whether the log holds no records, which it also does once they have been drained.
     pub fn is_empty(&self) -> bool {
         self.records.is_empty()
     }
