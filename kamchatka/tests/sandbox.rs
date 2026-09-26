@@ -715,6 +715,35 @@ fn the_probe_finds_the_gate_wherever_the_kernel_can_hold_a_call() {
     );
 }
 
+/// A gate asked for below one that already holds says it did not go on, and runs nothing.
+///
+/// note: this is the program run from its own shell. The kernel gives a process one listener and
+/// refuses a second below it, and what the inner child owes that refusal is the sentence saying so,
+/// the same as for any gate that did not take.
+#[test]
+fn a_gate_below_a_gate_says_it_did_not_go_on_and_runs_nothing() {
+    if !gated() {
+        return;
+    }
+    let dir = common::workdir("gate-below-gate");
+    let program = common::program();
+    let inner = std::iter::once(program.clone().into_os_string())
+        .chain(sandbox(dir.clone(), true, Network::Shut).argv("echo reached"))
+        .map(|arg| format!("'{}'", arg.to_string_lossy()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut outer = sandbox(dir, true, Network::Shut);
+    outer
+        .readable
+        .push(program.parent().expect("in a directory").to_path_buf());
+
+    let (ok, said) = run(&outer, &inner);
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("the filter did not take"), "{said}");
+    assert!(!said.contains("reached"), "{said}");
+}
+
 /// What a confined command connects to, in the one spelling every one of these tests uses.
 fn connect_to(socket: &Path) -> String {
     format!(
