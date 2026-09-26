@@ -5,7 +5,7 @@ mod common;
 
 use std::{sync::Arc, time::Duration};
 
-use common::{drain, inquisitive, permissive};
+use common::{drain, inquisitive, permissive, tool_results_text};
 use nachalnik::{
     BoxError, Config, ContextItem, ContextState, DeltaSink, Error, Event, Grant, Kernel, ModelInfo,
     ModelRequest, ModelResponse, Provider, State, TooLong, async_trait,
@@ -818,12 +818,7 @@ async fn a_tool_that_watches_stops_partway_and_still_answers_its_call() {
     });
     assert_eq!(state.unwrap(), State::Idle);
 
-    let results: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let results = tool_results_text(&kernel);
     assert_eq!(
         results,
         ["01234[stopped]"],
@@ -850,12 +845,7 @@ async fn an_interrupt_does_not_start_the_calls_that_had_not_begun() {
     assert!(matches!(kernel.step().await.unwrap(), State::Ready { .. }));
     assert_eq!(kernel.step().await.unwrap(), State::Idle);
 
-    let results: Vec<String> = kernel
-        .items()
-        .iter()
-        .filter(|item| matches!(item.kind, nachalnik::ContextKind::ToolResult { .. }))
-        .map(|item| item.content.to_text().into_owned())
-        .collect();
+    let results = tool_results_text(&kernel);
 
     assert_eq!(
         results.len(),
