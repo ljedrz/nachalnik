@@ -23,7 +23,6 @@ use crate::harness::Harness;
 /// this, immediately above a summary saying the results had been dropped.
 #[tokio::test]
 async fn compaction_shortens_a_result_without_unasking_the_question() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Compactor, Content, ToolCall};
 
     let harness = Harness::new([]);
@@ -113,7 +112,6 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
 /// session.
 #[tokio::test]
 async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor};
 
     let harness = Harness::new([]);
@@ -181,7 +179,6 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
 /// the request 53 tokens a turn - the thing the pass exists to stop.
 #[tokio::test]
 async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor};
 
     let harness = Harness::new([]);
@@ -239,7 +236,6 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
 /// recovered hundreds of tokens while the request it was making got bigger.
 #[tokio::test]
 async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let mut harness = Harness::new([]);
@@ -334,7 +330,6 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
 /// then skipped for recovering nothing.
 #[tokio::test]
 async fn blobs_are_taken_before_anything_else() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
@@ -425,7 +420,6 @@ async fn blobs_are_taken_before_anything_else() {
 /// pass, once it has been read.
 #[tokio::test]
 async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
@@ -492,7 +486,6 @@ async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
 /// result had been elided than had.
 #[tokio::test]
 async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
@@ -550,7 +543,6 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
 /// guess.
 #[tokio::test]
 async fn a_blob_goes_even_when_the_count_says_there_is_room() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
@@ -616,7 +608,6 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
 /// plan is not nothing: it is a summary in the context and an undo spent.
 #[tokio::test]
 async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
@@ -1095,7 +1086,6 @@ fn a_compactor_aims_lower_than_the_point_it_starts_at() {
 /// to carry it - so the model read a marker and ran the search again, for a result that fitted.
 #[tokio::test]
 async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
-    use kamchatka::tools::Trim;
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
