@@ -300,29 +300,16 @@ fn answer(said: &str, width: usize) -> Vec<Line<'static>> {
         for line in tui_markdown::from_str_with_options(prose, &markdown()).lines {
             // an *indented* block still arrives this way; the fenced ones never reach here
             match line.style == Markdown.code() {
-                true => lines.extend(gutter(&line, width).into_iter().map(owned)),
+                true => lines.extend(gutter(&line, width)),
                 false => match rule(&line) {
                     // a horizontal rule, drawn rather than spelled `---`
                     true => lines.push(Line::styled("─".repeat(width), faint())),
-                    false => lines.extend(refit(&line, width).into_iter().map(owned)),
+                    false => lines.extend(refit(&line, width)),
                 },
             }
         }
     }
     lines
-}
-
-/// A line that owns its words, to be kept past the text it was drawn from.
-fn owned(line: Line<'_>) -> Line<'static> {
-    Line {
-        spans: line
-            .spans
-            .into_iter()
-            .map(|span| Span::styled(span.content.into_owned(), span.style))
-            .collect(),
-        style: line.style,
-        alignment: line.alignment,
-    }
 }
 
 /// The colour of a shell result's first line, which is what somebody reads one for.
