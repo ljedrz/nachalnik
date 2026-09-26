@@ -495,6 +495,31 @@ fn the_scratch_directory_is_never_somebody_elses() {
     );
 }
 
+/// Where the gate holds, the network a command is handed follows the stance and what a person
+/// allowed for the call: open for an `allow` or a granted call, shut for a `deny`, and asked about
+/// otherwise.
+///
+/// note: `tests/sandbox.rs` runs commands under each of these, but through confinements it builds
+/// by hand; this is where the policy becomes one.
+#[test]
+fn the_network_a_command_is_handed_follows_the_stance_and_the_grant() {
+    use kamchatka::{sandbox::Network, tools::Subject};
+    use nachalnik::{Capability, Verdict};
+
+    let dir = common::workdir("network-of");
+    let policy = Arc::new(Careful::new());
+    policy.gate_the_network();
+    let network = |granted| Sandbox::of(&policy, dir.clone(), Vec::new(), Vec::new(), granted);
+    let stance = |verdict| policy.set(&Subject::Capability(Capability::net("reach")), verdict);
+
+    assert_eq!(network(false).network, Network::Asked);
+    assert_eq!(network(true).network, Network::Open);
+    stance(Verdict::Allow);
+    assert_eq!(network(false).network, Network::Open);
+    stance(Verdict::Deny);
+    assert_eq!(network(false).network, Network::Shut);
+}
+
 #[test]
 fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     use kamchatka::sandbox::Network;
