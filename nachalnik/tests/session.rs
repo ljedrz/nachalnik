@@ -265,6 +265,11 @@ async fn the_log_is_only_given_up_when_it_is_asked_for() {
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
     assert_eq!(restored, taken);
+
+    // and a log is empty once everything in it has been taken, and not before
+    assert!(!kernel.with_history(|session| session.is_empty()));
+    kernel.drain_history(kernel.last_seq());
+    assert!(kernel.with_history(|session| session.is_empty()));
 }
 
 #[tokio::test]
