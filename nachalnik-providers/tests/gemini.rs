@@ -181,6 +181,24 @@ async fn a_run_of_parts_of_one_kind_is_one_block() {
     );
     assert_eq!(blocks[1].said().unwrap().content.to_text(), "Nine sheep.");
     assert_eq!(response.stop, StopReason::EndTurn);
+
+    // and a change of kind ends a run whichever way round: a thought after the answer has begun
+    // is a block of its own, not more of the answer
+    let response = answered(concat!(
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Nine\"}]}}]}\n\n",
+        "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Or ten?\",\"thought\":true}]},",
+        "\"finishReason\":\"STOP\"}]}\n\n",
+    ))
+    .await;
+    let blocks = response
+        .content
+        .as_ref()
+        .and_then(Content::as_blocks)
+        .expect("recorded as an order");
+    assert_eq!(
+        blocks.iter().map(Block::name).collect::<Vec<_>>(),
+        ["text", "reasoning"]
+    );
 }
 
 #[tokio::test]
