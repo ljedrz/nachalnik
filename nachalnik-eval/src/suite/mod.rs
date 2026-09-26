@@ -149,17 +149,7 @@ pub const ENDPOINT: &str = "attribution";
 /// [`Change::instability`](crate::Change), which needs at least two and is reported as zero
 /// without them. Raise the replicates before quoting a number at anybody.
 pub fn all() -> Vec<Arc<dyn Experiment>> {
-    vec![
-        Arc::new(Attribution::new()),
-        Arc::new(Recursion::new()),
-        Arc::new(Lie::new()),
-        Arc::new(Conflict::new()),
-        Arc::new(Provenance::new()),
-        Arc::new(Privilege::new()),
-        Arc::new(Instrumented::new()),
-        Arc::new(Repair::new()),
-        Arc::new(Feedback::new()),
-    ]
+    all_with(1, LADDERS)
 }
 
 /// The same nine, with every condition run `replicates` times and every ladder run `ladders`
