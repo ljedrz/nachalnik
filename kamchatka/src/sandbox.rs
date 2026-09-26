@@ -1299,11 +1299,8 @@ pub(crate) fn from_a_command(pid: u32) -> bool {
 ///
 /// note: Landlock governs a pathname unix socket from ABI 9, which is Linux 7.1. Below that a
 /// `connect` is not an access right at all, so the socket answers whatever its own permissions say
-/// and the ruleset is not consulted - which is how a confined command reaches the session bus, the
-/// compositor and the container daemon. Each of those is a process outside the domain that will
-/// read and write a filesystem on its behalf, so a boundary that stops at `open` stops short:
-/// under a confinement that refuses a home directory outright, `systemd-run --user` lists it and
-/// makes a file in it.
+/// and the ruleset is not consulted; the [module note](crate::sandbox) says what that leaves in
+/// reach.
 ///
 /// note: the question is put to the kernel, and put to it through the crate rather than by reading
 /// a version number. `HardRequirement` is the level at which a right the kernel does not have is an
