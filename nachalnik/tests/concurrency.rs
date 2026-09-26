@@ -463,6 +463,74 @@ async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
     );
 }
 
+/// Run together, a tool that panics takes the step with it, as it does when the calls run in turn.
+///
+/// note: a panic is a bug in the tool rather than something it has to tell the model, and being
+/// spawned beside other calls does not make it survivable. The step unwinds with the tool's own
+/// panic, not with one of the kernel's about it.
+#[tokio::test]
+async fn run_together_a_panicking_tool_is_a_panic_of_the_step() {
+    let kernel = three_calls(true, Arc::new(Panics));
+
+    let unwound = tokio::spawn(async move { kernel.turn().await })
+        .await
+        .expect_err("the step unwinds");
+    assert_eq!(
+        unwound.into_panic().downcast_ref::<&str>(),
+        Some(&"the tool panicked")
+    );
+}
+
+/// A tool that panics when it is run.
+struct Panics;
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for Panics {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("slow", "panics")
+    }
+
+    async fn invoke(
+        &self,
+        _call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        panic!("the tool panicked")
+    }
+}
+
+/// Run together, a call whose task the runtime cancelled is recorded as not having run.
+///
+/// note: the calls are spawned onto whichever runtime the step is polled in, and one that has
+/// shut down cancels what it is given. That is neither the tool failing nor the tool panicking,
+/// so it is not a reason to unwind the step: the model is told the call did not finish.
+#[test]
+fn run_together_a_call_its_runtime_cancelled_is_recorded_as_not_having_run() {
+    let gone = tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap();
+    let shut_down = gone.handle().clone();
+    drop(gone);
+
+    let kernel = three_calls(true, Arc::new(ConstTool::new("slow", "ran")));
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let _spawning_there = shut_down.enter();
+            kernel.turn().await.unwrap();
+        });
+
+    let results = tool_results_text(&kernel);
+    assert_eq!(results.len(), 3, "{results:?}");
+    assert!(
+        results
+            .iter()
+            .all(|said| said.contains("did not run to completion")),
+        "{results:?}"
+    );
+}
+
 /// A provider whose `info` waits the second time it is asked, so that a second setter can be let
 /// in while the first is still describing what it replaced.
 ///
