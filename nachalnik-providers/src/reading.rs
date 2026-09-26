@@ -399,6 +399,16 @@ mod tests {
         assert!(said.contains("Provider returned error"), "{said}");
         assert!(said.contains("temporarily rate-limited upstream"), "{said}");
 
+        // and where the message already carries the upstream's words, they are not said twice
+        let quoted = concat!(
+            r#"{"error":{"message":"z-ai/glm-5.2:free is temporarily rate-limited upstream.","#,
+            r#""code":429,"metadata":{"raw":"z-ai/glm-5.2:free is temporarily rate-limited "#,
+            r#"upstream."}}}"#,
+        );
+        assert!(serde_json::from_str::<Value>(quoted).is_ok());
+        let said = complaint(status, quoted);
+        assert_eq!(said.matches("rate-limited upstream").count(), 1, "{said}");
+
         // something that is not JSON at all still says what happened
         let plain = complaint(status, "<html>gateway timeout</html>");
         assert!(
