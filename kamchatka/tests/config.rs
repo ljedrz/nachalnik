@@ -805,6 +805,21 @@ fn a_server_rule_naming_no_server_is_refused() {
     assert!(!said.contains(refused), "{said}");
 }
 
+/// A settings file's servers are the ones a run starts.
+///
+/// note: read off a server rule's refusal, which names the servers there are, so that nothing has
+/// to be spawned to see which list arrived.
+#[cfg(feature = "mcp")]
+#[test]
+fn a_settings_file_names_the_servers_a_run_starts() {
+    let path = settings("servers", r#"{ "mcp": ["files=/nowhere"] }"#);
+
+    let (ok, said) = run(&["--config-file", &path, "--deny-server", "filess"], "");
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("they are files"), "{said}");
+}
+
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
 ///
 /// note: it was a ceiling of nothing, reached before the first request: a headless run read no
