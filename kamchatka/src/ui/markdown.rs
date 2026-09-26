@@ -76,24 +76,22 @@ fn token(name: &str) -> Style {
     Style::default().fg(colour)
 }
 
-/// Draws a fenced block: a rule down the left, and its tokens in this program's own colours.
+/// Each line of `text`, in pieces coloured the way [`token`] colours them - or all of it in cyan,
+/// where nothing recognises `extension`.
 ///
-/// note: the block is handed to the highlighter whole, so that a string or a comment running
-/// across lines is one token rather than several guesses. A language nothing here recognises still
-/// gets the rule and the wrapping - it is a code block whether or not anybody can colour it.
-pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<'static>> {
-    let bar = Span::styled("│ ", faint());
-    let room = width.saturating_sub(2).max(8);
-    let source: Vec<String> = body.lines().map(str::to_owned).collect();
-
-    let mut highlighter = synoptic::from_extension(extension(language), 4);
+/// note: the text is handed to the highlighter whole, so that a string or a comment running
+/// across lines is one token rather than several guesses.
+fn tokens(extension: &str, text: &str) -> Vec<Vec<(String, Style)>> {
+    let source: Vec<String> = text.lines().map(str::to_owned).collect();
+    let mut highlighter = synoptic::from_extension(extension, 4);
     if let Some(highlighter) = &mut highlighter {
         highlighter.run(&source);
     }
 
-    let mut drawn = Vec::new();
-    for (y, line) in source.iter().enumerate() {
-        let spans: Vec<(String, Style)> = match &highlighter {
+    source
+        .iter()
+        .enumerate()
+        .map(|(y, line)| match &highlighter {
             Some(highlighter) => highlighter
                 .line(y, line)
                 .into_iter()
@@ -103,8 +101,20 @@ pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<
                 })
                 .collect(),
             None => vec![(line.clone(), Style::default().fg(Color::Cyan))],
-        };
+        })
+        .collect()
+}
 
+/// Draws a fenced block: a rule down the left, and its tokens in this program's own colours.
+///
+/// note: a language nothing here recognises still gets the rule and the wrapping - it is a code
+/// block whether or not anybody can colour it.
+pub(super) fn highlighted(language: &str, body: &str, width: usize) -> Vec<Line<'static>> {
+    let bar = Span::styled("│ ", faint());
+    let room = width.saturating_sub(2).max(8);
+
+    let mut drawn = Vec::new();
+    for spans in tokens(extension(language), body) {
         for row in fit(spans, room) {
             let mut cells = vec![bar.clone()];
             cells.extend(row);
@@ -149,12 +159,6 @@ pub(super) fn command(
 ) -> Vec<Line<'static>> {
     let bar = Span::styled("│ ", faint());
     let room = width.saturating_sub(2).max(8);
-    let source: Vec<String> = cmd.lines().map(str::to_owned).collect();
-
-    let mut highlighter = synoptic::from_extension("sh", 4);
-    if let Some(highlighter) = &mut highlighter {
-        highlighter.run(&source);
-    }
     // note: over the whole command, and so only where the whole command is one line. `joints`
     // declines a command with newlines in it and this asks it once, so a heredoc is drawn with
     // nothing picked out rather than with the offsets of a line other than the one being drawn
@@ -165,19 +169,7 @@ pub(super) fn command(
     let picked = joints(cmd);
 
     let mut drawn = Vec::new();
-    for (y, line) in source.iter().enumerate() {
-        let spans: Vec<(String, Style)> = match &highlighter {
-            Some(highlighter) => highlighter
-                .line(y, line)
-                .into_iter()
-                .map(|piece| match piece {
-                    synoptic::TokOpt::Some(text, name) => (text, token(&name)),
-                    synoptic::TokOpt::None(text) => (text, Style::default()),
-                })
-                .collect(),
-            None => vec![(line.clone(), Style::default().fg(Color::Cyan))],
-        };
-
+    for spans in tokens("sh", cmd) {
         // note: `refit` rather than `fit`, which is the one place this parts company with a fenced
         // block. `fit` cuts where the room runs out, because reflowing a block of code would be
         // showing something the model did not write - and a command is one logical line, so
