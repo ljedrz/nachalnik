@@ -749,23 +749,7 @@ impl App {
     /// only half of it: a loop that hands in the next line - a script, a person, an agent driving
     /// this from somewhere else - would start spending again, and every caller goes through here.
     pub fn start_turn(&mut self) {
-        if self.busy || self.broke() || self.no_model() {
-            return;
-        }
-
-        self.busy = true;
-        self.since = Instant::now();
-        self.stepping = false;
-        self.interrupting = false;
-        self.failed = None;
-        let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
-        tokio::spawn(async move {
-            let outcome = match kernel.turn().await {
-                Ok(state) => Outcome::Stopped(state),
-                Err(e) => Outcome::Failed(e.to_string()),
-            };
-            let _ = outcomes.send(outcome);
-        });
+        self.launch(false);
     }
 
     /// Performs exactly one transition of the state machine, and stops.
@@ -775,22 +759,27 @@ impl App {
     /// what the model has asked for *before* any of it runs - which the kernel documents as a
     /// resting state on purpose, and which a whole turn walks straight through.
     pub fn start_step(&mut self) {
+        self.launch(true);
+    }
+
+    /// A turn, or with `stepping` one transition of it, run in the background.
+    fn launch(&mut self, stepping: bool) {
         if self.busy || self.broke() || self.no_model() {
             return;
         }
 
         self.busy = true;
         self.since = Instant::now();
-        self.stepping = true;
+        self.stepping = stepping;
         self.interrupting = false;
         self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         tokio::spawn(async move {
-            let outcome = match kernel.step().await {
-                Ok(state) => Outcome::Stepped(state),
-                Err(e) => Outcome::Failed(e.to_string()),
+            let outcome = match stepping {
+                true => kernel.step().await.map(Outcome::Stepped),
+                false => kernel.turn().await.map(Outcome::Stopped),
             };
-            let _ = outcomes.send(outcome);
+            let _ = outcomes.send(outcome.unwrap_or_else(|e| Outcome::Failed(e.to_string())));
         });
     }
 
