@@ -14,13 +14,10 @@
 //! [`Log`] is the record beside it, [`Setup`] is what the session is running with, and [`Fork`]
 //! is a copy of this session standing up to answer something.
 //!
-//! note: reading and changing are one tool, although a [`nachalnik::ToolSpec`] declares its
-//! capabilities once. Answering *always* to "may it look at its own items?" does not also answer
-//! "may it rewrite a tool result?", because a subject is `<domain>:<operation>` and
-//! [`nachalnik::Tool::needs`] lets a call declare which one it is: `context:look` and
-//! `context:revise` are separate rows on the permissions tab whether they arrive under one tool's
-//! name or two. [`Fork`] is a tool of its own for the same reason: it is neither a reading nor a
-//! change, it is a second session and a bill.
+//! note: reading and changing are one tool because [`nachalnik::Tool::needs`] lets a call declare
+//! its subject, so `context:look` and `context:revise` are separate rows on the permissions tab
+//! either way. [`Fork`] is a tool of its own: it is neither a reading nor a change, it is a second
+//! session and a bill.
 //!
 //! note: each of them is also separately *revocable*, which is not a side effect to design away.
 //! A session can take back the agent's ability to check the record half way through, and that is
