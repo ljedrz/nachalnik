@@ -44,7 +44,7 @@ for file, mutants in sorted(missed.items()):
             listed.append(f"`.mutants/{os.path.basename(diff)}` - {name}")
         first = (
             f"`cargo mutants` changed the code in {file} in each of the ways below, and every "
-            "test in the crate still passed. Each diff is in `.mutants/` in the working "
+            "test in the workspace still passed. Each diff is in `.mutants/` in the working "
             "directory. For each one, decide whether a caller could observe the change. If it "
             "could, write the test that catches it - where the crate's other tests of that code "
             "live, extending one where that is natural - then prove it: the test passes as the "
