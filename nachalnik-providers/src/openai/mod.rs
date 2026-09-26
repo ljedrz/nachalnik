@@ -729,6 +729,31 @@ mod tests {
         assert!(!ranks_apps(""));
     }
 
+    /// The client this crate offers gives up on a silent server when a whole answer's time is up,
+    /// and not before.
+    ///
+    /// note: reqwest's own default waits for ever, and a caller sharing one client between several
+    /// models is taking this one's word for the bound. On a paused clock, against a listener that
+    /// never answers, so only a timer can end the wait and timers fire in order.
+    #[tokio::test(start_paused = true)]
+    async fn the_offered_client_gives_up_when_a_whole_answer_would() {
+        let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+        let at = silent.local_addr().expect("its address");
+        let mut asking = Box::pin(
+            OpenAiCompatible::client()
+                .get(format!("http://{at}/"))
+                .send(),
+        );
+
+        let early = tokio::time::timeout(WHOLE_ANSWER - Duration::from_secs(1), &mut asking).await;
+        assert!(early.is_err(), "still waiting just short of the bound");
+        let late = tokio::time::timeout(Duration::from_secs(2), &mut asking)
+            .await
+            .expect("given up just past it")
+            .expect_err("nothing was said");
+        assert!(late.is_timeout(), "{late:?}");
+    }
+
     /// Serves one model listing and closes, so a `probe` reads a real HTTP response off a real
     /// socket rather than a parsed literal.
     async fn listing(body: &'static str) -> String {
