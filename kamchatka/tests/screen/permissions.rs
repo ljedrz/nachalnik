@@ -95,21 +95,7 @@ async fn saying_always_is_a_rule_in_the_record() {
     harness.answer(KeyCode::Char('a')).await;
     harness.settle().await;
 
-    let ruled: Vec<_> = harness
-        .app
-        .kernel
-        .history()
-        .into_iter()
-        .filter_map(|record| match record.event {
-            nachalnik::Event::PolicyRuled {
-                subject,
-                verdict,
-                answering,
-                once,
-            } => Some((subject, verdict, answering, once)),
-            _ => None,
-        })
-        .collect();
+    let ruled = ruled(&harness);
     assert!(
         ruled.contains(&(
             "exec:run".to_owned(),
