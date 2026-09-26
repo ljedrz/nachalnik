@@ -120,13 +120,12 @@ pub(crate) fn what(value: &Value) -> &'static str {
 fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     number(args, name)
         .map(|n| n.unwrap_or(default))
-        .map_err(|refusal| {
-            format!(
-                "{refusal} Nothing was searched, rather than something being searched for \
-                 differently than you asked."
-            )
-        })
+        .map_err(|refusal| format!("{refusal} {UNSEARCHED}"))
 }
+
+/// What a search refused over one of its arguments says it did not do.
+const UNSEARCHED: &str =
+    "Nothing was searched, rather than something being searched for differently than you asked.";
 
 /// A whole number argument to any tool here, `None` left out, refused in words that say only
 /// what was wrong with it - the caller says what was not done, as [`truth`] does for
@@ -154,20 +153,14 @@ fn words<'a>(args: &'a Value, name: &str) -> Result<Option<&'a str>, String> {
         Value::Null => Ok(None),
         Value::String(text) => Ok(Some(text)),
         other => Err(format!(
-            "`{name}` is text and this one is `{other}`. Nothing was searched, rather than \
-             something being searched for differently than you asked."
+            "`{name}` is text and this one is `{other}`. {UNSEARCHED}"
         )),
     }
 }
 
 /// A yes-or-no argument, read the same way and refused the same way.
 fn truth(args: &Value, name: &str) -> Result<bool, String> {
-    yes_or_no(args, name).map_err(|refusal| {
-        format!(
-            "{refusal} Nothing was searched, rather than something being searched for \
-             differently than you asked."
-        )
-    })
+    yes_or_no(args, name).map_err(|refusal| format!("{refusal} {UNSEARCHED}"))
 }
 
 /// A yes-or-no argument to any tool here: a boolean, or the word in quotes, and `false` left out.
