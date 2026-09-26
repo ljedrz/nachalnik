@@ -226,6 +226,14 @@ fn a_redo_puts_back_what_an_undo_took() {
     };
     assert_eq!(restored, vec![b]);
     assert_eq!(kernel.items().len(), 2);
+
+    // and a redo hands its snapshot back to the undo history without spending any of it: walking
+    // back still reaches the empty context the first push was made to
+    while kernel.undo().unwrap() {}
+    assert!(
+        kernel.items().is_empty(),
+        "a redo cost the context its oldest operation"
+    );
 }
 
 #[test]
