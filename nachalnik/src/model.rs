@@ -1258,6 +1258,15 @@ mod tests {
         };
         assert_eq!(inclusive.settled(), inclusive);
 
+        // which includes a prompt served wholly from the cache: that is possible in the dialect,
+        // so it is not the shape that says the endpoint is speaking another one
+        let all_cached = Usage {
+            input_tokens: Some(1_000),
+            cached_input_tokens: Some(1_000),
+            ..Usage::default()
+        };
+        assert_eq!(all_cached.settled(), all_cached);
+
         // including when there is nothing to settle it against
         let alone = Usage {
             input_tokens: Some(1_000),
