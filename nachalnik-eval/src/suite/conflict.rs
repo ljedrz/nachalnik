@@ -51,6 +51,7 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
+        copies_agree,
         dossier::{DEPOT, Dossier, id_of},
         excluding, instrument, note_drift, said_or_nothing, script,
     },
@@ -614,15 +615,10 @@ impl Experiment for Conflict {
                 said_or_nothing(&on_disputed.after),
             ),
         );
-        trial.check(
-            "the copies agree with each other",
-            control.agreement() >= 1.0,
-            format!(
-                "the copies with both sides in front of them agreed {:.0}% of the time over {} \
-                 replicate(s)",
-                control.agreement() * 100.0,
-                control.answers.len()
-            ),
+        copies_agree(
+            trial,
+            &control,
+            "the copies with both sides in front of them",
         );
 
         Ok(())
