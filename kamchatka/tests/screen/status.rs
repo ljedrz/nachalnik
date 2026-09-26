@@ -371,26 +371,27 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
     );
 }
 
-/// Serves one model listing, in the shape of an endpoint that publishes its *sampling* parameters
-/// only, and hands back a provider that has read it.
-async fn sampling_only() -> Arc<OpenAiCompatible> {
+/// Serves `listing` to whatever asks for it, and, where there is a `refusal`, refuses every other
+/// request with it - then hands back a provider that has read the listing.
+async fn serving(listing: &'static str, refusal: Option<&'static str>) -> Arc<OpenAiCompatible> {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("a port");
     let at = listener.local_addr().expect("its address");
     tokio::spawn(async move {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        // quoted from what api.inceptionlabs.ai really answers, trimmed to the fields read here
-        let body = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
-            "supported_sampling_parameters":["temperature","stop"],
-            "supported_features":["tools","json_mode","structured_outputs"]}]}"#;
         while let Ok((mut socket, _)) = listener.accept().await {
-            let mut discard = [0u8; 4096];
-            let _ = socket.read(&mut discard).await;
+            let mut asked = [0u8; 4096];
+            let read = socket.read(&mut asked).await.unwrap_or(0);
+            let asked = String::from_utf8_lossy(&asked[..read]);
+            let (status, body) = match refusal {
+                Some(refusal) if !asked.contains("/models") => ("400 Bad Request", refusal),
+                _ => ("200 OK", listing),
+            };
             let _ = socket
                 .write_all(
                     format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
                          Content-Length: {}\r\n\r\n{body}",
                         body.len()
                     )
@@ -408,6 +409,16 @@ async fn sampling_only() -> Arc<OpenAiCompatible> {
     ));
     provider.probe().await;
     provider
+}
+
+/// Serves one model listing, in the shape of an endpoint that publishes its *sampling* parameters
+/// only, and hands back a provider that has read it.
+async fn sampling_only() -> Arc<OpenAiCompatible> {
+    // quoted from what api.inceptionlabs.ai really answers, trimmed to the fields read here
+    let listing = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
+        "supported_sampling_parameters":["temperature","stop"],
+        "supported_features":["tools","json_mode","structured_outputs"]}]}"#;
+    serving(listing, None).await
 }
 
 #[tokio::test]
@@ -450,51 +461,17 @@ async fn a_sampling_only_listing_does_not_claim_a_parameter_missing_from_it_is_i
 /// Serves a listing, and refuses every request that follows in the shape a validated endpoint
 /// refuses one: a list of what was wrong with it rather than a sentence about it.
 async fn refusing() -> Arc<OpenAiCompatible> {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .expect("a port");
-    let at = listener.local_addr().expect("its address");
-    tokio::spawn(async move {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let listing = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
-            "supported_sampling_parameters":["temperature","stop"]}]}"#;
-        // quoted from what api.inceptionlabs.ai really answers `reasoning_effort: "banana"`
-        let refusal = concat!(
-            r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
-            r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
-            r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
-            r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
-            r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
-        );
-        while let Ok((mut socket, _)) = listener.accept().await {
-            let mut asked = [0u8; 4096];
-            let read = socket.read(&mut asked).await.unwrap_or(0);
-            let asked = String::from_utf8_lossy(&asked[..read]);
-            let (status, body) = match asked.contains("/models") {
-                true => ("200 OK", listing),
-                false => ("400 Bad Request", refusal),
-            };
-            let _ = socket
-                .write_all(
-                    format!(
-                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
-                         Content-Length: {}\r\n\r\n{body}",
-                        body.len()
-                    )
-                    .as_bytes(),
-                )
-                .await;
-            let _ = socket.shutdown().await;
-        }
-    });
-
-    let provider = Arc::new(OpenAiCompatible::new(
-        "mercury-2.5",
-        format!("http://{at}"),
-        "no key needed",
-    ));
-    provider.probe().await;
-    provider
+    let listing = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
+        "supported_sampling_parameters":["temperature","stop"]}]}"#;
+    // quoted from what api.inceptionlabs.ai really answers `reasoning_effort: "banana"`
+    let refusal = concat!(
+        r#"{"error":{"message":[{"type":"value_error","loc":["body","reasoning_effort"],"#,
+        r#""msg":"Value error, reasoning_effort must be one of: 'instant', 'low', "#,
+        r#"'medium', 'high'","input":"banana","ctx":{"error":"reasoning_effort must be "#,
+        r#"one of: 'instant', 'low', 'medium', 'high'"}}],"#,
+        r#""type":"invalid_request_error","param":null,"code":"invalid_request_error"}}"#,
+    );
+    serving(listing, Some(refusal)).await
 }
 
 #[tokio::test]
