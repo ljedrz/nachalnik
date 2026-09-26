@@ -198,9 +198,8 @@ async fn the_session_ends_when_it_is_told_to() {
 /// note: skipped without a key, and without `python3`, for the reason every test in this file is.
 /// It also skips when the turn fails, because the free pool this runs against answers `429` often
 /// enough that a rate limit is not news - which is why the default below has to be a model that
-/// address really serves. `mercury-2.5` was Inception's spelling of one, and against the default
-/// endpoint it was a 404 that arrived as a skip: the suite passed, and the one claim it is here to
-/// make went untested with nothing saying so.
+/// address really serves. A name it does not know is a 404, skipped the same way, and the suite
+/// passes with the one claim it is here to make untested and nothing saying so.
 #[tokio::test]
 async fn a_real_model_uses_a_tool_from_a_foreign_server() {
     let Some(provider) = nachalnik_utils::provider(&nachalnik_utils::test_model(DEFAULT_MODEL))
