@@ -385,7 +385,6 @@ impl Observation {
     /// unanimous.
     ///
     /// note: a tie has several commonest answers and they share one count, which is what this is.
-    /// It was `0.0`, so two copies split one each read as the most instability there is.
     pub fn agreement(&self) -> f64 {
         if self.answers.is_empty() {
             return 0.0;
