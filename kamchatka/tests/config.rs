@@ -83,6 +83,10 @@ fn spawn(
         // or the model is whatever somebody running the suite has in their environment, and the
         // settings file under test would be overridden by it
         .env_remove("KAMCHATKA_MODEL")
+        // and the same for an advisor, which would otherwise be found where no test put one
+        .env_remove("SYSTEM1_ADVISOR_COMMAND")
+        .env_remove("KAMCHATKA_SYSTEM1_API_KEY")
+        .env_remove("TYPESAFE_API_KEY")
         .envs(env.iter().copied())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -818,6 +822,21 @@ fn a_settings_file_names_the_servers_a_run_starts() {
 
     assert!(!ok, "{said}");
     assert!(said.contains("they are files"), "{said}");
+}
+
+/// A typed `--advise` is not turned off by a file saying `false`.
+///
+/// note: read off the refusal a session asked to advise gives when it has no advisor to reach,
+/// which comes before anything is sent.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn a_typed_advise_beats_the_file() {
+    let path = settings("advise-off", r#"{ "advise": false }"#);
+
+    let (ok, said) = run(&["--config-file", &path, "--advise"], "");
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("--advise needs a key"), "{said}");
 }
 
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
