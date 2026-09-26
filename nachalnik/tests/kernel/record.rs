@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Event, Kernel, ModelInfo, ModelResponse,
-    Params, Record,
+    Config, ContextItem, ContextKind, ContextState, Delta, DeltaSink, Event, Kernel, ModelInfo,
+    ModelResponse, Params, Record, State,
     test::{ConstTool, EchoTool, LargestFirstCompactor, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -241,6 +241,78 @@ async fn the_payload_is_the_providers_own_account_and_is_kept_only_if_asked() {
     let (bare, _) = permissive([ModelResponse::text("ok")]);
     bare.push(ContextItem::user("hi"));
     assert_eq!(bare.preview_payload().unwrap(), None);
+}
+
+/// A provider that streams one fragment of each kind, and answers whether its sink goes anywhere.
+struct Streaming;
+
+#[nachalnik::async_trait]
+impl nachalnik::Provider for Streaming {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("example", "streams")
+    }
+
+    async fn respond(
+        &self,
+        _request: nachalnik::ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, nachalnik::BoxError> {
+        deltas.reasoning("thinking");
+        deltas.text("answer");
+        deltas.tool_args("c1".into(), "{}");
+
+        Ok(ModelResponse::text(deltas.is_connected().to_string()))
+    }
+}
+
+/// Every kind of fragment a provider streams is broadcast, in the order it was streamed.
+///
+/// note: the scripted provider streams only text, and the reasoning ahead of an answer and a
+/// call's arguments while they are assembled are as much of a turn in progress as its text.
+#[tokio::test]
+async fn every_kind_of_streamed_fragment_is_broadcast() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Streaming));
+    kernel.push(ContextItem::user("hi"));
+
+    let mut events = kernel.subscribe();
+    kernel.turn().await.unwrap();
+
+    let deltas: Vec<Delta> = drain(&mut events)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::ModelDelta { delta } => Some(delta),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        deltas,
+        [
+            Delta::Reasoning("thinking".into()),
+            Delta::Text("answer".into()),
+            Delta::ToolArgs {
+                call: "c1".into(),
+                fragment: "{}".into(),
+            },
+        ]
+    );
+}
+
+/// The sink the kernel hands a provider says it is connected, and a disconnected one says not.
+///
+/// note: a provider asks before doing work only a watcher would see, so a sink that answered
+/// wrongly either way would waste that work or hide it.
+#[tokio::test]
+async fn a_delta_sink_says_whether_its_fragments_go_anywhere() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(Streaming));
+    kernel.push(ContextItem::user("hi"));
+
+    let State::Finished { item, .. } = kernel.turn().await.unwrap() else {
+        panic!("the provider answered without calls");
+    };
+    assert_eq!(kernel.item(item).unwrap().content.to_text(), "true");
+    assert!(!DeltaSink::disconnected().is_connected());
 }
 
 #[tokio::test]
