@@ -182,13 +182,9 @@ stays excluded and an elided one stays elided. What it said before is under <kbd
 reads the item out of the context rather than keeping its own copy. Trimming a 2,000-line file down
 to the function that matters is two keystrokes and a delete.
 
-This used to **supersede** instead: the edit was a new item and the original stayed as a row
-of its own, marked `~`. The row said what the `v1` page already said, and it cost a state to carry
-over by hand, a kind to rebuild without orphaning the tool calls inside a turn, and a hint on the
-new item so the conversation could read it back into the old place. [`Kernel::supersede`] is still
-the runtime's, and it is the right shape for a client whose next round replaces the last while the
-earlier ones stay readable — a session saved by one of those still draws in order here. It is not
-the shape of a person fixing a sentence.
+The `~ superseded` state is never an edit's. It belongs to [`Kernel::supersede`], the shape for a
+client whose next round replaces the last while the earlier ones stay readable, and a session saved
+by one of those still draws in order here.
 
 [`Kernel::supersede`]: https://docs.rs/nachalnik/latest/nachalnik/struct.Kernel.html#method.supersede
 
