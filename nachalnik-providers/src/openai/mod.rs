@@ -754,38 +754,10 @@ mod tests {
         assert!(late.is_timeout(), "{late:?}");
     }
 
-    /// Serves one model listing and closes, so a `probe` reads a real HTTP response off a real
-    /// socket rather than a parsed literal.
-    async fn listing(body: &'static str) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("a port");
-        let at = listener.local_addr().expect("its address");
-        tokio::spawn(async move {
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-            while let Ok((mut socket, _)) = listener.accept().await {
-                let mut discard = [0u8; 4096];
-                let _ = socket.read(&mut discard).await;
-                let _ = socket
-                    .write_all(
-                        format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                             Content-Length: {}\r\n\r\n{body}",
-                            body.len()
-                        )
-                        .as_bytes(),
-                    )
-                    .await;
-                let _ = socket.shutdown().await;
-            }
-        });
-
-        format!("http://{at}")
-    }
-
     /// Serves each path its own body and `{}` to any other, so what comes back says which address
     /// was read.
-    async fn routed(routes: &'static [(&'static str, &'static str)]) -> String {
+    async fn routed(routes: &[(&'static str, &'static str)]) -> String {
+        let routes = routes.to_vec();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
@@ -850,7 +822,8 @@ mod tests {
                 vec!["temperature", "stop"],
             ),
         ] {
-            let provider = OpenAiCompatible::new("m", listing(body).await, "no key needed");
+            let provider =
+                OpenAiCompatible::new("m", routed(&[("/models", body)]).await, "no key needed");
             provider.probe().await;
 
             let info = provider.info();
@@ -864,7 +837,8 @@ mod tests {
     #[tokio::test]
     async fn a_listing_that_names_no_parameters_leaves_the_list_empty() {
         let bare = r#"{"data":[{"id":"m","context_length":4096}]}"#;
-        let provider = OpenAiCompatible::new("m", listing(bare).await, "no key needed");
+        let provider =
+            OpenAiCompatible::new("m", routed(&[("/models", bare)]).await, "no key needed");
         provider.probe().await;
 
         assert_eq!(provider.info().context_limit, Some(4096));
