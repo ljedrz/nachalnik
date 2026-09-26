@@ -105,6 +105,9 @@ minor bump may break you.
 - **`context budget` no longer explains `elide` and `exclude` under its table.** The same tool's
   schema says what each does, on every request; the footer keeps what its fifth column adds up to
   and what giving up a row that holds something frees.
+- **A change refused for want of a `reason` is one sentence.** It says nothing was done and which
+  operation to call again; what a reason is for is in the argument's description, which every
+  request carries.
 
 ### fixed
 
