@@ -1,7 +1,4 @@
 //! What can stop a measurement, which is not the same as what a measurement can find.
-//!
-//! note: none of this is a *finding*; [`Error`] says what is instead, and why even these do not
-//! end a run.
 
 use std::fmt;
 
