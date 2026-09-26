@@ -400,3 +400,101 @@ impl Compactor for LargestFirstCompactor {
 pub fn call(id: &str, tool: &str, args: Value) -> ToolCall {
     ToolCall::new(id, tool, args)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ContextId;
+
+    /// A budget putting the next request at `used` tokens of a `limit`-token model.
+    fn budget(used: usize, limit: usize) -> Budget {
+        Budget {
+            context_tokens: used,
+            tool_tokens: 0,
+            uncounted: 0,
+            limit: Some(limit),
+            reported: None,
+        }
+    }
+
+    /// `item`, given an identifier and a size.
+    ///
+    /// note: a pass reads what an item is and what it costs, so a test of which items it reaches
+    /// for says both rather than arranging content for a counter to measure.
+    fn sized(item: ContextItem, id: u64, tokens: usize) -> Arc<ContextItem> {
+        Arc::new(ContextItem {
+            id: ContextId(id),
+            tokens,
+            ..item
+        })
+    }
+
+    /// A tool result, given an identifier and a size.
+    fn result(id: u64, tokens: usize) -> Arc<ContextItem> {
+        sized(
+            ContextItem::tool_result("c1".into(), "grep", "x", false),
+            id,
+            tokens,
+        )
+    }
+
+    /// `remaining` counts the answers still in the script, and one goes with each request.
+    #[tokio::test]
+    async fn the_scripted_provider_counts_the_answers_it_has_left() {
+        let provider =
+            ScriptedProvider::new([ModelResponse::text("one"), ModelResponse::text("two")]);
+        assert_eq!(provider.remaining(), 2);
+
+        let request = ModelRequest {
+            messages: Vec::new(),
+            tools: Vec::new(),
+            params: Default::default(),
+        };
+        provider
+            .respond(request, DeltaSink::disconnected())
+            .await
+            .unwrap();
+        assert_eq!(provider.remaining(), 1);
+    }
+
+    /// A pass is not due while the context is under the threshold.
+    #[test]
+    fn a_pass_is_not_due_below_the_threshold() {
+        let compactor = LargestFirstCompactor::default();
+
+        assert!(!compactor.should_compact(&budget(250, 1_000)));
+        assert!(compactor.should_compact(&budget(900, 1_000)));
+    }
+
+    /// A pass takes tool results and nothing else, however large the rest is.
+    #[tokio::test]
+    async fn a_pass_takes_only_tool_results() {
+        let file = sized(ContextItem::file("notes.md", "x"), 1, 400);
+        let taken = result(2, 300);
+
+        let plan = LargestFirstCompactor::default()
+            .plan(&[file, taken.clone()], &budget(1_000, 1_000))
+            .await
+            .expect("a result is there to take");
+        assert_eq!(plan.remove, vec![taken.id]);
+    }
+
+    /// A pass takes the largest results until the context is down to the target, and stops
+    /// there.
+    ///
+    /// note: every result taken is content the model no longer sees, so one taken past the
+    /// target is a loss nothing asked for.
+    #[tokio::test]
+    async fn a_pass_takes_until_the_target_and_stops_there() {
+        let big = result(1, 300);
+        let middle = result(2, 200);
+        let small = result(3, 100);
+
+        // a thousand against a target of five hundred: the two largest bring it down to it
+        let plan = LargestFirstCompactor::default()
+            .plan(&[small, big.clone(), middle.clone()], &budget(1_000, 1_000))
+            .await
+            .expect("the context is over the target");
+        assert_eq!(plan.remove, vec![big.id, middle.id]);
+    }
+}
