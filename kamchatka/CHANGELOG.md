@@ -102,6 +102,9 @@ minor bump may break you.
 - **A confined command cannot set up an `io_uring`**, where the gate holds. A ring opens a socket
   without calling `socket()`, so `io_uring_setup` is answered `ENOSYS`, which is what a program
   that can use one falls back from.
+- **`context budget` no longer explains `elide` and `exclude` under its table.** The same tool's
+  schema says what each does, on every request; the footer keeps what its fifth column adds up to
+  and what giving up a row that holds something frees.
 
 ### fixed
 

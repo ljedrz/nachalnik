@@ -1186,12 +1186,8 @@ fn budget(kernel: &Kernel, mine: &super::Mine) -> String {
     }
     out.push_str(
         "\nthe fifth column is what eliding everything down to that row would save, give or take \
-         what the markers cost. Eliding leaves a marker in place, so a tool result still answers \
-         the call that asked for it; excluding one takes that call down with it, and the model \
-         then reads a conversation in which it never asked. `elide` and `exclude` are the two. A \
-         row that says \
-         it is holding something is holding it out of the request already - giving that row up \
-         frees the fourth column and not the rest.\n",
+         what the markers cost. A row that says it is holding something is holding it out of the \
+         request already - giving that row up frees the fourth column and not the rest.\n",
     );
 
     out
