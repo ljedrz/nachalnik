@@ -262,22 +262,18 @@ fn glob(pattern: &str, name: &str) -> bool {
 /// drawing. A policy whose decisions can only be observed by triggering them is not much of a
 /// demonstration of a replaceable policy.
 ///
-/// note: a domain is not fine enough on its own. `fs:read: allow` is a reasonable thing to want
-/// and `fs:read .env: allow` is not, so there is a kind of [`Subject`] finer than either: a
-/// pattern the *path* a tool was handed is matched against.
-///
 /// note: a domain is the whole of what is done in it, and a rule finer than one is about the
 /// operation it names. `context` allows every operation in that domain; `context:note` allows a
 /// note and says nothing about the rest. Against that, the strictest of everything consulted
 /// wins: `fs:read` stays `allow` while `.env` is a question, and a refused domain stays refused
 /// however finely an operation in it is named. See [`Careful::judges`].
 ///
-/// note: those rules bind `fs`, and deliberately not `shell`. A command names its files inside a
-/// string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"` and `base64 <.env` are the
-/// same act written four ways: a check over that string would refuse the first and wave the rest
-/// through while looking like a rule. What binds a command is the kernel, and what the kernel can
-/// express is a directory - see [`crate::sandbox`]. So `cat .env` works where `read .env` asks,
-/// and that is the honest shape of it rather than an oversight.
+/// note: path rules - see [`Subject`] - bind `fs`, and deliberately not `shell`. A command names
+/// its files inside a string, and `cat .env`, `sed -n 1p .env`, `python -c "open('.env')"` and
+/// `base64 <.env` are the same act written four ways: a check over that string would refuse the
+/// first and wave the rest through while looking like a rule. What binds a command is the kernel,
+/// and what the kernel can express is a directory - see [`crate::sandbox`]. So `cat .env` works
+/// where `read .env` asks, and that is the honest shape of it rather than an oversight.
 pub struct Careful {
     stances: Mutex<BTreeMap<Subject, Verdict>>,
     /// Which MCP server each tool came from, for the tools that came from one.
