@@ -533,14 +533,12 @@ A build with `--features shell-advisor`, run with `--advise`, puts one more line
 under the one naming what the call wants, above the arguments and inside the part that does not
 scroll: what the advisor reads the command as, and how sure it was.
 
-The reading is green, yellow or red, off a three-level rubric — it only reads, lists, searches or
-changes directory; it changes files inside the working directory, the way git or a rebuild could
-undo; it reaches outside the working directory, destroys something that cannot be got back, or
-sends something off this machine. It decides nothing: the verdict is the same one the rules would
-have given, and an advisor that is down costs the colour and nothing else: the line says it could
-not rate the command, and why. A rating nobody was sure
-of is never drawn green, which is why the percentage is on the line — a yellow you cannot explain
-is a yellow the advisor could not place. [RUNNING.md](RUNNING.md) has what it sends out.
+The reading is green where the command only reads, yellow where it changes files inside the
+working directory, and red where it reaches past it, destroys something or sends something off
+this machine, and a rating nobody was sure of is never drawn green. It decides nothing: the verdict
+is the same one the rules would have given, and an advisor that is down costs the colour and
+nothing else: the line says it could not rate the command, and why.
+[RUNNING.md](RUNNING.md#what-the-colour-says) has the rubric whole, and what the advisor sends out.
 
 An `edit` is drawn as a diff, since it is the call where two blocks of near-identical text sit one
 above the other and the whole question is which of them is on its way out: the value of `old` is
