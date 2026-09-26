@@ -252,14 +252,8 @@ impl Tool for Fs {
 mod tests {
     use super::*;
 
-    /// The schema and the permission subjects are one vocabulary.
-    ///
-    /// note: the operations and their arguments are one `Vec<Op>`, and the branch an argument
-    /// appears in *is* the operation that reads it. What can still drift is this: a subject with
-    /// no branch to reach it by, or a branch the policy was never told about, which is a call
-    /// that cannot be refused by name.
-    #[test]
-    fn the_schema_and_the_subjects_are_one_vocabulary() {
+    /// An `fs` reaching the temporary directory, under a policy nobody has answered yet.
+    fn tool() -> Fs {
         let reach = || {
             Arc::new(Reach {
                 workdir: std::env::temp_dir(),
@@ -268,7 +262,7 @@ mod tests {
                 confined: true,
             })
         };
-        let tool = Fs::new(
+        Fs::new(
             reach(),
             Looking {
                 reach: reach(),
@@ -276,7 +270,18 @@ mod tests {
                 limits: Limits::default(),
             },
             Limits::default(),
-        );
+        )
+    }
+
+    /// The schema and the permission subjects are one vocabulary.
+    ///
+    /// note: the operations and their arguments are one `Vec<Op>`, and the branch an argument
+    /// appears in *is* the operation that reads it. What can still drift is this: a subject with
+    /// no branch to reach it by, or a branch the policy was never told about, which is a call
+    /// that cannot be refused by name.
+    #[test]
+    fn the_schema_and_the_subjects_are_one_vocabulary() {
+        let tool = tool();
 
         let spec = tool.spec();
         let offered: Vec<String> = crate::tools::ops::offered(&spec.schema)
@@ -346,23 +351,7 @@ mod tests {
     /// that "`nothing` is not something `fs` does".
     #[tokio::test]
     async fn a_call_with_no_action_is_told_it_has_none() {
-        let reach = || {
-            Arc::new(Reach {
-                workdir: std::env::temp_dir(),
-                extra: Vec::new(),
-                readable: Vec::new(),
-                confined: true,
-            })
-        };
-        let tool = Fs::new(
-            reach(),
-            Looking {
-                reach: reach(),
-                policy: Arc::new(crate::tools::Careful::new()),
-                limits: Limits::default(),
-            },
-            Limits::default(),
-        );
+        let tool = tool();
         let said = |args: Value| {
             let call = ToolCall::new("c1", "fs", args);
             let tool = &tool;
