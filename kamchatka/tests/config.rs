@@ -853,6 +853,27 @@ fn a_typed_advise_beats_the_file() {
     assert!(said.contains("--advise needs a key"), "{said}");
 }
 
+/// `--advise` puts the advisor in front of the standing rules, and a session that did not ask for
+/// it has the rules alone.
+///
+/// note: a local advisor, so that nothing leaves the machine: `SYSTEM1_ADVISOR_COMMAND` is read
+/// before any key, and `true` is enough for a session that asks nothing. What is read is the
+/// policy the record names when the session starts, since a rating is only ever drawn beside a
+/// question.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
+    let local = [("SYSTEM1_ADVISOR_COMMAND", "true")];
+
+    let (ok, said) = run_with(&["--advise"], "", &local);
+    assert!(ok, "{said}");
+    assert!(said.contains("tools::advice::Advised"), "{said}");
+
+    let (ok, said) = run_with(&[], "", &local);
+    assert!(ok, "{said}");
+    assert!(!said.contains("tools::advice::Advised"), "{said}");
+}
+
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
 ///
 /// note: it was a ceiling of nothing, reached before the first request: a headless run read no
