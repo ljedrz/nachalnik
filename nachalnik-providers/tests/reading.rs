@@ -126,9 +126,9 @@ async fn a_last_event_with_nothing_after_it_is_still_read() {
     }
 }
 
-/// Answers every request with a stream that promises more than `body` and then hangs up, which is
-/// what the transport reads as a body broken off.
-async fn broken_off(body: &'static str) -> String {
+/// Answers every request with `status` and a stream that promises more than `body` and then hangs
+/// up, which is what the transport reads as a body broken off.
+async fn broken_off(status: &'static str, body: &'static str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
 
@@ -139,7 +139,7 @@ async fn broken_off(body: &'static str) -> String {
             let _ = socket
                 .write_all(
                     format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                        "HTTP/1.1 {status}\r\nContent-Type: text/event-stream\r\n\
                          Content-Length: {}\r\n\r\n{body}",
                         body.len() + 64
                     )
@@ -178,7 +178,7 @@ async fn a_stream_broken_off_after_its_finish_is_a_whole_turn() {
             (finished, StopReason::EndTurn),
             (unfinished, StopReason::Other("cut off".to_owned())),
         ] {
-            let url = broken_off(body).await;
+            let url = broken_off("200 OK", body).await;
             let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect)
             else {
                 continue;
@@ -188,6 +188,23 @@ async fn a_stream_broken_off_after_its_finish_is_a_whole_turn() {
             assert_eq!(said(&response), "all of it", "{dialect}");
             assert_eq!(response.stop, stop, "{dialect}");
         }
+    }
+}
+
+/// A refusal whose body was broken off is still a refusal, reported by its status.
+///
+/// note: the body is only the refusal's explanation. The status is the answer, and it already says
+/// whether the refusal is worth waiting out; the transport's complaint about the body says neither.
+#[tokio::test]
+async fn a_refusal_broken_off_is_reported_by_its_status() {
+    let url = broken_off(
+        "400 Bad Request",
+        "{\"error\":{\"message\":\"no such parameter\"}}",
+    )
+    .await;
+    for (dialect, provider) in dialects(&url) {
+        let error = asked(provider).await.expect_err("a refusal");
+        assert!(error.contains("400 Bad Request"), "{dialect}: {error}");
     }
 }
 
