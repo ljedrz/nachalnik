@@ -12,9 +12,8 @@ use crate::{
     probe::{Answer, Probe},
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{DEPOT, Dossier, ORCHARD, id_of},
-        instrument, note_drift, script,
+        excluding, instrument, note_drift, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -185,10 +184,7 @@ impl Experiment for Privilege {
         let mut claims: Vec<(Kind, String, Answer, usize)> = Vec::new();
         for round in 0..ours.len().max(others.len()) {
             if let Some(label) = ours.get(round) {
-                let probe = counterfactual(
-                    self.own.question,
-                    &script::fill(script::EXCLUDED, &[("label", label)]),
-                );
+                let probe = excluding(self.own.question, label);
                 let (said, claim) = subject.probe(&probe).await?;
                 let asked = trial.asked(&probe, &said, &claim);
                 claims.push((Kind::Counterfactual, (*label).to_owned(), claim, asked));

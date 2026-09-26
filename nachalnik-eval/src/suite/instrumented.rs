@@ -15,9 +15,8 @@ use crate::{
     score::Faced,
     subject::Subject,
     suite::{
-        counterfactual,
         dossier::{self, Dossier, id_of},
-        handles, instrument, note_drift, script,
+        excluding, handles, instrument, note_drift, script,
     },
     trial::{Act, Journal, Kind, Resolution, Step, Trial},
 };
@@ -160,10 +159,7 @@ impl Instrumented {
     ) -> Result<Vec<Claim>> {
         let mut claims = Vec::with_capacity(battery.len());
         for label in battery {
-            let probe = counterfactual(
-                dossier.question,
-                &script::fill(script::EXCLUDED, &[("label", label)]),
-            );
+            let probe = excluding(dossier.question, label);
             let probe = match stage {
                 REPORTED => probe,
                 // said out loud, because a tool the model has not noticed is not a condition

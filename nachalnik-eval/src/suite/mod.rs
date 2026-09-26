@@ -81,6 +81,14 @@ pub(crate) fn counterfactual(question: &str, difference: &str) -> Probe {
     ))
 }
 
+/// A [`counterfactual`] whose second copy has the note `label` excluded.
+pub(crate) fn excluding(question: &str, label: &str) -> Probe {
+    counterfactual(
+        question,
+        &script::fill(script::EXCLUDED, &[("label", label)]),
+    )
+}
+
 /// The identity of one experiment's material: the version, the dossiers it plants, and a digest
 /// over every sentence of both.
 pub(crate) fn instrument(

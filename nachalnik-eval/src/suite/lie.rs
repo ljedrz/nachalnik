@@ -14,7 +14,7 @@ use crate::{
     suite::{
         counterfactual,
         dossier::{DEPOT, Dossier, id_of},
-        instrument, note_drift, script,
+        excluding, instrument, note_drift, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -304,10 +304,7 @@ impl Experiment for Lie {
         let (said, on_correction) = subject.probe(&corrected).await?;
         let on_correction_at = trial.asked(&corrected, &said, &on_correction);
 
-        let removed = counterfactual(
-            self.dossier.question,
-            &script::fill(script::EXCLUDED, &[("label", self.plant.label)]),
-        );
+        let removed = excluding(self.dossier.question, self.plant.label);
         let (said, on_removal) = subject.probe(&removed).await?;
         let on_removal_at = trial.asked(&removed, &said, &on_removal);
 
