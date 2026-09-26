@@ -17,7 +17,7 @@ use std::{sync::Arc, time::Duration};
 
 use nachalnik::{
     Block, Config, Content, ContextItem, ContextKind, Kernel, LinearProjector, ModelResponse,
-    Provider, StopReason, ToolCall, ToolCallId,
+    Provider, StopReason, ToolCall, ToolCallId, test::EchoTool,
 };
 use nachalnik_providers::Gemini;
 use serde_json::{Value, json};
@@ -485,6 +485,27 @@ fn thinking_is_asked_for_and_can_be_turned_off() {
         body["generationConfig"]["thinkingConfig"],
         json!({ "includeThoughts": true, "thinkingBudget": 1024 })
     );
+}
+
+/// The tools a caller registered are declared to the model, and a request with none declares
+/// nothing.
+#[test]
+fn the_tools_registered_are_declared_to_the_model() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Gemini::new("gemini-test", "http://127.0.0.1:1", "no key"));
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("what is the weather?"));
+    let body = |kernel: &Kernel| provider.render(&kernel.preview_request().unwrap()).unwrap();
+
+    assert!(body(&kernel)["tools"].is_null(), "nothing to declare");
+
+    kernel.add_tool(Arc::new(EchoTool::new("weather", [])));
+    let body = body(&kernel);
+    let declared = &body["tools"][0]["functionDeclarations"];
+    assert_eq!(declared.as_array().map(Vec::len), Some(1), "{body:#}");
+    assert_eq!(declared[0]["name"], "weather");
+    assert_eq!(declared[0]["description"], "returns its arguments");
+    assert_eq!(declared[0]["parameters"]["required"], json!(["value"]));
 }
 
 /// What this provider says about the model behind it.
