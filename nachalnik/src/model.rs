@@ -1267,6 +1267,14 @@ mod tests {
         assert_eq!(Usage::default().settled(), Usage::default());
     }
 
+    /// A role is written down as the name the wire gives it.
+    #[test]
+    fn a_role_is_displayed_as_its_wire_name() {
+        for role in [Role::System, Role::User, Role::Assistant, Role::Tool] {
+            assert_eq!(role.to_string(), role.as_str());
+        }
+    }
+
     #[test]
     fn truncation_stays_inside_the_limit() {
         for limit in [0, 1, 10, 42, 43, 44, 100, 999] {

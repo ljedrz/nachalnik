@@ -59,6 +59,11 @@ fn text_is_what_was_said_and_the_length_is_what_it_costs() {
     // provider that put it in a `content` field would be sending it back as if it had
     assert_eq!(content.to_text(), "Checking Warsaw.\nAnd now Krakow.");
     assert!(!content.to_text().contains("the user wants both cities"));
+    assert_eq!(
+        content.to_string(),
+        content.to_text(),
+        "and it is written as it"
+    );
 
     // what it costs, on the other hand, is all of it
     let whole = content.byte_len();
