@@ -112,11 +112,11 @@ pub(crate) fn what(value: &Value) -> &'static str {
 /// word is not, because the answer a bare `as_u64().unwrap_or(..)` gives is the *default*, which
 /// reads as a tool that did what it was asked.
 ///
-/// note: the same rule `introspect::log`'s `counted` holds to, where `take: "3"` read as `None`
-/// would be what leaving `take` out does - a summary where three lines were asked for, and
-/// nothing saying the argument had not been read. The message is this side's rather
-/// than shared, because what a swallowed argument costs is different here: not an empty answer
-/// that reads as an empty log, but an expensive one that reads as the only one available.
+/// note: the same rule `introspect::log` holds `take` and `since` to, where `take: "3"` read as
+/// `None` would be what leaving `take` out does - a summary where three lines were asked for, and
+/// nothing saying the argument had not been read. The message is this side's rather than shared,
+/// because what a swallowed argument costs is different here: not an empty answer that reads as
+/// an empty log, but an expensive one that reads as the only one available.
 fn whole(args: &Value, name: &str, default: u64) -> Result<u64, String> {
     number(args, name)
         .map(|n| n.unwrap_or(default))
