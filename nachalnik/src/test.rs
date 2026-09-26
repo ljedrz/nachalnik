@@ -479,11 +479,11 @@ mod tests {
         assert_eq!(plan.remove, vec![taken.id]);
     }
 
-    /// A pass takes the largest results until the context is down to the target, and stops
-    /// there.
+    /// A pass takes the largest results until the context is down to the target, stops there,
+    /// and its summary says how much it took.
     ///
     /// note: every result taken is content the model no longer sees, so one taken past the
-    /// target is a loss nothing asked for.
+    /// target is a loss nothing asked for. The summary is what the model reads in its place.
     #[tokio::test]
     async fn a_pass_takes_until_the_target_and_stops_there() {
         let big = result(1, 300);
@@ -496,5 +496,10 @@ mod tests {
             .await
             .expect("the context is over the target");
         assert_eq!(plan.remove, vec![big.id, middle.id]);
+        let summary = plan.summary.expect("a removal is summarised");
+        assert_eq!(
+            summary.content.as_text(),
+            Some("2 tool result(s) worth ~500 tokens were removed from the context")
+        );
     }
 }
