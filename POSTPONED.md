@@ -215,13 +215,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   has gone quiet stalls everybody attached.
 
   **Nothing is lost while it waits.** Both loops read the kernel's broadcast while a command is in
-  flight, because that is the one channel here that *drops* what nobody took: `App::trace` is
-  built from what the loop read, and `Attached::trace` hands it to every client that attaches
-  afterwards, so a lagged session would give everybody who arrived later a trace with holes in it
-  and nothing would say so. Everything else queues. A connection waits in the listen backlog, an
-  outcome in an unbounded channel and a `ctrl+c` in its own stream; all of them arrive late, none
-  of them is dropped, and a client cannot tell the difference between the loop taking them early
-  and taking them at the end.
+  flight, and everything else queues; the note on `Serving::answer` says what each of them is and
+  why it is safe to leave waiting.
 
   What is left is a client waiting for its turn, and it is not a queue anybody can add out here. It
   is `App::submit` taking `&mut App` for the length of a round trip, so answering one client while
