@@ -281,15 +281,18 @@ async fn a_real_model_uses_a_tool_from_a_foreign_server() {
 #[tokio::test]
 async fn a_server_that_dies_before_the_handshake_says_why() {
     let mut command = Command::new("sh");
-    command
-        .arg("-c")
-        .arg("echo 'ModuleNotFoundError: no module named mcp' >&2; exit 1");
+    command.arg("-c").arg(
+        "echo 'Traceback (most recent call last):' >&2; \
+             echo 'ModuleNotFoundError: no module named mcp' >&2; exit 1",
+    );
 
     let refused = match Server::spawn("broken", command).await {
         Ok(_) => panic!("nothing answered the handshake"),
         Err(e) => e.to_string(),
     };
 
+    // the reason is rarely one line, and the line that names it is rarely the first
+    assert!(refused.contains("Traceback"), "{refused}");
     assert!(refused.contains("no module named mcp"), "{refused}");
 }
 
