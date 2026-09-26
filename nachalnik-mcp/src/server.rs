@@ -7,7 +7,10 @@
 use std::sync::Arc;
 
 use nachalnik::{ContextItem, ContextKind, Kernel, Tool};
-use rmcp::{RoleClient, ServiceExt, service::RunningService, transport::IntoTransport};
+use rmcp::{
+    RoleClient, ServiceExt, model::PaginatedRequestParams, service::RunningService,
+    transport::IntoTransport,
+};
 
 use crate::{
     Error, Result,
@@ -164,28 +167,14 @@ impl Server {
     /// with each one, and one that always hands back another would be listed for ever - at
     /// startup, where nothing interrupts it.
     pub async fn tools(&self) -> Result<Vec<Arc<dyn Tool>>> {
-        let mut listed = Vec::new();
-        let mut cursor = None;
-        for _ in 0..PAGES {
-            let page = self
-                .running
+        let listed = paged("tools", |page| async move {
+            self.running
                 .peer()
-                .list_tools(Some(
-                    rmcp::model::PaginatedRequestParams::default().with_cursor(cursor),
-                ))
+                .list_tools(Some(page))
                 .await
-                .map_err(|e| Error::Request(Box::new(e)))?;
-            listed.extend(page.tools);
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                break;
-            }
-        }
-        if cursor.is_some() {
-            return Err(Error::Request(
-                format!("it listed more than {PAGES} pages of tools and was still going").into(),
-            ));
-        }
+                .map(|page| (page.tools, page.next_cursor))
+        })
+        .await?;
 
         Ok(listed
             .into_iter()
@@ -239,31 +228,14 @@ impl Server {
     /// missed or had never been offered; the marker costs a line, and pushing it is optional like
     /// everything else here.
     pub async fn resources(&self) -> Result<Vec<ContextItem>> {
-        // page by page and to the same bound as `tools`, for the same reason: the cursor is the
-        // server's to hand back, and the SDK's own `list_all_resources` follows it for ever
-        let mut listed = Vec::new();
-        let mut cursor = None;
-        for _ in 0..PAGES {
-            let page = self
-                .running
+        let listed = paged("resources", |page| async move {
+            self.running
                 .peer()
-                .list_resources(Some(
-                    rmcp::model::PaginatedRequestParams::default().with_cursor(cursor),
-                ))
+                .list_resources(Some(page))
                 .await
-                .map_err(|e| Error::Request(Box::new(e)))?;
-            listed.extend(page.resources);
-            cursor = page.next_cursor;
-            if cursor.is_none() {
-                break;
-            }
-        }
-        if cursor.is_some() {
-            return Err(Error::Request(
-                format!("it listed more than {PAGES} pages of resources and was still going")
-                    .into(),
-            ));
-        }
+                .map(|page| (page.resources, page.next_cursor))
+        })
+        .await?;
 
         let mut items = Vec::with_capacity(listed.len());
         for resource in listed {
@@ -335,6 +307,36 @@ impl std::fmt::Debug for Server {
             .field("trust", &self.trust)
             .finish_non_exhaustive()
     }
+}
+
+/// Reads one listing a page at a time, to [`PAGES`] of them, and refuses one still going after
+/// that.
+///
+/// note: the SDK's own `list_all_tools` and `list_all_resources` follow the cursor for ever.
+async fn paged<T, E, F>(
+    what: &str,
+    mut next: impl FnMut(PaginatedRequestParams) -> F,
+) -> Result<Vec<T>>
+where
+    F: Future<Output = std::result::Result<(Vec<T>, Option<String>), E>>,
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let mut listed = Vec::new();
+    let mut cursor = None;
+    for _ in 0..PAGES {
+        let (items, more) = next(PaginatedRequestParams::default().with_cursor(cursor))
+            .await
+            .map_err(|e| Error::Request(Box::new(e)))?;
+        listed.extend(items);
+        cursor = more;
+        if cursor.is_none() {
+            return Ok(listed);
+        }
+    }
+
+    Err(Error::Request(
+        format!("it listed more than {PAGES} pages of {what} and was still going").into(),
+    ))
 }
 
 /// How many of the last lines a spawned server wrote to standard error are kept.
