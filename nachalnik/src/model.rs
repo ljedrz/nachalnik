@@ -1118,8 +1118,6 @@ impl ModelResponse {
     /// blocks - and which one a caller gets depends on the provider it is talking to. Reading the
     /// field directly is right on one dialect only; this reads both, as [`ModelResponse::calls`]
     /// does.
-    ///
-    /// note: an iterator of [`Content`], the same shape as `ContextItem::thinking`.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
         let blocks = self.content.as_ref().and_then(Content::as_blocks);
         let flat = match blocks {
