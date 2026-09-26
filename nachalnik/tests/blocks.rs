@@ -578,6 +578,42 @@ async fn eliding_an_ordered_turn_keeps_the_calls_and_marks_the_words() {
     assert!(projection.skipped.is_empty(), "{:?}", projection.skipped);
 }
 
+/// An elided ordered turn is marked where its first sentence stood, not in front of it.
+///
+/// note: the turn asks before it speaks, so the marker has a call ahead of it to keep. Sent as
+/// blocks, the order is what the provider is given.
+#[tokio::test]
+async fn an_elided_turn_is_marked_where_its_first_sentence_was() {
+    let kernel = kernel_with(vec![
+        Block::Call(call("c1", "echo", json!({ "city": "Warsaw" }))),
+        Block::text(Content::text("Checking Warsaw.")),
+    ]);
+    kernel.turn().await.expect("the turn ran");
+    kernel.set_state([turn(&kernel).id], ContextState::Elided, None);
+
+    let projection = project(
+        &kernel,
+        LinearProjector {
+            send_blocks: true,
+            ..Default::default()
+        },
+    );
+    let assistant = projection
+        .messages
+        .iter()
+        .find(|message| message.role == Role::Assistant)
+        .unwrap();
+    assert_eq!(
+        assistant
+            .blocks()
+            .unwrap()
+            .iter()
+            .map(Block::name)
+            .collect::<Vec<_>>(),
+        ["call", "text"]
+    );
+}
+
 #[tokio::test]
 async fn a_turn_of_nothing_but_thinking_is_left_out_and_says_so() {
     let (kernel, _) = permissive([ModelResponse::blocks([Block::reasoning(Content::text(
