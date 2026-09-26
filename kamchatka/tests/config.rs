@@ -526,6 +526,20 @@ fn a_server_this_build_cannot_run_is_refused() {
     assert!(ok, "an empty list asks for nothing: {said}");
 }
 
+/// A build with no advisor refuses a file that turns it on.
+///
+/// note: only compiled where it is true. Accepted, the file's `advise` would be read by nothing,
+/// and every question would go uncoloured with nothing saying why. `false` is the shipped file's
+/// value, which `print_config_hands_over_a_file_this_program_would_accept` starts a session under.
+#[cfg(not(feature = "shell-advisor"))]
+#[test]
+fn an_advisor_this_build_does_not_have_is_refused() {
+    let path = settings("no-advisor", r#"{ "advise": true }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "a setting nobody can honour is not a success");
+    assert!(said.contains("no advisor in it"), "{said}");
+}
+
 /// A file that is not there says so, naming it.
 #[test]
 fn a_missing_file_says_which() {
