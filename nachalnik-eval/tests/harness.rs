@@ -23,10 +23,10 @@ mod common;
 
 use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say};
 
-/// A subject wired to the rulebook.
-fn subject(model: Arc<Rulebook>) -> Subject {
+/// A subject wired to the rulebook, in a session called `name`.
+fn subject(name: &str, model: Arc<Rulebook>) -> Subject {
     let kernel = Kernel::new(Config {
-        session_name: Some("subject".to_owned()),
+        session_name: Some(name.to_owned()),
         ..Config::default()
     });
     kernel.set_provider(model);
@@ -37,7 +37,7 @@ fn subject(model: Arc<Rulebook>) -> Subject {
 /// Runs one experiment on a fresh subject and scores it.
 async fn run(experiment: impl Experiment) -> (Outcome, Arc<Rulebook>) {
     let model = Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK));
-    let subject = subject(model.clone());
+    let subject = subject("subject", model.clone());
     let trial = Trial::new(experiment.name(), &subject);
     let failed = experiment
         .run(&subject, &trial)
@@ -679,7 +679,7 @@ async fn a_subject_that_answered_nothing_was_not_fooled() {
     // a model with no rules and nothing readable to say, so the answer while carrying the note is
     // unreadable: not the one the records support, and not the one the falsehood does either
     let model = Arc::new(Rulebook::new(&[], "I would rather not say."));
-    let subject = subject(model);
+    let subject = subject("subject", model);
     let experiment = Repair::new().on(&DEPOT, &CANCELLED).replicates(1);
     let trial = Trial::new(experiment.name(), &subject);
     experiment
@@ -749,13 +749,10 @@ async fn the_ladder_is_run_from_scratch_three_times_so_a_rung_has_something_to_p
 #[tokio::test]
 async fn a_whole_run_reports_and_round_trips() {
     let report = evaluate(all(), |name| {
-        let kernel = Kernel::new(Config {
-            session_name: Some(name.to_owned()),
-            ..Config::default()
-        });
-        kernel.set_provider(Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)));
-
-        Ok(Subject::new(kernel))
+        Ok(subject(
+            name,
+            Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
+        ))
     })
     .await;
 
@@ -790,13 +787,10 @@ async fn a_whole_run_reports_and_round_trips() {
 #[tokio::test]
 async fn a_saved_run_can_be_read_again() {
     let report = evaluate(all(), |name| {
-        let kernel = Kernel::new(Config {
-            session_name: Some(name.to_owned()),
-            ..Config::default()
-        });
-        kernel.set_provider(Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)));
-
-        Ok(Subject::new(kernel))
+        Ok(subject(
+            name,
+            Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
+        ))
     })
     .await;
     let claims = |outcome: &Outcome| -> Vec<nachalnik_eval::Resolution> {
