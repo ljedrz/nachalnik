@@ -403,18 +403,10 @@ mod tests {
             prop_assert_eq!(sanitize(&name).chars().count(), expected);
         }
 
-        /// note: idempotent, so that a name arriving already acceptable is left exactly as the
-        /// server sent it. Nothing here calls it twice; what this pins is that it *could* be.
-        #[test]
-        fn rewriting_an_acceptable_name_changes_nothing(name in a_name()) {
-            let once = sanitize(&name);
-
-            prop_assert_eq!(sanitize(&once), once);
-        }
-
-        /// note: idempotence says a rewrite leaves its own output alone, and a rewrite that turned
-        /// every `-` into `_` would pass it. This says it leaves the server's name alone:
-        /// `list-changes` and `list_changes` are two tools a server may offer side by side.
+        /// note: a rewrite that turned every `-` into `_` would still hand back a name a provider
+        /// takes. This says it leaves the server's name alone: `list-changes` and `list_changes`
+        /// are two tools a server may offer side by side. Beside the first property it also makes
+        /// the rewrite idempotent, so no property says that on its own.
         #[test]
         fn an_acceptable_name_arrives_as_the_server_sent_it(name in "[a-zA-Z0-9_-]{1,64}") {
             prop_assert_eq!(sanitize(&name), name);
