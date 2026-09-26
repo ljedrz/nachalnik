@@ -94,24 +94,7 @@ async fn an_answer_does_not_point_at_a_tool_that_has_been_taken_away() {
 #[tokio::test]
 async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
     let (kernel, _provider, _anchor) = agent(Vec::new());
-    for tool in kamchatka::tools::builtin(
-        kamchatka::tools::Shell {
-            workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: Arc::new(Careful::new()),
-            confiner: None,
-            limits: Limits::default(),
-        },
-        kamchatka::sandbox::Reach {
-            workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            confined: false,
-        },
-        Limits::default(),
-    ) {
+    for tool in common::builtin(std::path::Path::new("/w"), false, Limits::default()) {
         kernel.add_tool(tool);
     }
 
@@ -167,24 +150,7 @@ async fn a_call_needs_the_one_subject_it_names_through_the_wrapper() {
 #[tokio::test]
 async fn the_limits_table_has_a_row_for_every_subject_a_tool_declares() {
     let (kernel, _provider, _anchor) = agent(Vec::new());
-    for tool in kamchatka::tools::builtin(
-        kamchatka::tools::Shell {
-            workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: Arc::new(Careful::new()),
-            confiner: None,
-            limits: Limits::default(),
-        },
-        kamchatka::sandbox::Reach {
-            workdir: std::path::PathBuf::from("/w"),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            confined: false,
-        },
-        Limits::default(),
-    ) {
+    for tool in common::builtin(std::path::Path::new("/w"), false, Limits::default()) {
         kernel.add_tool(tool);
     }
 
@@ -266,24 +232,7 @@ async fn the_answers_on_the_lower_limit_do_not_grow_with_the_session() {
     let mut sizes: Vec<Vec<usize>> = Vec::new();
     for (items, extra) in [(10, 0), (1_000, 200)] {
         let (kernel, _provider, _anchor) = agent(Vec::new());
-        for tool in kamchatka::tools::builtin(
-            kamchatka::tools::Shell {
-                workdir: dir.clone(),
-                extra: Vec::new(),
-                readable: Vec::new(),
-                devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-                policy: Arc::new(Careful::new()),
-                confiner: None,
-                limits: Limits::default(),
-            },
-            kamchatka::sandbox::Reach {
-                workdir: dir.clone(),
-                extra: Vec::new(),
-                readable: Vec::new(),
-                confined: false,
-            },
-            Limits::default(),
-        ) {
+        for tool in common::builtin(&dir, false, Limits::default()) {
             kernel.add_tool(tool);
         }
         for n in 0..items {
@@ -391,26 +340,9 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
     std::fs::write(dir.join("a.rs"), "fn main() {}\n").expect("a file to act on");
 
     let (kernel, _provider, _anchor) = agent(Vec::new());
-    for tool in kamchatka::tools::builtin(
-        kamchatka::tools::Shell {
-            workdir: dir.clone(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: Arc::new(Careful::new()),
-            confiner: None,
-            limits: Limits::default(),
-        },
-        kamchatka::sandbox::Reach {
-            workdir: dir.clone(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            // confined, so a relative path resolves against the directory above rather than
-            // against wherever cargo started this process
-            confined: true,
-        },
-        Limits::default(),
-    ) {
+    // confined, so a relative path resolves against the directory above rather than
+    // against wherever cargo started this process
+    for tool in common::builtin(&dir, true, Limits::default()) {
         kernel.add_tool(tool);
     }
     kernel.push(ContextItem::user("something to act on"));

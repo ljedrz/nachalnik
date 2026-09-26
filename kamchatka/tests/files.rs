@@ -11,13 +11,10 @@
 
 mod common;
 
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
 use common::scratch;
-use kamchatka::{
-    sandbox::Reach,
-    tools::{Careful, Limits, Shell},
-};
+use kamchatka::tools::Limits;
 use nachalnik::{OutputSink, ToolCall, test::call};
 use serde_json::{Value, json};
 
@@ -43,24 +40,7 @@ async fn answered(
     action: &str,
     mut args: Value,
 ) -> String {
-    let tools = kamchatka::tools::builtin(
-        Shell {
-            workdir: dir.to_path_buf(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: Arc::new(Careful::new()),
-            confiner: None,
-            limits: Limits::default(),
-        },
-        Reach {
-            workdir: dir.to_path_buf(),
-            extra: Vec::new(),
-            readable: Vec::new(),
-            confined,
-        },
-        limits,
-    );
+    let tools = common::builtin(dir, confined, limits);
     let found = tools
         .iter()
         .find(|it| it.spec().id == "fs")

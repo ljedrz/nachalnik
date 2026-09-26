@@ -1,6 +1,6 @@
-//! What the test suites share: a place to put files that is not `/tmp`, and the two things it
-//! takes to drive the *program* rather than the library - the binary, and something for it to talk
-//! to.
+//! What the test suites share: a place to put files that is not `/tmp`, the tools a session is
+//! given, and the two things it takes to drive the *program* rather than the library - the binary,
+//! and something for it to talk to.
 //!
 //! note: `dead_code` is allowed, and it has to be. A `mod common;` is compiled afresh into every
 //! suite that declares it, so anything here that one suite does not call is unused *in that
@@ -40,6 +40,38 @@ pub fn workdir(name: &str) -> PathBuf {
     std::fs::write(dir.join("inside.txt"), "hello").expect("a file in it");
 
     dir
+}
+
+/// `fs` and `shell` as a session gets them, under a `Careful` of their own: held to `dir`, or, as
+/// under `--no-sandbox`, not held at all, with `limits` on what `fs` hands back.
+pub fn builtin(
+    dir: &std::path::Path,
+    confined: bool,
+    limits: kamchatka::tools::Limits,
+) -> Vec<std::sync::Arc<dyn nachalnik::Tool>> {
+    use kamchatka::{
+        sandbox::Reach,
+        tools::{Careful, Limits, Shell},
+    };
+
+    kamchatka::tools::builtin(
+        Shell {
+            workdir: dir.to_path_buf(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+            policy: std::sync::Arc::new(Careful::new()),
+            confiner: None,
+            limits: Limits::default(),
+        },
+        Reach {
+            workdir: dir.to_path_buf(),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            confined,
+        },
+        limits,
+    )
 }
 
 /// An endpoint the program can be pointed at, which answers the model listing and then hands out
