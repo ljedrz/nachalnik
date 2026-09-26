@@ -180,7 +180,7 @@ impl Server {
             .into_iter()
             .map(|tool| {
                 let prefix = self.prefix.then_some(self.name.as_str());
-                let spec = spec_of(&self.name, tool_id(prefix, &tool.name), &tool, &self.trust);
+                let spec = spec_of(tool_id(prefix, &tool.name), &tool, &self.trust);
                 let wrapped: Arc<dyn Tool> = Arc::new(McpTool::new(
                     self.running.peer().clone(),
                     tool.name.to_string(),

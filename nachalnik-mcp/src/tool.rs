@@ -69,18 +69,11 @@ pub enum Trust {
 
 impl Trust {
     /// Works out what a tool may do, given what it says about itself.
-    pub(crate) fn capabilities(
-        &self,
-        server: &str,
-        annotations: Option<&ToolAnnotations>,
-    ) -> Vec<Capability> {
+    pub(crate) fn capabilities(&self, annotations: Option<&ToolAnnotations>) -> Vec<Capability> {
         // note: calling somebody else's tool server is itself the operation, and every tool from
         // one declares it whatever else is believed about them. `Trust::Nothing` believes nothing,
         // and without this its list would be *empty* - and an empty list of capabilities is a
-        // call that needs nothing and is allowed by the strictest policy there is. Which server
-        // it came from is provenance rather than an act, which is why `server` goes unused here:
-        // `Server::install` hands back the ids it installed instead.
-        let _ = server;
+        // call that needs nothing and is allowed by the strictest policy there is
         let mut capabilities = vec![Capability::of(Domain::Other("mcp".into()), "call")];
 
         match self {
@@ -286,12 +279,7 @@ pub(crate) fn text_of(contents: &ResourceContents) -> Result<&str, Option<&str>>
 }
 
 /// Builds the declaration the model is shown for one of a server's tools.
-pub(crate) fn spec_of(
-    server: &str,
-    id: String,
-    tool: &rmcp::model::Tool,
-    trust: &Trust,
-) -> ToolSpec {
+pub(crate) fn spec_of(id: String, tool: &rmcp::model::Tool, trust: &Trust) -> ToolSpec {
     let description = tool
         .description
         .as_deref()
@@ -300,7 +288,7 @@ pub(crate) fn spec_of(
 
     ToolSpec::new(id, description)
         .with_schema(Value::Object((*tool.input_schema).clone()))
-        .with_capabilities(trust.capabilities(server, tool.annotations.as_ref()))
+        .with_capabilities(trust.capabilities(tool.annotations.as_ref()))
 }
 
 /// What a model provider will accept in a tool's name: `[a-zA-Z0-9_-]`, and no more than this
