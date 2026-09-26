@@ -8,6 +8,7 @@
 
 mod common;
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 use nachalnik::{
@@ -76,6 +77,8 @@ fn a_single_text_block_reads_as_that_text() {
     let content = Content::blocks([Block::text(Content::text("just this"))]);
     assert_eq!(content.to_text(), "just this");
     assert_eq!(content.byte_len(), "just this".len());
+    // and is read where it lies: there is nothing to join it to, so there is nothing to copy
+    assert!(matches!(content.to_text(), Cow::Borrowed(_)));
 }
 
 #[test]

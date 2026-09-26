@@ -1302,6 +1302,13 @@ mod tests {
              copying a megabyte each time would make pruning cost more the more there was to prune"
         );
 
+        // and content made from a string that is already shared is that string
+        let shared: Arc<str> = Arc::from("x".repeat(1 << 20));
+        let Content::Text(held) = Content::from(shared.clone()) else {
+            unreachable!()
+        };
+        assert!(Arc::ptr_eq(&held, &shared));
+
         // and truncating one of them leaves the other whole, which is what lets the kernel keep
         // an untruncated tool output beside the truncated copy for nothing
         let mut copy = copy;
