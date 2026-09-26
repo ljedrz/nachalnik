@@ -14,7 +14,7 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::{drain, kernel, select};
+use crate::{common::drain, kernel, select};
 
 #[test]
 fn undo_reverts_a_whole_operation() {

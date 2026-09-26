@@ -52,6 +52,8 @@
 //! about thirty requests, and a key that has run out of free requests for the day makes them skip
 //! rather than fail - the difference between the two kinds of rate limit is in [`out_of_quota`].
 
+mod common;
+
 use std::{
     env,
     sync::{
@@ -61,6 +63,7 @@ use std::{
     time::Duration,
 };
 
+use common::drain;
 use nachalnik::{
     Blob, Block, BoxError, BytesPerToken, Calibrating, Capability, Config, Content, ContextItem,
     ContextKind, ContextState, Delta, Event, Grant, Kernel, LinearProjector, OutputSink, Params,
@@ -70,7 +73,6 @@ use nachalnik::{
 };
 use nachalnik_providers::{OpenAiCompatible, out_of_quota};
 use serde_json::{Value, json};
-use tokio::sync::broadcast::Receiver;
 
 /// A small, free, tool-capable model.
 const DEFAULT_MODEL: &str = "liquid/lfm-2.5-2.6b:free";
@@ -220,15 +222,6 @@ fn params(max_tokens: u64) -> Params {
     params.insert("temperature".into(), json!(0));
 
     params
-}
-
-fn drain(events: &mut Receiver<Event>) -> Vec<Event> {
-    let mut received = Vec::new();
-    while let Ok(event) = events.try_recv() {
-        received.push(event);
-    }
-
-    received
 }
 
 /// The text of the most recent answer, lowercased.
