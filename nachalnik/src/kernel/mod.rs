@@ -41,7 +41,7 @@ use crate::{
 mod calls;
 mod request;
 
-use request::projection_cost;
+use request::{projection_cost, tool_tokens};
 
 /// A sequential numeric identifier assigned to sessions that were not given a name.
 static SEQUENTIAL_SESSION_ID: AtomicU64 = AtomicU64::new(0);
@@ -1263,7 +1263,7 @@ impl Kernel {
         // one counter for both halves, as a request is priced: a `set_counter` landing between
         // them would otherwise price the tools and the context by two different ones
         let counter = self.counter();
-        let tool_tokens = self.tool_tokens_with(&*counter);
+        let tool_tokens = tool_tokens(&self.tool_specs(), &*counter);
         let limit = self.model_info().and_then(|i| i.context_limit);
         let reported = self.last_response().and_then(|response| response.usage);
 
