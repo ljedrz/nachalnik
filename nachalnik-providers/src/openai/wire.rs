@@ -834,6 +834,18 @@ mod tests {
         assert_eq!(arguments_of("  "), json!({}));
     }
 
+    /// This dialect says the model behind it calls tools and thinks.
+    ///
+    /// note: `ModelInfo::new` says neither, and a client reads both to decide whether to offer
+    /// tools and whether to show a thinking pane - so a dialect that carries a `function` part and
+    /// a `reasoning` field has to say so. The other dialect's is in `tests/gemini.rs`.
+    #[test]
+    fn the_model_is_described_as_this_dialect_serves_it() {
+        let info = OpenAiCompatible::new("m", "https://example.invalid/v1", "k").info();
+        assert!(info.tool_calling, "a `function` part is a call");
+        assert!(info.reasoning, "and a `reasoning` field is thinking");
+    }
+
     /// Reasoning is inferred from the total only where the prompt and the completion are both
     /// reported, so a prompt left out is not billed as output.
     #[test]
