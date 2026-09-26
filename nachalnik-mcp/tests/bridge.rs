@@ -154,12 +154,7 @@ impl ServerHandler for Bench {
 }
 
 /// Stands a server up in this process and connects a bridge to it over a pipe.
-async fn bench(name: &str) -> (Server, Arc<AtomicUsize>) {
-    let calls = Arc::new(AtomicUsize::new(0));
-    let handler = Bench {
-        calls: calls.clone(),
-    };
-
+async fn serve(name: &str, handler: impl ServerHandler) -> Server {
     let (theirs, ours) = tokio::io::duplex(8 * 1024);
     tokio::spawn(async move {
         if let Ok(running) = handler.serve(theirs).await {
@@ -167,11 +162,17 @@ async fn bench(name: &str) -> (Server, Arc<AtomicUsize>) {
         }
     });
 
-    let server = Server::connect(name, ours)
+    Server::connect(name, ours)
         .await
-        .expect("the handshake completes");
+        .expect("the handshake completes")
+}
 
-    (server, calls)
+/// The [`Bench`] server, and how many calls it has taken.
+async fn bench(name: &str) -> (Server, Arc<AtomicUsize>) {
+    let handler = Bench::default();
+    let calls = handler.calls.clone();
+
+    (serve(name, handler).await, calls)
 }
 
 fn kernel() -> Kernel {
@@ -678,19 +679,6 @@ impl ServerHandler for Wedged {
     }
 }
 
-async fn wedged(handler: Wedged) -> Server {
-    let (theirs, ours) = tokio::io::duplex(8 * 1024);
-    tokio::spawn(async move {
-        if let Ok(running) = handler.serve(theirs).await {
-            let _ = running.waiting().await;
-        }
-    });
-
-    Server::connect("wedged", ours)
-        .await
-        .expect("the handshake completes")
-}
-
 /// A call the server never answers is stopped by an interrupt, and the server is told to stop.
 ///
 /// note: the interrupt was checked before the call went out and not after, so a server that took a
@@ -700,7 +688,7 @@ async fn wedged(handler: Wedged) -> Server {
 async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
     let handler = Wedged::default();
     let (arrived, stopped) = (handler.arrived.clone(), handler.stopped.clone());
-    let server = wedged(handler).await;
+    let server = serve("wedged", handler).await;
 
     let kernel = kernel();
     kernel.set_policy(Arc::new(AllowAll));
@@ -753,10 +741,13 @@ async fn a_call_the_server_never_answers_is_stopped_by_an_interrupt() {
 /// A listing whose server always has another page gives up rather than listing for ever.
 #[tokio::test]
 async fn a_listing_that_never_ends_gives_up() {
-    let server = wedged(Wedged {
-        endless: true,
-        ..Wedged::default()
-    })
+    let server = serve(
+        "wedged",
+        Wedged {
+            endless: true,
+            ..Wedged::default()
+        },
+    )
     .await;
 
     let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.tools())
@@ -772,10 +763,13 @@ async fn a_listing_that_never_ends_gives_up() {
 /// does, rather than listing for ever.
 #[tokio::test]
 async fn a_listing_of_resources_that_never_ends_gives_up() {
-    let server = wedged(Wedged {
-        endless: true,
-        ..Wedged::default()
-    })
+    let server = serve(
+        "wedged",
+        Wedged {
+            endless: true,
+            ..Wedged::default()
+        },
+    )
     .await;
 
     let listed = tokio::time::timeout(std::time::Duration::from_secs(30), server.resources())
