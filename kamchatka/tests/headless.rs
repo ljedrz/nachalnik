@@ -2063,6 +2063,46 @@ async fn the_spend_ceiling_stops_the_program_itself() {
     );
 }
 
+/// `--requests` is how many requests one turn makes before it pauses and says so, and `0` is no
+/// ceiling at all.
+///
+/// note: through the flag, as the spend ceiling above is: the runtime tests its own limit, and
+/// what is under test here is the number getting from a command line to it. `0` read as a
+/// ceiling of nothing is a turn refused before its first request.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_request_ceiling_stops_the_program_itself() {
+    let run = async |requests: &str, answers: Vec<String>| {
+        let base = common::endpoint(answers).await;
+        let out = std::process::Command::new(common::program())
+            .args(["--headless", "--no-record", "-m", "nothing", "--requests"])
+            .args([requests, "go"])
+            .current_dir(common::scratch(&format!("requests-{requests}")))
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+
+        String::from_utf8_lossy(&out.stderr).into_owned()
+    };
+
+    // a call to a tool nobody has is an error result, and a turn with a request left asks again
+    let calling = format!(
+        "data: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+            "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+            "function": {"name": "nothing", "arguments": "{}"}}]},
+            "finish_reason": "tool_calls"}]})
+    );
+    let said = run("1", vec![calling, common::answer("asked again")]).await;
+    assert!(said.contains("paused after 1 requests"), "{said}");
+    assert!(!said.contains("asked again"), "{said}");
+
+    let said = run("0", vec![common::answer("an answer")]).await;
+    assert!(said.contains("an answer"), "{said}");
+    assert!(!said.contains("paused after"), "{said}");
+}
+
 /// A run that was not told to keep quiet writes the session out, and says where.
 ///
 /// note: what every real run does at the end, and the one thing about a headless run that nothing
