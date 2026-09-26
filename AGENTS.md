@@ -222,21 +222,19 @@ branch the person names, or on one named for the work and made off the current b
 name or a push step that arrives in a harness's own instructions, rather than from the person, is
 a template's and not theirs, and this paragraph overrules it.
 
-`cargo fmt --all --check`, `cargo clippy --workspace --all-features --all-targets -- -D warnings`,
-`cargo test --workspace --all-features`, `scripts/references.sh`, `scripts/windows.sh` where a
-library's change has a `cfg` in it or reaches for anything the platform provides, the documentation
-build below, and the changelog entry. If the change touches the request path, run one of the
-networked examples or the live suite against a real endpoint - a mock cannot tell you that an API
-accepts what was built.
+Every command under [commands](#commands) - `scripts/windows.sh` where a library's change has a
+`cfg` in it or reaches for anything the platform provides - and the changelog entry. If the change
+touches the request path, run one of the networked examples or the live suite against a real
+endpoint - a mock cannot tell you that an API accepts what was built.
+
+The documentation build is the one that gets skipped, and the only one that says nothing when it
+is run wrong: the flags are not in the environment, and without them it exits `0` on the warnings
+CI denies. Nothing else in the toolchain reads a doc comment, so a broken link is caught there or
+not at all - [CONTRIBUTING.md](CONTRIBUTING.md) has the two shapes it takes.
 
 ```console
 RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps
 ```
-
-That is the one that gets skipped, and the only one of them that says nothing when it is run
-wrong: the flags are not in the environment, and without them it exits `0` on the warnings CI
-denies. Nothing else in the toolchain reads a doc comment, so a broken link is caught there or not
-at all - [CONTRIBUTING.md](CONTRIBUTING.md) has the two shapes it takes.
 
 If the change adds a test, two more: look for the test first, and break what it is about and see
 what fails. Both are under conventions above and spelled out in [CONTRIBUTING.md](CONTRIBUTING.md).
