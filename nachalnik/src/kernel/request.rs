@@ -273,11 +273,6 @@ impl Kernel {
         (projection, cost)
     }
 
-    /// Returns the estimated size of the tool definitions, priced by the counter given.
-    pub(super) fn tool_tokens_with(&self, counter: &dyn TokenCounter) -> usize {
-        tool_tokens(&self.tool_specs(), counter)
-    }
-
     /// Gives every tool call a usable identifier that is unique *within the session*, announcing
     /// each change.
     ///
@@ -406,7 +401,7 @@ pub(super) struct Cost {
 }
 
 /// Estimates the size of the given tool definitions: the schemas plus the descriptions.
-fn tool_tokens(specs: &[ToolSpec], counter: &dyn TokenCounter) -> usize {
+pub(super) fn tool_tokens(specs: &[ToolSpec], counter: &dyn TokenCounter) -> usize {
     specs
         .iter()
         .map(|spec| {
