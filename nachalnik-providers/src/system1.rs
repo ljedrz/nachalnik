@@ -1064,18 +1064,7 @@ mod tests {
         )
         .expect("the recorded body parses");
 
-        let answers: BTreeMap<String, Answer> = raw["answers"]
-            .as_object()
-            .expect("an object")
-            .iter()
-            .filter_map(|(name, answer)| Some((name.clone(), Answer::from_wire(answer)?)))
-            .collect();
-        let read = Answers {
-            model: raw["model"].as_str().unwrap_or_default().to_owned(),
-            answers,
-            usage: read_usage(&raw["usage"]),
-            raw,
-        };
+        let read = Answers::read(raw);
 
         // the version that answered, rather than the `jev-latest` that was asked for
         assert_eq!(read.model, "jev-1.13.0");
