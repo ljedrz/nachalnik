@@ -502,11 +502,6 @@ pub fn configured() -> Option<Result<Arc<dyn SystemOne>, BoxError>> {
 mod tests {
     use super::*;
 
-    /// What the engine said about itself, as the failure path would attach it.
-    fn complaint_of(local: &Local) -> String {
-        complaint(&local.said)
-    }
-
     /// The complaint once `lines` of the engine's own output have arrived.
     ///
     /// note: the child writes them before it answers, and the answer can still get here first:
@@ -519,7 +514,7 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-        complaint_of(local)
+        complaint(&local.said)
     }
 
     /// Everything the advisor has to say, drained, so a test can look for one line among them.
