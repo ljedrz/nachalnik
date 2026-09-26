@@ -222,6 +222,23 @@ async fn a_signature_rides_on_the_part_it_belongs_to() {
     assert_eq!(blocks[0].extra()["thoughtSignature"], "SIG-THOUGHT");
 }
 
+/// A request for an answer is counted, which is what a caller watching its own spend reads.
+#[tokio::test]
+async fn a_request_for_an_answer_is_counted() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Gemini::new(
+        "gemini-test",
+        server(SPOKEN).await,
+        "no key needed",
+    ));
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("go"));
+    assert_eq!(provider.attempts(), 0, "nothing has gone out yet");
+
+    kernel.step().await.expect("the request is answered");
+    assert_eq!(provider.attempts(), 1);
+}
+
 // -------------------------------------------------------------------------------- going out
 
 /// A one-pixel PNG, base64, which is what a caller would have handed over.
