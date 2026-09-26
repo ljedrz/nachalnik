@@ -1333,10 +1333,6 @@ mod tests {
     }
 
     /// A size is written the way a person reads one, and stays a measurement while it does.
-    ///
-    /// note: under a thousand it is a count and gets no decimals; at a thousand it changes unit;
-    /// and two decimals are kept because one file against another is the comparison these figures
-    /// exist for - `1.05MB` and `1.10MB` are different, where `1MB` and `1MB` are not.
     #[test]
     fn a_size_is_written_in_the_unit_a_person_reads_it_in() {
         assert_eq!(sized(0), "0B");
@@ -1351,12 +1347,6 @@ mod tests {
 
     /// A blob names itself wherever it has to be text, and is its base64 wherever it has to be
     /// a size.
-    ///
-    /// note: the two questions get different answers on purpose. `to_text` is asked by anything
-    /// that has to *show* the content - a transcript, a truncation, a dialect with nowhere to put
-    /// it - and there is no faithful text for a picture, so it says what was there. `byte_len` is
-    /// asked by an output limit, and what the limit is protecting is the request, which carries
-    /// the base64.
     #[test]
     fn a_blob_names_itself_as_text_and_measures_as_what_goes_out() {
         let content = Content::blob("image/png", "aGVsbG8=");
@@ -1368,9 +1358,6 @@ mod tests {
     }
 
     /// A blob over an output limit becomes the sentence naming it, and the count is the payload.
-    ///
-    /// note: the alternative is half a PNG, which is not a picture and is not detectable as not
-    /// being one. `truncate_to` already turns JSON and blocks into text for the same reason.
     #[test]
     fn a_blob_that_is_over_a_limit_is_replaced_rather_than_cut() {
         let mut content = Content::blob("image/png", "A".repeat(4_000));
