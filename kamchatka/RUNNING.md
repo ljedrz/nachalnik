@@ -231,9 +231,7 @@ the ones that will be asked about.
 
 Switching to context or permissions asks the session for a fresh projection rather than adding up
 the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
-record carries them. That is `project`, which every client has: it answers with the figures and
-leaves the stream where it is, where an `attached` means *start again* — so a client that could not
-tell the two apart would wipe its own screen to refresh a token count. The events view asks for one
+record carries them. That is `project`, which every client has. The events view asks for one
 on every record, because what it draws is the trace, in the program's own words, and that comes
 with a projection rather than with the records.
 
