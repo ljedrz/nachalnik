@@ -261,7 +261,7 @@ async fn session() -> Result<()> {
     // is above it is everything the *run* is: the socket, the servers, the provider and the
     // settings the next one is built from
     let mut first = true;
-    let (ending, outcome) = loop {
+    let outcome = loop {
         // note: after the wiring rather than a field in `Setup`, because `Setup` is what an
         // embedder fills in to get a session and this is a fact about a window. Somebody embedding
         // `App` draws it themselves and sets this themselves, the way they already set
@@ -355,49 +355,37 @@ async fn session() -> Result<()> {
         // clients through - the same calls `Server::run` makes. A served session with no screen
         // has `Server::run` as its loop, and that is what ends the session
         let ran = match &mut server {
-            Some(server) => {
-                let outcome = match headless {
-                    #[cfg(feature = "tui")]
-                    false => drawn(&mut app, &mut events, &mut finished, Some(server)).await,
-                    #[cfg(not(feature = "tui"))]
-                    false => unreachable!("there is no screen in this build"),
-                    true => server
-                        .run(&mut app, &mut events, &mut finished)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{e}")),
-                };
-
-                (Ending::Served, outcome)
-            }
-            None => {
-                let outcome = match headless {
-                    true => {
-                        let (mut records, mut prose) = (stdout(), std::io::stderr());
-                        let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
-                            // here rather than in the library's default: taking a process-wide
-                            // signal is the program's decision, and here this *is* the program
-                            .stops_on_ctrl_c()
-                            .leaves_when_terminated();
-                        if let Some(seconds) = args.deadline {
-                            driver = driver.deadline(std::time::Duration::from_secs(seconds));
-                        }
-                        driver
-                            .run(&mut app, &mut events, &mut finished, &mut input)
-                            .await
-                            .map_err(|e| anyhow::anyhow!("{e}"))
+            Some(server) => match headless {
+                #[cfg(feature = "tui")]
+                false => drawn(&mut app, &mut events, &mut finished, Some(server)).await,
+                #[cfg(not(feature = "tui"))]
+                false => unreachable!("there is no screen in this build"),
+                true => server
+                    .run(&mut app, &mut events, &mut finished)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}")),
+            },
+            None => match headless {
+                true => {
+                    let (mut records, mut prose) = (stdout(), std::io::stderr());
+                    let mut driver = headless::Headless::new(on_ask, &mut records, &mut prose)
+                        // here rather than in the library's default: taking a process-wide
+                        // signal is the program's decision, and here this *is* the program
+                        .stops_on_ctrl_c()
+                        .leaves_when_terminated();
+                    if let Some(seconds) = args.deadline {
+                        driver = driver.deadline(std::time::Duration::from_secs(seconds));
                     }
-                    #[cfg(feature = "tui")]
-                    false => drawn(&mut app, &mut events, &mut finished, None).await,
-                    #[cfg(not(feature = "tui"))]
-                    false => unreachable!("there is no screen in this build"),
-                };
-                let ending = match headless {
-                    true => Ending::Logged,
-                    false => Ending::Spoken,
-                };
-
-                (ending, outcome)
-            }
+                    driver
+                        .run(&mut app, &mut events, &mut finished, &mut input)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{e}"))
+                }
+                #[cfg(feature = "tui")]
+                false => drawn(&mut app, &mut events, &mut finished, None).await,
+                #[cfg(not(feature = "tui"))]
+                false => unreachable!("there is no screen in this build"),
+            },
         };
 
         if !app.restart {
@@ -432,37 +420,16 @@ async fn session() -> Result<()> {
         app.say(Speaker::Note, said);
     };
 
-    finish(&app, base.record, ending, outcome)
-}
-
-/// How a run that is over says so.
-///
-/// note: an enum over two `bool`s, because both of the questions it answers are decisions rather
-/// than formalities and neither of them is "was there a screen". Which stream the closing lines go
-/// to is whether *stdout* is carrying the record stream, and whether the session still wants ending
-/// is whether the loop that just returned ended it - which two of the three do, deliberately.
-enum Ending {
-    /// Driven by lines: stdout is the log, so a person reads stderr, and the driver has already
-    /// ended the session.
-    Logged,
-    /// Driven by keys: stdout is free, and nothing has ended the session yet.
-    Spoken,
-    /// Driven from a socket, and possibly from keys as well: stdout is free, and the loop that just
-    /// returned has already ended the session.
-    ///
-    /// note: the two questions this enum is about are both the same for a served session whether or
-    /// not it also had a screen, which is why there is no fourth. A loop that is serving ends the
-    /// session itself, because the clients still attached are owed `session.finished` and the lines
-    /// under it, and the voice they arrive on is that loop's.
-    Served,
+    finish(&app, base.record, headless && server.is_none(), outcome)
 }
 
 /// Ends the session if nothing else has, says where it got to, and writes it down.
 ///
 /// note: three loops and one of these, because everything in here is about the run rather than
-/// about how it was driven. Inline at the bottom of `session`, every loop would need its own copy
-/// of the two decisions [`Ending`] names.
-fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Result<()> {
+/// about how it was driven. The one thing it asks about the driving is `logged`: whether stdout
+/// is carrying the record stream, which a headless run does and a served one does not, even with
+/// no screen.
+fn finish(app: &App, record: bool, logged: bool, outcome: Result<()>) -> Result<()> {
     // note: the headless driver and the server each end the session themselves, so that the record
     // saying so goes down their own stream with the rest rather than being the one nobody was sent.
     // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has
@@ -483,7 +450,6 @@ fn finish(app: &App, record: bool, ending: Ending, outcome: Result<()>) -> Resul
     // note: and written without the macros, which panic when the write fails. A run piped into
     // `head` has nobody reading either stream by the time it gets here, and a panic on the first
     // line would take the record down with it
-    let logged = matches!(ending, Ending::Logged);
     let say = |line: &str| {
         let _ = match logged {
             true => writeln!(std::io::stderr(), "{line}"),
@@ -552,10 +518,10 @@ async fn drawn(
     // still running is stopped and waited for before anybody writes `session.finished`
     app.wait_for_turn(events, finished, |_| {}).await;
 
-    // note: a drawn session ends itself only where it was also served, and that is the difference
-    // `Ending::Served` names. `session.finished` is a record like any other, and the clients still
-    // attached are owed it and the lines under it - which `finish` could not send, because the
-    // voice they arrive on is this loop's. A drawn session with no socket leaves it to `finish`
+    // note: a drawn session ends itself only where it was also served. `session.finished` is a
+    // record like any other, and the clients still attached are owed it and the lines under it -
+    // which `finish` could not send, because the voice they arrive on is this loop's. A drawn
+    // session with no socket leaves it to `finish`
     if let Some(serving) = serving {
         app.kernel.finish();
         serving.last(app).await;
