@@ -112,6 +112,22 @@ async fn the_native_dialect_says_it_too_when_the_address_changes_on_its_own() {
     assert_eq!(moved.model(), "resident");
 }
 
+/// Switching the native dialect's model asks for the new one from then on, and says so when the
+/// address does not list it.
+#[cfg(feature = "gemini")]
+#[tokio::test]
+async fn the_native_dialect_says_it_when_the_model_changes_too() {
+    let provider = nachalnik_providers::Gemini::new("resident", serving(SERVES).await, "no key");
+    let switched: &dyn Endpoint = &provider;
+
+    switched.set_model("stranger".to_owned()).await;
+    assert_eq!(switched.model(), "stranger");
+    let said = switched
+        .take_notice()
+        .expect("an unlisted model is worth saying");
+    assert!(said.contains("stranger"), "{said}");
+}
+
 /// An endpoint that lists nothing has not said the model is absent, and neither dialect may read
 /// its silence as a denial.
 ///
