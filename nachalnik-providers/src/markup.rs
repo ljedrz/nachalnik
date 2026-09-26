@@ -61,6 +61,15 @@ pub(crate) fn unmarked(body: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A refused request's status, with the first words of its body after it if there are any.
+pub(crate) fn status_and_words(status: impl std::fmt::Display, body: &str) -> String {
+    let words: String = unmarked(body).chars().take(300).collect();
+    match words.is_empty() {
+        true => status.to_string(),
+        false => format!("{status}: {words}"),
+    }
+}
+
 /// How much of a body [`unmarked`] reads.
 const READ: usize = 64 << 10;
 
