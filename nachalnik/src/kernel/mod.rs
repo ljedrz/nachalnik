@@ -960,7 +960,11 @@ impl Kernel {
 
     /// Adds an item to the context, returning its identifier.
     pub fn push(&self, item: ContextItem) -> ContextId {
-        self.add_item(item, true)
+        let counter = self.counter();
+        let mut context = self.0.context.write();
+        context.checkpoint();
+
+        self.added(&mut context, item, &*counter)
     }
 
     /// Adds several items as one undoable operation, returning their identifiers.
@@ -1800,17 +1804,6 @@ impl Kernel {
 
         let from = std::mem::replace(&mut machine.state, to.clone());
         self.emit(Event::StateChanged { from, to });
-    }
-
-    /// Adds an item to the context, optionally checkpointing it for [`Kernel::undo`] first.
-    fn add_item(&self, item: ContextItem, checkpoint: bool) -> ContextId {
-        let counter = self.counter();
-        let mut context = self.0.context.write();
-        if checkpoint {
-            context.checkpoint();
-        }
-
-        self.added(&mut context, item, &*counter)
     }
 
     /// Adds an item as part of a batch that is one operation for [`Kernel::undo`]: the first of
