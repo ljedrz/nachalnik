@@ -161,15 +161,11 @@ in the program asks it anything unless the fourth is on too.
 
 `shell-advisor` is the fourth, also **off**, and it adds `--advise`. It asks the advisor where each
 shell command you are about to be asked about lands on a three-level rubric, and colours the
-question green, yellow or red by the answer, so that the fifteenth `cargo test` of the afternoon
-and the one call in fifty worth stopping on do not look alike. The rating decides nothing: what the
-rules allow runs unasked, what they refuse is refused, and a rating the advisor was not sure of is
-never drawn green. It is off by default and behind a flag as well as a feature because it sends a
-command line to a third party — in a default session, every command the model writes — and that is
-a decision to make rather than inherit. `KAMCHATKA_SYSTEM1_API_KEY` is its key; a session whose
-requests already go to OpenRouter can borrow the one paying for the conversation instead, since
-`jev` is served there too. Any other session still needs the dedicated key — a key belongs to the
-endpoint that issued it, and one pointed at ollama or at Google is not OpenRouter's to spend.
+question green, yellow or red by the answer. The rating decides nothing: what the rules allow runs
+unasked and what they refuse is refused. It is off by default and behind a flag as well as a
+feature because it sends a command line to a third party — in a default session, every command the
+model writes — and that is a decision to make rather than inherit. [Running it][advise] has the
+rubric, the key it takes, and exactly what leaves the machine.
 
 ## 📚 the rest of it
 
@@ -202,5 +198,6 @@ MIT.
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
 [guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context
+[advise]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md#a-colour-on-the-question
 [shot-chat]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/chat.jpg
 [shot-context]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/context.jpg
