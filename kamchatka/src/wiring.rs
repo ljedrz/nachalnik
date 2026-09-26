@@ -198,18 +198,13 @@ pub struct Wired {
     pub finished: mpsc::UnboundedReceiver<Outcome>,
 }
 
-/// The identifiers of the tools a session starts with.
+/// Everything this program's own tools declare, for the names `Setup::check` holds `tools` to and
+/// the rules checked against what the tools do.
 ///
 /// note: read off tools built and dropped rather than from a list written out here. A list is a
 /// second thing to forget, and what it would drift from is exactly what the refusal in
 /// `Setup::check` is about - a name that is not a tool. Building them costs six schemas and
 /// happens once.
-fn offered_ids() -> Vec<String> {
-    offered().into_iter().map(|it| it.id).collect()
-}
-
-/// Everything this program's own tools declare, for [`offered_ids`] and the rules checked against
-/// what the tools do.
 fn offered() -> Vec<nachalnik::ToolSpec> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
@@ -370,7 +365,7 @@ impl Setup {
         // a session with no context tool and nothing said about it is the failure this setting is
         // most likely to have
         if let Some(wanted) = &self.tools {
-            let offered = offered_ids();
+            let offered: Vec<String> = offered().into_iter().map(|it| it.id).collect();
             if let Some(unknown) = wanted.iter().find(|it| !offered.contains(it)) {
                 return Err(format!(
                     "`{unknown}` is not one of this program's tools; they are {}",
