@@ -108,6 +108,7 @@ minor bump may break you.
 - **A change refused for want of a `reason` is one sentence.** It says nothing was done and which
   operation to call again; what a reason is for is in the argument's description, which every
   request carries.
+- **`context`'s description no longer says that each operation describes itself.**
 
 ### fixed
 
