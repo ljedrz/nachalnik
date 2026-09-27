@@ -359,6 +359,70 @@ async fn a_limit_smaller_than_the_header_still_shows_what_fits() {
     assert_eq!(said, file, "the whole of a file that fits is the file");
 }
 
+/// A limit too small to hold the line naming the limit answers with a sentence that says so,
+/// rather than a fragment of that line and none of the file.
+///
+/// note: the header is the answer's first line and the output limit cuts from the end, so a
+/// `/limit fs:read` below what the header takes leaves the model the first few words of it. It
+/// reads that as the file's own first line - `[line` is a plausible way for a file to begin, and
+/// the model that is shown it has no way to tell it from a cut. Nothing in it says a limit did
+/// it, and the only move left to the model is another tool, which is often a permission this
+/// session was never given.
+#[tokio::test]
+async fn a_limit_smaller_than_the_header_says_so_rather_than_showing_a_fragment() {
+    let dir = scratch("files-limit-under-header");
+    // long enough that no limit here holds the whole of it, so every answer has a header
+    std::fs::write(dir.join("lines.txt"), numbered(200)).expect("a file");
+
+    // every one of these leaves the header longer than the whole of it, and the answer says the
+    // limit is what stopped it rather than showing the words the cut happens to leave
+    for bytes in [5, 10, 20, 36, 60] {
+        let limits = Limits::default();
+        limits.set("fs:read", bytes);
+
+        let said = ask_within(&dir, limits, "read", json!({ "path": "lines.txt" })).await;
+        assert!(
+            said.contains("too little to show a line of this file"),
+            "{bytes} bytes: {said}"
+        );
+        assert!(
+            said.contains(&format!(
+                "`/limit fs:read` for this session is {bytes} bytes"
+            )),
+            "{bytes} bytes names the limit that did it: {said}"
+        );
+        assert!(
+            said.contains("raise it with `/limit fs:read`"),
+            "{bytes} bytes says how to change it: {said}"
+        );
+    }
+
+    // and a limit the header does fit under is the ordinary answer again: a whole file with
+    // nothing added, and a file too long for the limit stopped at a whole line
+    let small = scratch("files-limit-under-header-fits");
+    std::fs::write(small.join("one-line.txt"), "just this\n").expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 300);
+    let said = ask_within(
+        &small,
+        limits.clone(),
+        "read",
+        json!({ "path": "one-line.txt" }),
+    )
+    .await;
+    assert_eq!(said, "just this\n", "nothing is added to a file that fits");
+
+    std::fs::write(small.join("long.txt"), numbered(200)).expect("a file");
+    let said = ask_within(&small, limits, "read", json!({ "path": "long.txt" })).await;
+    let (header, body) = said.split_once('\n').expect("a header, then the lines");
+    assert!(header.starts_with("[lines 1-"), "{header}");
+    assert!(header.contains("read on with `from: "), "{header}");
+    assert!(
+        body.lines().all(|line| line.starts_with("line ")),
+        "the cut is at a whole line: {said}"
+    );
+}
+
 /// A file with nothing in it read whole is a file with nothing in it, rather than a refusal about
 /// the line to start from - which is the answer to a question about `from` this call did not ask.
 #[tokio::test]

@@ -362,7 +362,13 @@ async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
     assert!(said.contains("1 path(s) that are not files"), "{said}");
 }
 
-/// A binary file is skipped whole rather than answered with a line of object code.
+/// A binary file is skipped whole rather than answered with a line of object code, and the line
+/// that says it names the byte that made it one.
+///
+/// note: `read` reads a NUL as a character and shows the file as text, because a NUL is one - so
+/// the two tools otherwise give a model opposite accounts of one file with nothing joining them,
+/// and it concludes the file is empty and then that it is binary. The criterion is the engine's
+/// rather than this tool's: `BinaryDetection::quit(b'\0')` stops the search at the first NUL.
 #[tokio::test]
 async fn a_binary_file_is_counted_rather_than_quoted() {
     let dir = tree("grep-binary");
@@ -371,6 +377,27 @@ async fn a_binary_file_is_counted_rather_than_quoted() {
     let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
     assert!(!said.contains("a.out"), "{said}");
     assert!(said.contains("skipped: 1 binary file(s)"), "{said}");
+    assert!(
+        said.contains("one holding a NUL, where the search stops"),
+        "and it says which byte made it one: {said}"
+    );
+
+    // which is the byte `read` passes through, and names nowhere - so a model that has read the
+    // file can tell from this line what `read` did not say
+    std::fs::write(dir.join("mid.txt"), b"a\x00b\nsecond\n").expect("a file to be written");
+    let read = ask(&dir, "read", json!({ "path": "mid.txt" })).await;
+    assert_eq!(read, "a\0b\nsecond\n", "a NUL is a character to `read`");
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "second", "path": "mid.txt" }),
+    )
+    .await;
+    assert!(said.contains("skipped: 1 binary file(s)"), "{said}");
+    assert!(
+        said.contains("one holding a NUL, where the search stops"),
+        "and the search says why it will not: {said}"
+    );
 }
 
 /// The answer stops at a number of matches, and says that it stopped.
@@ -724,6 +751,56 @@ async fn files_only_says_which_empty_it_is_too() {
     assert_eq!(said, "no matches for `Compactor` in . · 3 file(s) searched");
 }
 
+/// A capped `files_only` answer advises the ways out of being capped, and not the one the caller
+/// has already taken.
+///
+/// note: `files_only` is named first of the advice because it answers the situation rather than
+/// working around it - on a tree where the cap falls before the walk reaches the file the
+/// question was about, the lines say nothing about where it is and the file names say so. An
+/// answer that is already the file names has said where they are, so advising it spends a turn
+/// to get the same two hundred lines back.
+#[tokio::test]
+async fn a_capped_files_only_answer_does_not_advise_files_only() {
+    let dir = scratch("grep-files-only-capped");
+    for n in 0..210 {
+        put(&dir, &format!("f{n:03}.txt"), "zzq\n");
+    }
+
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "zzq", "files_only": true }),
+    )
+    .await;
+    let (header, body) = said.split_once('\n').expect("a header, then the files");
+
+    assert!(
+        header.contains("that is as many file(s) as this answers with, so there may be more"),
+        "{header}"
+    );
+    assert!(
+        !header.contains("ask for `files_only`"),
+        "the caller already asked for it: {header}"
+    );
+    for advice in ["narrow the pattern", "give a path", "pass a `glob`"] {
+        assert!(header.contains(advice), "{header} names {advice}");
+    }
+    // and the answer is still the file names, which is what the advice above was about
+    assert_eq!(
+        body.lines().count(),
+        200,
+        "two hundred files and a count, the cap: {said}"
+    );
+    assert!(body.lines().all(|line| line.ends_with(": 1")), "{body}");
+
+    // a lines answer at the same cap still names it, because that is the one it has not taken
+    let said = ask(&dir, "grep", json!({ "pattern": "zzq" })).await;
+    assert!(
+        said.contains("ask for `files_only` to see where they are"),
+        "{said}"
+    );
+}
+
 /// An argument a model quoted is read, and one nobody can read stops the search.
 ///
 /// note: the scar is `introspect::log`'s, where `take: "3"` was swallowed by a bare `as_u64` and
@@ -824,6 +901,21 @@ async fn a_context_wider_than_the_answer_gives_says_so() {
         !inside.contains("is the most this answers with"),
         "{inside}"
     );
+
+    // and a `files_only` answer has no lines for the clamp to be a limit of, so it says nothing
+    // about it whatever the argument was: `room` is `None` there, so no context line is ever
+    // kept and there is nothing the ceiling stopped
+    let said = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "context": 99, "files_only": true }),
+    )
+    .await;
+    assert!(
+        !said.contains("is the most this answers with"),
+        "nothing was clamped, and it is the second line a person skims: {said}"
+    );
+    assert!(said.starts_with("1 file(s) match"), "{said}");
 }
 
 /// Lines that will not fit are answered as the files they were in, not as the first few thousand

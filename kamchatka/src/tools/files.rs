@@ -198,7 +198,8 @@ fn read(
     // it left every read answered by the line saying the limit stops it there and nothing under
     // it. Below twice the header the room is half the limit, so the lines and the line naming
     // them each have as much as the other and neither is cut at nothing; the cut is then where
-    // it always was, a whole line
+    // it always was, a whole line. What no amount of room fixes is a limit too small to hold the
+    // header itself, which is checked where the header is built - see the note there
     let room = match budget {
         wide if wide > 2 * HEADER => budget - HEADER,
         _ => budget / 2,
@@ -306,6 +307,25 @@ fn read(
              start; `grep` finds what is in it, and `shell` can read the rest]"
         ),
     };
+
+    // note: a header is not a safe place to be cut. The kernel's output limit takes bytes from
+    // the end, so a limit too small to hold the line naming the limit leaves the model with the
+    // first few words of it and none of the file - a fragment it reads as the file's own first
+    // line. The same reason `shell` puts `exit: ` first, and the same reason the limit is named
+    // here before the way out: a limit below even this sentence is cut too, and the one fact it
+    // has to carry is that the limit is what stopped it.
+    //
+    // note: the whole of the answer is archived beside this one and one `space` from being sent
+    // instead, so what is given up is a turn rather than the file. `fs:read` otherwise stops
+    // itself at a line under the limit and says where to read on from, which is why it is the
+    // one answer that needs no archive; this is the case where it cannot, because there is
+    // nowhere for a line to start
+    if header.len() + 1 > budget {
+        return Ok(Ok(format!(
+            "[the `/limit fs:read` for this session is {budget} bytes, too little to show a line \
+             of this file; raise it with `/limit fs:read`]"
+        )));
+    }
 
     Ok(Ok(format!("{header}\n{text}")))
 }

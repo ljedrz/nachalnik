@@ -167,6 +167,23 @@ minor bump may break you.
   an `undo` that spent an entry on a refusal says so; and a narrowed `look` reads its figures
   against the context rather than the whole request.
 - **`setup permissions` names `shell` for `net:reach`,** which it described as governing nothing.
+- **A `read` under a `/limit fs:read` too small to hold its header says the limit is what stopped
+  it.** The header is the answer's first line and the output limit cuts from the end, so a limit
+  below what the header takes left the model the first few words of it and none of the file -
+  `[line`, `[lines 1-1`, `[line 1 of` - which it read as the file's own first line and answered
+  by reaching for a tool it may not have. It now answers with a sentence naming the limit, that
+  it is too little for this file, and `/limit fs:read` to raise it; the whole of the answer is
+  archived beside it as any cut result is.
+- **A capped `grep files_only` advises narrowing, not `files_only`.** The header told a caller that
+  had already asked for `files_only` to ask for `files_only`, which is the shape of answer in
+  front of it; the mode is already taken into account for the words around it, and now for this
+  clause too.
+- **A `grep` says which byte made a file binary.** `read` reads a NUL as a character and shows the
+  file as text, so the two tools gave a model opposite accounts of one file with nothing joining
+  them. The `skipped:` line now names the NUL, which is where the search stops.
+- **A `grep files_only` does not report a `context` clamp.** A `files_only` answer keeps no lines
+  for context to be either side of, so the note described a limit that was never reached, about an
+  argument that had no effect, and it was the second line of the answer.
 - **`/params stream false` is not called ignored.** A model's list of parameters has no word for
   `stream` or `stream_options`, so setting one was answered `sent, and ignored` while it turned the
   answer into one body. Those two are left out of that sentence.

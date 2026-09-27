@@ -192,6 +192,12 @@ pub(super) fn led_past<'a>(
 /// promised: the walks count everything they passed over, and a pipe passed over in silence makes
 /// a model conclude the pipe is not there. What is left out is a directory, which is what the
 /// walk descended into rather than something it passed over.
+///
+/// note: a binary file is named by the byte that made it one. `read` reads a NUL as a character
+/// and shows the file as text, because a NUL is a character - so a model that has just read a
+/// file and then greps it gets two opposite accounts of it, with nothing in either saying why.
+/// This is the engine's own criterion rather than this tool's: `BinaryDetection::quit(b'\0')`
+/// stops the search at the first NUL, and a file holding one is stopped at whatever line it is in.
 #[derive(Default)]
 struct Skipped {
     /// Files a path rule says to ask about, which a walk cannot ask about.
@@ -215,7 +221,10 @@ impl Skipped {
             (self.asked, "file(s) a path rule says to ask about"),
             (self.refused, "file(s) a path rule refuses"),
             (self.links, "link(s) pointing out of reach"),
-            (self.binary, "binary file(s)"),
+            (
+                self.binary,
+                "binary file(s) - one holding a NUL, where the search stops",
+            ),
             (self.unreadable, "file(s) that could not be read"),
             (
                 self.elsewhere,
@@ -718,11 +727,26 @@ fn instead(found: &Found, pattern: &str, path: &str, bytes: usize) -> String {
 /// what it leaves is a list of lines with nothing saying how many more there were.
 fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u64) -> String {
     let files = format!("{} file(s) searched", found.searched);
-    // what ran out, named as the thing the caller asked for: a search answering with lines fills
-    // up with lines, and one answering with files fills up with files
-    let full = match files_only {
-        true => "that is as many file(s) as this answers with",
-        false => "that is as many as this answers with",
+    // what ran out, and what to do about it, both named as the thing the caller asked for: a
+    // search answering with lines fills up with lines, and one answering with files fills up with
+    // files.
+    //
+    // note: `files_only` is named as the way out of a lines answer and not of a `files_only` one,
+    // because it answers the situation rather than working around it. A capped lines answer is
+    // filled from the start of the alphabet and can end before it reaches the file the question
+    // was about, where the file names see the whole tree for a fraction of the tokens - and an
+    // answer that is already the file names has said where they are, so advising it spends a turn
+    // to get the same lines back
+    let (full, advice) = match files_only {
+        true => (
+            "that is as many file(s) as this answers with",
+            "narrow the pattern, give a path, or pass a `glob`",
+        ),
+        false => (
+            "that is as many as this answers with",
+            "ask for `files_only` to see where they are, or narrow the pattern, give a path, or \
+             pass a `glob`",
+        ),
     };
     let head = match (found.stopped, found.matches) {
         (true, 0) => format!("stopped before it found anything · {files} so far"),
@@ -732,19 +756,17 @@ fn report(found: &Found, pattern: &str, path: &str, files_only: bool, wanted: u6
         // a true sentence and one that is usually true: the room can run out on the last match in
         // the tree. What the model is told is the fact it can act on - that the search stopped
         // early - and nothing beyond it
-        // note: `files_only` is named first of the four, because it is the one that answers the
-        // situation rather than working around it. A capped line answer is filled from the start
-        // of the alphabet, and can end before it reaches the file the question was about, where
-        // `files_only` sees the whole tree for a fraction of the tokens
         (false, n) if found.full => format!(
-            "{} · {full}, so there may be more: ask for `files_only` to see where they are, or \
-             narrow the pattern, give a path, or pass a `glob`",
+            "{} · {full}, so there may be more: {advice}",
             counted(n, found.files, files_only)
         ),
         (false, n) => format!("{} · {files}", counted(n, found.files, files_only)),
     };
 
-    let clamped = (wanted > CONTEXT).then(|| {
+    // the `context` clamp is about the lines an answer carries, and a `files_only` answer carries
+    // none: `room` is `None` there, so neither `Lines::keep` nor `Lines::context` is ever called
+    // and nothing was clamped whatever the argument said
+    let clamped = (!files_only && wanted > CONTEXT).then(|| {
         format!("context: {CONTEXT} lines either side is the most this answers with, and you asked for {wanted}")
     });
 
@@ -976,7 +998,10 @@ mod tests {
             }
             .line()
             .as_deref(),
-            Some("skipped: 2 file(s) a path rule says to ask about, 1 binary file(s)")
+            Some(
+                "skipped: 2 file(s) a path rule says to ask about, 1 binary file(s) - one holding \
+                 a NUL, where the search stops"
+            )
         );
         assert_eq!(
             Skipped {
