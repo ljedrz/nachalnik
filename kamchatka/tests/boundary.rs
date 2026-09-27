@@ -330,6 +330,74 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
     assert!(!refused.contains("read-write"), "{refused}");
 }
 
+/// A system file refused by `fs` is refused as one `shell` reads, and where `shell` is refused as
+/// well, as any other path outside the reach.
+///
+/// note: the system directories are in the shell's reach and not in this one, so a refusal that
+/// sent the model to ask for `/etc/passwd` to be opened up had it asking for a file it could
+/// already `cat`.
+#[tokio::test]
+async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
+    use kamchatka::{sandbox::Reach, tools::Subject};
+    use nachalnik::{Capability, OutputSink, Verdict, test::call};
+
+    let dir = common::workdir("named-system")
+        .canonicalize()
+        .expect("it exists");
+    let refused = |policy: Arc<Careful>, path: &'static str| {
+        let tools = kamchatka::tools::builtin(
+            Shell {
+                workdir: dir.clone(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+                policy,
+                confiner: None,
+                limits: Limits::default(),
+            },
+            Reach {
+                workdir: dir.clone(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                confined: true,
+            },
+            Limits::default(),
+        );
+        async move {
+            let fs = tools
+                .iter()
+                .find(|it| it.spec().id == "fs")
+                .expect("`fs` is one of them");
+            fs.invoke(
+                &call(
+                    "c1",
+                    "fs",
+                    serde_json::json!({ "action": "read", "path": path }),
+                ),
+                OutputSink::disconnected(),
+            )
+            .await
+            .expect("the tool answers")
+            .content
+            .to_text()
+            .into_owned()
+        }
+    };
+
+    let system = refused(Arc::new(Careful::new()), "/etc/passwd").await;
+    assert!(system.contains("`shell` reads"), "{system}");
+    assert!(system.contains(&dir.display().to_string()), "{system}");
+    assert!(!system.contains("opened up"), "{system}");
+
+    let elsewhere = refused(Arc::new(Careful::new()), "/nowhere/in/particular").await;
+    assert!(elsewhere.contains("opened up"), "{elsewhere}");
+
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
+    let unrun = refused(policy, "/etc/passwd").await;
+    assert!(!unrun.contains("`shell`"), "{unrun}");
+}
+
 /// `~` is not expanded, and the model is told so rather than left with `No such file or directory`.
 ///
 /// note: the same trap as `access(2)` under Landlock, in a second form. Nothing expands `~` for

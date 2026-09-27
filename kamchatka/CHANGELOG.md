@@ -414,6 +414,10 @@ minor bump may break you.
   system's `No such file or directory` about the file. It now says which directory is missing,
   that `fs` makes none, and to make it with `shell` - or, where `shell` is refused, to write where
   a directory is or say which one is needed.
+- **`fs read` of a system file says `shell` reads it.** The system directories are in the shell's
+  reach and not in `fs`'s, and the refusal sent the model to ask for `/etc/passwd` to be opened up
+  - a file it could already `cat`. It now says the path will be refused again and to read it
+  through `shell`, unless `shell` is refused too.
 
 ## [0.15.1] - 2026-09-24
 

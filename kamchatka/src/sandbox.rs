@@ -738,6 +738,12 @@ pub enum Access {
     Writing,
 }
 
+/// Whether `policy` lets `shell` run at all, which is what decides whether a refusal from `fs` may
+/// send a model to it.
+fn runs(policy: &Careful) -> bool {
+    policy.stance(&Subject::Capability(Capability::exec("run"))) != Verdict::Deny
+}
+
 impl Reach {
     /// Everywhere it reaches and what may be done there, in the order the rules are consulted.
     ///
@@ -805,7 +811,7 @@ impl Reach {
     /// `./~`, a model refused `~/notes.txt` reads `./~`. That spelling lives in `PATH_ARG`
     /// instead, which is read while choosing.
     pub fn allows(&self, path: &str, doing: Access) -> Result<PathBuf, String> {
-        self.judged(path, doing, true)
+        self.judged(path, doing, true, true)
     }
 
     /// [`Reach::allows`], with a refusal that says what `policy` makes of writing.
@@ -818,10 +824,16 @@ impl Reach {
         doing: Access,
         policy: &Careful,
     ) -> Result<PathBuf, String> {
-        self.judged(path, doing, writes(policy))
+        self.judged(path, doing, writes(policy), runs(policy))
     }
 
-    fn judged(&self, path: &str, doing: Access, writing: bool) -> Result<PathBuf, String> {
+    fn judged(
+        &self,
+        path: &str,
+        doing: Access,
+        writing: bool,
+        shell: bool,
+    ) -> Result<PathBuf, String> {
         // the whole string, not any component: `notes.txt~` is a real file and `./~` is how a
         // shell asks for a literal one, so both go through untouched and the message says so
         if path.starts_with('~') {
@@ -899,6 +911,22 @@ impl Reach {
                      writing and say what you need it for.",
                     path.display(),
                     self.writable()
+                ))
+            }
+            // note: the system directories are in the shell's reach, read-only, and not in this
+            // one. Sent to ask for one to be opened up, a model asks for a file it could already
+            // `cat`; told where it can be read, it reads it there
+            false
+                if readable
+                    && shell
+                    && SYSTEM.iter().any(|system| resolved.starts_with(system)) =>
+            {
+                Err(format!(
+                    "{}: in the system directories, which `shell` reads and `fs` does not - `fs` \
+                     reaches {} - so this path will be refused here again as it stands. Read it \
+                     through `shell` instead.",
+                    path.display(),
+                    self.range(writing)
                 ))
             }
             false => Err(format!(
