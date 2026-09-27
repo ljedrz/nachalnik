@@ -456,13 +456,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   projector to repair any results whose call it took. The other is to give the model a request of
   its own to free room, which needs room held back for that request, since it is over the limit too.
 
-- **A stream that fails after it has started loses what it said.** An `error` event after the
-  answer has begun ends the turn with the error, and what had streamed - already handed on as
-  deltas - is not kept, where a stream the transport cut off keeps it and stops as `cut off`.
-  OpenRouter sends one when a stream stays quiet too long, as `Upstream idle timeout exceeded`,
-  and its failover stops once part of an answer is out, so the error is final either way. Keeping
-  the partial the way a cut-off is kept, with the server's sentence as the notice, is one choice;
-  the other is that an answer the server disowned is not an answer.
+- **A stream that fails after it has started - settled.** This entry weighed keeping what had
+  streamed before an `error` event against treating an answer the server disowned as no answer.
+  It is kept now, as a stall or a cut-off is, stopped as `cut off` with the server's sentence as
+  the notice; reverting that one commit in `nachalnik-providers` is the other choice.
 
 - **The fuzzing and soak harnesses are not in the repository.** What drove `kamchatka` headless
   and served with a live model, mined the records for errors and checked them, and what soaked
@@ -473,3 +470,44 @@ Referenced from [AGENTS.md](AGENTS.md).
   Python, and that skill already drives `kamchatka --headless` against a live model and mines the
   records - but `scripts/` is shell, and a campaign that finds errors rather than reviews code is
   a different thing from the skill.
+
+- **A settings file found underfoot is trusted as if typed.** `./kamchatka.json` in the working
+  directory is read when no `--config-file` is given, and it may set `mcp`, `no-sandbox`, `allow`,
+  `allow-server`, `on-ask` and the sandbox lists - so running `kamchatka` inside a cloned repository
+  can start that repository's commands, unconfined, as MCP servers. The file is now announced before
+  anything else happens, as RUNNING.md promised; what it is allowed to set is unchanged. The choice
+  is between honouring those keys only from a file named with `--config-file` (or under the config
+  directory), asking once per file and remembering the answer, and leaving it as a documented risk
+  in SECURITY.md.
+
+- **A command's background process outlives the session.** `sleep 300 &` in a `shell` call is in
+  the command's own session, so it survives the call and the program's exit, reparented to init.
+  The tool result says so while the session lasts; nothing does at exit. Killing the command's
+  process group when the session ends, and saying at exit what is still running, are the two
+  answers, and the first changes what a person who started a server on purpose gets.
+
+- **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused, and told to write
+  `b.txt*`, because a domain, a tool's id and a file name are all bare words. Reading a bare word
+  no domain claims as a path rule would make a typo like `--deny contextt` a rule about a file that
+  quietly matches nothing, so it waits for a spelling that is unambiguous either way.
+
+- **A `--connect` client whose input closes answers every question waiting.** Watching a session
+  with `--connect ADDR < /dev/null` denies, under the default `--on-ask deny`, questions raised by
+  somebody else's client, while RUNNING.md says a question waits for somebody to come back. Only
+  answering the questions raised while that client was attached, or an `--on-ask leave`, would
+  settle it.
+
+- **`fs write` makes no directories.** A write into a directory that is not there is refused and
+  names the directory, and a model with `exec` refused has no way to make one. Making the missing
+  parents beneath the reach is a change to what `fs:write` can do, and so a question for the
+  permission table rather than for the tool.
+
+- **OpenRouter's `reasoning_details` is neither read nor sent back.** A model whose thinking is
+  carried only there loses it, and one that signs its thinking across tool-call turns gets its
+  turns back without it. Nothing tested here needed it; a model that does, and a live test that
+  shows the difference, would say whether it belongs in the dialect.
+
+- **A headless run cut short exits `0`.** `--deadline`, the spend ceiling, a requests pause at the
+  end of the input and a termination signal all leave with the status a finished run has, and now
+  say which it was on the way out. A distinct status per cause would let a script tell them apart,
+  and is a change to what every existing script sees.
