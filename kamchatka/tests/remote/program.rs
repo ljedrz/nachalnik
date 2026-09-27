@@ -1349,3 +1349,95 @@ async fn a_record_too_long_to_send_is_named_rather_than_locking_everybody_out() 
     .await;
     session.ended().await.1.expect("the session failed");
 }
+
+/// A session out of file descriptors says so once, rather than once per turn of its loop.
+///
+/// note: the listener stays readable while a connection it could not take waits in the backlog,
+/// so a loop that asked again at once failed again at once - and every failure was a line in the
+/// conversation, said to every client and kept in every projection handed out afterwards. A
+/// session held at a low limit for a second was tens of thousands of them.
+///
+/// note: a child process under `ulimit -n`, because the limit is the process's and this suite's own
+/// connections are what fill it. Low enough that a burst of idle connections reaches it, and high
+/// enough that the host starts at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_out_of_descriptors_says_so_once() {
+    let base = crate::common::endpoint(Vec::new()).await;
+    let dir = crate::common::scratch("descriptors");
+    let socket = dir.join("kamchatka.sock");
+
+    let mut host = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg("ulimit -n 64 && exec \"$0\" \"$@\"")
+        .arg(crate::common::program())
+        .args(["--no-record", "-m", "nothing", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the host did not start");
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+
+    let mut idle = Vec::new();
+    for _ in 0..100 {
+        idle.push(
+            tokio::net::UnixStream::connect(&socket)
+                .await
+                .expect("the backlog is full"),
+        );
+    }
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    drop(idle);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let mut connection = tokio::net::UnixStream::connect(&socket)
+        .await
+        .expect("nothing was listening");
+    let (read, mut write) = connection.split();
+    let mut frames = protocol::Frames::new(BufReader::new(read));
+    protocol::write(&mut write, &crate::attaching(None, None))
+        .await
+        .expect("the session stopped listening");
+    let attached = loop {
+        match tokio::time::timeout(PATIENCE, protocol::read::<Message>(&mut frames))
+            .await
+            .expect("the attach was never answered")
+            .expect("the session said something unreadable")
+        {
+            Some(Message::Attached(attached)) => break attached,
+            Some(_) => {}
+            None => panic!("the session closed the connection"),
+        }
+    };
+    let failures = attached
+        .conversation
+        .iter()
+        .filter(|line| line.text.contains("could not connect"))
+        .count();
+    assert_eq!(
+        failures, 1,
+        "the failure to take a connection was said {failures} time(s)"
+    );
+
+    protocol::write(
+        &mut write,
+        &Command::Submit {
+            line: "/quit".to_owned(),
+        },
+    )
+    .await
+    .expect("the session stopped listening");
+    tokio::time::timeout(PATIENCE, host.wait())
+        .await
+        .expect("the session did not end")
+        .expect("the host did not finish");
+}

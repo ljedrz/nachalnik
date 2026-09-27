@@ -45,6 +45,13 @@ const VOICE: usize = 256;
 /// owe is the answer to the last command and `session.finished`, which is a few hundred bytes.
 const PARTING: Duration = Duration::from_secs(2);
 
+/// How long the listener is left alone after a connection failed to arrive.
+///
+/// note: the usual failure is this process out of file descriptors, and the listener stays
+/// readable while the connection that could not be taken waits in the backlog - so a loop that
+/// asked again at once would fail again at once, as fast as it could go, and say so every time.
+const RESTING: Duration = Duration::from_secs(1);
+
 /// A session, and the socket somebody reaches it on.
 pub struct Server {
     listener: Listener,
@@ -55,6 +62,11 @@ pub struct Server {
     unlink: Option<(std::path::PathBuf, u64, u64)>,
     /// The port, when it is one, closed to this process's confined commands while it is served.
     closed: Option<u16>,
+    /// When a connection last failed to arrive, and so when to try again; `None` while they do.
+    ///
+    /// note: behind a lock because [`Server::arrived`] takes `&self`, for the `select!` it is a
+    /// branch of - and a future holding a `Cell` would not be `Send`.
+    resting: std::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -174,6 +186,7 @@ impl Server {
             listener: Listener::Unix(listener),
             unlink: Some((path, made.0, made.1)),
             closed: None,
+            resting: std::sync::Mutex::new(None),
         })
     }
 
@@ -209,6 +222,7 @@ impl Server {
             listener: Listener::Tcp(listener),
             unlink: None,
             closed: Some(port),
+            resting: std::sync::Mutex::new(None),
         })
     }
 
@@ -237,8 +251,41 @@ impl Server {
     ///
     /// note: this and `attend` are the pair a loop that is not [`Server::run`] needs, and they are
     /// two calls because a `select!` branch may borrow the listener or the `App` and not both.
+    ///
+    /// note: a failure is handed back once, and until a connection arrives again every later one is
+    /// waited out quietly, [`RESTING`] apart. Both loops say what this hands back to everybody
+    /// attached, and out of file descriptors it would otherwise be a line to each of them for every
+    /// turn of the loop until somebody closed something.
     pub async fn arrived(&self) -> std::io::Result<Arrived> {
-        self.accept().await.map(Arrived)
+        loop {
+            let resting = *self.resting.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(until) = resting {
+                tokio::time::sleep_until(until).await;
+            }
+            let accepted = self.accept().await;
+            let mut resting = self.resting.lock().unwrap_or_else(|e| e.into_inner());
+            match accepted {
+                Ok(connection) => {
+                    *resting = None;
+
+                    return Ok(Arrived(connection));
+                }
+                Err(e) => {
+                    if resting
+                        .replace(tokio::time::Instant::now() + RESTING)
+                        .is_none()
+                    {
+                        return Err(std::io::Error::new(
+                            e.kind(),
+                            format!(
+                                "{e}; waiting a moment between attempts from here on, and saying \
+                                 nothing more until one succeeds"
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
     }
 
     /// Takes whatever connected next.

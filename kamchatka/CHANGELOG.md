@@ -418,6 +418,10 @@ minor bump may break you.
   reach and not in `fs`'s, and the refusal sent the model to ask for `/etc/passwd` to be opened up
   - a file it could already `cat`. It now says the path will be refused again and to read it
   through `shell`, unless `shell` is refused too.
+- **A served session out of file descriptors says so once.** The listener stays readable while a
+  connection it cannot take waits, so the loop failed to accept as fast as it could turn and said
+  so each time - to every client, and into every projection handed out afterwards. A failure is
+  now said once, and the listener is tried again a second apart until a connection arrives.
 
 ## [0.15.1] - 2026-09-24
 
