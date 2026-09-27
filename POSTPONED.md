@@ -537,3 +537,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   being asked gets a sentence naming the encoding. Reading it means reqwest's `gzip` feature, one
   more dependency in a crate that rations them.
 
+- **A `/limit fs:read` too small for any sentence.** Below about 19 bytes a read has nothing whole
+  it can say, and answers nothing rather than a fragment. Refusing such a limit beside the refusal
+  of `0` would be simpler to read; it is a change to what a person's `/limit` may do.
+
+- **A `y` typed at `--connect` before its question arrives.** It goes to the model as a message
+  and the question is then answered by `--on-ask`. Holding a bare letter until a question comes, and
+  dropping it if none does, changes when the client reads its input at all.
+
