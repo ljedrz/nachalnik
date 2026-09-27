@@ -33,6 +33,11 @@ const BUILT: [&str; 5] = [
     "systemInstruction",
 ];
 
+/// What `/undo` and `/redo` say while a turn is under way, which the kernel refuses to rewind;
+/// see `nachalnik::Kernel::undo`.
+const BUSY_UNDOING: &str =
+    "not while a turn is under way: answer or cancel its calls, or let it finish, and try again";
+
 impl App {
     /// Sends a message, or runs a command: one line of what somebody types at the prompt.
     ///
@@ -189,6 +194,13 @@ impl App {
             // owns it and the loop puts the new one in its place; see `App::restart`
             "restart" => self.restart(),
             "help" | "?" => self.help(),
+            // note: the same function `u` and `U` reach on the context tab, and the same line
+            // afterwards. A run with no keys to press - down a pipe, through `--connect`, from a
+            // browser - was otherwise left with no way to take a change back at all, and every
+            // message this program says about undoing something named the key rather than the
+            // line. So the key is the shorthand and the command is the verb
+            "undo" => self.undo(false),
+            "redo" => self.undo(true),
             // note: not where there is nothing new for the model to answer; see
             // `App::nothing_to_answer`
             "continue" => match self.nothing_to_answer() {
@@ -643,6 +655,27 @@ impl App {
             // somewhere that run cannot go
             other => self.say(Speaker::Error, no_such_command(other)),
         }
+    }
+
+    /// One operation taken back, or with `redo` put back, and a line saying which.
+    ///
+    /// note: `u` and `U` on the context tab reach this, and a line typed at the prompt reaches it
+    /// too - two doors onto one function rather than two of it, as `/cleanup` and <kbd>ctrl+l</kbd>
+    /// are, and for the same reason: a session driven down a pipe or from a browser has no keys of
+    /// this program's to press.
+    pub(super) fn undo(&mut self, redo: bool) {
+        let done = match redo {
+            true => self.kernel.redo(),
+            false => self.kernel.undo(),
+        };
+        let note = match (done, redo) {
+            (Ok(true), false) => "undone",
+            (Ok(true), true) => "redone",
+            (Ok(false), false) => "there is nothing to undo",
+            (Ok(false), true) => "there is nothing to redo",
+            (Err(_), _) => BUSY_UNDOING,
+        };
+        self.say(Speaker::Note, note);
     }
 
     /// Stops offering one of the tools, or offers it again.
@@ -1509,7 +1542,7 @@ impl App {
     ///
     /// note: so this is a context operation, and it follows the rule every other one here does:
     /// nothing is destroyed. What was in the context is archived rather than dropped, keeps its
-    /// numbers and its contents, and `u` twice puts the whole thing back - once for the items
+    /// numbers and its contents, and `/undo` twice puts the whole thing back - once for the items
     /// that came in and once for the ones that were set aside. The loaded items are new items
     /// and are numbered as such: they are what that session said, in this session.
     fn load(&mut self, path: &str) {
@@ -1660,11 +1693,11 @@ impl App {
                     _ => "were",
                 },
                 // one undo for the push and one for the archiving, which is no undo at all when
-                // nothing was archived - and a second `u` then would take back something of the
+                // nothing was archived - and a second one then would take back something of the
                 // person's own
                 match standing.len() {
-                    0 => "`u` takes the loaded ones back out",
-                    _ => "`u` twice puts the rest back",
+                    0 => "`/undo` takes the loaded ones back out",
+                    _ => "`/undo` twice puts the rest back",
                 },
             ),
         );
@@ -1678,7 +1711,7 @@ impl App {
                 ),
             );
         }
-        // note: said, because nothing else would: `u` walks the context back and not the
+        // note: said, because nothing else would: `/undo` walks the context back and not the
         // parameters, and the next request goes out with the snapshot's
         if replaced {
             self.say(

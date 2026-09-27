@@ -708,7 +708,7 @@ async fn a_load_keeps_what_a_pinned_result_answers() {
 }
 
 /// The note after a load says how many undos take it back, and with nothing of the session's own to
-/// archive that is one: a second `u` would take back something the person did before it.
+/// archive that is one: a second would take back something the person did before it.
 #[tokio::test]
 async fn a_load_that_archived_nothing_says_one_undo_takes_it_back() {
     let dir = common::scratch("load-one-undo");
@@ -728,7 +728,7 @@ async fn a_load_that_archived_nothing_says_one_undo_takes_it_back() {
     let said = harness.flat();
     assert!(said.contains("0 of your own were archived"), "{said}");
     assert!(
-        said.contains("`u` takes the loaded ones back out"),
+        said.contains("`/undo` takes the loaded ones back out"),
         "{said}"
     );
     assert!(!said.contains("twice"), "{said}");

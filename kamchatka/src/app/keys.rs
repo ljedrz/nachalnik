@@ -14,11 +14,6 @@ use super::{
     text::{beyond_a_prompt, projected, stored, whole},
 };
 
-/// What `u` and `U` say while a turn is under way, which the kernel refuses to rewind; see
-/// `nachalnik::Kernel::undo`.
-const BUSY_UNDOING: &str =
-    "not while a turn is under way: answer or cancel its calls, or let it finish, and try again";
-
 /// How many lines `pgup` and `pgdn` move an overlay.
 const PAGE: usize = 20;
 
@@ -347,22 +342,6 @@ impl App {
             }
             _ => {}
         }
-    }
-
-    /// `u`, or with `redo` `U`: one operation taken back or put back, and a line saying which.
-    fn undo(&mut self, redo: bool) {
-        let done = match redo {
-            true => self.kernel.redo(),
-            false => self.kernel.undo(),
-        };
-        let note = match (done, redo) {
-            (Ok(true), false) => "undone",
-            (Ok(true), true) => "redone",
-            (Ok(false), false) => "there is nothing to undo",
-            (Ok(false), true) => "there is nothing to redo",
-            (Err(_), _) => BUSY_UNDOING,
-        };
-        self.say(Speaker::Note, note);
     }
 
     /// Every face of a context item worth reading, and which of them to open on.

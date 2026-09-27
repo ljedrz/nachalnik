@@ -21,7 +21,9 @@ $ printf 'what is 2+2? answer with just the number\n/budget\n' \
 `jq 'select(.event.event == "tool.requested")' session.jsonl` is the whole of reading a run back.
 **stderr is a person's half**: what the model said, what a tool was asked to do, and what any
 command you sent answered. Every verb is there, because a command was never the keyboard's to
-begin with.
+begin with. A key with a command behind it — <kbd>u</kbd> and <kbd>U</kbd> being
+`/undo` and `/redo`, <kbd>ctrl+l</kbd> being `/cleanup` — is the shorthand, and the line is what
+works down a pipe.
 
 Nothing can be asked at a prompt that is not there, so the answers are given in advance:
 
@@ -842,8 +844,9 @@ context operation and it plays by the same rule as the rest of them — nothing 
 was in the context is **archived**, keeping its numbers and its contents; anything **pinned**
 stays where it is, because a pin is you saying so and `--system` is pinned; the loaded items come
 in as new items with new numbers, and the conversation they were is read back onto the chat tab.
-<kbd>u</kbd> twice puts the whole thing back. The snapshot's model parameters replace yours, and
-<kbd>u</kbd> does not bring those back, so the load says so when that changes them.
+`/undo` twice puts the whole thing back — one <kbd>u</kbd> where there are keys to press. The
+snapshot's model parameters replace yours, and neither puts those back, so the load says so when
+that changes them.
 
 That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless,
 `/load good`, and carry on from where it was still working — without losing the detour, which is

@@ -281,6 +281,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         selector, the whole selector language
     /pin SELECTOR       protect them from compaction; also /keep
     /restore SELECTOR   put them back
+    /undo              take the last change to the context back, whatever put
+                        it there, and /redo puts it back again. u and U on
+                        the context tab are the same two acts
     /budget             the estimate, what the last request really cost, and the
                         correction the counter has worked out from the difference
     /copy [N]           hand the last thing the model said to the terminal, for
@@ -348,4 +351,4 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   src/parser.rs           anything else is taken as a label
 
   What it matched is reported before anything is sent, and every change is one
-  `u` away from being undone.";
+  `/undo` - or one `u` on the context tab - away from being undone.";

@@ -55,6 +55,10 @@ minor bump may break you.
 
 ### added
 
+- **`/undo` and `/redo`.** Undo was `u` and `U` on the context tab and nothing else, so a
+  `--headless` run, a `--connect` client and a browser had no way to take a change back - while
+  `/exclude`, `/load` and the over-budget line all told somebody to press `u`. The two commands
+  are the same two calls into the same function, and the messages now name both.
 - **`fs read` takes `from` and `lines`, and a long file is read in parts.** A file past the output
   limit came back cut at a byte, with `[... N bytes truncated ...]` and nothing saying where it had
   broken off, so reading on meant guessing a `sed -n` through `shell` - an `exec:run` call, for a

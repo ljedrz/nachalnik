@@ -123,7 +123,7 @@ reports it as spent, without a byte of it moving.
 | <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the whole of what an item holds — see below |
 | <kbd>enter</kbd> | read the whole of it — see below |
 | <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
-| <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context |
+| <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context — `/undo` and `/redo`, which is the only way in down a pipe or from a browser |
 | <kbd>23G</kbd> | go to the item numbered 23 — the number `/exclude` takes |
 
 **<kbd>y</kbd> is for getting something out of here and into something else.** A screen is a

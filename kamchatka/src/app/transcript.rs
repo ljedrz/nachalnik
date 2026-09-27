@@ -306,7 +306,7 @@ impl App {
                 "compaction can free ~{} at most, since it takes tool results and nothing else, \
                  and ~{} of what goes out is the model's own turns. `/exclude` the oldest of \
                  those by number - the context tab lists them with what each costs - and each is \
-                 one `u` from coming back",
+                 one `/undo` from coming back",
                 thousands(takeable),
                 thousands(turns),
             ),

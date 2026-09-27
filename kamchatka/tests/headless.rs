@@ -3293,6 +3293,60 @@ async fn cleanup_is_a_command_as_well_as_a_key() {
     );
 }
 
+/// And undo and redo are commands too, which is how a run with no keys takes a change back.
+///
+/// note: `u` and `U` on the context tab are the same two calls into the same function, for the
+/// reason `/cleanup` above is: one act and two ways in. Everything this program says about undoing
+/// something names the key, and a pipe, a `--connect` client and a browser have none of them, so
+/// before this there was a run with no way to take an exclusion or an edit back at all.
+///
+/// note: the item read back at the end rather than after the first `/undo` as well, so that the
+/// test is about both commands reaching the stack rather than about one of them.
+#[tokio::test]
+async fn undo_and_redo_are_commands_as_well_as_keys() {
+    let run = run(
+        "/note something worth undoing\n/undo\n/redo\n",
+        vec![],
+        |_| {},
+    )
+    .await;
+
+    assert!(run.prose.contains("undone"), "{}", run.prose);
+    assert!(run.prose.contains("redone"), "{}", run.prose);
+    assert!(
+        run.app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("something worth undoing")),
+        "the redo did not put it back: {:?}",
+        run.app.kernel.items()
+    );
+    // and both took a checkpoint, so a second `/undo` has something to reach for
+    assert_eq!(run.app.kernel.with_context(|context| context.undo_len()), 1);
+}
+
+/// And nothing is claimed where there is nothing on the stack, whatever the caller asked for.
+///
+/// note: the same two lines `u` and `U` answer with, and the reason they are worth having here is
+/// that a script reads them: a run that says `undone` when it undid nothing will be trusted by
+/// whatever is driving it.
+#[tokio::test]
+async fn an_undo_with_nothing_to_undo_says_so() {
+    let run = run("/undo\n/redo\n", vec![], |_| {}).await;
+
+    assert!(
+        run.prose.contains("there is nothing to undo"),
+        "{}",
+        run.prose
+    );
+    assert!(
+        run.prose.contains("there is nothing to redo"),
+        "{}",
+        run.prose
+    );
+}
+
 /// `/clear` is answered with where the two things it could mean actually live.
 ///
 /// note: the name this command had, and the one word somebody arriving from any other agent will
