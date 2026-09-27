@@ -144,6 +144,15 @@ minor bump may break you.
 - **`/compact` under the compactor's target says so.** It said the compactor found nothing it may
   take, which reads as nothing being eligible; a context already under the target had nothing to
   do.
+- **A headless run ended by `SIGTERM` or `SIGHUP` says that a signal ended it.** The two were
+  taken as `/quit` and the run stopped and wrote its record without a word about it, so a session
+  closed by `docker stop`, an ssh drop or `timeout` ended on a `0` and looked exactly like one that
+  had finished its work. It says so as the signal arrives, an idle run included; the exit code is
+  unchanged.
+- **A resumed session says the parameters it is running with.** They came back in force from the
+  snapshot and nothing on the screen showed them, so a file left `max_tokens: 5` in and the next
+  strange answer was a puzzle. The line `-r` already prints now carries them, verbatim as they
+  will be sent, when there are any.
 - **`--deadline` covers starting up.** It started counting once the session was driven, so an
   endpoint that never answered its probe, or an MCP server that never finished its handshake, held
   a headless run silent for as long as it liked. It counts from the program's start now, a run

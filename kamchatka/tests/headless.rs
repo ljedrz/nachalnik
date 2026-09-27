@@ -1579,6 +1579,125 @@ fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
+/// A run ended from outside says so, whether or not a turn was running.
+///
+/// note: `ctrl+c` says it and the deadline says it, and neither of the signals that end a run
+/// without a keyboard said anything at all - so a run closed by `docker stop`, an ssh drop or
+/// `timeout` ended on a record and a `0` and looked exactly like one that had finished its work.
+/// The exit code is the script's business and is unchanged; the line is what tells a reader of
+/// the tail that the run did not get to choose.
+///
+/// note: both an idle run and one with a turn in flight, because they are different code paths. A
+/// turn running is interrupted and waited for; a run with nothing to do reaches the signal in a
+/// `select!` where every other branch is asleep, and the same line has to come out of that.
+#[test]
+fn a_termination_signal_says_it_ended_the_run() {
+    use std::io::Read as _;
+
+    for what in ["an idle run", "a run with a turn in flight"] {
+        let program = common::program();
+        // a pipe this test holds open, which is a run waiting for somebody who has not typed
+        // anything yet - the state a signal is most often the only thing to end
+        let mut child = std::process::Command::new(&program)
+            .args(["--headless", "--no-record", "-m", "nothing-serves-this"])
+            .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+
+        // once it has said what it is, it is in the loop with the signal branch armed
+        let mut said = String::new();
+        let mut stderr = child.stderr.take().expect("stderr is a pipe");
+        while !said.contains("headless:") {
+            let mut byte = [0u8; 1];
+            if stderr.read(&mut byte).expect("it is still running") == 0 {
+                panic!("{what} ended before it was signalled: {said}");
+            }
+            said.push(byte[0] as char);
+        }
+
+        let sent = std::process::Command::new("kill")
+            .args(["-TERM", &child.id().to_string()])
+            .status()
+            .expect("`kill` is on the path");
+        assert!(sent.success());
+
+        let status = {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                match child.try_wait().expect("it was spawned") {
+                    Some(status) => break status,
+                    None if std::time::Instant::now() > deadline => {
+                        let _ = child.kill();
+                        panic!("{what} did not stop: {said}");
+                    }
+                    None => std::thread::sleep(std::time::Duration::from_millis(50)),
+                }
+            }
+        };
+        stderr.read_to_string(&mut said).expect("the rest of it");
+
+        assert!(status.success(), "a signalled run is not a failure: {said}");
+        assert!(
+            said.contains("ended by a termination signal"),
+            "{what} did not say a signal ended it: {said}"
+        );
+    }
+}
+
+/// A resumed run says the parameters it is sending with, when there are any.
+///
+/// note: they come back in force from the snapshot and nothing on the screen shows them, so a
+/// file somebody left `max_tokens: 5` in is a reason the next answer is short with nothing on
+/// this program to explain it. A snapshot with none says nothing: there was nothing in force, and
+/// a line announcing an empty map is one more thing to read.
+#[test]
+fn a_resumed_run_says_the_parameters_it_came_back_with() {
+    for params in [
+        serde_json::json!({ "max_tokens": 5 }),
+        serde_json::json!({}),
+    ] {
+        let (wired, dir) = (wired(Vec::new()), common::scratch("resumed-params"));
+        wired
+            .app
+            .kernel
+            .push(nachalnik::ContextItem::user("the word is ZEPHYR"));
+        wired
+            .app
+            .kernel
+            .set_params(params.as_object().cloned().expect("an object"));
+        let path = dir.join("session.json");
+        std::fs::write(
+            &path,
+            serde_json::to_vec(&wired.app.kernel.snapshot()).expect("a snapshot serializes"),
+        )
+        .expect("written");
+
+        let out = std::process::Command::new(common::program())
+            .args(["--headless", "--no-record", "-r"])
+            .arg(&path)
+            .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+
+        let said = String::from_utf8_lossy(&out.stderr);
+        let line = said
+            .lines()
+            .find(|line| line.contains("resumed session"))
+            .unwrap_or_else(|| panic!("it said nothing about what it picked up: {said}"));
+        assert_eq!(
+            line.contains("parameters, sent verbatim: {\"max_tokens\":5}"),
+            !params.as_object().expect("an object").is_empty(),
+            "{line}"
+        );
+    }
+}
+
 /// A run that was not asked to take `ctrl+c` subscribes to nothing.
 ///
 /// note: what it costs to subscribe anyway is the thing that cannot be asserted from in here.
@@ -2140,6 +2259,10 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
         assert!(status.success(), "SIG{signal}: {}", said.lock());
 
         let said = said.lock().clone();
+        assert!(
+            said.contains("ended by a termination signal"),
+            "SIG{signal}: a run stopped mid-turn said nothing about what stopped it: {said}"
+        );
         let path = said
             .split_whitespace()
             .find_map(|word| word.strip_suffix(',').filter(|it| it.ends_with(".jsonl")))

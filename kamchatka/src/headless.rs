@@ -411,13 +411,21 @@ impl<'a> Headless<'a> {
                     };
                     app.on_outcome(outcome);
                 }
-                // taken as `/quit`, which the check at the top of the loop then acts on
+                // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
+                // arrives rather than at the parting line, because a run a signal ended is over at
+                // this point: a caller reading the tail of this stream has to be able to tell it
+                // from one that finished its own work, and an exit code of `0` says neither
                 () = async {
                     match terminations.as_mut() {
                         Some(terminations) => terminations.arrived().await,
                         None => std::future::pending().await,
                     }
-                } => app.quit = true,
+                } => {
+                    app.quit = true;
+                    self.fresh_line()?;
+                    writeln!(self.prose, "· ended by a termination signal; leaving")
+                        .map_err(|e| e.to_string())?;
+                }
                 // answered at the top of the loop, like the kernel's questions
                 Ok(()) = reaching.changed() => {}
             }

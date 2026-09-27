@@ -516,10 +516,16 @@ impl App {
         // read: `App::recall` runs before this and an unread record leaves it at nothing
         let recalled: usize = self.versions.values().map(Vec::len).sum();
 
+        // a parameter is an instruction to the endpoint that nothing on this screen shows, and
+        // one left in force from a file the person is no longer looking at is the one that gets
+        // forgotten - a resumed session sending `max_tokens: 5` has to say so, or the next
+        // strange answer is a puzzle
+        let params = self.kernel.params();
+
         self.say(
             Speaker::Note,
             format!(
-                "resumed session {}: {}, ~{} tokens{}{}",
+                "resumed session {}: {}, ~{} tokens{}{}{}",
                 self.kernel.session_name(),
                 plural(items.len(), "item"),
                 thousands(self.kernel.budget().context_tokens),
@@ -532,7 +538,14 @@ impl App {
                     n => format!(
                         "; {n} earlier version(s) of what items said, off the record beside it"
                     ),
-                }
+                },
+                match params.is_empty() {
+                    true => String::new(),
+                    false => format!(
+                        "; parameters, sent verbatim: {}",
+                        serde_json::to_string(&params).unwrap_or_default()
+                    ),
+                },
             ),
         );
     }
