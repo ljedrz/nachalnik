@@ -238,10 +238,14 @@ async fn session() -> Result<()> {
     // to stop a run however far it has got, and the endpoint's probe and an MCP server's handshake
     // are both waits on somebody else's program that nothing else bounds - see POSTPONED.md for
     // why a server's has no timeout of its own. A `/restart` does not start the clock again
+    //
+    // note: `0` is none, as it is for `--spend` and `--requests`: a deadline of nothing stops the
+    // run before the first line is read, which nobody asks for. And one too far off to add to the
+    // clock is none as well, rather than a panic
     let ends = args
         .deadline
-        .filter(|_| headless && server.is_none())
-        .map(|seconds| begun + std::time::Duration::from_secs(seconds));
+        .filter(|seconds| *seconds > 0 && headless && server.is_none())
+        .and_then(|seconds| begun.checked_add(std::time::Duration::from_secs(seconds)));
 
     let setup = args.setup()?;
 

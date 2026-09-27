@@ -379,6 +379,9 @@ minor bump may break you.
   usage, half of one is said once, and the sum saturates.
 - **A `--deadline` too large to add to the clock is no deadline**, where it panicked before the
   first line was read and left no record.
+- **`--deadline 0` is no deadline**, as `0` already was for `--spend` and `--requests`. It was a
+  deadline already passed, which raced the first line: a request sent and interrupted at once, or
+  the line never read.
 
 ## [0.15.1] - 2026-09-24
 

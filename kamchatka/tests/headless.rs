@@ -2317,6 +2317,36 @@ async fn the_spend_ceiling_stops_the_program_itself() {
     );
 }
 
+/// `--deadline 0` is no deadline, as `0` is no ceiling to `--spend` and `--requests`.
+///
+/// note: it was a deadline that had already passed, which raced the first line: a request sent
+/// and interrupted at once, or the line never read.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_deadline_of_nothing_is_none() {
+    let base = common::endpoint(vec![common::answer("with time to spare")]).await;
+
+    let out = std::process::Command::new(common::program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--deadline",
+            "0",
+        ])
+        .arg("go")
+        .current_dir(common::scratch("deadline-0"))
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("with time to spare"), "{said}");
+    assert!(!said.contains("out of time"), "{said}");
+}
+
 /// `--requests` is how many requests one turn makes before it pauses and says so, and `0` is no
 /// ceiling at all.
 ///

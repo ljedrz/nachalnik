@@ -210,8 +210,8 @@ pub struct Args {
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     pub on_ask: OnAsk,
 
-    /// Stop a headless run after this many seconds, however far it has got. What has arrived is
-    /// kept and the session is written out as usual.
+    /// Stop a headless run after this many seconds, however far it has got; `0` is no deadline.
+    /// What has arrived is kept and the session is written out as usual.
     #[arg(long, value_name = "SECONDS")]
     pub deadline: Option<u64>,
 

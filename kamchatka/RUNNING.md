@@ -52,7 +52,8 @@ nothing in either says which it is.
 A run nobody is watching has to be told when to stop. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
 written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same once, and leaves
-at once if pressed again.
+at once if pressed again. `--deadline 0` is no deadline, as `0` is no ceiling to `--spend` and
+`--requests`.
 
 `--spend 50000` stops one too, because time is not the only thing one of these can spend: a model
 that has found a loop — a tool that fails the same way, a question it keeps re-asking — will stay
