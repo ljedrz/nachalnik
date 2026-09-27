@@ -884,6 +884,30 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
+/// A deadline too far off to be an instant is no deadline, rather than a panic.
+///
+/// note: `--deadline 18446744073709551615` added the seconds to the clock with `+`, which panics
+/// on overflow - so the run died with exit 101 before reading a line, and wrote no record.
+#[tokio::test]
+async fn a_deadline_past_the_end_of_time_is_none() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![ModelResponse::text("in time")]);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .deadline(std::time::Duration::from_secs(u64::MAX))
+        .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("in time"), "{prose}");
+    assert!(!prose.contains("out of time"), "{prose}");
+}
+
 /// A ceiling stops the session once the provider has charged past it, and the next message is
 /// passed over.
 ///

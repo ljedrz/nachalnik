@@ -143,8 +143,11 @@ impl<'a> Headless<'a> {
         let mut reading = true;
         // note: an instant rather than a duration, so that it means the same thing however many
         // times round the loop it is waited on; and taken once the run starts rather than when
-        // the driver was built, since a caller may have held it for a while
-        let mut ends = self.deadline.map(|after| Instant::now() + after);
+        // the driver was built, since a caller may have held it for a while. One too far off to
+        // be an instant at all is no deadline, which is what it would come to anyway
+        let mut ends = self
+            .deadline
+            .and_then(|after| Instant::now().checked_add(after));
         let mut stopping = false;
         // subscribed once, because a second press arriving while the first is being handled is the
         // one that means leave; see `crate::stopping`

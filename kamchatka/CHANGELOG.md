@@ -377,6 +377,8 @@ minor bump may break you.
   only one of them said nothing either, and the two figures were added with a `+` that wraps in a
   release build. An unfinished stream is now exempt like an interrupted one, an empty usage is no
   usage, half of one is said once, and the sum saturates.
+- **A `--deadline` too large to add to the clock is no deadline**, where it panicked before the
+  first line was read and left no record.
 
 ## [0.15.1] - 2026-09-24
 
