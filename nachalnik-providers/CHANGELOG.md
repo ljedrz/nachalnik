@@ -48,6 +48,10 @@ minor bump may break you.
   with no index folded into one such call with both sets of arguments run together, `_unparsed`.
   A name equal to the one held is no longer appended, and a whole call arriving after a complete
   one under the same identifier starts a call of its own.
+- **A server that never answers is said to have been asked four times.** A stream whose headers
+  never came is sent again, up to four tries of 150s each, and the error then said "giving up
+  after 150s" over ten minutes of waiting. It names the tries and each one's wait, and the readme
+  says which silences are sent again and which are not.
 
 ## [0.6.1] - 2026-09-24
 

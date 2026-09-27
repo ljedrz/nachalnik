@@ -395,7 +395,7 @@ async fn a_stop_pressed_during_a_backoff_is_not_sent_again() {
 }
 
 /// A stream nobody answers is sent again, as a busy server's is, and given up on once it has been
-/// sent four times.
+/// sent four times - which is what the error says, rather than one try's wait.
 ///
 /// note: unlike a whole answer, a stream's headers come before its first token, so a stream with
 /// no headers yet is one the server has not started on. On a paused clock, since each try waits
@@ -415,8 +415,11 @@ async fn a_stream_nobody_answers_is_sent_again_and_then_given_up_on() {
     let failed = tokio::time::timeout(Duration::from_secs(3600), kernel.turn())
         .await
         .expect("it gave up");
-    assert!(failed.is_err(), "an answer that never came is a failure");
+    let said = failed
+        .expect_err("an answer that never came is a failure")
+        .to_string();
     assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 4);
+    assert!(said.contains("4 times"), "{said}");
 }
 
 /// Takes every request, counts it, and never answers any.

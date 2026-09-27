@@ -195,10 +195,19 @@ impl Unsent {
         }
     }
 
-    /// The error to end the turn with, once there is no patience left to spend.
-    pub(crate) fn giving_up(self, model: &str) -> BoxError {
+    /// The error to end the turn with, once there is no patience left to spend, `tried` times.
+    ///
+    /// note: the count is said because the wait is each try's. Four tries of a stream that never
+    /// started are ten minutes, and a sentence naming one try's two and a half reads as a clock
+    /// that is wrong.
+    pub(crate) fn giving_up(self, model: &str, tried: usize) -> BoxError {
         match self {
             Self::Transport(e) => e.into(),
+            Self::Silent(waited) if tried > 1 => format!(
+                "{model} never answered, asked {tried} times and given {}s each; giving up",
+                waited.as_secs()
+            )
+            .into(),
             Self::Silent(waited) => format!(
                 "{model} never answered; giving up after {}s",
                 waited.as_secs()
@@ -348,7 +357,7 @@ pub(crate) async fn sent(
             {
                 Busy::Unsent(reason)
             }
-            Err(reason) => return Err(reason.giving_up(asking.model)),
+            Err(reason) => return Err(reason.giving_up(asking.model, tried)),
             Ok(mut response) if streaming && response.status().is_success() => {
                 match read(&mut response, asking, events).await? {
                     Read::Refused { code, said } => Busy::Refused {
@@ -412,7 +421,7 @@ pub(crate) async fn sent(
         let doubling = Duration::from_secs(1 << tried);
         let (wait, what) = match busy {
             Busy::Unsent(reason) if tried >= RETRIES => {
-                return Err(reason.giving_up(asking.model));
+                return Err(reason.giving_up(asking.model, tried));
             }
             Busy::Unsent(reason) => (doubling, reason.what_happened().to_owned()),
             Busy::Refused {

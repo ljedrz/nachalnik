@@ -55,7 +55,10 @@ turn or somebody's money. All three are separated here, and shared by both diale
   asked it to stop, so a server that accepts a connection and then goes away does not hold the
   program with no way to take it back.
 - **the silence is reported.** After ten seconds it says so through `Endpoint::take_notice`, and
-  again every thirty; after 150 it gives up.
+  again every thirty; after 150 it gives up on that attempt. A stream that had said something
+  keeps it, as a turn cut off, and one that had not is a failure; a request whose headers never
+  came is sent again, as a busy server's is, so a server that never answers at all is given up on
+  after four tries.
 - **a busy server is retried, a spent quota is not.** A `Retry-After` longer than a minute is a
   daily limit answering with the seconds until midnight, and sitting through three doublings to
   discover that wastes the turn as well as the wait.
