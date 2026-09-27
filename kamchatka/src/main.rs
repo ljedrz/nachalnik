@@ -638,7 +638,7 @@ async fn run(
         if let Some(text) = app.clipboard.take()
             && let Err(why) = kamchatka::clipboard::hand_over(&text)
         {
-            app.say(Speaker::Note, why);
+            app.not_copied(&why);
             stale = true;
         }
         if app.leaving() {

@@ -53,6 +53,23 @@ pub struct Headless<'a> {
     mid_line: bool,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
+    /// Fragments of the answer that went by too fast to print, counted until the answer they
+    /// belong to has been said.
+    ///
+    /// note: held rather than said where it happened, because what was lost is worth saying
+    /// beside the answer it was part of: a line about fragments going past in the middle of two
+    /// other lines is a line about the typing, and one arriving after the answer has finished is
+    /// a note about an answer somebody has already read.
+    missed: u64,
+    /// Whether a model is answering, which is the only thing this loop prints fragments of.
+    ///
+    /// note: a `Lagged` carries a count and no events, so what went past cannot be sorted into
+    /// kinds afterwards - and the two kinds are the whole of the question. This is what a count
+    /// is believed against: `Requesting` and `Executing` are different states, so while a model is
+    /// being answered no tool is running, and a count arriving in that window is fragments of
+    /// words. A count arriving under a tool is that tool's output, which this loop does not print
+    /// and the log does not hold.
+    answering: bool,
 }
 
 impl<'a> Headless<'a> {
@@ -67,6 +84,8 @@ impl<'a> Headless<'a> {
             terminated: false,
             mid_line: false,
             streamed: false,
+            missed: 0,
+            answering: false,
         }
     }
 
@@ -189,247 +208,256 @@ impl<'a> Headless<'a> {
         // note: an async block rather than the loop alone, so that every way out of it - a
         // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
         // up below, where a turn still running is stopped and waited for before `session.finished`
-        let driven: Result<(), String> = async { loop {
-            // before anything else, and wherever the question came from: a turn that stopped to
-            // ask, or a `/step` that reached one. Answered in the branch that handles the outcome,
-            // a question from `/step` would go unanswered, and a session whose input had closed
-            // would sit in `select!` with nothing left that could ever wake it
-            //
-            // note: `!busy` is not optional. The question is broadcast as `permission.requested`
-            // while the turn that raised it is still in flight, so a loop that answered on sight
-            // would answer one the kernel had not finished asking - the decision recorded, the
-            // outcome then arriving with nothing left waiting, and the turn never carried on with.
-            // Answering only while the kernel rests is the same rule the keys follow, for the same
-            // reason
-            if !app.busy && app.asked().is_some() {
-                self.answer(app)?;
-            }
-            // note: and a running command's question on sight, busy or not, because it is not the
-            // kernel's. It arrives while the call runs and holds the call until it is answered, so
-            // waiting for the kernel to rest would be waiting for the command that is waiting on
-            // this
-            if app.reached().is_some() {
-                self.answer_reaching(app)?;
-            }
-            self.flush(app, &mut written)?;
-            self.echo(app, &mut said, &mut cleared)?;
-            // a stop the ceiling made is said once, and a later one is a new stop
-            if !app.overspent() {
-                passing = false;
-            }
-            // a session that is not going to be given anything else to do, and is not doing
-            // anything, is over. `quit` is `/quit`, which means the same here as at a prompt
-            if app.leaving() || (!reading && !app.busy) {
-                break;
-            }
+        let driven: Result<(), String> = async {
+            loop {
+                // before anything else, and wherever the question came from: a turn that stopped to
+                // ask, or a `/step` that reached one. Answered in the branch that handles the outcome,
+                // a question from `/step` would go unanswered, and a session whose input had closed
+                // would sit in `select!` with nothing left that could ever wake it
+                //
+                // note: `!busy` is not optional. The question is broadcast as `permission.requested`
+                // while the turn that raised it is still in flight, so a loop that answered on sight
+                // would answer one the kernel had not finished asking - the decision recorded, the
+                // outcome then arriving with nothing left waiting, and the turn never carried on with.
+                // Answering only while the kernel rests is the same rule the keys follow, for the same
+                // reason
+                if !app.busy && app.asked().is_some() {
+                    self.answer(app)?;
+                }
+                // note: and a running command's question on sight, busy or not, because it is not the
+                // kernel's. It arrives while the call runs and holds the call until it is answered, so
+                // waiting for the kernel to rest would be waiting for the command that is waiting on
+                // this
+                if app.reached().is_some() {
+                    self.answer_reaching(app)?;
+                }
+                self.flush(app, &mut written)?;
+                self.echo(app, &mut said, &mut cleared)?;
+                // a stop the ceiling made is said once, and a later one is a new stop
+                if !app.overspent() {
+                    passing = false;
+                }
+                // a session that is not going to be given anything else to do, and is not doing
+                // anything, is over. `quit` is `/quit`, which means the same here as at a prompt
+                if app.leaving() || (!reading && !app.busy) {
+                    break;
+                }
 
-            tokio::select! {
-                // note: `!busy` is what makes a pipe behave like somebody who waits for the
-                // answer before typing the next thing. Without it a script's lines are all read
-                // the moment they are written, and two things go wrong that a person at a prompt
-                // never sees: a command runs in the middle of the turn before it, so `/budget`
-                // lands above the answer it was asked after; and a *message* sent into a running
-                // turn is held in `App::typed_ahead`, which holds one, so the third line of a
-                // three-line script would quietly replace the second.
-                // Nothing here can be typed during a turn, so nothing is lost by reading it after
-                line = lines.next_line(), if reading && !app.busy => match line {
-                    // note: what the prompt does with enter on nothing, and with spaces round a
-                    // line. Otherwise a blank line down a pipe is sent as an empty message and
-                    // answered - a request for nothing - and `  /help` is a message here and a
-                    // command there
-                    Ok(Some((line, _))) if line.trim().is_empty() => {}
-                    // note: a session that has spent what it was given still reads, because the
-                    // way back is a line: `/spend N` raises the ceiling and `/spend 0` takes it
-                    // away, and a loop that stopped reading dropped the very command its stop had
-                    // just recommended. A message is another matter. `App::start_turn` refuses it,
-                    // but only once it is in the context, where it would go out unasked with
-                    // whatever turn the script paid for next - so it is passed over here, and said
-                    // to be once rather than a refusal a line for the rest of a script
-                    Ok(Some((line, _))) if app.overspent() && !line.trim().starts_with('/') => {
-                        if !std::mem::replace(&mut passing, true) {
-                            app.say(
-                                Speaker::Note,
-                                "the ceiling is reached, so the messages after this point are \
-                                 passed over unsent; commands are still read, and `/spend N` \
-                                 raises it",
-                            );
-                        }
-                    }
-                    Ok(Some((line, mangled))) => {
-                        if mangled {
-                            app.say(Speaker::Note, not_text(&line));
-                        }
-                        // the lines it said are printed by `echo` below, which is watching
-                        // `App::loose` for the ones that arrive with no line to answer either;
-                        // the page is this call's alone and has no other way out
-                        let opened = app.submit(line.trim()).await.page;
-                        // what the line did to the context is said with it, rather than on some
-                        // later turn round - after the next line, or never if this was the last
-                        while let Ok(event) = events.try_recv() {
-                            self.say(&app.kernel, &event)?;
-                            app.on_event(event);
-                        }
-                        if let Some(Overlay::Text { title, pages, .. }) = opened {
-                            self.fresh_line()?;
-                            writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
-                            // note: every page rather than the one it was opened at. A screen
-                            // turns them with `←` and `→` and there is no key to press down a
-                            // pipe, so a caller handed one page of several would be reading a
-                            // reference whose others it has no way to ask for.
-                            //
-                            // note: named only where there is more than one. A page opened by
-                            // `App::preview` is deliberately nameless - there is one of it - and a
-                            // rule saying nothing over `/budget` would be chrome for its own sake
-                            for page in &pages {
-                                if pages.len() > 1 {
-                                    writeln!(self.prose, "-- {} --", page.name)
-                                        .map_err(|e| e.to_string())?;
-                                }
-                                writeln!(self.prose, "{}", page.body)
-                                    .map_err(|e| e.to_string())?;
+                tokio::select! {
+                    // note: `!busy` is what makes a pipe behave like somebody who waits for the
+                    // answer before typing the next thing. Without it a script's lines are all read
+                    // the moment they are written, and two things go wrong that a person at a prompt
+                    // never sees: a command runs in the middle of the turn before it, so `/budget`
+                    // lands above the answer it was asked after; and a *message* sent into a running
+                    // turn is held in `App::typed_ahead`, which holds one, so the third line of a
+                    // three-line script would quietly replace the second.
+                    // Nothing here can be typed during a turn, so nothing is lost by reading it after
+                    line = lines.next_line(), if reading && !app.busy => match line {
+                        // note: what the prompt does with enter on nothing, and with spaces round a
+                        // line. Otherwise a blank line down a pipe is sent as an empty message and
+                        // answered - a request for nothing - and `  /help` is a message here and a
+                        // command there
+                        Ok(Some((line, _))) if line.trim().is_empty() => {}
+                        // note: a session that has spent what it was given still reads, because the
+                        // way back is a line: `/spend N` raises the ceiling and `/spend 0` takes it
+                        // away, and a loop that stopped reading dropped the very command its stop had
+                        // just recommended. A message is another matter. `App::start_turn` refuses it,
+                        // but only once it is in the context, where it would go out unasked with
+                        // whatever turn the script paid for next - so it is passed over here, and said
+                        // to be once rather than a refusal a line for the rest of a script
+                        Ok(Some((line, _))) if app.overspent() && !line.trim().starts_with('/') => {
+                            if !std::mem::replace(&mut passing, true) {
+                                app.say(
+                                    Speaker::Note,
+                                    "the ceiling is reached, so the messages after this point are \
+                                     passed over unsent; commands are still read, and `/spend N` \
+                                     raises it",
+                                );
                             }
                         }
-                        // `/copy` down a pipe is still worth answering: stdout is the session log
-                        // and stderr may well be somebody's terminal, which is where the sequence
-                        // goes either way. Where it is not, the line says so rather than the
-                        // command reporting that it did something
-                        if let Some(text) = app.clipboard.take()
-                            && let Err(why) = crate::clipboard::hand_over(&text)
-                        {
-                            app.say(crate::app::Speaker::Note, why);
-                        }
-                        // `/compact` asks, and there are no keys here to answer with. Taken
-                        // rather than left, which is the opposite of what `--on-ask` does with a
-                        // tool's question - and the two are different questions. A tool's is the
-                        // *model* asking to do something nobody vouched for, so the default is
-                        // no; this one is the operator's own line, and a script that says
-                        // `/compact` and is answered "left alone" has been refused the thing it
-                        // asked for. The list is on stderr above it either way
-                        if let Some(proposed) = app.proposed.clone() {
-                            // the list itself, which on a screen is in the panel and down a pipe
-                            // has nowhere else to go. Without it this mode takes items on the
-                            // strength of a line saying how many, which is the opposite of what
-                            // the command is for
-                            self.fresh_line()?;
-                            for row in &proposed.rows {
-                                writeln!(self.prose, "· {row}").map_err(|e| e.to_string())?;
+                        Ok(Some((line, mangled))) => {
+                            if mangled {
+                                app.say(Speaker::Note, not_text(&line));
                             }
-                            app.take_proposal(true).await;
-                            // and what it did, in the same breath as what it proposed. The pass
-                            // reports itself through an event like any other, and the loop would
-                            // otherwise read that one on some later turn round - after the next
-                            // line of the script, if there is one
+                            // the lines it said are printed by `echo` below, which is watching
+                            // `App::loose` for the ones that arrive with no line to answer either;
+                            // the page is this call's alone and has no other way out
+                            let opened = app.submit(line.trim()).await.page;
+                            // what the line did to the context is said with it, rather than on some
+                            // later turn round - after the next line, or never if this was the last
                             while let Ok(event) = events.try_recv() {
                                 self.say(&app.kernel, &event)?;
                                 app.on_event(event);
                             }
+                            if let Some(Overlay::Text { title, pages, .. }) = opened {
+                                self.fresh_line()?;
+                                writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
+                                // note: every page rather than the one it was opened at. A screen
+                                // turns them with `←` and `→` and there is no key to press down a
+                                // pipe, so a caller handed one page of several would be reading a
+                                // reference whose others it has no way to ask for.
+                                //
+                                // note: named only where there is more than one. A page opened by
+                                // `App::preview` is deliberately nameless - there is one of it - and a
+                                // rule saying nothing over `/budget` would be chrome for its own sake
+                                for page in &pages {
+                                    if pages.len() > 1 {
+                                        writeln!(self.prose, "-- {} --", page.name)
+                                            .map_err(|e| e.to_string())?;
+                                    }
+                                    writeln!(self.prose, "{}", page.body)
+                                        .map_err(|e| e.to_string())?;
+                                }
+                            }
+                            // `/copy` down a pipe is still worth answering: stdout is the session log
+                            // and stderr may well be somebody's terminal, which is where the sequence
+                                // goes either way. Where it is not, the line says so in place of the
+                            // command reporting that it did something
+                            if let Some(text) = app.clipboard.take()
+                                && let Err(why) = crate::clipboard::hand_over(&text)
+                            {
+                                    app.not_copied(&why);
+                            }
+                            // `/compact` asks, and there are no keys here to answer with. Taken
+                            // rather than left, which is the opposite of what `--on-ask` does with a
+                            // tool's question - and the two are different questions. A tool's is the
+                            // *model* asking to do something nobody vouched for, so the default is
+                            // no; this one is the operator's own line, and a script that says
+                            // `/compact` and is answered "left alone" has been refused the thing it
+                            // asked for. The list is on stderr above it either way
+                            if let Some(proposed) = app.proposed.clone() {
+                                // the list itself, which on a screen is in the panel and down a pipe
+                                // has nowhere else to go. Without it this mode takes items on the
+                                // strength of a line saying how many, which is the opposite of what
+                                // the command is for
+                                self.fresh_line()?;
+                                for row in &proposed.rows {
+                                    writeln!(self.prose, "· {row}").map_err(|e| e.to_string())?;
+                                }
+                                app.take_proposal(true).await;
+                                // and what it did, in the same breath as what it proposed. The pass
+                                // reports itself through an event like any other, and the loop would
+                                // otherwise read that one on some later turn round - after the next
+                                // line of the script, if there is one
+                                while let Ok(event) = events.try_recv() {
+                                    self.say(&app.kernel, &event)?;
+                                    app.on_event(event);
+                                }
+                            }
                         }
-                    }
-                    // stdin has closed. Whatever is running still finishes, and the loop leaves
-                    // when it has: a script that pipes one question in and goes away is asking
-                    // for the answer, not for the turn to be abandoned
-                    Ok(None) => reading = false,
-                    Err(e) => return Err(format!("could not read the input: {e}")),
-                },
-                event = events.recv() => match event {
-                    Ok(event) => {
-                        self.say(&app.kernel, &event)?;
-                        app.on_event(event);
-                    }
-                    // note: the records are read out of the log rather than from here, so a
-                    // subscriber that fell behind has missed nothing that is written out. What it
-                    // has missed is the *prose*, which is the half nothing else keeps
-                    Err(broadcast::error::RecvError::Lagged(missed)) => {
+                        // stdin has closed. Whatever is running still finishes, and the loop leaves
+                        // when it has: a script that pipes one question in and goes away is asking
+                        // for the answer, not for the turn to be abandoned
+                        Ok(None) => reading = false,
+                        Err(e) => return Err(format!("could not read the input: {e}")),
+                    },
+                    event = events.recv() => match event {
+                        Ok(event) => {
+                            self.say(&app.kernel, &event)?;
+                            app.on_event(event);
+                        }
+                        // note: the records are read out of the log rather than from here, so a
+                        // subscriber that fell behind has missed nothing that is written out. What it
+                        // has missed is the *prose*, which is the half nothing else keeps
+                            //
+                            // note: a tool's output arrives as fragments too, and none of them are ever
+                            // on the prose - a headless run says what a tool was asked to do and what its
+                            // result cost, and the output between is the model's to read. Counting those
+                            // reported a loss of something nobody was going to be shown, and pointed at a
+                            // log that has none of them either, since a fragment is not an event anybody
+                            // records. So a count is only believed while a model is answering, which is
+                            // the one thing this loop prints fragments of
+                        Err(broadcast::error::RecvError::Lagged(missed)) => {
+                                if self.answering {
+                                    self.missed += missed;
+                                }
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    },
+                    // note: a deadline that is not set waits on a future that never completes, which
+                    // is what `select!` does with a branch that must never win. The alternative is a
+                    // precondition, and a disabled branch is a subtler thing to reason about than a
+                    // future that is honestly never ready
+                    () = async {
+                        match ends {
+                            Some(at) => tokio::time::sleep_until(at).await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        // cleared, or the instant is in the past from here on and this branch wins
+                        // every time round the loop for ever
+                        ends = None;
+                        reading = false;
+                        app.interrupt();
                         self.fresh_line()?;
-                        writeln!(
-                            self.prose,
-                            "[{missed} fragment(s) went by too fast to print; the records have them]"
-                        )
-                        .map_err(|e| e.to_string())?;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                },
-                // note: a deadline that is not set waits on a future that never completes, which
-                // is what `select!` does with a branch that must never win. The alternative is a
-                // precondition, and a disabled branch is a subtler thing to reason about than a
-                // future that is honestly never ready
-                () = async {
-                    match ends {
-                        Some(at) => tokio::time::sleep_until(at).await,
-                        None => std::future::pending().await,
-                    }
-                } => {
-                    // cleared, or the instant is in the past from here on and this branch wins
-                    // every time round the loop for ever
-                    ends = None;
-                    reading = false;
-                    app.interrupt();
-                    self.fresh_line()?;
-                    writeln!(self.prose, "· out of time; stopping")
-                        .map_err(|e| e.to_string())?;
-                }
-                // note: a run that was not told to take `ctrl+c` waits here on a future that is
-                // never ready, which is what the deadline above does with a deadline nobody set and
-                // for the same reason. A disabled branch would not do: `select!` evaluates the
-                // expression whether or not the branch is enabled, and the expression is where the
-                // subscription would be
-                () = async {
-                    match presses.as_mut() {
-                        Some(presses) => presses.pressed().await,
-                        None => std::future::pending().await,
-                    }
-                } => {
-                    match stopping {
-                        // the second one: whatever is still running is somebody else's problem now
-                        true => {
-                            at_once = true;
-                            break;
-                        }
-                        false => {
-                            stopping = true;
-                            reading = false;
-                            app.interrupt();
-                            self.fresh_line()?;
-                            writeln!(
-                                self.prose,
-                                "· stopping; what has arrived is kept, and again leaves at once"
-                            )
+                        writeln!(self.prose, "· out of time; stopping")
                             .map_err(|e| e.to_string())?;
+                    }
+                    // note: a run that was not told to take `ctrl+c` waits here on a future that is
+                    // never ready, which is what the deadline above does with a deadline nobody set and
+                    // for the same reason. A disabled branch would not do: `select!` evaluates the
+                    // expression whether or not the branch is enabled, and the expression is where the
+                    // subscription would be
+                    () = async {
+                        match presses.as_mut() {
+                            Some(presses) => presses.pressed().await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        match stopping {
+                            // the second one: whatever is still running is somebody else's problem now
+                            true => {
+                                at_once = true;
+                                break;
+                            }
+                            false => {
+                                stopping = true;
+                                reading = false;
+                                app.interrupt();
+                                self.fresh_line()?;
+                                writeln!(
+                                    self.prose,
+                                    "· stopping; what has arrived is kept, and again leaves at once"
+                                )
+                                .map_err(|e| e.to_string())?;
+                            }
                         }
                     }
-                }
-                Some(outcome) = finished.recv() => {
-                    // the turn's last events are still queued behind this one, and `select!` picks
-                    // whichever branch is ready rather than whichever happened first
-                    while let Ok(event) = events.try_recv() {
-                        self.say(&app.kernel, &event)?;
-                        app.on_event(event);
+                    Some(outcome) = finished.recv() => {
+                        // the turn's last events are still queued behind this one, and `select!` picks
+                        // whichever branch is ready rather than whichever happened first
+                        while let Ok(event) = events.try_recv() {
+                            self.say(&app.kernel, &event)?;
+                            app.on_event(event);
+                        }
+                        failed = match &outcome {
+                            Outcome::Failed(e) => Some(e.clone()),
+                            _ => None,
+                        };
+                        app.on_outcome(outcome);
                     }
-                    failed = match &outcome {
-                        Outcome::Failed(e) => Some(e.clone()),
-                        _ => None,
-                    };
-                    app.on_outcome(outcome);
-                }
-                // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
-                // arrives rather than at the parting line, because a run a signal ended is over at
-                // this point: a caller reading the tail of this stream has to be able to tell it
-                // from one that finished its own work, and an exit code of `0` says neither
-                () = async {
-                    match terminations.as_mut() {
-                        Some(terminations) => terminations.arrived().await,
-                        None => std::future::pending().await,
+                    // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
+                    // arrives rather than at the parting line, because a run a signal ended is over at
+                    // this point: a caller reading the tail of this stream has to be able to tell it
+                    // from one that finished its own work, and an exit code of `0` says neither
+                    () = async {
+                        match terminations.as_mut() {
+                            Some(terminations) => terminations.arrived().await,
+                            None => std::future::pending().await,
+                        }
+                    } => {
+                        app.quit = true;
+                        self.fresh_line()?;
+                        writeln!(self.prose, "· ended by a termination signal; leaving")
+                            .map_err(|e| e.to_string())?;
                     }
-                } => {
-                    app.quit = true;
-                    self.fresh_line()?;
-                    writeln!(self.prose, "· ended by a termination signal; leaving")
-                        .map_err(|e| e.to_string())?;
+                    // answered at the top of the loop, like the kernel's questions
+                    Ok(()) = reaching.changed() => {}
                 }
-                // answered at the top of the loop, like the kernel's questions
-                Ok(()) = reaching.changed() => {}
             }
-        } Ok(()) }.await;
+            Ok(())
+        }
+        .await;
 
         // what the prose fails to say here is not a reason to leave a turn running: the records
         // are the part that is kept, and they are read out of the log below
@@ -574,6 +602,31 @@ impl<'a> Headless<'a> {
         Ok(())
     }
 
+    /// Says that fragments of an answer went by too fast to print, if any did.
+    ///
+    /// note: said once, whatever the answer was and however many turns round the loop it took to
+    /// notice - the count is the whole of what went past rather than one notice per moment the
+    /// loop was behind, and a session falling behind on a long answer would otherwise be mostly
+    /// notices.
+    ///
+    /// note: no word about the records, because there is nothing true to say with one. What is
+    /// lost is unrecoverable from here - a fragment is in no record, and a record holds a turn by
+    /// naming it rather than copying it - so a notice claiming the log has it was sending a reader
+    /// after something that was never in it.
+    fn said_missed(&mut self) -> Result<(), String> {
+        let missed = std::mem::take(&mut self.missed);
+        if missed == 0 {
+            return Ok(());
+        }
+        self.fresh_line()?;
+        writeln!(
+            self.prose,
+            "· {missed} fragment(s) of an answer went by too fast to print; nothing here holds \
+             them, and the record names that answer without holding it"
+        )
+        .map_err(|e| e.to_string())
+    }
+
     /// Writes some of the model's answer, which is not a whole line and ends none.
     fn write_answer(&mut self, text: &str) -> Result<(), String> {
         if text.is_empty() {
@@ -615,6 +668,14 @@ impl<'a> Headless<'a> {
     /// piece with no fragment ahead of it - and the screen, which draws the item either way, never
     /// notices, while a run printing only fragments printed nothing of the answer at all.
     fn say(&mut self, kernel: &Kernel, event: &Event) -> Result<(), String> {
+        // note: before anything else, because a `Lagged` arriving after this event has to be read
+        // against it. A tool and a model are never both running, so what is in flight here is the
+        // whole of what a count could be about, and a count arriving under a tool is that tool's
+        // output - which nothing here prints
+        self.answering = matches!(
+            event,
+            Event::ModelRequested { .. } | Event::ModelDelta { .. }
+        );
         // no newline after a fragment: this arrives in pieces and is a sentence being written.
         // Everything below it is a whole line, so each of them ends that one first
         if let Event::ModelDelta {
@@ -627,21 +688,27 @@ impl<'a> Headless<'a> {
         }
         // a new request is a new answer, which starts on a line of its own: the last one very
         // likely ended mid-line, and the first fragment of this one was written straight after it
+        //
+        // note: and the fragments that went by are said against the last answer rather than
+        // against this one, so what went missing is named before the next thing is started rather
+        // than attributed to a sentence that had not been written yet
         if matches!(event, Event::ModelRequested { .. }) {
             self.streamed = false;
+            self.said_missed()?;
 
             return self.fresh_line();
         }
         if let Event::ModelFinished { item, .. } = event {
             if std::mem::take(&mut self.streamed) {
-                return Ok(());
+                return self.said_missed();
             }
             let said = kernel
                 .item(*item)
                 .map(|turn| turn.content.to_text().into_owned())
                 .unwrap_or_default();
+            self.write_answer(&said)?;
 
-            return self.write_answer(&said);
+            return self.said_missed();
         }
         if let Some(line) = crate::app::text::went_in(event) {
             self.fresh_line()?;

@@ -177,6 +177,27 @@ minor bump may break you.
 - **A `KAMCHATKA_CONTEXT_LIMIT` that is not a positive whole number is refused at startup, by
   name.** One that did not parse was taken as no limit, silently, and `0` was taken as a limit the
   first turn was refused against.
+- **A headless run no longer reports a tool's output as fragments gone by.** It counted
+  `tool.output` events, which it never prints - a headless run says what a tool was asked to do and
+  what its result cost - so a prompt running `cat` over a large file filled standard error with
+  notices about nothing the reader was ever shown, and each claimed the records held them, which
+  nothing does: a fragment is not an event anybody records. A count is now believed only while a
+  model is answering, which is the one thing that loop prints fragments of, and what is counted is
+  said against the answer it belongs to, without a claim about the log.
+- **`--connect` no longer says a client that fell behind missed nothing.** `Message::Missed` counts
+  the unnumbered half of what went past, and the line it answered with promised `the records have
+  everything that happened` - false twice over, since a record names a turn rather than holding it
+  and the session's own lines are in no log at all. It says what went by and where that is not.
+- **`/copy` in a headless run with no terminal says it was not copied, once.** It said `[2] to the
+  clipboard: 19 bytes` and then `there is no terminal here for it to go to`, the second taking the
+  first back. The receipt is rewritten in place as `[2] was not copied: ...`, through
+  `App::not_copied`, which an embedder's own loop can call the same way. A run at a terminal is
+  held to the same one line.
+- **`/policy` and `/permissions` print the rules where there is no tab to show them.** They opened
+  the permissions tab and said nothing else, so a piped script and a `--connect` client got silence
+  where the answer is, and silence reads as a policy that allows nothing. The command is a page as
+  well as a tab, built from the same rows the tab draws, and it still switches the tab for somebody
+  at a desk.
 - **`--deadline` covers starting up.** It started counting once the session was driven, so an
   endpoint that never answered its probe, or an MCP server that never finished its handshake, held
   a headless run silent for as long as it liked. It counts from the program's start now, a run

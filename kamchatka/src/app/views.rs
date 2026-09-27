@@ -49,6 +49,27 @@ impl Stance {
     pub fn is_decided(&self) -> bool {
         self.verdict != Verdict::Ask
     }
+
+    /// What this rule reaches, as the sentence the permissions tab draws and `/policy` prints.
+    ///
+    /// note: one sentence rather than two, because the two places that show a rule are the tab
+    /// and the page a caller with no screen is given, and they are the same answer to the same
+    /// question. A capability a tool declares and a shell judged against `net:reach` only
+    /// sometimes are both here, because which set a rule covers is the first thing somebody
+    /// writing `--allow log` would want to check.
+    pub fn covers(&self) -> String {
+        match (self.tools.is_empty(), self.sometimes.is_empty()) {
+            (true, true) => "nothing registered needs it".to_owned(),
+            (true, false) => format!("{}, {}", self.sometimes.join(", "), self.when),
+            (false, true) => self.tools.join(", "),
+            (false, false) => format!(
+                "{}; {}, {}",
+                self.tools.join(", "),
+                self.sometimes.join(", "),
+                self.when
+            ),
+        }
+    }
 }
 
 impl App {

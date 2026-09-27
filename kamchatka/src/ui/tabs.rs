@@ -540,13 +540,18 @@ pub(super) fn draw_context(
 ///
 /// note: shared by the rows and by the line above them saying what the policy answers about
 /// everything it has not been told about. Two of them is two places for `ask` to stop being
-/// yellow, on the one screen where the colour is the answer.
+/// yellow, on the one screen where the colour is the answer. The word itself is the shared one,
+/// because `/policy` prints these same rows for a caller with no tab and two spellings of
+/// `allow` would be the tab and the page disagreeing.
 fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
-    match verdict {
-        Verdict::Allow => ("allow", Style::default().fg(Color::Green)),
-        Verdict::Ask => ("ask", Style::default().fg(Color::Yellow)),
-        Verdict::Deny => ("deny", Style::default().fg(Color::Red)),
-    }
+    (
+        crate::app::text::verdict_word(verdict),
+        match verdict {
+            Verdict::Allow => Style::default().fg(Color::Green),
+            Verdict::Ask => Style::default().fg(Color::Yellow),
+            Verdict::Deny => Style::default().fg(Color::Red),
+        },
+    )
 }
 
 /// The line a build that can rate commands draws when nothing is rating them.
@@ -618,23 +623,9 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
         // decisions - and it would bury the one or two lines that say what this agent can do
         // without stopping. What arrives here is what somebody answered `a` to, or set here
         frame.render_widget(
-            Paragraph::new(
-                "nothing has been decided yet, which is why this list is empty rather than \
-                 permissive.\n\nAnswer a question with `a` and everything it was judged by arrives \
-                 here, where it can be changed; `y` and `n` answer that one call and record \
-                 nothing. A fresh policy also holds a rule for each of a handful \
-                 of paths that are credentials by convention, and those are questions too, so \
-                 they are not rows either - the line along the bottom is what counts them. They \
-                 begin to earn their keep the moment a capability is answered `always`: the \
-                 capability opens, the rules stay where they are, and the strictest thing \
-                 consulted wins - so a rule can only ever tighten what a capability allows. Those \
-                 rules bind every `fs` operation that is handed a path, and deliberately not \
-                 `shell`: a command \
-                 names its files inside a string, so what holds a command to a boundary is the \
-                 sandbox rather than a rule here.",
-            )
-            .style(quiet())
-            .wrap(ratatui::widgets::Wrap { trim: false }),
+            Paragraph::new(crate::app::text::NOTHING_DECIDED)
+                .style(quiet())
+                .wrap(ratatui::widgets::Wrap { trim: false }),
             area,
         );
         return Scrolled::default();
@@ -672,17 +663,7 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
             // a capability nothing declares is still worth a row, and it should say so rather
             // than look like an oversight - but `network` is not one of them, however it looks: no
             // tool declares it and the shell is judged against it anyway, on what the command says
-            let tools = match (row.tools.is_empty(), row.sometimes.is_empty()) {
-                (true, true) => "nothing registered needs it".to_owned(),
-                (true, false) => format!("{}, {}", row.sometimes.join(", "), row.when),
-                (false, true) => row.tools.join(", "),
-                (false, false) => format!(
-                    "{}; {}, {}",
-                    row.tools.join(", "),
-                    row.sometimes.join(", "),
-                    row.when
-                ),
-            };
+            let tools = row.covers();
 
             ListItem::new(Line::from(vec![
                 Span::raw(format!("  {} ", pad(&row.subject.to_string(), capability))),

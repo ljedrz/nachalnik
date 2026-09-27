@@ -1286,11 +1286,12 @@ where
                         protocol::write(write, &Message::Progress { after: last, event }).await?;
                     }
                 }
-                // note: this is the only loss a client is exposed to, and it is exactly the loss
-                // that cannot be helped: the fragments are not in the log, so there is nothing to
-                // go back for. The records are untouched - `flush` reads them out of the log, which
-                // nothing drains - so what this number means is "you missed some of the typing",
-                // and never "you missed something that happened"
+                // note: the numbered records are not what this is about - `flush` reads them out
+                // of the log, which nothing drains, so no record is ever lost here. What went
+                // past is the unnumbered half, and none of it is in the log to begin with: a
+                // model's fragments are dropped by the runtime and this session's own lines are
+                // said rather than recorded. So the client is told what it missed and not sent
+                // after the records for it
                 Err(broadcast::error::RecvError::Lagged(frames)) => {
                     flush(kernel, &mut last, write).await?;
                     protocol::write(write, &Message::Missed { frames }).await?;

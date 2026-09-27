@@ -138,7 +138,7 @@ impl App {
     /// note: and it does not name the terminal, because the loop is what finds out whether there
     /// is one. Said here, `handed to the terminal` would be followed down a pipe by `there is no
     /// terminal here for it to go to` - two lines about one act, the second contradicting the
-    /// first.
+    /// first. A loop that finds none says so with [`App::not_copied`], which rewrites this line.
     pub fn copy(&mut self, id: ContextId) {
         let Some(item) = self.kernel.item(id) else {
             self.say(Speaker::Note, format!("there is no item {id}"));
@@ -148,7 +148,36 @@ impl App {
         let text = item.content.to_text().into_owned();
         let said = format!("[{id}] to the clipboard: {} bytes", thousands(text.len()));
         self.clipboard = Some(text);
+        self.receipt = Some((said.clone(), id));
         self.say(Speaker::Note, said);
+    }
+
+    /// Says that what [`App::copy`] handed over went nowhere, in place of the line that said it
+    /// went to the clipboard.
+    ///
+    /// note: **in place rather than after it.** A loop finds out only once it holds the text
+    /// whether there is a terminal to give it to, and a second line taking the first back is the
+    /// same contradiction one step later: a reader scrolling a run finds the receipt, and then the
+    /// notice, and has to work out which of the two was true. One line that was wrong while it was
+    /// on the screen and is true now is the one thing that is not about the copy.
+    ///
+    /// note: without a receipt to rewrite it says `why` as it stands. The receipt is taken with
+    /// it, so a loop that calls this twice says the second reason and stops - there is nothing
+    /// left to take back, and a line taken back twice is a line about nothing.
+    pub fn not_copied(&mut self, why: &str) {
+        let Some((receipt, id)) = self.receipt.take() else {
+            return self.say(Speaker::Note, why);
+        };
+        let said = format!("[{id}] was not copied: {why}");
+        // note: searched for backwards, so a receipt that has been pushed off the transcript is
+        // not found and a second copy's line is not taken back instead - the search is for this
+        // one act and finds only the line that made it
+        match (self.loose.iter_mut().rev())
+            .find(|entry| entry.speaker == Speaker::Note && entry.text == receipt)
+        {
+            Some(entry) => entry.text = said,
+            None => self.say(Speaker::Note, said),
+        }
     }
 
     /// Adds a finished entry to the transcript, ending whatever was still arriving.

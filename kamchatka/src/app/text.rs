@@ -11,6 +11,7 @@
 
 use nachalnik::{
     Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, StopReason, Usage,
+    Verdict,
 };
 // what one item says *as sent*, which is the one of the three item views that needs a projection
 // to answer - and the one nothing but the screen asks for
@@ -715,6 +716,39 @@ pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
             ))
         }
         _ => None,
+    }
+}
+
+/// What the policy's tab says where there is nothing to list, which is what `/policy` prints then.
+///
+/// note: here rather than in the pane that draws it, because `/policy` is answered in a build with
+/// no screen at all - and a page of prose about the absence of decisions is answerable there.
+/// The tab reads this same string, so the two cannot say different things about what an empty
+/// policy means.
+pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, which is why this list is \
+     empty rather than permissive.\n\nAnswer a question with `a` and everything it was judged by \
+     arrives here, where it can be changed; `y` and `n` answer that one call and record nothing. \
+     A fresh policy also holds a rule for each of a handful of paths that are credentials by \
+     convention, and those are questions too, so they are not rows either - the line along the \
+     bottom is what counts them. They begin to earn their keep the moment a capability is answered \
+     `always`: the capability opens, the rules stay where they are, and the strictest thing \
+     consulted wins - so a rule can only ever tighten what a capability allows. Those rules bind \
+     every `fs` operation that is handed a path, and deliberately not `shell`: a command names its \
+     files inside a string, so what holds a command to a boundary is the sandbox rather than a \
+     rule here.";
+
+/// The word a verdict is read back in, for a line a person reads.
+///
+/// note: one place, because it is one word per mechanism and there are two things to say it: the
+/// permissions tab, which colours the answer, and `/policy`, which prints the same rows for a
+/// caller with no tab. A second spelling of `allow` beside the first would be a rule and a
+/// paragraph disagreeing, and which of them a model reads is not something anybody would notice
+/// until the two were side by side.
+pub(crate) fn verdict_word(verdict: Verdict) -> &'static str {
+    match verdict {
+        Verdict::Allow => "allow",
+        Verdict::Ask => "ask",
+        Verdict::Deny => "deny",
     }
 }
 

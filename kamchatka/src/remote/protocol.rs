@@ -428,9 +428,13 @@ pub enum Message {
     },
     /// How many fragments went past while this client was not keeping up.
     ///
-    /// note: said rather than swallowed, and said with a number. The records are unaffected - they
-    /// are read out of the log, which drops nothing - so this is exactly and only the loss of live
-    /// observation, which is the one thing a slow client is entitled to lose.
+    /// note: said rather than swallowed, and said with a number. The **records** are unaffected:
+    /// they are read out of the log, which drops nothing, so no record is ever lost this way. What
+    /// this counts is the half that is in no record to begin with - a model's fragments, and the
+    /// session's own lines, which the log names happening and does not copy - so a client told
+    /// the records hold what it missed is being sent after something that was never in them. The
+    /// number is exactly "you missed some of what was being said", and never "you missed
+    /// something that happened".
     Missed {
         /// How many.
         frames: u64,

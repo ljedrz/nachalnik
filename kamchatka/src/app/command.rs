@@ -15,7 +15,7 @@ use crate::{app::text::thousands, tools::Limits};
 
 use super::{
     App, Did, Proposed, Reply, Speaker, Tab,
-    text::{nothing_to_send, plural, pretty, request_preview},
+    text::{NOTHING_DECIDED, nothing_to_send, plural, pretty, request_preview, verdict_word},
 };
 
 /// The fields of a request that either dialect builds from the session - the context, the tools
@@ -330,7 +330,13 @@ impl App {
             // the tab rather than a line naming the allowed capabilities: it has the ones that are
             // refused as well, the ones nobody has decided about yet, and what each of them covers
             // - and every row can be changed where it is read
-            "policy" | "permissions" => self.show(Tab::Permissions),
+            //
+            // note: the tab *and* the page, and both are the same answer. A caller with no screen
+            // is asking the same question as somebody at a desk, and it used to be answered with
+            // nothing at all down a pipe: the rules are the whole of what this command is for, and
+            // they are printed from what the tab draws, so the two cannot drift apart. The tab is
+            // still switched, because a person at one is asking to be there rather than to be told
+            "policy" | "permissions" => self.permissions_page(),
             // note: the same function `-f` goes through. Putting a file in the context at startup
             // and putting one there at the prompt are the same act at two moments, and a second
             // implementation of it is a second place for the media types to go stale
@@ -755,6 +761,66 @@ impl App {
             "what the model is offered · /tools toggle ID turns one off",
             body,
         );
+    }
+
+    /// What the policy will answer about, and where the tab is to change any of it.
+    ///
+    /// note: the same rows the permissions tab draws, out of the same [`App::permissions`], and
+    /// the same [`text::NOTHING_DECIDED`] where there are none. What a headless run is given is
+    /// this page rather than the tab, because a tab is where somebody *changes* a rule and a
+    /// caller with no keys changes nothing - but what it may have asked is what the rules are, and
+    /// answering that with silence was the same answer as a policy that allows nothing.
+    ///
+    /// note: the tab is opened as well as the page. A person at a desk sent `/policy` to be able
+    /// to change a rule, and a page printed down a pipe of somebody else's session changes
+    /// nothing there.
+    ///
+    /// note: no clip and no column widths, because there is no window here to fit. What is worth
+    /// saying of a rule is its subject, its answer and what it covers, and all three are said in
+    /// full - a row cut at some width a script's terminal happens to be would be a rule whose
+    /// coverage reads as less than it is.
+    fn permissions_page(&mut self) {
+        self.show(Tab::Permissions);
+        // note: the page only where there is no tab to read it off, which is the same line
+        // `/help` draws. Somebody at a desk sent this to be *on* the tab and to change a rule
+        // there, and a panel floating over the tab they were sent to would be the opposite of
+        // that - while a caller with no screen is sent a page or is sent silence
+        if self.keys {
+            return;
+        }
+
+        let rows = self.permissions();
+        let undecided = self.undecided();
+        let mut body = vec![format!(
+            "{} · anything it has not been told about: {}",
+            self.policy_name(),
+            verdict_word(crate::tools::Careful::untold()),
+        )];
+        if rows.is_empty() {
+            body.push(String::new());
+            body.push(NOTHING_DECIDED.to_owned());
+        } else {
+            for row in rows {
+                body.push(format!(
+                    "  {}  {}  {}",
+                    row.subject,
+                    verdict_word(row.verdict),
+                    row.covers()
+                ));
+            }
+        }
+        // note: counted here as well as on the tab, because the tab's count is drawn along its
+        // bottom edge and a page has no bottom edge. It is the one figure that keeps a short
+        // table from reading as a whole policy: these are the subjects a call will stop and ask
+        // about, and a table of two decisions silently standing for sixteen answers is a different
+        // kind of dishonest
+        body.push(String::new());
+        body.push(format!(
+            "and {} it will ask about, which are not listed above",
+            plural(undecided, "subject"),
+        ));
+
+        self.preview("the policy", body.join("\n"));
     }
 
     /// Reads a file into the context, as text or as bytes depending on what it is - and asks

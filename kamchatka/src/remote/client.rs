@@ -551,9 +551,15 @@ impl<'a> Client<'a> {
             }
             Message::Missed { frames } => {
                 self.fresh_line()?;
+                // note: no promise about the records, and the wording used to make one that was
+                // false twice over. The records name what happened and do not copy it - an
+                // answer is a turn by its identifier - and what went past here can be the
+                // program's own lines as well as a model's typing, which are in no log at all. So
+                // this is the count of what this client was not shown while it was not looking,
+                // and the way to see any of it is to ask the session rather than to read the log
                 self.tell(&format!(
-                    "{frames} fragment(s) went by too fast to print; the records have everything \
-                     that happened"
+                    "{frames} fragment(s) went by while this client was behind; what it missed is \
+                     not in the records, which name what happened without holding it"
                 ))
             }
             // note: printed as nothing, which is the rule this variant is for: ignore what you do

@@ -4526,3 +4526,174 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
     });
     assert!(told, "the model was not told it was refused");
 }
+
+/// A tool that talks a great deal, fast enough that the loop cannot keep up with it.
+///
+/// note: one fragment per line of what it is reporting, which is what `shell` does as a command's
+/// output arrives - and the reason the notice this is about is false. A headless run prints what a
+/// tool was asked to do and what it cost, never the output between, so a subscriber that fell
+/// behind on these has missed nothing it was going to be shown.
+struct Chatty {
+    /// How many lines to report.
+    lines: usize,
+}
+
+#[async_trait]
+impl Tool for Chatty {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("cat", "prints a file")
+    }
+
+    async fn invoke(&self, _call: &ToolCall, output: OutputSink) -> Result<ToolOutput, BoxError> {
+        for line in 0..self.lines {
+            output.push(format!("line {line}\n"));
+        }
+
+        Ok(ToolOutput::new("printed"))
+    }
+}
+
+/// A tool that floods its output is not reported as a flood of fragments gone by.
+///
+/// note: what the notice used to say, and both halves of it were false. It counted `tool.output`
+/// fragments, which this loop has never printed - a headless run reports a tool's result by its
+/// size and leaves the output to the model - and it promised the records had them, which nothing
+/// holds: a fragment is not an event anybody recorded, so there is nothing to go back for.
+///
+/// note: what is asserted is what the prose does *not* say, and nothing about which events came
+/// through. A flood of twenty thousand fragments is past what any subscription keeps, so the
+/// events around it are themselves among what went by - which is the thing being lost here, and
+/// not something a test about the prose should depend on.
+#[tokio::test]
+async fn output_nothing_prints_is_not_reported_as_fragments_gone_by() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "cat", json!({}))]),
+        ModelResponse::text("it is all yours"),
+    ];
+    let run = run("cat huge.txt\n", script, |app| {
+        app.kernel.add_tool(Arc::new(Chatty { lines: 20_000 }));
+    })
+    .await;
+
+    assert!(
+        !run.prose.contains("went by too fast"),
+        "fragments nothing prints were reported as lost: {}",
+        run.prose
+    );
+    // and the claim that the records hold them goes with it: a fragment is in no record, so a
+    // reader told to go to the log for one is sent after something that is not there
+    assert!(
+        !run.prose.contains("the records have"),
+        "the prose points at a log that has none of it: {}",
+        run.prose
+    );
+}
+
+/// A copy with no terminal to go to says so in the one line, rather than a line saying it went to
+/// the clipboard and a second saying it could not.
+///
+/// note: `App::not_copied` rather than `/copy` down a pipe, because whether the test's own stderr
+/// is a terminal depends on who runs it. What is being checked is the one line a loop gets when
+/// the hand-over has nothing to hand it to, which is the whole of the contradiction.
+#[tokio::test]
+async fn a_copy_that_went_nowhere_says_so_once() {
+    let Wired { mut app, .. } = wired(vec![]);
+    let id = app.kernel.push(ContextItem::user("copy me"));
+
+    app.copy(id);
+    app.not_copied("there is no terminal here for it to go to");
+
+    let notes: Vec<_> = app.notes(0).map(|entry| entry.text.clone()).collect();
+    assert_eq!(
+        notes,
+        [format!(
+            "[{id}] was not copied: there is no terminal here for it to go to"
+        )],
+    );
+}
+
+/// `/copy` down a pipe leaves one line about the copy, and it is the true one.
+///
+/// note: end to end where the one above is not, because the two lines are two halves of a loop
+/// and only driving the loop shows whether it puts them together. `hand_over` writes to this
+/// process's own standard error, which under a test runner is a pipe, so the hand-over has nothing
+/// to go to - the same thing a session under `kamchatka --headless` is in when its caller captured
+/// the output. What must not appear is the receipt, because the loop knows it is false by the time
+/// it could be read.
+#[tokio::test]
+async fn a_copy_down_a_pipe_does_not_say_it_reached_the_clipboard() {
+    let run = run("/copy 1\n", vec![], |app| {
+        app.kernel.push(ContextItem::user("what does it say?"));
+    })
+    .await;
+
+    assert!(
+        !run.prose.contains("to the clipboard"),
+        "the receipt is still there after the hand-over had nowhere to go: {}",
+        run.prose
+    );
+    assert!(
+        run.prose
+            .contains("was not copied: there is no terminal here for it to go to"),
+        "the copy was not accounted for: {}",
+        run.prose
+    );
+}
+
+/// A copy that did reach the terminal keeps its receipt, and the note is not there beside it.
+#[tokio::test]
+async fn a_copy_that_went_to_the_terminal_is_not_taken_back() {
+    let Wired { mut app, .. } = wired(vec![]);
+    let id = app.kernel.push(ContextItem::user("copy me"));
+
+    app.copy(id);
+    let notes: Vec<_> = app.notes(0).map(|entry| entry.text.clone()).collect();
+    assert_eq!(notes, [format!("[{id}] to the clipboard: 7 bytes")]);
+}
+
+/// `/policy` says what the policy is, down a pipe as well as at a screen.
+///
+/// note: it was a tab and nothing else, so a caller with no screen got no rules at all - and the
+/// rules are the answer the command is for: what is allowed, what is refused, and what each
+/// covers. It was a page rather than a line for the reason `/budget` is one: a policy holds more
+/// rows than a line holds, and this is the page a caller without a tab reads instead.
+#[tokio::test]
+async fn the_policy_is_a_page_and_not_only_a_tab() {
+    let run = run("/policy\n", vec![], |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+        ));
+        app.policy
+            .set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
+    })
+    .await;
+
+    // the rows the tab draws, and the one thing above them the tab says about the whole table
+    assert!(run.prose.contains("--- the policy ---"), "{}", run.prose);
+    assert!(run.prose.contains("exec:run"), "{}", run.prose);
+    assert!(run.prose.contains("deny"), "{}", run.prose);
+    // the screen still gets its tab, since that is what somebody at a desk is asking for
+    assert_eq!(run.app.tab, kamchatka::app::Tab::Permissions);
+    // and nothing was sent to the model: a command is answered here rather than by asking
+    assert!(!run.names().contains(&"model.requested".to_owned()));
+}
+
+/// A policy with nothing decided says so, rather than printing a table of nobody's answers.
+///
+/// note: the tab does not list a row for a subject nobody has answered about, and a page that did
+/// would bury the one line that says what this agent can do without stopping.
+#[tokio::test]
+async fn a_policy_nobody_has_decided_anything_about_says_so() {
+    let run = run("/permissions\n", vec![], |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    assert!(
+        run.prose.contains("nothing has been decided"),
+        "{}",
+        run.prose
+    );
+}

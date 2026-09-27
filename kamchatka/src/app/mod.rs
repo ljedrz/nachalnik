@@ -513,6 +513,13 @@ pub struct App {
     /// from here instead of dragging a mouse over the pane: this text is not wrapped to a window,
     /// has no frame down either side of it, and is all there whether or not it fits on a screen.
     pub clipboard: Option<String>,
+    /// The line [`App::copy`] said about what is in [`App::clipboard`], and the item it was about,
+    /// for [`App::not_copied`] to take back.
+    ///
+    /// note: what is being taken back is a receipt, not a retraction. The text has left the
+    /// program either way and the loop is the only thing that can find out what happened to it,
+    /// so the line saying it is rewritten once, by whoever knows. See `App::not_copied`.
+    receipt: Option<(String, ContextId)>,
     /// How many tokens the provider may charge for this session before it stops; `None` never
     /// stops. [`App::set_spend`] is how it is changed, and [`App::spend`] reads it.
     ///
@@ -731,6 +738,7 @@ impl App {
             quit: false,
             restart: false,
             clipboard: None,
+            receipt: None,
             spend: None,
             rendered: 0,
             viewport: 0,
