@@ -72,6 +72,11 @@ host with a loop of its own are held to the same number and none of them can get
 asking. `/spend` says what has been spent and against what, `/spend N` raises it, and `/spend 0`
 takes it away, which is the way back for whoever set it too low.
 
+The total starts at nothing in every process. `-r` carries a session's context on, and what its
+counter had learned, but not what it had spent: the snapshot is the runtime's record, and this
+figure is the program's. So a ceiling given to a resumed run bounds that run, not the session
+since it began, and `/restart` starts a session with a total of its own.
+
 An endpoint that reports no usage at all says so, once, rather than holding a ceiling that nothing
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
 reading the run as bounded.
