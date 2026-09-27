@@ -43,6 +43,11 @@ minor bump may break you.
 - **Arguments streamed as an object are the call's arguments.** A server that sends the object
   where the dialect says a string had it read as `{}` on the streamed path, while the whole-answer
   path already took it as it was.
+- **A call's name is written once, and two whole calls under one identifier are two calls.** A
+  server that repeats the name on every fragment made `fsfs`, and two calls sharing an identifier
+  with no index folded into one such call with both sets of arguments run together, `_unparsed`.
+  A name equal to the one held is no longer appended, and a whole call arriving after a complete
+  one under the same identifier starts a call of its own.
 
 ## [0.6.1] - 2026-09-24
 

@@ -383,9 +383,15 @@ impl Gathering {
                 }
             },
             None => match requested["id"].as_str().filter(|id| !id.is_empty()) {
+                // note: an identifier seen before continues its call, unless what arrives is a
+                // whole call of its own - a name, and arguments that parse - after one already
+                // complete. That is two calls a server gave one identifier, and folded together
+                // they are one call to a tool whose name is written twice. A server that repeats
+                // the name on every fragment sends fragments that do not parse alone, and those
+                // still continue the call
                 Some(id) => match self.calls.iter().position(|call| call.id == id) {
-                    Some(at) => at,
-                    None => {
+                    Some(at) if !whole_again(&self.calls[at], requested) => at,
+                    _ => {
                         self.calls.push(PartialCall::default());
                         self.calls.len() - 1
                     }
@@ -425,7 +431,11 @@ impl Gathering {
         if let Some(id) = requested["id"].as_str().filter(|id| !id.is_empty()) {
             call.id = id.to_owned();
         }
-        if let Some(name) = requested["function"]["name"].as_str() {
+        // a name is appended to for an endpoint that streams one in pieces, and not for one that
+        // repeats the whole of it on every fragment
+        if let Some(name) = requested["function"]["name"].as_str()
+            && call.name != name
+        {
             call.name.push_str(name);
         }
         if !requested["extra_content"].is_null() {
@@ -440,6 +450,25 @@ impl Gathering {
             deltas.tool_args(id, fragment);
         }
     }
+}
+
+/// Whether a fragment is a whole call arriving after `call` is already complete: a name, and
+/// arguments that parse on their own, for a call whose own arguments already do.
+///
+/// note: the fragment is parsed first because it is small and almost never whole; the call's
+/// arguments, which grow, are parsed only when it is.
+fn whole_again(call: &PartialCall, requested: &Value) -> bool {
+    let function = &requested["function"];
+    let parses = |arguments: &str| serde_json::from_str::<Value>(arguments).is_ok();
+
+    function["name"]
+        .as_str()
+        .is_some_and(|name| !name.is_empty())
+        && match &function["arguments"] {
+            Value::Object(_) => true,
+            arguments => arguments.as_str().is_some_and(parses),
+        }
+        && parses(&call.args)
 }
 
 /// What opens a block of thinking a model wrote into its own content, where it writes one at all.
@@ -1054,6 +1083,67 @@ mod tests {
         assert_eq!(
             arguments_of(&gathering.calls[0].args),
             json!({ "path": "a.txt" })
+        );
+    }
+
+    /// A name repeated on every fragment is written once, and two whole calls that share an
+    /// identifier and carry no index are two calls.
+    ///
+    /// note: the name was appended to at every fragment, so a server repeating it made `fsfs`,
+    /// and two calls under one identifier folded into one such call with both sets of arguments
+    /// run together, `_unparsed`. The kernel repairs a repeated identifier; it cannot repair that.
+    #[test]
+    fn a_repeated_name_or_identifier_does_not_run_calls_together() {
+        let deltas = DeltaSink::disconnected();
+
+        let mut repeated = Gathering::default();
+        for arguments in ["{\"path\":", " \"a.txt\"}"] {
+            repeated.fold(
+                &json!({ "index": 0, "id": "n1", "function": { "name": "fs", "arguments": arguments } }),
+                &deltas,
+            );
+        }
+        assert_eq!(repeated.calls.len(), 1);
+        assert_eq!(repeated.calls[0].name, "fs");
+        assert_eq!(
+            arguments_of(&repeated.calls[0].args),
+            json!({ "path": "a.txt" })
+        );
+
+        // the same, with no index, so that the identifier is what files each fragment
+        let mut unindexed = Gathering::default();
+        for arguments in ["{\"path\":", " \"a.txt\"}"] {
+            unindexed.fold(
+                &json!({ "id": "n1", "function": { "name": "fs", "arguments": arguments } }),
+                &deltas,
+            );
+        }
+        assert_eq!(unindexed.calls.len(), 1);
+        assert_eq!(
+            arguments_of(&unindexed.calls[0].args),
+            json!({ "path": "a.txt" })
+        );
+
+        let mut shared = Gathering::default();
+        for path in ["a.txt", "b.txt"] {
+            shared.fold(
+                &json!({ "id": "dup", "function": {
+                    "name": "fs", "arguments": format!("{{\"path\":\"{path}\"}}")
+                } }),
+                &deltas,
+            );
+        }
+        let calls: Vec<_> = shared
+            .calls
+            .iter()
+            .map(|call| (call.name.as_str(), arguments_of(&call.args)))
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                ("fs", json!({ "path": "a.txt" })),
+                ("fs", json!({ "path": "b.txt" }))
+            ]
         );
     }
 
