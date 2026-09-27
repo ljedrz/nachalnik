@@ -154,6 +154,17 @@ minor bump may break you.
   a message it started a turn, and the model spent a request on a letter. A bare `y` or `n`
   immediately after a compaction that was taken is now taken with a word saying so - and only
   immediately: a blank line, or any line that is not a bare letter, is a line somebody wrote.
+- **A message given on the command line is judged by its text, so an empty one is nothing.** It
+  was gated on whether any argument was given at all, so `kamchatka … "$MESSAGE"` with the
+  variable never set paid a round trip and a failed turn for a request the provider refuses, where
+  the same nothing down a pipe is dropped.
+- **`--no-record` says so at the end of a run, as it does at `/restart`.** The parting lines were
+  a count of events and nothing else, and the count reads as a pointer to a record, so a person
+  reading the tail could not tell the flag had been given and the records were nowhere on disk.
+- **`/spend` says the figure is this run's.** A total starts at nothing in every process and a
+  snapshot does not carry one, so `0` on a run carried on with `-r` was a true figure in a session
+  that had plainly spent something, with nothing saying so. `/budget`'s count of what the counter
+  learned is a different figure on a different basis - a snapshot does carry that one.
 - **A run whose stream nobody is reading goes on.** The three lines of the program's own prose
   were printed with the macros, which panic when the write fails: the notice saying stdout is not a
   terminal, the address a served run is serving on, and the settings file `--print-config` hands

@@ -1089,6 +1089,12 @@ impl App {
     /// reason anybody at it can read, and because somebody who set one and meant to set a larger
     /// one should not have to start again. `0` takes it away, the way `--requests 0` does - the
     /// same spelling for the same idea, rather than a second word for "none".
+    ///
+    /// note: every sentence here says the figure is *this run's*, because a total starts at
+    /// nothing in every process and reads as the session's to anybody carried on with `-r` - and
+    /// `0` on a resumed run is the case that misleads, being right and answering a question
+    /// nobody asked. `/budget`'s count of what the counter learned is a different figure on a
+    /// different basis, and the note beside that one says which is which.
     fn spend_command(&mut self, rest: &str) {
         let spent = thousands(self.spent() as usize);
         if !rest.trim().is_empty() {
@@ -1106,15 +1112,15 @@ impl App {
                 // refused. It is a legitimate thing to want - one way to stop a session is to tell
                 // it that it has spent enough - so it is answered rather than argued with
                 Some(limit) if self.overspent() => format!(
-                    "the ceiling is {} tokens and {spent} have been spent, so nothing more will \
-                     be sent",
+                    "the ceiling is {} tokens and this run has spent {spent}, so nothing more \
+                     will be sent",
                     thousands(limit as usize)
                 ),
                 Some(limit) => format!(
-                    "the ceiling is {} tokens; {spent} have been spent",
+                    "the ceiling is {} tokens; this run has spent {spent}",
                     thousands(limit as usize)
                 ),
-                None => format!("no ceiling; {spent} tokens have been spent"),
+                None => format!("no ceiling; this run has spent {spent} tokens"),
             };
             self.say(Speaker::Note, said);
 
@@ -1123,13 +1129,13 @@ impl App {
 
         let said = match self.spend() {
             Some(limit) => format!(
-                "{spent} tokens spent of {}, as the provider has reported them. `/spend N` changes \
-                 the ceiling and `/spend 0` takes it away",
+                "this run has spent {spent} tokens of {}, as the provider has reported them. \
+                 `/spend N` changes the ceiling and `/spend 0` takes it away",
                 thousands(limit as usize)
             ),
             None => format!(
-                "{spent} tokens spent, as the provider has reported them. There is no ceiling; \
-                 `/spend N` sets one, and the session stops when it is reached"
+                "this run has spent {spent} tokens, as the provider has reported them. There is \
+                 no ceiling; `/spend N` sets one, and the session stops when it is reached"
             ),
         };
         self.say(Speaker::Note, said);
@@ -1641,6 +1647,11 @@ impl App {
             // truth, and the two are far apart for the same pair of numbers. Both are true and a
             // sentence could only assert one of them, so it asserts neither: the guess and the
             // charge are what somebody wants, and the scale between them is already on the line
+            //
+            // note: the count is the counter's and not this run's, which is the one place here the
+            // two could be taken for each other. A snapshot carries what the counter learned, so
+            // this is every request the session has sent; `/spend`, whose total is the program's
+            // and starts again in every process, is counting the other thing
             Some(learned) => format!(
                 "the counter has learned from {} request(s) and scaled itself by {:.3}: its own \
                  guesses came to {} tokens where the provider counted {}",

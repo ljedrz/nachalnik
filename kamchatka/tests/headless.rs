@@ -1020,7 +1020,8 @@ async fn a_script_can_raise_the_ceiling_it_ran_into() {
     .await;
 
     assert!(
-        run.prose.contains("1,200 tokens spent of 1,000"),
+        run.prose
+            .contains("this run has spent 1,200 tokens of 1,000"),
         "{}",
         run.prose
     );
@@ -1252,7 +1253,9 @@ async fn the_ceiling_can_be_raised_and_taken_away() {
 
     let reply = app.submit("/spend").await;
     assert!(
-        reply.said[0].text.contains("1,200 tokens spent of 1,000"),
+        reply.said[0]
+            .text
+            .contains("this run has spent 1,200 tokens of 1,000"),
         "{:?}",
         reply.said
     );
@@ -1333,7 +1336,7 @@ async fn the_total_is_counted_with_no_ceiling_to_count_it_against() {
     assert_eq!(app.spent(), 600);
     let reply = app.submit("/spend").await;
     assert!(
-        reply.said[0].text.contains("600 tokens spent"),
+        reply.said[0].text.contains("this run has spent 600 tokens"),
         "{:?}",
         reply.said
     );
@@ -1482,6 +1485,42 @@ fn the_program_runs_headless_and_keeps_its_streams_apart() {
             panic!("a line of the record stream is not a record ({e}): {line}")
         });
     }
+}
+
+/// An empty message given on the command line is nothing, where an empty line down a pipe is.
+///
+/// note: the two are the same act - a first message, sent as soon as it starts - and the line
+/// driver drops an empty one, while this asked whether any argument was given at all. A script
+/// doing `kamchatka ... "$MESSAGE"` with the variable never set paid a round trip and a failed
+/// turn for a request the provider refuses.
+///
+/// note: no endpoint to reach, which is what makes the run's own answer the assertion. A blank
+/// message sends nothing, so the run is over; one that was sent is a turn that failed, and its
+/// record says so.
+#[test]
+fn an_empty_message_on_the_command_line_is_nothing() {
+    let program = common::program();
+
+    let out = std::process::Command::new(&program)
+        // the shape a script has when the variable it interpolates is unset or all spaces
+        .args(["-m", "nothing-serves-this", "--no-record", " ", "  "])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "a blank message was sent: {said}");
+
+    let records = String::from_utf8(out.stdout).expect("the records are text");
+    let names: Vec<String> = records
+        .lines()
+        .map(|line| serde_json::from_str::<Record>(line).expect("every line is a record"))
+        .map(|record| record.event.name().to_owned())
+        .collect();
+    assert!(!names.contains(&"model.requested".to_owned()), "{names:?}");
+    assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
 /// A run nobody is reading the streams of says which mode it chose and carries on anyway.
@@ -1777,6 +1816,78 @@ fn a_resumed_run_says_the_parameters_it_came_back_with() {
             "{line}"
         );
     }
+}
+
+/// A resumed run's spend is its own, and says so where the figure is.
+///
+/// note: a total that starts at nothing in every process reads as the session's to anybody carried
+/// on with `-r`, and `0` is the case that misleads - right, in a session that had plainly spent
+/// something, answering a question nobody asked. `/budget` counts what the counter learned, which
+/// a snapshot does carry, so the two are on different bases.
+///
+/// note: through the binary, because the reset is between `main` and `App`: what a snapshot
+/// carries is the runtime's, and a total is the program's.
+#[test]
+fn a_resumed_run_says_the_spend_is_this_runs() {
+    use std::io::Write as _;
+
+    // a session charged for something big enough to be worth learning from: a small request is
+    // mostly framing, and a scale drawn from one is a picture of the framing
+    let first = nachalnik::Kernel::new(nachalnik::Config::default());
+    first.set_provider(std::sync::Arc::new(ScriptedProvider::new([priced(
+        ModelResponse::text("done"),
+        4_000,
+        100,
+    )])));
+    first.push(ContextItem::file("big.rs", "a line of it\n".repeat(400)));
+    first.push(ContextItem::user("go"));
+    tokio::runtime::Builder::new_current_thread()
+        .build()
+        .expect("a runtime")
+        .block_on(first.turn())
+        .expect("the turn ran");
+    assert!(
+        first.snapshot().calibration.is_some(),
+        "the fixture must have taught the counter something"
+    );
+
+    let dir = common::scratch("resumed-spend");
+    let path = dir.join("session.json");
+    std::fs::write(
+        &path,
+        serde_json::to_vec(&first.snapshot()).expect("a snapshot serializes"),
+    )
+    .expect("written");
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "--no-record", "-r"])
+        .arg(&path)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    child
+        .stdin
+        .take()
+        .expect("a pipe")
+        .write_all(b"/spend\n/budget\n")
+        .expect("the commands were sent");
+    let out = child.wait_with_output().expect("the program never ended");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("this run has spent 0 tokens"),
+        "the figure did not say which run it is: {said}"
+    );
+    // and the other half: the counter's learning came back with the snapshot, on the other basis
+    // from the spend above
+    assert!(
+        said.contains("the counter has learned from"),
+        "the resumed run's budget said nothing about its counter: {said}"
+    );
 }
 
 /// A run that was not asked to take `ctrl+c` subscribes to nothing.
@@ -2688,6 +2799,47 @@ async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
     assert!(
         !snapshot.items.is_empty(),
         "the snapshot carries the context"
+    );
+}
+
+/// A run told not to keep a record says so at the end of it, as `/restart` does.
+///
+/// note: the count of events a run ends on reads as a pointer to a record, and under `--no-record`
+/// there is no file to point at. RUNNING.md says the run says so, and said so of `/restart` only;
+/// the flag's own help says the path is the last thing printed, which under this flag is nowhere.
+///
+/// note: a run that sent nothing, because what is under test is the parting lines and not a turn.
+#[test]
+fn a_run_that_keeps_no_record_says_so_when_it_ends() {
+    let dir = common::scratch("unrecorded");
+
+    let out = std::process::Command::new(common::program())
+        .args(["--headless", "--no-record"])
+        .env("TMPDIR", &dir)
+        // no model and nothing typed, so nothing is asked of anybody - what is under test is the
+        // parting lines. A key is still wanted: the provider is built before the run
+        .env("KAMCHATKA_MODEL", "")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains("`--no-record`, so nothing was written"),
+        "the parting lines do not say the flag was given: {said}"
+    );
+    // the count is still there, and the records went to the stream a piped run writes them to, so
+    // the line is about the file and not about the session having gone nowhere
+    assert!(said.contains("events recorded"), "{said}");
+    assert!(
+        !dir.join("kamchatka").exists(),
+        "a record was written under `--no-record`"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("session.finished"),
+        "the record stream is the whole of what was kept"
     );
 }
 

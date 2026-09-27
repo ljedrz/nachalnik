@@ -446,7 +446,15 @@ async fn session() -> Result<()> {
         // note: the first session only. A `--message` asked again on every restart would make
         // `/restart` a way of putting the same question to the model for ever, which is the
         // opposite of what somebody types it to escape
-        if first && let Some(message) = (!args.message.is_empty()).then(|| args.message.join(" ")) {
+        //
+        // note: the text and not the arity, which is how a line down a pipe is judged: an empty
+        // one is nothing, and a script that hands over a variable it never set would otherwise
+        // pay a round trip and a failed turn for a request the provider refuses
+        if first
+            && let Some(message) = (!args.message.is_empty())
+                .then(|| args.message.join(" "))
+                .filter(|message| !message.trim().is_empty())
+        {
             app.ask(&message);
             app.start_turn();
         }
@@ -581,7 +589,11 @@ fn finish(app: &App, record: bool, logged: bool, outcome: Result<()>) -> Result<
         Some(Err(e)) => {
             let _ = writeln!(std::io::stderr(), "the session was not written: {e}");
         }
-        None => {}
+        // the fact `/restart` says at the other door, in the same words: the count above reads as
+        // a pointer to a record, and under this flag there is no file to point at. Not said about
+        // where the records went instead - a piped run writes them to stdout whatever else was
+        // asked for, and a drawn or a served one has nowhere
+        None => say("`--no-record`, so nothing was written"),
     }
 
     outcome
