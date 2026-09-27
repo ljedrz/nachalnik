@@ -518,7 +518,7 @@ fn writes(policy: &Careful) -> bool {
 /// of the directory, on a kernel with no `openat2` to stop it there. A loop is not that: every
 /// link in it has been seen, it leads nowhere, and the open refuses it, so it is answered where it
 /// is - inside or outside, like any other name.
-fn resolve(path: &Path) -> Option<PathBuf> {
+pub(crate) fn resolve(path: &Path) -> Option<PathBuf> {
     const LINKS: usize = 40;
 
     let mut existing = path.to_path_buf();

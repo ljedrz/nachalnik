@@ -1006,4 +1006,9 @@ fn a_read_only_path_inside_the_working_directory_is_refused() {
     let (ok, said) = run_from(&dir, &["--sandbox-read", "protected"], "/tools\n");
     assert!(!ok, "{said}");
     assert!(said.contains("--sandbox-read"), "{said}");
+
+    // not there yet, and as writable once it is
+    let (ok, said) = run_from(&dir, &["--sandbox-read", "not-yet"], "/tools\n");
+    assert!(!ok, "{said}");
+    assert!(said.contains("--sandbox-read"), "{said}");
 }

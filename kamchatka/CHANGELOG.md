@@ -48,6 +48,10 @@ minor bump may break you.
   done.** It was said only in the conversation, which exists after the MCP servers it names have
   been started - so a `kamchatka.json` in a cloned repository could run a program before anything
   said the file had been read. The conversation still says it.
+- **A `--sandbox-read` path that is not there yet is held to the same rule as one that is.** The
+  check that refuses a read-only path inside a writable one skipped a path it could not resolve,
+  so `--sandbox-read build` in a working directory with no `build` yet was accepted, and once
+  anything made it, it was writable while every screen called it read-only.
 
 ### added
 

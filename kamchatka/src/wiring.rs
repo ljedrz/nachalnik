@@ -393,16 +393,19 @@ impl Setup {
         // note: refused because it cannot be kept. Landlock only ever adds to what a process may
         // do, so a read-only path inside a writable one is writable to `shell`, and `fs` checks
         // the writable roots first - while every screen would say it was read-only
+        //
+        // note: resolved through its parent where it is not there yet, since it can be made
+        // afterwards and is then just as writable - by the tools themselves, among others
         if self.confine {
             let workdir = std::env::current_dir()
                 .map_err(|e| format!("could not find the working directory: {e}"))?;
             let writable: Vec<_> = std::iter::once(&workdir)
                 .chain(self.reachable.iter())
-                .filter_map(|path| path.canonicalize().ok())
+                .filter_map(|path| sandbox::resolve(&workdir.join(path)))
                 .collect();
             if let Some(nested) = self.readable.iter().find(|path| {
-                path.canonicalize()
-                    .is_ok_and(|path| writable.iter().any(|root| path.starts_with(root)))
+                sandbox::resolve(&workdir.join(path))
+                    .is_some_and(|path| writable.iter().any(|root| path.starts_with(root)))
             }) {
                 return Err(format!(
                     "{}: `--sandbox-read` cannot make a path read-only inside one the tools may \
