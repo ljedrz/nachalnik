@@ -791,10 +791,6 @@ impl Changes {
             // the two are opposites. An entry spent on a refusal is an entry that was there; a
             // model told "there was nothing of yours to walk back" reads that as never having made
             // the change, and the only other evidence is the counter moving under it
-            // note: which of the two it was, because the sentence is the one the model reads and
-            // the two are opposites. An entry spent on a refusal is an entry that was there; a
-            // model told "there was nothing of yours to walk back" reads that as never having made
-            // the change, and the only other evidence is the counter moving under it
             true if spent > 0 => format!(
                 "none of your {} change(s) could be walked {direction}, and the {} of them there \
                  were spent on it. `undo` and `redo` only move the changes this tool made; the \

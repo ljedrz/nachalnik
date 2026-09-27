@@ -454,9 +454,6 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                     // note: the clause the operator's own view puts beside that row, so a model
                     // reading either of them learns the same thing about the one rule that
                     // decides whether a command may open a socket
-                    // note: the clause the operator's own view puts beside that row, so a model
-                    // reading either of them learns the same thing about the one rule that
-                    // decides whether a command may open a socket
                     false => format!(
                         "{}{}",
                         tools.join(", "),

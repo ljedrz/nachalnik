@@ -849,13 +849,6 @@ fn full(
     if let Some(why) = protected(item, mine, own) {
         out.push_str(&format!("  not yours to move: {why}\n"));
     }
-    // note: what the moves will say about it, beside whatever its own metadata says. The metadata
-    // is a record of what was written when it was written - a pin this tool made, still reading
-    // `by: context` on an item the person has since pinned again - and a model reading it that
-    // way keeps believing the pin is its own and keeps being refused. The refusal itself is what
-    // says whose it is, and this is the same [`protected`] the move consults, so the two cannot
-    // come apart; the alternative was to leave the metadata out, which would hide a record
-    // somebody may be asking for
     // a turn that was recorded as an order is read back as one, block by block. This is the
     // thing `context` exists for and the one view of it that is not available anywhere else: the
     // request the model will be sent has the same parts in the same order, but by then the
