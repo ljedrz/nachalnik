@@ -492,6 +492,21 @@ async fn parameters_survive_a_restart() {
 
     let resumed = Kernel::resume(Config::default(), kernel.snapshot());
     assert_eq!(resumed.params(), params);
+    // and the resumed log says so, since `model.params` is what a log is read by for what is
+    // sent from now on: without it the parameters were in force and in no record of this run
+    let said: Vec<Event> = resumed
+        .history()
+        .into_iter()
+        .map(|record| record.event)
+        .collect();
+    assert!(
+        matches!(&said[..], [Event::SessionResumed { .. }, Event::ModelParamsChanged { params: carried }] if *carried == params),
+        "{said:?}"
+    );
+
+    // and a session with none says nothing about them
+    let bare = Kernel::resume(Config::default(), worked_session().await.snapshot());
+    assert_eq!(bare.history().len(), 1, "{:?}", bare.history());
 }
 
 /// Every seam that can be swapped says so, and says what was swapped.

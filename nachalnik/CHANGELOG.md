@@ -16,6 +16,12 @@ minor bump may break you.
   addition is now followed by the `context.changed` from `Active` to the state it arrived in, with
   its note, which is what a later `set_state` would have said. A field on `context.added` would
   have said it in one record, and adding one is a break to `Event`'s variants.
+- **A resumed session's log records the model parameters it came back with.** `Kernel::resume` set
+  them under the lock that holds them and said nothing, so a snapshot carrying `max_tokens: 5`
+  produced a log with no `model.params` in it and nothing that said what the next request would
+  carry. They are now announced as a `ModelParamsChanged` of their own, after the
+  `SessionResumed` that heads a resumed log, and a snapshot carrying none is silent - there was
+  nothing in force to say.
 - **One implausible usage figure no longer scales the counter to its bound for the rest of the
   session.** `Calibrating::observe` added every report to the totals it draws its correction from
   and clamped the ratio afterwards, so an endpoint reporting `prompt_tokens: 1e15` (or `u64::MAX`)

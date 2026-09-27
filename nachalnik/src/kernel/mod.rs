@@ -359,6 +359,12 @@ impl Kernel {
     /// the figures it comes back with are corrected rather than the stale ones it was saved with.
     /// That is a visible change in the numbers, and is what [`Kernel::recount`] before saving
     /// would have produced.
+    ///
+    /// note: Parameters come back with a [`Event::ModelParamsChanged`] of their own rather than
+    /// folded into [`Event::SessionResumed`], because a log is read for what is *in force* and a
+    /// resumed session that says so is one whose next request can be explained from the log alone.
+    /// It follows the resumption, which heads the log and is what tells a client this one is not
+    /// whole, and a snapshot carrying none says nothing, since nothing is in force.
     pub fn resume(mut config: Config, snapshot: Snapshot) -> Self {
         config
             .session_name
@@ -390,7 +396,10 @@ impl Kernel {
                 .write()
                 .restore(snapshot.items, snapshot.next_item, &*counter);
         }
-        *kernel.0.params.write() = snapshot.params;
+        // under the lock that sets them, held until the announcement below: the params are a
+        // restored piece of state, and `model.params` is how a log says what is in force
+        let mut params = kernel.0.params.write();
+        *params = snapshot.params;
         kernel.0.seen_calls.lock().extend(snapshot.used_calls);
         kernel
             .0
@@ -407,6 +416,16 @@ impl Kernel {
             items,
             tokens,
         });
+        // after `session.resumed`, which is the head of a resumed log and is what kamchatka's
+        // `log` tool reads to tell a resumed log from a drained one. Only when there is something
+        // to say: a resume carrying none has changed nothing, and `model.params` over an empty map
+        // is a change nobody made.
+        if !params.is_empty() {
+            kernel.emit(Event::ModelParamsChanged {
+                params: params.clone(),
+            });
+        }
+        drop(params);
 
         kernel
     }
