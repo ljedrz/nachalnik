@@ -3527,6 +3527,54 @@ async fn continue_after_a_finished_turn_asks_nothing() {
     assert!(run.prose.contains("nothing to continue"), "{}", run.prose);
 }
 
+/// A bare `/step` after a finished turn is declined as `/continue` is.
+///
+/// note: found live: `/step` twice after an answer asked the same question twice more.
+#[tokio::test]
+async fn a_bare_step_after_a_finished_turn_asks_nothing() {
+    let script = vec![
+        ModelResponse::text("forty-two"),
+        ModelResponse::text("asked again"),
+    ];
+    let run = run("what is six times seven?\n/step\n", script, |_| {}).await;
+
+    assert!(!run.prose.contains("asked again"), "{}", run.prose);
+    assert!(run.prose.contains("nothing to continue"), "{}", run.prose);
+}
+
+/// A context that ends on an answer with the machine idle - what `/load` and `-r` leave - is not
+/// asked about again either.
+#[tokio::test]
+async fn continue_over_a_loaded_answer_asks_nothing() {
+    let script = vec![ModelResponse::text("asked again")];
+    let run = run("/continue\n", script, |app| {
+        app.kernel
+            .push(ContextItem::user("what is six times seven?"));
+        app.kernel
+            .push(ContextItem::assistant("forty-two", Vec::new()));
+    })
+    .await;
+
+    assert!(!run.prose.contains("asked again"), "{}", run.prose);
+    assert!(run.prose.contains("nothing to continue"), "{}", run.prose);
+}
+
+/// An answer that was cut short is carried on from, which is what `/continue` is for.
+#[tokio::test]
+async fn continue_after_a_cut_short_answer_carries_on() {
+    let script = vec![
+        ModelResponse {
+            stop: StopReason::Length,
+            ..ModelResponse::text("forty")
+        },
+        ModelResponse::text("-two"),
+    ];
+    let run = run("what is six times seven?\n/continue\n", script, |_| {}).await;
+
+    assert!(run.prose.contains("-two"), "{}", run.prose);
+    assert!(!run.prose.contains("nothing to continue"), "{}", run.prose);
+}
+
 /// One answer does not run into the next on a person's half of the output.
 ///
 /// note: found live: a `/step` answered `42` straight onto the end of the previous answer's last

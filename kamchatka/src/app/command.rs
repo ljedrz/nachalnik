@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use nachalnik::{
-    Block, Calibration, Content, ContextId, ContextItem, ContextKind, ContextState, State,
+    Block, Calibration, Content, ContextId, ContextItem, ContextKind, ContextState, Role, State,
     StopReason, ToolCallId, selectors::Selector,
 };
 
@@ -115,6 +115,47 @@ impl App {
         }
     }
 
+    /// Why a turn started without a message would send the model nothing new, if it would.
+    ///
+    /// note: read off the projection rather than off the state, because the state does not know.
+    /// A request ending on the model's own answer, with no call left for a result to follow, is
+    /// that answer asked for again: the model repeats itself at the price of a request, and some
+    /// endpoints refuse a request ending on a model turn outright. `/load` and `-r` leave the
+    /// machine `Idle` over a conversation ending that way, and a bare `/step` after a finished
+    /// turn is the same request as a `/continue` after one - while a turn whose answer was
+    /// excluded ends on the question again, and has something to answer.
+    ///
+    /// note: except an answer that was cut short - out of room, or interrupted - while the machine
+    /// still names it as where the turn stopped. A request ending on that answer is how carrying on
+    /// from it is built. A saved answer does not say why it ended, so after a `/load` it counts as
+    /// finished: asking for the rest is one message, and a repeat is a request.
+    fn nothing_to_answer(&self) -> Option<&'static str> {
+        let state = self.kernel.state();
+        // resting on calls or on a question, a step runs the one or waits on the other, and sends
+        // nothing either way
+        if !matches!(state, State::Idle | State::Finished { .. }) {
+            return None;
+        }
+        let projection = self.kernel.project();
+        let last = projection.messages.last()?;
+        if last.role != Role::Assistant || last.calls().next().is_some() {
+            return None;
+        }
+
+        match state {
+            State::Finished { item, stop }
+                if projection.included.last() == Some(&item)
+                    && !matches!(stop, StopReason::EndTurn | StopReason::Refusal) =>
+            {
+                None
+            }
+            _ => Some(
+                "the conversation ends on the model's own answer, so there is nothing to \
+                 continue; a message is what starts the next turn",
+            ),
+        }
+    }
+
     /// Runs one slash command.
     async fn command(&mut self, line: &str) {
         let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -128,21 +169,11 @@ impl App {
             // owns it and the loop puts the new one in its place; see `App::restart`
             "restart" => self.restart(),
             "help" | "?" => self.help(),
-            // note: not after a turn the model ended of its own accord. There is no rest of it to
-            // run: the request would be the conversation again with nothing new at its end, which
-            // spends a request on the model repeating itself - and a request ending on a model
-            // turn is one some endpoints refuse outright. A turn that ran out of room or was cut
-            // short does have a rest, and carries on
-            "continue" => match self.kernel.state() {
-                State::Finished {
-                    stop: StopReason::EndTurn | StopReason::Refusal,
-                    ..
-                } => self.say(
-                    Speaker::Note,
-                    "the model ended its turn, so there is nothing to continue; a message is what \
-                     starts the next one",
-                ),
-                _ => self.start_turn(),
+            // note: not where there is nothing new for the model to answer; see
+            // `App::nothing_to_answer`
+            "continue" => match self.nothing_to_answer() {
+                Some(why) => self.say(Speaker::Note, why),
+                None => self.start_turn(),
             },
             // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
             // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
@@ -193,18 +224,25 @@ impl App {
                 // running turn would put the something in the context before `start_step` had
                 // said whether it could step at all, and then decline the step in silence. A bare
                 // `/step` is left alone: advancing a paused turn is what it is for
+                //
+                // note: but not one that would send a request with nothing new in it, for the
+                // reason `/continue` declines one: one step from a finished turn is the same
+                // request as the rest of it
                 match (rest.is_empty(), self.busy || self.asked().is_some()) {
                     (false, true) => self.say(
                         Speaker::Note,
                         "a turn is running, so this message is not going in - send it on its own \
                          and it waits for the end of the turn, or `/stop` first",
                     ),
-                    (empty, _) => {
-                        if !empty {
-                            self.ask(rest);
-                        }
+                    (false, false) => {
+                        self.ask(rest);
                         self.start_step();
                     }
+                    (true, true) => self.start_step(),
+                    (true, false) => match self.nothing_to_answer() {
+                        Some(why) => self.say(Speaker::Note, why),
+                        None => self.start_step(),
+                    },
                 }
             }
             "request" => self.preview("the next request", request_preview(&self.kernel)),

@@ -248,6 +248,11 @@ minor bump may break you.
 - **`/load` says one `u` takes it back when it archived nothing.** Its note always said `u` twice,
   and with nothing of the session's own set aside the load is one undo, so the second took back
   something the person had done before it.
+- **A bare `/step`, and `/continue` after a `/load` or `-r`, no longer ask for an answer again.**
+  Only `/continue` straight after a finished turn was declined, so `/step` there, or `/continue`
+  over a loaded conversation ending on an answer, sent a request with nothing new at its end and
+  the model repeated itself. Both now decline whenever the conversation ends on the model's own
+  answer, except an answer cut short in this session, which still carries on.
 
 ## [0.15.1] - 2026-09-24
 
