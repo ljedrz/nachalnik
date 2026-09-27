@@ -1084,6 +1084,44 @@ async fn a_blank_line_from_a_client_is_not_a_message() {
     );
 }
 
+/// A blank line from a client that sends one anyway is refused by the session.
+///
+/// note: `--connect` and `--headless` drop a blank line, and the session trusted every client to:
+/// one sent over the wire by anybody else went into the context as an empty message and started a
+/// turn on it.
+#[tokio::test]
+async fn a_blank_line_sent_anyway_is_refused_by_the_session() {
+    let session = served(vec![ModelResponse::text("unused")], |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+
+    for line in ["", "   "] {
+        peer.send(Command::Submit {
+            line: line.to_owned(),
+        })
+        .await;
+        let heard = peer
+            .until(|message| {
+                matches!(
+                    message,
+                    Message::Failed { .. } | Message::Replied { .. } | Message::Done { .. }
+                )
+            })
+            .await;
+        assert!(
+            matches!(heard.last(), Some(Message::Failed { about, .. }) if about == "submit"),
+            "{line:?} was taken: {heard:?}"
+        );
+    }
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(app.kernel.items().is_empty(), "{:?}", app.kernel.items());
+}
+
 /// Two answers typed in one breath answer two questions, rather than the first one twice.
 #[tokio::test]
 async fn two_answers_typed_together_answer_two_questions() {

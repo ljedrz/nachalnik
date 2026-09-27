@@ -838,6 +838,13 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                 error,
             },
         }),
+        // note: refused here as well as at the two line drivers, because the protocol is open to
+        // any client and a blank line handed to `App::submit` is a message: an empty turn sent to
+        // the model, and a request some endpoints refuse outright
+        Command::Submit { line } if line.trim().is_empty() => Some(Message::Failed {
+            about: "submit".to_owned(),
+            error: "a blank line is not a message, so nothing was sent".to_owned(),
+        }),
         Command::Submit { line } => {
             // note: read before the line goes in, because handing one in is what replaces it.
             // There is room for exactly one queued message, so a second client typing during a turn

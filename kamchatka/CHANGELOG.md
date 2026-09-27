@@ -440,6 +440,10 @@ minor bump may break you.
 - **`--connect` exits `1` when the last turn failed**, as `--headless` does. It left with `0`
   whatever happened, so a script piping a question into a session whose model could not be
   reached read a success.
+- **A served session refuses a blank line.** `--connect` and `--headless` drop one, and the
+  session trusted every client to, so an empty or all-space `submit` from any other went into the
+  context as a message and started a turn on it. It is now answered with a `failed` saying nothing
+  was sent.
 
 ## [0.15.1] - 2026-09-24
 
