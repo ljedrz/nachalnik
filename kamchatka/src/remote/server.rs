@@ -153,14 +153,41 @@ impl Server {
     /// takes the file away, so a `SIGKILL` leaves a path every later `--serve` refuses for ever -
     /// and connecting to it distinguishes "a session is using this" from "nothing is" without
     /// taking anything away from anybody.
+    ///
+    /// note: and a third refusal, for a path holding something that is not a socket at all. A
+    /// mistyped `--serve` says the path of a file somebody cares about, and the two sentences above
+    /// would name a regular file a socket left by a killed session and tell whoever read it to
+    /// remove it - so what is actually there is said instead, and only a socket is offered as one.
     async fn unix(path: &str) -> Result<Self, String> {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+        use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _};
 
         let path = std::path::PathBuf::from(path);
-        if path.exists() {
+        // note: `symlink_metadata` and not `exists`, which follows a link and so sees nothing at
+        // all where one points nowhere - the one case that then reached the bind and came back as
+        // a bare `Address already in use`. A link at this path is named as a link and refused
+        // rather than followed, and that is a decision: `Drop` takes the file away by the device
+        // and inode the bind made, which for a link would be the link's and never the socket's, so
+        // a session served through one would leave the socket behind for every later `--serve` to
+        // refuse. The address a session is served on is its own path.
+        if let Ok(there) = std::fs::symlink_metadata(&path) {
+            let what = match there.file_type() {
+                socket if socket.is_socket() => None,
+                kind if kind.is_dir() => Some("a directory"),
+                kind if kind.is_symlink() => Some("a link"),
+                _ => Some("a file"),
+            };
+            if let Some(what) = what {
+                return Err(format!(
+                    "there is {what} at {}, and it is not a socket; a socket file is what \
+                     `--serve` makes, and nothing here would take this away",
+                    path.display()
+                ));
+            }
+
             return Err(match tokio::net::UnixStream::connect(&path).await {
                 Ok(_) => format!(
-                    "there is a session listening at {}; attach to it with `--connect unix:{}`",
+                    "there is a session listening at {}; attach to it with \
+                     `--connect unix:{}`",
                     path.display(),
                     path.display()
                 ),

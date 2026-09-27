@@ -158,6 +158,20 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
         .collect()
 }
 
+/// What else was typed on a command line that also has `--serve`, and does not apply to it.
+///
+/// note: two, and read off the matches rather than declared on `serve` beside the two it already
+/// names. Both are read by a loop a served session does not have, and an argument dropped on the
+/// floor is worse than one refused: `--deadline 60` beside `--serve` reads as a run that ends by
+/// itself, and what it got is a session that serves for ever.
+fn unserved(matches: &clap::ArgMatches) -> Vec<String> {
+    ["deadline", "on_ask"]
+        .into_iter()
+        .filter(|id| matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine))
+        .map(|id| format!("`--{}`", id.replace('_', "-")))
+        .collect()
+}
+
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
     let begun = tokio::time::Instant::now();
@@ -208,11 +222,23 @@ async fn session() -> Result<()> {
     // file it may have made is taken away again by `Server`'s own `Drop`, so failing after this
     // point leaves nothing behind
     let mut server = match &args.serve {
-        Some(address) => Some(
-            remote::Server::bind(address)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
-        ),
+        Some(address) => {
+            // note: before the bind, for the reason the whole of this comment gives: a refused
+            // argument must leave nothing listening either
+            let unserved = unserved(&matches);
+            anyhow::ensure!(
+                unserved.is_empty(),
+                "`--serve` reads none of {}: a served session is this program's and goes on for as \
+                 long as somebody wants it, and both of these belong to a headless run - a deadline \
+                 that ends it, and an answer for a question nobody is there to answer",
+                unserved.join(" and ")
+            );
+            Some(
+                remote::Server::bind(address)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+            )
+        }
         None => None,
     };
     // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is

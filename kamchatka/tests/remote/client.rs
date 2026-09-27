@@ -106,6 +106,89 @@ async fn an_answer_that_was_not_streamed_is_printed() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// Two answers in a row are two lines, as they are down a pipe.
+///
+/// note: the last answer very likely ended mid-sentence, so the next one used to start on the end
+/// of it - and in a client that is worse than it looks, because the break cannot be put where the
+/// turn began. A turn whose fragments never crossed the wire is fetched at the end, by which time
+/// every request of the batch has been read; what is written is one answer after another, and
+/// nothing in between says where one stopped.
+#[tokio::test]
+async fn two_answers_do_not_run_into_each_other() {
+    let session = served(
+        vec![
+            ModelResponse::text("the first answer"),
+            ModelResponse::text("the second answer"),
+        ],
+        |_| {},
+    )
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    let typed = tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt as _;
+
+        feed.write_all(b"ask something\n").await.expect("typed");
+        feed.write_all(b"ask again\n").await.expect("typed");
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(input))
+        .await
+        .expect("the client failed");
+    typed.await.expect("the typing panicked");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("the first answer\nthe second answer"),
+        "one answer ran into the next: {prose}"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A session that is replaced under a client is said to have ended, whichever door the client left
+/// by.
+///
+/// note: a `/restart` ends a session the way a `/quit` does, and a client whose input had already
+/// closed detaches the moment the session goes quiet - so the ending was told on a branch this
+/// client never reached, and the run finished with nothing said about it and a `0`. The session
+/// after a restart is not this client's to carry on into, so the line is the whole of what it can
+/// honestly say.
+#[tokio::test]
+async fn a_restarted_session_is_said_to_have_ended() {
+    let session = served(Vec::new(), |_| {}).await;
+
+    // note: the input closes behind the command, which is the shape that hid this: a client with
+    // somebody at it waits for the socket, and one with nobody at it leaves as soon as the session
+    // is quiet
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"/restart\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("the session has ended") && prose.contains("`--connect` again"),
+        "a restarted session ended in silence: {prose}"
+    );
+    assert!(
+        String::from_utf8_lossy(&records).contains("session.finished"),
+        "the ending was never sent"
+    );
+
+    let (app, outcome) = session.ended().await;
+    outcome.expect("the session failed");
+    assert!(
+        app.restart,
+        "a `/restart` from a client did not reach the loop"
+    );
+}
+
 /// A `/note` typed at a client says what went in, as it does down a pipe.
 #[tokio::test]
 async fn what_a_command_put_in_is_said() {
@@ -1162,4 +1245,58 @@ async fn two_answers_typed_together_answer_two_questions() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A connection that goes is not a session that said something unreadable.
+///
+/// note: `ECONNRESET` is the connection stopping, and nothing was in it - the sentence it used to
+/// be given sent whoever read it looking for a message the session never wrote, and named a
+/// session that was there and talking the whole time. What the line says now is what the
+/// connection did, which is the whole of what happened; a frame that is not one is a different
+/// fault and still says so, so the two are not merged either.
+#[tokio::test]
+async fn a_connection_that_stops_reads_as_a_connection_and_not_as_a_message() {
+    // note: a listener that writes half a frame and hangs up, which is the ordinary way a
+    // connection stops - and the same branch a reset takes, so the claim covers both
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = format!("tcp:{}", listener.local_addr().expect("its own address"));
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt as _;
+
+                let _ = stream.write_all(b"{\"is\":\"rec").await;
+                let _ = stream.shutdown().await;
+            });
+        }
+    });
+
+    // note: the input is held open, so the retry loop carries on after the drop rather than the
+    // client leaving on the first one; what this reads is the line under the first attempt
+    let (_feed, input) = tokio::io::duplex(256);
+    let heard = Heard::default();
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    let mut client = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose);
+    let run = client.run(&at, BufReader::new(input));
+    tokio::select! {
+        _ = run => {}
+        () = async {
+            while heard.text().matches("attaching again").count() < 2 {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        } => {}
+        () = tokio::time::sleep(PATIENCE) => panic!("the client never noticed the connection went"),
+    }
+    let prose = heard.text();
+
+    assert!(
+        !prose.contains("unreadable"),
+        "a connection that stopped was called a message nobody could read: {prose}"
+    );
+    assert!(
+        prose.contains("the connection stopped"),
+        "the connection going was not said: {prose}"
+    );
 }

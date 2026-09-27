@@ -217,8 +217,10 @@ what stands in the way, and what does not.
   below Linux 7.1, and from 7.1 by one that may write where it is, so a connection is refused when
   the peer is in the session of a command this process confined - each runs in one of its own -
   which covers anything it left running. What gets through is a process a command started under a
-  `setsid` of its own, and the `gateway` and `phone` relays, whose ports the session does not know:
-  a command allowed the network can reach those.
+  `setsid` of its own, the `gateway` and `phone` relays, and any *other* served session on the
+  machine: a session closes only the port it serves itself, and a connection carries no pid, so one
+  process's confined command is a client like any other to a session in another. Its addresses
+  belong to whoever started that one. A command allowed the network can reach all three.
 - **An MCP server or a local advisor.** These are programs the person chose, and they run
   unconfined with the person's environment and everything the person can read. What `kamchatka`
   controls is what their answers do: a server's tools are judged under the server's name, and what

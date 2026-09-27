@@ -342,23 +342,17 @@ impl<'a> Client<'a> {
                     // note: a session that has said it is finished closing its socket is not a
                     // connection that dropped, and the difference is a minute of reconnection
                     // attempts at something that did what it was told
-                    //
-                    // note: and said, because `/restart` ends a session this way too, and the one
-                    // that follows it at the same address is not this client's; see
-                    // `Client::session`
                     Ok(None) => match self.over {
-                        true => {
-                            let _ = self.fresh_line();
-                            let _ = self.tell(
-                                "the session has ended; if it was restarted, `--connect` again \
-                                 attaches to the new one",
-                            );
-                            Some(Left::Done)
-                        }
+                        true => Some(Left::Done),
                         false => Some(Left::Dropped),
                     },
+                    // note: a connection going is not a session saying something, and the two read
+                    // one way at a reader: a reset is `ECONNRESET` and nothing was said in it. A
+                    // sentence about what was unreadable sends whoever reads it looking for a
+                    // message the session never wrote - and the two are told apart by the wording
+                    // `protocol::read` gives each, which is why it is passed on as it stands
                     Err(e) => {
-                        let _ = self.tell(&format!("the session said something unreadable: {e}"));
+                        let _ = self.tell(&e);
                         Some(Left::Dropped)
                     }
                 },
@@ -427,6 +421,20 @@ impl<'a> Client<'a> {
             };
             if let Some(left) = ended {
                 let _ = self.fresh_line();
+                // note: said wherever this client leaves rather than on the branch that happened
+                // to notice. A `/restart` ends a session the way a `/quit` does, and a client
+                // whose input had already closed detaches the moment the session is quiet - so the
+                // ending was told to nobody, and the run read as one that had simply finished. Only
+                // a client that is leaving says it: a connection that went after the session said
+                // it was finished is one to pick back up, and the line belongs to the last one.
+                // The session after a restart is not this client's to carry on into; see
+                // `Client::session`
+                if self.over && matches!(left, Left::Done) {
+                    let _ = self.tell(
+                        "the session has ended; if it was restarted, `--connect` again attaches \
+                         to the new one",
+                    );
+                }
 
                 return left;
             }
@@ -502,10 +510,17 @@ impl<'a> Client<'a> {
             }
             // the words of a turn that was never streamed, which only this client asks for raw;
             // `?N` asks for the reading
+            //
+            // note: the fresh line is what stops one answer running into the next, and it is here
+            // rather than on `ModelRequested` because that is not where a whole answer begins: a
+            // turn whose fragments never crossed the wire is fetched at the end, and by then every
+            // request of the batch has been read, so a break taken on the request belongs to
+            // nothing that is written
             Message::Item {
                 body, raw: true, ..
             } => {
                 self.answered();
+                self.fresh_line()?;
                 self.write_answer(&body)
             }
             Message::Item { id, body, .. } => {
@@ -677,7 +692,12 @@ impl<'a> Client<'a> {
         }
 
         match event {
-            Event::ModelRequested { .. } => (self.streamed, self.fetching) = (false, false),
+            // note: the fresh line is `--headless`'s, for its reason: the last answer very likely
+            // ended mid-sentence, and the first fragment of this one was written straight after it
+            Event::ModelRequested { .. } => {
+                (self.streamed, self.fetching) = (false, false);
+                self.fresh_line()?;
+            }
             Event::ModelFinished { item, .. } => {
                 self.failed = false;
                 if !std::mem::take(&mut self.streamed) {

@@ -149,6 +149,15 @@ minor bump may break you.
 
 ### fixed
 
+- **`--serve` refuses the flags a served session never reads, and a `--connect` client says what
+  each thing was.** `--deadline` and `--on-ask` were accepted beside `--serve` and dropped, so
+  `--serve unix:PATH --deadline 60` served for ever beside a deadline reading as one; a path
+  holding a file, a directory or a link pointing nowhere was called a socket a killed session left,
+  and the sentence ended in "remove it" - so a mistyped address would have had somebody delete
+  their own file. A session replaced under a client, which is what `/restart` is, ended it through
+  a door the notice was never said at and left a `0`; a connection that stopped said the session
+  had said something unreadable, and nothing was said in it; and two answers in a row came out as
+  one line rather than two, as they are down a pipe.
 - **A request refused for its length names what is pinned.** The advice counted only the tool
   results a pass may take and the model's own turns, so a context whose room was held by a pinned
   attachment was told to exclude a few tokens of conversation against an overrun of thousands, with

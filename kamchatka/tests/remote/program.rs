@@ -340,6 +340,42 @@ fn the_phone_example_writes_every_session_out() {
     assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
 }
 
+/// `--serve` refuses the two flags a served session never reads, rather than serving for ever
+/// beside them.
+///
+/// note: `--deadline 60` beside `--serve` reads as a run that ends by itself, and what it got is a
+/// session serving until it is killed; `--on-ask` is a question answered by whoever is attached,
+/// and a served session has none of its own. `--connect` refuses what does not apply to it the
+/// same way, and this is the other half of that. The refusal is before the bind, so nothing is
+/// left listening: a path that is refused is not a session anybody can attach to.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_run_refuses_the_flags_it_does_not_read() {
+    let dir = crate::common::scratch("served-refused");
+    for (flag, value) in [("--deadline", "60"), ("--on-ask", "allow")] {
+        let socket = dir.join(format!("{}.sock", flag.trim_start_matches("--")));
+        let said = tokio::process::Command::new(crate::common::program())
+            .args(["--no-record", "-m", "nothing", "--serve"])
+            .arg(format!("unix:{}", socket.display()))
+            .arg(flag)
+            .arg(value)
+            .output()
+            .await
+            .expect("the program did not start");
+        let refused = String::from_utf8_lossy(&said.stderr);
+
+        assert!(!said.status.success(), "{flag} was accepted");
+        assert!(refused.contains(flag), "{flag} was not named: {refused}");
+        assert!(
+            refused.contains("goes on for as long as somebody wants it"),
+            "{refused}"
+        );
+        assert!(
+            !socket.exists(),
+            "it listened before refusing {flag}, and left the socket behind"
+        );
+    }
+}
+
 /// A client asked for a session that is not there says so, rather than trying five times.
 ///
 /// note: the distinction the retry loop turns on. A connection that *drops* may well come back, and

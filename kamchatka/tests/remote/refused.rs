@@ -240,6 +240,61 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A path holding something that is not a socket is named as what it is, so a mistyped `--serve`
+/// never tells anybody to delete their own file.
+///
+/// note: the sentence a stale socket gets ends in "remove it", which is right for a socket a
+/// killed session left and wrong for a file somebody mistyped the address of - and the two were the
+/// same sentence, because the only question asked was whether the path existed. The two links are
+/// here as well: one that points at a socket is refused rather than followed, and one that points
+/// nowhere used to reach the bind and come back as a bare `Address already in use`.
+#[tokio::test]
+async fn something_that_is_not_a_socket_is_named_rather_than_a_stale_one() {
+    let dir = std::env::temp_dir().join(format!("kamchatka-not-a-socket-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("no scratch directory");
+
+    for (what, path) in [
+        ("a file", dir.join("a.file")),
+        ("a directory", dir.join("a.dir")),
+        ("a link", dir.join("a.link")),
+        ("a link that points nowhere", dir.join("a.nowhere")),
+    ] {
+        match path.extension().and_then(|it| it.to_str()) {
+            Some("dir") => {
+                std::fs::create_dir(&path).expect("a directory");
+            }
+            Some("link") => {
+                std::os::unix::fs::symlink(dir.join("s.sock"), &path).expect("a link");
+            }
+            _ if what.ends_with("nowhere") => {
+                std::os::unix::fs::symlink(dir.join("nowhere"), &path).expect("a link");
+            }
+            _ => {
+                std::fs::write(&path, "somebody's own file").expect("a file");
+            }
+        };
+        let at = format!("unix:{}", path.display());
+
+        let Err(refused) = Server::bind(&at).await else {
+            panic!("it listened over {what}");
+        };
+        assert!(
+            refused.contains("not a socket"),
+            "{what} was called a socket somebody should remove: {refused}"
+        );
+        assert!(
+            !refused.contains("remove it"),
+            "{what} was told to remove it: {refused}"
+        );
+        assert!(
+            std::fs::symlink_metadata(&path).is_ok(),
+            "the refusal took the {what} away itself"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A command the session confined is not a client: it is hung up on, where the same client run
 /// unconfined is answered.
 ///
