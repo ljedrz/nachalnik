@@ -4089,10 +4089,29 @@ async fn an_answer_that_was_not_streamed_is_printed() {
 /// A run that fails still ends the last answer's line, so the caller's parting line is one of its
 /// own.
 ///
-/// note: a line that is not UTF-8 is what fails it here, read after an answer with no newline at
-/// its end: the loop leaves with an error, and it used to leave before ending that line.
+/// note: an input that breaks is what fails it here, read after an answer with no newline at its
+/// end: the loop leaves with an error, and it used to leave before ending that line.
 #[tokio::test]
 async fn a_run_that_fails_still_ends_the_answer_s_line() {
+    /// One line, and then a read that fails.
+    struct Breaks(Option<&'static [u8]>);
+
+    impl tokio::io::AsyncRead for Breaks {
+        fn poll_read(
+            mut self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            buf: &mut tokio::io::ReadBuf<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(match self.0.take() {
+                Some(line) => {
+                    buf.put_slice(line);
+                    Ok(())
+                }
+                None => Err(std::io::Error::other("the input broke")),
+            })
+        }
+    }
+
     let Wired {
         mut app,
         mut events,
@@ -4101,7 +4120,12 @@ async fn a_run_that_fails_still_ends_the_answer_s_line() {
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
     let ran = Headless::new(Grant::Deny, &mut records, &mut prose)
-        .run(&mut app, &mut events, &mut finished, &b"say it\n\xff\n"[..])
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            tokio::io::BufReader::new(Breaks(Some(b"say it\n"))),
+        )
         .await;
 
     let prose = String::from_utf8(prose).expect("the prose is text");
