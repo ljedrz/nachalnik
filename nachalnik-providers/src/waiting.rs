@@ -489,8 +489,12 @@ pub(crate) async fn sent(
 }
 
 /// Whether a status - or the code in an error object - is one that goes away by itself.
+///
+/// note: not the whole of the 500s. `501 Not Implemented` and `505 HTTP Version Not Supported` are
+/// a server saying what it does not do - the first is what a plain file server answers a `POST`
+/// with - and asking again only spends the doublings before saying so.
 fn passing(code: u64) -> bool {
-    code == 429 || (500..600).contains(&code)
+    code == 429 || ((500..600).contains(&code) && !matches!(code, 501 | 505))
 }
 
 /// Reads a whole body, watching the wait the way a stream is watched; `None` if somebody asked to
@@ -764,6 +768,17 @@ mod tests {
         let never_spoke = Unsent::Silent(PATIENCE).what_happened();
         assert!(!hung_up.is_empty() && !never_spoke.is_empty());
         assert_ne!(hung_up, never_spoke);
+    }
+
+    /// A server that is busy or failing is asked again, and one saying what it does not do is not.
+    #[test]
+    fn a_server_that_does_not_do_this_is_not_asked_again() {
+        for busy in [429, 500, 502, 503, 504, 529] {
+            assert!(passing(busy), "{busy}");
+        }
+        for definite in [400, 401, 404, 501, 505] {
+            assert!(!passing(definite), "{definite}");
+        }
     }
 
     /// note: the sentences a person actually reads when a model goes quiet. What it pins is the

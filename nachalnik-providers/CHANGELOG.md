@@ -19,6 +19,9 @@ minor bump may break you.
   and the URL - `error sending request for url (…)`, `builder error` - and the reason, such as
   `Connection refused` or `relative URL without a base`, was left in its chain, where a recorded
   error is never read. Both dialects now put the causes in the error's message.
+- **`501 Not Implemented` and `505 HTTP Version Not Supported` are not retried.** Every 5xx was
+  taken for a busy server and asked again with doublings, so an address serving something that
+  does not take a `POST` - a plain file server - sat through three waits before saying so.
 - **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
   context limit, and each held both locks together - `info` taking the limit first and `respond`
   the model first - so a caller reading `info` on one thread while a request began on another
