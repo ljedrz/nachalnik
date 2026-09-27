@@ -47,9 +47,15 @@ pub async fn attach(
         let mut command = tokio::process::Command::new(program);
         command.args(words);
 
-        let server = Server::spawn(name, command)
-            .await
-            .map_err(|e| format!("`{line}` did not answer the handshake: {e}"))?;
+        // note: told apart by what failed, because both arrive as `Error::Connect` and only the
+        // spawn fails with an I/O error of its own. A program that is not there never got as far
+        // as a handshake, and saying it did not answer one sends somebody looking at the server
+        let server = Server::spawn(name, command).await.map_err(|e| match &e {
+            nachalnik_mcp::Error::Connect(why) if why.is::<std::io::Error>() => {
+                format!("`{line}` could not be started: {why}")
+            }
+            _ => format!("`{line}` did not answer the handshake: {e}"),
+        })?;
         let tools = server
             .tools()
             .await
@@ -57,12 +63,23 @@ pub async fn attach(
         // note: refused rather than let stand, as a failed handshake is. Two servers under one
         // name - two `npx` lines with no `name=` - offer their tools under the same identifiers,
         // and installing the second would quietly take the first one's out from under it
+        //
+        // note: and a server offering one name twice is refused as well, and said as that. Nothing
+        // `name=command` does can separate its two tools
         let clashes = claim(&mut taken, &tools);
-        if !clashes.is_empty() {
+        let (elsewhere, twice): (Vec<String>, Vec<String>) =
+            clashes.into_iter().partition(|id| taken.contains(id));
+        if !elsewhere.is_empty() {
             return Err(format!(
                 "`{line}` offers {} under a name another server's tools already have; give each \
                  server its own with `name=command`",
-                clashes.join(", ")
+                elsewhere.join(", ")
+            ));
+        }
+        if !twice.is_empty() {
+            return Err(format!(
+                "`{line}` offers more than one tool called {}",
+                twice.join(", ")
             ));
         }
         offered.push(tools);

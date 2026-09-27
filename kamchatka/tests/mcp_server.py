@@ -42,6 +42,9 @@ def result_for(method, params):
             "serverInfo": {"name": "arithmetic", "version": "0.1.0"},
         }
     if method == "tools/list":
+        # `--twice` lists `add` a second time, for the refusal of a server that offers one name twice
+        if "--twice" in sys.argv[1:]:
+            return {"tools": TOOLS + TOOLS[-1:]}
         return {"tools": TOOLS}
     if method == "tools/call":
         args = params.get("arguments") or {}

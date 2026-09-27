@@ -381,6 +381,50 @@ async fn two_servers_under_one_name_are_refused() {
     assert!(left.is_empty(), "{left:?}");
 }
 
+/// A server offering one name twice is refused as that, and a program that is not there as one that
+/// could not be started - neither as the fault it is not.
+///
+/// note: the two arrived as "a name another server's tools already have", with one server running,
+/// and "did not answer the handshake" about a program that never ran.
+#[tokio::test]
+async fn a_server_is_refused_for_what_actually_went_wrong() {
+    let spec = spec!();
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    let attached = |spec: String| {
+        let wired = &wired;
+        async move {
+            kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[spec])
+                .await
+                .map(|servers| servers.len())
+        }
+    };
+
+    let twice = attached(format!("{spec} --twice")).await;
+    assert!(
+        twice
+            .as_ref()
+            .is_err_and(|why| why.contains("more than one tool called py__add")),
+        "{twice:?}"
+    );
+    let missing = attached("gone=/nowhere/server".to_owned()).await;
+    assert!(
+        missing
+            .as_ref()
+            .is_err_and(|why| why.contains("could not be started")),
+        "{missing:?}"
+    );
+}
+
 /// A restart holds the servers already running to the same rule: one whose tools would take
 /// another's identifiers is left out and said, rather than let displace them.
 ///

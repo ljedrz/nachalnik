@@ -137,6 +137,9 @@ minor bump may break you.
   tools are judged under its name in place of `mcp:call`, so either rule read as given and every
   call still went to the question - which a headless run answers `deny`. A `deny` of either is
   still consulted and still accepted.
+- **An MCP server that cannot be started says so**, where it said it did not answer the handshake,
+  and **one that lists a tool twice is told that**, where it was told another server's tools
+  already had the name.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
