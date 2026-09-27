@@ -237,6 +237,10 @@ minor bump may break you.
   `--serve` said the headless opening into the conversation, so every client that attached read
   that a question nobody can be asked is answered `deny` - the host's `--on-ask`, which a served
   session never reads - next to the line saying the session waits for an answer.
+- **`/load` of a session this one saved asks no call twice.** The loaded turns named calls this
+  session had already issued, so with the originals pinned, or put back with `/restore`, the
+  request carried the same `tool_call_id` twice. The loaded copies of those calls, and the results
+  answering them, now take new identifiers, and a note says how many.
 
 ## [0.15.1] - 2026-09-24
 

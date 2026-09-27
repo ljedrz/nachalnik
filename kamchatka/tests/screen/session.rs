@@ -441,6 +441,102 @@ async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A session loaded back into the one that saved it names calls this kernel already issued, and
+/// what is pinned - or put back afterwards - is still asking them. The loaded copies have to answer
+/// to new identifiers, or the request carries one `tool_call_id` twice.
+#[tokio::test]
+async fn a_session_loaded_into_itself_asks_no_call_twice() {
+    let dir = common::scratch("load-self");
+    let saved = dir.join("itself.json");
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("call_0", "peek", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.send("look").await;
+    harness.settle().await;
+
+    // the exchange pinned, so the load leaves it in the request beside the copy it brings
+    let exchange: Vec<_> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.calls().next().is_some() || item.kind.name() == "tool_result")
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(exchange.len(), 2, "the fixture must make one exchange");
+    harness
+        .app
+        .kernel
+        .set_state(exchange, ContextState::Pinned, None);
+
+    harness.send(&format!("/save {}", saved.display())).await;
+    harness.send(&format!("/load {}", saved.display())).await;
+
+    let asks_each_once = |harness: &Harness, exchanges: usize, when: &str| {
+        let request = harness.app.kernel.preview_request().expect("a request");
+        let mut asked: Vec<String> = request
+            .messages
+            .iter()
+            .flat_map(|message| message.calls().map(|c| c.id.0.clone()).collect::<Vec<_>>())
+            .collect();
+        let mut answered: Vec<String> = request
+            .messages
+            .iter()
+            .filter_map(|message| message.tool_call_id.as_ref().map(|id| id.0.clone()))
+            .collect();
+        assert_eq!(
+            asked.len(),
+            exchanges,
+            "{when}: every exchange goes out: {asked:?}"
+        );
+        asked.sort();
+        answered.sort();
+        assert_eq!(
+            asked, answered,
+            "{when}: every call is answered by its own result"
+        );
+        asked.dedup();
+        assert_eq!(
+            asked.len(),
+            exchanges,
+            "{when}: one identifier asked twice: {answered:?}"
+        );
+    };
+    asks_each_once(&harness, 2, "with the originals pinned");
+
+    // and nothing is destroyed: what the load set aside comes back beside the loaded copy
+    let archived: Vec<_> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.state == ContextState::Archived)
+        .map(|item| item.id)
+        .collect();
+    harness
+        .app
+        .kernel
+        .set_state(archived, ContextState::Active, None);
+    asks_each_once(&harness, 2, "with everything put back");
+
+    // and a second load of the same file does not answer to the first one's new names either; the
+    // exchanges saved pinned stay, so the original, the first copy and the second go out together
+    harness.send(&format!("/load {}", saved.display())).await;
+    asks_each_once(&harness, 3, "loaded twice");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Every figure on the screen has to be on one scale. A snapshot carries what its counter had
 /// learnt, and reading it in moves the correction under everything already counted - so the load
 /// has to count the items it brings *under* that correction and bring the rest onto it, or the

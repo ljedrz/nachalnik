@@ -4,9 +4,11 @@
 //! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
 //! and print them; nothing in this file is a capability the runtime had to grow.
 
+use std::collections::{HashMap, HashSet};
+
 use nachalnik::{
-    Calibration, ContextId, ContextItem, ContextKind, ContextState, State, StopReason,
-    selectors::Selector,
+    Block, Calibration, Content, ContextId, ContextItem, ContextKind, ContextState, State,
+    StopReason, ToolCallId, selectors::Selector,
 };
 
 use crate::{app::text::thousands, tools::Limits};
@@ -1478,12 +1480,20 @@ impl App {
             self.kernel.recalibrate(calibration);
         }
 
+        // a file this session saved, or one forked from the same conversation, names calls this
+        // kernel already issued - and what is pinned, or put back by `/restore`, is still asking
+        // them. Pushed as they are, the next request would carry each such `tool_call_id` twice,
+        // so the loaded copies take new ones, the call and the results answering it alike
+        let mut snapshot = snapshot;
+        let taken: HashSet<ToolCallId> = self.kernel.snapshot().used_calls.into_iter().collect();
+        let renamed = rename_taken_calls(&mut snapshot, &taken);
+
         let ids = self.kernel.push_all(snapshot.items);
-        // the turns just pushed carry call identifiers this kernel never issued, and nothing else
-        // would tell it so: a provider that numbers its calls from zero every turn would hand one
-        // of them back, the kernel would have nothing to compare it against, and the next request
-        // would carry the same `tool_call_id` twice. `-r` gets this from `Kernel::resume`; this is
-        // the same fact, said to a kernel that is already running
+        // the rest are identifiers this kernel never issued, and nothing else would tell it so: a
+        // provider that numbers its calls from zero every turn would hand one of them back, the
+        // kernel would have nothing to compare it against, and the next request would carry the
+        // same `tool_call_id` twice. `-r` gets this from `Kernel::resume`; this is the same fact,
+        // said to a kernel that is already running
         self.kernel.reserve_calls(snapshot.used_calls);
         self.kernel.set_params(snapshot.params);
 
@@ -1502,6 +1512,16 @@ impl App {
                 }
             ),
         );
+        if renamed != 0 {
+            self.say(
+                Speaker::Note,
+                format!(
+                    "this session had already used {} the loaded turns name, so their copies were \
+                     given new ones",
+                    plural(renamed, "call identifier"),
+                ),
+            );
+        }
     }
 
     /// Writes the session log and a snapshot that can be resumed from, at a path somebody gave.
@@ -1587,6 +1607,81 @@ fn no_such_command(name: &str) -> String {
             .to_owned(),
         other => format!("there is no `/{other}`; `/help` lists what there is"),
     }
+}
+
+/// Gives every call identifier in `snapshot` that `taken` holds a new one, the same new one
+/// wherever it appears, and returns how many were renamed.
+///
+/// note: an identifier is renamed in the calls, in the results that answer them and in
+/// `used_calls` alike, so the loaded turns still pair with each other and the reservation that
+/// follows covers the names they now carry.
+fn rename_taken_calls(snapshot: &mut nachalnik::Snapshot, taken: &HashSet<ToolCallId>) -> usize {
+    let mut unavailable: HashSet<ToolCallId> = taken.clone();
+    unavailable.extend(snapshot.used_calls.iter().cloned());
+    unavailable.extend(snapshot.items.iter().flat_map(|item| {
+        let result = match &item.kind {
+            ContextKind::ToolResult { call, .. } => Some(call.clone()),
+            _ => None,
+        };
+        item.calls().map(|call| call.id.clone()).chain(result)
+    }));
+
+    let mut renames: HashMap<ToolCallId, ToolCallId> = HashMap::new();
+    let mut rename = |id: &mut ToolCallId| {
+        if !taken.contains(id) {
+            return;
+        }
+        let new = renames
+            .entry(id.clone())
+            .or_insert_with(|| {
+                let fresh = (1..)
+                    .map(|n| ToolCallId(format!("{}_{n}", id.0)))
+                    .find(|candidate| !unavailable.contains(candidate))
+                    .expect("an unbounded range has a name nothing holds");
+                unavailable.insert(fresh.clone());
+                fresh
+            })
+            .clone();
+        *id = new;
+    };
+
+    for item in &mut snapshot.items {
+        match &mut item.kind {
+            ContextKind::AssistantMessage { tool_calls, .. } => {
+                tool_calls.iter_mut().for_each(|call| rename(&mut call.id));
+            }
+            ContextKind::ToolResult { call, .. } => rename(call),
+            _ => {}
+        }
+        // a turn recorded as ordered blocks keeps its calls in its content, and only a turn with
+        // one to rename is rebuilt; the blocks share what they carry, so it is the list that is new
+        let ordered = match (&item.kind, item.content.as_blocks()) {
+            (ContextKind::AssistantMessage { .. }, Some(blocks)) => blocks,
+            _ => continue,
+        };
+        if !ordered
+            .iter()
+            .filter_map(Block::call)
+            .any(|call| taken.contains(&call.id))
+        {
+            continue;
+        }
+        let rebuilt: Vec<Block> = ordered
+            .iter()
+            .map(|block| match block {
+                Block::Call(call) => {
+                    let mut call = call.clone();
+                    rename(&mut call.id);
+                    Block::Call(call)
+                }
+                other => other.clone(),
+            })
+            .collect();
+        item.content = Content::Blocks(rebuilt.into());
+    }
+    snapshot.used_calls.iter_mut().for_each(&mut rename);
+
+    renames.len()
 }
 
 /// A session's path with the extension taken off, whichever of the two it was spelled with.
