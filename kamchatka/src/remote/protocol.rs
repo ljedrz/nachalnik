@@ -43,6 +43,30 @@ pub use crate::tools::Reached;
 /// changes nothing else.
 pub const MAX_LINE: usize = 32 * 1024 * 1024;
 
+/// The longest path a `unix:PATH` address may name, in bytes.
+///
+/// note: a field of the kernel's own rather than anything chosen here. A unix address is a
+/// `sockaddr_un`, and its `sun_path` is 108 bytes on Linux including the NUL that ends it - so a
+/// path of 108 or more cannot be bound, and the bind says so in the kernel's words ("path must be
+/// shorter than SUN_LEN") or not at all ("File name too long"), neither of which names the limit or
+/// a shorter place to put the socket. `RUNNING.md` opens this whole section with a path under
+/// `/run/user`, which is where a path of this size comes from: a deep runtime directory, a
+/// container's id, a project directory somebody walked up to.
+///
+/// note: stated as the largest path rather than the size of the field, so the refusal can be one
+/// sentence naming what was typed and what it has to be under.
+pub const MAX_PATH: usize = 107;
+
+/// Whether a `unix:` address is longer than the kernel can bind, and how long it is.
+///
+/// note: the same treatment [`MAX_LINE`] gets, and for the same reason: a limit nobody explains is
+/// a limit a person cannot act on. Checked by both ends rather than left to the bind, because
+/// `Server::unix` and [`crate::remote::Client::connect`] fail on the same path for the same reason
+/// and one of them is a client that cannot be told what a session refuses.
+pub fn overlong_path(path: &str) -> Option<usize> {
+    (path.len() > MAX_PATH).then_some(path.len())
+}
+
 /// Whether a framed message is longer than the other end will read, and how long it is.
 ///
 /// note: the newline is not part of what the reader measures. [`Frames`] holds the frame and

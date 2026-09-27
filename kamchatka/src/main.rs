@@ -158,29 +158,19 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
         .collect()
 }
 
-/// What else was typed on a command line that also has `--serve`, and does not apply to it.
-///
-/// note: two, and read off the matches rather than declared on `serve` beside the two it already
-/// names. Both are read by a loop a served session does not have, and an argument dropped on the
-/// floor is worse than one refused: `--deadline 60` beside `--serve` reads as a run that ends by
-/// itself, and what it got is a session that serves for ever.
-fn unserved(matches: &clap::ArgMatches) -> Vec<String> {
-    ["deadline", "on_ask"]
-        .into_iter()
-        .filter(|id| matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine))
-        .map(|id| format!("`--{}`", id.replace('_', "-")))
-        .collect()
-}
-
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
     let begun = tokio::time::Instant::now();
+    // whole, rather than taken apart here, because `--serve` asks the arguments which of the two
+    // it does not read and a settings file's answer is not in the matches; see
+    // `Given::unserved`
+    let given = Args::given()?;
     let Given {
         args,
         matches,
         found,
         filed,
-    } = Args::given()?;
+    } = &given;
     if args.print_config {
         // note: written rather than `print!`ed, which panics when the write fails. This is the
         // whole of what the flag asks for, and a stream nobody can write to is a place a script
@@ -205,7 +195,7 @@ async fn session() -> Result<()> {
     // attached to somebody else's session and then failed because *it* could not reach a provider
     // would be failing about a job that was never its own
     if let Some(address) = args.connect.clone() {
-        let ignored = also_typed(&matches);
+        let ignored = also_typed(matches);
         if !ignored.is_empty() {
             return Err(anyhow::anyhow!(
                 "`--connect` takes nothing else but `--on-ask`: the model, the key, the tools, \
@@ -227,14 +217,17 @@ async fn session() -> Result<()> {
     let mut server = match &args.serve {
         Some(address) => {
             // note: before the bind, for the reason the whole of this comment gives: a refused
-            // argument must leave nothing listening either
-            let unserved = unserved(&matches);
+            // argument must leave nothing listening either. Asked of the arguments rather than off
+            // the matches, because a settings file's `deadline` and `on-ask` are written into the
+            // arguments by the merge and leave nothing behind saying where they came from - so a
+            // check on the matches reads a file that says when the run should end as carrying
+            // nothing, and the session serves for ever without a word
+            let unserved = given.unserved();
             anyhow::ensure!(
                 unserved.is_empty(),
-                "`--serve` does not read {}: a served session is this program's and goes on for as \
-                 long as somebody wants it, while `--deadline` ends a headless run and `--on-ask` \
-                 answers a question nobody is there to answer",
-                unserved.join(" or ")
+                "`--serve` does not read {unserved}: a served session is this program's and goes \
+                 on for as long as somebody wants it, while `--deadline` ends a headless run and \
+                 `--on-ask` answers a question nobody is there to answer",
             );
             Some(
                 remote::Server::bind(address)

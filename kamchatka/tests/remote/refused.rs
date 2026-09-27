@@ -8,6 +8,7 @@ use kamchatka::remote::{
     Server,
     protocol::{self, Address, Command, Message},
 };
+use nachalnik::Grant;
 use tokio::io::AsyncWriteExt;
 
 use crate::{PATIENCE, Peer, quit, served};
@@ -139,6 +140,139 @@ async fn a_session_will_not_listen_where_anybody_could_reach_it() {
     };
     assert!(refused.contains("no authentication"), "{refused}");
     assert!(refused.contains("ssh -L"), "it refused without a way out");
+}
+
+/// A path too long to hold a socket is refused with the limit in it, and two shorter places.
+///
+/// note: the refusal the kernel gives is `path must be shorter than SUN_LEN` at 130 bytes and
+/// `File name too long (os error 36)` at 124 - neither names the limit, neither says how long the
+/// path was, and neither offers anywhere to put it, which is all somebody has to go on when the
+/// path came out of a container's working directory. `RUNNING.md` opens this section with a path
+/// under `/run/user`, so a path that size is what the documentation asks a reader to type.
+///
+/// note: no bind is attempted and no directory is needed. The whole of the claim is that the
+/// refusal arrives before the filesystem is touched, which is why it can be a path of 200 `k`s in
+/// a directory that does not exist.
+#[tokio::test]
+async fn a_path_too_long_for_a_socket_is_refused_with_the_limit_and_a_way_out() {
+    let path = "/tmp/".to_owned() + &"k".repeat(200);
+    let at = format!("unix:{path}");
+
+    let Err(refused) = Server::bind(&at).await else {
+        panic!("it bound a socket at a path the kernel cannot name");
+    };
+    // the count, the limit, and the two answers - a shorter place on disk or a port
+    assert!(refused.contains("205 bytes"), "{refused}");
+    assert!(
+        refused.contains(&protocol::MAX_PATH.to_string()),
+        "it refused without saying the limit: {refused}"
+    );
+    assert!(refused.contains("$XDG_RUNTIME_DIR"), "{refused}");
+    assert!(refused.contains("tcp:127.0.0.1:PORT"), "{refused}");
+    // and not the whole of it, which is what the finding was about: a refusal nobody can read is
+    // a refusal about a path they cannot copy
+    assert!(
+        !refused.contains(&"k".repeat(40)),
+        "it echoed the path back whole: {refused}"
+    );
+
+    // the same at the other end, because a client that cannot reach the socket is the one person
+    // who cannot tell a wrong path from a path nothing is listening at
+    let refused = kamchatka::remote::Client::new(Grant::Deny, &mut Vec::new(), &mut Vec::new())
+        .run(&at, "".as_bytes())
+        .await
+        .expect_err("it connected to a path that cannot hold a socket");
+    assert!(refused.contains("205 bytes"), "{refused}");
+    assert!(
+        refused.contains(&protocol::MAX_PATH.to_string()),
+        "it refused without saying the limit: {refused}"
+    );
+}
+
+/// A path the kernel *can* name is not refused for length, only for what is in the way.
+///
+/// note: the other side of the check above. A limit checked as `<=` rather than `<` would refuse
+/// the longest path that works, and a person shortening their path to satisfy a rule that was one
+/// byte out would never find the socket.
+#[test]
+fn a_path_at_the_limit_is_still_a_path_a_socket_can_hold() {
+    let at_limit = "/".to_owned() + &"k".repeat(protocol::MAX_PATH - 1);
+    assert_eq!(at_limit.len(), protocol::MAX_PATH);
+    assert_eq!(protocol::overlong_path(&at_limit), None);
+    // and one more byte is one too many
+    let over = format!("{at_limit}k");
+    assert_eq!(protocol::overlong_path(&over), Some(protocol::MAX_PATH + 1));
+}
+
+/// A projection over the cap is refused by name, rather than sent as a frame the client cannot read.
+///
+/// note: the *record* half of this is closed - a record over the cap goes out as
+/// `Message::Oversized`, names its sequence, and the client carries on. A projection is the other
+/// half, and unlike a record it cannot be skipped: a client with no projection has nothing. It was
+/// written with no size check at all, so a message past `MAX_LINE` in the context went out as a
+/// frame the reader refused - which closed the connection, and the client read a refused frame as a
+/// dropped one, and spent a minute reattaching to a session that had answered perfectly well every
+/// time before giving up saying the session was gone.
+///
+/// note: what a client can do about this is read the records without a projection, so the sentence
+/// says that. Abridging the projection is a decision about what every client is handed and is not
+/// taken here; see `POSTPONED.md`.
+///
+/// note: over a socket file rather than a loopback port, because a sandbox that refuses the port
+/// is a machine on which this whole suite cannot run, and one test that can is better than none.
+/// On a socket rather than in the tests above because this one is about what happens once a client
+/// is attached, which takes a session and a running loop.
+#[tokio::test]
+async fn a_projection_too_long_to_send_is_refused_rather_than_written() {
+    use crate::{Socket, served_over_a_socket};
+    use nachalnik::ContextItem;
+
+    let session = served_over_a_socket("oversized-projection", Vec::new(), |app| {
+        // one message larger than the cap, which is what makes the projection itself that long
+        app.kernel
+            .push(ContextItem::user("x".repeat(protocol::MAX_LINE)));
+    })
+    .await;
+
+    let mut socket = Socket::connect(&session.at).await;
+    socket.send(crate::attaching(None, None)).await;
+
+    let Message::Failed { about, error } = socket.recv().await else {
+        panic!("a projection no client can read was sent whole");
+    };
+    // named as itself, so a client does not read it as a drop and start a minute of attempts
+    assert_eq!(about, "projection");
+    assert!(error.contains("cannot be attached"), "{error}");
+    assert!(error.contains(&protocol::MAX_LINE.to_string()), "{error}");
+    // and told what it can do: the records are still there, and `inspect` is how one item is read
+    assert!(error.contains("records are still there"), "{error}");
+    assert!(error.contains("inspect"), "{error}");
+
+    // and the session is not lost: a client that asks for the records with a watermark rather than
+    // a projection is served, which is the way out the sentence points at
+    let mut socket = Socket::connect(&session.at).await;
+    socket
+        .send(crate::attaching(Some(session.kernel.last_seq()), None))
+        .await;
+    // a resume is answered with the standing messages first and the `done` last; see
+    // `Answered::standing`
+    let mut done = false;
+    for _ in 0..4 {
+        if matches!(socket.recv().await, Message::Done { .. }) {
+            done = true;
+            break;
+        }
+    }
+    assert!(done, "the records were refused along with the projection");
+
+    // ended from this connection rather than a fresh one, which cannot attach: this session's
+    // projection is over the cap, and that is the whole of what is under test above
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    session.ended().await.1.expect("the session failed");
 }
 
 /// An address without a scheme is refused rather than guessed at.

@@ -198,6 +198,20 @@ impl Server {
                 ),
             });
         }
+        // note: after the refusals above rather than before them, because they are the ones that
+        // matter to whoever reads them. A mistyped `--serve` over somebody's own file has to be
+        // answered as a file, whatever the path weighs - telling that person the path is too long
+        // sends them looking for a shorter directory while the file they nearly deleted sits there
+        // still. This one is about a path with nothing at it, which is the only case a length is
+        // the whole of the answer
+        if let Some(bytes) = protocol::overlong_path(&path.to_string_lossy()) {
+            return Err(format!(
+                "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
+                 has to be shorter than {} bytes - put it under `$XDG_RUNTIME_DIR` or in `/tmp`, or \
+                 serve on `--serve tcp:127.0.0.1:PORT`",
+                protocol::MAX_PATH
+            ));
+        }
         let listener = tokio::net::UnixListener::bind(&path)
             .map_err(|e| format!("could not listen at {}: {e}", path.display()))?;
         // note: after the bind, because there is nowhere earlier - the file is created by the bind
@@ -1361,13 +1375,16 @@ where
 
 /// A refusal, and which of the client's commands to name it as.
 ///
-/// note: two names for what one function refuses, because the two are not the same news. An
+/// note: three names for what one function refuses, because the three are not the same news. An
 /// `attach` refusal is mended by attaching afresh, which is what a client does with it; a `version`
 /// refusal is not mended by anything, and a client that treats it the same way reattaches, is
 /// refused identically, and gives up a minute later saying the session has not answered, when it
-/// answered at once. See [`crate::remote::Client`].
+/// answered at once. A `projection` refusal is a third kind: the session is answering perfectly
+/// well and it is this attach that cannot be served, because the projection is larger than a
+/// client reads - so attaching again gets the identical answer, and the only thing a client can do
+/// is read the records without one. See [`crate::remote::Client`].
 struct Refused {
-    /// The command to name it as: `attach`, or `version`.
+    /// The command to name it as: `attach`, `version`, or `projection`.
     about: &'static str,
     /// What went wrong.
     error: String,
@@ -1434,7 +1451,33 @@ async fn watermark<W: AsyncWrite + Unpin>(
                 .into());
         };
         let seq = attached.seq;
-        protocol::write(write, &Message::Attached(attached)).await?;
+        // note: the size check `flush` and `answer` both apply, and it is here because a projection
+        // is a frame like any other and this was the one write that did not ask. A message larger
+        // than `MAX_LINE` in the context makes the projection itself that long - unlike a record,
+        // which can be named and moved past, a projection cannot be skipped, so a client that
+        // cannot read it is a client with no session at all. Sent unchecked it is a frame the
+        // other end refuses, which closes the connection and reads as a drop, and the client
+        // spends a minute reattaching to a session that answered every time.
+        //
+        // note: refused by name rather than written and hoped for. What a client can do about this
+        // is read the records without a projection, so that is what the sentence says; abridging
+        // the projection is a decision about what every client is handed and is not taken here.
+        // See `POSTPONED.md`.
+        let projection = Message::Attached(attached);
+        let line = protocol::framed(&projection)?;
+        if let Some(bytes) = protocol::overlong(&line) {
+            return Err(Refused {
+                about: "projection",
+                error: format!(
+                    "this session cannot be attached: its projection is {bytes} bytes, more than \
+                     a client reads in one line ({}). The records are still there and are read \
+                     without a projection - `inspect ID` fetches any one item - but the whole \
+                     conversation at once does not fit in one line",
+                    protocol::MAX_LINE
+                ),
+            });
+        }
+        protocol::write_frame(write, &line).await?;
 
         return Ok((seq, voice));
     };

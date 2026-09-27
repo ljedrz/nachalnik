@@ -411,12 +411,35 @@ impl Args {
             let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
             // the path the way `Settings::read` puts it on its own errors: what `under` refuses
             // is a value in this file, and there are two places a file can be found
+            //
+            // the two a served session does not read, taken before `under` moves them into the
+            // struct, where nothing can tell a file's value from a default
+            //
+            // note: and only where the file's value is one this run would not otherwise have had.
+            // `--print-config` writes every key, so the file this program hands out to be edited
+            // carries `on-ask: deny` - which is the default, changes nothing, and refusing every
+            // `--serve` over it would break the very file the documentation tells a reader to
+            // write. A file saying `allow` is somebody's decision, and that is refused
+            let unserved = [
+                ("deadline", settings.deadline.is_some()),
+                (
+                    "on-ask",
+                    settings
+                        .on_ask
+                        .as_deref()
+                        .is_some_and(|asked| asked != "deny"),
+                ),
+            ]
+            .into_iter()
+            .filter_map(|(id, carried)| carried.then_some(id))
+            .collect();
             args = args
                 .under(settings, &matches)
                 .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
             filed = Some(Filed {
                 at: path,
                 matches: matches.clone(),
+                unserved,
             });
         }
 
@@ -687,6 +710,15 @@ pub struct Filed {
     pub at: std::path::PathBuf,
     /// What clap matched, which is the only thing that can say which arguments were *typed*.
     pub matches: clap::ArgMatches,
+    /// The keys this file carried that a served session does not read, as the argument's own name.
+    ///
+    /// note: asked here rather than read back off the struct, because the struct cannot say where
+    /// a value came from: `--on-ask` has a default, so a merged `Args` looks the same whether the
+    /// file set it or nobody did. What the file carried is the fact, and it is the fact the refusal
+    /// needs - a settings file is a person writing `deadline` down once rather than typing it every
+    /// day, which is exactly the case that gets dropped without a word. See
+    /// [`Given::unserved`].
+    pub unserved: Vec<&'static str>,
 }
 
 impl Filed {
@@ -699,6 +731,58 @@ impl Filed {
     pub fn typed(&self, name: &str) -> bool {
         self.matches.ids().any(|id| id.as_str() == name)
             && self.matches.value_source(name) == Some(ValueSource::CommandLine)
+    }
+}
+
+impl Given {
+    /// What this command line carries that a served session does not read, and where each came
+    /// from.
+    ///
+    /// note: the two a served session has no loop to read - `--deadline`, which ends a headless
+    /// run, and `--on-ask`, which answers a question nobody is there to answer. Read off the
+    /// arguments rather than off clap's matches alone, because a value out of a settings file is
+    /// written into [`Args`] by [`Args::under`] and leaves nothing behind saying it was not typed -
+    /// so a check on the matches sees a file's `deadline` as absent, and a run that serves for
+    /// ever beside a file saying when it should have ended says nothing at all.
+    ///
+    /// note: a file's value names the file, the way every other value out of one does. A person
+    /// writing `deadline` into a project's `kamchatka.json` is not looking at this run's command
+    /// line at all, so a refusal naming only `--deadline` would be a flag they never typed.
+    ///
+    /// note: a file's `on-ask: deny` is not among them, because that is the default and a served
+    /// run would have had it anyway - `--print-config` writes it, and refusing every `--serve`
+    /// over the file this program hands out would break the one it tells a reader to write. See
+    /// `Args::given`.
+    pub fn unserved(&self) -> String {
+        let typed = |id: &str| {
+            self.matches
+                .value_source(id)
+                .is_some_and(|source| source == ValueSource::CommandLine)
+        };
+        // the argument and the key it stands for beside it, because one is `on_ask` and the other
+        // is `on-ask`, and a refusal that mixed them up would name a setting nobody wrote
+        let mut said = Vec::new();
+        let mut filed = None;
+        for (id, key) in [("deadline", "deadline"), ("on_ask", "on-ask")] {
+            // typed first, because a value on the command line is somebody looking at this run,
+            // and a file's would only say where it was written down
+            if typed(id) {
+                said.push(format!("`--{}`", id.replace('_', "-")));
+            } else if let Some(from) = self.filed.as_ref()
+                && from.unserved.contains(&key)
+            {
+                said.push(format!("`{key}`"));
+                filed = Some(from.at.display().to_string());
+            }
+        }
+
+        match (said.is_empty(), filed) {
+            (true, _) => String::new(),
+            // the file named once however many of its keys were dropped, at the end of the clause
+            // rather than beside each: a path is long, and what somebody reads is what it is for
+            (false, Some(path)) => format!("{} in {path}", said.join(" or ")),
+            (false, None) => said.join(" or "),
+        }
     }
 }
 

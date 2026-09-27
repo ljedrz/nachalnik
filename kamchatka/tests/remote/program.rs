@@ -348,6 +348,14 @@ fn the_phone_example_writes_every_session_out() {
 /// and a served session has none of its own. `--connect` refuses what does not apply to it the
 /// same way, and this is the other half of that. The refusal is before the bind, so nothing is
 /// left listening: a path that is refused is not a session anybody can attach to.
+///
+/// note: and the same two out of a **settings file**, which is the case that was dropped. The check
+/// was `ValueSource::CommandLine`, and a value read out of a file is written into the arguments by
+/// the merge and leaves nothing behind saying where it came from - so a project whose
+/// `kamchatka.json` says `deadline` served for ever, beside a file saying when the run should end,
+/// and said nothing. A person writing a setting down once rather than typing it every day is
+/// exactly the case the refusal exists for, and least likely to be looking at this run's command
+/// line - so the file is named, the way every other value out of one is.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_served_run_refuses_the_flags_it_does_not_read() {
     let dir = crate::common::scratch("served-refused");
@@ -374,6 +382,78 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
             "it listened before refusing {flag}, and left the socket behind"
         );
     }
+
+    // and the same two written down in a file, which is where they are read most often
+    for (key, value) in [("deadline", "60"), ("on-ask", "allow")] {
+        let settings = dir.join(format!("{key}.json"));
+        std::fs::write(&settings, format!(r#"{{ "{key}": "{value}" }}"#)).expect("a settings file");
+        let socket = dir.join(format!("file-{key}.sock"));
+        let said = tokio::process::Command::new(crate::common::program())
+            .args(["--no-record", "-m", "nothing", "--serve"])
+            .arg(format!("unix:{}", socket.display()))
+            .arg("--config-file")
+            .arg(&settings)
+            .output()
+            .await
+            .expect("the program did not start");
+        let refused = String::from_utf8_lossy(&said.stderr);
+
+        assert!(!said.status.success(), "a file's `{key}` was accepted");
+        // the key as it is written, and the file it was written in: a refusal naming `--{key}`
+        // would be naming a flag nobody typed. The half of the sentence that explains why says the
+        // arguments by their own names, so only the clause naming what was dropped is read here
+        let named = refused
+            .split("a served session is this program's")
+            .next()
+            .unwrap_or_default();
+        assert!(named.contains(key), "the key was not named: {refused}");
+        assert!(
+            named.contains(&settings.display().to_string()),
+            "the file was not named: {refused}"
+        );
+        assert!(
+            !named.contains(&format!("--{key}")),
+            "it was refused as a flag rather than as a setting: {refused}"
+        );
+        assert!(
+            !socket.exists(),
+            "it listened before refusing a file's `{key}`, and left the socket behind"
+        );
+    }
+
+    // and the two the same file would carry with the *default* in them are not among the
+    // refusals: `--print-config` writes every key, so the file this program hands out to be
+    // edited says `on-ask: deny` and `deadline: null`, and refusing every `--serve` over it
+    // would break the one the documentation tells a reader to write
+    let settings = dir.join("defaults.json");
+    std::fs::write(
+        &settings,
+        r#"{ "on-ask": "deny", "deadline": null, "spend": 100000 }"#,
+    )
+    .expect("a settings file");
+    let socket = dir.join("defaults.sock");
+    let mut host = tokio::process::Command::new(crate::common::program())
+        .args(["--no-record", "-m", "nothing", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the program did not start");
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        socket.exists(),
+        "a file carrying only the defaults was refused, so the file `--print-config` writes \
+         cannot be used to serve"
+    );
+    let _ = host.kill().await;
 }
 
 /// A client asked for a session that is not there says so, rather than trying five times.

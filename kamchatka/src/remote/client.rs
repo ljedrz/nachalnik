@@ -78,6 +78,17 @@ pub struct Client<'a> {
     fetching: bool,
     /// The last record this client is sure it has.
     last: u64,
+    /// The last record this client has written to its own stream.
+    ///
+    /// note: a second watermark because a projection is the *stream's* mark rather than this
+    /// client's: a fresh attach is answered with where the log has got to and everything after it,
+    /// so `last` is that number and the records before it are in no message this client has seen.
+    /// They are the whole of what happened before it arrived - the `session.started` the kernel
+    /// emits while it is still being built, the turn a host answered before anybody was here - and
+    /// a `--connect` is documented as writing what `--headless` writes. So what has been *written*
+    /// is asked for separately, by `Client::catch_up`, and starts at nothing however far the log
+    /// has already got.
+    written: u64,
     /// The session those records came from, where this client has attached to one.
     ///
     /// note: this is what says whether there is anything to resume, as well as what a resume
@@ -184,6 +195,7 @@ impl<'a> Client<'a> {
             unstreamed: VecDeque::new(),
             fetching: false,
             last: 0,
+            written: 0,
             session: None,
             asking: VecDeque::new(),
             answering: VecDeque::new(),
@@ -385,6 +397,10 @@ impl<'a> Client<'a> {
                     // model is still writing. What it waits on is `Client::resting`, which reads
                     // what the session said rather than guessing
                     Ok(None) => {
+                        // note: the records are asked for from `follow` and not from here, and
+                        // that is where `Client::catch_up` explains it: a projection carries the
+                        // watermark, so an input that has closed before one arrived would ask
+                        // against nothing and write none of the log
                         self.detaching = true;
                         match self.settle(&mut write).await {
                             Ok(()) => self.resting().then_some(Left::Done),
@@ -448,6 +464,7 @@ impl<'a> Client<'a> {
             Message::Attached(attached) => self.arrived(&attached),
             Message::Record(record) => {
                 self.last = record.seq;
+                self.written = record.seq;
                 let line = serde_json::to_string(&record).map_err(|e| e.to_string())?;
                 writeln!(self.records, "{line}").map_err(|e| e.to_string())?;
                 self.records.flush().map_err(|e| e.to_string())?;
@@ -460,6 +477,10 @@ impl<'a> Client<'a> {
             // reconnection for the rest of the session
             Message::Oversized { seq, bytes } => {
                 self.last = seq;
+                // and the written mark with it, for the reason `Message::Oversized` exists: this
+                // client will never be sent this record, so a catch-up stopping short of it would
+                // ask for it again for the rest of the session and be named every time
+                self.written = seq;
                 self.fresh_line()?;
                 self.tell(&format!(
                     "record {seq} is {bytes} bytes, too long to send; it is in the session's log, \
@@ -600,6 +621,16 @@ impl<'a> Client<'a> {
                 // retried it would spend a minute on it and leave saying the session had not
                 // answered, when it answered at once with the sentence below
                 if about == "version" {
+                    self.fresh_line()?;
+
+                    return Err(format!("{about}: {error}"));
+                }
+                // a projection too large to send is the same shape for the same reason: the
+                // session answered, and attaching again gets the identical answer, so a client that
+                // retried it would read a refused frame as a drop and spend a minute against a
+                // session that is answering perfectly well. What a client *can* do is read the
+                // records, and the sentence says so
+                if about == "projection" {
                     self.fresh_line()?;
 
                     return Err(format!("{about}: {error}"));
@@ -960,7 +991,57 @@ impl<'a> Client<'a> {
             .await?;
         }
 
+        // note: on every message rather than where the input closes, because of what a projection
+        // is. It carries where the log has got to, so it is the first thing to say how many records
+        // this client has not been written - and an input that closed before it arrived would
+        // otherwise detach against a watermark of nothing and write none of them. A client with
+        // somebody at it asks for nothing, so this costs a comparison a turn
+        if self.detaching {
+            self.catch_up(write).await?;
+        }
+
         self.settle(write).await
+    }
+
+    /// Asks the session for every record this client has not written out yet, and writes them.
+    ///
+    /// note: the client side of what `--headless` does at the top of every turn of its loop, and
+    /// for the reason that loop is documented on. A `--connect` is a drop-in for it, and its
+    /// stdout is meant to be the same bytes `/save` writes - which is the whole of the session's
+    /// log, not the tail of it. A client that read no `Message::Record` at all wrote nothing, so
+    /// `printf '/budget\n' | kamchatka --connect` handed a script an empty file beside a summary
+    /// of a session on the other stream, and a script reading stdout for the record could not tell
+    /// the two apart.
+    ///
+    /// note: asked for rather than kept up to date as records arrive, because a projection is the
+    /// stream's mark and not this client's: a fresh attach is answered with where the log has got
+    /// to, and everything before that is in no message this client was ever sent. `since` is what
+    /// the protocol already answers with the records after it, so this is one more resume and no
+    /// new command.
+    ///
+    /// note: and only what has not been written, so this is free when there is nothing to fetch -
+    /// which is every turn of a session this client is watching, and the whole cost is one attach
+    /// on a client that is leaving.
+    async fn catch_up<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
+        // note: the `outstanding` as well as the watermark. A resume asked for is a resume owed an
+        // answer, and until that answer arrives `written` has not moved - so a second message in
+        // between would ask again, and the client would owe itself one more answer than the
+        // session will ever send
+        if self.written >= self.last || self.outstanding > 0 {
+            return Ok(());
+        }
+        // note: a resume rather than a fresh attach, so the session sends the records and not a
+        // projection: the projection is the thing a client is leaving, and asking for it again
+        // would print the whole conversation a second time
+        self.say_to(
+            write,
+            Command::Attach {
+                since: Some(self.written),
+                session: self.session.clone(),
+                version: Some(protocol::VERSION),
+            },
+        )
+        .await
     }
 
     /// Answers whatever is still being asked, once there is nobody here to ask.
@@ -1055,10 +1136,22 @@ impl<'a> Client<'a> {
 /// Opens whichever kind of connection the address asks for.
 async fn connect(address: &str) -> Result<super::Connection, String> {
     match protocol::address(address)? {
-        Address::Unix(path) => tokio::net::UnixStream::connect(path)
-            .await
-            .map(super::Connection::Unix)
-            .map_err(|e| format!("could not reach {path}: {e}")),
+        Address::Unix(path) => match protocol::overlong_path(path) {
+            // note: the same refusal the bind gives, and said before the connect, because a path
+            // this long is refused by the kernel with a sentence naming neither the limit nor a
+            // shorter place - and a client that cannot reach the socket is the one person who
+            // cannot tell a wrong path from a path nothing is listening at
+            Some(bytes) => Err(format!(
+                "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
+                 has to be shorter than {} bytes - ask for the socket under `$XDG_RUNTIME_DIR` or \
+                 in `/tmp`",
+                protocol::MAX_PATH
+            )),
+            None => tokio::net::UnixStream::connect(path)
+                .await
+                .map(super::Connection::Unix)
+                .map_err(|e| format!("could not reach {path}: {e}")),
+        },
         Address::Tcp(host) => tokio::net::TcpStream::connect(host)
             .await
             .map(|stream| {

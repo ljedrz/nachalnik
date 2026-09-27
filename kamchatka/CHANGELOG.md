@@ -149,6 +149,35 @@ minor bump may break you.
 
 ### fixed
 
+- **`--serve` refuses a settings file's `deadline` and a non-default `on-ask` too, naming the
+  file.** The check was for a value *typed*, so the two a project writes into its `kamchatka.json`
+  were merged into the arguments and dropped: a run served for ever beside a file saying when it
+  should have ended, saying nothing, and a question the file said to answer `allow` was never
+  answered at all. Both are refused as the settings they are, with the path beside them. A file's
+  `on-ask: deny` is left alone — it is the default, and `--print-config` writes it, so refusing it
+  would break the file the documentation tells a reader to write.
+- **A `--connect` client with nothing to do writes the log it was watching.** A record reached a
+  client's stdout only as a `Message::Record` crossed the wire, so a client that attached, had
+  nothing to type and left wrote no records at all - where the same client typing one `/budget`
+  wrote the whole log behind it, and `--headless` writes the whole log either way. A projection
+  carries the conversation and a count of the records, not the records, so `stdout` was not
+  `/save`'s bytes for a client with nothing to do. It now asks the session for the ones it has
+  not written, on the resume the protocol already answers with the records after a watermark.
+- **A projection over the line limit is refused by name rather than sent as a frame the client
+  cannot read.** `Message::Attached` was written with no size check, where a record and an
+  `inspect` are both held to one - so a message larger than `MAX_LINE` in the context went out as a
+  frame the reader refused, which closed the connection, and a client read that as a dropped one
+  and spent a minute reattaching to a session that had answered perfectly well before giving up
+  saying the session was gone. The attach is refused as a `projection` and says what a client can
+  do instead: the records are still there, and `inspect` fetches any one item. Abridging a
+  projection is a decision about what every client is handed and is not taken here.
+- **A `--serve` path too long for a socket is refused with the limit in it, and a shorter place to
+  put it.** A `unix:` path of 108 bytes or more cannot be bound, and the kernel's own refusal names
+  neither the limit nor the length - `path must be shorter than SUN_LEN`, or a bare `File name too
+  long` - so a path out of a container's working directory or a deep `/run/user` directory was
+  refused with the whole of itself echoed back. The count, the limit, `$XDG_RUNTIME_DIR` or `/tmp`
+  and `tcp:127.0.0.1:PORT` are what `--serve` says now, and `--connect` says the same rather than
+  reporting a path it could never have reached.
 - **The `y` or `n` a script answers `/compact` with is not a message.** `--headless` takes the pass
   on the `/compact` line itself, so the next line is the answer to a question nothing asked; read as
   a message it started a turn, and the model spent a request on a letter. A bare `y` or `n`

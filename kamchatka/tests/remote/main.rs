@@ -116,18 +116,32 @@ async fn served_at(
     script: Vec<ModelResponse>,
     setup: impl FnOnce(&App),
 ) -> Served {
+    served_on(name, at, "tcp:127.0.0.1:0", script, setup).await
+}
+
+/// The same, listening where the caller says rather than on a loopback port.
+///
+/// note: the address is a parameter rather than port zero, so a suite that cannot bind a loopback
+/// socket - a sandbox, a machine whose network is confined - can still exercise everything above
+/// the transport. A socket file under [`common::scratch`] is short enough for `sun_path` and is
+/// what `--serve` prefers anyway, so it is the one to reach for.
+async fn served_on(
+    name: Option<&str>,
+    endpoint: &str,
+    listen: &str,
+    script: Vec<ModelResponse>,
+    setup: impl FnOnce(&App),
+) -> Served {
     let Wired {
         mut app,
         mut events,
         mut finished,
-    } = wired_at(name, at, script);
+    } = wired_at(name, endpoint, script);
     setup(&app);
 
     // note: port zero, so the kernel picks one nothing else is using and `Server::address` is what
     // says which. A fixed port in a test suite is a suite that fails when somebody runs it twice
-    let mut server = Server::bind("tcp:127.0.0.1:0")
-        .await
-        .expect("nothing would listen");
+    let mut server = Server::bind(listen).await.expect("nothing would listen");
     let at = server.address();
     let kernel = app.kernel.clone();
     let loop_ = tokio::spawn(async move {
@@ -139,12 +153,27 @@ async fn served_at(
     Served { at, kernel, loop_ }
 }
 
+/// The same, on a socket file under a directory of this test's own.
+///
+/// note: a socket path has a hard limit of about a hundred bytes, and `common::scratch` is under
+/// the target directory rather than under `/tmp` for that reason - so a name of this test's own is
+/// a path a socket fits in, and a test that needs a served session on a machine that cannot bind a
+/// loopback port has somewhere to serve it.
+async fn served_over_a_socket(
+    name: &str,
+    script: Vec<ModelResponse>,
+    setup: impl FnOnce(&App),
+) -> Served {
+    let path = common::scratch(name).join("s.sock");
+    let at = format!("unix:{}", path.display());
+    served_on(None, CLOSED, &at, script, setup).await
+}
+
 /// The same `Setup` the headless suite uses, for the same reason: what these want is what
 /// `main.rs` wants, minus the six tools and the child process it takes to ask Landlock anything.
 fn wired(script: Vec<ModelResponse>) -> Wired {
     wired_as(None, script)
 }
-
 /// The same, under a name of the test's own where it has one.
 fn wired_as(name: Option<&str>, script: Vec<ModelResponse>) -> Wired {
     wired_at(name, CLOSED, script)
@@ -172,6 +201,57 @@ fn wired_at(name: Option<&str>, at: &str, script: Vec<ModelResponse>) -> Wired {
 struct Peer {
     lines: protocol::Frames<BufReader<tokio::net::tcp::OwnedReadHalf>>,
     write: tokio::net::tcp::OwnedWriteHalf,
+}
+
+/// One end of a connection over a socket file rather than a port.
+///
+/// note: only for the tests that cannot use a loopback port - a machine whose network is confined,
+/// or a sandbox that refuses the bind. The protocol is the same on both, so this is [`Peer`] with
+/// a different read half, and only the tests that need it ask for it rather than the suite paying
+/// for a transport not every machine can bind.
+struct Socket {
+    lines: protocol::Frames<BufReader<tokio::net::unix::OwnedReadHalf>>,
+    write: tokio::net::unix::OwnedWriteHalf,
+}
+
+impl Socket {
+    /// Connects over a socket file, and says nothing.
+    async fn connect(at: &str) -> Self {
+        let Ok(Address::Unix(path)) = protocol::address(at) else {
+            panic!("{at} is not a socket file");
+        };
+        let (read, write) = tokio::net::UnixStream::connect(path)
+            .await
+            .expect("nothing was listening")
+            .into_split();
+
+        Self {
+            lines: protocol::Frames::new(BufReader::new(read)),
+            write,
+        }
+    }
+
+    /// Says something.
+    async fn send(&mut self, command: Command) {
+        protocol::write(&mut self.write, &command)
+            .await
+            .expect("the session stopped listening");
+    }
+
+    /// The next message, or a failure saying none came.
+    async fn recv(&mut self) -> Message {
+        self.next()
+            .await
+            .expect("the connection closed with nothing left on it")
+    }
+
+    /// The next message, where the connection closing is an answer too.
+    async fn next(&mut self) -> Option<Message> {
+        tokio::time::timeout(PATIENCE, protocol::read(&mut self.lines))
+            .await
+            .expect("nothing arrived")
+            .expect("the session said something unreadable")
+    }
 }
 
 impl Peer {
@@ -363,6 +443,20 @@ async fn quit(at: &str) {
         line: "/quit".to_owned(),
     })
     .await;
+}
+
+/// Ends a session served on a socket file, for the tests that cannot use a loopback port.
+async fn quit_over_a_socket(at: &str) {
+    let mut socket = Socket::connect(at).await;
+    socket.send(attaching(None, None)).await;
+    // the attach is answered before the next command is read, so a line sent straight after it
+    // would arrive on a connection still handing over a projection
+    while !matches!(socket.recv().await, Message::Attached(_)) {}
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
 }
 
 /// Runs `--connect` against a socket with these lines typed at it, and waits for it.

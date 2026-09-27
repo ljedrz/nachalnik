@@ -66,6 +66,88 @@ async fn the_client_writes_the_records_and_the_prose() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A client that had nothing to do writes the log it was watching, where one that typed a question
+/// always did.
+///
+/// note: what made this a defect is not that the stream was short but that it was *selectively*
+/// short. A record reached a client's stdout only as a `Message::Record` crossed the wire, so a
+/// client that attached, had nothing to do and left wrote nothing at all - while the same client
+/// typing `/budget` wrote the whole log behind it, and `--headless` writes the whole log in both
+/// cases. A projection carries the conversation and a count of the records; it does not carry them.
+///
+/// note: so the client asks for the ones it has not written, on a resume rather than a fresh
+/// attach, which is the command the protocol already answers with the records after a watermark.
+/// The assertion is about the *first* record, which is the one no message ever carried: the
+/// `session.started` the kernel emits while it is still being built, before anybody could attach.
+///
+/// note: over a socket file, so a machine that cannot bind a loopback port can still run it. A
+/// `/note` is typed by a second connection rather than by this one, because the whole of what is
+/// under test is a client that types nothing.
+#[tokio::test]
+async fn a_client_with_nothing_to_do_still_writes_the_log() {
+    use crate::{Socket, quit_over_a_socket, served_over_a_socket};
+
+    let session = served_over_a_socket("client-records", Vec::new(), |_| {}).await;
+
+    // a record written by somebody else, so the log this client is watching is not one it made
+    let mut watch = Socket::connect(&session.at).await;
+    watch.send(crate::attaching(None, None)).await;
+    while !matches!(watch.recv().await, Message::Attached(_)) {}
+    watch
+        .send(Command::Submit {
+            line: "/note something to be in the log".to_owned(),
+        })
+        .await;
+
+    // and a client that types nothing at all
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, "".as_bytes()),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let records = String::from_utf8(records).expect("the records are text");
+
+    // the conversation is printed as it always was - a note reads in a projection as the item it
+    // became, which is the half of this that was never broken
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("note (memory)"), "{prose}");
+    // and the log is written out rather than summarised
+    assert!(
+        !records.is_empty(),
+        "a client with nothing to do wrote nothing"
+    );
+    let events: Vec<_> = records
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<nachalnik::Record>(line).expect("every line is a record")
+        })
+        .collect();
+    // in order, from the beginning: the first is the record that predates any client, and it is
+    // the one no message this client was sent could have carried
+    assert_eq!(events[0].event.name(), "session.started");
+    assert!(
+        events
+            .iter()
+            .any(|record| record.event.name() == "context.added"),
+        "{records}"
+    );
+    // and it is the whole of the log rather than the tail of it
+    let last = session.kernel.last_seq();
+    assert_eq!(
+        events.last().expect("a record").seq,
+        last,
+        "the client wrote {} of {last} record(s)",
+        events.len()
+    );
+
+    quit_over_a_socket(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A model that answers in one piece, with no fragment ahead of it.
 struct Whole(&'static str);
 

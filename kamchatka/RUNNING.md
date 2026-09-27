@@ -591,6 +591,19 @@ password database, and a path that quietly is not what it says is worse than one
 A key nothing reads is an error naming it, not a line that quietly does nothing: the program stops
 and names the file, the key it did not know, and the keys it would have.
 
+A key that is read but does not apply to this run is an error too, and it says which file it came
+from. `deadline` and `on-ask` are the two, and `--serve` is the run they do not apply to: a served
+session goes on for as long as somebody wants it, and a question in it is answered by whoever is
+attached. An argument dropped on the floor is worse than one refused — `deadline: 300` beside
+`--serve` reads as a run that ends by itself — and a project's file is the most likely place for
+one to be dropped without a word, because whoever wrote it is not looking at this run's command
+line. So `--serve` refuses both, from the file as well as from the flags, naming the path.
+
+`on-ask: deny` in a file is not refused, because that is what the run would have used anyway, and
+`--print-config` above writes it: a file that is the shipped one with nothing changed in it is
+still a file a reader is meant to be able to serve from. Everything else in that key's place is
+refused, `allow` included.
+
 What it deliberately does not carry is anything belonging to one invocation rather than to the
 project: a message, `-r`, `-f`, and `--headless`, which decides for itself from whether stdout is a
 terminal.
