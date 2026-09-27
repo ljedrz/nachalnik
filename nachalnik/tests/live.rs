@@ -1606,7 +1606,7 @@ async fn a_picture_goes_out_as_a_picture() {
     const SQUARE: &str = "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAIAAADYYG7QAAAAPElEQVR42u3OsQkAAAgEsd9/ad1BLAQDVx9JJacKEBAQEBAQEBAQEBAQ0Gy0dQICAgICAgICAgICAvoFamNX93l2WWcMAAAAAElFTkSuQmCC";
 
     let Some((kernel, provider)) = wired_to("NACHALNIK_VISION_MODEL").await else {
-        eprintln!("no key in the environment; skipping");
+        eprintln!("no key or no NACHALNIK_VISION_MODEL in the environment; skipping");
         return;
     };
 
