@@ -657,10 +657,16 @@ fn a_file_allowed_on_its_own_can_be_opened() {
     .expect("and reads");
     assert_eq!(read, "hello");
 
+    let inode = |path: &std::path::Path| {
+        std::os::unix::fs::MetadataExt::ino(&std::fs::metadata(path).expect("it is there"))
+    };
+    let was = inode(&allowed);
     reach
         .replace(&resolved, b"changed")
         .expect("and is written, since it was allowed read-write");
     assert_eq!(std::fs::read_to_string(&allowed).unwrap(), "changed");
+    // a new file renamed over it would have been made in a directory nobody gave
+    assert_eq!(inode(&allowed), was, "written where it is");
 
     assert!(reach.open(&beside, Access::Reading).is_err());
     assert!(

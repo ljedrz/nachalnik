@@ -972,14 +972,19 @@ impl Reach {
     /// would keep the old contents; when the new file would not carry the old one's owner and group,
     /// which only root could set; when its owner has made it read-only, so that the open refuses it
     /// as it always did rather than a rename stepping round the refusal; when the directory will
-    /// not take a new file, or its name is too long to carry the temporary's suffix; and when what
-    /// is there is not a regular file. The permission bits are copied across. Extended attributes
-    /// are not.
+    /// not take a new file, or its name is too long to carry the temporary's suffix; when what
+    /// is there is not a regular file; and when the file was allowed on its own -
+    /// `--sandbox-allow notes.txt` - since the directory it is in was never given, and a new file
+    /// made there would be one a kill in the middle leaves outside the reach. The permission bits
+    /// are copied across. Extended attributes are not.
     pub fn replace(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {
         let was = std::fs::symlink_metadata(path).ok();
         let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
             return self.overwrite(path, content);
         };
+        if self.confined && self.root(path, Access::Writing)?.is_file() {
+            return self.overwrite(path, content);
+        }
         if was
             .as_ref()
             .is_some_and(|was| !was.is_file() || linked(was) || protected(was))
@@ -1196,7 +1201,7 @@ fn opened_beneath(
     // a file allowed on its own - `--sandbox-read notes.txt` - has nothing beneath it to hold an
     // open to, and opening it as a directory refused a file `Reach::allows` had just allowed. The
     // directory it is in is held instead and its name is the one step taken from there: the
-    // place a kernel without `openat2` opens and replaces it from as well
+    // place a kernel without `openat2` opens it from as well
     let root = match root.is_file() {
         true => root.parent().unwrap_or(root),
         false => root,

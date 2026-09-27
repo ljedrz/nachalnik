@@ -406,6 +406,10 @@ minor bump may break you.
   renamed the result over it, so the second kept only its own change while both answered that
   they had replaced one occurrence. A `write` or an `edit` now holds the file, by the path it
   resolves to, from the read through the rename.
+- **`fs write` to a file allowed on its own writes it where it is.** Under
+  `--sandbox-allow notes.txt` it made its new file in the directory beside it and renamed that
+  over it, writing in a directory the session was never given - and a process killed in between
+  left the new file there, outside the reach. The shell under Landlock could not.
 
 ## [0.15.1] - 2026-09-24
 
