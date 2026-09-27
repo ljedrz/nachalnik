@@ -302,24 +302,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
   says what a screen holds.
 
-- **Calling a partial ruleset confined.** On a kernel that enforces only part of the ruleset
-  Landlock answers `Partial`: below Linux 6.7 what it drops includes TCP, so the files are held and,
-  where the gate cannot be installed, the network is open; below 6.2 it drops more. The permissions
-  tab says "partly confined" and SECURITY.md gives the kernel floor, but the `shell` description the
-  model reads says "It runs confined" for a `Partial` one as for a `Full` one, hedging only with
-  "TCP may be closed", and a call says nothing. The choice is between the word and the hedge: keep
-  "confined" for `Full` and name what a `Partial` one leaves open, or leave the words and make the
-  hedge a statement where the kernel is known.
-
-- **A process that leaves the command's group outlives a stop.** Stopping a call signals the
-  command's process group, and a process run under `setsid`, or a daemon that detaches itself, is in
-  a group of its own: it runs on after the call has said it stopped. It stays confined and gated,
-  and a network attempt it makes after the call is refused unasked, so what it can reach does not
-  grow - but it is still running. Holding the whole tree takes a cgroup per command, which needs
-  one delegated to the user; a PID namespace per command, which needs a user namespace; or
-  becoming a child subreaper and reaping what is orphaned, which is new `unsafe`. Each has a
-  machine it does not work on, and which to fall back from is the decision.
-
 - **`/save` writes with the umask.** A snapshot saved over a file somebody had made private comes
   back readable by whoever the umask allows, where the record the session writes itself is kept in a
   directory only its owner can open. What waits is the rule: whether a save takes the target's
