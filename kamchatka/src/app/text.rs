@@ -9,7 +9,9 @@
 //! are read by a model through `context` rather than by a person off a screen - so a build with
 //! no screen needs them, and the feature that draws cannot own them.
 
-use nachalnik::{Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, Usage};
+use nachalnik::{
+    Block, Content, ContextItem, ContextKind, Event, GrantSource, Kernel, StopReason, Usage,
+};
 // what one item says *as sent*, which is the one of the three item views that needs a projection
 // to answer - and the one nothing but the screen asks for
 #[cfg(feature = "tui")]
@@ -656,6 +658,37 @@ pub(crate) fn charged(usage: &Usage) -> String {
             thousands(out as usize),
             thousands(thinking as usize)
         ),
+    }
+}
+
+/// Why a model stopped before it had finished, in a line; `None` where it finished, or where
+/// something else says why.
+///
+/// note: `interrupted` is the person's own act, which says nothing where it worked, and `cut off`
+/// is a stream the provider saw break, which its own notice reports. `unreported` is an endpoint
+/// that names no reason at all, and a line after every turn it answers would say nothing.
+pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
+    match stop {
+        StopReason::Length if asked => Some(
+            "the model reached its length limit while asking for a tool, so the last call may be \
+             cut short"
+                .to_owned(),
+        ),
+        StopReason::Length => Some(
+            "the answer stopped at the model's length limit; /continue asks for the rest"
+                .to_owned(),
+        ),
+        StopReason::Refusal => {
+            Some("the model declined: the endpoint reported a refusal or a filter".to_owned())
+        }
+        StopReason::Other(why)
+            if !matches!(why.as_str(), "interrupted" | "cut off" | "unreported") =>
+        {
+            Some(format!(
+                "the model stopped for a reason this program does not know: `{why}`"
+            ))
+        }
+        _ => None,
     }
 }
 

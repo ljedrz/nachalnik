@@ -1115,6 +1115,16 @@ impl App {
                 // gets drawn either way. A loop that prints fragments has to print the item
                 // itself; see `Headless::say`
                 self.caught_up(item);
+                // note: said, because nothing else says it. The screen draws a turn cut short as a
+                // turn, a pipe prints it and exits `0`, and the record's `stop` was the only place
+                // it was written down
+                let asked = self
+                    .kernel
+                    .item(item)
+                    .is_some_and(|turn| turn.calls().next().is_some());
+                if let Some(why) = text::stopped_short(&stop, asked) {
+                    self.say(Speaker::Note, why);
+                }
             }
             // the same fact from the two places that can know it, and the second line says which
             // of them it is: one is a count and the other is a guess

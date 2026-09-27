@@ -346,6 +346,12 @@ minor bump may break you.
   stream false`, or an endpoint that ignores being asked to stream - left nothing of the answer on
   stderr. A turn that streamed none of its words is printed from the recorded item now; the client
   fetches it with an `inspect`.
+- **A turn that stopped short says why.** A turn cut at the model's length limit, refused by the
+  endpoint, or stopped for a reason the provider named and this program does not know
+  (`eos_token`, say) read as a turn that had ended, on the screen and down a pipe, and only the
+  record's `stop` had it. Each now puts a line under the turn: the length limit with `/continue` for
+  the rest, or the warning that a call the model was writing when it hit the limit may be cut
+  short.
 
 ## [0.15.1] - 2026-09-24
 

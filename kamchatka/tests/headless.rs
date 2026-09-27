@@ -3793,6 +3793,35 @@ async fn continue_after_a_cut_short_answer_carries_on() {
     assert!(!run.prose.contains("nothing to continue"), "{}", run.prose);
 }
 
+/// A model that stopped short says why, and one that finished or was stopped says nothing.
+#[tokio::test]
+async fn a_turn_that_stopped_short_says_why() {
+    let stopped = |said: &str, stop| ModelResponse {
+        stop,
+        ..ModelResponse::text(said)
+    };
+    let script = vec![
+        stopped("Rivers are among", StopReason::Length),
+        stopped("", StopReason::Refusal),
+        stopped("a sentence", StopReason::Other("eos_token".to_owned())),
+        stopped("done", StopReason::EndTurn),
+        stopped("half", StopReason::Other("interrupted".to_owned())),
+    ];
+    let run = run("one\ntwo\nthree\nfour\nfive\n", script, |_| {}).await;
+
+    assert!(
+        run.prose
+            .contains("Rivers are among\n· the answer stopped at the model's length limit"),
+        "{}",
+        run.prose
+    );
+    assert!(run.prose.contains("reported a refusal"), "{}", run.prose);
+    assert!(run.prose.contains("`eos_token`"), "{}", run.prose);
+    assert!(!run.prose.contains("interrupted"), "{}", run.prose);
+    // and nothing after the turn that finished or the one that was stopped
+    assert_eq!(run.prose.matches("\n· ").count(), 3, "{}", run.prose);
+}
+
 /// One answer does not run into the next on a person's half of the output.
 ///
 /// note: found live: a `/step` answered `42` straight onto the end of the previous answer's last
