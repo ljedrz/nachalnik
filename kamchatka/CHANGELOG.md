@@ -274,6 +274,11 @@ minor bump may break you.
 - **`/load` says when it replaces the parameters.** The snapshot's took the place of the ones set
   here without a word, and `u` does not bring them back. The answer now names the parameters in
   force, or says the snapshot had none.
+- **`/attach`, `-f` and `/load` read only a file.** A pipe, a device or a file under `/proc`
+  reports a length of nothing, so it passed the size check and was read until it ended: a pipe
+  nobody wrote to held the session with no deadline or signal seen, and `/dev/zero` ran it out of
+  memory. Anything else is refused by name, and an attachment is read no further than its limit,
+  so a file growing under the read is bounded too.
 
 ## [0.15.1] - 2026-09-24
 

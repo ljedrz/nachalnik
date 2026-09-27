@@ -1515,8 +1515,15 @@ impl App {
             "" => "session.json".to_owned(),
             given => format!("{}.json", without_suffix(given)),
         };
-        let snapshot: nachalnik::Snapshot = match std::fs::read(&file)
+        // a file and nothing else, for the reason `attach::contents` gives: a pipe with nobody
+        // writing to it would be waited on by the thread this session runs on
+        let snapshot: nachalnik::Snapshot = match std::fs::metadata(&file)
             .map_err(|e| format!("could not read {file}: {e}"))
+            .and_then(|meta| match meta.is_file() {
+                true => Ok(()),
+                false => Err(format!("{file} is not a file, and a session is one")),
+            })
+            .and_then(|()| std::fs::read(&file).map_err(|e| format!("could not read {file}: {e}")))
             .and_then(|bytes| {
                 serde_json::from_slice(&bytes).map_err(|e| format!("{file} is not a session: {e}"))
             }) {

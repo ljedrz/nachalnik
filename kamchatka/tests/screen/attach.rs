@@ -242,6 +242,31 @@ async fn bytes_with_no_media_type_are_refused_and_the_context_is_unchanged() {
     );
 }
 
+/// Only a file is attached; a device, a pipe or a link to one is refused before it is read.
+///
+/// note: a length of nothing is what every one of them reports, so the size check passed them
+/// and the read went on until they ended - forever for a pipe nobody writes to, and until memory
+/// ran out for `/dev/zero`, on the thread the session runs on. `/dev/null` is the one of them a
+/// test can read without either, and it is refused by the same question.
+#[tokio::test]
+async fn a_device_is_refused_rather_than_read() {
+    let dir = scratch("attach-device");
+    let linked = dir.join("empty.md");
+    std::os::unix::fs::symlink("/dev/null", &linked).expect("a link");
+
+    let mut harness = Harness::new([ModelResponse::text("unreached")]);
+    for path in [std::path::Path::new("/dev/null"), &linked] {
+        harness.send(&format!("/attach {}", path.display())).await;
+
+        let screen = harness.flat();
+        assert!(
+            screen.contains(&format!("{} is not a file", path.display())),
+            "{screen}"
+        );
+    }
+    assert!(harness.app.kernel.items().is_empty(), "nothing went in");
+}
+
 /// `/note` is the same act with a message instead of a file: it goes in, and nothing is sent.
 ///
 /// note: what is checked is the *absence* of a turn as much as the presence of an item. The

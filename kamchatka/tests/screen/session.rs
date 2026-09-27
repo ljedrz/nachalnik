@@ -230,6 +230,26 @@ async fn load_takes_every_spelling_save_does() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `/load` reads a file and nothing else: a snapshot's name that leads to a device is refused.
+///
+/// note: for the reason `/attach` refuses one. A pipe with nobody writing to it would be waited on
+/// by the thread the session runs on, with no deadline or signal seen until somebody wrote.
+#[tokio::test]
+async fn load_refuses_what_is_not_a_file() {
+    let dir = common::scratch("load-device");
+    std::os::unix::fs::symlink("/dev/null", dir.join("empty.json")).expect("a link");
+
+    let mut harness = Harness::new([]);
+    harness
+        .send(&format!("/load {}", dir.join("empty").display()))
+        .await;
+
+    let said = harness.flat();
+    assert!(said.contains("empty.json is not a file"), "{said}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A directory is a place to put a session, not a name to give it.
 ///
 /// note: found by driving a headless run. `/save sessions/` took the whole argument as the stem

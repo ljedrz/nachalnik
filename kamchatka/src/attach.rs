@@ -77,28 +77,16 @@ fn media_type(path: &str) -> Option<&'static str> {
 /// `[application/pdf, 292.47kB]` at any terminal width, and costs the model nothing: a
 /// document followed by the path it came from reads as a caption, which is what it is.
 pub fn attached(path: &str) -> Result<ContextItem> {
-    let size = std::fs::metadata(path)
-        .with_context(|| format!("could not read {path}"))?
-        .len();
-    if size > MOST {
-        bail!(
-            "{path} is {} MB, and this will not attach anything over {} MB: what goes on the wire \
-             is a third larger again, and no endpoint here would take it",
-            size / (1024 * 1024),
-            MOST / (1024 * 1024),
-        );
-    }
+    let bytes = contents(path)?;
 
     let Some(media_type) = media_type(path) else {
-        // read as text, and the read's own error when the file is not text: `TYPES` is the list
-        // of things that is not an error for
-        let content =
-            std::fs::read_to_string(path).with_context(|| format!("could not read {path}"))?;
+        // read as text, and the conversion's own error when the file is not text: `TYPES` is the
+        // list of things that is not an error for
+        let content = String::from_utf8(bytes).with_context(|| format!("could not read {path}"))?;
 
         return Ok(ContextItem::file(path, content));
     };
 
-    let bytes = std::fs::read(path).with_context(|| format!("could not read {path}"))?;
     // note: `name` rather than the whole path, because the one thing reading it is the attachment
     // part of the conventional dialect, whose `filename` is a label on a file and not a location
     // on this machine. See `Blob::meta`: nothing in the runtime knows this key
@@ -115,6 +103,48 @@ pub fn attached(path: &str) -> Result<ContextItem> {
             Block::text(Content::text(format!("(attached from {path})"))),
         ]),
     ))
+}
+
+/// The whole of a file, if it is a file and no larger than [`MOST`].
+///
+/// note: a regular file and nothing else, a link followed to one included. A pipe, a device or a
+/// file under `/proc` reports a length of nothing and is read until it ends - which for a pipe
+/// with no writer is never, and for `/dev/zero` is all of memory - and the read happens on the
+/// thread that runs the session, so no deadline and no signal is seen while it waits.
+///
+/// note: and read through [`MOST`] rather than trusting the length it reported, because a file
+/// being written to while this reads it is longer by the end than it was at the start.
+fn contents(path: &str) -> Result<Vec<u8>> {
+    use std::io::Read as _;
+
+    let meta = std::fs::metadata(path).with_context(|| format!("could not read {path}"))?;
+    if !meta.is_file() {
+        bail!(
+            "{path} is not a file, and only a file can be attached: anything else is read until \
+             it ends, which a pipe or a device may never do"
+        );
+    }
+    let too_large = |size: u64| {
+        anyhow::anyhow!(
+            "{path} is {} MB, and this will not attach anything over {} MB: what goes on the wire \
+             is a third larger again, and no endpoint here would take it",
+            size.div_ceil(1024 * 1024),
+            MOST / (1024 * 1024),
+        )
+    };
+    if meta.len() > MOST {
+        return Err(too_large(meta.len()));
+    }
+
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .and_then(|file| file.take(MOST + 1).read_to_end(&mut bytes))
+        .with_context(|| format!("could not read {path}"))?;
+    if bytes.len() as u64 > MOST {
+        return Err(too_large(bytes.len() as u64));
+    }
+
+    Ok(bytes)
 }
 
 /// What an item is carrying, for the line that says so, or `None` for one that is only text.
