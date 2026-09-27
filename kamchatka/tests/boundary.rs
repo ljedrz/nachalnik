@@ -520,6 +520,28 @@ fn the_network_a_command_is_handed_follows_the_stance_and_the_grant() {
     assert_eq!(network(false).network, Network::Shut);
 }
 
+/// A port a session is served on is closed to the commands confined while it is, and opened again
+/// once the session stops listening.
+#[tokio::test]
+async fn a_served_port_is_closed_to_commands_while_it_is_served() {
+    let dir = common::workdir("served-port-closed");
+    let closed = || Sandbox::of(&Careful::new(), dir.clone(), Vec::new(), Vec::new(), true).closed;
+
+    let server = kamchatka::remote::Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("it listens");
+    let port: u16 = server
+        .address()
+        .rsplit(':')
+        .next()
+        .and_then(|port| port.parse().ok())
+        .expect("a port");
+    assert!(closed().contains(&port), "{:?}", closed());
+
+    drop(server);
+    assert!(!closed().contains(&port), "{:?}", closed());
+}
+
 #[test]
 fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     use kamchatka::sandbox::Network;
@@ -533,6 +555,7 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
             readable: vec![PathBuf::from("/opt/three")],
             writable: false,
             network,
+            closed: vec![7878, 9],
         };
 
         let argv = sandbox.argv("echo 'hello world'; ls");
@@ -554,6 +577,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        closed: Vec::new(),
     };
 
     // the shape the live session produced, down to the quotes rustup wraps the path in
@@ -615,6 +639,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        closed: Vec::new(),
     };
 
     assert_eq!(
@@ -656,6 +681,7 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        closed: Vec::new(),
     };
     let refused = |socket: &std::path::Path| {
         confined.note_for(&format!(
@@ -695,6 +721,7 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        closed: Vec::new(),
     };
 
     let climbing = workdir.join("missing/../../../../kamchatka-nowhere/secret");
@@ -751,6 +778,7 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        closed: Vec::new(),
     };
     let stderr: String = (0..300_000)
         .map(|nth| format!("/x/{nth}: Permission denied\n"))

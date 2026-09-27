@@ -288,26 +288,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   those apart is what a bound would have to do, and nothing on the wire carries a client identifier
   to do it with - which is the same thing the arbitration entry above needs first.
 
-- **A served session is reachable by the commands it confines.** A client may submit a prompt and
-  answer a permission or a network question, so reaching the session is reaching the person's
-  answers. `--serve unix:PATH` makes the socket `0600`, which keeps other accounts out and none of
-  the session's own commands: below Linux 7.1 nothing governs a unix `connect`, so every confined
-  command can reach it, and from 7.1 one can wherever the path is inside what it may write, the
-  working directory included. A loopback port, and the `gateway` and `phone` relays, are reachable
-  by a command allowed the network or one somebody said yes to - thinking of `cargo fetch`, not of
-  the session - and the relays' host and origin checks stop a browser, not `curl`; `no TCP` and `no
-  network` refuse them. The options:
-  - refuse a peer that is one of the session's own commands. `SO_PEERCRED` gives its pid, and each
-    confined command runs in a session of its own, so the peer's session identifier says whether it
-    is a running command's; a process the command started under a `setsid` of its own is not caught;
-  - serve on an abstract unix socket, which Landlock's scope right (ABI 6, Linux 6.12) keeps a
-    confined command from, and which has no file mode, so another account could connect instead;
-  - handle `ConnectTcp` under `Open` too, with every port allowed but the served one, which is a
-    rule per port and has to be measured;
-  - or say so, in SECURITY.md and on the permissions tab of a session served below 7.1.
-
-  SECURITY.md says it in a sentence; which of the others is the person's call.
-
 - **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
   the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
   counter gave, with no `context.recounted` to say so, and lists every item it re-priced as changed

@@ -239,3 +239,90 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A command the session confined is not a client: it is hung up on, where the same client run
+/// unconfined is answered.
+///
+/// note: a socket file in the working directory, which a confined command reaches on any kernel -
+/// Linux 7.1 lets it connect to a socket it may write to, and below 7.1 nothing governs a connect.
+/// A client answers permission questions, so this one would be answering its own. The probe sends a
+/// line that is not a message, which a session answers with a failure before it closes; a refused
+/// connection closes with nothing.
+#[tokio::test]
+async fn a_command_the_session_confined_is_not_a_client() {
+    use kamchatka::{
+        sandbox::{Confinement, available},
+        tools::{Careful, Limits, Shell},
+    };
+    use nachalnik::{OutputSink, Tool, test::call};
+
+    let program = crate::common::program();
+    if available(&program).confinement != Confinement::Full {
+        eprintln!("skipped: this machine cannot confine a command");
+        return;
+    }
+    let dir = crate::common::workdir("remote-confined-client");
+    let socket = dir.join("s");
+    let crate::Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = crate::wired(vec![]);
+    let mut server = Server::bind(&format!("unix:{}", socket.display()))
+        .await
+        .expect("it listens");
+    let loop_ = tokio::spawn(async move {
+        let _ = server.run(&mut app, &mut events, &mut finished).await;
+    });
+    // a session that refuses the connection may leave the line unread, which closes it with a
+    // reset rather than an end, and both are a hang-up
+    let probe = format!(
+        r#"python3 -c "
+import socket
+s = socket.socket(socket.AF_UNIX)
+s.connect('{}')
+s.sendall(b'{{\n')
+try:
+    got = s.recv(4096)
+except OSError:
+    got = b''
+print('answered' if got else 'hung up')
+""#,
+        socket.display()
+    );
+
+    let control = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(&probe)
+        .output()
+        .await
+        .expect("sh is here");
+    let control = String::from_utf8_lossy(&control.stdout);
+    assert!(control.contains("answered"), "{control}");
+
+    let shell = Shell {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        policy: std::sync::Arc::new(Careful::new()),
+        confiner: Some(program),
+        limits: Limits::default(),
+    };
+    let said = tokio::time::timeout(
+        PATIENCE,
+        shell.invoke(
+            &call("1", "shell", serde_json::json!({ "cmd": probe })),
+            OutputSink::disconnected(),
+        ),
+    )
+    .await
+    .expect("the command never answered")
+    .expect("the tool answers either way")
+    .content
+    .to_text()
+    .into_owned();
+    assert!(said.contains("hung up"), "{said}");
+    assert!(!said.contains("answered"), "{said}");
+
+    loop_.abort();
+}
