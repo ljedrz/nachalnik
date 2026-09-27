@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use crate::{
     RETRIES, out_of_quota,
-    reading::{Events, Read, complaint, failure, read},
+    reading::{Events, Read, complaint, compressed, failure, not_json, read},
     refused,
 };
 
@@ -415,10 +415,11 @@ pub(crate) async fn sent(
 
                 match status.is_success() {
                     true => {
-                        let payload: Value = serde_json::from_str(&body).map_err(|e| {
-                            let short: String = body.chars().take(300).collect();
-                            format!("the answer was not JSON ({e}): {short}")
-                        })?;
+                        // note: through `not_json`, which is the reading the streaming path gives
+                        // a body that is not JSON - see there for why the words and not the
+                        // markup
+                        let payload: Value =
+                            serde_json::from_str(&body).map_err(|e| not_json(&e, &body))?;
                         let Some(error) = payload.get("error").filter(|error| !error.is_null())
                         else {
                             return Ok(Sent::Whole(payload));
@@ -512,6 +513,13 @@ async fn body(
 ) -> Result<Option<String>, BoxError> {
     let mut body = Vec::new();
     let mut vigil = Vigil::waiting(patience);
+
+    // note: the same refusal the streaming path makes, and here it covers the two bodies nothing
+    // else does: a whole answer and the body of a refusal. Both are read as text below, and the
+    // bytes of a compressed one are not text
+    if let Some(encoded) = compressed(asking.model, response.headers()) {
+        return Err(encoded);
+    }
 
     loop {
         match tokio::time::timeout(HEARTBEAT, response.chunk()).await {

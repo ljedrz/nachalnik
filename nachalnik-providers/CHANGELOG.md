@@ -88,6 +88,34 @@ minor bump may break you.
   newlines and ended by a blank line, and each line was read as an event on its own and dropped.
   A line that parses alone is still an event at once, so a server that sends no blank lines
   between events reads as it did.
+- **A `[DONE]` the endpoint split across two `data:` lines ends the stream.** The sentinel was
+  matched on one line, while the reader beside it had already learned that an event may be
+  spread over several. A server that re-wraps a stream - which a proxy is enough for - writes
+  it that way, and the split was dropped as something that would not parse, so an answer that
+  had already arrived sat out the whole stall bound and was reported as an interrupt.
+- **A stream that carried no choice is refused, as the same body is refused whole.** The check
+  for a completion ran on a whole answer and on a body that was never a stream, and on neither
+  the streamed path nor the events in it, so `{"choices":[]}` finished a turn with nothing said
+  and a session that ended normally. The server's own body is in the error, as it is on the
+  other two paths.
+- **A body that is not JSON is read the same way whichever path it arrives on.** The
+  non-streaming path quoted the first three hundred characters verbatim where the streaming
+  path takes the words out of them, so a web page in place of an answer - what a mistyped
+  `base_url` produces - put its doctype, its tags and its whole stylesheet into the
+  conversation, the session log and any file a user is invited to send on.
+- **A body the endpoint compressed is named rather than quoted.** The bytes of one are not the
+  words of it, and quoted as prose they are a third of a header with a replacement character
+  wherever a byte was not UTF-8. The error now says which encoding arrived and asks for it
+  uncompressed, which is the diagnosis a reader needs: an endpoint that compressed its answer
+  and one that sent nonsense are different faults, and nothing told them apart.
+- **Arguments that are neither a string nor an object are shown to the model.** A number, a
+  list or a boolean was read as nothing written, which is a call to a tool that takes no
+  arguments, and the tool was run on that. Streamed, such a value contributed no fragment at
+  all, so a call whose arguments arrived as `42` and then as a string kept the second half
+  only. Both are `_unparsed` now, as a string that will not parse already was.
+- **A turn the server ended on its own `[DONE]` is `EndTurn`, not `unreported`.** The marker is
+  the dialect's own end of the turn, and a turn ended on purpose is not one whose reason nobody
+  gave - which is the word left for a stream cut off before it said anything.
 - **A listed `context_length` of `0` is no limit.** It was reported as the model's window, so a
   client showed a context of `0` tokens and measured its budget against it; a limit elsewhere in
   the entry is read instead, and failing that the limit is unknown.

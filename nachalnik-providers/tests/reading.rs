@@ -201,6 +201,58 @@ async fn an_event_spread_over_several_lines_is_one_event() {
     }
 }
 
+/// A `[DONE]` written over several `data:` lines ends the stream like one written on a line of its
+/// own, and a connection held open after it does not keep the read waiting.
+///
+/// note: the sentinel was matched on one line, while the event parse beside it had already learnt
+/// that an event may be spread over several. A server that re-wraps a stream - which a proxy is
+/// enough for - splits it, and the split was dropped as something that would not parse. The
+/// answer had already arrived, and it sat out the whole of the stall bound to be reported as a
+/// stall, and the turn that was complete was recorded as interrupted.
+///
+/// note: the connection is held open on purpose, and the bound is on the read. An ordinary
+/// assertion on the answer would pass either way - the answer is right whichever way the
+/// sentinel is read - and only the waiting shows the difference.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_done_spread_over_two_lines_ends_the_stream_while_the_connection_stays_open() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut discard = [0u8; 16384];
+                let _ = socket.read(&mut discard).await;
+                // the answer, then the sentinel in two pieces, and no finish_reason to say so
+                let _ = socket
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n\
+                          data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n\
+                          data: [DO\ndata: NE]\n\n",
+                    )
+                    .await;
+                // and nothing more: not a byte, and not a close
+                tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                drop(socket);
+            });
+        }
+    });
+    let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "m",
+        format!("http://{address}"),
+        "",
+    ));
+
+    let response = tokio::time::timeout(std::time::Duration::from_secs(10), asked(provider))
+        .await
+        .expect("the answer was over and the read went on waiting")
+        .expect("the question failed");
+
+    assert_eq!(said(&response), "ok");
+    // and the server's own end of the stream is an end of the turn, not a reason nobody gave
+    assert_eq!(response.stop, StopReason::EndTurn);
+}
+
 /// Answers every request with `status` and a stream that promises more than `body` and then hangs
 /// up, which is what the transport reads as a body broken off.
 async fn broken_off(status: &'static str, body: &'static str) -> String {
@@ -273,6 +325,11 @@ async fn a_stream_broken_off_after_its_finish_is_a_whole_turn() {
 /// answer - and after half a line of the next event - was recorded as finished for no reason
 /// given, with nothing said about it. The close is the transport's word; the finish and `[DONE]`
 /// are the answer's, and a server may send either without the other.
+///
+/// note: the second case is the other half of that. `unreported` is the word for a turn whose
+/// reason nobody gave, and a server that sent `[DONE]` and no `finish_reason` gave one: the
+/// marker is its own end of the turn. The two absences of a `finish_reason` are told apart by
+/// what else arrived - the marker, or nothing.
 #[tokio::test]
 async fn a_stream_that_closes_before_saying_it_is_over_is_cut_off() {
     let cut_off = StopReason::Other("cut off".to_owned());
@@ -286,7 +343,7 @@ async fn a_stream_that_closes_before_saying_it_is_over_is_cut_off() {
         (
             "openai",
             "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\ndata: [DONE]\n\n",
-            StopReason::Other("unreported".to_owned()),
+            StopReason::EndTurn,
         ),
         (
             "openai",
@@ -297,6 +354,12 @@ async fn a_stream_that_closes_before_saying_it_is_over_is_cut_off() {
             "gemini",
             "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]}}]}\n\n",
             cut_off.clone(),
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]}}]}\n\n\
+             data: [DONE]\n\n",
+            StopReason::EndTurn,
         ),
         (
             "gemini",
@@ -361,6 +424,102 @@ async fn a_body_that_is_not_a_stream_is_reported_whole() {
             "{dialect}: the page's own words are the account: {error}"
         );
     }
+}
+
+/// A stream whose every event is an empty `choices` is refused, as the same body is refused whole.
+///
+/// note: `completion()` refuses a whole body with no choice in it, and the streamed path was
+/// checked by neither that nor anything else - so the same events that are an error in one
+/// request became a turn that finished, an assistant item of nothing in the context and a
+/// session that ended normally. A caller saw a run that worked and a model that said nothing,
+/// the notice blamed the stream rather than the answer, and `raw` was the only place the truth
+/// was.
+///
+/// note: the usage event is in the body, and it is there to be read: an endpoint that reports
+/// the cost of a turn sends `choices: []` beside it as the last event of every turn, so the
+/// refusal has to be about the stream as a whole rather than about the last event.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_stream_of_no_choices_is_not_an_answer() {
+    let url = server(
+        "200 OK",
+        "Content-Type: text/event-stream\r\n",
+        "data: {\"id\":\"gen\",\"choices\":[]}\n\n\
+         data: {\"id\":\"gen\",\"choices\":[],\"usage\":{\"prompt_tokens\":9,\
+         \"completion_tokens\":0,\"total_tokens\":9}}\n\n",
+        Arc::new(AtomicUsize::new(0)),
+    )
+    .await;
+
+    let error = asked(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "m",
+        url,
+        "no key needed",
+    )))
+    .await
+    .expect_err("the array and no answer is not an answer");
+    assert!(
+        error.contains("not a completion"),
+        "and it is refused in the words the whole-answer path uses: {error}"
+    );
+    assert!(error.contains("choices"), "saying what came back: {error}");
+}
+
+/// A body the endpoint sent compressed is named as such rather than quoted.
+///
+/// note: the client asks for nothing it was not given, so what arrives against that ask is
+/// bytes rather than words, and the first three hundred of them are a third of a header with a
+/// replacement character wherever a byte was not UTF-8. Quoted into the conversation, the session
+/// log and any file a user is invited to send on, that is not an account of anything - and
+/// nothing on the screen told apart an endpoint that compressed its answer from one that sent
+/// nonsense, which is the reading a person takes away.
+#[tokio::test]
+async fn a_body_the_client_cannot_read_is_named_rather_than_quoted() {
+    // a body that is not the text: the first bytes of a gzip stream
+    const GZIPPED: &[u8] = &[
+        0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xab, 0x4e, 0x4c,
+    ];
+
+    for (dialect, provider) in dialects(&encoded(GZIPPED).await) {
+        let error = asked(provider).await.expect_err("bytes are not an answer");
+        assert!(
+            error.contains("gzip"),
+            "{dialect}: the encoding is the diagnosis a reader needs: {error}"
+        );
+        assert!(
+            !error.contains('\u{fffd}'),
+            "{dialect}: and no third of a header is quoted into the log: {error}"
+        );
+    }
+}
+
+/// Answers every request with `body` and says it is `gzip`, which is what an intermediary does.
+async fn encoded(body: &'static [u8]) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut discard = [0u8; 16384];
+                let _ = socket.read(&mut discard).await;
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                             Content-Encoding: gzip\r\nContent-Length: {}\r\n\r\n",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.write_all(body).await;
+                let _ = socket.shutdown().await;
+            });
+        }
+    });
+
+    format!("http://{address}")
 }
 
 /// A server that ignored the request for a stream and answered whole has still answered.

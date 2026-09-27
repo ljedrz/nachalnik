@@ -601,7 +601,7 @@ fn unstreamed(
     for event in &events {
         streamed.event(event, deltas);
     }
-    Ok(answer(streamed, events, Stopped::Ended))
+    Ok(answer(streamed, events, Stopped::Done))
 }
 
 /// The turn the stream came to: the parts in the order they were produced, and what ended it.
@@ -610,9 +610,14 @@ fn answer(streamed: Streamed, events: Vec<Value>, stopped: Stopped) -> ModelResp
         partial,
         mut finish,
         usage,
+        ..
     } = streamed;
     match stopped {
-        Stopped::Ended => {}
+        // note: this dialect's own end of the stream, which is an end of the turn. A stream the
+        // server ended on purpose and reported no `finishReason` for is not a turn whose reason
+        // nobody gave, and the marker is the only thing that said so
+        Stopped::Done if finish.is_none() => finish = Some("STOP".to_owned()),
+        Stopped::Done => {}
         Stopped::Interrupted => finish = Some("interrupted".to_owned()),
         Stopped::CutOff => finish = Some("cut off".to_owned()),
     }

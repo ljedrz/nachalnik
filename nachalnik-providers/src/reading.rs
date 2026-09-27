@@ -29,8 +29,8 @@ pub(crate) trait Events {
 /// How a stream that carried something came to stop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Stopped {
-    /// The server ended it.
-    Ended,
+    /// The server said the turn was over, and said no more.
+    Done,
     /// Somebody asked it to stop.
     Interrupted,
     /// The body stopped arriving before the server had said the turn was over.
@@ -88,9 +88,17 @@ pub(crate) async fn read(
     // the `data:` lines of an event spread over several, joined as the format joins them, until
     // the blank line that ends it
     let mut spread = String::new();
-    let mut stopped = Stopped::Ended;
-    let mut done = false;
+    // note: a stream is over once the server says so - by the finish it reported, or by its own
+    // end-of-stream marker - and the connection staying open after neither is a server that has
+    // said all it is going to
+    let mut stopped = Stopped::Done;
+    // whether that marker arrived, which a clean close is told apart from below
+    let mut marked = false;
     let mut vigil = Vigil::new();
+
+    if let Some(encoded) = compressed(asking.model, response.headers()) {
+        return Err(encoded);
+    }
 
     loop {
         // the timeout is what makes a model that says nothing at all interruptible; without it
@@ -195,8 +203,15 @@ pub(crate) async fn read(
             // the OpenAI dialect's own end of the stream, which a server may send and then keep
             // the connection open after. Waited past, a finished answer sat out the whole of
             // `PATIENCE` and was then reported as a stall; nothing after it belongs to the answer
-            if line.strip_prefix("data:").map(str::trim) == Some("[DONE]") {
-                done = true;
+            //
+            // note: on the line and on the event alike, since the sentinel is an event by every
+            // account the format gives and may be written over several `data:` lines like any
+            // other. Read on one line only, a sentinel a proxy had re-wrapped was not recognised,
+            // and an answer that had already arrived sat out the whole of `PATIENCE` to be
+            // reported as a stall
+            if done(line.strip_prefix("data:")) {
+                stopped = Stopped::Done;
+                marked = true;
                 ended = true;
                 break;
             }
@@ -220,7 +235,15 @@ pub(crate) async fn read(
                     }
                 },
                 None if line.is_empty() && !spread.is_empty() => {
-                    match serde_json::from_str::<Value>(&std::mem::take(&mut spread)) {
+                    let joined = std::mem::take(&mut spread);
+                    // and the same sentinel, once the lines that spread it have been joined
+                    if done(Some(joined.as_str())) {
+                        stopped = Stopped::Done;
+                        marked = true;
+                        ended = true;
+                        break;
+                    }
+                    match serde_json::from_str::<Value>(&joined) {
                         Ok(event) => event,
                         Err(_) => continue,
                     }
@@ -277,7 +300,7 @@ pub(crate) async fn read(
         if asking.deltas.is_interrupted() {
             stopped = Stopped::Interrupted;
         }
-        if ended || stopped != Stopped::Ended {
+        if ended || stopped != Stopped::Done {
             break;
         }
     }
@@ -285,7 +308,7 @@ pub(crate) async fn read(
     // a body that closed cleanly before the server said the turn was over - no finish, and no
     // `[DONE]` - is cut off all the same: the close is the transport's word, not the answer's.
     // Every other way of stopping early has already said so
-    if stopped == Stopped::Ended && !done && !events.finished() && !seen.is_empty() {
+    if stopped == Stopped::Done && !marked && !events.finished() && !seen.is_empty() {
         asking.say(format!(
             "{} closed the stream before saying the turn was over; what had arrived is kept",
             asking.model
@@ -313,6 +336,59 @@ pub(crate) async fn read(
     }
 
     Ok(Read::Unstreamed(body))
+}
+
+/// Whether what one `data:` event carried is the dialect's own end of the stream.
+///
+/// note: on the joined event as well as on one line, and with the newline the format joins `data:`
+/// lines with taken out again. The marker is an event by every account the format gives, and
+/// matched on a line of its own it went unrecognised when a proxy re-wrapped it over two - which
+/// is not merely a reason reported badly: the answer had already arrived, and not recognising
+/// what ends the stream spends the stall bound and then throws it away.
+fn done(payload: Option<&str>) -> bool {
+    payload.is_some_and(|payload| payload.trim().replace('\n', "") == DONE)
+}
+
+/// The end of a stream in the OpenAI dialect, which Google's `alt=sse` answers with too.
+const DONE: &str = "[DONE]";
+
+/// The error for a body the endpoint sent compressed and this client cannot read.
+///
+/// note: the bytes of one are not the words of it, and quoted as prose they are a third of a
+/// header, with a replacement character wherever a byte was not UTF-8. The encoding is named
+/// because it is the diagnosis a reader needs: "the endpoint sent an answer this client cannot
+/// read" and "the endpoint sent nonsense" are different faults, and only one of them is this.
+///
+/// note: rather than the other half of the fix, which is a client that decodes. That is a
+/// dependency the manifest rations on purpose, and this client asks for nothing it has not been
+/// given - so what arrives against that ask is refused rather than quoted.
+pub(crate) fn compressed(model: &str, headers: &reqwest::header::HeaderMap) -> Option<BoxError> {
+    let encoding = headers
+        .get(reqwest::header::CONTENT_ENCODING)?
+        .to_str()
+        .ok()?
+        .trim()
+        .to_owned();
+
+    (!encoding.is_empty()).then(|| {
+        format!(
+            "{model} sent the answer as `{encoding}`, which this client cannot read; \
+             ask for it uncompressed"
+        )
+        .into()
+    })
+}
+
+/// The error for a body that was not JSON, quoting the words in it.
+///
+/// note: one reading of one body, shared by the two paths that meet it. A web page where an
+/// answer was asked for is the case - what a mistyped `base_url` produces - and the first three
+/// hundred characters of a page are its doctype, its tags and the opening of a stylesheet, which
+/// go into the conversation, the session log and any file a user is invited to send on. The
+/// words are the account of what happened; the markup is not.
+pub(crate) fn not_json(e: &serde_json::Error, body: &str) -> BoxError {
+    let short: String = unmarked(body).chars().take(300).collect();
+    format!("the answer was not JSON ({e}): {short}").into()
 }
 
 /// The error for a body that was neither a stream nor anything a dialect could read whole.
@@ -415,6 +491,86 @@ fn refusals(message: &Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The two shapes a body that is not JSON is reported in are one reading of the same bytes,
+    /// and a whole page is read the way a stream reports one.
+    ///
+    /// note: the non-streaming path quoted the first three hundred characters verbatim, so the
+    /// same page a streaming turn reports in one sentence put its doctype, its `<head>` and its
+    /// whole stylesheet into the conversation. One flag apart, one body, two readings.
+    #[test]
+    fn a_body_that_is_not_json_is_read_the_same_way_wherever_it_arrives() {
+        let page = concat!(
+            r#"<!doctype html><html lang="en"><head><title>Example Domain</title>"#,
+            r#"<style>body{background:#eee;width:60vw;font-family:system-ui,sans-serif}"#,
+            r#"h1{font-size:1.5em}</style></head><body><h1>Example Domain</h1>"#,
+            r#"<p>This domain is for use in illustrative examples.</p></body></html>"#,
+        );
+        let why = |body: &str| match serde_json::from_str::<Value>(body) {
+            Ok(_) => panic!("the fixture is not JSON, which is the case"),
+            Err(e) => not_json(&e, body).to_string(),
+        };
+
+        for said in [why(page), not_a_stream(page).to_string()] {
+            assert!(said.contains("This domain is for use"), "{said}");
+            assert!(
+                !said.contains("font-family"),
+                "the stylesheet is not prose: {said}"
+            );
+            assert!(!said.contains('<'), "nor are the tags: {said}");
+        }
+        // and the shape the fixture is in, being wrong, is said as well
+        assert!(why(page).contains("not JSON"));
+    }
+
+    /// A body this client cannot read is named by its encoding rather than quoted.
+    ///
+    /// note: the bytes of a compressed body are not words, and quoted as prose they are a third
+    /// of a header with a replacement character wherever a byte was not UTF-8 - which went into
+    /// the session log, a file people send each other. Nothing on the screen told apart an
+    /// endpoint that compressed its answer from one that sent nonsense, which is the reading a
+    /// person takes away.
+    #[test]
+    fn a_body_this_client_cannot_read_says_which_encoding_arrived() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert!(
+            compressed("m", &headers).is_none(),
+            "a body sent as it is read"
+        );
+
+        headers.insert(
+            reqwest::header::CONTENT_ENCODING,
+            "gzip".parse().expect("a header"),
+        );
+        let why = compressed("m", &headers)
+            .expect("gzip is not read")
+            .to_string();
+        assert!(why.contains("gzip"), "the encoding is the diagnosis: {why}");
+        assert!(why.contains("uncompressed"), "and what to ask for: {why}");
+
+        // and none of the bytes themselves are in it
+        let gzipped: &str = &String::from_utf8_lossy(&[0x1f, 0x8b, 0x08, 0x00, 0xab, 0x4e, 0x4c]);
+        assert!(!why.contains('\u{fffd}'), "no half-decoded bytes: {why}");
+        assert!(!why.contains(gzipped), "and no header: {why}");
+    }
+
+    /// The end of a stream is recognised on one `data:` line and on the several an event may be
+    /// spread over.
+    ///
+    /// note: the marker is an event by every account the format gives, and matched on one line
+    /// only it went unrecognised when a proxy re-wrapped it into two. The answer had arrived; it
+    /// sat out the whole of the stall bound to be reported as a stall.
+    #[test]
+    fn the_end_of_a_stream_is_recognised_joined_as_well_as_whole() {
+        assert!(done(Some(" [DONE] ")));
+        assert!(done(Some("[DONE]")));
+        assert!(done(Some("[DO\nNE]")), "spread over two `data:` lines");
+        assert!(!done(Some("[DONE")));
+        assert!(
+            !done(None),
+            "a line that is not an event is not the end of one"
+        );
+    }
 
     /// The two shapes a rate limit actually arrived in, copied out of a real session.
     ///

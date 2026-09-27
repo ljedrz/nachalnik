@@ -220,12 +220,24 @@ impl Provider for OpenAiCompatible {
             Sent::Whole(payload) if completion(&payload) => {
                 Ok(whole(payload, self.thinking_in_content))
             }
-            Sent::Whole(payload) => {
-                let short: String = payload.to_string().chars().take(300).collect();
-                Err(format!("the answer was not a completion: {short}").into())
-            }
+            Sent::Whole(payload) => Err(not_a_completion(&payload)),
             Sent::Streamed(Read::Events(events, stopped)) => {
-                Ok(self.answer(streamed, events, stopped))
+                // note: a stream that carried no choice in it is the same refusal a whole body
+                // gets, in the same words. Read as an answer it finished the turn with nothing
+                // said and a session that ended normally - a run that looked like it worked and a
+                // model that said nothing, with the body only in `raw` and the notice blaming
+                // the stream rather than the answer. A server that says the turn is over and
+                // carries no choice in it has not answered either, and the two ways a stream can
+                // say that are one thing.
+                //
+                // note: never where something was answered. A stream that carried a choice and
+                // was then cut off is what `reading` exists to keep - it was generated and
+                // billed for - and refusing it here would throw away the one thing that reader
+                // calls the worst outcome. An interrupt nobody pressed is the same.
+                match never_answered(streamed.answered, events.is_empty()) {
+                    true => Err(not_a_completion(&events[0])),
+                    false => Ok(self.answer(streamed, events, stopped)),
+                }
             }
             Sent::Streamed(Read::Interrupted) => Ok(interrupted()),
             // a server that ignored `stream: true` and answered whole has still answered
@@ -252,6 +264,16 @@ struct Streamed {
     gathering: Gathering,
     /// Why the turn ended, once something has said.
     finish: Option<String>,
+    /// Whether any event so far carried a choice: an array with nothing in it is not one.
+    ///
+    /// note: what tells a finished turn from a body that was never an answer. `{"choices":[]}`
+    /// is the array and no answer, and so is the usage that arrives with an empty one beside it,
+    /// which every endpoint that reports a cost sends as the last event of a turn - so a stream of
+    /// nothing but those ends as a turn that said nothing, and a session that ended normally.
+    ///
+    /// note: read on the array rather than on `choices[0]`, which is `null` for an event with
+    /// nothing in it and would be a choice that is not there.
+    answered: bool,
     /// What the request cost, where the server reported it.
     usage: Option<Usage>,
 }
@@ -266,6 +288,9 @@ impl Events for Streamed {
         if let Some(reason) = choice["finish_reason"].as_str() {
             self.finish = Some(reason.to_owned());
         }
+        self.answered |= chunk["choices"]
+            .as_array()
+            .is_some_and(|choices| !choices.is_empty());
 
         let delta = &choice["delta"];
         if let Some(fragment) = delta["content"].as_str().filter(|f| !f.is_empty()) {
@@ -300,9 +325,21 @@ impl OpenAiCompatible {
             gathering,
             mut finish,
             usage,
+            ..
         } = streamed;
         match stopped {
-            Stopped::Ended => {}
+            // note: the server's own end of the stream is an end of the turn, and it is the only
+            // thing that says so where no `finish_reason` came with it. Filling it in here rather
+            // than leaving the turn unreported is what keeps the two apart: a turn the server
+            // finished on purpose and a turn that was cut off before it said anything are the
+            // same absence of a `finish_reason` and must not get the same word - which is what
+            // `unreported` is for, below.
+            //
+            // note: a finish that *was* reported is not overwritten. Some endpoints send the
+            // marker and then nothing, and some send a reason and the marker both; where the
+            // server named the reason it is more precise than what the marker implies.
+            Stopped::Done if finish.is_none() => finish = Some("stop".to_owned()),
+            Stopped::Done => {}
             Stopped::Interrupted => finish = Some("interrupted".to_owned()),
             Stopped::CutOff => finish = Some("cut off".to_owned()),
         }
@@ -419,10 +456,18 @@ impl Gathering {
         // arguments written out - which is how the whole-answer path reads one too
         let fragment = match &requested["function"]["arguments"] {
             arguments @ Value::Object(_) => Some(Cow::Owned(arguments.to_string())),
-            arguments => arguments
-                .as_str()
-                .filter(|fragment| !fragment.is_empty())
-                .map(Cow::Borrowed),
+            other => match other.as_str() {
+                Some(fragment) => Some(Cow::Borrowed(fragment)).filter(|it| !it.is_empty()),
+                // note: a null is nothing written, the same as the empty string the dialect
+                // spells a call to a tool that takes no arguments with
+                None if other.is_null() => None,
+                // note: and anything else that is not a string is a fragment like any other.
+                // Read as no fragment it vanished, and a call whose arguments arrived as `42`
+                // and *then* as `{"path": "a.txt"}` came back with the second half only - a
+                // call the model never wrote, and nothing keeping a record that a fragment was
+                // dropped on the way
+                None => Some(Cow::Owned(other.to_string())),
+            },
         };
         let call = &mut self.calls[at];
 
@@ -541,6 +586,33 @@ fn completion(body: &Value) -> bool {
         .is_some_and(|choices| !choices.is_empty())
 }
 
+/// The error for a body that carried the envelope of a completion and no choice in it, quoting
+/// the server's own.
+///
+/// note: one refusal for the two shapes it arrives in - a whole body asked for and a stream read
+/// an event at a time - and the same words for both. The body is quoted because it is the only
+/// account of what came back, and a caller who cannot see it has nothing to act on.
+fn not_a_completion(body: &Value) -> BoxError {
+    let short: String = body.to_string().chars().take(300).collect();
+    format!("the answer was not a completion: {short}").into()
+}
+
+/// Whether a stream is a body that was never an answer: nothing in it carried a choice, and there
+/// is an event to quote for the refusal.
+/// note: on having carried no choice, and not on how it stopped. A server that sends
+/// `{"choices":[]}` and closes has not answered, and one that sends it and then `[DONE]` has not
+/// answered either - the second is a stream the server ended on purpose, which is the same fault
+/// by another route. Neither stop reason is the news; the empty array is.
+///
+/// note: and never where something *was* answered. A stream that carried a choice and was then
+/// cut off is what the reader exists to keep, since it was generated and billed for, and an
+/// event with no choice in it afterwards is the usage report every endpoint that reports a cost
+/// sends last. A guard that looked at the whole stream would throw away the answer of every turn
+/// that reported what it cost.
+fn never_answered(answered: bool, empty: bool) -> bool {
+    !answered && !empty
+}
+
 /// Reads a whole answer - one JSON body, no fragments - into a turn.
 ///
 /// note: the streamed path assembles the same thing from `delta` objects a piece at a time; this
@@ -577,10 +649,17 @@ fn whole(body: Value, inline: bool) -> ModelResponse {
                 // a model that produces invalid JSON gets to see that it did - the same answer
                 // the streamed path gives. Handing it `{}` instead would be a call with no
                 // arguments and nothing anywhere to say why. An object sent as an object is taken
-                // as it is, which some servers do where the dialect says a string
+                // as it is, which some servers do where the dialect says a string, and so is
+                // anything else that is not a string: a number or a list read as
+                // `arguments_of("")`, which is a call to a tool that takes no arguments, and the
+                // model was told that rather than shown what it wrote
                 let args = match &call["function"]["arguments"] {
-                    Value::Object(_) => call["function"]["arguments"].clone(),
-                    written => arguments_of(written.as_str().unwrap_or_default()),
+                    arguments @ Value::Object(_) => arguments.clone(),
+                    Value::Null => arguments_of(""),
+                    written => match written.as_str() {
+                        Some(written) => arguments_of(written),
+                        None => json!({ "_unparsed": written.to_string() }),
+                    },
                 };
 
                 ToolCall::new(
@@ -940,6 +1019,195 @@ mod tests {
         assert_eq!(*call(json!("{\"path\": \".\"}")), json!({ "path": "." }));
         assert_eq!(*call(json!("{oops")), json!({ "_unparsed": "{oops" }));
         assert_eq!(arguments_of("  "), json!({}));
+    }
+
+    /// Arguments that are neither a string nor an object are shown as they came, not as none.
+    ///
+    /// note: `unwrap_or_default()` on the `as_str()` of a number, a `null` or a list made the empty
+    /// string, and `arguments_of("")` is deliberately a call to a tool that takes no arguments -
+    /// so a model that wrote `42` was told it had called `fs` with no arguments, and the tool was
+    /// run on that. Streamed, the same value contributed no fragment at all: a call whose
+    /// arguments arrived as `42` and *then* as `{"op":"read"}` kept the second half only.
+    ///
+    /// note: `null` is the exception, and stays what it has always been: a field present and
+    /// empty is a call to a tool that takes no arguments, which is how this dialect spells it.
+    #[test]
+    fn arguments_that_are_neither_a_string_nor_an_object_are_what_the_model_wrote() {
+        // the whole-answer path
+        let call = |arguments: Value| {
+            whole(
+                json!({ "choices": [{ "message": { "tool_calls": [{
+                    "id": "c1", "function": { "name": "fs", "arguments": arguments }
+                }] }, "finish_reason": "tool_calls" }] }),
+                false,
+            )
+            .tool_calls
+            .remove(0)
+            .args
+        };
+        for (sent, kept) in [
+            (json!(42), json!("42")),
+            (json!([1, 2]), json!("[1,2]")),
+            (json!(true), json!("true")),
+        ] {
+            let args = call(sent.clone());
+            assert_eq!(
+                args["_unparsed"], kept,
+                "{sent} has to be visible to the model"
+            );
+        }
+        assert_eq!(*call(json!(null)), json!({}), "null is nothing written");
+
+        // and the streamed one, which is where half a call went missing
+        let deltas = DeltaSink::disconnected();
+        let mut gathering = Gathering::default();
+        for arguments in [json!(42), json!("{\"op\":\"read\"}")] {
+            gathering.fold(
+                &json!({ "index": 0, "id": "c1", "function": { "name": "fs", "arguments": arguments } }),
+                &deltas,
+            );
+        }
+        assert_eq!(gathering.calls.len(), 1);
+        let args = arguments_of(&gathering.calls[0].args);
+        assert!(
+            args["_unparsed"]
+                .as_str()
+                .is_some_and(|sent| sent.contains("42")),
+            "the fragment that was not a string is kept: {args}"
+        );
+        assert!(
+            args["_unparsed"]
+                .as_str()
+                .is_some_and(|sent| sent.contains("read")),
+            "and so is the one that was: {args}"
+        );
+    }
+
+    /// A stream that carried no choice is the same refusal a whole body with none gets, and an
+    /// answer that ended on the server's own marker is a turn with a reason.
+    ///
+    /// note: `completion()` refuses a whole body whose `choices` is empty, and the streamed path
+    /// was checked by neither it nor anything else - so the same events that are an error in one
+    /// request became a turn that finished with nothing said and a session that ended normally.
+    /// The usage event belongs in the fixture: an endpoint that reports a turn's cost sends
+    /// `choices: []` beside it as the last event, so the reading has to be of the stream as a
+    /// whole rather than of whichever event came last.
+    #[test]
+    fn a_stream_with_no_choice_in_it_is_not_an_answer() {
+        let deltas = DeltaSink::disconnected();
+        let mut streamed = Streamed::default();
+        for chunk in [
+            json!({ "id": "gen", "choices": [] }),
+            json!({ "id": "gen", "choices": [], "usage": {
+                "prompt_tokens": 9, "completion_tokens": 0, "total_tokens": 9 } }),
+        ] {
+            streamed.event(&chunk, &deltas);
+        }
+        assert!(
+            !streamed.answered,
+            "an empty array is the array and no answer"
+        );
+
+        // and the same events read as a whole body, which is the other request
+        let body: Value = serde_json::from_str(r#"{"choices":[],"id":"gen"}"#).expect("a fixture");
+        assert!(!completion(&body));
+        assert!(
+            not_a_completion(&body)
+                .to_string()
+                .contains("not a completion")
+        );
+
+        // whereas an event with a choice in it is an answer, and the usage beside it is not
+        let mut said = Streamed::default();
+        said.event(
+            &json!({ "choices": [{ "delta": { "content": "here" } }] }),
+            &deltas,
+        );
+        said.event(&json!({ "choices": [] }), &deltas);
+        assert!(said.answered, "one choice is enough");
+
+        // a turn the server ended on its own marker, and reported no reason for, is an end of
+        // the turn rather than a reason nobody gave. Asked through `answer`, which is where the
+        // marker is turned into a reason - `unreported` is the word for a turn that really was
+        // cut off, and the two absences of a `finish_reason` are told apart by what else came
+        let provider = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+        let mut marker = Streamed::default();
+        marker.event(
+            &json!({ "choices": [{ "delta": { "content": "ok" } }] }),
+            &deltas,
+        );
+        let ended = provider.answer(marker, Vec::new(), Stopped::Done);
+        assert_eq!(ended.stop, StopReason::EndTurn);
+
+        // and a reason that was reported is not overwritten by the marker
+        let mut reported = Streamed::default();
+        reported.event(
+            &json!({ "choices": [{ "delta": {}, "finish_reason": "length" }] }),
+            &deltas,
+        );
+        let ended = provider.answer(reported, Vec::new(), Stopped::Done);
+        assert_eq!(
+            ended.stop,
+            StopReason::Length,
+            "what the server said is more precise than what the marker implies"
+        );
+
+        // and a turn cut off before it said anything is still the one that word is for
+        let mut cut = Streamed::default();
+        cut.event(
+            &json!({ "choices": [{ "delta": { "content": "half" } }] }),
+            &deltas,
+        );
+        let ended = provider.answer(cut, Vec::new(), Stopped::CutOff);
+        assert_eq!(ended.stop, StopReason::Other("cut off".to_owned()));
+    }
+
+    /// A stream is kept or refused by whether it answered, and not by how it stopped.
+    ///
+    /// note: the refusal is for a body that was never an answer. A stream that said something and
+    /// was then cut off is what `reading` exists to keep - it was generated and billed for - and a
+    /// guard that looked only at the whole stream would throw away the answer of every turn whose
+    /// last event was the usage report, which is what an endpoint that reports a cost sends.
+    ///
+    /// note: and the refusal is on having carried no choice, not on how it stopped. A server that
+    /// sends `{"choices":[]}` and closes, and one that sends it and then `[DONE]`, have not
+    /// answered in either case, and the second is a stream the server ended on purpose.
+    #[test]
+    fn a_stream_is_kept_or_refused_by_whether_it_answered_and_not_by_how_it_stopped() {
+        let provider = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+        let deltas = DeltaSink::disconnected();
+        let no_choice = vec![json!({ "id": "gen", "choices": [] })];
+
+        // nothing was answered, whichever way the stream stopped
+        for stopped in [Stopped::Done, Stopped::CutOff, Stopped::Interrupted] {
+            let mut streamed = Streamed::default();
+            streamed.event(&no_choice[0], &deltas);
+            assert!(!streamed.answered);
+            assert!(
+                never_answered(streamed.answered, no_choice.is_empty()),
+                "{stopped:?}: no choice in it is not an answer, however it stopped"
+            );
+        }
+
+        // and a turn that did answer is kept through all three
+        for stopped in [Stopped::Done, Stopped::CutOff, Stopped::Interrupted] {
+            let said = "the first half ";
+            let mut streamed = Streamed::default();
+            for chunk in [
+                json!({ "choices": [{ "delta": { "content": said } }] }),
+                json!({ "choices": [], "usage": { "completion_tokens": 4 } }),
+            ] {
+                streamed.event(&chunk, &deltas);
+            }
+            assert!(streamed.answered, "one choice is enough");
+
+            let ended = provider.answer(streamed, no_choice.clone(), stopped);
+            assert_eq!(
+                ended.content.map(|it| it.to_text().into_owned()).as_deref(),
+                Some(said),
+                "{stopped:?}: what arrived is kept"
+            );
+        }
     }
 
     /// This dialect says the model behind it calls tools and thinks.

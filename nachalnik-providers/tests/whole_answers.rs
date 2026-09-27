@@ -169,6 +169,41 @@ async fn a_body_with_no_choice_in_its_choices_is_not_an_answer() {
     );
 }
 
+/// A page in place of an answer is read the same way streamed and not streamed.
+///
+/// note: the streaming path takes the words out of a body it cannot parse - a web page, which is
+/// what a mistyped `base_url` produces - and the non-streaming path quoted the first three
+/// hundred characters of it verbatim, so the doctype, the `<html>`, the `<head>` and the whole of
+/// the stylesheet went into the conversation, the session log and any file a user is invited to
+/// send on. One flag apart, and the same bytes were read two ways.
+#[tokio::test]
+async fn a_page_in_place_of_a_whole_answer_is_read_as_its_words() {
+    const PAGE: &str = concat!(
+        r#"<!doctype html><html lang="en"><head><title>Example Domain</title>"#,
+        r#"<style>body{background:#eee;width:60vw;font-family:system-ui,sans-serif}"#,
+        r#"h1{font-size:1.5em}</style></head><body><h1>Example Domain</h1>"#,
+        r#"<p>This domain is for use in illustrative examples.</p></body></html>"#,
+    );
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        OpenAiCompatible::new("proxy", whole_server(PAGE).await, "no key needed").streaming(false),
+    ));
+    kernel.push(ContextItem::user("go"));
+
+    let why = kernel.step().await.expect_err("a page is not an answer");
+    let said = why.to_string();
+    assert!(
+        said.contains("This domain is for use"),
+        "the page's own words are the account: {said}"
+    );
+    assert!(
+        !said.contains("font-family"),
+        "the stylesheet is not prose: {said}"
+    );
+    assert!(!said.contains('<'), "nor are the tags: {said}");
+}
+
 /// A whole answer that arrives in pieces is read to its end, rather than refused as too large.
 ///
 /// note: the bound on a body is on what has arrived so far, so only an answer in more than one
