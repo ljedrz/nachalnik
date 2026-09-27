@@ -36,7 +36,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
   Landlock governs TCP from ABI 4, which is Linux 6.7: below that the ruleset comes back
   `Partial`, the files are still confined, TCP is left to the gate below where there is one, and
-  the permissions tab says "partly confined".
+  the permissions tab says "partly confined". The `shell` description a model reads says "runs
+  confined" either way and hedges the network with "TCP may be closed" where there is no gate,
+  because TCP is the one thing below 6.7 a command would act on differently; below 6.2 truncating
+  a file by name is ungoverned too, which the permissions tab says and the description does not.
   The `landlock` crate has no UDP right to hand a ruleset, ABI 10 and the kernel's own
   `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, so UDP is the gate's or nobody's, and where there
   is no gate the words say `no TCP` rather than rounding it up.
@@ -99,6 +102,16 @@ Referenced from [AGENTS.md](AGENTS.md).
   a desktop the camera and the microphone. A pty goes with them, because its far end is a file in
   `/dev/pts`. Under `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the
   person has.
+- **A stop reaches the command's session, and what leaves it runs on.** Stopping a call kills the
+  command's process group, which is the session it starts in, so whatever it started is stopped
+  with it, and a dropped call does the same. A process that starts a session of its own - under
+  `setsid`, or a daemon detaching itself - is out of that group and runs on after the call has
+  said it stopped. It stays confined and gated, and a network attempt it makes after the call is
+  refused rather than asked, so what it can reach does not grow; a served session cannot tell it
+  from a client. Holding the whole tree would take a cgroup per command, which needs one delegated
+  to the user; a PID namespace per command, which needs a user namespace; or making this process
+  the subreaper of what is orphaned and reaping it, alongside the runtime reaping its own children
+  by pid. Each fails somewhere this program runs, so a stop is the group, and says so.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
   the process behind it act for it, and that process is not in the domain: `systemd-run --user`
   over the session bus read and wrote a home directory the same command was refused directly, and
