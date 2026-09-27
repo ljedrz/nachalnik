@@ -444,6 +444,11 @@ minor bump may break you.
   session trusted every client to, so an empty or all-space `submit` from any other went into the
   context as a message and started a turn on it. It is now answered with a `failed` saying nothing
   was sent.
+- **A provider's figure wider than half of `i64` no longer wraps the next-request estimate.**
+  `App::anchored` did the arithmetic in `i64`, so an endpoint reporting `prompt_tokens: u64::MAX`
+  put every figure in the sum through the cast negative and the answer came back as a number that
+  had wrapped. The sum is saturating now, and is the provider's own number rather than one
+  computed from it.
 
 ## [0.15.1] - 2026-09-24
 

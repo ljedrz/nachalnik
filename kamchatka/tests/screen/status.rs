@@ -1062,6 +1062,55 @@ async fn a_change_of_model_drops_the_anchor() {
     );
 }
 
+/// A provider's figure wider than half of `i64` comes back as the figure it reported, rather than
+/// as one that has wrapped.
+///
+/// note: the sum behind the anchored figure is the provider's own number plus what the context
+/// estimates now, less what that number already covered, and it was done in `i64` - so a
+/// `prompt_tokens` of `u64::MAX` went through the cast as a negative and the answer was read off
+/// as a number far below zero. Saturating arithmetic is the honest way to add three numbers one of
+/// which is whatever an endpoint typed into a JSON field.
+#[tokio::test]
+async fn a_provider_figure_wider_than_half_an_i64_does_not_wrap_the_next_request() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(u64::MAX),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.md", "a sentence. ".repeat(200)));
+
+    harness.send("go").await;
+    harness.settle().await;
+
+    let going = harness.app.going();
+    let budget = harness.app.kernel.budget();
+    let anchored = harness
+        .app
+        .anchored(&going, &budget)
+        .expect("a response reported what it cost");
+
+    // the provider's figure, less what that figure already covered - so within a few hundred of
+    // the largest a token count can be, and a long way from where a signed cast would have put it
+    assert!(
+        anchored > usize::MAX - 1_000,
+        "the anchored figure is the provider's own number, not one that has wrapped: {anchored}"
+    );
+
+    // the corner prints it rather than a number that has come back through the cast. The line is
+    // as wide as the window, so what is checked is the head of the figure - which is where a wrap
+    // would be least visible and a real one is unmistakable
+    let screen = harness.screen();
+    assert!(
+        screen.contains("~18,446,744,073,709,551,"),
+        "the status line should show the figure that was reported: {screen}"
+    );
+}
+
 /// And the correction with it, for the same reason one word further in.
 ///
 /// note: `Calibrating` is the ratio between what this counter guessed and what a provider billed,

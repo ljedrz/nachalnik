@@ -85,6 +85,11 @@ impl App {
     /// note: what it does not catch, until the next request re-anchors it: a tool added or
     /// dropped, since the schemas are inside the provider's figure and are not itemised in it.
     /// The context is the part that moves.
+    ///
+    /// note: saturating throughout rather than arithmetic in `i64`. The provider's figure is
+    /// whatever it reported and can be wider than half an `i64` holds - a `prompt_tokens` of
+    /// `u64::MAX` put the whole sum through the `as i64` negative, and the answer came back as a
+    /// number that had wrapped rather than as the one that was reported.
     pub fn anchored(&self, going: &Going, budget: &Budget) -> Option<usize> {
         let anchor = self.anchor.as_ref()?;
         // the markers are what they were - see `Anchor::markers` - and everything whose content
@@ -98,8 +103,10 @@ impl App {
                 .sum::<usize>();
 
         Some(
-            (anchor.reported as i64 + budget.context_tokens as i64 - covered as i64).max(0)
-                as usize,
+            anchor
+                .reported
+                .saturating_add(budget.context_tokens)
+                .saturating_sub(covered),
         )
     }
 
