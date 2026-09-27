@@ -74,7 +74,9 @@ An endpoint that reports no usage at all says so, once, rather than holding a ce
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
 reading the run as bounded.
 
-`--deadline` is the one that needs nobody's cooperation — of the model, at least. What it cannot
+`--deadline` is the one that needs nobody's cooperation — of the model, at least. It counts from
+the moment the program starts, so an endpoint that never answers and an MCP server that never
+finishes its handshake are held to it too, and a `/restart` does not start it again. What it cannot
 cut short is a command of your own that is waiting on the endpoint: `/models` fetches a list, and
 `/model` and `/provider` finish their switch before the next line is read, so a deadline that
 falls during one of those is served when it returns.

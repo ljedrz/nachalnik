@@ -127,6 +127,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`--deadline` covers starting up.** It started counting once the session was driven, so an
+  endpoint that never answered its probe, or an MCP server that never finished its handshake, held
+  a headless run silent for as long as it liked. It counts from the program's start now, a run
+  that runs out while starting says which step it was in and ends with an error, and a
+  `/restart` shares the run's deadline rather than starting a new one. Each MCP server is named on
+  standard error before it is started.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

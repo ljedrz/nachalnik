@@ -2456,6 +2456,48 @@ async fn the_deadline_ends_the_program_itself() {
     assert!(said.lock().contains("out of time"), "{}", said.lock());
 }
 
+/// `--deadline` ends a run still starting: a server that never answers its handshake, and an
+/// endpoint that never answers at all.
+///
+/// note: both are waits on somebody else's program with no bound of their own, before the driver
+/// that keeps the deadline exists. The listener is bound and never accepted from, so a connection
+/// is made and nothing ever comes back on it.
+#[cfg(feature = "mcp")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_deadline_ends_a_run_that_is_still_starting() {
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").expect("a port to never answer on");
+    let silent = format!("http://{}/v1", silent.local_addr().expect("an address"));
+    for (args, base, step) in [
+        (
+            vec!["--mcp", "hung=sleep 60"],
+            "http://127.0.0.1:1/v1",
+            "starting the MCP servers",
+        ),
+        (vec!["-m", "nothing"], silent.as_str(), "reaching the model"),
+    ] {
+        let mut child = std::process::Command::new(common::program())
+            .args(["--headless", "--no-record", "--deadline", "1"])
+            .args(&args)
+            .env("KAMCHATKA_BASE_URL", base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+
+        let said = watch(child.stderr.take().expect("stderr is a pipe"));
+        let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
+
+        assert!(!status.success(), "nothing was run: {}", said.lock());
+        assert!(
+            said.lock().contains(&format!("out of time {step}")),
+            "{}",
+            said.lock()
+        );
+    }
+}
+
 /// A run with no keys to press is handed the commands, and nothing about keys.
 ///
 /// note: this used to assert the opposite - that a pipe got every page - on the grounds that a

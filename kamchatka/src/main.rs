@@ -105,6 +105,28 @@ fn headless(asked: bool, piped: bool) -> bool {
     asked || piped || cfg!(not(feature = "tui"))
 }
 
+/// Awaits one step of starting a run, unless the deadline passes first.
+///
+/// note: an error rather than the driver's "out of time", which ends a session and writes it out.
+/// Here there is no session yet, and nothing was run to keep.
+async fn starting<T>(
+    ends: Option<tokio::time::Instant>,
+    step: &str,
+    doing: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    match ends {
+        None => doing.await,
+        Some(ends) => tokio::time::timeout_at(ends, doing)
+            .await
+            .unwrap_or_else(|_| {
+                Err(anyhow::anyhow!(
+                    "out of time {step}: `--deadline` passed before the session started, and \
+                     nothing was run"
+                ))
+            }),
+    }
+}
+
 /// What else was typed on a command line that also has `--connect`.
 ///
 /// note: refused rather than ignored, and named rather than counted. A client assembles nothing,
@@ -138,6 +160,7 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
 
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
+    let begun = tokio::time::Instant::now();
     let Given {
         args,
         matches,
@@ -211,6 +234,15 @@ async fn session() -> Result<()> {
         }
     }
 
+    // note: the run's rather than a session's, and counted from the start. `--deadline` promises
+    // to stop a run however far it has got, and the endpoint's probe and an MCP server's handshake
+    // are both waits on somebody else's program that nothing else bounds - see POSTPONED.md for
+    // why a server's has no timeout of its own. A `/restart` does not start the clock again
+    let ends = args
+        .deadline
+        .filter(|_| headless && server.is_none())
+        .map(|seconds| begun + std::time::Duration::from_secs(seconds));
+
     let setup = args.setup()?;
 
     // note: before the provider, which is a round trip and an API key away. Everything `check`
@@ -220,9 +252,9 @@ async fn session() -> Result<()> {
     setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
 
     #[cfg(feature = "shell-advisor")]
-    let setup = args.advised(setup).await?;
+    let setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;
 
-    let provider = args.provider().await?;
+    let provider = starting(ends, "reaching the model", args.provider()).await?;
     let flagged = kamchatka::wiring::Flagged::of(&*provider);
 
     // note: kept so that `/restart` can wire a second session out of the same settings. That is
@@ -243,10 +275,22 @@ async fn session() -> Result<()> {
     // takes its child process with it, and leaves its tools unable to answer. A restart installs
     // the tools they already offer into the new kernel rather than spawning them again - the
     // handshake is a round trip and a `npx` server is seconds of it
+    //
+    // note: each one named before it is started, because a handshake nothing bounds is otherwise
+    // a run that says nothing at all while it waits - and a server named by a file found underfoot
+    // is a program somebody may not know they asked for
     #[cfg(feature = "mcp")]
-    let servers = kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
-        .await
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let servers = {
+        for spec in &args.mcp {
+            let _ = writeln!(std::io::stderr(), "· starting the MCP server `{spec}`");
+        }
+        starting(ends, "starting the MCP servers", async {
+            kamchatka::mcp::attach(&app.kernel, &app.policy, &args.mcp)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))
+        })
+        .await?
+    };
 
     let on_ask = args.on_ask.grant();
     // note: one reader for the whole run rather than one per session, because of `/restart` in a
@@ -382,8 +426,9 @@ async fn session() -> Result<()> {
                         // signal is the program's decision, and here this *is* the program
                         .stops_on_ctrl_c()
                         .leaves_when_terminated();
-                    if let Some(seconds) = args.deadline {
-                        driver = driver.deadline(std::time::Duration::from_secs(seconds));
+                    if let Some(ends) = ends {
+                        driver = driver
+                            .deadline(ends.saturating_duration_since(tokio::time::Instant::now()));
                     }
                     driver
                         .run(&mut app, &mut events, &mut finished, &mut input)

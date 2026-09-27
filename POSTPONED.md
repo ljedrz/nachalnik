@@ -394,7 +394,9 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **No bound on an MCP server's first answers.** The handshake, `tools/list` and `resources/read`
   wait as long as the server takes, and a first `npx -y` can legitimately take minutes to download
   its package. A bound has to be long enough for that and short enough to mean something, and what
-  a person sees while it runs is part of the same decision.
+  a person sees while it runs is part of the same decision. Each server is named on standard error
+  before it starts, and `--deadline` holds a headless run to the person's own bound; a session with
+  a screen waits.
 
 - **Schemas and names Gemini refuses.** Google's dialect rejects some JSON Schema an MCP server may
   send - `$ref`, `additionalProperties` - and a tool name that starts with a digit, so a server
