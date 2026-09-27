@@ -177,6 +177,12 @@ minor bump may break you.
   come from. Everything named in an answer is read as a thing to try, so advice for a call the
   session would refuse for has to go when its subject does, as the sentence beside `log` already
   did.
+- **`context search` no longer counts the turn making the call.** A model asking `search` for
+  something it had just said found the line in the turn that had said it - the words and the
+  reasoning beside the call, which skipping the call's own arguments never covered - and was told
+  its own question was already in the context. The calling turn's content and reasoning are now
+  skipped along with its calls, so a search reports what the context holds and not what the model
+  just wrote.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

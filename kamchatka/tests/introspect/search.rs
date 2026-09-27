@@ -438,3 +438,80 @@ async fn search_finds_the_arguments_a_turn_called_a_tool_with() {
     let said = answered(&kernel);
     assert!(!said.starts_with("no line of your context"), "{said}");
 }
+
+/// A search does not count the turn making the call, or anything else that turn said or thought.
+///
+/// note: the call's own arguments are already skipped, because they carry the text being looked
+/// for - but the words beside them and the reasoning in front of them were not, so a search for
+/// something the model had just said found it in the turn that had said it and reported a match
+/// the model had made itself. A search says what the context holds, and the turn asking is the one
+/// part of it the model has just written.
+///
+/// note: the calling turn is put on the context by hand rather than recorded by a provider, so
+/// that it carries the words and the thinking a scripted turn would have had to be given.
+#[tokio::test]
+async fn a_search_does_not_count_the_turn_asking_the_question() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "needle" }),
+    )]));
+
+    // an earlier turn of the model's own: what the context holds, and what a later search finds
+    kernel.push(ContextItem::assistant(
+        "it is on needle",
+        vec![call("t1", "fs", json!({ "path": "a.rs" }))],
+    ));
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("t1"),
+        "fs",
+        "fn main() {}",
+        false,
+    ));
+    kernel.push(ContextItem::user("find it"));
+
+    // the turn that asks, carrying the same word in what it says and in what it thinks
+    kernel.push(
+        ContextItem::assistant(
+            "the needle, then",
+            vec![call(
+                "c1",
+                "context",
+                json!({ "action": "search", "text": "needle" }),
+            )],
+        )
+        .with_reasoning(Some(nachalnik::Content::text("searching for the needle"))),
+    );
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("c1"),
+        "context",
+        "unused",
+        false,
+    ));
+    kernel.push(ContextItem::user("again"));
+
+    // the tool is reached by hand now, so that the turn making the call is the one holding `c1`
+    let out = call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "needle", "take": 9 }),
+    );
+    let tool = kernel.tool("context").expect("it is installed");
+    let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+        .await
+        .expect("the call was answered");
+
+    let said = answered.content.to_text();
+    assert!(
+        said.starts_with("1 line(s) say `needle`"),
+        "only the earlier turn is the context the search reads: {said}"
+    );
+    assert!(
+        said.contains("it is on needle"),
+        "and the match is the one that was already there: {said}"
+    );
+    assert!(
+        !said.contains("the needle, then") && !said.contains("searching for the needle"),
+        "a match in the turn that asked is a match the model made itself: {said}"
+    );
+}

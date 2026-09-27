@@ -881,14 +881,18 @@ fn search(
             continue;
         }
         read += 1;
-        // what a turn thought and what it called a tool with are in the context too, and a search
-        // that skipped them would answer "no line says it" about an argument the model passed
-        let mut hay = item.content.to_text().into_owned();
-        if let Some(reasoning) = item.reasoning() {
+        // but not the turn asking. Its calls carry the text being searched for, and so does
+        // whatever it said and thought on the way to making them - so a search that read the
+        // rest of it would find the needle in the question the model is in the middle of
+        // asking, and report a match it made itself
+        let mut hay = match Some(item.id) == own {
+            true => String::new(),
+            false => item.content.to_text().into_owned(),
+        };
+        if let Some(reasoning) = item.reasoning().filter(|_| Some(item.id) != own) {
             hay.push('\n');
             hay.push_str(&reasoning.to_text());
         }
-        // but not the turn asking: its calls carry the text being searched for
         for asked in item.calls().filter(|_| Some(item.id) != own) {
             hay.push_str(&format!("\n{} {}", asked.tool, asked.args));
         }
