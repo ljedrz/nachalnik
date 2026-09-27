@@ -228,10 +228,10 @@ async fn session() -> Result<()> {
             let unserved = unserved(&matches);
             anyhow::ensure!(
                 unserved.is_empty(),
-                "`--serve` reads none of {}: a served session is this program's and goes on for as \
-                 long as somebody wants it, and both of these belong to a headless run - a deadline \
-                 that ends it, and an answer for a question nobody is there to answer",
-                unserved.join(" and ")
+                "`--serve` does not read {}: a served session is this program's and goes on for as \
+                 long as somebody wants it, while `--deadline` ends a headless run and `--on-ask` \
+                 answers a question nobody is there to answer",
+                unserved.join(" or ")
             );
             Some(
                 remote::Server::bind(address)
@@ -404,8 +404,10 @@ async fn session() -> Result<()> {
             app.say(Speaker::Note, ui::GREETING);
         }
         // said again here, where a screen and a served session's clients read, because this is
-        // the one line a person needs before they wonder where a setting came from
-        if let Some(path) = &found {
+        // the one line a person needs before they wonder where a setting came from. Not in a
+        // headless run with nobody attached, whose conversation is printed to the stream the line
+        // above already went to
+        if let Some(path) = found.as_ref().filter(|_| !headless || server.is_some()) {
             app.say(
                 Speaker::Note,
                 format!("settings read from {}", path.display()),

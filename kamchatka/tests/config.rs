@@ -771,6 +771,8 @@ fn a_file_underfoot_is_read_without_being_named_and_is_said() {
         said.contains("settings read from kamchatka.json"),
         "a file nobody asked for has to say it was read: {said}"
     );
+    // once: a headless run's conversation goes to the stream the early line went to
+    assert_eq!(said.matches("settings read from").count(), 1, "{said}");
 }
 
 /// A file underfoot is said before a server it names is started, and not only once a session is.
