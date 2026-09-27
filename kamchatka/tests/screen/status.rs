@@ -487,6 +487,26 @@ async fn sampling_only() -> Arc<OpenAiCompatible> {
     serving(listing, None).await
 }
 
+/// `stream` is not a parameter a model lists, and is not ignored for being missing from the list.
+#[tokio::test]
+async fn a_parameter_of_the_transport_is_not_called_ignored() {
+    let listing = r#"{"data":[{"id":"mercury-2.5","context_length":260000,
+        "supported_parameters":["temperature","max_tokens"]}]}"#;
+    let mut harness = Harness::served_by([], serving(listing, None).await);
+
+    harness.send("/params stream false").await;
+    let screen = harness.screen();
+    assert!(!screen.contains("sent, and ignored"), "{screen}");
+
+    // and one the model really does not list still is
+    harness.send("/params seed 7").await;
+    assert!(
+        harness.screen().contains("does not list seed"),
+        "{}",
+        harness.screen()
+    );
+}
+
 #[tokio::test]
 async fn a_sampling_only_listing_does_not_claim_a_parameter_missing_from_it_is_ignored() {
     // the case that prompted this: `reasoning_effort` is absent from `mercury-2.5`'s published

@@ -149,6 +149,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`/params stream false` is not called ignored.** A model's list of parameters has no word for
+  `stream` or `stream_options`, so setting one was answered `sent, and ignored` while it turned the
+  answer into one body. Those two are left out of that sentence.
 - **`--serve` refuses the flags a served session never reads, and a `--connect` client says what
   each thing was.** `--deadline` and `--on-ask` were accepted beside `--serve` and dropped, so
   `--serve unix:PATH --deadline 60` served for ever beside a deadline reading as one; a path

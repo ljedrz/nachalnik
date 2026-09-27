@@ -25,6 +25,13 @@ use super::{
 /// nothing where a person can see it: set and then quietly not sent, it would read on the
 /// `/params` line as a parameter in force. `contents` means nothing to the other dialect, so
 /// refusing it there costs nobody anything.
+/// Parameters that shape how an answer is delivered rather than what the model does, which every
+/// endpoint of the dialect reads and no model lists.
+///
+/// note: kept out of what is said to be ignored, because they are not: `stream: false` turns the
+/// answer into one body, on a model whose list has no word for it.
+const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
+
 const BUILT: [&str; 5] = [
     "model",
     "messages",
@@ -605,7 +612,7 @@ impl App {
                 let ignored: Vec<&str> = params
                     .keys()
                     .map(String::as_str)
-                    .filter(|key| !takes(key))
+                    .filter(|key| !takes(key) && !TRANSPORT.contains(key))
                     .collect();
                 if !ignored.is_empty() {
                     // note: two messages, because the list supports two different claims. Where it
