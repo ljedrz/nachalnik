@@ -369,10 +369,14 @@ impl Sandbox {
             if named.contains(&path) {
                 continue;
             }
+            // note: a relative path is judged where the command started, and named as it was
+            // written. A command that moved with `cd` first is judged from the wrong place, which
+            // is the rarer mistake than reading every relative path as the boundary's
+            let judged = self.workdir.join(&path);
             // a socket is judged by connecting and nothing else: see `connecting`
-            let (socket, confined) = match self.connecting(Path::new(&path), scratch) {
+            let (socket, confined) = match self.connecting(&judged, scratch) {
                 Some(refused) => (true, refused),
-                None => (false, !self.reaches(Path::new(&path), scratch)),
+                None => (false, !self.reaches(&judged, scratch)),
             };
             if confined {
                 sockets += usize::from(socket);
@@ -615,22 +619,51 @@ fn refused(line: &str) -> bool {
         || line.contains("EACCES")
 }
 
-/// The absolute paths a line of standard error mentions.
+/// The paths a line of standard error mentions: absolute ones, and relative ones with a `/` in
+/// them, as written.
 ///
-/// note: a token that is absolute once the punctuation a message wraps one in has been taken off.
+/// note: a token that is a path once the punctuation a message wraps one in has been taken off.
 /// Stripped *first* and tested afterwards, because a message such as `could not read settings
 /// file: '/home/you/.rustup/settings.toml': Permission denied` has the token `'/home/...':`, which
 /// does not start with a slash at all.
+///
+/// note: opening quotes and brackets from the front, and closing ones and a sentence's punctuation
+/// from the back - never a `.` from the front, which turned `./build.sh` into `/build.sh`, a file
+/// outside the reach that the note then blamed for a missing execute bit. And a trailing `.` only
+/// after a name, so `../..` keeps its meaning.
+///
+/// note: a relative path needs a `/` to count, because every refusal has words in it, and a word
+/// taken for a path in the working directory would be a path reached - silencing the general
+/// sentence a refusal naming nothing is owed. A URL is not a path.
 ///
 /// note: it misses a path with a space in it, which is the right way round: a caller that gets
 /// nothing says something general instead, and one that gets a wrong path would say something
 /// false.
 fn paths_in(line: &str) -> Vec<String> {
     line.split_whitespace()
-        .map(|token| token.trim_matches(|c: char| "'\"`,;:.()[]<>".contains(c)))
-        .filter(|token| token.starts_with('/') && token.len() > 1)
+        .map(bare)
+        .filter(|token| {
+            (token.starts_with('/') && token.len() > 1)
+                || (token.contains('/') && !token.contains("://"))
+        })
         .map(str::to_owned)
         .collect()
+}
+
+/// A token with the punctuation a message wraps a path in taken off; see [`paths_in`].
+fn bare(token: &str) -> &str {
+    let mut token = token.trim_start_matches(|c: char| "'\"`([<".contains(c));
+    loop {
+        let trimmed = token.trim_end_matches(|c: char| "'\"`,;:)]>".contains(c));
+        let trimmed = match trimmed.strip_suffix('.') {
+            Some(rest) if !rest.is_empty() && !rest.ends_with(['.', '/']) => rest,
+            _ => trimmed,
+        };
+        if trimmed.len() == token.len() {
+            break token;
+        }
+        token = trimmed;
+    }
 }
 
 /// Where git looks for a person's own configuration, in the order it reads them.

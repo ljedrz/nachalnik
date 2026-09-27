@@ -632,6 +632,32 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
     );
 }
 
+/// A relative path in a refusal is judged where the command ran, and is never read as an absolute
+/// one: a script with no execute bit is its own permissions, and a write one directory up is the
+/// boundary, named as the command wrote it.
+#[test]
+fn a_relative_path_is_judged_from_the_working_directory() {
+    let confined = Sandbox {
+        workdir: common::workdir("relative-refusal"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+
+    assert_eq!(
+        confined.note_for("sh: line 1: ./build.sh: Permission denied\n"),
+        None,
+        "a file in the working directory refused is its own permissions"
+    );
+    let note = confined
+        .note_for("sh: line 1: ../escape.txt: Permission denied\n")
+        .expect("one directory up is out of reach");
+    assert!(note.starts_with("[../escape.txt is outside"), "{note}");
+}
+
 /// `/dev` is accounted for as it is granted: a device there was reached, so a refusal of it is its
 /// own permissions and nothing is said, while a listing of `/dev` or a file made in it is the
 /// boundary and is named.

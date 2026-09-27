@@ -386,6 +386,11 @@ minor bump may break you.
   from the end, so a command that printed past the limit and then failed lost the line saying why:
   the model read `exit: 1` over a cut listing and said the command had written no errors. The
   output is the part a limit takes now, and the whole of it is still in the archive.
+- **A refusal naming a relative path is not blamed on the confinement for the wrong path.** The
+  note picking paths out of a permission error trimmed a `.` from the front of each, so `./build.sh`
+  with no execute bit came back as `/build.sh is outside what this session reaches`, and a model
+  offered to open `/build.sh`. A relative path is now judged from the working directory and named
+  as written: `./build.sh` gets no note, and a refused `../escape.txt` is named as that.
 
 ## [0.15.1] - 2026-09-24
 
