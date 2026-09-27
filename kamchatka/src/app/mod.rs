@@ -647,6 +647,12 @@ pub struct App {
     /// session's name is shared with the session it resumed and with any other started in the
     /// same second, so the name alone would have written over theirs.
     saved_into: BTreeMap<std::path::PathBuf, (String, String)>,
+    /// What the last request failed with, while no answer has come since.
+    ///
+    /// note: for `/raw`. The kernel keeps the last *answer*, and a request that failed leaves the
+    /// one before it standing, which shown on its own would be an older answer passed off as the
+    /// provider's latest.
+    unanswered: Option<String>,
 }
 
 impl App {
@@ -729,6 +735,7 @@ impl App {
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
             thought_unseen: false,
+            unanswered: None,
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
@@ -1035,6 +1042,7 @@ impl App {
             Event::ModelFinished {
                 item, usage, stop, ..
             } => {
+                self.unanswered = None;
                 // note: the tokens are real and the words are gone. Some endpoints bill for
                 // reasoning and return none of it - `mercury-2.5`'s stream carries no reasoning
                 // field at all - so the context tab shows a turn with nothing in it where the
@@ -1074,6 +1082,7 @@ impl App {
             // the same fact from the two places that can know it, and the second line says which
             // of them it is: one is a count and the other is a guess
             Event::ModelFailed { error, overrun } => {
+                self.unanswered = Some(error.clone());
                 self.close();
                 self.say_error(error);
                 self.overran(overrun, true);

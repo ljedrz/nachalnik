@@ -579,6 +579,41 @@ async fn a_picture_is_named_in_the_previews_rather_than_printed_into_them() {
     );
 }
 
+/// `/raw` after a request that failed says it failed, rather than showing the answer before it as
+/// the provider's last.
+///
+/// note: the kernel keeps the last answer and a failure leaves it standing, so the page titled
+/// "the provider's last answer" showed an older turn's bytes as the reply to a request that had
+/// none.
+#[tokio::test]
+async fn raw_after_a_failed_request_says_it_failed() {
+    let mut answered = ModelResponse::text("the first answer");
+    answered.raw = Some(json!({ "said": "FIRST-RAW" }));
+    // one answer, and then a script with nothing left in it, which fails the second request
+    let mut harness = Harness::new([answered]);
+
+    harness.send("the first question").await;
+    harness.settle().await;
+    harness.send("/raw").await;
+    let screen = harness.flat();
+    assert!(screen.contains("FIRST-RAW"), "{screen}");
+    assert!(!screen.contains("failed"), "{screen}");
+    harness.press(KeyCode::Esc).await;
+
+    harness.send("the second question").await;
+    harness.settle().await;
+    harness.send("/raw").await;
+    let screen = harness.flat();
+    assert!(
+        screen.contains("the last request failed") && screen.contains("ran out of responses"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("the answer before it"),
+        "the older answer is labelled as older: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
     let harness = Harness::new([]);

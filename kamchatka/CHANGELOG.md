@@ -280,6 +280,7 @@ minor bump may break you.
 - **`/load` says one `u` takes it back when it archived nothing.** Its note always said `u` twice,
   and with nothing of the session's own set aside the load is one undo, so the second took back
   something the person had done before it.
+<<<<<<< HEAD
 - **A bare `/step`, and `/continue` after a `/load` or `-r`, no longer ask for an answer again.**
   Only `/continue` straight after a finished turn was declined, so `/step` there, or `/continue`
   over a loaded conversation ending on an answer, sent a request with nothing new at its end and
@@ -318,6 +319,12 @@ minor bump may break you.
   argument that is only a suffix leaves nothing to name the files after, and is taken as no
   argument. `/load` given a directory says it is one, rather than that it could not read
   `DIR/.json`.
+=======
+- **`/raw` after a failed request says it failed.** The runtime keeps the last answer, and a
+  request that fails leaves the one before it standing, so `/raw` showed an older turn's bytes as
+  the provider's last answer. It now says the last request failed and with what, and labels the
+  older answer as the one before it.
+>>>>>>> 8f99881 (kamchatka: `/raw` after a failed request says it failed)
 
 ## [0.15.1] - 2026-09-24
 

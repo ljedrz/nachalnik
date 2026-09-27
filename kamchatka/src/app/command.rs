@@ -279,9 +279,15 @@ impl App {
                 self.preview("the payload, as it would go out", body);
             }
             "raw" => {
-                let body = match self.kernel.last_response().and_then(|r| r.raw.clone()) {
-                    Some(raw) => pretty(&raw),
-                    None => "nothing has been answered yet".into(),
+                let raw = self.kernel.last_response().and_then(|r| r.raw.clone());
+                let body = match (&self.unanswered, raw) {
+                    (Some(error), Some(raw)) => format!(
+                        "the last request failed: {error}\n\nthe answer before it:\n{}",
+                        pretty(&raw)
+                    ),
+                    (Some(error), None) => format!("the last request failed: {error}"),
+                    (None, Some(raw)) => pretty(&raw),
+                    (None, None) => "nothing has been answered yet".into(),
                 };
                 self.preview("the provider's last answer, verbatim", body);
             }
