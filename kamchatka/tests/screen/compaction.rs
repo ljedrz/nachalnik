@@ -127,10 +127,13 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
         nachalnik::Content::text("let me look"),
         vec![call.clone()],
     ));
+    // a result big enough to be worth taking, which is what the first pass needs: one that
+    // recovers barely more than the summary it leaves behind is not a pass at all, and this is
+    // about the passes *after* the first
     kernel.push(ContextItem::tool_result(
         call.id.clone(),
         "shell",
-        "y".repeat(400),
+        "y".repeat(4_000),
         false,
     ));
 
@@ -320,6 +323,204 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
     assert!(
         !screen.contains("0 items out"),
         "and does not say nothing moved: {screen}"
+    );
+}
+
+/// A pass that would free less than its markers and its summary cost takes nothing, counted on
+/// the scale the counter is really using.
+///
+/// note: a counter that has corrected itself upwards prices a short result below what a marker
+/// priced at four bytes a token really costs, and the pass then reports tokens recovered while the
+/// request grows.
+#[tokio::test]
+async fn a_pass_that_would_grow_the_request_takes_nothing() {
+    use nachalnik::{Budget, BytesPerToken, Calibrating, Calibration, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // what the counter has learnt by the time this pass runs. A session that has had a few
+    // responses reads a third above the plain estimate, and every figure in the context is on
+    // that scale - the projected ones and the ones on the items alike
+    kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+    kernel.recalibrate(Calibration {
+        scale: 1.4,
+        observations: 3,
+        estimated: 1_000,
+        reported: 1_400,
+    });
+
+    // the bulk is something the pass cannot touch, so its loops run to the end of their
+    // candidates and the one result below is the only thing there is to take
+    kernel.push(ContextItem::file("big.txt", "x".repeat(2_600)).pinned());
+    // 300 bytes: about 105 tokens on the corrected scale, short of what this pass has to free
+    // before its own summary pays for itself. Priced at four bytes a token the same result read
+    // as 52 tokens clear of a marker, and the pass took it
+    let asked = call("c1", "context:pin", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![asked.clone()],
+    ));
+    let pin = kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "context:pin",
+        "y".repeat(300),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+
+    let tokens = kernel.item(pin).unwrap().tokens;
+    assert!(
+        tokens > 50 && tokens < 184,
+        "a result between what a marker costs on the raw scale and what it costs on this one: \
+         {tokens}"
+    );
+
+    let (items, undo) = (kernel.items().len(), kernel.with_context(|c| c.undo_len()));
+    assert!(
+        trim.should_compact(&budget()),
+        "over the threshold, which is the case this is about"
+    );
+    assert!(
+        trim.plan(&kernel.items(), &budget()).await.is_none(),
+        "eliding that one would put a longer sentence where it was, so there is no pass to make"
+    );
+    assert_eq!(kernel.items().len(), items, "and the context did not grow");
+    assert_eq!(kernel.with_context(|c| c.undo_len()), undo, "nor the undo");
+    assert_eq!(
+        kernel.item(pin).unwrap().state,
+        ContextState::Active,
+        "and the result is still there to be read"
+    );
+}
+
+/// The floor on a marker is not a reason to take nothing. A result that pays for its own marker
+/// and its pass's summary is taken whatever the scale is read at, and the request really does get
+/// smaller - which is the whole of what the compactor is for.
+#[tokio::test]
+async fn a_result_worth_more_than_its_marker_and_the_summary_is_still_taken() {
+    use nachalnik::{Budget, BytesPerToken, Calibrating, Calibration, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+    kernel.recalibrate(Calibration {
+        scale: 1.4,
+        observations: 3,
+        estimated: 1_000,
+        reported: 1_400,
+    });
+
+    // the bulk, again, so the loops run past the one result that is worth looking at
+    kernel.push(ContextItem::file("big.txt", "x".repeat(2_600)).pinned());
+    // 2,000 bytes: 700 tokens on the corrected scale, and 626 of them back after the marker
+    // that takes its place - a pass worth running whatever the scale is read at
+    let asked = call("c1", "shell", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![asked.clone()],
+    ));
+    let shell = kernel.push(ContextItem::tool_result(
+        asked.id.clone(),
+        "shell",
+        "y".repeat(2_000),
+        false,
+    ));
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("a result that pays for its own marker is still taken");
+    assert_eq!(
+        plan.elide,
+        vec![shell],
+        "so the pass is not a blanket refusal"
+    );
+
+    let report = kernel.apply_compaction(plan);
+    assert!(
+        report.tokens_after < report.tokens_before,
+        "and the request really did get smaller: {} -> {}",
+        report.tokens_before,
+        report.tokens_after
+    );
+}
+
+/// A blob, and the sentence about the results, are counted in the same units as everything else -
+/// so a pass whose summary would outgrow what it freed is not run, and a picture is still taken
+/// whatever the arithmetic says of it.
+#[tokio::test]
+async fn a_summary_counts_only_what_this_compactor_elided() {
+    use nachalnik::{Budget, Compactor, Content};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    kernel.push(ContextItem::file("big.txt", "x".repeat(2_600)).pinned());
+
+    // two results worth taking, one of them elided by the model rather than by a pass - the
+    // model's own `elide`, which writes its own reason onto the item and leaves a marker of a
+    // different kind behind
+    for (id, tool) in [("m1", "context:elide"), ("c1", "shell")] {
+        let asked = call(id, tool, json!({}));
+        kernel.push(ContextItem::assistant(
+            Content::text(""),
+            vec![asked.clone()],
+        ));
+        kernel.push(ContextItem::tool_result(
+            asked.id.clone(),
+            tool,
+            "y".repeat(2_000),
+            false,
+        ));
+    }
+    let model_elided = kernel
+        .items()
+        .iter()
+        .find(|item| item.label == "context:elide")
+        .expect("the result is there")
+        .id;
+    kernel.set_state(
+        [model_elided],
+        ContextState::Elided,
+        Some("I have what I need from this one".to_owned()),
+    );
+
+    let trim = Trim {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    let budget = || Budget {
+        limit: Some(1_000),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("the result the pass may take is worth taking");
+    let said = plan
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.to_text().into_owned());
+    assert!(
+        said.as_deref()
+            .is_some_and(|said| said.starts_with("1 earlier tool result(s)")),
+        "the model elided one of the two itself, and this pass is not what took it: {said:?}"
     );
 }
 

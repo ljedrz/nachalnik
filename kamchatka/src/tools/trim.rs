@@ -1,9 +1,11 @@
 //! `Trim`: the compactor, which elides the oldest tool results and says exactly what it took.
 //!
-//! note: it refuses to elide anything smaller than the marker that would replace it, because an
-//! elided item leaves behind a sentence carrying the reason for eliding it - and on a short result
-//! that costs more than the content did. A compactor that did not check would watch the total
-//! refuse to move and elide everything it had.
+//! note: it takes nothing unless what it frees beats what it costs, and both sides are counted on
+//! the counter's own scale. An elided item leaves behind a sentence carrying the reason for
+//! eliding it and the pass leaves behind a summary, so a result smaller than either of those is
+//! not worth taking - and a counter that has corrected itself upwards prices both higher than a
+//! plain bytes-over-four does. A compactor that did not check would watch the total refuse to
+//! move, and elide everything it had while the request grew.
 //!
 //! note: with one exception, which is why blobs are partitioned out first. A
 //! [`Content::Blob`](nachalnik::Content::Blob) is counted at `0` by every counter in this
@@ -94,7 +96,11 @@ impl Compactor for Trim {
     }
 
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
-        let target = (budget.limit? as f64 * self.target) as usize;
+        let limit = budget.limit?;
+        let target = (limit as f64 * self.target) as usize;
+        // what the counter active here calls four bytes, taken from the items in hand, so that a
+        // marker and a summary are priced on the same scale as the results they stand in for
+        let scale = scale(items);
 
         // written before anything is chosen, because what one elision recovers depends on it:
         // the kernel makes this the note on every item in the pass, and the note is the marker.
@@ -116,14 +122,21 @@ impl Compactor for Trim {
         // note: it costs what it says. The marker is the thing this refuses to elide anything
         // smaller than, so a longer reason raises that floor by a handful of tokens - paid once
         // per elided item, against a pass that only runs when thousands are at stake.
+        //
+        // note: the percentage is of the *context* - `context_tokens`, the figure the report's
+        // `tokens_before` and `tokens_after` are counted on - rather than `fraction_used`, which
+        // has the tool definitions in it. Otherwise the sentence puts a fraction of one set of
+        // numbers beside another
+        let reached = match limit {
+            0 => 0,
+            limit => (budget.context_tokens as f64 / limit as f64 * 100.0).round() as usize,
+        };
         let reason = format!(
-            "compacted to make room; the context had reached {}% of the {}-token limit. Reading \
-             it again would put the same tokens back into a context that had no room for them - \
-             ask for the part you need instead",
-            (budget.fraction_used().unwrap_or_default() * 100.0).round() as usize,
-            budget.limit.unwrap_or_default(),
+            "{MARK}; the context had reached {reached}% of the {limit}-token limit. Reading it \
+             again would put the same tokens back into a context that had no room for them - ask \
+             for the part you need instead",
         );
-        let marker = marker_tokens(&reason);
+        let marker = marker_tokens(&reason, scale);
 
         // oldest first, because the results a conversation has moved past are the ones it is
         // least likely to want back.
@@ -182,10 +195,12 @@ impl Compactor for Trim {
         let (blobs, rest): (Vec<_>, Vec<_>) = seen
             .into_iter()
             .partition(|item| carries_blob(&item.content));
-        let limit = budget.limit?;
 
         let mut used = budget.used();
         let mut elide = Vec::new();
+        // what the pass has freed so far, on the counter's scale and before its own summary is
+        // paid for; a pass that has not freed enough to be worth that is not run at all
+        let mut recovered = 0usize;
         let blob_count = blobs.len();
         for item in blobs {
             // the same arithmetic the loop below uses, and it is here for what it will be worth
@@ -207,20 +222,22 @@ impl Compactor for Trim {
             // spend the person's undo and a line of the model's attention to make the request
             // bigger. Skipped rather than breaking, because these are in the order the
             // conversation happened and a small one early says nothing about the next
-            let Some(recovered) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
+            let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
                 continue;
             };
-            used -= recovered.min(used);
+            used -= net.min(used);
+            recovered += net;
             elide.push(item.id);
         }
         for item in fresh {
             if used <= limit {
                 break;
             }
-            let Some(recovered) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
+            let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
                 continue;
             };
-            used -= recovered.min(used);
+            used -= net.min(used);
+            recovered += net;
             elide.push(item.id);
         }
         if elide.is_empty() {
@@ -254,15 +271,56 @@ impl Compactor for Trim {
 
         // so the standing sentence has to speak for every pass rather than for this one, since
         // it is the only one left saying anything
+        //
+        // note: only the results a *compactor* elided, told apart by the note. Every elided result
+        // is a marker whether a pass put it there, the model did, or the person did on the
+        // context tab - and counting the other two into this sentence told the model more results
+        // had been elided to make room than any pass had elided. The note is what tells them
+        // apart: the kernel sets it to this plan's `reason`, and `reason` is a sentence the model
+        // or the person wrote for themselves
         let (elided_before, blobs_before) = items
             .iter()
             .filter(|item| {
-                item.state.is_elided() && matches!(item.kind, ContextKind::ToolResult { .. })
+                item.state.is_elided()
+                    && matches!(item.kind, ContextKind::ToolResult { .. })
+                    && item
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.starts_with(MARK))
             })
             .fold((0, 0), |(all, with_blob), item| {
                 (all + 1, with_blob + carries_blob(&item.content) as usize)
             });
         let (elided_now, blobs_now) = (elided_before + elide.len(), blobs_before + blob_count);
+
+        let said = match blobs_now {
+            0 => format!(
+                "{elided_now} earlier tool result(s) have been elided to make room: each is now \
+                 a one-line marker where its content was. Ask again for anything you still need."
+            ),
+            blobs => format!(
+                "{elided_now} tool result(s) have been elided to make room, {blobs} of them \
+                 carrying an image or other non-text payload: each is now a one-line marker \
+                 where its content was. Ask again for anything you still need."
+            ),
+        };
+
+        // note: what a pass is worth is what it freed less what its own summary costs, and a pass
+        // that comes out under is not run at all. The margin is the summary again, so a pass has
+        // to free twice what its own bookkeeping costs before it spends a turn of the model's
+        // attention and an undo of the person's on it - the arithmetic above can show a pass
+        // recovering a result it barely paid for and adding a sentence longer than the result was,
+        // which is a compactor making the request bigger, through the limit it exists to keep the
+        // request under
+        //
+        // note: and a pass that took a picture is exempt, because what a picture is worth is not
+        // a number this can set a sentence against. The counter prices a blob at nothing, so a
+        // picture the pass took is a megabyte of base64 out of the request for a figure of zero
+        // recovered - and refusing the pass for being a net loss by the only measure available
+        // would keep the largest thing in the context forever
+        if blob_count == 0 && recovered < summary_tokens(&said, scale).saturating_mul(2) {
+            return None;
+        }
 
         // elided rather than removed, so that the call each of these answers keeps its answer.
         // Removing them would have the projector take the calls down as well - it has to, a call
@@ -283,18 +341,7 @@ impl Compactor for Trim {
             // model has no way left to know an image was ever in the conversation. A gap
             // where a picture was is worse than a sentence saying there was one; this is the
             // sentence, and it is the only place in the plan there is room for it
-            summary: Some(ContextItem::summary(match blobs_now {
-                0 => format!(
-                    "{elided_now} earlier tool result(s) have been elided to make room: each is \
-                     now a one-line marker where its content was. Ask again for anything you \
-                     still need."
-                ),
-                blobs => format!(
-                    "{elided_now} tool result(s) have been elided to make room, {blobs} of them \
-                     carrying an image or other non-text payload: each is now a one-line marker \
-                     where its content was. Ask again for anything you still need."
-                ),
-            })),
+            summary: Some(ContextItem::summary(said)),
             reason,
             elide,
             remove: superseded,
@@ -302,21 +349,77 @@ impl Compactor for Trim {
     }
 }
 
-/// Estimates what one elision marker costs: the pass's reason, in the brackets
-/// [`LinearProjector`](nachalnik::LinearProjector) puts round it, at the four bytes a token
-/// [`BytesPerToken`](nachalnik::BytesPerToken) assumes.
+/// The first words of a compaction reason, and how a compactor's own elision is told from anyone
+/// else's.
 ///
-/// note: an estimate, and it does not have to be better than one - a counter that has learnt a
-/// different ratio moves the boundary by one small result either way. What it has to be right
-/// about is that a marker costs *something*. Credited with the whole of what it elided, a pass
-/// that replaces short results with a longer marker reports tokens recovered while the request
-/// grows - through the limit the pass exists to keep it under.
+/// note: one string rather than a comparison against the sentence it begins, so that rewording the
+/// marker and telling a marker from a model's own note cannot come apart - the two answers this
+/// gives are the same sentence, read two ways.
+const MARK: &str = "compacted to make room";
+
+/// How many tokens the counter active here gives four bytes, taken from the tool results in hand.
+///
+/// note: a [`Calibrating`](nachalnik::Calibrating) counter learns from what providers charge and
+/// is routinely above `1.0`, so a marker priced at a plain four bytes a token comes out under what
+/// it really costs. A result smaller than its own replacement then reads as worth eliding, and the
+/// pass reports tokens recovered while the request grows.
+///
+/// note: the tool results, because a tool result is the one kind whose figure is its content and
+/// nothing else - an assistant turn counts its calls and its thinking on top, so including one
+/// would read that overhead as a bigger ratio. A result carrying a picture is left out for the
+/// reason it is everywhere else in this file: the counter prices a blob at nothing.
+///
+/// note: not the budget. Its `context_tokens` is what the *projection* costs, which carries every
+/// label and bracket the projector adds and cannot be divided by a byte count this does not have.
+///
+/// note: the ratio rather than an average of per-item ones, so one short result cannot set the
+/// scale for the rest; and `1.0` where there is nothing to derive it from, which is the plain
+/// estimate this file made before a counter could be anything else.
+fn scale(items: &[Arc<ContextItem>]) -> f64 {
+    let (counted, bytes) = items
+        .iter()
+        .filter(|item| {
+            matches!(item.kind, ContextKind::ToolResult { .. }) && !carries_blob(&item.content)
+        })
+        .fold((0, 0), |(counted, bytes), item| {
+            (
+                counted + item.tokens,
+                bytes + item.content.byte_len().div_ceil(4),
+            )
+        });
+
+    match bytes {
+        0 => 1.0,
+        _ => counted as f64 / bytes as f64,
+    }
+}
+
+/// Estimates what one elision marker costs: the pass's reason, in the brackets
+/// [`LinearProjector`](nachalnik::LinearProjector) puts round it, at the scale [`scale`] has
+/// derived.
+///
+/// note: the same scale as the [`ContextItem::tokens`] it is subtracted from, which is the whole
+/// of it. An estimate of a marker's size measured on a different ruler from the result it replaces
+/// is not a small inaccuracy: it decides which side of the line a result falls on.
 ///
 /// note: taken from the reason rather than fixed, because the reason is what the marker says. A
 /// constant here would be a second place to remember when that sentence is reworded.
-fn marker_tokens(reason: &str) -> usize {
+fn marker_tokens(reason: &str, scale: f64) -> usize {
     // `[... ` and ` ...]`, which the projector supplies and this does not get to choose
-    (reason.len() + 10).div_ceil(4)
+    ((reason.len() + 10).div_ceil(4) as f64 * scale).round() as usize
+}
+
+/// Estimates what the summary a pass leaves behind costs: its own text, behind the label the
+/// projector puts in front of a reference, at the scale [`scale`] has derived.
+///
+/// note: the label, because a summary is a `Reference` and a reference projects as
+/// `label:\ntext`; a sentence priced without it is a couple of tokens short, which is nothing
+/// next to being priced without the scale.
+fn summary_tokens(text: &str, scale: f64) -> usize {
+    let label = ContextItem::summary(Content::text("")).label.len();
+    let bytes = label + 2 + text.len();
+
+    (bytes.div_ceil(4) as f64 * scale).round() as usize
 }
 
 /// Whether the content is a blob or has one somewhere inside it.

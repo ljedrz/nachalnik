@@ -157,6 +157,13 @@ minor bump may break you.
   so after the next answer, as though about the model that had just given it, and a script ending
   on the switch never said so. The next line, and the end of the input, now wait for the switch and
   print what it said.
+- **A compaction pass takes nothing when it would make the request bigger.** A marker was priced
+  at four bytes a token while the results it replaced were priced by a counter that had corrected
+  itself upwards, and the summary a pass leaves was never set against what it freed, so a pass
+  could elide a short result and report tokens recovered while the request grew. Both are counted
+  on the counter's own scale now, and a pass that does not clear its own cost is not run. Its
+  reason names the context's share of the limit, which is the figure its report counts, and its
+  summary counts only what a compactor elided.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
