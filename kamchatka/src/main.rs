@@ -465,17 +465,21 @@ async fn session() -> Result<()> {
         } = wired;
         (app, events, finished) = (fresh, replaced, reported);
 
+        // the first thing the new session says, because it is the only place the old one's name
+        // and the file it went to are still written down
+        app.say(Speaker::Note, said);
+
         // note: the servers keep running and their tools are installed into the new kernel, which
         // is why `attach` is above the loop and this is not it. Re-spawning them would be seconds
         // of handshake for a set of tools the process is already holding open
+        //
+        // note: after the line above, which is what says the old session ended. A server that
+        // would not list its tools comes first otherwise, and the first thing the new session
+        // says is about the old one
         #[cfg(feature = "mcp")]
         for left_out in kamchatka::mcp::reinstall(&app.kernel, &app.policy, &servers).await {
             app.say(Speaker::Error, left_out);
         }
-
-        // the first thing the new session says, because it is the only place the old one's name
-        // and the file it went to are still written down
-        app.say(Speaker::Note, said);
     };
 
     finish(&app, base.record, headless && server.is_none(), outcome)

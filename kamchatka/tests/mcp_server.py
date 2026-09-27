@@ -32,6 +32,9 @@ TOOLS = [
 ]
 
 
+listed = [False]
+
+
 def result_for(method, params):
     if method == "initialize":
         return {
@@ -45,6 +48,11 @@ def result_for(method, params):
         # `--twice` lists `add` a second time, for the refusal of a server that offers one name twice
         if "--twice" in sys.argv[1:]:
             return {"tools": TOOLS + TOOLS[-1:]}
+        # `--die-after-first` answers the listing once and then stops, so that a `/restart`
+        # reaches a server that was there at the start of the run and is not answering now
+        if "--die-after-first" in sys.argv[1:] and listed[0]:
+            sys.exit(0)
+        listed[0] = True
         return {"tools": TOOLS}
     if method == "tools/call":
         args = params.get("arguments") or {}

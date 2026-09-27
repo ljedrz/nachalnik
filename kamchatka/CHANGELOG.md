@@ -159,6 +159,10 @@ minor bump may break you.
   starts without it and says which file and how many; the first session still refuses a file it
   cannot read, because there a missing attachment is somebody being told the session they asked
   for is not the one they typed.
+- **A `/restart` says the old session ended before it says what an MCP server could not offer.** The
+  servers are reinstalled before the line naming the record is said, so a server that had stopped
+  made `py would not list its tools again` the first line of a fresh session, and it is about the
+  old one.
 - **`--deadline` covers starting up.** It started counting once the session was driven, so an
   endpoint that never answered its probe, or an MCP server that never finished its handshake, held
   a headless run silent for as long as it liked. It counts from the program's start now, a run

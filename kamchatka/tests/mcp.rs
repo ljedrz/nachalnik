@@ -457,3 +457,52 @@ async fn a_restart_leaves_out_a_server_whose_tools_would_displace_another() {
     offered.sort();
     assert_eq!(offered, ["py__add", "py__hang"]);
 }
+
+/// The line that says the old session ended is the first thing the new one says.
+///
+/// note: a restart hands the new session two things: where the old one went, and what the servers
+/// still running could not offer it. Both go into that conversation, and a server that has
+/// stopped in between answers nothing - so when the reinstalling is said first, `py would not
+/// list its tools again` is the first line of a fresh session, and it is about the old one.
+#[test]
+fn a_restart_says_the_old_session_ended_before_it_says_what_a_server_could_not() {
+    let spec = match spec() {
+        Some(spec) => spec,
+        None => return,
+    };
+
+    let mut child = std::process::Command::new(common::program())
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing-serves-this",
+            "--mcp",
+            &format!("{spec} --die-after-first"),
+        ])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().expect("stdin is a pipe");
+        stdin
+            .write_all(b"/restart\n/quit\n")
+            .expect("the lines were not sent");
+    }
+    let out = child.wait_with_output().expect("the program never ended");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "the restart failed: {said}");
+    let (first, _) = said
+        .split_once("would not list its tools again")
+        .unwrap_or_else(|| panic!("the server was not asked for its tools again: {said}"));
+    assert!(
+        first.contains("ended;"),
+        "the first thing the new session says is about a server, not about the old session: {said}"
+    );
+}
