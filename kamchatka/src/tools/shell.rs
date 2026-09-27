@@ -543,7 +543,7 @@ impl Tool for Shell {
             // note: and a read takes no more than would put `line` one byte past the ceiling. A
             // command writing without newlines never ends a line, and the heartbeat is all that
             // stopped the read - which at the speed of a pipe held hundreds of megabytes against
-            // a ceiling of eight. A line that stops there is over it, and is dropped as one
+            // a ceiling of eight. A line that stops there is over it, and only its start is kept
             let room = (KEPT + 1).saturating_sub(line.len()) as u64;
             let mut bounded = (&mut stdout).take(room);
             match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
@@ -559,8 +559,7 @@ impl Tool for Shell {
                 // a line that never ends is held to the ceiling as well, or it would be the way
                 // round it
                 Err(_) if line.len() > KEPT => {
-                    full = true;
-                    dropped += line.len();
+                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
                     line.clear();
                 }
                 // note: the end of the command is not the end of its standard output either, and
@@ -928,10 +927,15 @@ async fn stop(child: &mut tokio::process::Child) {
     let _ = child.start_kill();
 }
 
-/// Keeps one line of standard output, unless the output is already at [`KEPT`].
+/// Keeps one line of standard output, or as much of its start as fits under [`KEPT`], unless the
+/// output is already there.
 ///
 /// note: measured as it is kept rather than as it arrived. A byte that is not UTF-8 is kept as the
 /// three of `�`, so a line held to the ceiling as it arrived could be kept at three times it.
+///
+/// note: the start of a line that does not fit, rather than none of it, so that one line past the
+/// ceiling - `tr` over a large file, a minified bundle - comes back as the start of what it said
+/// rather than as nothing under a count of bytes "more" than nothing.
 fn keep(
     line: &[u8],
     collected: &mut String,
@@ -948,18 +952,23 @@ fn keep(
     }
     let text = String::from_utf8_lossy(line);
     let text = text.strip_suffix('\n').unwrap_or(&text);
-    let text = text.strip_suffix('\r').unwrap_or(text);
-    match collected.len() + text.len() + 1 > KEPT {
-        true => {
-            *full = true;
-            *dropped += line.len();
+    let mut text = text.strip_suffix('\r').unwrap_or(text);
+    let room = KEPT.saturating_sub(collected.len() + 1);
+    if text.len() > room {
+        let mut cut = room;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
         }
-        false => {
-            output.push(format!("{text}\n"));
-            collected.push_str(text);
-            collected.push('\n');
+        *full = true;
+        *dropped += line.len().saturating_sub(cut);
+        if cut == 0 {
+            return;
         }
+        text = &text[..cut];
     }
+    output.push(format!("{text}\n"));
+    collected.push_str(text);
+    collected.push('\n');
 }
 
 #[cfg(test)]
@@ -1072,7 +1081,7 @@ mod tests {
     }
 
     /// Output past the ceiling is read to the end and let go, on either stream and in a line that
-    /// never ends, and the answer says how much at the top.
+    /// never ends, and the answer keeps the start of it and says how much went at the top.
     ///
     /// note: read to the end rather than stopped at, which the exit status shows: `head` finishes
     /// and the command succeeds, where a reader that stopped reading would leave it blocked on a
@@ -1086,6 +1095,12 @@ mod tests {
             format!("head -c {past} /dev/zero | tr '\\0' a"),
         ] {
             let said = ran(&command).await;
+
+            // the start of what it said is kept, a line past the ceiling included
+            assert!(
+                said.contains(&"a".repeat(1_000)) || said.contains("y\ny\n"),
+                "{command}: nothing was kept"
+            );
 
             assert!(said.starts_with("exit: 0"), "{command}");
             assert!(
@@ -1121,6 +1136,24 @@ mod tests {
 
         assert!(said.len() < 500, "{}", &said[..said.len().min(500)]);
         assert!(said.contains("write it to a file"), "{said}");
+    }
+
+    /// A line past the ceiling keeps its start, and what went is counted to the byte.
+    #[test]
+    fn a_line_past_the_ceiling_keeps_its_start() {
+        let line = vec![b'x'; KEPT + 10];
+        let (mut collected, mut full, mut dropped) = (String::new(), false, 0);
+        keep(
+            &line,
+            &mut collected,
+            &OutputSink::disconnected(),
+            &mut full,
+            &mut dropped,
+        );
+
+        assert!(full);
+        assert!(collected.starts_with("xxx") && collected.len() <= KEPT);
+        assert_eq!(collected.trim_end().len() + dropped, line.len());
     }
 
     /// A command that finishes and leaves something running still answers.

@@ -395,6 +395,10 @@ minor bump may break you.
   quoted the whole command before saying why it failed, so one too long to start came back as
   the output limit's worth of the command and never reached `Argument list too long`. It now says
   the reason alone, and for that one to write the command to a file and run the file.
+- **A line of a command's output past 8 MiB keeps its start.** One line over what a stream keeps
+  was dropped whole, so `tr` over a large file came back as an empty standard output under a count
+  of bytes "more" than nothing. The start of the line is kept now, up to the ceiling, as `fs read`
+  does, and the count is of what went after it.
 
 ## [0.15.1] - 2026-09-24
 
