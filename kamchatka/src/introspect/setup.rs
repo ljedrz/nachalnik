@@ -82,8 +82,8 @@ impl Tool for Setup {
         ToolSpec::new(
             "setup",
             "reads what you are running with, which you cannot otherwise find out, and changes \
-             nothing: `context` is the tool that changes a context. `model` is which model you \
-             are, what parameters it is being sent, how much context it has, and whether this \
+             nothing. `model` is which model you are, what parameters it is being sent, how much \
+             context it has, and whether this \
              conversation was resumed from a snapshot - which matters, because a resumed context \
              can be somebody else's earlier turns and nothing in them says so. `tools` is every \
              tool you are offered, what each declares it needs, and how much of its output you \
@@ -548,16 +548,22 @@ fn rules(kernel: &Kernel) -> String {
     let mut out = format!(
         "the projector is `{}`. It is what turns your context into the messages of a request - \
          which items become which messages, in what order, and which are left out or repaired to \
-         keep the request valid. `context` with `request` says what it did to the next one.\n",
+         keep the request valid.{}\n",
         short(kernel.projector().name()),
+        if_offered(kernel, "context", || {
+            " `context` with `request` says what it did to the next one.".to_owned()
+        }),
     );
 
     out.push_str(&match kernel.compactor() {
         Some(compactor) => format!(
             "\nthe compactor is `{}`. It runs when the context gets too full and moves items out \
              of the request without being asked - it cannot take anything pinned, it says exactly \
-             what it moved, and `context` with `restore` puts any of it back.{}\n",
+             what it moved{}.{}\n",
             short(compactor.name()),
+            if_offered(kernel, "context", || {
+                ", and `context` with `restore` puts any of it back".to_owned()
+            }),
             if_offered(kernel, "log", || {
                 " `log` with `kinds: [\"context.compacted\"]` is every pass it has made.".to_owned()
             }),
@@ -573,9 +579,11 @@ fn rules(kernel: &Kernel) -> String {
     ));
     if let Some(limit) = budget.limit {
         out.push_str(&format!(
-            "the budget it is measured against is {} tokens; `context` with `budget` is where you \
-             stand against it.\n",
+            "the budget it is measured against is {} tokens{}.\n",
             thousands(limit),
+            if_offered(kernel, "context", || {
+                "; `context` with `budget` is where you stand against it".to_owned()
+            }),
         ));
     }
 

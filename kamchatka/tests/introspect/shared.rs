@@ -80,6 +80,88 @@ async fn an_answer_does_not_point_at_a_tool_that_has_been_taken_away() {
     );
 }
 
+/// What the other tools say about a tool that has been taken away, and their own descriptions.
+///
+/// note: `/tools toggle context` takes the one a session reads its own context with, and two
+/// places kept naming it. `setup policy` pointed at it for `request`, `restore` and `budget` -
+/// except for `search`, which the tool beside it had wrapped - and `setup`'s own description
+/// said "`context` is the tool that changes a context", in the tool definitions of every request
+/// from then on. `fork ask` named it as where the item numbers come from. All of it is advice
+/// for a call the session would be refused for, which is the same failure the sentence in an
+/// answer is: everything named is read as something to try.
+#[tokio::test]
+async fn a_tool_taken_away_is_named_by_no_tool_that_is_still_there() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![
+            call("c1", "setup", json!({ "action": "policy" })),
+            call(
+                "c2",
+                "fork",
+                json!({ "action": "ask", "question": "why?", "without": [99] }),
+            ),
+        ]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![
+            call("c3", "setup", json!({ "action": "policy" })),
+            call(
+                "c4",
+                "fork",
+                json!({ "action": "ask", "question": "why?", "without": [99] }),
+            ),
+        ]),
+        ModelResponse::text("done"),
+    ]);
+    // a compactor, so the sentence about putting compacted items back is in the answer at all
+    kernel.set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+        threshold: 0.8,
+        target: 0.6,
+    })));
+
+    kernel.push(ContextItem::user("what can I do?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let with_it = answers_from(&kernel, &["setup", "fork"]);
+    for said in &with_it[0..2] {
+        assert!(said.contains("`context`"), "{said}");
+    }
+
+    // the tool that changes a context is gone, and the definitions go with it
+    kernel.remove_tool("context");
+    assert!(
+        !kernel
+            .tool("setup")
+            .expect("still here")
+            .spec()
+            .description
+            .contains("`context`"),
+        "a description goes into every request from here on, and it points at a tool the model \
+         has just been told it does not have"
+    );
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let without = answers_from(&kernel, &["setup", "fork"]);
+    for said in &without[2..] {
+        assert!(
+            !said.contains("`context`"),
+            "an answer that names a tool the session does not have is advice nobody can take: \
+             {said}"
+        );
+    }
+    // and the rest of each answer is untouched: what is gone is the sentences, not the report
+    assert!(without[2].contains("the projector is"), "{}", without[2]);
+    assert!(
+        without[2].contains("`log` with `kinds: [\"context.compacted\"]`"),
+        "a tool that *is* on offer is still named: {}",
+        without[2]
+    );
+    assert!(
+        without[3].contains("there is no item 99 to leave out"),
+        "and what the refusal was for is still said: {}",
+        without[3]
+    );
+}
+
 /// A call asks permission for the one thing it does, however its arguments are wrapped.
 ///
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,

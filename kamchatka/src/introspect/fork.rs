@@ -33,7 +33,7 @@ use crate::{
     },
 };
 
-use super::{Reach, action, ids, unknown};
+use super::{Reach, action, ids, if_offered, unknown};
 
 /// How long a fork may think before this looks up to see whether somebody has pressed escape.
 const HEARTBEAT: Duration = Duration::from_millis(120);
@@ -152,9 +152,10 @@ impl Tool for Fork {
                 // before the request rather than after it: a copy asked without an item that is
                 // not there is the whole context answering again, paid for as an ablation
                 if let Some(missing) = without.iter().find(|id| kernel.item(**id).is_none()) {
+                    let numbers = if_offered(&kernel, "context", || " `context` prints".to_owned());
                     return Ok(ToolOutput::error(format!(
                         "there is no item {missing} to leave out, so the copy was not asked. \
-                         `without` takes the numbers `context` prints"
+                         `without` takes the numbers{numbers}."
                     )));
                 }
                 branch(

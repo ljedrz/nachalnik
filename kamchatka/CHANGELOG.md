@@ -170,6 +170,13 @@ minor bump may break you.
   as though nothing had happened. Those answers now say the log begins at the resume and the
   records before it belong to the session it was resumed from; *drained* is said only where records
   were carried away.
+- **No tool names another that `/tools toggle` has taken away.** `setup policy` still pointed at
+  `context` for `request`, `restore` and `budget` after `context` was taken from the session, and
+  `setup`'s own description said "`context` is the tool that changes a context" in the tool
+  definitions of every request from then on; `fork ask` named `context` as where the item numbers
+  come from. Everything named in an answer is read as a thing to try, so advice for a call the
+  session would refuse for has to go when its subject does, as the sentence beside `log` already
+  did.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
