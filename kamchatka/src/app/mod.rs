@@ -653,6 +653,15 @@ pub struct App {
     /// one before it standing, which shown on its own would be an older answer passed off as the
     /// provider's latest.
     unanswered: Option<String>,
+    /// The fraction of the limit this program's own compactor aims for, when that is the one
+    /// plugged in.
+    ///
+    /// note: for `/compact`, to tell a context already under the target from one with nothing
+    /// eligible, both of which come back from `plan` as no plan. Known here rather than asked of
+    /// the compactor, because the `Compactor` trait has no such question and a client's message is
+    /// no reason to give it one. Whoever plugs in a compactor says what it aims for here, and
+    /// `None` is the sentence that does not claim to know.
+    pub compact_target: Option<f64>,
 }
 
 impl App {
@@ -736,6 +745,7 @@ impl App {
             interrupting: false,
             thought_unseen: false,
             unanswered: None,
+            compact_target: None,
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,

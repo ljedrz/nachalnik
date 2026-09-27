@@ -932,6 +932,7 @@ async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
         threshold: 0.8,
         target: 0.5,
     })));
+    harness.app.compact_target = Some(0.5);
     // a context that is genuinely over whatever the endpoint published
     let limit = harness.app.kernel.budget().limit.expect("a limit");
     harness.app.kernel.push(ContextItem::file(
@@ -1054,6 +1055,116 @@ async fn a_request_too_long_says_what_compaction_cannot_take() {
     assert!(!told.contains("the model's own turns"), "{told}");
 }
 
+/// A refusal for length names what is holding the room, and does not offer a remedy worth less
+/// than the overrun.
+///
+/// note: found live. A pinned attachment no pass may take, and two short messages after it, came
+/// back with "compaction can free ~0 at most ... and ~38 of what goes out is the model's own
+/// turns. `/exclude` the oldest of those" - advice worth 38 tokens against an overrun of 3,526,
+/// naming neither the attachment nor the command that unpins it.
+#[tokio::test]
+async fn a_request_too_long_names_what_is_pinned() {
+    let said = |harness: &Harness| -> String {
+        harness
+            .app
+            .loose
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    // what `-f` puts in, and pinned: a promise no pass may break
+    let attachment = harness.app.kernel.push(
+        ContextItem::file("big.txt", "a line of routine output. ".repeat(limit / 2)).pinned(),
+    );
+    for _ in 0..2 {
+        harness.app.kernel.push(ContextItem::user("and then what?"));
+    }
+    harness.send("and then?").await;
+    harness.settle().await;
+
+    let told = said(&harness);
+    assert!(
+        told.contains("tokens have to go before it is sent"),
+        "{told}"
+    );
+    assert!(
+        told.contains(&format!("[{attachment}] big.txt")),
+        "it names the attachment and its number: {told}"
+    );
+    assert!(
+        told.contains("/restore"),
+        "and says how to unpin it: {told}"
+    );
+    assert!(
+        !told.contains("`/exclude` the oldest of those"),
+        "38 tokens of the model's turns cannot cover an overrun of thousands: {told}"
+    );
+}
+
+/// `/compact` in a context that has not reached the compactor's own target says the context is
+/// under it, rather than that nothing in it is eligible.
+///
+/// note: a pass is only asked for above the threshold, and above the threshold there is always a
+/// target below the total - so a context already under the target is the one case where "no
+/// eligible item" and "nothing to do" are the same plan, and the first sentence claimed the
+/// first.
+#[tokio::test]
+async fn compact_under_the_target_says_the_context_is_under_it() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+        threshold: 0.5,
+        target: 0.3,
+    })));
+    harness.app.compact_target = Some(0.3);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::user(
+        "a line of routine output. ".repeat(limit / 50),
+    ));
+    harness.drain();
+
+    harness.send("/compact").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("has nothing to do") && screen.contains("under the"),
+        "{screen}"
+    );
+    assert!(
+        !screen.contains("found nothing it may take"),
+        "nothing is ineligible here; the context is simply not full enough: {screen}"
+    );
+}
+
+/// `/compact` above the target, where a pass really does find nothing eligible, still says so.
+#[tokio::test]
+async fn compact_above_the_target_says_nothing_is_eligible() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+        threshold: 0.5,
+        target: 0.3,
+    })));
+    harness.app.compact_target = Some(0.3);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("big.txt", "a line of routine output. ".repeat(limit)).pinned());
+    harness.drain();
+
+    harness.send("/compact").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("found nothing it may take"),
+        "the context is over the target and only a pin stands in the way: {screen}"
+    );
+}
+
 /// With no compactor there is nothing between the figure and the request, and it does not claim
 /// otherwise.
 #[tokio::test]
@@ -1085,6 +1196,7 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
         threshold: 0.0,
         target: 0.0,
     })));
+    harness.app.compact_target = Some(0.0);
 
     let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
     harness

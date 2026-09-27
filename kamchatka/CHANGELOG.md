@@ -135,6 +135,15 @@ minor bump may break you.
 
 ### fixed
 
+- **A request refused for its length names what is pinned.** The advice counted only the tool
+  results a pass may take and the model's own turns, so a context whose room was held by a pinned
+  attachment was told to exclude a few tokens of conversation against an overrun of thousands, with
+  no word of the attachment. Pinned items going out are named with their cost, largest first, with
+  `/restore` and `/exclude` as the answers, and the model's turns are offered only where excluding
+  all of them would leave room.
+- **`/compact` under the compactor's target says so.** It said the compactor found nothing it may
+  take, which reads as nothing being eligible; a context already under the target had nothing to
+  do.
 - **`--deadline` covers starting up.** It started counting once the session was driven, so an
   endpoint that never answered its probe, or an MCP server that never finished its handshake, held
   a headless run silent for as long as it liked. It counts from the program's start now, a run

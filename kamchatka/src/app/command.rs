@@ -1235,9 +1235,24 @@ impl App {
         let items = self.kernel.items();
         let budget = self.kernel.budget();
         let Some(plan) = compactor.plan(&items, &budget).await else {
-            self.say(
-                Speaker::Note,
-                format!(
+            // note: `under` rather than `nothing it may take`, because a pass is only asked for
+            // a context that has reached the threshold, and above the threshold there is a
+            // target below the total every time. Finding no plan while the context is already
+            // under that target is a different thing from finding no item eligible, and saying
+            // the second told somebody the wrong item was in the way.
+            let target = budget
+                .limit
+                .zip(self.compact_target)
+                .map(|(limit, target)| (limit as f64 * target) as usize);
+            let said = match target {
+                Some(target) if budget.used() <= target => format!(
+                    "{} has nothing to do: the next request is ~{} tokens, under the ~{} it \
+                     takes the context to",
+                    compactor.name(),
+                    thousands(budget.used()),
+                    thousands(target),
+                ),
+                _ => format!(
                     "{} found nothing it may take: the next request is ~{} tokens{}",
                     compactor.name(),
                     thousands(budget.used()),
@@ -1246,7 +1261,8 @@ impl App {
                         None => String::new(),
                     },
                 ),
-            );
+            };
+            self.say(Speaker::Note, said);
             return;
         };
 

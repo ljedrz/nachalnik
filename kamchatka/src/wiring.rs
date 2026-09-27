@@ -517,8 +517,10 @@ impl Setup {
         // wire is the thing asked what it can carry - rather than a caller deciding a second time
         // from the same flag, which is how the two come apart
         kernel.set_projector(Arc::new(provider.projection()));
-        if let Some(threshold) = self.compact.filter(|it| *it < 1.0) {
-            kernel.set_compactor(Some(Arc::new(tools::Trim::under(threshold))));
+        let trim = self.compact.filter(|it| *it < 1.0).map(tools::Trim::under);
+        let compact_target = trim.as_ref().map(|trim| trim.target);
+        if let Some(trim) = trim {
+            kernel.set_compactor(Some(Arc::new(trim)));
         }
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them
@@ -606,6 +608,7 @@ impl Setup {
         app.confinement = confinement;
         app.introspect = introspect;
         app.set_spend(self.spend);
+        app.compact_target = compact_target;
 
         // note: everything is built and then what was not asked for is turned off, rather than
         // only the named ones being built. That is what makes the list a starting position: the

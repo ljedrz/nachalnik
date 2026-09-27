@@ -275,9 +275,16 @@ impl App {
     /// note: the turns are priced off the request rather than off the items. A reasoning model's
     /// turn holds its thinking, which the projector does not send back, so the items' own figures
     /// said the model's turns were several times the size of the request they were part of.
+    ///
+    /// note: what is pinned is named before the turns are, and whether or not the turns would
+    /// cover the overrun: a pin is a promise the kernel keeps, so a pinned attachment is the one
+    /// thing no pass can free, and advice that leaves it out cannot be acted on. Largest first,
+    /// because that is which one to unpin.
+    ///
+    /// note: and the turns are the remedy only where taking all of them would leave room.
     fn remedy(&self, over: usize) -> String {
-        let takeable: usize = self.kernel.with_context(|context| {
-            context
+        let (held, pinned): (usize, Vec<String>) = self.kernel.with_context(|context| {
+            let held: usize = context
                 .items()
                 .iter()
                 .filter(|item| {
@@ -286,7 +293,27 @@ impl App {
                         && matches!(item.kind, ContextKind::ToolResult { .. })
                 })
                 .map(|item| item.tokens)
-                .sum()
+                .sum();
+            let mut pinned: Vec<_> = context
+                .items()
+                .iter()
+                .filter(|item| item.state.sends_content() && item.state == ContextState::Pinned)
+                .map(|item| {
+                    (
+                        item.tokens,
+                        format!(
+                            "[{}] {} - ~{} tokens",
+                            item.id,
+                            item.label,
+                            thousands(item.tokens)
+                        ),
+                    )
+                })
+                .collect();
+            // largest first, because that is which one to unpin
+            pinned.sort_by_key(|(tokens, _)| std::cmp::Reverse(*tokens));
+
+            (held, pinned.into_iter().map(|(_, row)| row).collect())
         });
         let counter = self.kernel.counter();
         let turns: usize = self
@@ -298,19 +325,45 @@ impl App {
             .map(|message| counter.count_message(message))
             .sum();
 
-        match takeable >= over {
-            true => "`/compact` says what a pass would take before it takes it, and `/exclude` is \
-                     the same decision made by hand"
-                .to_owned(),
-            false => format!(
+        if held >= over {
+            return "`/compact` says what a pass would take before it takes it, and `/exclude` is \
+                    the same decision made by hand"
+                .to_owned();
+        }
+
+        let mut said = String::new();
+        if !pinned.is_empty() {
+            said.push_str(&format!(
+                "{} pinned, and no pass may free {}: {}. `/restore N` puts one back in the \
+                 request and `/exclude N` takes it out of it, each one `/undo` from coming back. \
+                 Then ",
+                plural(pinned.len(), "item"),
+                if pinned.len() == 1 { "it" } else { "them" },
+                pinned.join(", ")
+            ));
+        }
+        // the turns only where taking all of them would leave room: a remedy worth less than the
+        // overrun is a sentence asking somebody to do a thing that cannot work
+        said.push_str(&match turns >= over {
+            true => format!(
                 "compaction can free ~{} at most, since it takes tool results and nothing else, \
                  and ~{} of what goes out is the model's own turns. `/exclude` the oldest of \
                  those by number - the context tab lists them with what each costs - and each is \
                  one `/undo` from coming back",
-                thousands(takeable),
+                thousands(held),
                 thousands(turns),
             ),
-        }
+            false => format!(
+                "compaction can free ~{} at most, and the model's own turns are only ~{} of the \
+                 request, so excluding all of them does not cover it. `/exclude` by number until \
+                 the corner is under the limit, and every item taken out that way is one `/undo` \
+                 from coming back",
+                thousands(held),
+                thousands(turns),
+            ),
+        });
+
+        said
     }
 
     /// The newest context item, which is what a line said now is anchored to.
