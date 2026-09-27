@@ -1515,15 +1515,21 @@ impl App {
             Speaker::Note,
             format!(
                 "loaded {} from session `{}` ({file}); {} of your own {} archived, \
-                 anything pinned stayed with the calls and results it is paired with, and `u` \
-                 twice puts the rest back",
+                 anything pinned stayed with the calls and results it is paired with, and {}",
                 plural(loaded.len(), "item"),
                 snapshot.session,
                 standing.len(),
                 match standing.len() {
                     1 => "was",
                     _ => "were",
-                }
+                },
+                // one undo for the push and one for the archiving, which is no undo at all when
+                // nothing was archived - and a second `u` then would take back something of the
+                // person's own
+                match standing.len() {
+                    0 => "`u` takes the loaded ones back out",
+                    _ => "`u` twice puts the rest back",
+                },
             ),
         );
         if renamed != 0 {

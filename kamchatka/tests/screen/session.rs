@@ -606,6 +606,35 @@ async fn a_load_keeps_what_a_pinned_result_answers() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// The note after a load says how many undos take it back, and with nothing of the session's own to
+/// archive that is one: a second `u` would take back something the person did before it.
+#[tokio::test]
+async fn a_load_that_archived_nothing_says_one_undo_takes_it_back() {
+    let dir = common::scratch("load-one-undo");
+    let saved = dir.join("other.json");
+
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("something else"));
+    std::fs::write(
+        &saved,
+        serde_json::to_vec(&first.snapshot()).expect("a session serializes"),
+    )
+    .expect("written");
+
+    let mut harness = Harness::new([]);
+    harness.send(&format!("/load {}", saved.display())).await;
+
+    let said = harness.flat();
+    assert!(said.contains("0 of your own were archived"), "{said}");
+    assert!(
+        said.contains("`u` takes the loaded ones back out"),
+        "{said}"
+    );
+    assert!(!said.contains("twice"), "{said}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Every figure on the screen has to be on one scale. A snapshot carries what its counter had
 /// learnt, and reading it in moves the correction under everything already counted - so the load
 /// has to count the items it brings *under* that correction and bring the rest onto it, or the

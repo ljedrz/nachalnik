@@ -245,6 +245,9 @@ minor bump may break you.
   tool result lost the turn that asked for it and went out of the request as an orphan, under a
   note saying anything pinned stayed. The turn asking a pinned call now stays too, with every
   result answering one of its calls.
+- **`/load` says one `u` takes it back when it archived nothing.** Its note always said `u` twice,
+  and with nothing of the session's own set aside the load is one undo, so the second took back
+  something the person had done before it.
 
 ## [0.15.1] - 2026-09-24
 
