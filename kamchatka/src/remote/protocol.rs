@@ -61,7 +61,7 @@ pub const MAX_PATH: usize = 107;
 ///
 /// note: the same treatment [`MAX_LINE`] gets, and for the same reason: a limit nobody explains is
 /// a limit a person cannot act on. Checked by both ends rather than left to the bind, because
-/// `Server::unix` and [`crate::remote::Client::connect`] fail on the same path for the same reason
+/// `Server::unix` and the client's `connect` fail on the same path for the same reason
 /// and one of them is a client that cannot be told what a session refuses.
 pub fn overlong_path(path: &str) -> Option<usize> {
     (path.len() > MAX_PATH).then_some(path.len())
