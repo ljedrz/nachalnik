@@ -86,6 +86,7 @@ pub(crate) async fn read(
     let mut unstreamed: Vec<u8> = Vec::new();
     let mut seen: Vec<Value> = Vec::new();
     let mut stopped = Stopped::Ended;
+    let mut done = false;
     let mut vigil = Vigil::new();
 
     loop {
@@ -188,6 +189,7 @@ pub(crate) async fn read(
             // the connection open after. Waited past, a finished answer sat out the whole of
             // `PATIENCE` and was then reported as a stall; nothing after it belongs to the answer
             if line.strip_prefix("data:").map(str::trim) == Some("[DONE]") {
+                done = true;
                 ended = true;
                 break;
             }
@@ -253,6 +255,16 @@ pub(crate) async fn read(
         }
     }
 
+    // a body that closed cleanly before the server said the turn was over - no finish, and no
+    // `[DONE]` - is cut off all the same: the close is the transport's word, not the answer's.
+    // Every other way of stopping early has already said so
+    if stopped == Stopped::Ended && !done && !events.finished() && !seen.is_empty() {
+        asking.say(format!(
+            "{} closed the stream before saying the turn was over; what had arrived is kept",
+            asking.model
+        ));
+        stopped = Stopped::CutOff;
+    }
     if !seen.is_empty() {
         return Ok(Read::Events(seen, stopped));
     }

@@ -191,6 +191,62 @@ async fn a_stream_broken_off_after_its_finish_is_a_whole_turn() {
     }
 }
 
+/// A stream that closes cleanly before saying the turn is over is cut off; one that said so, by a
+/// finish or by `[DONE]`, is whole.
+///
+/// note: a clean close was taken for the server's own end, so a stream that stopped after half an
+/// answer - and after half a line of the next event - was recorded as finished for no reason
+/// given, with nothing said about it. The close is the transport's word; the finish and `[DONE]`
+/// are the answer's, and a server may send either without the other.
+#[tokio::test]
+async fn a_stream_that_closes_before_saying_it_is_over_is_cut_off() {
+    let cut_off = StopReason::Other("cut off".to_owned());
+    for (dialect, body, stop) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\n\
+             data: {\"choices\":[{\"delta\":{\"content\":\"and mo",
+            cut_off.clone(),
+        ),
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\ndata: [DONE]\n\n",
+            StopReason::Other("unreported".to_owned()),
+        ),
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"},\"finish_reason\":\"stop\"}]}\n\n",
+            StopReason::EndTurn,
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]}}]}\n\n",
+            cut_off.clone(),
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\
+             \"finishReason\":\"STOP\"}]}\n\n",
+            StopReason::EndTurn,
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("what arrived is kept");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+        assert_eq!(response.stop, stop, "{dialect}: {body}");
+    }
+}
+
 /// A refusal whose body was broken off is still a refusal, reported by its status.
 ///
 /// note: the body is only the refusal's explanation. The status is the answer, and it already says

@@ -35,6 +35,11 @@ minor bump may break you.
   turn ended as a provider failure and the kernel recorded nothing, so the part of the answer that
   had streamed - generated and billed - was on the screen and nowhere else. It is now a turn cut
   off, as a stream broken off is, with the server's sentence as the notice.
+- **A stream that closes cleanly before saying the turn is over is cut off.** A clean close was
+  taken for the server's own end, so a stream that stopped after half an answer - and half a line
+  of the next event - was recorded as finished for a reason `unreported`, with nothing said. With
+  neither a finish nor `[DONE]` it is now a turn cut off, with a notice; either one on its own
+  still ends the turn as it did.
 
 ## [0.6.1] - 2026-09-24
 
