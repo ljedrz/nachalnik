@@ -33,6 +33,7 @@ fn tools_within(dir: &Path, confined: bool) -> Vec<Arc<dyn Tool>> {
             workdir: dir.to_path_buf(),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: Arc::new(Careful::new()),
             confiner: None,
             limits: Limits::default(),

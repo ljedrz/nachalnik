@@ -220,6 +220,9 @@ pub struct Shell {
     pub extra: Vec<PathBuf>,
     /// Extra paths the user asked to open up for reading only.
     pub readable: Vec<PathBuf>,
+    /// The devices under `/dev` a confined command may read and write; see
+    /// [`DEVICES`](crate::sandbox::DEVICES) for the usual ones.
+    pub devices: Vec<PathBuf>,
     /// The binary that knows how to confine itself and run a command; `None` runs `sh` directly.
     ///
     /// note: a path settled once at startup rather than `current_exe()` per call, for two
@@ -392,8 +395,9 @@ impl Tool for Shell {
         //
         // note: kept rather than built and dropped, because it is also what can tell afterwards
         // whether a permission error in the output was this boundary; see `Sandbox::note_for`
-        let sandbox = self.confiner.is_some().then(|| {
-            Sandbox::of(
+        let sandbox = self.confiner.is_some().then(|| Sandbox {
+            devices: self.devices.clone(),
+            ..Sandbox::of(
                 &self.policy,
                 self.workdir.clone(),
                 self.extra.clone(),
@@ -971,6 +975,7 @@ mod tests {
             workdir: std::env::temp_dir(),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
         }

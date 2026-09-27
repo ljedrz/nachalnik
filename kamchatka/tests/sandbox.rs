@@ -90,6 +90,7 @@ fn sandbox(workdir: PathBuf, writable: bool, network: Network) -> Sandbox {
         readable: Vec::new(),
         writable,
         network,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     }
 }
@@ -146,6 +147,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             workdir: dir.clone(),
             extra: vec![opened.clone()],
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
             confiner: Some(common::program()),
             limits: Limits::default(),
@@ -906,6 +908,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),
         readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     }));
 
@@ -965,6 +968,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
         workdir: dir.clone(),
         extra: Vec::new(),
         readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
     let args = json!({ "cmd": "printf %s \"$TMPDIR\" > where.txt; sleep 20" });
@@ -1148,6 +1152,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         readable: Vec::new(),
         writable: true,
         network: Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
     // spawned rather than run in one call, for the reason `run` is: the directory a confined
@@ -1269,6 +1274,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
         workdir: common::workdir("scratch-refusal"),
         extra: Vec::new(),
         readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
 
@@ -1311,6 +1317,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
         workdir: dir.to_path_buf(),
         extra: Vec::new(),
         readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         confiner: Some(common::program()),
     };
 
@@ -1676,6 +1683,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
         workdir: dir.clone(),
         extra: Vec::new(),
         readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         policy: Arc::new(Careful::new()),
         confiner: Some(common::program()),
         limits: Limits::default(),
@@ -1722,6 +1730,27 @@ fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
     let said = beside_a_terminal(&confined(reading), &dir);
     assert!(said.contains("refused"), "{said}");
     assert!(!said.contains("typed"), "{said}");
+}
+
+/// The devices a confinement names are the ones a command reaches: given `/dev/ptmx` and
+/// `/dev/pts` it can make a pty, which the usual list leaves out.
+#[test]
+fn the_devices_named_are_the_ones_reached() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("sandbox-named-devices");
+    let pty = "python3 -c 'import os; os.openpty()' 2>/dev/null && echo made || echo refused";
+
+    let (_, said) = run(&sandbox(dir.clone(), true, Network::NoTcp), pty);
+    assert!(said.contains("refused"), "{said}");
+
+    let mut with_ptys = sandbox(dir, true, Network::NoTcp);
+    with_ptys
+        .devices
+        .extend([PathBuf::from("/dev/ptmx"), PathBuf::from("/dev/pts")]);
+    let (_, said) = run(&with_ptys, pty);
+    assert!(said.contains("made"), "{said}");
 }
 
 /// Runs `argv` with a terminal open beside it, named in `TERMINAL`, into which a line has been

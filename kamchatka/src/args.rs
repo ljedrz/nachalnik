@@ -149,6 +149,12 @@ pub struct Args {
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
     pub sandbox_read: Vec<std::path::PathBuf>,
 
+    /// A device under `/dev` the shell may read and write, and the list replaces the usual one
+    /// rather than adding to it. Everything else under `/dev` - another terminal, shared memory, a
+    /// camera - stays out of reach.
+    #[arg(long, value_name = "PATH", value_delimiter = ',', default_values = crate::sandbox::DEVICES)]
+    pub sandbox_device: Vec<std::path::PathBuf>,
+
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
     /// archived item that can still be read.
     #[arg(long)]
@@ -279,6 +285,7 @@ impl Args {
             no_sandbox,
             sandbox_allow,
             sandbox_read,
+            sandbox_device,
             allow,
             deny,
             allow_server,
@@ -497,6 +504,7 @@ impl Args {
             confine: !self.no_sandbox,
             reachable: self.sandbox_allow.clone(),
             readable: self.sandbox_read.clone(),
+            devices: self.sandbox_device.clone(),
             allow: self
                 .allow
                 .iter()

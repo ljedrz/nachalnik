@@ -30,9 +30,12 @@ minor bump may break you.
   written by hand that said `network: false` says `Network::NoTcp`.
 - **`sandbox::available` hands back a `Probed`**, the `Confinement` it returned before beside
   whether the gate holds. `available(&program).confinement` is the old answer.
-- **`Sandbox` has a `closed` field**: the ports on this machine a confined command may not connect
-  to whatever its network is, which `Sandbox::of` fills with the ones this process serves a session
-  on. A confinement written by hand says `closed: Vec::new()`.
+- **`Sandbox` has `devices` and `closed` fields, and `Shell` and `Setup` a `devices` one**: the
+  devices under `/dev` a confined command may read and write - `sandbox::DEVICES` unless somebody
+  says otherwise - and the ports it may not connect to whatever its network is, which
+  `Sandbox::of` fills with the ones this process serves a session on. A confinement written by hand
+  says `devices: DEVICES.iter().map(Into::into).collect()` and `closed: Vec::new()`, and
+  `--confine-and-run` takes both lists after the read-only paths, each counted the same way.
 
 ### added
 
@@ -64,6 +67,10 @@ minor bump may break you.
   refuses the socket, and the words that promised `no TCP` there say `no network`.
 - **The permissions tab says whether the network is gated**, after the confinement on the shell's
   line, so a session that fell back to reading command names says so.
+- **`--sandbox-device` and `sandbox-device` name the devices under `/dev` a confined command may
+  read and write**, replacing the usual five rather than adding to them; the shipped
+  `kamchatka.json` lists those five. A path outside `/dev` is refused where it is given. Naming
+  `/dev/ptmx` and `/dev/pts` has ptys back, and every other terminal of the person's with them.
 
 ### changed
 

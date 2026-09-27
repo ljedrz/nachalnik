@@ -927,6 +927,14 @@ kernel there is no such right and every one of them was reachable all along. Und
 fs:write` a path given to `--sandbox-allow` is read-only, as the working directory is, and a
 socket among them is out of reach with the rest: refusing writes refuses the writing half here too.
 
+**Under `/dev` a command reaches five devices**, `null`, `zero`, `full`, `random` and `urandom`,
+and nothing else: the rest of `/dev` is your other terminals, which a command could read what you
+type into, shared memory, and on a desktop the camera and microphone. The list is
+`--sandbox-device` and the settings file's `sandbox-device`, which replace it rather than add to
+it, and the shipped `kamchatka.json` spells it out. A pty is the one thing a command may miss -
+`script` and `expect` make one - and its far end is a file in `/dev/pts`, so having it back means
+naming `/dev/ptmx` and `/dev/pts`, and with them every other terminal of yours.
+
 **Git needs no flag.** Under Landlock `access(2)` still answers from the file's own permissions, so
 git would ask whether `~/.gitconfig` is readable, be told yes, open it, get `EACCES` and take the
 *unreadable configuration* branch — `fatal: unknown error occurred while reading the configuration
