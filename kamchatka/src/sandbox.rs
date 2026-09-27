@@ -1450,6 +1450,14 @@ pub fn run_if_asked() -> Option<i32> {
     let argv: Vec<OsString> = std::env::args_os().skip(1).collect();
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
 
+    // note: a session of its own, which leaves the terminal behind. The terminal is the one this
+    // program's screen reads its keys from, and `/dev` is granted: a command that kept it could
+    // push a `y` into that input with `TIOCSTI` and answer its own question, or draw over the
+    // question somebody is reading. With no controlling terminal `/dev/tty` does not open, and
+    // `TIOCSTI` is refused on every other one. It is also a group of its own, the one `shell`
+    // stops, with this process's identifier, which is the number `shell` signals
+    let detached = rustix::process::setsid().is_ok() || std::fs::File::open("/dev/tty").is_err();
+
     // a temporary directory of this run's own, made before anything is restricted and handed to
     // the command as `TMPDIR`; see the notes on `confine` and `make_scratch`. Whoever spawned this
     // removes it again, being the only one of the two processes that can
@@ -1504,6 +1512,16 @@ pub fn run_if_asked() -> Option<i32> {
         eprintln!(
             "nothing was run: this program was asked to put the network behind a gate first and \
              the filter did not take: {e}"
+        );
+        return Some(126);
+    }
+    // note: and for the terminal. `setsid` is refused to a process that already leads a group,
+    // which `shell` does not make this one; whoever did has left it holding a terminal that its
+    // keys may be read from
+    if !detached {
+        eprintln!(
+            "nothing was run: this program was asked to confine the command and could not leave \
+             the terminal it was started from"
         );
         return Some(126);
     }
