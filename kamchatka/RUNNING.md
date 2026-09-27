@@ -61,7 +61,9 @@ provider reports them, because nothing here carries a price list and a figure in
 what a `fork` is charged counts the same as the session's own requests.
 It is a stopping rule rather than a cap, since what a response cost is known only once it has
 arrived. When the session stops, it says what had been spent against what ceiling, and that
-`/spend N` raises it.
+`/spend N` raises it. The lines after that are still read: a command runs, which is how the
+`/spend` gets there, and a message is passed over unsent rather than kept in the context for the
+next turn to carry out.
 
 It belongs to the *session* rather than to this loop, which is why it is on
 [`wiring::Setup`](#-embedding-it) and not on the headless driver. What stops the turn that crossed

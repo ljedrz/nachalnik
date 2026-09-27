@@ -884,11 +884,12 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
-/// A ceiling ends the session once the provider has charged past it, and the next line goes unread.
+/// A ceiling stops the session once the provider has charged past it, and the next message is
+/// passed over.
 ///
 /// note: the sibling of the deadline above, and the same kind of guard for a different thing a run
-/// nobody is watching can spend. What it stops here is *between* turns: two lines were piped in,
-/// the second answer crossed the line, and the third was never read - which is the shape a script
+/// nobody is watching can spend. What it stops here is *between* turns: three lines were piped in,
+/// the second answer crossed the line, and the third was not sent - which is the shape a script
 /// driving a long session has.
 #[tokio::test]
 async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
@@ -897,7 +898,7 @@ async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
         priced(ModelResponse::text("two"), 400, 200),
         priced(ModelResponse::text("three"), 400, 200),
     ];
-    let run = run_capped("first\nsecond\nthird\n", script, 1000, |_| {}).await;
+    let run = run_capped("first\nsecond\nthird\nfourth\n", script, 1000, |_| {}).await;
 
     // 1,200 rather than 1,000: a ceiling is a stopping rule and not a cap, because what a response
     // costs is known only once it has arrived. Both halves of the bill are in that figure
@@ -912,10 +913,25 @@ async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
             .filter(|name| *name == "model.requested")
             .count(),
         2,
-        "the third line was read after the ceiling was reached"
+        "a line was sent after the ceiling was reached"
     );
-    // and it was not read and refused, it was not read: a script piped into a session that has
-    // stopped should not come back as a refusal a line, which is what the loop stops reading for
+    // and passed over rather than put in the context, where the next turn a script paid for would
+    // have carried it out unasked
+    let asked = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::UserMessage))
+        .count();
+    assert_eq!(asked, 2, "a message went into the context unsent");
+    // said once, not a refusal a line for the rest of the script
+    assert_eq!(
+        run.prose.matches("passed over unsent").count(),
+        1,
+        "{}",
+        run.prose
+    );
     assert!(
         !run.prose.contains("nothing more is being sent"),
         "{}",
@@ -927,6 +943,41 @@ async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
         run.names().last().map(String::as_str),
         Some("session.finished")
     );
+}
+
+/// The way back the stop names is a line, and a script that sends it is heard.
+///
+/// note: the loop stopped reading at the ceiling, so the `/spend 0` the stop recommends - and
+/// RUNNING.md calls the way back - was dropped with everything else a script sent after it.
+#[tokio::test]
+async fn a_script_can_raise_the_ceiling_it_ran_into() {
+    let script = vec![
+        priced(ModelResponse::text("one"), 400, 800),
+        priced(ModelResponse::text("two"), 400, 800),
+    ];
+    let run = run_capped(
+        "first\nnot sent\n/spend\n/spend 0\nsecond\n",
+        script,
+        1000,
+        |_| {},
+    )
+    .await;
+
+    assert!(
+        run.prose.contains("1,200 tokens spent of 1,000"),
+        "{}",
+        run.prose
+    );
+    assert!(run.prose.contains("two"), "{}", run.prose);
+    let asked: Vec<String> = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, nachalnik::ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(asked, ["first", "second"]);
 }
 
 /// It stops a turn that is in flight, rather than waiting for one to end.

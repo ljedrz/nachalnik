@@ -361,6 +361,15 @@ minor bump may break you.
   read their input as one stream of text, so a single Latin-1 byte stopped the run with `could not
   read the input`, dropped every line after it, and named none of them. The line is now taken with
   `U+FFFD` where the bytes were not text, and a note names it.
+- **A headless run that reaches its spend ceiling still reads its commands.** It stopped reading
+  altogether, so the `/spend N` the stop recommends, and the `/spend 0` RUNNING.md calls the way
+  back, were dropped with the rest of the script. Commands now run; a message is passed over
+  unsent, and said to be once.
+- **A stop that lands as a turn ends no longer swallows the next one.** The kernel keeps an
+  interrupt on a resting session for the next step, so a stop asked for after the turn had ended
+  but before the program heard it had - the ceiling does this whenever the response that crosses it
+  is the turn's last, and `esc` can - left the next message in the context with no turn and nothing
+  said. The next turn now spends it first.
 
 ## [0.15.1] - 2026-09-24
 

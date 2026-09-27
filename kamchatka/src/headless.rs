@@ -180,6 +180,8 @@ impl<'a> Headless<'a> {
         let mut cleared = app.cleared();
         // what wakes the loop for a running command's question, which is no event of the kernel's
         let mut reaching = app.policy.reaching().subscribe();
+        // whether it has said that messages are being passed over for want of a ceiling to spend
+        let mut passing = false;
 
         // note: an async block rather than the loop alone, so that every way out of it - a
         // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
@@ -208,12 +210,9 @@ impl<'a> Headless<'a> {
             }
             self.flush(app, &mut written)?;
             self.echo(app, &mut said, &mut cleared)?;
-            // note: a session that has spent what it was given would refuse every further line
-            // anyway - `App::start_turn` is where that is decided, so a caller cannot get round it
-            // by not asking. What this adds is that the refusals are not printed one a line for
-            // the rest of a script somebody piped in: there is nothing left for the input to do
-            if app.overspent() {
-                reading = false;
+            // a stop the ceiling made is said once, and a later one is a new stop
+            if !app.overspent() {
+                passing = false;
             }
             // a session that is not going to be given anything else to do, and is not doing
             // anything, is over. `quit` is `/quit`, which means the same here as at a prompt
@@ -236,6 +235,23 @@ impl<'a> Headless<'a> {
                     // answered - a request for nothing - and `  /help` is a message here and a
                     // command there
                     Ok(Some((line, _))) if line.trim().is_empty() => {}
+                    // note: a session that has spent what it was given still reads, because the
+                    // way back is a line: `/spend N` raises the ceiling and `/spend 0` takes it
+                    // away, and a loop that stopped reading dropped the very command its stop had
+                    // just recommended. A message is another matter. `App::start_turn` refuses it,
+                    // but only once it is in the context, where it would go out unasked with
+                    // whatever turn the script paid for next - so it is passed over here, and said
+                    // to be once rather than a refusal a line for the rest of a script
+                    Ok(Some((line, _))) if app.overspent() && !line.trim().starts_with('/') => {
+                        if !std::mem::replace(&mut passing, true) {
+                            app.say(
+                                Speaker::Note,
+                                "the ceiling is reached, so the messages after this point are \
+                                 passed over unsent; commands are still read, and `/spend N` \
+                                 raises it",
+                            );
+                        }
+                    }
                     Ok(Some((line, mangled))) => {
                         if mangled {
                             app.say(Speaker::Note, not_text(&line));

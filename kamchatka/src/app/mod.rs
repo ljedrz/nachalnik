@@ -790,6 +790,16 @@ impl App {
         self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         tokio::spawn(async move {
+            // note: a stop asked for between the kernel finishing a turn and this `App` hearing
+            // that it had is still standing, because the kernel keeps an interrupt on a resting
+            // session for the next attempt to spend - and that attempt is this one, which would
+            // then do nothing and say nothing. The ceiling does it whenever the response that
+            // crosses it is the turn's last. `Finished` only: the kernel puts the flag down on the
+            // way in, so one standing there came after the turn it was for, whereas one standing
+            // at `Ready` is a stop for the calls this launch would otherwise carry on with
+            if kernel.is_interrupted() && matches!(kernel.state(), State::Finished { .. }) {
+                let _ = kernel.step().await;
+            }
             let outcome = match stepping {
                 true => kernel.step().await.map(Outcome::Stepped),
                 false => kernel.turn().await.map(Outcome::Stopped),
