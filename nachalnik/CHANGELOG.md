@@ -12,6 +12,10 @@ minor bump may break you.
 - **A pin named twice in one list of a `CompactionPlan` is refused once.** `refused` listed it
   once per mention, where every other entry in a report is once per item; a pin named in both
   `remove` and `elide` is still refused once for each.
+- **A result is named for its operation when its tool left the registry after the call was
+  decided.** The label was read off the registry, so a call run or cancelled after
+  `Kernel::remove_tool` was labelled with the bare tool name - `fs` beside the `fs:read` it was. It
+  is read off the tool the call was matched to.
 
 ## [0.7.1] - 2026-09-24
 

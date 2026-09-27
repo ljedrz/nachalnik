@@ -454,6 +454,41 @@ async fn the_whole_of_a_shortened_output_is_named_for_the_operation_too() {
     );
 }
 
+/// A call whose tool left the registry after it was decided is still named for its operation, run
+/// or dropped.
+///
+/// note: the label was read off the registry, so a tool taken out while its call waited in
+/// `Ready` ran the call and labelled the result with the bare tool name.
+#[tokio::test]
+async fn a_call_whose_tool_was_taken_out_is_still_named_for_its_operation() {
+    for dropped in [false, true] {
+        let (kernel, _) = permissive([ModelResponse::tool_calls(vec![call(
+            "c1",
+            "files",
+            json!({ "action": "write" }),
+        )])]);
+        kernel.add_tool(Arc::new(Narrowing));
+        kernel.push(ContextItem::user("write it"));
+
+        assert!(matches!(kernel.step().await.unwrap(), State::Ready { .. }));
+        kernel.remove_tool("files");
+        match dropped {
+            true => assert_eq!(kernel.cancel_pending_calls("not now"), 1),
+            false => assert!(matches!(kernel.step().await.unwrap(), State::Idle)),
+        }
+
+        let labels: Vec<_> = tool_results(&kernel)
+            .into_iter()
+            .map(|result| result.label.clone())
+            .collect();
+        assert!(!labels.is_empty(), "dropped: {dropped}");
+        assert!(
+            labels.iter().all(|label| label == "files:write"),
+            "dropped: {dropped}, {labels:?}"
+        );
+    }
+}
+
 /// A tool of several operations that says which one a call is, which is what earns a label.
 struct Narrowing;
 

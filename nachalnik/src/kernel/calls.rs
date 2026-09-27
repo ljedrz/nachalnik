@@ -52,6 +52,7 @@ impl Kernel {
                 // checkpoint each would let one `undo` leave a call answered and its neighbour not
                 self.record_tool_result(
                     call,
+                    None,
                     ToolOutput::error(unknown_tool(&call.tool, &self.tool_ids())),
                     None,
                     None,
@@ -241,7 +242,7 @@ impl Kernel {
             // the same label its short copy gets, because the two are one call and the row
             // somebody opens to read what was cut is this one. Labelled `fs` beside an `fs:read`
             // copy, it would read as a different call by a tool that did not say what it did
-            if let Some(label) = self.operation_label(&prepared.call) {
+            if let Some(label) = Self::operation_label(&*prepared.tool, &prepared.call) {
                 item.label = label;
             }
             // the note says why it is archived, which is what a note is for and which stops being
@@ -256,7 +257,14 @@ impl Kernel {
         });
 
         let truncated = limit.and_then(|limit| output.content.truncate_to(limit));
-        self.record_tool_result(&prepared.call, output, truncated, whole, batch);
+        self.record_tool_result(
+            &prepared.call,
+            Some(&*prepared.tool),
+            output,
+            truncated,
+            whole,
+            batch,
+        );
     }
 
     /// What a result of this call is called: the tool's name and the operation the call named,
@@ -285,8 +293,10 @@ impl Kernel {
     /// shortened output is recorded as *two* items and both of them are that call. Labelled only
     /// where a result is recorded, the whole would carry the bare tool name - and the row a person
     /// opens to read the part that was cut would not say which read it came from.
-    fn operation_label(&self, call: &ToolCall) -> Option<String> {
-        let tool = self.tool(&call.tool)?;
+    ///
+    /// note: the tool the call was matched to, not the registry's. A tool taken out of the registry
+    /// after its call was decided still runs that call, and the result is still that operation.
+    fn operation_label(tool: &dyn Tool, call: &ToolCall) -> Option<String> {
         if tool.spec().capabilities.len() < 2 {
             return None;
         }
@@ -296,7 +306,8 @@ impl Kernel {
         }
     }
 
-    /// Records a tool result in the context and broadcasts [`Event::ToolFinished`].
+    /// Records a tool result in the context and broadcasts [`Event::ToolFinished`]. `tool` is the
+    /// one the call was matched to, and `None` for a call naming no tool there is.
     ///
     /// note: into a [`Batch`] the caller holds - the turn it answers, the calls of one turn, or the
     /// whole of a truncated output, which is recorded as a second item - so that one
@@ -305,6 +316,7 @@ impl Kernel {
     pub(super) fn record_tool_result(
         &self,
         call: &ToolCall,
+        tool: Option<&dyn Tool>,
         output: ToolOutput,
         truncated: Option<usize>,
         whole: Option<ContextId>,
@@ -314,7 +326,7 @@ impl Kernel {
         let mut item =
             ContextItem::tool_result(call.id.clone(), call.tool.clone(), output.content, is_error);
 
-        if let Some(label) = self.operation_label(call) {
+        if let Some(label) = tool.and_then(|tool| Self::operation_label(tool, call)) {
             item.label = label;
         }
         // note: `included_because` and not `note`, which is documented as why an item is in its

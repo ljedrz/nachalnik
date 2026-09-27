@@ -1632,6 +1632,7 @@ impl Kernel {
         for call in &prepared {
             self.record_tool_result(
                 &call.call,
+                Some(&*call.tool),
                 ToolOutput::error(format!("the call was cancelled: {reason}")),
                 None,
                 None,
