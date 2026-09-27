@@ -37,6 +37,14 @@ minor bump may break you.
   says `devices: DEVICES.iter().map(Into::into).collect()` and `closed: Vec::new()`, and
   `--confine-and-run` takes both lists after the read-only paths, each counted the same way.
 
+### security
+
+- **A `--sandbox-device` that leads out of `/dev` is refused, and not granted if it gets that far.**
+  The check compared components without settling them, so `/dev/../home/you` passed as a device
+  and the shell could read and write everything beneath it, with no screen saying so. A device is
+  now resolved, `..` and links alike, before it is checked and again before the ruleset grants it,
+  and `/dev` itself is refused.
+
 ### added
 
 - **`fs read` takes `from` and `lines`, and a long file is read in parts.** A file past the output

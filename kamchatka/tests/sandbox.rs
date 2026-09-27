@@ -1769,6 +1769,38 @@ fn the_devices_named_are_the_ones_reached() {
     assert!(said.contains("made"), "{said}");
 }
 
+/// A device that climbs out of `/dev` is not granted, though it begins with `/dev`.
+///
+/// note: `Setup::check` refuses the same list where it is given; this is the half that holds for a
+/// confinement built by hand, or handed to `--confine-and-run` directly. The control is the same
+/// file written unconfined, or a command that could write nothing would pass this.
+#[test]
+fn a_device_that_climbs_out_of_dev_is_not_granted() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("sandbox-climbing-device");
+    let outside = common::workdir("sandbox-climbing-device-outside");
+    let target = outside.join("inside.txt");
+    let writing = format!(
+        "echo written >>{} && echo wrote || echo refused",
+        target.display()
+    );
+    let control = Command::new("sh")
+        .arg("-c")
+        .arg(&writing)
+        .output()
+        .expect("sh is here");
+    assert!(String::from_utf8_lossy(&control.stdout).contains("wrote"));
+
+    let mut climbing = sandbox(dir, true, Network::NoTcp);
+    climbing
+        .devices
+        .push(PathBuf::from(format!("/dev/..{}", outside.display())));
+    let (_, said) = run(&climbing, &writing);
+    assert!(said.contains("refused"), "{said}");
+}
+
 /// Runs `argv` with a terminal open beside it, named in `TERMINAL`, into which a line has been
 /// typed; returns what it wrote.
 fn beside_a_terminal(argv: &[std::ffi::OsString], dir: &Path) -> String {

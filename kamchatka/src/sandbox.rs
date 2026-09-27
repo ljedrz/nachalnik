@@ -298,6 +298,7 @@ impl Sandbox {
             return self
                 .devices
                 .iter()
+                .filter_map(|named| device(named))
                 .any(|device| resolved.starts_with(device));
         }
 
@@ -575,6 +576,29 @@ fn resolve(path: &Path) -> Option<PathBuf> {
             },
         }
     }
+}
+
+/// The device a path given to `--sandbox-device` names, resolved; `None` where it lands anywhere
+/// but beneath `/dev`, or is `/dev` itself.
+///
+/// note: resolved rather than read off the spelling, because `Path::starts_with` compares
+/// components and never settles one: `/dev/../home` begins with `/dev`, and the ruleset opens it as
+/// `/home`. A link is followed for the same reason - `/dev/fd` leads into `/proc`, and `/dev/shm`
+/// is anybody's to make one in. A device that is not there yet resolves through its parent, so
+/// one plugged in later is still grantable. `/dev` itself is every device at once, which is what
+/// [`DEVICES`] exists not to grant.
+///
+/// note: asked twice, by `Setup::check` where the list is given and by [`confine`] where it is
+/// granted. The first is where a person is told; the second is what holds for a [`Sandbox`] built
+/// by hand, and grants the path it resolved rather than the one it was handed.
+pub fn device(path: &Path) -> Option<PathBuf> {
+    resolve(path).filter(|resolved| {
+        resolved.starts_with("/dev")
+            && resolved != Path::new("/dev")
+            && !resolved
+                .components()
+                .any(|component| component == std::path::Component::ParentDir)
+    })
 }
 
 /// Whether a line of standard error looks like something was refused permission.
@@ -1409,6 +1433,11 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         .chain(std::iter::once(sandbox.workdir.clone()))
         .chain(sandbox.readable.iter().cloned())
         .collect();
+    let devices: Vec<PathBuf> = sandbox
+        .devices
+        .iter()
+        .filter_map(|named| device(named))
+        .collect();
 
     let restricted = ruleset
         .create()
@@ -1417,7 +1446,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         })
         .and_then(|created| {
             created.add_rules(path_beneath_rules(
-                &sandbox.devices,
+                &devices,
                 AccessFs::ReadFile | AccessFs::WriteFile,
             ))
         })

@@ -412,11 +412,11 @@ impl Setup {
             }
             // note: a device is granted reading and writing whatever is beneath it, which is what
             // `--sandbox-allow` is for anywhere else. Named here, it would be a writable path the
-            // screens never mention
+            // screens never mention - and `/dev/../home` is one, so the path is resolved first
             if let Some(stray) = self
                 .devices
                 .iter()
-                .find(|device| !device.starts_with("/dev/"))
+                .find(|device| sandbox::device(device).is_none())
             {
                 return Err(format!(
                     "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
