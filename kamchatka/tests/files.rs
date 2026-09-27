@@ -33,13 +33,22 @@ async fn ask_unconfined(dir: &Path, action: &str, args: Value) -> String {
     answered(dir, Limits::default(), false, action, args).await
 }
 
-async fn answered(
+async fn answered(dir: &Path, limits: Limits, confined: bool, action: &str, args: Value) -> String {
+    outcome(dir, limits, confined, action, args)
+        .await
+        .content
+        .to_text()
+        .into_owned()
+}
+
+/// [`answered`], whole: the text and whether the model is shown it as an error.
+async fn outcome(
     dir: &Path,
     limits: Limits,
     confined: bool,
     action: &str,
     mut args: Value,
-) -> String {
+) -> nachalnik::ToolOutput {
     let tools = common::builtin(dir, confined, limits);
     let found = tools
         .iter()
@@ -52,9 +61,6 @@ async fn answered(
         .invoke(&call, OutputSink::disconnected())
         .await
         .expect("the tool answers the call either way")
-        .content
-        .to_text()
-        .into_owned()
 }
 
 /// What a file holds now.
@@ -360,12 +366,21 @@ async fn an_empty_file_read_whole_is_empty_rather_than_refused() {
     let dir = scratch("files-empty");
     std::fs::write(dir.join("empty.txt"), "").expect("a file");
 
-    let said = ask(&dir, "read", json!({ "path": "empty.txt" })).await;
-    assert!(
-        said.contains("the file is empty, so there is nothing in it"),
-        "{said}"
-    );
+    let read = outcome(
+        &dir,
+        Limits::default(),
+        true,
+        "read",
+        json!({ "path": "empty.txt" }),
+    )
+    .await;
+    let said = read.content.to_text();
+    assert!(said.contains("the file is empty"), "{said}");
     assert!(!said.contains("no line to start from"), "{said}");
+    assert!(
+        !read.is_error,
+        "an empty file read is not a failed read: {said}"
+    );
 
     // and a range that names no line of one is still about the range
     let said = ask(&dir, "read", json!({ "path": "empty.txt", "from": 2 })).await;

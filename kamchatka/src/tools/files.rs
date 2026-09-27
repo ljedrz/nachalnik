@@ -251,17 +251,17 @@ fn read(
     let total = ended.then_some(number);
 
     let Some((first, through)) = shown else {
-        return Ok(Err(match (number, span.whole()) {
-            // a file with nothing in it read whole is a file with nothing in it, and saying it
-            // is empty is a sentence about `from` - which is the line a caller reading this was
-            // after, and a limit is not a reason to refuse the file
-            (0, true) => "the file is empty, so there is nothing in it".to_owned(),
-            (0, false) => "the file is empty, so there is no line to start from".to_owned(),
-            _ => format!(
+        return Ok(match (number, span.whole()) {
+            // a file with nothing in it read whole is a file with nothing in it: an answer rather
+            // than a refusal, in the brackets a read's own header goes in, so that it cannot be
+            // taken for a file holding those words
+            (0, true) => Ok("[the file is empty]".to_owned()),
+            (0, false) => Err("the file is empty, so there is no line to start from".to_owned()),
+            _ => Err(format!(
                 "`from` is line {} and the file has {number} line(s); it starts at 1",
                 span.from
-            ),
-        }));
+            )),
+        });
     };
     let text = match String::from_utf8(kept) {
         Ok(text) => text,
