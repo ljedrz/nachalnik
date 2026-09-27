@@ -2354,55 +2354,39 @@ fn walkdir(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
     found
 }
 
-/// A `/restart` whose fresh session cannot be wired still says where the old one was written.
+/// A `--file` that is not a file is refused, and says which argument it was.
 ///
-/// note: the old session is recorded before the new one is wired, and the line naming the file was
-/// dropped when the wiring failed - so the error came out alone, over a record nobody was told
-/// about. A `--file` that has gone since the run started is one way to make the wiring fail.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
-    use std::io::Write as _;
+/// note: `attach` refuses a directory, a device and a pipe, because each of them is read until it
+/// ends and some of them never do. The first wire still refuses what a `/restart` no longer takes
+/// as the end of the run, so that the refusal is held where it still is one: a session told to
+/// start without its attachment is not the session the arguments describe.
+#[tokio::test]
+async fn a_file_that_is_not_a_file_is_refused() {
+    let dir = common::scratch("not-a-file");
+    std::fs::create_dir_all(dir.join("not-a-file")).expect("a directory to name");
 
-    let base = common::endpoint(vec![]).await;
-    let dir = common::scratch("restart-failed");
-    std::fs::write(dir.join("notes.md"), "notes").expect("a file to attach");
+    let refused = match (Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        files: vec![dir.join("not-a-file").display().to_string()],
+        ..Default::default()
+    })
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    ))) {
+        Ok(_) => panic!("a directory is not a file, and the wiring should have said so"),
+        Err(why) => why,
+    };
 
-    let mut child = std::process::Command::new(common::program())
-        .args(["--headless", "-m", "nothing", "--file", "notes.md"])
-        .current_dir(&dir)
-        .env("KAMCHATKA_BASE_URL", &base)
-        .env("KAMCHATKA_API_KEY", "not-a-key")
-        .env("TMPDIR", &dir)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
-    let said = watch(child.stderr.take().expect("stderr is a pipe"));
-    // once the first session has read it, which the opening lines come after
-    let waited = std::time::Instant::now();
-    while said.lock().is_empty() {
-        assert!(
-            waited.elapsed() < std::time::Duration::from_secs(20),
-            "it never started"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    std::fs::remove_file(dir.join("notes.md")).expect("the file goes");
-    child
-        .stdin
-        .as_mut()
-        .expect("stdin is a pipe")
-        .write_all(b"/restart\n")
-        .expect("could not type");
-    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
-
-    let said = said.lock().clone();
-    assert!(!status.success(), "{said}");
-    assert!(said.contains("no fresh session could be started"), "{said}");
     assert!(
-        said.contains("kamchatka -r "),
-        "it names the record: {said}"
+        refused.contains("only a file can be attached"),
+        "and what is wrong with it: {refused}"
+    );
+    assert!(
+        refused.contains("not-a-file"),
+        "and which argument it was: {refused}"
     );
 }
 
@@ -4008,6 +3992,78 @@ async fn a_switch_on_the_last_line_is_recorded_before_the_session_ends() {
         })
         .collect();
     assert_eq!(names, ["switched", "finished"]);
+}
+
+/// A `--file` that has gone is left out of the next session rather than ending the run.
+///
+/// note: the settings are wired a second time, and a file the person has not touched since the
+/// run began can be gone by then - another agent deleted it, `git clean` swept it, a build moved
+/// it. Wiring it again failed the whole restart, so `/restart` ended the program over an
+/// attachment. The first session still refuses a file it cannot read and says why; a restart
+/// starts without it and says so, because the session has already run once and what was asked
+/// for is the next one.
+///
+/// note: through `relaunch` rather than through the binary, because what is being checked is the
+/// sentence it hands back and the context the new session is given, and neither needs a loop
+/// around it.
+#[tokio::test]
+async fn a_restart_starts_without_an_attachment_that_has_gone() {
+    let dir = common::scratch("restart-attachment-gone");
+    let path = dir.join("notes.md");
+    std::fs::write(&path, "notes").expect("a file to attach");
+
+    let setup = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        record: false,
+        files: vec![path.display().to_string()],
+        ..Default::default()
+    };
+    let Wired { app, .. } = setup
+        .clone()
+        .wire(Arc::new(OpenAiCompatible::new(
+            "",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed");
+    // the file went in on the first wire, and a session that had not taken it would pass this
+    // for the wrong reason
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("notes")),
+        "the attachment is in the first session"
+    );
+    std::fs::remove_file(&path).expect("the file goes");
+
+    let (Wired { app: fresh, .. }, said) = setup
+        .relaunch(
+            &app,
+            Arc::new(OpenAiCompatible::new("", "http://127.0.0.1:1", "")),
+        )
+        .expect("the restart started a session");
+
+    assert!(
+        said.contains("starts without 1"),
+        "it says the file was left out: {said}"
+    );
+    assert!(said.contains(&path.display().to_string()), "{said}");
+    // and the new session is a session rather than the old one with the file taken out
+    assert_ne!(
+        fresh.kernel.session_name(),
+        app.kernel.session_name(),
+        "`relaunch` stamps the second one fresh"
+    );
+    assert!(
+        !fresh
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("notes")),
+        "and it does not carry the attachment the first one had"
+    );
 }
 
 /// A rule given at the start - a flag or a settings file - is at the start of the record.

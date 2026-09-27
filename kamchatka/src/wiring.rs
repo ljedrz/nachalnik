@@ -658,9 +658,17 @@ impl Setup {
     /// note: `resume` and `session_name` are the two settings not taken at their word. A snapshot
     /// is where the *run* started and a restart is somebody leaving it; and a name carried over
     /// would give two sessions of one run the same identity, while `None` would fall back to the
-    /// runtime's counter, which is fine as an identity and useless as a filename. So a fresh
+    /// runtime's own counter, which is fine as an identity and useless as a filename. So a fresh
     /// session is stamped fresh, the way the first one was, and [`record`] settles two of them
     /// landing in the same second.
+    ///
+    /// note: and `files` is a third, read the same way. A path named on the command line is part
+    /// of how the session was set up, and a restart wires the settings again - so a file that has
+    /// gone since the run began stops the new session from starting at all, and `/restart` ends
+    /// the program over a file nobody has touched since. The first session still refuses a file it
+    /// cannot read, because there a missing attachment is somebody being told the session they
+    /// asked for is not the one they typed; here the session has already run once, and what
+    /// somebody wants from `/restart` is the new session. The file is left out and said.
     pub fn relaunch(
         &self,
         app: &App,
@@ -671,7 +679,7 @@ impl Setup {
         }
 
         let name = app.kernel.session_name();
-        let said = match self.record {
+        let mut said = match self.record {
             false => format!("{name} ended; `--no-record`, so nothing was written"),
             true => match record(app) {
                 Ok(written) => format!(
@@ -684,6 +692,29 @@ impl Setup {
             },
         };
 
+        // note: the same read `wire` makes and the same refusal it makes, so a file this session
+        // put in the context a moment ago is not left out for a second and vaguer reason. The
+        // bytes are read twice where the file is still there - once here to find out, once for
+        // the item - which is the price of asking a question this program has no cheaper way to
+        // ask, and it is paid on the `-f` list rather than on anything the session is doing
+        let (files, left_out): (Vec<String>, Vec<String>) = self
+            .files
+            .iter()
+            .cloned()
+            .partition(|path| attach::attached(path).is_ok());
+        if !left_out.is_empty() {
+            let one = left_out.len() == 1;
+            said.push_str(&format!(
+                "\nand this session starts without {}: {}{}",
+                left_out.len(),
+                left_out.join(", "),
+                match one {
+                    true => " could not be read and is not there",
+                    false => " could not be read and are not there",
+                },
+            ));
+        }
+
         let started = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|since| since.as_secs())
@@ -691,6 +722,7 @@ impl Setup {
         let fresh = Setup {
             resume: None,
             session_name: Some(App::session_stamp(started)),
+            files,
             ..self.clone()
         };
         // the old session's line rides on the error, since it is the one pointer to where that
