@@ -418,6 +418,11 @@ impl Args {
     /// messages worth writing - which path, and whether it was a session at all - belong to
     /// whoever was handed the path.
     pub fn setup(&self) -> Result<Setup> {
+        // note: here rather than where the limit is read, because that is a round trip away and a
+        // session measuring itself against nothing is not a session anybody finds out about. Every
+        // other figure this program settles at startup is refused here, and this one used to be
+        // read out of the environment and dropped when it did not parse
+        endpoint::checked_limit().map_err(|e| anyhow::anyhow!("{e}"))?;
         // note: here rather than in the parser, so that a settings file's `compact` is held to it
         // too. A fraction, and said so: `80`, meant as a percentage, would be no compactor at all,
         // and anything at or below zero one that took every tool result

@@ -49,10 +49,52 @@ const APP_TITLE: &str = "kamchatka";
 const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 
 /// The context limit somebody set by hand, if they set one.
+///
+/// note: a value that is not a number, or not a positive one, is [`None`] here rather than a
+/// refusal: `checked_limit` is what a program reads at startup, and this is here for a caller
+/// that wants the figure and has no startup to refuse one in.
 pub fn configured_limit() -> Option<usize> {
     env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
+}
+
+/// The context limit somebody set by hand, or what is wrong with what they set.
+///
+/// note: refused rather than dropped, and at startup. A value that does not parse used to read as
+/// no limit at all, so a mistyped figure, or one written where a shell variable's name was wanted,
+/// left a session measuring against whatever the endpoint advertises, with nothing on the screen
+/// saying the setting was not in force. A `0` was worse: it is a limit, and a request is refused
+/// against it on the first turn, with the budget reading `the limit: 0, which the next request
+/// would fill 0.0% of`.
+///
+/// note: the sentence names the variable and shows what it held, because the environment is the one
+/// place a figure can be wrong with no file to open and nothing on the screen to point at. `0` is
+/// refused rather than read as "no limit", which is what the other `0`s in this program mean - a
+/// setting that says `0` here and "no limit" everywhere else is a trap, and this one is the only
+/// place the value is spent rather than merely held.
+pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
+    let limit = match env::var("KAMCHATKA_CONTEXT_LIMIT") {
+        Ok(limit) => limit,
+        Err(_) => return Ok(None),
+    };
+
+    match limit.parse::<usize>() {
+        // `usize` is what it is parsed as and `0` is in range, so the two are told apart here
+        // rather than by asking the parse
+        Ok(0) => Err(
+            "KAMCHATKA_CONTEXT_LIMIT is `0`, which is not a number of tokens: it is how many the \
+             model holds, and the first request would already be over it. Leave it unset to \
+             measure against what the endpoint says"
+                .into(),
+        ),
+        Ok(limit) => Ok(Some(limit)),
+        Err(_) => Err(format!(
+            "KAMCHATKA_CONTEXT_LIMIT is `{limit}`, which is not a number of tokens: a whole number \
+             above 0, as in `128000`"
+        )
+        .into()),
+    }
 }
 
 /// The API key, under whichever of the documented names it is set.
@@ -153,7 +195,7 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
         addressed(base_url())?,
         api_key()?,
     )
-    .with_context_limit(configured_limit());
+    .with_context_limit(checked_limit()?);
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
         provider = provider
             .on_behalf_of(APP_URL, APP_TITLE)
@@ -441,7 +483,7 @@ pub mod gemini {
                 addressed(base_url())?,
                 api_key()?,
             )
-            .with_context_limit(configured_limit()),
+            .with_context_limit(checked_limit()?),
         );
         if model.is_some() {
             provider.probe().await;

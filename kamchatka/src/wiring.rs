@@ -592,8 +592,13 @@ impl Setup {
         }
         for path in &self.files {
             kernel.push(
+                // note: `{e:#}` for the whole chain, as `/attach` prints it and for the reason its
+                // note gives: what could not be done, and then the operating system's own account
+                // of why. Without the `#` the cause is dropped and the refusal reads as
+                // `missing.png: could not read missing.png` - the file named twice and no word
+                // about why - or as `fifo: fifo is not a file`, with `os error` nowhere
                 attach::attached(path)
-                    .map_err(|e| format!("{path}: {e}"))?
+                    .map_err(|e| format!("{e:#}"))?
                     .because("named on the command line")
                     .pinned(),
             );

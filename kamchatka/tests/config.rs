@@ -1029,3 +1029,165 @@ fn a_read_only_path_inside_the_working_directory_is_refused() {
     assert!(!ok, "{said}");
     assert!(said.contains("--sandbox-read"), "{said}");
 }
+
+/// A `~` in a path a person typed is their home directory, in every command that takes one.
+///
+/// note: the settings file expanded one because nothing was in front of it, and `/attach` did not,
+/// so a path under the home directory was read out of a file and refused when the same path was
+/// typed at the prompt. The prompt has no shell in front of it either, which is the whole of the
+/// argument, and the three commands are the ones a person types a path into.
+///
+/// note: the tools still refuse a `~`, on purpose: those paths are written by a model. This is
+/// about what the person who owns the home directory types, and the two are told apart by where
+/// the path came from rather than by the shape of the path.
+///
+/// note: a home of the test's own, over the top of whatever the machine has. `config::home` reads
+/// `HOME` and nothing else - a password database's answer and the one the person is working from
+/// are allowed to differ, and a path that quietly goes somewhere else is worse than one that
+/// fails - so setting it is how a test says which home it means.
+#[test]
+fn a_tilde_typed_at_the_prompt_is_the_home_directory() {
+    let home = common::scratch("typed-tilde-home");
+    std::fs::write(home.join("notes.txt"), "PLUM").expect("a file in it");
+    let home = home.display().to_string();
+
+    // `/attach`, which is the one the guide shows a `~` in
+    let (ok, said) = run_with(&[], "/attach ~/notes.txt\n", &[("HOME", &home)]);
+    assert!(ok, "{said}");
+    assert!(said.contains("went into the context"), "{said}");
+    assert!(
+        said.contains(&format!("{home}/notes.txt")),
+        "the path that went in was not the home directory's: {said}"
+    );
+
+    // and `/save`, which writes rather than reads and used to make a directory called `~` under
+    // wherever the session was standing
+    let (ok, said) = run_with(&[], "/save ~/session\n", &[("HOME", &home)]);
+    assert!(ok, "{said}");
+    assert!(
+        said.contains(&format!("{home}/session.json")),
+        "the save did not land in the home directory: {said}"
+    );
+    assert!(
+        Path::new(&home).join("session.json").is_file(),
+        "and nothing was written there"
+    );
+
+    // a `~` that is somebody else's is left as it was typed: resolving another user's home means
+    // asking the password database, and a path that quietly is not what it says is worse than one
+    // that is obviously wrong
+    let (ok, said) = run_with(&[], "/attach ~root/.ssh\n", &[("HOME", "/nowhere")]);
+    assert!(!said.contains("went into the context"), "{said}");
+    assert!(!ok || said.contains("~root/.ssh"), "{said}");
+}
+
+/// A `KAMCHATKA_CONTEXT_LIMIT` that is not a number of tokens is refused at startup, by name.
+///
+/// note: a value that did not parse used to read as *no limit at all*, so a mistyped figure - or
+/// one written where a shell variable's name was wanted - left a session measuring against
+/// whatever the endpoint advertises with nothing on the screen saying the setting was not in
+/// force. A `0` was worse still: it is a limit, and the first request is refused against it, with
+/// the budget reading `the limit: 0, which the next request would fill 0.0% of`.
+///
+/// note: refused at startup rather than at the first turn, the way every other figure this
+/// program settles is. The environment is the one place a figure can be wrong with no file to
+/// open, so the sentence names the variable and says what it held.
+#[test]
+fn a_context_limit_that_is_not_a_number_of_tokens_is_refused() {
+    for wrong in ["abc", "-5", "1.5", ""] {
+        for args in [&["--headless"][..], &["--headless", "--gemini"]] {
+            let (ok, said) = run_with(args, "", &[("KAMCHATKA_CONTEXT_LIMIT", wrong)]);
+            assert!(!ok, "`{wrong}` was taken as a limit: {args:?}: {said}");
+            assert!(
+                said.contains("KAMCHATKA_CONTEXT_LIMIT"),
+                "the variable is not named: {said}"
+            );
+            assert!(
+                said.contains(&format!("`{wrong}`")),
+                "what it held is not said back: {said}"
+            );
+        }
+    }
+
+    // and `0` is refused with its own sentence rather than the one above, because a whole number
+    // above 0 and a whole number of nothing are two different mistakes
+    let (ok, said) = run_with(&[], "", &[("KAMCHATKA_CONTEXT_LIMIT", "0")]);
+    assert!(!ok, "`0` was taken as a limit: {said}");
+    assert!(said.contains("KAMCHATKA_CONTEXT_LIMIT"), "{said}");
+    assert!(
+        said.contains("how many the model holds"),
+        "and not told what the figure is for: {said}"
+    );
+
+    // a whole number above 0 is taken, which is what the variable is for. A model is named
+    // because a session without one holds no provider, and there is no limit for `/budget` to read
+    let (ok, said) = run_with(
+        &["-m", "a-model"],
+        "/model\n",
+        &[("KAMCHATKA_CONTEXT_LIMIT", "128000")],
+    );
+    assert!(ok, "{said}");
+    assert!(said.contains("128,000"), "{said}");
+
+    // and answered before the key is: the figure is in the environment and costs nothing to read,
+    // so a run with no key at all is told about the setting rather than about the credential.
+    // `spawn` is reached directly because `run_keyless` is the one helper with no environment
+    // over the top of it, and this is the one case that needs both
+    let (ok, said) = spawn(
+        elsewhere(),
+        &[],
+        "",
+        &[("KAMCHATKA_CONTEXT_LIMIT", "abc")],
+        false,
+    );
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("KAMCHATKA_CONTEXT_LIMIT"),
+        "the setting was not reported: {said}"
+    );
+    assert!(
+        !said.contains("KAMCHATKA_API_KEY"),
+        "the key is reported instead of the setting: {said}"
+    );
+}
+
+/// A file `-f` could not read says why, once, the way `/attach` says it.
+///
+/// note: the wiring named the file itself and then formatted the error with `{e}`, which drops
+/// anything anyhow put underneath - so a missing file came out as `missing.png: could not read
+/// missing.png`: the same path twice and no word about why. A pipe came out as `fifo: fifo is not
+/// a file`, which reads as a complaint about the spelling. The prompt's own `/attach` already
+/// prints the whole chain with `{e:#}`, and the two acts are the same act, so they read alike.
+#[test]
+fn a_file_named_on_the_command_line_says_why_it_could_not_be_read() {
+    let dir = common::scratch("file-refused");
+    std::fs::write(dir.join("notes.md"), "notes").expect("a file that is there");
+
+    let (ok, said) = run_from(&dir, &["-f", "missing.png"], "");
+    assert!(!ok, "a file that is not there is not a success: {said}");
+    // the path once, and the operating system's own account of why
+    assert_eq!(
+        said.matches("missing.png").count(),
+        1,
+        "the file is named twice: {said}"
+    );
+    assert!(
+        said.contains("No such file or directory"),
+        "and nothing says why: {said}"
+    );
+
+    // and a thing that is there and is not a file says so once rather than twice as well
+    std::fs::create_dir(dir.join("adir")).expect("a directory");
+    let (ok, said) = run_from(&dir, &["-f", "adir"], "");
+    assert!(!ok, "{said}");
+    assert_eq!(
+        said.matches("adir").count(),
+        1,
+        "the directory is named twice: {said}"
+    );
+    assert!(said.contains("is not a file"), "{said}");
+
+    // and one that is there goes in
+    let (ok, said) = run_from(&dir, &["-f", "notes.md"], "/budget\n");
+    assert!(ok, "{said}");
+}

@@ -800,9 +800,17 @@ impl App {
         // a complaint about a file called `my`. Only when that is not a file does the first word
         // become the path and the rest the question - which is the usual way to want this, and
         // the reason it is one command rather than two things to type
-        let (path, asked) = match std::fs::metadata(rest).is_ok() {
-            true => (rest, ""),
-            false => rest.split_once(' ').unwrap_or((rest, "")),
+        //
+        // note: `~` expanded first, and before the split, because `~/My Notes` is one path with a
+        // space in it. What it becomes is a path this person wrote; see
+        // `config::expanded_for_a_person`
+        let path = crate::config::expanded_for_a_person(rest);
+        let (path, asked) = match std::fs::metadata(&path).is_ok() {
+            true => (path.as_str(), ""),
+            false => match path.split_once(' ') {
+                Some((first, asked)) => (first, asked),
+                None => (path.as_str(), ""),
+            },
         };
         let item = match crate::attach::attached(path) {
             Ok(item) => item.because("attached at the prompt"),
@@ -1597,13 +1605,17 @@ impl App {
             return;
         }
 
+        // `~` made into the home directory, as `/attach` does it and for the same reason: this is
+        // a path a person typed, with no shell in front of the prompt to have done it
+        let path = crate::config::expanded_for_a_person(path);
+
         // the same spellings `/save` takes, because a pair of commands that accept different ones
         // is a pair that does not round-trip: `/save notes.jsonl` writes `notes.json` beside the
         // log, and `/load notes.jsonl` would otherwise go looking for `notes.jsonl.json`
-        let file = format!("{}.json", stem(path));
+        let file = format!("{}.json", stem(&path));
         // `/save` takes a directory and names the files in it after the session, which this
         // cannot know; saying what the argument is beats "could not read rec/.json"
-        if std::fs::metadata(&file).is_err() && std::path::Path::new(path).is_dir() {
+        if std::fs::metadata(&file).is_err() && std::path::Path::new(&path).is_dir() {
             self.say(
                 Speaker::Error,
                 format!(
@@ -1771,7 +1783,11 @@ impl App {
     /// note: the snapshot is what `/load` reads back into a running session and what
     /// `kamchatka -r` starts from.
     fn save(&mut self, path: &str) {
-        let stem = stem(path);
+        // `~` made into the home directory, as `/attach` and `/load` do it and for the same
+        // reason: this is a path a person typed, with no shell in front of the prompt to have done
+        // it - and a save into a directory is the one of the three that writes rather than reads
+        let path = crate::config::expanded_for_a_person(path);
+        let stem = stem(&path);
         // note: a directory is a place to put it rather than a name for it. Taken whole as the
         // stem, `/save sessions/` would write `sessions/.json` and `sessions/.jsonl` - two
         // dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads as
