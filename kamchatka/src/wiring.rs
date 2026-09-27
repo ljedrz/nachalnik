@@ -452,20 +452,27 @@ impl Setup {
                     nested.display()
                 ));
             }
-            // note: a device is granted reading and writing whatever is beneath it, which is what
-            // `--sandbox-allow` is for anywhere else. Named here, it would be a writable path the
-            // screens never mention - and `/dev/../home` is one, so the path is resolved first
-            if let Some(stray) = self
-                .devices
-                .iter()
-                .find(|device| sandbox::device(device).is_none())
-            {
-                return Err(format!(
-                    "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
-                     `--sandbox-allow`",
-                    stray.display()
-                ));
-            }
+        }
+
+        // note: a device is granted reading and writing whatever is beneath it, which is what
+        // `--sandbox-allow` is for anywhere else. Named here, it would be a writable path the
+        // screens never mention - and `/dev/../home` is one, so the path is resolved first.
+        //
+        // note: asked of the list whether or not a confinement is being built, since a path that
+        // is not a device is one whatever the sandbox is doing. Under `--no-sandbox` the list is
+        // not used, so the harm is nothing granted - but a value nobody ever checked is a value
+        // somebody finds out about at startup by being refused for it, after a run with
+        // `--no-sandbox` in front of it had the list work
+        if let Some(stray) = self
+            .devices
+            .iter()
+            .find(|device| sandbox::device(device).is_none())
+        {
+            return Err(format!(
+                "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
+                 `--sandbox-allow`",
+                stray.display()
+            ));
         }
 
         Ok(())

@@ -162,6 +162,67 @@ async fn a_tool_taken_away_is_named_by_no_tool_that_is_still_there() {
     );
 }
 
+/// The `file:` selector's advice names no tool the session does not have.
+///
+/// note: the one advice string left out of the conversion: it names `fs` and `tool:fs`, so a
+/// session that took `fs` away with `/tools toggle fs` was sent to a tool it had just been told
+/// it does not have, to spend a request learning so. The selector naming no tool is still named,
+/// since `kind:tool_result` is a word `context` prints itself and is true either way.
+#[tokio::test]
+async fn the_file_selectors_advice_names_no_tool_that_has_been_taken_away() {
+    let (kernel, _provider, _anchor) = agent(vec![
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "look", "select": "file:src/parser.rs" }),
+        )]),
+        ModelResponse::text("done"),
+        ModelResponse::tool_calls(vec![call(
+            "c2",
+            "context",
+            json!({ "action": "elide", "select": "file:src/parser.rs", "reason": "read it" }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    // `fs` on offer, so the half of the sentence that names it is in the answer to begin with
+    for tool in common::builtin(&common::scratch("file-advice"), false, Limits::default()) {
+        if tool.spec().id == "fs" {
+            kernel.add_tool(tool);
+        }
+    }
+
+    kernel.push(ContextItem::user("look for the parser"));
+    kernel.turn().await.expect("the first turn failed");
+
+    let with_it = answers_from(&kernel, &["context"]);
+    assert!(with_it[0].contains("`tool:fs`"), "{}", with_it[0]);
+
+    // and gone, in the same session, the way `/tools toggle fs` does it
+    kernel.remove_tool("fs");
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let without = answers_from(&kernel, &["context"]);
+    for said in &without[1..] {
+        assert!(
+            !said.contains("`fs`"),
+            "an answer that names a tool the session does not have is advice nobody can take: \
+             {said}"
+        );
+    }
+    // what is left is the part that is true either way
+    assert!(
+        without[1].contains("`kind:tool_result`"),
+        "the selector that names no tool still stands: {}",
+        without[1]
+    );
+    assert!(
+        without[1].contains("nothing in your context matches"),
+        "and the refusal the advice sits in is untouched: {}",
+        without[1]
+    );
+}
+
 /// A call asks permission for the one thing it does, however its arguments are wrapped.
 ///
 /// note: the regression this is here for. These tools take their arguments inside a `call` object,

@@ -735,6 +735,24 @@ fn a_device_outside_dev_is_refused() {
     let (ok, said) = run(&["--sandbox-device", "/dev/../tmp"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("names a device under `/dev`"), "{said}");
+
+    // and with no confinement being built, where the list is not used: the value is a path
+    // leading out of `/dev` whatever the sandbox is doing, and a run switched between the two
+    // should not change which values are acceptable
+    let (ok, said) = run(
+        &["--no-sandbox", "--sandbox-device", "/dev/../home/you"],
+        "",
+    );
+    assert!(!ok, "a device nobody checks is a device nobody has: {said}");
+    assert!(said.contains("names a device under `/dev`"), "{said}");
+
+    let path = settings(
+        "device-outside-unconfined",
+        r#"{ "sandbox-device": ["/etc/shadow"] }"#,
+    );
+    let (ok, said) = run(&["--no-sandbox", "--config-file", &path], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("names a device under `/dev`"), "{said}");
 }
 
 /// A file that is not there says so, naming it.

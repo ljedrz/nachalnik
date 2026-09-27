@@ -65,11 +65,25 @@ fn ops() -> Vec<Op> {
     ]
 }
 
+/// What the last fork of a turn read, and which turn that was.
+///
+/// note: one entry rather than a per-turn map, because a turn is over before the next one starts
+/// and the next one overwrites it - so a fork asked alone is always the first of its turn, and a
+/// fork beside any other call knows whether the call before it read the same items.
+#[derive(Default)]
+struct Read {
+    /// The assistant turn whose calls these are.
+    turn: Option<ContextId>,
+    /// The caller's item identifiers the last fork of that turn actually read.
+    items: Vec<ContextId>,
+}
+
 /// Asks a throwaway copy of this session a question, or lets it answer the conversation.
 pub struct Fork {
     reach: Reach,
     limits: Limits,
     forked: Arc<AtomicU64>,
+    read: Arc<std::sync::Mutex<Read>>,
     ops: Vec<Op>,
     schema: Arc<Value>,
 }
@@ -82,6 +96,7 @@ impl Fork {
             reach,
             limits,
             forked,
+            read: Arc::default(),
             schema: Arc::new(schema(&ops)),
             ops,
         }
@@ -96,7 +111,8 @@ impl Tool for Fork {
             "asks a copy of you, on a copy of your context, and costs a request. A fork has no \
              tools: it can think, not act, and it answers once. Nothing it does reaches your \
              context: what it says comes back to you alone, to use or drop. Forks asked in one \
-             turn each get the context as that turn found it, not one another's answers.",
+             turn do not read one another's answers, and a call of yours that writes to the \
+             context is said when it gave one fork something the other did not have.",
         )
         .with_schema(self.schema.clone())
         .with_capabilities(
@@ -137,7 +153,18 @@ impl Tool for Fork {
             return Ok(ToolOutput::error(refusal));
         }
         match action {
-            "draft" => branch(&kernel, &call.id, None, &[], &output, &self.forked).await,
+            "draft" => {
+                branch(
+                    &kernel,
+                    &call.id,
+                    None,
+                    &[],
+                    &output,
+                    &self.forked,
+                    &self.read,
+                )
+                .await
+            }
             "ask" => {
                 let Some(question) = args["question"].as_str() else {
                     return Ok(ToolOutput::error(
@@ -165,6 +192,7 @@ impl Tool for Fork {
                     &without,
                     &output,
                     &self.forked,
+                    &self.read,
                 )
                 .await
             }
@@ -194,6 +222,11 @@ impl Tool for Fork {
 /// not exist yet. So the results of the other calls in the same turn are left out, excluded
 /// rather than deleted like a `without`, and not counted among the items asked about.
 ///
+/// note: and a call that writes to the context rather than answering one is not covered by that:
+/// a note is not a result, and there is nothing in a snapshot saying which call put an item there.
+/// The copy is taken as the context stands, and compared with the copy the fork beside it was
+/// given, so the two forks of a turn are either alike or the reply says how they are not.
+///
 /// note: and what it was charged, added to `forked` for the session's ceiling. Read off the fork's
 /// own log once its turn is over, whatever the turn came to, rather than off the stream the relay
 /// reads: the relay is stopped as soon as the turn ends, and a figure it had not reached yet would
@@ -205,20 +238,30 @@ async fn branch(
     without: &[ContextId],
     output: &OutputSink,
     forked: &AtomicU64,
+    last_read: &std::sync::Mutex<Read>,
 ) -> Result<ToolOutput, BoxError> {
     let Some(provider) = kernel.provider() else {
         return Ok(ToolOutput::error("there is no provider to ask"));
     };
 
     let mut snapshot = kernel.snapshot();
-    let siblings: std::collections::HashSet<ToolCallId> = snapshot
+    let asking_in = snapshot
         .items
         .iter()
         .find(|item| item.calls().any(|call| &call.id == asking))
         .map(|turn| {
-            turn.calls()
-                .map(|call| call.id.clone())
-                .filter(|call| call != asking)
+            (
+                turn.id,
+                turn.calls().map(|call| call.id.clone()).collect::<Vec<_>>(),
+            )
+        });
+    let siblings: std::collections::HashSet<ToolCallId> = asking_in
+        .as_ref()
+        .map(|(_, calls)| {
+            calls
+                .iter()
+                .filter(|call| *call != asking)
+                .cloned()
                 .collect()
         })
         .unwrap_or_default();
@@ -278,12 +321,35 @@ async fn branch(
     // what the fork will actually read, rather than what it was handed: the projector still has
     // to repair the call this very tool is answering out of the copy, and a count taken before it
     // did would be one the fork never saw
-    let items = fork
+    let read: Vec<ContextId> = fork
         .project()
         .included
         .iter()
         .filter(|id| theirs.contains(id))
-        .count();
+        .copied()
+        .collect();
+    let items = read.len();
+    // note: what the fork before this one read, where it was another fork of this same turn. Two
+    // forks in a turn are the comparison `fork` exists for, and a call that writes to the
+    // context - `context` with a `note`, say - adds an item the fork before it did not have, so
+    // the two copies differ however carefully the siblings above are excluded. Nothing in the
+    // snapshot says which call wrote an item, so this compares the two rather than guessing, and
+    // the sentence below is weakened by what it finds
+    let extra: Vec<ContextId> = match asking_in.as_ref().map(|(turn, _)| *turn) {
+        Some(turn) => {
+            let mut last = last_read.lock().expect("no lock is held across a request");
+            let earlier = (last.turn == Some(turn)).then(|| last.items.clone());
+            last.turn = Some(turn);
+            last.items = read.clone();
+            // in the order the copy has them, so the sentence reads like a context
+            earlier.map_or_else(Vec::new, |earlier| {
+                read.into_iter()
+                    .filter(|id| !earlier.contains(id))
+                    .collect()
+            })
+        }
+        None => Vec::new(),
+    };
 
     let mut events = fork.subscribe();
     let sink = output.clone();
@@ -350,14 +416,34 @@ async fn branch(
     // count that has already come up short is the one sentence here a model reads as "these two
     // runs saw the same context", which is the inference two forks in a turn exist to support. What
     // the other call kept out is a clause of its own below.
-    match left_out.is_empty() {
-        true => out.push_str(
+    //
+    // note: and the same sentence stands or falls on the copy being what the caller's context was
+    // when the turn began, which a call that writes to the context makes untrue for every fork
+    // after it. The siblings above are excluded by the tool that answered them, and a note is
+    // nobody's result - so the two copies are compared rather than the items attributed, and
+    // where they differ the reply says what the later copy has that the earlier one did not.
+    match (left_out.is_empty(), extra.is_empty()) {
+        // note: the claim is about this copy against the caller's context, so it is only true
+        // where a call before this one in the turn did not add to the context. A sibling that
+        // writes to the context - `context` with a `note` - does, and the copy then holds
+        // something the fork beside it did not, which is what the sentence says nothing about
+        (true, false) => {
+            let numbers: Vec<String> = extra.iter().map(|id| id.to_string()).collect();
+            out.push_str(&format!(
+                ". Nothing you named with `without` was taken away. Another call in this turn \
+                 wrote to your context while this copy was being taken, so the copy also has {} \
+                 that the fork beside it in this turn did not - the two are not the same context \
+                 and their answers are not a comparison.",
+                numbers.join(", ")
+            ));
+        }
+        (true, true) => out.push_str(
             ". Nothing you named with `without` was taken away, so this is the same context \
              answering again rather than a test of what any of it was doing. `without` takes items \
              away from the copy, and a question that asks it to disregard something is not the same \
              thing - it is still reading it.",
         ),
-        false => {
+        (false, _) => {
             let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();
             out.push_str(&format!(
                 ", without {}, which the copy could not read at all.",

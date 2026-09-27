@@ -2178,7 +2178,15 @@ async fn a_select_that_is_not_a_string_is_refused_and_an_empty_file_one_says_why
         said[1]
     );
     assert!(said[1].contains("attached"), "{}", said[1]);
-    assert!(said[1].contains("tool:fs"), "{}", said[1]);
+    assert!(said[1].contains("kind:tool_result"), "{}", said[1]);
+    // note: and the tool that reads a path is named only where the session has it. This one was
+    // built with the four introspection tools and no `fs`, so `tool:fs` would be advice for a
+    // call this session is refused for
+    assert!(
+        !said[1].contains("`fs`"),
+        "an answer that names a tool the session does not have is advice nobody can take: {}",
+        said[1]
+    );
 
     assert!(
         said[2].contains("nothing in your context matches"),

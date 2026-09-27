@@ -268,18 +268,25 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
 
 /// What a refusal adds when the selector that matched nothing was a `file:` one.
 ///
-/// note: `file:` names a file attached to the context. A path the model read with `fs` is a tool
-/// result instead, labelled by the tool that produced it, and no `file:` matches it - which is
-/// what nearly every empty `file:` turns out to be, so it is said where the mistake is made.
-pub(crate) fn unmatched_file(select: &str) -> &'static str {
-    match select.trim_start().starts_with("file:") {
-        true => {
-            " `file:` names a file attached to the context; one you read with `fs` is a tool \
-             result, which `tool:fs` names with the others of its kind and `look` numbers one \
-             by one."
-        }
-        false => "",
+/// note: `file:` names a file attached to the context. A path the model read is a tool result
+/// instead, and no `file:` matches it - which is what nearly every empty `file:` turns out to be,
+/// so it is said where the mistake is made.
+///
+/// note: the tool is named only where the session still has it, and a selector that names no tool
+/// is named either way: `kind:tool_result` is a word this tool prints itself, so it stays true
+/// however the session is set up. Everything named in an answer is read as something to try.
+pub(crate) fn unmatched_file(kernel: &Kernel, select: &str) -> String {
+    if !select.trim_start().starts_with("file:") {
+        return String::new();
     }
+
+    format!(
+        " `file:` names a file attached to the context; a path you read is a tool result instead, \
+         which `kind:tool_result` names with the others of its kind and `look` numbers one by \
+         one.{}",
+        if_offered(kernel, "fs", || " `tool:fs` names the ones `fs` produced."
+            .to_owned())
+    )
 }
 
 /// How many lines one `search`, or records one `log` read, may hand back in a single call.

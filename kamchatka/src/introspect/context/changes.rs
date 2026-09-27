@@ -391,7 +391,7 @@ impl Changes {
                 Some(input) => format!(
                     "`{input}` is a selector, and nothing in your context matches it; \
                      `context` with `look` lists what there is.{}",
-                    crate::introspect::unmatched_file(input)
+                    crate::introspect::unmatched_file(kernel, input)
                 ),
                 // the mistake a model actually makes: `label` is in this schema, for naming a
                 // `note`, and a model reaching for a way to say *which item* takes it. The label

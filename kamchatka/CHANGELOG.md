@@ -149,6 +149,26 @@ minor bump may break you.
 
 ### fixed
 
+- **Two forks asked in one turn are not called the same context where a call between them wrote to
+  it.** The clause saying the copy is the caller's context again, rather than an ablation, held
+  whatever the copy held - and the exclusion of the turn's other results does not cover a call that
+  writes to the context: a `context` with a `note` puts an item in that is nobody's result, so the
+  second fork was handed it and the first was not. Two runs meant to be compared, differing by one
+  of the items between them, both answering that they saw the same thing. Each fork now knows what
+  the fork beside it read, and where the two copies differ the reply says which items the later one
+  has, so the comparison it warns against is the one a model would otherwise have made.
+- **A `--sandbox-device` that names no device is refused under `--no-sandbox` as it is without it.**
+  The check sat inside the block that builds a confinement, so a run with no sandbox being built
+  took any device list at all - including `/dev/../home/you`, the exact case the check was added
+  for. Nothing is granted that way, so the harm was silence rather than access: a list that had
+  never been checked was one somebody found out about by being refused at startup, after a run with
+  `--no-sandbox` in front of it had the list work.
+- **The advice an empty `file:` selector gets names no tool the session does not have.** Four
+  advice strings were routed through `if_offered` and this one was missed, so a session that had
+  taken `fs` away was still pointed at `fs` and at `tool:fs` - two selectors for a tool that
+  cannot answer either, the first of which spends a request to learn so. The advice now names
+  `kind:tool_result`, which `context` prints itself and is true however the session is set up, and
+  `tool:fs` only where `fs` is on offer.
 - **`--serve` refuses a settings file's `deadline` and a non-default `on-ask` too, naming the
   file.** The check was for a value *typed*, so the two a project writes into its `kamchatka.json`
   were merged into the arguments and dropped: a run served for ever beside a file saying when it

@@ -379,6 +379,137 @@ async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
     );
 }
 
+/// Two forks in a turn are not called the same context when a call between them wrote to it.
+///
+/// note: the sentence "this is the same context answering again" is the one a model reads as
+/// "these two runs are comparable", and it stood whatever the copy actually held. A sibling call
+/// that writes to the context rather than answering one is not caught by the exclusion of the
+/// turn's results: a `context note` is an item nobody's result answers, and the second fork's
+/// copy carried it while the first's did not - two forks asked together differing by one of the
+/// items between them, with both replies saying the copies were alike.
+#[tokio::test]
+async fn a_fork_beside_a_call_that_writes_to_the_context_says_the_two_are_not_alike() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c1",
+                "fork",
+                json!({ "action": "ask", "question": "one way?" }),
+            ),
+            call(
+                "c2",
+                "context",
+                json!({ "action": "note", "content": "a finding", "reason": "because" }),
+            ),
+            call(
+                "c3",
+                "fork",
+                json!({ "action": "ask", "question": "the other way?" }),
+            ),
+        ]),
+        ModelResponse::text("the first copy's answer"),
+        ModelResponse::text("the second copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"]);
+    let (first, second) = (&said[0], &said[1]);
+
+    // the note landed between the two forks, so the second copy has it and the first does not
+    assert!(
+        first.contains("on 1 of your items"),
+        "the copy before the note had one item: {first}"
+    );
+    assert!(
+        second.contains("on 2 of your items"),
+        "and the copy after it had one more: {second}"
+    );
+    // the first has nobody to compare itself with, so the sentence is the one it was
+    assert!(
+        first.contains("this is the same context answering again"),
+        "{first}"
+    );
+    // the second is not told the same thing
+    assert!(
+        !second.contains("this is the same context answering again"),
+        "the two copies differ by an item, and the reply says they are the same one: {second}"
+    );
+    // and says what the difference is, by number, so a model can go and read it here
+    assert!(second.contains("wrote to your context"), "{second}");
+    let noted = kernel
+        .items()
+        .iter()
+        .find(|item| item.content.to_text().contains("a finding"))
+        .expect("the note is in the context")
+        .id;
+    assert!(
+        second.contains(&noted.to_string()),
+        "the item the second copy has and the first did not is named: {second}"
+    );
+    assert!(
+        second.contains("not a comparison"),
+        "and what that makes of reading the two answers beside each other: {second}"
+    );
+}
+
+/// Two forks in a turn with nothing between them that writes to the context still say so.
+///
+/// note: the clause above is earned, not a stock sentence. A turn of two forks and nothing else
+/// is the comparison `fork` exists for, and a copy saying it cannot be compared to anything
+/// would be no more true than the one it replaced.
+#[tokio::test]
+async fn two_forks_with_nothing_writing_between_them_still_say_they_are_the_same_context() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c1",
+                "fork",
+                json!({ "action": "ask", "question": "one way?" }),
+            ),
+            call(
+                "c2",
+                "fork",
+                json!({ "action": "ask", "question": "the other way?" }),
+            ),
+        ]),
+        ModelResponse::text("the first copy's answer"),
+        ModelResponse::text("the second copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"]);
+    assert!(
+        said[0].contains("this is the same context answering again"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[1].contains("this is the same context answering again"),
+        "two forks and nothing between them: {}",
+        said[1]
+    );
+    let read = |said: &str| -> String {
+        said.split(" on ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .expect("the count is in the first line")
+            .to_owned()
+    };
+    assert_eq!(
+        read(&said[0]),
+        read(&said[1]),
+        "and both read the same number of items: {} and {}",
+        said[0],
+        said[1]
+    );
+}
+
 /// An item to leave out that is not there is refused before a request is spent on the copy.
 #[tokio::test]
 async fn a_fork_told_to_leave_out_an_item_that_is_not_there_is_refused() {
