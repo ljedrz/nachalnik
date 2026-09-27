@@ -102,6 +102,12 @@ minor bump may break you.
   own before anything runs, so `/dev/tty` does not open; one that cannot leave the terminal runs
   nothing. `shell` no longer spawns it leading a group, since `setsid` is refused to a process that
   does, and the session is the group it stops. Under `--no-sandbox` a command keeps the terminal.
+- **A confined command reaches five devices under `/dev`, not all of it.** `/dev` was granted
+  reading and writing beneath, which reached the person's other terminals - a command could read
+  what was typed into one, a `sudo` password included - the shared memory in `/dev/shm`, and on a
+  desktop the camera and microphone logind hands the seated user. `null`, `zero`, `full`, `random`
+  and `urandom` are granted by name instead; `/dev/stdin` and `/dev/fd` still reach the command's
+  own descriptors through `/proc`. A pty goes with the rest, since its far end is in `/dev/pts`.
 - **Under a refused `fs:write`, a refusal from `fs` calls the reach read-only.** It named the
   working directory and the `--sandbox-allow` paths read-write while `shell` in the same session
   called them read-only.

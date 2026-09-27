@@ -1689,6 +1689,61 @@ async fn a_confined_command_leads_a_session_of_its_own() {
     assert!(said.contains("leads"), "{said}");
 }
 
+/// A confined command reaches the devices it needs, and not the person's other terminals, where it
+/// could take what is typed.
+///
+/// note: the terminal is one this test opens and types a line into, beside the command rather than
+/// its own. The same command unconfined reads the line, or a harness that typed nothing would pass
+/// this.
+#[test]
+fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("sandbox-devices");
+    let confined = |cmd: &str| {
+        let mut argv = vec![common::program().into_os_string()];
+        argv.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(cmd));
+        argv
+    };
+
+    let (ok, said) = run(
+        &sandbox(dir.clone(), true, Network::NoTcp),
+        "head -c 4 /dev/urandom | wc -c; echo gone >/dev/null && echo null",
+    );
+    assert!(ok, "{said}");
+    assert!(said.contains('4') && said.contains("null"), "{said}");
+
+    let reading = "if read -r line <\"$TERMINAL\"; then echo \"read $line\"; else echo refused; fi";
+    let control = beside_a_terminal(&["sh".into(), "-c".into(), reading.into()], &dir);
+    assert!(control.contains("read typed"), "{control}");
+    let said = beside_a_terminal(&confined(reading), &dir);
+    assert!(said.contains("refused"), "{said}");
+    assert!(!said.contains("typed"), "{said}");
+}
+
+/// Runs `argv` with a terminal open beside it, named in `TERMINAL`, into which a line has been
+/// typed; returns what it wrote.
+fn beside_a_terminal(argv: &[std::ffi::OsString], dir: &Path) -> String {
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg(
+            "import os, pty, subprocess, sys\n\
+             master, slave = pty.openpty()\n\
+             os.write(master, b'typed\\n')\n\
+             env = dict(os.environ, TERMINAL=os.ttyname(slave))\n\
+             done = subprocess.run(sys.argv[1:], env=env, stdin=subprocess.DEVNULL,\n\
+             \x20   capture_output=True, timeout=20)\n\
+             sys.stdout.buffer.write(done.stdout + done.stderr)\n",
+        )
+        .args(argv)
+        .env("TMPDIR", dir)
+        .output()
+        .expect("python3 is here");
+
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
 /// Runs `argv` in a session whose controlling terminal is a new one, and returns what it wrote.
 ///
 /// note: `leading` runs it as the session's leader, which is also a group's; otherwise it is a
