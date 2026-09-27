@@ -263,6 +263,11 @@ minor bump may break you.
   becomes a refusal the model reads when the turn goes on. `/load` there says the calls are waiting
   to run rather than that one is waiting to be answered, and the `step → ready` line names both ways
   on.
+- **`/params` refuses a parameter that would replace the conversation.** `messages`, `tools` or
+  `model` was taken, written over the request the context had built, and reported as "sent, and
+  ignored" - while the model answered the conversation in the parameter and the record named the
+  one it was not sent. Those names, and Gemini's `contents` and `systemInstruction`, are refused
+  with a line saying they are built from the session.
 
 ## [0.15.1] - 2026-09-24
 

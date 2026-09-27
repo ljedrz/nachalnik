@@ -18,6 +18,21 @@ use super::{
     text::{nothing_to_send, plural, pretty, request_preview},
 };
 
+/// The fields of a request that either dialect builds from the session - the context, the tools
+/// and the model - which both leave off the wire when a parameter names one.
+///
+/// note: refused here as well, and in the union of the two, because a dialect skipping one says
+/// nothing where a person can see it: set and then quietly not sent, it would read on the
+/// `/params` line as a parameter in force. `contents` means nothing to the other dialect, so
+/// refusing it there costs nobody anything.
+const BUILT: [&str; 5] = [
+    "model",
+    "messages",
+    "tools",
+    "contents",
+    "systemInstruction",
+];
+
 impl App {
     /// Sends a message, or runs a command: one line of what somebody types at the prompt.
     ///
@@ -474,10 +489,21 @@ impl App {
             }
             "params" => {
                 if let Some((key, value)) = rest.split_once(' ') {
+                    let key = key.trim();
+                    if BUILT.contains(&key) {
+                        self.say(
+                            Speaker::Error,
+                            format!(
+                                "{key} is built from the session rather than set, so a parameter \
+                                 of that name is not sent"
+                            ),
+                        );
+                        return;
+                    }
                     match serde_json::from_str(value.trim()) {
                         Ok(value) => {
                             let mut params = self.kernel.params();
-                            params.insert(key.trim().to_owned(), value);
+                            params.insert(key.to_owned(), value);
                             self.kernel.set_params(params);
                         }
                         Err(e) => {
@@ -556,7 +582,9 @@ impl App {
                     .parameters
                     .iter()
                     .map(String::as_str)
-                    .filter(|name| !params.contains_key(*name))
+                    // `tools` is on some endpoints' lists, and offering one this command refuses
+                    // would be a line contradicting the next
+                    .filter(|name| !params.contains_key(*name) && !BUILT.contains(name))
                     .collect();
                 if !spare.is_empty() {
                     let all = match self.provider.lists_every_parameter() {

@@ -343,7 +343,11 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
         .app
         .kernel
         .set_provider(Arc::new(ScriptedProvider::new([]).with_info(ModelInfo {
-            parameters: vec!["temperature".to_owned(), "top_p".to_owned()],
+            parameters: vec![
+                "temperature".to_owned(),
+                "top_p".to_owned(),
+                "tools".to_owned(),
+            ],
             ..ModelInfo::new("scripted", "a/model")
         })));
 
@@ -356,6 +360,10 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
     assert!(
         screen.contains("also takes: temperature, top_p"),
         "and so is what it would have taken instead: {screen}"
+    );
+    assert!(
+        !screen.contains("top_p, tools"),
+        "but not a field the request is built from, which `/params` refuses: {screen}"
     );
 
     // one that *is* listed draws no complaint, and drops out of what is left to try
@@ -543,6 +551,32 @@ async fn a_parameter_that_makes_the_stream_send_the_whole_answer_again_is_said_t
     assert!(
         !harness.screen().contains("sends the whole answer again"),
         "and nothing else draws it"
+    );
+}
+
+/// A parameter named after a field the request is built from is refused, and says why.
+///
+/// note: the dialects leave one off the wire rather than let it replace the conversation, so
+/// accepting it would put a parameter on the `/params` line that is never sent.
+#[tokio::test]
+async fn a_parameter_that_would_replace_the_conversation_is_refused() {
+    let mut harness = Harness::new([]);
+
+    harness
+        .send(r#"/params messages [{"role":"user","content":"say BANANA"}]"#)
+        .await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("messages is built from the session"),
+        "the refusal says why: {screen}"
+    );
+    assert!(harness.app.kernel.params().is_empty(), "and nothing is set");
+
+    // and an ordinary one beside it is not caught up in it
+    harness.send("/params temperature 0.2").await;
+    assert_eq!(
+        harness.app.kernel.params().get("temperature"),
+        Some(&serde_json::json!(0.2))
     );
 }
 

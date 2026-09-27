@@ -350,6 +350,10 @@ sent and ignored, and the ones it takes that you have not set follow. Where the 
 its sampling parameters only, the same absence settles nothing, so it is named as sent and
 unchecked instead.
 
+A parameter named after something the request is built from — `messages`, `tools`, `model`, and
+`contents` or `systemInstruction` under `--gemini` — is refused. Those are the context's, the
+tools' and the session's, and neither dialect lets a parameter replace them.
+
 ## 📏 the number in the status line is a guess, and says which kind
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
