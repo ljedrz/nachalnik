@@ -453,6 +453,21 @@ impl Args {
                 }
             );
         }
+        // note: an `allow` of `mcp:call` or `mcp` matches no call, and is refused for the same
+        // reason. A server's tools are judged under its name in place of `mcp:call` - see
+        // `Careful::judges` - and every server here is one this program started, so the rule read
+        // as given and every call still went to the question. A `deny` of either is consulted
+        if let Some(granted) = self.allow.iter().find(|rule| {
+            matches!(
+                Subject::parse(rule).to_string().as_str(),
+                "mcp" | "mcp:call"
+            )
+        }) {
+            anyhow::bail!(
+                "`--allow {granted}` grants nothing: a tool from an MCP server is judged under the \
+                 server's name, so `--allow-server NAME` is what lets one through"
+            );
+        }
         let resume = match &self.resume {
             Some(path) => {
                 let snapshot: nachalnik::Snapshot = serde_json::from_slice(

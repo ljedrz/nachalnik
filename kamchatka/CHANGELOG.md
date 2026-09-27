@@ -133,6 +133,10 @@ minor bump may break you.
   that runs out while starting says which step it was in and ends with an error, and a
   `/restart` shares the run's deadline rather than starting a new one. Each MCP server is named on
   standard error before it is started.
+- **`--allow mcp` and `--allow mcp:call` are refused, pointing at `--allow-server`.** A server's
+  tools are judged under its name in place of `mcp:call`, so either rule read as given and every
+  call still went to the question - which a headless run answers `deny`. A `deny` of either is
+  still consulted and still accepted.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

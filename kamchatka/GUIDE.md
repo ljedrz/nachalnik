@@ -404,9 +404,10 @@ An operation is a row of its own when somebody has answered about it separately:
 **What it covers** is said in the terms the rule is written in, and is never wider than the rule: a
 domain names the operations in it, an operation names itself, and a server or a path rule names the
 tools it binds; `fs:glob  allow  fs` would be one operation reading as an answer about the whole
-tool. Where nothing here is judged by a rule the column says that instead, so a flag that reaches
-nothing looks like one — which is what `--allow mcp` is beside a server this program spawned, since
-a call to one of its tools is judged as the server it came from.
+tool. Where nothing here is judged by a rule the column says that instead, so a rule that reaches
+nothing looks like one — which is what an `allow` for `mcp:call` is beside a server this program
+spawned, since a call to one of its tools is judged as the server it came from. Given as a flag or
+in a settings file it is refused at the start for that reason, with a pointer to `--allow-server`.
 
 What that costs is that you cannot refuse something here that has never come up. Deciding in
 advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.

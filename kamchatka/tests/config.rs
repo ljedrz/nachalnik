@@ -890,6 +890,23 @@ fn a_server_rule_naming_no_server_is_refused() {
     assert!(!said.contains(refused), "{said}");
 }
 
+/// An `allow` for `mcp:call` or `mcp` is refused with a pointer to `--allow-server`, and a `deny`
+/// of either is kept.
+///
+/// note: a server's tools are judged under its name in place of `mcp:call`, so `--allow mcp:call`
+/// beside `--mcp foreign=...` read as given and every call to `foreign` still went to the question.
+#[test]
+fn an_allow_for_mcp_is_refused_and_a_deny_is_not() {
+    for rule in ["mcp", "mcp:call"] {
+        let (ok, said) = run(&["--allow", rule], "");
+        assert!(!ok, "{said}");
+        assert!(said.contains("`--allow-server NAME`"), "{said}");
+
+        let (_, said) = run(&["--deny", rule], "");
+        assert!(!said.contains("grants nothing"), "{said}");
+    }
+}
+
 /// A settings file's servers are the ones a run starts.
 ///
 /// note: read off a server rule's refusal, which names the servers there are, so that nothing has
