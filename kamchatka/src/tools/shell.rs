@@ -328,7 +328,7 @@ impl Tool for Shell {
             "shell",
             format!(
                 "runs one command with `sh -c` in the working directory and returns its exit \
-                 status, its output and its errors.{cut} Nothing \
+                 status, its errors and its output.{cut} Nothing \
                  is typed at it: a command that waits for input waits for ever.{}",
                 match self.confiner.is_some() {
                     true => format!(
@@ -726,8 +726,14 @@ impl Tool for Shell {
                  {KEPT} bytes]\n"
             ),
         };
+        // note: standard error before standard output, for the reason everything above is up
+        // here: an output limit cuts from the end, and a command that failed after printing a lot
+        // would lose the line saying why. Errors are usually the shorter stream. A build whose
+        // warnings fill the limit pushes its output off the end instead, into the archive;
+        // cutting standard output here to make room would lose it outright, since the archive
+        // holds only what the tool returned
         let text = format!(
-            "{status}\n{reached}{note}{unkept}--- stdout ---\n{collected}\n--- stderr ---\n{errors}"
+            "{status}\n{reached}{note}{unkept}--- stderr ---\n{errors}\n--- stdout ---\n{collected}"
         );
 
         Ok(ToolOutput::new(text))
@@ -1084,6 +1090,18 @@ mod tests {
                 "{command}: said under the status line, not after the output: {unkept}"
             );
         }
+    }
+
+    /// What a command said went wrong comes before what it printed, where a limit cutting from the
+    /// end cannot take it.
+    #[tokio::test]
+    async fn standard_error_survives_a_long_standard_output() {
+        let said = ran("seq 1 10000; echo 'FATAL: config key foo missing' >&2; exit 1").await;
+
+        let mut content = nachalnik::Content::text(said);
+        content.truncate_to(1_000).expect("it is over the limit");
+        let said = content.to_text();
+        assert!(said.contains("FATAL"), "{said}");
     }
 
     /// A command that finishes and leaves something running still answers.

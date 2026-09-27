@@ -382,6 +382,10 @@ minor bump may break you.
 - **`--deadline 0` is no deadline**, as `0` already was for `--spend` and `--requests`. It was a
   deadline already passed, which raced the first line: a request sent and interrupted at once, or
   the line never read.
+- **`shell` puts a command's standard error before its standard output.** An output limit cuts
+  from the end, so a command that printed past the limit and then failed lost the line saying why:
+  the model read `exit: 1` over a cut listing and said the command had written no errors. The
+  output is the part a limit takes now, and the whole of it is still in the archive.
 
 ## [0.15.1] - 2026-09-24
 

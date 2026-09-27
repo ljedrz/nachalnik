@@ -1744,7 +1744,7 @@ async fn what_a_command_exited_with_is_visible_without_reading_it() {
         ]);
         harness.app.kernel.add_tool(Arc::new(ConstTool::new(
             "shell",
-            format!("{said}\n--- stdout ---\nwhat it printed\n--- stderr ---\n"),
+            format!("{said}\n--- stderr ---\n\n--- stdout ---\nwhat it printed\n"),
         )));
 
         harness.send("run it").await;
