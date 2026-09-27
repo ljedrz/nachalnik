@@ -9,6 +9,8 @@
 //! note: what is in here is what this dialect's events *say*. Sending, waiting and getting events
 //! off the socket are the same for both dialects, and are `waiting` and `reading`.
 
+use std::borrow::Cow;
+
 use nachalnik::{
     Blob, Block, BoxError, Content, DeltaSink, Message, ModelInfo, ModelRequest, ModelResponse,
     Provider, Role, StopReason, ToolCall, ToolCallId, Usage, async_trait,
@@ -406,9 +408,16 @@ impl Gathering {
         // content and reasoning branches of `Streamed::event` follow. An opener carrying
         // `"arguments": ""` announces a call rather than writing to one, so counting it would put
         // `latest` on a call nothing has been streamed to and hand it the next loose fragment
-        let fragment = requested["function"]["arguments"]
-            .as_str()
-            .filter(|fragment| !fragment.is_empty());
+        //
+        // note: an object sent as an object, where the dialect says a string, is the whole of the
+        // arguments written out - which is how the whole-answer path reads one too
+        let fragment = match &requested["function"]["arguments"] {
+            arguments @ Value::Object(_) => Some(Cow::Owned(arguments.to_string())),
+            arguments => arguments
+                .as_str()
+                .filter(|fragment| !fragment.is_empty())
+                .map(Cow::Borrowed),
+        };
         let call = &mut self.calls[at];
 
         // an empty identifier names nothing, which is how the lookup above already reads one - so
@@ -423,7 +432,7 @@ impl Gathering {
             call.extra = requested["extra_content"].clone();
         }
         let streamed = fragment.map(|fragment| {
-            call.args.push_str(fragment);
+            call.args.push_str(&fragment);
             (ToolCallId(call.id.clone()), fragment)
         });
         if let Some((id, fragment)) = streamed {
@@ -1024,6 +1033,28 @@ mod tests {
 
         assert_eq!(gathering.calls[0].id, "call_1");
         assert_eq!(gathering.calls[0].args, "{}");
+    }
+
+    /// Arguments streamed as an object, where the dialect says a string, are the call's arguments.
+    ///
+    /// note: the whole-answer path took such an object as it was, and the streamed one read only a
+    /// string, so the same call came back with its arguments in one and as `{}` in the other - a
+    /// call run with nothing to say why.
+    #[test]
+    fn arguments_streamed_as_an_object_are_the_arguments() {
+        let mut gathering = Gathering::default();
+        let deltas = DeltaSink::disconnected();
+        gathering.fold(
+            &json!({ "index": 0, "id": "call_1", "function": {
+                "name": "look", "arguments": { "path": "a.txt" }
+            } }),
+            &deltas,
+        );
+
+        assert_eq!(
+            arguments_of(&gathering.calls[0].args),
+            json!({ "path": "a.txt" })
+        );
     }
 
     /// The shape that is actually seen: no opener, because the template supplied it, and the

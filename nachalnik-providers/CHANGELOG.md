@@ -40,6 +40,9 @@ minor bump may break you.
   of the next event - was recorded as finished for a reason `unreported`, with nothing said. With
   neither a finish nor `[DONE]` it is now a turn cut off, with a notice; either one on its own
   still ends the turn as it did.
+- **Arguments streamed as an object are the call's arguments.** A server that sends the object
+  where the dialect says a string had it read as `{}` on the streamed path, while the whole-answer
+  path already took it as it was.
 
 ## [0.6.1] - 2026-09-24
 
