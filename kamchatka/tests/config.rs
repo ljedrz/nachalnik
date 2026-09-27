@@ -726,6 +726,23 @@ fn help_names_the_variables_the_program_reads() {
     }
 }
 
+/// A base URL that is not an address is refused at startup, by the variable's name, in either
+/// dialect.
+///
+/// note: it went unchecked until the first request, which failed as a `builder error` that named
+/// neither the variable nor what it held.
+#[test]
+fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
+    for args in [&["--headless"][..], &["--headless", "--gemini"]] {
+        let (ok, said) = run_with(args, "hi\n", &[("KAMCHATKA_BASE_URL", "not-a-url")]);
+        assert!(!ok, "{args:?}: {said}");
+        assert!(
+            said.contains("KAMCHATKA_BASE_URL is `not-a-url`"),
+            "{args:?}: {said}"
+        );
+    }
+}
+
 /// `compact` is a fraction, from the command line or from a file, and a percentage is refused.
 #[test]
 fn a_compaction_threshold_that_is_not_a_fraction_is_refused() {

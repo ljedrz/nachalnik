@@ -150,6 +150,8 @@ minor bump may break you.
   wants `http://` or `https://` and a host, and says where the requests still go.
 - **`/models` with nothing back no longer says the address lists no models.** An empty answer is
   an address that publishes no listing or one that could not be reached, and the line says so.
+- **A `KAMCHATKA_BASE_URL` that is not an address is refused at startup,** by name and with what
+  it held. It went unchecked until the first request, which failed as `builder error`.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

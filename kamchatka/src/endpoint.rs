@@ -102,6 +102,21 @@ pub fn is_an_address(url: &str) -> bool {
             .is_some_and(|host| !host.is_empty())
 }
 
+/// The base URL, if it is one; refused at startup rather than on the first request.
+///
+/// note: what the variable held is said back with the variable's name, because the failure it
+/// saves is a `builder error` on the first turn that names neither.
+fn addressed(url: String) -> Result<String, BoxError> {
+    match is_an_address(&url) {
+        true => Ok(url),
+        false => Err(format!(
+            "KAMCHATKA_BASE_URL is `{url}`, which is not an address: it wants http:// or https:// \
+             and a host"
+        )
+        .into()),
+    }
+}
+
 /// The endpoint to talk to; OpenRouter unless told otherwise.
 pub fn base_url() -> String {
     env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
@@ -133,8 +148,12 @@ pub fn session_endpoint(gemini: bool) -> String {
 /// command rather than a restart. The probe is the one thing skipped: there is no model for it to
 /// ask a limit about, and `set_model` runs it the moment there is.
 pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
-    let mut provider = OpenAiCompatible::new(model.unwrap_or_default(), base_url(), api_key()?)
-        .with_context_limit(configured_limit());
+    let mut provider = OpenAiCompatible::new(
+        model.unwrap_or_default(),
+        addressed(base_url())?,
+        api_key()?,
+    )
+    .with_context_limit(configured_limit());
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
         provider = provider
             .on_behalf_of(APP_URL, APP_TITLE)
@@ -417,8 +436,12 @@ pub mod gemini {
     /// there it would be asking the endpoint about a model called nothing.
     pub async fn connect(model: Option<&str>) -> Result<Arc<Gemini>, BoxError> {
         let provider = Arc::new(
-            Gemini::new(model.unwrap_or_default(), base_url(), api_key()?)
-                .with_context_limit(configured_limit()),
+            Gemini::new(
+                model.unwrap_or_default(),
+                addressed(base_url())?,
+                api_key()?,
+            )
+            .with_context_limit(configured_limit()),
         );
         if model.is_some() {
             provider.probe().await;
