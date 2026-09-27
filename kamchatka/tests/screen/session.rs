@@ -537,6 +537,75 @@ async fn a_session_loaded_into_itself_asks_no_call_twice() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A pin is kept through a load, and a pinned tool result is kept with the turn that asked for it
+/// and that turn's other results: archived on its own, the turn would take the result out of the
+/// request as an orphan, under a note saying anything pinned stayed.
+#[tokio::test]
+async fn a_load_keeps_what_a_pinned_result_answers() {
+    let dir = common::scratch("load-pinned-result");
+    let saved = dir.join("other.json");
+
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("something else"));
+    std::fs::write(
+        &saved,
+        serde_json::to_vec(&first.snapshot()).expect("a session serializes"),
+    )
+    .expect("written");
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![
+            call("call_0", "peek", json!({})),
+            call("call_1", "peek", json!({})),
+        ]),
+        ModelResponse::text("done"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.send("look").await;
+    harness.settle().await;
+
+    let result = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .find(|item| item.kind.name() == "tool_result")
+        .map(|item| item.id)
+        .expect("the fixture must make an exchange");
+    harness
+        .app
+        .kernel
+        .set_state([result], ContextState::Pinned, None);
+
+    harness.send(&format!("/load {}", saved.display())).await;
+
+    let projection = harness.app.kernel.project();
+    assert!(
+        projection.included.contains(&result),
+        "the pinned result is not in the request: {:?}",
+        projection.repairs
+    );
+    // and the turn goes out whole: its other call is still answered, not repaired away
+    assert!(projection.repairs.is_empty(), "{:?}", projection.repairs);
+    assert_eq!(
+        projection
+            .messages
+            .iter()
+            .filter(|message| message.tool_call_id.is_some())
+            .count(),
+        2
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Every figure on the screen has to be on one scale. A snapshot carries what its counter had
 /// learnt, and reading it in moves the correction under everything already counted - so the load
 /// has to count the items it brings *under* that correction and bring the rest onto it, or the

@@ -1450,12 +1450,25 @@ impl App {
         // note: except what is pinned. A pin is the person saying this stays, and `--system` is
         // pinned - a load that quietly archived the system instruction would be answering a
         // question about a saved conversation by revoking the one thing the session was told to
-        // hold on to
-        let standing: Vec<_> = self
-            .kernel
-            .items()
+        // hold on to. And with it what it is paired with: a pinned result whose call was archived
+        // goes out of the request as an orphan, and so does a pinned call's result, so the turn
+        // asking a pinned call stays, whole, and so does every result answering one of its calls
+        let items = self.kernel.items();
+        let mut held: HashSet<&ToolCallId> = items
+            .iter()
+            .filter(|item| item.state == ContextState::Pinned)
+            .flat_map(|item| named_calls(item))
+            .collect();
+        let turns: Vec<&ToolCallId> = items
+            .iter()
+            .filter(|item| item.calls().any(|call| held.contains(&call.id)))
+            .flat_map(|item| item.calls().map(|call| &call.id))
+            .collect();
+        held.extend(turns);
+        let standing: Vec<_> = items
             .iter()
             .filter(|item| item.is_projected() && item.state != ContextState::Pinned)
+            .filter(|item| !named_calls(item).any(|call| held.contains(call)))
             .map(|item| item.id)
             .collect();
         self.kernel.set_state(
@@ -1502,7 +1515,8 @@ impl App {
             Speaker::Note,
             format!(
                 "loaded {} from session `{}` ({file}); {} of your own {} archived, \
-                 anything pinned stayed, and `u` twice puts the rest back",
+                 anything pinned stayed with the calls and results it is paired with, and `u` \
+                 twice puts the rest back",
                 plural(loaded.len(), "item"),
                 snapshot.session,
                 standing.len(),
@@ -1609,6 +1623,15 @@ fn no_such_command(name: &str) -> String {
     }
 }
 
+/// The calls an item is one half of a pair with: the ones a turn asks, or the one a result answers.
+fn named_calls(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
+    let result = match &item.kind {
+        ContextKind::ToolResult { call, .. } => Some(call),
+        _ => None,
+    };
+    item.calls().map(|call| &call.id).chain(result)
+}
+
 /// Gives every call identifier in `snapshot` that `taken` holds a new one, the same new one
 /// wherever it appears, and returns how many were renamed.
 ///
@@ -1618,13 +1641,7 @@ fn no_such_command(name: &str) -> String {
 fn rename_taken_calls(snapshot: &mut nachalnik::Snapshot, taken: &HashSet<ToolCallId>) -> usize {
     let mut unavailable: HashSet<ToolCallId> = taken.clone();
     unavailable.extend(snapshot.used_calls.iter().cloned());
-    unavailable.extend(snapshot.items.iter().flat_map(|item| {
-        let result = match &item.kind {
-            ContextKind::ToolResult { call, .. } => Some(call.clone()),
-            _ => None,
-        };
-        item.calls().map(|call| call.id.clone()).chain(result)
-    }));
+    unavailable.extend(snapshot.items.iter().flat_map(named_calls).cloned());
 
     let mut renames: HashMap<ToolCallId, ToolCallId> = HashMap::new();
     let mut rename = |id: &mut ToolCallId| {

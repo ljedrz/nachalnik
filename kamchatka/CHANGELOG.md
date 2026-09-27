@@ -241,6 +241,10 @@ minor bump may break you.
   session had already issued, so with the originals pinned, or put back with `/restore`, the
   request carried the same `tool_call_id` twice. The loaded copies of those calls, and the results
   answering them, now take new identifiers, and a note says how many.
+- **`/load` keeps what a pinned item is paired with.** It archived everything unpinned, so a pinned
+  tool result lost the turn that asked for it and went out of the request as an orphan, under a
+  note saying anything pinned stayed. The turn asking a pinned call now stays too, with every
+  result answering one of its calls.
 
 ## [0.15.1] - 2026-09-24
 
