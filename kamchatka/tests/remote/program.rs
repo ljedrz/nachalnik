@@ -20,7 +20,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{PATIENCE, Peer, quit, served, served_at};
+use crate::{CLOSED, PATIENCE, Peer, quit, served, served_at};
 
 /// The two flags, the socket file, and a whole session driven from one process to another.
 ///
@@ -742,6 +742,100 @@ async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
         .await
         .expect("the session did not end")
         .expect("the host did not finish");
+}
+
+/// A served run whose stdout nobody is reading still serves, and still leaves on its own terms.
+///
+/// note: the line naming the address is run-level prose on stdout, and it was printed with the
+/// macros, which panic when the write fails. A supervisor that closes a server's stdout is an
+/// ordinary arrangement - so is a script that pipes it into something with no use for it - and
+/// either one ended the run with a panic and exit `101`, before a client could connect and long
+/// before anything was written down.
+///
+/// note: closed rather than redirected, which is what makes the write fail: `/dev/null` accepts
+/// everything. A pipe whose read end this end has let go of is the shape a script's is in by the
+/// time it stops caring, and a broken pipe is what the program meets there.
+///
+/// note: the run is ended from the other end, because the assertion is that the session went on
+/// being servable and then ended the way it was asked to rather than the way a panic ends it. A
+/// client is attached first: a session that panicked before it could serve anything is not
+/// servable.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_run_whose_stdout_nobody_is_reading_still_serves() {
+    let dir = crate::common::scratch("served-unread");
+    let socket = dir.join("kamchatka.sock");
+
+    let mut host = tokio::process::Command::new(crate::common::program())
+        .args(["--no-record", "-m", "nothing", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        // no model is ever asked for, so nothing is sent to an endpoint and the address only has
+        // to be one nothing is listening on
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the host did not start");
+    // the address went into a pipe nobody is going to read, and the run carries on regardless
+    drop(host.stdout.take().expect("a pipe"));
+
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+
+    let mut peer = tokio::net::UnixStream::connect(&socket)
+        .await
+        .expect("a run that panicked on its first line serves nothing");
+    let (read, mut write) = peer.split();
+    let mut frames = protocol::Frames::new(BufReader::new(read));
+    protocol::write(&mut write, &crate::attaching(None, None))
+        .await
+        .expect("the session stopped listening");
+    let attached = loop {
+        match tokio::time::timeout(PATIENCE, protocol::read::<Message>(&mut frames))
+            .await
+            .expect("a run that panicked on its first line serves nothing at all")
+            .expect("the session said something unreadable")
+        {
+            Some(Message::Attached(attached)) => break attached,
+            Some(_) => {}
+            None => panic!("the session closed the connection"),
+        }
+    };
+    // what it hands a client is the conversation, and the opening is the line saying where this
+    // session is being served from - which went to a stdout nobody read, so this is where it is
+    // still to be had
+    assert!(
+        attached
+            .conversation
+            .iter()
+            .any(|line| line.text.contains("serving on")),
+        "a client that attached was not told what it had joined: {:?}",
+        attached.conversation
+    );
+
+    protocol::write(
+        &mut write,
+        &Command::Submit {
+            line: "/quit".to_owned(),
+        },
+    )
+    .await
+    .expect("the session stopped listening");
+    let ended = tokio::time::timeout(PATIENCE, host.wait())
+        .await
+        .expect("the session did not end")
+        .expect("the host did not finish");
+    assert!(
+        ended.success(),
+        "a `/quit` leaves on 0, and this left on {:?}",
+        ended.code()
+    );
 }
 
 /// `ctrl+c` at a client stops the turn, and a second one detaches without ending the session.

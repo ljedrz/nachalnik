@@ -149,6 +149,14 @@ minor bump may break you.
 
 ### fixed
 
+- **A run whose stream nobody is reading goes on.** The three lines of the program's own prose
+  were printed with the macros, which panic when the write fails: the notice saying stdout is not a
+  terminal, the address a served run is serving on, and the settings file `--print-config` hands
+  over. So `kamchatka --serve … | head -0` and `kamchatka --print-config > /dev/full` both ended in
+  a panic and exit `101`, and a script that closed stderr to keep a run's chatter out of the way
+  lost the whole run on the line telling it which mode it had chosen - before the session was
+  written. All three are written with the error let go, the way `finish` has always written the
+  parting lines.
 - **`/params stream false` is not called ignored.** A model's list of parameters has no word for
   `stream` or `stream_options`, so setting one was answered `sent, and ignored` while it turned the
   answer into one body. Those two are left out of that sentence.

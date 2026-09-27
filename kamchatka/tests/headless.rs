@@ -1452,6 +1452,55 @@ fn the_program_runs_headless_and_keeps_its_streams_apart() {
     }
 }
 
+/// A run nobody is reading the streams of says which mode it chose and carries on anyway.
+///
+/// note: the announcement a piped run gets is `eprintln!`ed, and the macros panic when the write
+/// fails. A script that gives the program `2>/dev/full`, or closes its stderr, so that the run's
+/// own chatter is out of the way, then had its whole run end in a panic and exit `101` - before
+/// the session was written, and with nothing but the panic to say so. Saying which mode was chosen
+/// cannot be allowed to end the run that was told.
+///
+/// note: closed rather than redirected, which is what makes the write fail: `/dev/null` accepts
+/// everything. A pipe whose read end this end has let go of is the shape a script's is in once it
+/// has stopped caring, and a broken pipe is what the program meets there.
+///
+/// note: `--no-record`, so the assertion is about the run rather than about a file, and the
+/// record stream left on stdout is what a reader of a piped run is promised.
+#[test]
+fn a_run_nobody_is_reading_still_says_which_mode_it_chose() {
+    let program = common::program();
+
+    let mut child = std::process::Command::new(&program)
+        .args(["-m", "nothing-serves-this", "--no-record", "hello"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    // the announcement went into a pipe nobody is going to read, and the run carries on regardless
+    drop(child.stderr.take().expect("a pipe"));
+    let out = child.wait_with_output().expect("the program never ended");
+
+    assert_ne!(
+        out.status.code(),
+        Some(101),
+        "it panicked on a line it could not write"
+    );
+    // and the record stream is still a stream of records, which is the promise the mode makes
+    let records = String::from_utf8(out.stdout).expect("the records are text");
+    assert!(
+        !records.is_empty(),
+        "the session was not written out at all"
+    );
+    for line in records.lines() {
+        serde_json::from_str::<Record>(line).unwrap_or_else(|e| {
+            panic!("a line of the record stream is not a record ({e}): {line}")
+        });
+    }
+}
+
 /// A resumed run still says how it is being driven.
 ///
 /// note: it used to say one or the other. The opening line and the replay line were arms of one

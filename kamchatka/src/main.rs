@@ -182,7 +182,10 @@ async fn session() -> Result<()> {
         filed,
     } = Args::given()?;
     if args.print_config {
-        print!("{}", kamchatka::config::SHIPPED);
+        // note: written rather than `print!`ed, which panics when the write fails. This is the
+        // whole of what the flag asks for, and a stream nobody can write to is a place a script
+        // sends a redirect as readily as a place a person types one
+        let _ = write!(stdout(), "{}", kamchatka::config::SHIPPED);
 
         return Ok(());
     }
@@ -255,10 +258,19 @@ async fn session() -> Result<()> {
     // only whether there is a screen, since `--serve` conflicts with `--headless`
     let headless = headless(args.headless, piped);
     if server.is_none() && headless && !args.headless {
-        match piped {
-            true => eprintln!("· stdout is not a terminal, so this is a headless run"),
-            false => eprintln!("· built without the `tui` feature, so this is a headless run"),
-        }
+        // note: written rather than `eprintln!`ed, which panics with nobody left reading and takes
+        // the run with it. Saying which mode was chosen must not be able to end the run, and this
+        // is said on the way into the mode where a stream nobody is reading is the ordinary case
+        let _ = match piped {
+            true => writeln!(
+                std::io::stderr(),
+                "· stdout is not a terminal, so this is a headless run"
+            ),
+            false => writeln!(
+                std::io::stderr(),
+                "· built without the `tui` feature, so this is a headless run"
+            ),
+        };
     }
 
     // note: the run's rather than a session's, and counted from the start. `--deadline` promises
@@ -337,7 +349,12 @@ async fn session() -> Result<()> {
         // conversation through `App::say`, which is how a client attaching an hour later finds
         // out what it has joined, and a restarted session owes a newcomer that as much as the
         // first one did. This is for whoever typed the flag, and the address does not move
-        println!("· serving on {}", server.address());
+        //
+        // note: and written rather than `println!`ed, which panics with nobody left reading and
+        // takes the run with it. A served run's stdout is often a supervisor's, and one that has
+        // closed it is a run that should go on serving rather than one that should panic on its
+        // first line
+        let _ = writeln!(stdout(), "· serving on {}", server.address());
     }
 
     // note: a loop because `/restart` writes this session out and asks for another. What is inside

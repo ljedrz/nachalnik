@@ -871,6 +871,36 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     assert_eq!(String::from_utf8_lossy(&out.stdout), printed);
 }
 
+/// `--print-config` into a stdout nobody is reading is a run that ends, not one that panics.
+///
+/// note: the file is written with `print!`, which panics when the write fails, so
+/// `kamchatka --print-config > /dev/full` ended in a panic and exit `101` and handed over nothing
+/// at all. This is the whole of what the flag does, and a stdout it cannot write to is a stream a
+/// script closes as readily as one a person redirects.
+#[test]
+fn print_config_into_a_stdout_nobody_is_reading_ends_the_run() {
+    let mut child = Command::new(common::program())
+        .arg("--print-config")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    // the file went into a pipe nobody is going to read
+    drop(child.stdout.take().expect("a pipe"));
+    let out = child.wait_with_output().expect("the program never ended");
+
+    assert_ne!(
+        out.status.code(),
+        Some(101),
+        "it panicked on a file it could not write"
+    );
+    assert!(out.status.success(), "printing the file is not a failure");
+    assert!(
+        String::from_utf8_lossy(&out.stderr).is_empty(),
+        "and it said nothing while saying so"
+    );
+}
+
 /// `--help` names the variables the program reads, and the advisor's only in a build with an
 /// `--advise` to use them.
 ///
