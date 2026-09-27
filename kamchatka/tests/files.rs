@@ -192,6 +192,270 @@ async fn what_write_put_there_is_what_read_hands_back() {
     );
 }
 
+/// A file with one byte in it that is not text is said to be one, where it is, and what else to
+/// do with it - rather than answering with the operating system's sentence about a stream.
+///
+/// note: `stream did not contain valid UTF-8` is what a byte outside UTF-8 gets, and it is
+/// neither the line nor the byte: a model that cannot tell a file with one Latin-1 byte in it from
+/// a binary one has nothing to search and reaches for `shell` to find out. And an `edit` that
+/// refused this way left nothing to corrupt, which is the half that had to hold: `edit` writes
+/// the whole file back, so a whole read that gave up on the bad byte would have written a file
+/// with that byte gone.
+#[tokio::test]
+async fn a_file_that_is_not_text_says_which_byte_and_what_to_do() {
+    let dir = scratch("files-not-text");
+    // a line of text, a byte that is not UTF-8, and another line of it
+    let before = b"fn go() {}\n\xff\nfn stop() {}\n";
+    std::fs::write(dir.join("latin.rs"), before).expect("a file");
+
+    for (action, args, where_) in [
+        (
+            "read",
+            json!({ "path": "latin.rs" }),
+            // a `read` is counting lines and says which line
+            "byte 0 of line 2 of it is not UTF-8",
+        ),
+        (
+            "edit",
+            json!({ "path": "latin.rs", "old": "go", "new": "walk" }),
+            // and an `edit` is not, and says which byte
+            "byte 11 of it is not UTF-8",
+        ),
+    ] {
+        let said = ask(&dir, action, args).await;
+        assert!(said.contains(where_), "{action} says where: {said}");
+        assert!(
+            said.contains("`grep` searches a file whatever it holds"),
+            "{action} says what to do: {said}"
+        );
+        assert!(!said.contains("valid UTF-8"), "{action}: {said}");
+    }
+    assert_eq!(
+        std::fs::read(dir.join("latin.rs"))
+            .expect("it is there")
+            .as_slice(),
+        before,
+        "an edit that could not read the file did not write one"
+    );
+
+    // and a file of bytes that are all valid UTF-8 code points, and so text, is read as one
+    std::fs::write(dir.join("bytes.bin"), b"\x00\x01\x02").expect("a file");
+    let said = ask(&dir, "read", json!({ "path": "bytes.bin" })).await;
+    assert_eq!(said, "\u{0}\u{1}\u{2}", "a byte below 0x80 is a character");
+
+    // and one whose first byte is not, is said so
+    std::fs::write(dir.join("latin1.bin"), b"\xff\x01\x02").expect("a file");
+    let said = ask(&dir, "read", json!({ "path": "latin1.bin" })).await;
+    assert!(
+        said.contains("byte 0 of line 1 of it is not UTF-8"),
+        "[{said}]"
+    );
+}
+
+/// An `old` that is in the file but spelled for another line ending says so, rather than
+/// answering that it is not there.
+///
+/// note: `old` is exact text, and a file written on another machine, or by a tool with its own
+/// idea of a line ending, holds `\r\n` where a model writes `\n`. Told only "does not occur", the
+/// model either gives up on the edit or rewrites the text and hits the same refusal. A file with
+/// lines of both endings says nothing, since neither spelling is the one it holds.
+#[tokio::test]
+async fn an_edit_spelled_for_the_wrong_line_ending_says_so() {
+    let dir = scratch("files-crlf");
+    std::fs::write(dir.join("win.txt"), b"one\r\nfn go() {}\r\n").expect("a file");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "win.txt", "old": "one\nfn go() {}", "new": "two\nfn go() {}" }),
+    )
+    .await;
+
+    assert!(said.contains("`old` does not occur"), "{said}");
+    assert!(
+        said.contains("the file ends its lines with CRLF, where `old` has LF"),
+        "{said}"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("win.txt")).expect("it is there"),
+        b"one\r\nfn go() {}\r\n",
+        "and nothing was changed"
+    );
+
+    // spelled the file's way it goes through, which is the other half of the hint
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "win.txt", "old": "one\r\nfn go() {}", "new": "two\r\nfn go() {}" }),
+    )
+    .await;
+    assert!(said.contains("replaced one occurrence"), "{said}");
+    assert_eq!(
+        std::fs::read(dir.join("win.txt")).expect("it is there"),
+        b"two\r\nfn go() {}\r\n"
+    );
+
+    // and an `old` that is simply not there is not told about line endings
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "win.txt", "old": "three\nfn go() {}", "new": "x" }),
+    )
+    .await;
+    assert!(said.contains("does not occur"), "{said}");
+    assert!(!said.contains("CRLF"), "{said}");
+}
+
+/// A limit under the size of a header still shows what fits, rather than the marker and nothing.
+///
+/// note: 256 bytes were kept for the line naming which lines these are, out of a limit a person
+/// sets with `/limit fs:read` - so a limit of a few hundred bytes left no room for any of the
+/// file, and every read answered with the line saying the limit stops it there and nothing under
+/// it. The room is half the limit below that, so the lines and the line naming them each have as
+/// much as the other and neither is cut at nothing.
+#[tokio::test]
+async fn a_limit_smaller_than_the_header_still_shows_what_fits() {
+    let dir = scratch("files-small-limit");
+    let file: String = (1..=200).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(dir.join("small.txt"), &file).expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 250);
+
+    let said = ask_within(&dir, limits.clone(), "read", json!({ "path": "small.txt" })).await;
+
+    assert!(said.len() <= 250, "{} bytes past the limit", said.len());
+    assert!(
+        said.contains("line 1\n") && said.contains("read on with `from: "),
+        "what fits is shown, and where reading on starts: {said}"
+    );
+    let (header, body) = said.split_once('\n').expect("a header, then the lines");
+    assert!(header.starts_with("[lines 1-"), "{header}");
+    assert!(
+        body.lines().all(|line| line.starts_with("line ")),
+        "the cut is at a whole line: {said}"
+    );
+
+    // and one that fits is still the file, with nothing added
+    std::fs::write(dir.join("tiny.txt"), "just this\n").expect("a file");
+    let said = ask_within(&dir, limits, "read", json!({ "path": "tiny.txt" })).await;
+    assert_eq!(said, "just this\n");
+
+    // the case this was reported for: a limit at the header's own size, and a file of a few
+    // dozen bytes, which was answered with the line saying the limit stops it there and nothing
+    let file = "a file small enough to be worth reading whole\n";
+    assert!(file.len() < 256, "{} bytes is not the case", file.len());
+    let whole = scratch("files-small-limit-whole");
+    std::fs::write(whole.join("small.txt"), file).expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 256);
+
+    let said = ask_within(&whole, limits, "read", json!({ "path": "small.txt" })).await;
+    assert_eq!(said, file, "the whole of a file that fits is the file");
+}
+
+/// A file with nothing in it read whole is a file with nothing in it, rather than a refusal about
+/// the line to start from - which is the answer to a question about `from` this call did not ask.
+#[tokio::test]
+async fn an_empty_file_read_whole_is_empty_rather_than_refused() {
+    let dir = scratch("files-empty");
+    std::fs::write(dir.join("empty.txt"), "").expect("a file");
+
+    let said = ask(&dir, "read", json!({ "path": "empty.txt" })).await;
+    assert!(
+        said.contains("the file is empty, so there is nothing in it"),
+        "{said}"
+    );
+    assert!(!said.contains("no line to start from"), "{said}");
+
+    // and a range that names no line of one is still about the range
+    let said = ask(&dir, "read", json!({ "path": "empty.txt", "from": 2 })).await;
+    assert!(said.contains("no line to start from"), "{said}");
+}
+
+/// A directory is refused by every operation that would open it, each naming the tool to use
+/// instead - `glob` for a read, and nothing for a write, where the name of the directory is what
+/// a caller needs and `shell` reads nothing that is being written.
+#[tokio::test]
+async fn a_directory_is_refused_by_what_it_is_being_asked_for() {
+    let dir = scratch("files-directory");
+    std::fs::create_dir(dir.join("sub")).expect("a directory");
+    std::fs::write(dir.join("sub/inner.txt"), "x\n").expect("a file in it");
+
+    for action in ["read", "write", "edit"] {
+        let said = match action {
+            "read" => ask(&dir, action, json!({ "path": "sub" })).await,
+            "write" => ask(&dir, action, json!({ "path": "sub", "content": "x" })).await,
+            _ => {
+                ask(
+                    &dir,
+                    action,
+                    json!({ "path": "sub", "old": "x", "new": "y" }),
+                )
+                .await
+            }
+        };
+        assert!(said.contains("not a regular file"), "{action}: {said}");
+    }
+
+    // a read names the tool that answers for a directory
+    let read = ask(&dir, "read", json!({ "path": "sub" })).await;
+    assert!(
+        read.contains("`glob` lists what a directory holds"),
+        "{read}"
+    );
+
+    // a write does not: the name of the directory is what a caller needs, and there is nothing
+    // for `shell` to read
+    let write = ask(&dir, "write", json!({ "path": "sub", "content": "x" })).await;
+    assert!(write.contains("nothing was written"), "{write}");
+    assert!(write.contains("`fs` makes no directories"), "{write}");
+    assert!(!write.contains("`shell` can read"), "{write}");
+}
+
+/// A path ending in a separator is a directory, and a `write` or an `edit` refuses it rather than
+/// making a file of the name without one.
+#[tokio::test]
+async fn a_path_ending_in_a_separator_is_refused_rather_than_trimmed() {
+    let dir = scratch("files-trail");
+    std::fs::create_dir(dir.join("sub")).expect("a directory");
+
+    for (action, args) in [
+        ("write", json!({ "path": "sub/", "content": "x" })),
+        ("edit", json!({ "path": "sub/", "old": "x", "new": "y" })),
+    ] {
+        let said = ask(&dir, action, args).await;
+        assert!(
+            said.contains("ends in a separator, so it is a directory"),
+            "{action}: {said}"
+        );
+        assert!(said.contains("`sub`"), "{action} names the file: {said}");
+    }
+
+    // a file that does not exist, called with a trailing separator, is refused the same way and
+    // not made under the name without it
+    let said = ask(&dir, "write", json!({ "path": "trail/", "content": "x" })).await;
+    assert!(said.contains("ends in a separator"), "{said}");
+    assert!(!dir.join("trail").exists(), "nothing was made: {said}");
+
+    // and one inside a directory, which the resolver would have shortened the same way
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "sub/inner/", "content": "x" }),
+    )
+    .await;
+    assert!(said.contains("ends in a separator"), "{said}");
+    assert!(
+        !dir.join("sub/inner").exists(),
+        "nothing was made under the name without it: {said}"
+    );
+
+    // a path a `read` is handed is not refused here: it is a path, and what is behind it is
+    // refused by name
+    let said = ask(&dir, "read", json!({ "path": "sub/" })).await;
+    assert!(said.contains("not a regular file"), "{said}");
+}
+
 /// A link to a file a path rule has not allowed is refused by every operation that would open it,
 /// and names the file, so asking for it by that name is the next call; a link to anything else is
 /// the file under a second name.
@@ -245,6 +509,46 @@ async fn a_link_to_a_file_a_rule_asks_about_is_not_opened_through() {
         "TOKEN=secret\n",
         "the rule matched the name it was asked for by, so it was already asked about"
     );
+}
+
+/// A link to a file a rule refuses says the file is refused by its own name too, rather than
+/// offering that name to be asked about.
+#[tokio::test]
+async fn a_link_to_a_file_a_rule_refuses_says_so() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::Verdict;
+
+    let dir = scratch("files-link-past-refused");
+    std::fs::create_dir(dir.join("secret")).expect("a directory");
+    std::fs::write(dir.join("secret/plan.txt"), "the plan\n").expect("a file");
+    std::os::unix::fs::symlink("secret", dir.join("s_link")).expect("a link");
+    let policy = std::sync::Arc::new(Careful::new());
+    policy.set(&Subject::Path("secret/".to_owned()), Verdict::Deny);
+
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let said = fs
+        .invoke(
+            &call(
+                "c1",
+                "fs",
+                json!({ "action": "read", "path": "s_link/plan.txt" }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned();
+
+    assert!(said.contains("leads to `secret/plan.txt`"), "{said}");
+    assert!(said.contains("refused as well"), "{said}");
+    assert!(!said.contains("asked about"), "{said}");
+    assert!(!said.contains("the plan"), "{said}");
 }
 
 /// And under `--no-sandbox`, where the reach is not held but the path rules still are.

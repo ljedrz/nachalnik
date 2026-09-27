@@ -88,8 +88,9 @@ impl Read {
 /// [`led_past`](super::search::led_past).
 ///
 /// note: refused rather than asked about, because the question would be about a name nobody
-/// wrote - and the answer names the target, so asking for it by that name is one call away and is
-/// asked like any other.
+/// wrote - and where the rule asks, the answer names the target, so asking for it by that name is
+/// one call away and is asked like any other. Where the rule refuses, the answer says that name is
+/// refused too, since a model told what a rule is about reads it as a way round.
 pub(super) fn linked(
     named: &str,
     resolved: &Path,
@@ -98,7 +99,7 @@ pub(super) fn linked(
     doing: &str,
 ) -> Option<String> {
     let barred = super::search::barred(policy);
-    let rule = super::search::led_past(named, resolved, &reach.workdir, &barred)?;
+    let (rule, verdict) = super::search::led_past(named, resolved, &reach.workdir, &barred)?;
     let target = resolved
         .strip_prefix(
             reach
@@ -108,13 +109,20 @@ pub(super) fn linked(
         )
         .unwrap_or(resolved);
 
-    Some(format!(
-        "`{named}` leads to `{}`, which the path rule for `{rule}` has not allowed, so nothing was \
-         {doing}. A rule is about the name a file is asked for by: name it as `{}` and it is asked \
-         about like any other.",
-        target.display(),
-        target.display(),
-    ))
+    Some(match verdict {
+        Verdict::Deny => format!(
+            "`{named}` leads to `{}`, which the path rule for `{rule}` refuses, so nothing was \
+             {doing}. Asked for by that name it is refused as well.",
+            target.display(),
+        ),
+        _ => format!(
+            "`{named}` leads to `{}`, which the path rule for `{rule}` has not allowed, so nothing \
+             was {doing}. A rule is about the name a file is asked for by: name it as `{}` and it \
+             is asked about like any other.",
+            target.display(),
+            target.display(),
+        ),
+    })
 }
 
 /// Which lines of a file a `read` asked for.
@@ -186,7 +194,15 @@ fn read(
     // whether to count to the end, and a file claiming less than it holds is counted anyway
     let countable = file.metadata().is_ok_and(|meta| meta.len() <= KEPT as u64);
     let mut reader = std::io::BufReader::new(file);
-    let room = budget.saturating_sub(HEADER);
+    // note: a small limit is a person's `/limit fs:read`, and a header bigger than the whole of
+    // it left every read answered by the line saying the limit stops it there and nothing under
+    // it. Below twice the header the room is half the limit, so the lines and the line naming
+    // them each have as much as the other and neither is cut at nothing; the cut is then where
+    // it always was, a whole line
+    let room = match budget {
+        wide if wide > 2 * HEADER => budget - HEADER,
+        _ => budget / 2,
+    };
 
     let (mut number, mut kept, mut shown) = (0u64, Vec::new(), None::<(u64, u64)>);
     let (mut line, mut ended) = (Vec::new(), false);
@@ -235,8 +251,12 @@ fn read(
     let total = ended.then_some(number);
 
     let Some((first, through)) = shown else {
-        return Ok(Err(match number {
-            0 => "the file is empty, so there is no line to start from".to_owned(),
+        return Ok(Err(match (number, span.whole()) {
+            // a file with nothing in it read whole is a file with nothing in it, and saying it
+            // is empty is a sentence about `from` - which is the line a caller reading this was
+            // after, and a limit is not a reason to refuse the file
+            (0, true) => "the file is empty, so there is nothing in it".to_owned(),
+            (0, false) => "the file is empty, so there is no line to start from".to_owned(),
             _ => format!(
                 "`from` is line {} and the file has {number} line(s); it starts at 1",
                 span.from
@@ -252,11 +272,18 @@ fn read(
             kept.truncate(valid);
             String::from_utf8(kept).expect("cut where it stops being valid")
         }
-        Err(_) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "stream did not contain valid UTF-8",
-            ));
+        // a byte that is not UTF-8 names the line it is in and where in that line, and `kept`
+        // holds whole lines from `first` on - so the line is the one that many newlines before
+        // it, and where in it is the one after the last of them
+        Err(e) => {
+            let at = e.utf8_error().valid_up_to();
+            let before = &e.as_bytes()[..at];
+            let line = first + before.iter().filter(|byte| **byte == b'\n').count() as u64;
+            let within = match before.iter().rposition(|byte| *byte == b'\n') {
+                Some(last) => at - last - 1,
+                None => at,
+            };
+            return Err(untext(Some((line, within)), &e.utf8_error()));
         }
     };
 
@@ -348,12 +375,35 @@ async fn whole(reach: &Reach, path: &Path) -> std::io::Result<String> {
         )));
     }
 
-    String::from_utf8(bytes).map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "stream did not contain valid UTF-8",
-        )
-    })
+    String::from_utf8(bytes).map_err(|e| untext(None, &e.utf8_error()))
+}
+
+/// What a file that is not UTF-8 is answered with, naming where it stops being text - the line
+/// and where in it for a `read`, which is counting lines, and the byte for an `edit`, which is
+/// not - and what to do about it.
+///
+/// note: `stream did not contain valid UTF-8` is the whole of what was said, and it is neither
+/// the line nor the byte: it is the operating system on a stream, where a model cannot tell a
+/// file with one Latin-1 byte in it from a binary one, so it has nothing to search and reaches
+/// for `shell` to find out.
+///
+/// note: the two ways out are named, and both can be told about without knowing the policy:
+/// `grep` reads bytes and says how a file came to be binary, and `shell` is a tool that reads
+/// them as bytes. Whether `shell` may run is the policy's answer, not this one's. Whether `read`
+/// showed nothing is also this one's, and `edit` says the same sentence about a file it changed
+/// no line of, which is the point.
+fn untext(line: Option<(u64, usize)>, fault: &std::str::Utf8Error) -> std::io::Error {
+    let where_ = match line {
+        Some((line, within)) => format!("byte {within} of line {line} of it"),
+        None => format!("byte {} of it", fault.valid_up_to()),
+    };
+    std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        format!(
+            "not text: {where_} is not UTF-8, so nothing was shown and nothing was changed. \
+             `grep` searches a file whatever it holds, and `shell` can read it as bytes",
+        ),
+    )
 }
 
 /// Replaces the whole of a file `allows` answered for, creating it if it is not there; see
@@ -407,6 +457,9 @@ impl Write {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let (named, content) = (arg(args, "path")?, arg(args, "content")?);
+        if let Some(refusal) = dir(named, "written") {
+            return Ok(ToolOutput::error(refusal));
+        }
         let path = match self.0.allows_under(named, Access::Writing, &self.1) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -434,8 +487,7 @@ impl Write {
 }
 
 /// Why a write found nowhere to put its file, naming the first directory on the way that is not
-/// there, or `None` where they all are.
-///
+/// there, or `None` where they all are.///
 /// note: the system says `No such file or directory` about the file, which is the one part of the
 /// path a write was never going to find, and nothing in it says `fs` makes no directories. What to
 /// do next depends on whether `shell` may run, since that is what makes one.
@@ -459,6 +511,31 @@ fn unmade(path: &Path, policy: &Careful) -> Option<String> {
     ))
 }
 
+/// Why a `write` or an `edit` was handed a path that ends in a separator, which is a directory and
+/// no file; `None` where it does not.
+///
+/// note: refused rather than resolved to the name without it, which is what a path goes through
+/// here: a model writing `trail/` means the directory, and `fs` makes no directories - so
+/// resolving it would make a file called `trail`, which nothing asked for and which stands there
+/// answering as a directory's worth of what was meant to go in one. Checked on the text and
+/// before the reach, so a path outside it is still refused as the path it is.
+///
+/// note: on a relative path, and only there. An absolute one names a directory that is there,
+/// which the open refuses by name; a name that is not a file - `.`, `..` - is one nobody ends a
+/// path with a separator after.
+fn dir(named: &str, doing: &str) -> Option<String> {
+    let without = named.trim_end_matches('/');
+    if without.is_empty() || !named.ends_with('/') || std::path::Path::new(without).is_absolute() {
+        return None;
+    }
+
+    Some(format!(
+        "`{named}` ends in a separator, so it is a directory, and a directory is not something to \
+         be {doing}. Say the file you mean - `{without}` - or make the directory with `shell` - \
+         `mkdir -p {named}`."
+    ))
+}
+
 pub(super) struct Edit(
     pub(super) Arc<Reach>,
     pub(super) Arc<Careful>,
@@ -473,6 +550,9 @@ impl Edit {
     ) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(args, "old")?, arg(args, "new")?);
         let named = arg(args, "path")?;
+        if let Some(refusal) = dir(named, "changed") {
+            return Ok(ToolOutput::error(refusal));
+        }
         let path = match self.0.allows_under(named, Access::Writing, &self.1) {
             Ok(path) => path,
             Err(refusal) => return Ok(ToolOutput::error(refusal)),
@@ -513,7 +593,16 @@ impl Edit {
         };
         let Some(at) = before.find(old).filter(|_| occurrences == 1) else {
             return Ok(ToolOutput::error(match occurrences {
-                0 => format!("`old` does not occur in {}", path.display()),
+                0 => format!(
+                    "`old` does not occur in {}{}",
+                    path.display(),
+                    // note: a file written on another machine, or by a tool that had its own idea
+                    // of a line ending, holds `\r\n` where a model writes `\n` - and `old` is
+                    // exact text, so the refusal is a spelling and not a place that is not there.
+                    // Said here rather than in the argument's description, because a model reads
+                    // a description once and this once, having tried it
+                    eol(&before, old)
+                ),
                 n => format!(
                     "`old` occurs {n} times in {} and nothing was changed; include enough of \
                      the lines around the one you mean to name it, or use `write` for the \
@@ -532,4 +621,36 @@ impl Edit {
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
+}
+
+/// What an `edit` whose `old` does not occur says about the line endings, where the same text
+/// spelled for the file's own does occur; nothing where it does not.
+///
+/// note: the two differ only in a `\r` before an `\n`, so the text is in the file under one
+/// spelling and not the other exactly when one of them is there and the other is not. What to do
+/// about it is said as the file's own spelling, which `read` has just shown the model.
+fn eol(before: &str, old: &str) -> String {
+    // a single line with no line ending in it cannot be spelled wrong, and a file with lines of
+    // both endings has no one spelling to be told about
+    if !old.contains('\n') && !old.contains('\r') {
+        return String::new();
+    }
+    let (crlf, lf) = (as_eol(old, "\r\n"), as_eol(old, "\n"));
+
+    match (before.contains(&crlf), before.contains(&lf)) {
+        (true, false) => format!(
+            " - the file ends its lines with CRLF, where `old` has {}, so spell `old` the file's \
+             way",
+            if old.contains('\r') { "CRLF" } else { "LF" }
+        ),
+        (false, true) => " - the file ends its lines with LF, where `old` has CRLF, so spell \
+                          `old` the file's way"
+            .to_owned(),
+        _ => String::new(),
+    }
+}
+
+/// `old` with every line ending in it spelled `ending`.
+fn as_eol(old: &str, ending: &str) -> String {
+    old.replace("\r\n", "\n").replace(['\r', '\n'], ending)
 }

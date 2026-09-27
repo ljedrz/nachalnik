@@ -89,14 +89,16 @@ impl Looking {
     /// matches path rules against the path *in the call*, and a search names a directory: the
     /// files under it are never judged, so `.env*: ask` would bind `read` and wave a `grep`
     /// through. A rule that is not `allow` therefore bars the file from the walk, and the answer
-    /// says how many it barred - "ask me first" cannot be honoured once for every file in a walk,
-    /// and the nearest honest thing to it is not to read them and to say so.
+    /// says how many it barred and which kind - "ask me first" cannot be honoured once for every
+    /// file in a walk, and the nearest honest thing to it is not to read them and to say so. A
+    /// rule that refuses is counted apart from one that asks, because they are different things a
+    /// model may conclude: the first is closed and the second is a question this answer is not.
     ///
     /// note: what this does *not* cover is the path the call itself names. That one goes through
     /// `judges` like any other, so `grep` in `.env` is a question exactly as `read` of it is - and
     /// a file somebody has just answered that question about is not then skipped for the same
     /// rule. The distinction is between what was asked about and what was merely walked over.
-    fn barred(&self) -> Vec<String> {
+    fn barred(&self) -> Vec<(String, Verdict)> {
         barred(&self.policy)
     }
 
@@ -117,14 +119,41 @@ impl Looking {
 }
 
 /// The path rules that are not `allow`, which a walk does not open things under and a link may
-/// not lead past.
-pub(super) fn barred(policy: &Careful) -> Vec<String> {
-    policy
+/// not lead past, with what each says.
+///
+/// note: the refusals first, so that [`led_past`], which takes the first rule it finds, reports
+/// the strictest of those a path falls under. Which of two rules a path matches is a fact about
+/// the tree and not about the order somebody typed them in, and a refusal is the one of the two
+/// a model must not be offered a way round.
+pub(super) fn barred(policy: &Careful) -> Vec<(String, Verdict)> {
+    let mut barred: Vec<(String, Verdict)> = policy
         .paths()
         .into_iter()
         .filter(|(_, verdict)| *verdict != Verdict::Allow)
-        .map(|(pattern, _)| pattern)
-        .collect()
+        .collect();
+    barred.sort_by_key(|(_, verdict)| *verdict != Verdict::Deny);
+    barred
+}
+
+/// What the strictest of `barred` says about a file a walk came to, by its name unless that is the
+/// name the call gave, and by where it leads; `None` where nothing bars it.
+fn barring(
+    barred: &[(String, Verdict)],
+    path: &str,
+    by_name: bool,
+    leads: Option<&Path>,
+    workdir: &Path,
+) -> Option<Verdict> {
+    let named = barred
+        .iter()
+        .filter(|_| by_name)
+        .find(|(rule, _)| path_matches(rule, path));
+    let led = leads.and_then(|leads| led_past(path, leads, workdir, barred));
+    named
+        .into_iter()
+        .chain(led)
+        .map(|(_, verdict)| *verdict)
+        .reduce(Verdict::strictest)
 }
 
 /// The first of `barred` that is about where a link leads and not about the name it was reached
@@ -144,13 +173,12 @@ pub(super) fn led_past<'a>(
     named: &str,
     resolved: &Path,
     workdir: &Path,
-    barred: &'a [String],
-) -> Option<&'a str> {
+    barred: &'a [(String, Verdict)],
+) -> Option<&'a (String, Verdict)> {
     let target = relative(resolved, &under(workdir));
     barred
         .iter()
-        .find(|rule| path_matches(rule, &target) && !path_matches(rule, named))
-        .map(String::as_str)
+        .find(|(rule, _)| path_matches(rule, &target) && !path_matches(rule, named))
 }
 
 /// What a walk left behind, and why.
@@ -159,16 +187,25 @@ pub(super) fn led_past<'a>(
 /// that searched for a symbol and found nothing should be able to tell "it is not there" from
 /// "eleven files were not opened" - and the names of those eleven are both longer and, for the
 /// path rules, exactly what somebody did not want handed over.
+///
+/// note: a path that is not a file is among them, and that is the half the tool's own description
+/// promised: the walks count everything they passed over, and a pipe passed over in silence makes
+/// a model conclude the pipe is not there. What is left out is a directory, which is what the
+/// walk descended into rather than something it passed over.
 #[derive(Default)]
 struct Skipped {
     /// Files a path rule says to ask about, which a walk cannot ask about.
     asked: usize,
+    /// Files a path rule refuses.
+    refused: usize,
     /// Links pointing at something outside what this session reaches.
     links: usize,
     /// Files that turned out to be binary.
     binary: usize,
     /// Files that could not be read at all.
     unreadable: usize,
+    /// Paths a walk passed over that are not files - a pipe, a socket, a device.
+    elsewhere: usize,
 }
 
 impl Skipped {
@@ -176,9 +213,14 @@ impl Skipped {
     fn line(&self) -> Option<String> {
         let said: Vec<String> = [
             (self.asked, "file(s) a path rule says to ask about"),
+            (self.refused, "file(s) a path rule refuses"),
             (self.links, "link(s) pointing out of reach"),
             (self.binary, "binary file(s)"),
             (self.unreadable, "file(s) that could not be read"),
+            (
+                self.elsewhere,
+                "path(s) that are not files - a pipe, a socket, a device",
+            ),
         ]
         .iter()
         .filter(|(count, _)| *count > 0)
@@ -483,8 +525,15 @@ impl Grep {
                 let Some(kind) = entry.file_type() else {
                     continue;
                 };
-                // a pipe or a device is not a file to search, and opening a pipe waits for a writer
+                if kind.is_dir() {
+                    // a directory is what the walk descends into, not a path it passed over
+                    continue;
+                }
+                // a pipe or a device is not a file to search, and opening a pipe waits for a
+                // writer - so it is left out, and counted, since a walk that passed one over and
+                // said nothing has accounted for a path whose file is not there
                 if !kind.is_file() && !kind.is_symlink() {
+                    found.skipped.elsewhere += 1;
                     continue;
                 }
                 // opened by the name it was checked under: a link by what it resolved to, since an
@@ -492,7 +541,12 @@ impl Grep {
                 let opening = match kind.is_symlink() {
                     true => match followed(&reach, entry.path()) {
                         Link::Read(resolved) => resolved,
-                        Link::Skip => continue,
+                        // a link to something that is not a file, so nothing to search and
+                        // nothing to open either
+                        Link::Skip => {
+                            found.skipped.elsewhere += 1;
+                            continue;
+                        }
                         Link::Refuse => {
                             found.skipped.links += 1;
                             continue;
@@ -505,12 +559,22 @@ impl Grep {
                 // the file the *call* named is one the policy has already been asked about; only
                 // what the walk found under it is barred here. See `Looking::barred`. A link is
                 // barred for where it leads as well. See `led_past`
-                if (entry.path() != root.as_path()
-                    && barred.iter().any(|rule| path_matches(rule, &path)))
-                    || led_past(&path, &opening, &workdir, &barred).is_some()
-                {
-                    found.skipped.asked += 1;
-                    continue;
+                match barring(
+                    &barred,
+                    &path,
+                    entry.path() != root.as_path(),
+                    Some(&opening),
+                    &workdir,
+                ) {
+                    Some(Verdict::Deny) => {
+                        found.skipped.refused += 1;
+                        continue;
+                    }
+                    Some(_) => {
+                        found.skipped.asked += 1;
+                        continue;
+                    }
+                    None => {}
                 }
                 if only.as_ref().is_some_and(|only| !only.is_match(&path)) {
                     continue;
@@ -757,11 +821,22 @@ impl Glob {
                 if kind.is_dir() {
                     continue;
                 }
+                // a path that is not a file is not something to list, and a link to one is
+                // `followed`'s to decide; both are counted, since the description says the walk
+                // counts everything it passed over
+                if !kind.is_file() && !kind.is_symlink() {
+                    skipped.elsewhere += 1;
+                    continue;
+                }
                 let mut leads = None;
                 if kind.is_symlink() {
                     match followed(&reach, entry.path()) {
                         Link::Read(resolved) => leads = Some(resolved),
-                        Link::Skip => continue,
+                        // a link to something that is not a file, so nothing to list
+                        Link::Skip => {
+                            skipped.elsewhere += 1;
+                            continue;
+                        }
                         Link::Refuse => {
                             skipped.links += 1;
                             continue;
@@ -773,14 +848,22 @@ impl Glob {
                 // the file the *call* named is one the policy has already been asked about; only
                 // what the walk found under it is barred here. See `Looking::barred`, and
                 // `led_past` for a link
-                if (entry.path() != root.as_path()
-                    && barred.iter().any(|rule| path_matches(rule, &path)))
-                    || leads
-                        .as_ref()
-                        .is_some_and(|leads| led_past(&path, leads, &workdir, &barred).is_some())
-                {
-                    skipped.asked += 1;
-                    continue;
+                match barring(
+                    &barred,
+                    &path,
+                    entry.path() != root.as_path(),
+                    leads.as_deref(),
+                    &workdir,
+                ) {
+                    Some(Verdict::Deny) => {
+                        skipped.refused += 1;
+                        continue;
+                    }
+                    Some(_) => {
+                        skipped.asked += 1;
+                        continue;
+                    }
+                    None => {}
                 }
                 if !matching.is_match(&path) {
                     continue;
@@ -894,6 +977,19 @@ mod tests {
             .line()
             .as_deref(),
             Some("skipped: 2 file(s) a path rule says to ask about, 1 binary file(s)")
+        );
+        assert_eq!(
+            Skipped {
+                refused: 1,
+                elsewhere: 2,
+                ..Skipped::default()
+            }
+            .line()
+            .as_deref(),
+            Some(
+                "skipped: 1 file(s) a path rule refuses, 2 path(s) that are not files - a pipe, \
+                 a socket, a device"
+            )
         );
     }
 }

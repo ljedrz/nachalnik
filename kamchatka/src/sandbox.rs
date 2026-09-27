@@ -962,7 +962,7 @@ impl Reach {
     /// looked at again before anything reads it.
     pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
         if std::fs::metadata(path).is_ok_and(|meta| !meta.is_file()) {
-            return Err(irregular());
+            return Err(irregular(doing));
         }
 
         let mut options = std::fs::OpenOptions::new();
@@ -984,7 +984,7 @@ impl Reach {
 
         match opened.metadata()?.is_file() {
             true => Ok(opened),
-            false => Err(irregular()),
+            false => Err(irregular(doing)),
         }
     }
 
@@ -1100,12 +1100,25 @@ impl Reach {
     }
 }
 
-/// What opening something that is not a regular file comes to.
-fn irregular() -> std::io::Error {
+/// What opening something that is not a regular file comes to, as `doing` names it.
+///
+/// note: a directory is not one refusal whichever way it was asked for. Read, it is a list of
+/// paths, which is what `glob` answers - and `shell` reads one that is meant to be read, a line
+/// in the middle of a log. Written, it is the only thing a `write` is never for, and the name of
+/// it is what a caller needs; `shell`, which can make a directory, is no part of that answer.
+fn irregular(doing: Access) -> std::io::Error {
+    let reading = match doing {
+        Access::Reading => {
+            "; `glob` lists what a directory holds, and `shell` can read one that is meant to be \
+             read"
+        }
+        Access::Writing => ", so nothing was written; `fs` makes no directories",
+    };
     std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
-        "not a regular file - a directory, a pipe or a device - so it was not opened; `shell` \
-         can read one that is meant to be read",
+        format!(
+            "not a regular file - a directory, a pipe or a device - so it was not opened{reading}"
+        ),
     )
 }
 

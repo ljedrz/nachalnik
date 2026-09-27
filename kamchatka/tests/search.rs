@@ -223,6 +223,43 @@ async fn a_path_rule_keeps_a_walk_out_of_a_file() {
     assert!(named.contains(".env:1:TOKEN=Kernel-of-a-secret"), "{named}");
 }
 
+/// A file a rule refuses is counted as refused, not as one to ask about, by both walks.
+#[tokio::test]
+async fn a_walk_counts_what_a_rule_refuses_as_refused() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::Verdict;
+
+    let dir = tree("walk-refused");
+    put(&dir, "secret/plan.txt", "Kernel of a plan\n");
+    std::os::unix::fs::symlink("secret/plan.txt", dir.join("alias.txt")).expect("a link");
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Path("secret/".to_owned()), Verdict::Deny);
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+
+    for args in [
+        json!({ "action": "grep", "pattern": "Kernel" }),
+        json!({ "action": "glob", "pattern": "**/*.txt" }),
+    ] {
+        let said = fs
+            .invoke(&call("c1", "fs", args.clone()), OutputSink::disconnected())
+            .await
+            .expect("the tool answers the call either way")
+            .content
+            .to_text()
+            .into_owned();
+        // the file by its name, and the link by where it leads
+        assert!(
+            said.contains("2 file(s) a path rule refuses"),
+            "{args}: {said}"
+        );
+        assert!(!said.contains("ask about"), "{args}: {said}");
+    }
+}
+
 /// And `glob` names a file the same way `grep` does: the path in the call is the policy's question.
 ///
 /// note: `grep` exempted the root of its walk and `glob` did not, so a `glob` at `.env` was a
@@ -284,6 +321,45 @@ async fn a_link_is_read_where_it_points_inside_and_counted_where_it_points_out()
         said.contains("in.rs:1:pub struct Kernel;"),
         "and one inside it is an ordinary file with a second name: {said}"
     );
+}
+
+/// A path a walk passed over that is not a file is counted, so that a file which is not there is
+/// never the same answer as a file nobody looked at.
+///
+/// note: a pipe is the case, and a socket and a device. `grep` over a directory holding one
+/// answered `0 file(s) searched` with nothing else said, and a model reading that concludes the
+/// pipe is not there, which is exactly what a FIFO in a build directory is.
+#[tokio::test]
+async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
+    let dir = tree("grep-fifo");
+    for name in ["pipe", "other"] {
+        assert!(
+            std::process::Command::new("mkfifo")
+                .arg(dir.join(name))
+                .status()
+                .expect("`mkfifo` is on the path")
+                .success(),
+            "a pipe to be made"
+        );
+    }
+    std::os::unix::fs::symlink(dir.join("pipe"), dir.join("to-pipe")).expect("a link to it");
+
+    for (action, args) in [
+        ("grep", json!({ "pattern": "Kernel" })),
+        ("glob", json!({ "pattern": "**/*" })),
+    ] {
+        let said = ask(&dir, action, args.clone()).await;
+        // the two pipes and the link to one; a directory is what the walk descends into, and
+        // is not a path it passed over
+        assert!(
+            said.contains("skipped: 3 path(s) that are not files"),
+            "{action} {args}: {said}"
+        );
+    }
+
+    // and a walk pointed at one says so rather than searching nothing and saying nothing
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel", "path": "pipe" })).await;
+    assert!(said.contains("1 path(s) that are not files"), "{said}");
 }
 
 /// A binary file is skipped whole rather than answered with a line of object code.

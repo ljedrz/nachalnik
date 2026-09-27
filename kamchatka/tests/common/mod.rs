@@ -49,9 +49,24 @@ pub fn builtin(
     confined: bool,
     limits: kamchatka::tools::Limits,
 ) -> Vec<std::sync::Arc<dyn nachalnik::Tool>> {
+    builtin_under(
+        dir,
+        confined,
+        limits,
+        std::sync::Arc::new(kamchatka::tools::Careful::new()),
+    )
+}
+
+/// [`builtin`], under `policy` rather than a fresh one.
+pub fn builtin_under(
+    dir: &std::path::Path,
+    confined: bool,
+    limits: kamchatka::tools::Limits,
+    policy: std::sync::Arc<kamchatka::tools::Careful>,
+) -> Vec<std::sync::Arc<dyn nachalnik::Tool>> {
     use kamchatka::{
         sandbox::Reach,
-        tools::{Careful, Limits, Shell},
+        tools::{Limits, Shell},
     };
 
     kamchatka::tools::builtin(
@@ -60,7 +75,7 @@ pub fn builtin(
             extra: Vec::new(),
             readable: Vec::new(),
             devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
-            policy: std::sync::Arc::new(Careful::new()),
+            policy,
             confiner: None,
             limits: Limits::default(),
         },

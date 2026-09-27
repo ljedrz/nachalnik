@@ -338,6 +338,45 @@ minor bump may break you.
   files the rules kept them out of. A link whose own name the rule matches was
   asked about already and is read as before. The same holds under `--no-sandbox`, where the path
   rules are the one thing still in the way: the path is followed to its end there too.
+- **A path rule that refuses is not described as one that asks.** Under `--deny secret/`, a read
+  of `s_link/plan.txt` told the model to name it as `secret/plan.txt` and it would be asked about
+  like any other; it now says that name is refused as well. And `grep` and `glob` counted the
+  files a refusing rule kept them out of as "file(s) a path rule says to ask about"; those are
+  now "file(s) a path rule refuses".
+- **A file that is not text says which line and byte of it are not, and what to do with it.** A
+  Latin-1 byte anywhere in a file made `read` and `edit` answer `stream did not contain valid
+  UTF-8`, which is neither the line nor the byte and names no way round it; both now say where
+  the text stops being text - the line and the byte in it for a `read`, which is counting lines,
+  and the byte for an `edit`, which is not - and that `grep` searches a file whatever it holds.
+  A file of bytes below `0x80` is text and is still read as one, and an `edit` that cannot read
+  the file writes nothing, so the byte cannot be lost.
+- **An `old` spelled for the wrong line ending says which.** A file ending its lines with CRLF,
+  against an `old` written with LF, was answered "`old` does not occur" and nothing else, so a
+  model either gave up on the edit or rewrote the text and hit the same refusal. The refusal now
+  names the file's own spelling. A file with lines of both endings says nothing, since neither
+  spelling is the one it holds.
+- **A `/limit fs:read` under 257 bytes shows what fits.** 256 bytes were kept for the line naming
+  which lines these are, so a limit below that left no room for any of the file and every read
+  answered with the marker and nothing under it. The room is half the limit below that size, so
+  the lines and the line naming them each have as much as the other and neither is cut at
+  nothing.
+- **`grep` and `glob` count the paths they passed over that are not files.** A pipe, a socket or
+  a device was left out of a walk in silence, so `grep` over a directory holding one answered
+  `0 file(s) searched` and a model reading that concludes the pipe is not there - while the tool's
+  own description says the walks count everything they passed over. They are now counted, and a
+  link to one is counted with them. A directory is what the walk descends into, and is not one.
+- **An empty file read whole is empty, rather than refused about the line to start from.** A
+  `read` naming no `from` and no `lines` on a file with nothing in it answered "no line to start
+  from", which is an answer to a question about `from` the call did not ask. A range over an
+  empty file is still refused the same way.
+- **A directory is refused by what it was asked for.** A `read` of one said `shell` can read one
+  that is meant to be read, where the tool that answers for a directory is `glob`; a `write` said
+  the same, and there is nothing there to read - what a write needs is the name of the
+  directory, so it now says nothing was written and that `fs` makes no directories.
+- **A `write` or an `edit` of a path ending in a separator is refused.** `trail/` is a
+  directory, and resolving it to `trail` made a regular file of that name where a model meant a
+  directory - and `fs` makes no directories, so nothing asked for had been made. Both now say
+  the path is a directory, name the file without the separator, and say what makes one.
 - **A pin the model made is still the model's after a resume.** Which pins were its own was kept
   in memory alone, so a resumed session had every pin the person's and refused the model its own.
   The `context` tool writes `pinned: {by: "context", note}` into the item's metadata as it pins,
