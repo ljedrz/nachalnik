@@ -245,7 +245,8 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
                         context; the trace keeps what happened either way
     f1                  this, opened at whichever tab you are on; also ? on any
                         tab but the chat one, and ← → for the rest of it
-    esc                 close this, or stop what is running
+    esc                 close this, or stop what is running; in ready, drop the
+                        calls waiting to run
     ctrl+c              stop what is running; again to leave
     ctrl+d              leave";
 
@@ -259,9 +260,11 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         ctrl+l where there are keys to press
     /step [MESSAGE]     one transition of the state machine, and stop
     /continue           run the rest of the turn
-    /stop               stop what is running, keeping whatever arrived. esc and
-                        ctrl+c where there are keys to press; typing it is how
-                        a client with no keys - a browser - reaches the same act
+    /stop               stop what is running, keeping whatever arrived; in
+                        ready, drop the calls waiting to run. esc where there
+                        are keys to press, and ctrl+c for a running turn;
+                        typing it is how a client with no keys - a browser -
+                        reaches the same act
     /request            the request that would go next
     /payload            the provider's own rendering of it, field for field
     /raw                the provider's own last answer

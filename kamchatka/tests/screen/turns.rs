@@ -405,6 +405,33 @@ async fn stepping_stops_where_a_turn_walks_straight_through() {
     assert!(after.contains("nothing to see"), "{after}");
 }
 
+/// `esc` in `ready` drops the calls waiting to run, which is what `/stop` does there.
+#[tokio::test]
+async fn esc_in_ready_drops_the_calls_waiting_to_run() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "look",
+        json!({}),
+    )])]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing to see")));
+
+    harness.send("/step look around").await;
+    harness.settle().await;
+    assert_eq!(harness.app.kernel.pending_calls().len(), 1);
+
+    // and nothing carries the turn on, so there is no turn to settle
+    harness.press(KeyCode::Esc).await;
+    harness.drain();
+
+    assert!(harness.app.kernel.pending_calls().is_empty());
+    let screen = harness.screen();
+    assert!(screen.contains("dropped without running"), "{screen}");
+    assert!(!screen.contains("nothing to see"), "{screen}");
+}
+
 #[tokio::test]
 async fn a_tool_can_stop_being_offered_without_restarting() {
     let mut harness = Harness::new([]);

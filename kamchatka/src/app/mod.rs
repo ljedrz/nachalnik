@@ -796,7 +796,8 @@ impl App {
                     .map(|call| format!("    {} {}", call.tool, one_line(&call.args.to_string())))
                     .collect();
                 format!(
-                    "ready: {} call(s) decided, none of them run yet\n{}",
+                    "ready: {} call(s) decided, none of them run yet - /step runs them, /stop drops \
+                     them\n{}",
                     calls.len(),
                     waiting.join("\n")
                 )
@@ -1483,6 +1484,30 @@ impl App {
         }
         self.interrupting = true;
         self.kernel.interrupt();
+    }
+
+    /// Whether the turn is resting in [`State::Ready`]: calls decided, and none of them run.
+    pub fn ready(&self) -> bool {
+        !self.busy && matches!(self.kernel.state(), State::Ready { .. })
+    }
+
+    /// Drops the calls a turn resting in [`State::Ready`] has decided and not run, and tells the
+    /// model so.
+    ///
+    /// note: what stopping means where nothing is running. The calls run at the next step whatever
+    /// is done first: excluding the turn that asked for them, or taking their tool out of the
+    /// registry, changes the next request and not a call already decided. Dropped, each becomes a
+    /// refusal the model reads, as `d` at a question does. Nothing carries the turn on: stopping
+    /// is the opposite of asking for the rest, and `/continue` or a message is how it goes on.
+    pub fn drop_decided(&mut self) {
+        let dropped = self.kernel.cancel_pending_calls("dropped before it ran");
+        self.say(
+            Speaker::Note,
+            format!(
+                "{dropped} call(s) dropped without running; the model is told when the turn goes \
+                 on - /continue, or a message"
+            ),
+        );
     }
 
     /// Puts an edited item into the context in place of the one it came from, and says whether

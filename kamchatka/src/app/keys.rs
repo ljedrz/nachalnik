@@ -58,6 +58,9 @@ impl App {
                 self.editing = None;
                 self.focus = Focus::Body;
             }
+            // what `/stop` does there, which is the promise its help line makes: in `ready`
+            // nothing is running, and the calls waiting to run are what stopping takes
+            KeyCode::Esc if self.ready() => self.drop_decided(),
             // enter sends, because that is what a prompt is for; a newline is alt+enter, which
             // is the one every terminal agrees on
             KeyCode::Enter if !alt => {

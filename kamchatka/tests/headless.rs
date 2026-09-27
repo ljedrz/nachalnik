@@ -19,9 +19,9 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    BoxError, Capability, ContextItem, DeltaSink, Grant, ModelInfo, ModelRequest, ModelResponse,
-    OutputSink, Provider, Record, StopReason, Tool, ToolCall, ToolOutput, ToolSpec, Usage, Verdict,
-    async_trait,
+    BoxError, Capability, ContextItem, ContextKind, DeltaSink, Grant, ModelInfo, ModelRequest,
+    ModelResponse, OutputSink, Provider, Record, StopReason, Tool, ToolCall, ToolOutput, ToolSpec,
+    Usage, Verdict, async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -647,6 +647,44 @@ async fn a_question_left_by_a_step_does_not_hang_the_session() {
     assert!(run.names().contains(&"permission.decided".to_owned()));
     // answered, and deliberately not carried on with: a step is somebody driving
     assert!(!run.names().contains(&"tool.started".to_owned()));
+}
+
+/// `/stop` in `ready` drops the calls decided and not run, and the model is told.
+///
+/// note: found live: `/stop` there said nothing was running, and the calls ran at the next line
+/// whatever had been done first - the turn that asked for them excluded, or their tool taken out of
+/// the registry.
+#[tokio::test]
+async fn stop_in_ready_drops_the_calls_waiting_to_run() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("told"),
+    ];
+    let run = run_with(
+        "/step look around\n/load\n/stop\n/continue\n",
+        script,
+        Grant::Allow,
+        |app| {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        },
+    )
+    .await;
+
+    // what `/load` says there is about calls waiting to run, not about a question
+    assert!(run.prose.contains("`/stop` drops them"), "{}", run.prose);
+    assert!(
+        run.prose.contains("1 call(s) dropped without running"),
+        "{}",
+        run.prose
+    );
+    assert!(!run.names().contains(&"tool.started".to_owned()));
+    assert!(run.app.kernel.items().iter().any(|item| {
+        matches!(item.kind, ContextKind::ToolResult { .. })
+            && item.content.to_text().contains("cancelled")
+    }));
+    assert!(run.prose.contains("told"), "{}", run.prose);
 }
 
 /// One line answers the caller that sent it, without a transcript to read back.

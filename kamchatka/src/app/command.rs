@@ -187,15 +187,16 @@ impl App {
             // a button nothing was obliged to draw. Two loops here have a line and nothing else,
             // and `/step` points at this name when it declines.
             //
-            // note: three answers, because a session has three states here and only one of them
-            // is a turn this can stop. A turn resting on a question is not `busy` - resting is
-            // what lets anybody answer it - and an interrupt does not reach it either: there is
-            // nothing running to notice one, so the question is still there afterwards. What ends
-            // that turn is answering, which is `n` at a terminal and the deny button on a page.
-            // Saying so is what this branch is for: `nothing is running` would be false in the one
-            // state where somebody plainly has something.
+            // note: four answers, because a session has four states here and two of them have
+            // something to stop. A turn resting in `Ready` has calls decided and nothing running
+            // to interrupt, and stopping it drops them; see `App::drop_decided`. A turn resting on
+            // a question is not `busy` - resting is what lets anybody answer it - and an interrupt
+            // does not reach it either: there is nothing running to notice one, so the question is
+            // still there afterwards. What ends that turn is answering, which is `n` at a terminal
+            // and the deny button on a page. Saying so is what this branch is for: `nothing is
+            // running` would be false in a state where somebody plainly has something.
             //
-            // note: silent where it worked, which is what `esc` is. What says a turn stopped is
+            // note: silent where it interrupted, which is what `esc` is. What says a turn stopped is
             // the turn stopping - the records, the state, the spinner going out - and a line
             // claiming it as well would be this program reporting its own keystroke. The other
             // branch is not silent for the reason a typed command is not a key: a press that
@@ -208,6 +209,7 @@ impl App {
                     "the turn is waiting on a question, which stopping does not answer; deny it \
                      to end the turn there",
                 ),
+                (false, false) if self.ready() => self.drop_decided(),
                 (false, false) => self.say(Speaker::Note, "nothing is running"),
             },
             // note: a command as well as `ctrl+l`, because two of the three loops have no keys to
@@ -1448,6 +1450,14 @@ impl App {
     /// that came in and once for the ones that were set aside. The loaded items are new items
     /// and are numbered as such: they are what that session said, in this session.
     fn load(&mut self, path: &str) {
+        if self.ready() {
+            self.say(
+                Speaker::Error,
+                "not while the model's calls are decided and waiting to run: `/step` runs them, \
+                 and `/stop` drops them",
+            );
+            return;
+        }
         if self.busy
             || !self.kernel.pending_permissions().is_empty()
             || !self.kernel.pending_calls().is_empty()

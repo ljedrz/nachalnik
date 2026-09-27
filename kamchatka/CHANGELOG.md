@@ -256,6 +256,13 @@ minor bump may break you.
 - **`/continue` and `/step` over a context with nothing to send say so.** They reached the kernel's
   empty-projection error as a failed turn, and a headless run ending there exited `1` for a request
   that was never sent.
+- **`/stop` and `esc` in `ready` drop the calls waiting to run.** With calls decided and none run,
+  `/stop` said nothing was running and `esc` did nothing, and the calls ran at the next step
+  whatever had been done first: excluding the turn that asked for them, or taking their tool out
+  of the registry, changes the next request and not a call already decided. Each dropped call
+  becomes a refusal the model reads when the turn goes on. `/load` there says the calls are waiting
+  to run rather than that one is waiting to be answered, and the `step → ready` line names both ways
+  on.
 
 ## [0.15.1] - 2026-09-24
 

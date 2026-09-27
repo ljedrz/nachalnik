@@ -304,7 +304,7 @@ and running that through a renderer would be inventing structure it never had.
 | <kbd>ctrl+e</kbd> | follow the newest again |
 | <kbd>tab</kbd> | move the keys between the prompt and whatever else on the screen wants them; from a tab with no prompt, back to the chat |
 | <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
-| <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived |
+| <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived — or, resting in `ready`, drop the calls waiting to run |
 | <kbd>ctrl+c</kbd> | stop what is running either way, and again to leave |
 | <kbd>ctrl+d</kbd> | leave, from anywhere — including a permission prompt, where <kbd>d</kbd> on its own means something else |
 | <kbd>F1</kbd> | the keys, opened at the tab you are on; also <kbd>?</kbd> on any tab but the chat one |
