@@ -626,6 +626,9 @@ async fn quitting_from_a_client_reads_as_an_ending() {
         !prose.contains("attaching again"),
         "it tried to reconnect to a session it had just ended: {prose}"
     );
+    // and said so, because a `/restart` ends it the same way and the session after it is not this
+    // client's to carry on into
+    assert!(prose.contains("the session has ended"), "{prose}");
     assert!(
         String::from_utf8_lossy(&records).contains("session.finished"),
         "the ending was never sent to the client still attached for it"

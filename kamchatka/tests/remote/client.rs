@@ -234,16 +234,16 @@ async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// A client whose session was replaced under it starts again, rather than retrying a resume that
-/// cannot ever be accepted.
+/// A client whose session was replaced under it stops, rather than following another in its place.
 ///
-/// note: the recovery the refusal exists for. Without it, a client that came back to a *different*
-/// session at the same address sent the same impossible watermark every time it reconnected, was
-/// refused identically for a minute, and gave up on a session that was there and would have had
-/// it. The refusal is named `attach` rather than reported as the connection's for exactly this:
-/// it is the one failure a client can do something about.
+/// note: it used to attach afresh to whatever answered, which carried the record stream on with a
+/// second session's records under the first one's - numbers going back to the start with nothing
+/// between them to say so. `--connect` stands in for `--headless`, which is one session, so it
+/// stops at the first refusal and says how to attach to the one that is there. Stopping at the first
+/// matters as much: retrying the same impossible resume spent a minute being refused and then gave
+/// up saying the session had not answered.
 #[tokio::test]
-async fn a_resume_the_session_refuses_starts_again_with_nothing() {
+async fn a_client_whose_session_was_replaced_stops_rather_than_following_another() {
     let before = served_as(Some("the-one-that-went"), vec![], |_| {}).await;
     let after = served_as(Some("the-one-that-came-back"), vec![], |_| {}).await;
     let host = |at: &str| match protocol::address(at) {
@@ -295,39 +295,37 @@ async fn a_resume_the_session_refuses_starts_again_with_nothing() {
         }
     });
 
-    let (mut feed, input) = tokio::io::duplex(256);
-    tokio::spawn(async move {
-        // the refused resume is the second connection, and the third is the one that works
-        while reconnected.recv().await != Some(3) {}
-        let _ = feed.write_all(b"").await;
-        drop(feed);
-    });
+    // held open, so that what ends the client is the refusal rather than its input closing
+    let (_feed, input) = tokio::io::duplex(256);
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
-    tokio::time::timeout(
+    let refused = tokio::time::timeout(
         PATIENCE,
         kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
             .run(&at, BufReader::new(input)),
     )
     .await
     .expect("the client kept asking for a resume nobody could give it")
-    .expect("the client failed");
+    .expect_err("the client took another session for the one it was following");
     let prose = String::from_utf8(prose).expect("the prose is text");
 
-    // refused once, rather than once per attempt for a minute
-    assert_eq!(
-        prose
-            .matches("attach: you are resuming a session this is not")
-            .count(),
-        1,
-        "{prose}"
-    );
-    // and then attached to the session that is there rather than to the one it remembered. The
-    // header is what says it attached; the refusal names the new session too, and asserting on the
-    // name alone passes without the client having got anywhere
     assert!(
-        prose.contains("--- the-one-that-went ·") && prose.contains("--- the-one-that-came-back ·"),
-        "the client never attached to the session that replaced the first: {prose}"
+        refused.contains("not `the-one-that-went`") && refused.contains("Run it again"),
+        "{refused}"
+    );
+    assert!(
+        prose.contains("--- the-one-that-went ·")
+            && !prose.contains("--- the-one-that-came-back ·"),
+        "the client attached to the session that replaced the first: {prose}"
+    );
+    let mut connections = Vec::new();
+    while let Ok(nth) = reconnected.try_recv() {
+        connections.push(nth);
+    }
+    assert_eq!(
+        connections,
+        [1, 2],
+        "the client connected again after the refusal"
     );
 
     quit(&before.at).await;

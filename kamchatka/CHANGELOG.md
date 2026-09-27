@@ -432,6 +432,11 @@ minor bump may break you.
   drop never heard of a command that had reached for the network meanwhile, and its `y` went to
   the model as a message. A resume is now sent `model` and `reaching` ahead of its answer, and
   `--connect` names the model only where it changed.
+- **`--connect` no longer carries on into another session at the same address.** A host
+  restarted under it refused the resume and the client attached afresh, so its stdout went on
+  with the new session's records under the old one's and nothing between them. It now stops at
+  the refusal with an error naming the session it was following and saying to run it again, and a
+  session that ends - by `/quit` or `/restart` - is said to have ended.
 
 ## [0.15.1] - 2026-09-24
 

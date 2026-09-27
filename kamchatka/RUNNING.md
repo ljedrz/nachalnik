@@ -879,6 +879,10 @@ carries on reading the same input, so `do this` / `/restart` / `do that` runs th
 the new session. Clients attached over a socket are **disconnected** — their place in the log is
 a record number in a log that no longer exists, so there is nothing to carry across — and they
 reconnect into the new session by themselves if they retry, which `examples/browser.html` does.
+`--connect` does not: it follows one session, so it ends with the old one, says so, and is run
+again to attach to the new one. A host restarted at the same address is the same case from the
+client's side, and `--connect` stops there too, naming the session it was following, rather than
+carry its record stream on into another session's.
 
 ## 🧪 the tests
 

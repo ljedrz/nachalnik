@@ -81,10 +81,13 @@ pub struct Client<'a> {
     /// The session those records came from, where this client has attached to one.
     ///
     /// note: this is what says whether there is anything to resume, as well as what a resume
-    /// names: `Some` is a client holding a conversation and a watermark, `None` one with nothing,
-    /// and a refused attach puts it back to `None` so that the next attempt is a fresh one. A
-    /// client that kept the watermark through a refusal would send the same impossible resume on
-    /// every attempt until it gave up on a session that was there all along.
+    /// names: `Some` is a client holding a conversation and a watermark, `None` one with nothing.
+    ///
+    /// note: a resume refused is the end of this client rather than a fresh attach, because what
+    /// refuses one is a session that is not this one - a host restarted at the same address - and
+    /// attaching to it would carry on the record stream with another session's records under the
+    /// first one's, with nothing in it to say where one ended. `--connect` stands in for
+    /// `--headless`, which is one session, and says how to attach to the other instead.
     session: Option<String>,
     /// The questions waiting on somebody, oldest first.
     asking: VecDeque<PermissionRequest>,
@@ -328,8 +331,19 @@ impl<'a> Client<'a> {
                     // note: a session that has said it is finished closing its socket is not a
                     // connection that dropped, and the difference is a minute of reconnection
                     // attempts at something that did what it was told
+                    //
+                    // note: and said, because `/restart` ends a session this way too, and the one
+                    // that follows it at the same address is not this client's; see
+                    // `Client::session`
                     Ok(None) => match self.over {
-                        true => Some(Left::Done),
+                        true => {
+                            let _ = self.fresh_line();
+                            let _ = self.tell(
+                                "the session has ended; if it was restarted, `--connect` again \
+                                 attaches to the new one",
+                            );
+                            Some(Left::Done)
+                        }
                         false => Some(Left::Dropped),
                     },
                     Err(e) => {
@@ -558,12 +572,18 @@ impl<'a> Client<'a> {
 
                     return Err(format!("{about}: {error}"));
                 }
-                // a refused attach is the one failure this client can do something about, and what
-                // it does is put down what it was holding: only a fresh attach can succeed now
-                if about == "attach" {
-                    self.session = None;
-                    self.last = 0;
-                    self.resuming = false;
+                // a resume refused by a session that has not ended is a different session at the
+                // same address; see `Client::session`. One that has ended was cut short by the
+                // ending, and the close that follows is read as the ending it is
+                if about == "attach"
+                    && !self.over
+                    && let Some(followed) = self.session.take()
+                {
+                    self.fresh_line()?;
+
+                    return Err(format!(
+                        "the session at this address is not `{followed}`, which this client was                          following, and `--connect` follows one session: {error}. Run it again to                          attach to the one there now"
+                    ));
                 }
                 self.fresh_line()?;
                 self.tell(&format!("{about}: {error}"))
