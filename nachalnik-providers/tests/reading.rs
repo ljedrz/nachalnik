@@ -502,13 +502,14 @@ async fn in_turn(bodies: Vec<&'static str>, requests: Arc<AtomicUsize>) -> Strin
 
 /// A refusal that arrives where the stream should have - its first event, or the whole of a body
 /// that was not one - is waited out, as the same refusal as a status is; one that arrives after
-/// the answer has started is not.
+/// the answer has started is not, and what arrived before it is kept.
 ///
 /// note: OpenRouter sends its `200` before the model has produced anything, so a rate limit it
 /// meets after that - once its own failover has run out - can only arrive inside the stream, and
 /// the event below is the shape its documentation gives. It ended the turn as a provider failure,
 /// where the same `429` as a status was waited out. After the answer has started, something has
-/// been handed on, and a second attempt would say it again.
+/// been handed on, and a second attempt would say it again; ending the turn as a failure there
+/// threw away what had been generated and billed.
 #[tokio::test]
 async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
     const LIMITED: &str = "data: {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\",\
@@ -558,10 +559,15 @@ async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
         let requests = Arc::new(AtomicUsize::new(0));
         let url = in_turn(vec![partial, answer], requests.clone()).await;
         let (_, started) = provider(&url).expect("built above");
-        let error = asked(started)
+        let response = asked(started)
             .await
-            .expect_err("a refusal once the answer has started");
-        assert!(error.contains("Rate limit exceeded"), "{dialect}: {error}");
+            .expect("what arrived before a failure mid-answer is kept");
+        assert_eq!(said(&response), "he", "{dialect}");
+        assert_eq!(
+            response.stop,
+            StopReason::Other("cut off".to_owned()),
+            "{dialect}"
+        );
         assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}: sent once");
 
         let requests = Arc::new(AtomicUsize::new(0));

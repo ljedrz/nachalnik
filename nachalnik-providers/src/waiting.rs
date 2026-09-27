@@ -350,7 +350,7 @@ pub(crate) async fn sent(
             }
             Err(reason) => return Err(reason.giving_up(asking.model)),
             Ok(mut response) if streaming && response.status().is_success() => {
-                match read(&mut response, asking, limit, events).await? {
+                match read(&mut response, asking, events).await? {
                     Read::Refused { code, said } => Busy::Refused {
                         code,
                         transient: passing(code) && !out_of_quota(&said),

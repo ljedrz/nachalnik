@@ -19,7 +19,7 @@ minor bump may break you.
   that - once its own failover has run out - arrives as the stream's first event, and the turn
   ended on it as a provider failure where the same `429` as a status was waited out. A refusal as
   the first event, or as the whole of a body that was not a stream, is now retried on the same
-  terms as one sent as a status. One after the answer has started is still an error, since what
+  terms as one sent as a status. One after the answer has started is not retried, since what
   arrived before it has already been handed on.
 - **A parameter no longer replaces what a request is built from.** One named `messages`, `tools`
   or `model` in the OpenAI dialect, or `contents`, `systemInstruction` or `tools` in Gemini's, was
@@ -31,6 +31,10 @@ minor bump may break you.
   failure, with the answer and its usage thrown away; one that stalled part-way through an answer
   lost what had streamed. A finished answer now ends once the quiet after it is worth mentioning,
   and a stall mid-answer keeps what arrived as a turn cut off, as a stream broken off already did.
+- **A failure reported inside a stream after the answer has started keeps what arrived.** The
+  turn ended as a provider failure and the kernel recorded nothing, so the part of the answer that
+  had streamed - generated and billed - was on the screen and nowhere else. It is now a turn cut
+  off, as a stream broken off is, with the server's sentence as the notice.
 
 ## [0.6.1] - 2026-09-24
 

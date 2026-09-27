@@ -12,7 +12,6 @@ use serde_json::Value;
 
 use crate::{
     markup::{status_and_words, unmarked},
-    refused,
     waiting::{
         Asking, HEARTBEAT, LARGEST, PATIENCE, Silence, Vigil, gone_quiet, stalled, too_large,
     },
@@ -72,7 +71,6 @@ pub(crate) enum Read {
 pub(crate) async fn read(
     response: &mut reqwest::Response,
     asking: &Asking<'_>,
-    limit: Option<usize>,
     events: &mut impl Events,
 ) -> Result<Read, BoxError> {
     // bytes rather than a `String`, because a chunk boundary is not a character boundary: the
@@ -205,7 +203,8 @@ pub(crate) async fn read(
             // than as a status, sometimes after the answer has started
             //
             // note: only the first event is a refusal to wait out. After one, something has been
-            // handed on and kept, and a second attempt would say it again
+            // handed on, and a second attempt would say it again - so what arrived is kept, as
+            // for a stream broken off, and the failure is said rather than made the turn's end
             if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
                 if seen.is_empty() {
                     return Ok(Read::Refused {
@@ -213,7 +212,14 @@ pub(crate) async fn read(
                         said: failure(error),
                     });
                 }
-                return Err(refused(failure(error), limit));
+                asking.say(format!(
+                    "{} failed mid-answer ({}); what had arrived is kept",
+                    asking.model,
+                    failure(error)
+                ));
+                seen.push(event);
+                stopped = Stopped::CutOff;
+                break;
             }
 
             events.event(&event, asking.deltas);
@@ -242,7 +248,7 @@ pub(crate) async fn read(
         if asking.deltas.is_interrupted() {
             stopped = Stopped::Interrupted;
         }
-        if ended || stopped == Stopped::Interrupted {
+        if ended || stopped != Stopped::Ended {
             break;
         }
     }
