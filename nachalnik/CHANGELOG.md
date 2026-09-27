@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### fixed
 
+- **One implausible usage figure no longer scales the counter to its bound for the rest of the
+  session.** `Calibrating::observe` added every report to the totals it draws its correction from
+  and clamped the ratio afterwards, so an endpoint reporting `prompt_tokens: 1e15` (or `u64::MAX`)
+  for a request estimated at a few thousand left a scale of `10.0` standing - every later figure
+  read ten times what it was, and the next request was refused locally against a limit the
+  context was nowhere near. A snapshot carries the correction, so a resumed session began there
+  too. A report whose own ratio is outside the same bounds the clamp applies is now ignored rather
+  than absorbed.
 - **A pin named twice in one list of a `CompactionPlan` is refused once.** `refused` listed it
   once per mention, where every other entry in a report is once per item; a pin named in both
   `remove` and `elide` is still refused once for each.

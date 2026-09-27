@@ -323,23 +323,103 @@ fn the_correction_settles_rather_than_chasing_the_last_request() {
     );
 }
 
+/// An observation too far outside the bounds is not one the counter can learn anything from, and
+/// the totals it would go into are what the correction is drawn from - so a single implausible
+/// report used to scale the counter to its bound for the rest of the session, and the snapshot
+/// carried that on, so a resumed session started in the same place.
+///
+/// note: the report is refused rather than clamped. A clamp of a cumulative ratio is applied
+/// after the numbers are already in it, and the next ordinary request does not take it back: a
+/// counter that had read `1e15` against an estimate of a few thousand then reported everything at
+/// ten times the truth, and the request after that was refused locally against a limit the
+/// context was nowhere near.
 #[test]
 fn a_nonsensical_report_cannot_turn_a_budget_into_a_fiction() {
     let counter = calibrating();
 
     counter.observe(1_000, 100_000_000);
-    assert_eq!(counter.calibration().scale, 10.0, "clamped, not believed");
+    assert_eq!(
+        counter.calibration(),
+        Calibration::default(),
+        "a report a hundred thousand times the estimate is not a bias to learn, and the \
+         correction is drawn from the totals it would have gone into"
+    );
 
-    counter.reset();
     counter.observe(100_000_000, 1_000);
-    assert_eq!(counter.calibration().scale, 0.1);
+    assert_eq!(
+        counter.calibration(),
+        Calibration::default(),
+        "and it is not believed because it is small either"
+    );
 
     // and a report with nothing in it says nothing about the ratio
-    counter.reset();
     counter.observe(0, 5_000);
     counter.observe(5_000, 0);
     assert_eq!(counter.calibration().observations, 0);
     assert_eq!(counter.calibration().scale, 1.0);
+}
+
+/// One request reporting a figure no estimate could have got near, and every request after it
+/// refused against a limit the context is nowhere near.
+///
+/// note: through the kernel rather than through `observe`, because what wedged the session was
+/// the correction and the figures read at ten times the truth. The estimate here is a little over
+/// a thousand tokens, so a report of `1e15` is a thousand million times it - and `u64::MAX` is
+/// the same claim with nothing left over. Both used to be absorbed and clamped, which is a scale
+/// of `10.0` applied to everything counted from then on, including a request of a few hundred
+/// tokens that a model holding 128,000 would not refuse.
+#[tokio::test]
+async fn one_absurd_report_cannot_wedge_the_session_behind_it() {
+    let absurd = [
+        Usage {
+            input_tokens: Some(1_000_000_000_000_000),
+            ..Usage::default()
+        },
+        Usage {
+            input_tokens: Some(u64::MAX),
+            ..Usage::default()
+        },
+    ];
+
+    for report in absurd {
+        let kernel = Kernel::new(Config {
+            refuse_oversized_requests: true,
+            ..Config::default()
+        });
+        let counter = calibrating();
+        kernel.set_counter(counter.clone());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse {
+                usage: Some(report),
+                ..ModelResponse::text("first")
+            },
+            ModelResponse::text("second"),
+        ])));
+        kernel.push(ContextItem::user("a".repeat(4_000)));
+        let before = kernel.budget().used();
+
+        kernel.turn().await.expect("the first request was sent");
+        assert_eq!(
+            counter.calibration(),
+            Calibration::default(),
+            "a report {} against an estimate of {before} teaches a counter nothing",
+            report.input_tokens.unwrap()
+        );
+
+        // the next request is the one that used to be refused locally, while the context held a
+        // fraction of what the model takes
+        kernel.push(ContextItem::user("and now?"));
+        kernel.turn().await.expect("and the next one was sent too");
+
+        // and the figures are the estimate's, not ten times it: the bytes here are about a
+        // thousand tokens' worth, and at a scale of `BOUNDS.1` the second request alone would
+        // have been read at ten thousand
+        let spent = kernel.budget().used();
+        assert!(
+            spent < before + 100,
+            "figures are read at what they are: {spent} against {before} before the absurd report"
+        );
+    }
 }
 
 /// The bound a ratio this counter worked out is held to is the bound one it is *handed* is held

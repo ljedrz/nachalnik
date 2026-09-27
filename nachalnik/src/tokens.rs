@@ -498,6 +498,26 @@ impl<C: TokenCounter> TokenCounter for Calibrating<C> {
             return;
         }
 
+        // note: and a request whose own ratio is outside the bounds is not believed at all,
+        // rather than believed and then clamped. `BOUNDS` is the width of a correction this
+        // counter is willing to hold at all, so a pair of numbers that needs more than that is
+        // not a bias in the estimate - it is the estimate and the report being about different
+        // things, or one of them being nonsense. The difference is what a cumulative ratio
+        // cannot undo: the totals grow for the rest of the session and a single request at a
+        // thousand times its estimate dominates every ordinary one, so the clamp below would
+        // settle on `BOUNDS.1` and every later request would read at that multiple of the truth
+        // - and the request after that refused against a limit the context is nowhere near. A
+        // snapshot carries the correction, so a resumed session starts in the same place.
+        //
+        // note: checked against the estimate rather than against the running ratio, so what is
+        // judged is this one request. The running total is the sum of requests that each passed
+        // this gate, and letting it back into the test would let the first absurd report through
+        // every later one.
+        let ratio = reported as f64 / own as f64;
+        if !ratio.is_finite() || !(BOUNDS.0..=BOUNDS.1).contains(&ratio) {
+            return;
+        }
+
         // saturating, because what these add to may have come out of a snapshot somebody wrote;
         // see `applicable` for the same caution about the scale
         learned.observations = learned.observations.saturating_add(1);
