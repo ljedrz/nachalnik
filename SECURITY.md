@@ -193,7 +193,10 @@ what stands in the way, and what does not.
   page drives the session, the same as the person at the keyboard. A web page open in a browser on
   the same machine is refused - the relay takes only requests whose host is an address or
   `localhost`, that name no origin but its own, and that post JSON - so a site cannot drive a
-  session through the visitor's browser.
+  session through the visitor's browser. None of that keeps out the session's own commands: below
+  Linux 7.1 a confined command can reach a served unix socket, from 7.1 one inside what it may
+  write, and a command allowed the network can reach a loopback port - and a client may answer the
+  permission questions. POSTPONED.md has the options.
 - **An MCP server or a local advisor.** These are programs the person chose, and they run
   unconfined with the person's environment and everything the person can read. What `kamchatka`
   controls is what their answers do: a server's tools are judged under the server's name, and what
