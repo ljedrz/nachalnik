@@ -1231,10 +1231,14 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     // between two directories of the working directory is allowed, which is what anybody would
     // expect of a shell in there.
     //
-    // note: not V5's `IoctlDev` - `/dev` is granted reading and writing rather than the whole of
-    // `from_all`, so handling it would deny ioctls on `/dev/null` and on a terminal to every
-    // ordinary command. On a kernel older than 6.2 the rights below V3 still apply and the status
-    // comes back `Partial`, which is said out loud rather than rounded up.
+    // note: not V5's `IoctlDev`, which POSTPONED.md weighs. A file's ioctls are decided when it is
+    // opened, so the streams a command inherits keep theirs; what handling it refuses is an ioctl
+    // on a device the command opens itself - the pty `script` or `expect` makes out of `/dev/ptmx`,
+    // or a `/dev/null` it opened, which answers `EACCES` where it would answer `ENOTTY`. It is also
+    // Linux 6.10, so it would have to be asked for where the kernel has it, as `ResolveUnix` is.
+    //
+    // note: on a kernel older than 6.2 the rights below V3 still apply and the status comes back
+    // `Partial`, which is said out loud rather than rounded up.
     //
     // note: V9's `ResolveUnix` is handled beside them where the kernel has it, and asked for
     // nowhere else. It is the one right here that a kernel in ordinary use may not have, and
