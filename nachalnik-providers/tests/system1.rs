@@ -10,8 +10,8 @@
 //! the module already do. What cannot be checked without the real endpoint is the half that
 //! matters most here: that the payload this crate renders is one the service *accepts*, for all
 //! three question types, and that what comes back maps onto the three answer types. A shape
-//! written from a specification and pinned by no live test is exactly what this crate does not
-//! ship - see the `input_audio` note in `openai/wire.rs`.
+//! written from a specification and pinned by no live test is one this crate cannot vouch for -
+//! see INVARIANTS.md on which of the OpenAI dialect's blob shapes a live test has sent.
 //!
 //! note: assertion-light about the numbers and assertion-heavy about structure, for the same
 //! reason `nachalnik`'s own live suite is. `rm -rf /` really does come back `deny` at 0.99, and

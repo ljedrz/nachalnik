@@ -26,6 +26,13 @@ minor bump may break you.
   with nobody reading between them - a mistyped model, then the right one - left the first
   switch's "is not one of the models this address lists" waiting, to be read later as though it
   were about the model now in use. All three clients clear it.
+- **A recording goes out as audio and a film as a video.** Every blob that was not a picture went
+  out as a `file` part, which a `file` part does not refuse and does not carry: an mp4 came back
+  answered `please upload the video` and a wav came back with nothing said at all, so a model was
+  asked about bytes it had never received. `audio/wav`, `audio/x-wav`, `audio/mpeg` and
+  `audio/mp3` now go out as `input_audio` with the format the field takes in place of the media
+  type, and anything under `video/` as `video_url` with a data URL. A document, and an audio type
+  this dialect has no word for, is still a `file`.
 - **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
   context limit, and each held both locks together - `info` taking the limit first and `respond`
   the model first - so a caller reading `info` on one thread while a request began on another

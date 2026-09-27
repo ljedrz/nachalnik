@@ -659,12 +659,12 @@ fn stop_reason(finish: Option<&str>) -> StopReason {
 /// The blocks are read through [`Block::said`], so a turn's thinking and its calls stay where
 /// they belong, which is the `tool_calls` array below and nowhere at all.
 ///
-/// note: two shapes for a blob, chosen by media type - `image_url` for a picture and `file` for
-/// everything else - because this dialect gives an attachment its own part and refuses one sent
-/// as an image. There is a third, `input_audio`, and it is deliberately not here: no test in this
-/// workspace sends a recording, so it would be a shape written from documentation and pinned by
-/// nothing. A caller sending one - `kamchatka` attaches mp3, wav and ogg - gets the `file` part,
-/// which is the best guess available and is wrong in a way the endpoint will say out loud.
+/// note: four shapes for a blob, picked by media type - `image_url` for a picture, `input_audio`
+/// for a recording this dialect names, `video_url` for a film, and `file` for a document or
+/// anything this dialect has no part of its own for. The split is the dialect's and not this
+/// crate's opinion: `image_url` means an image and a PDF sent through it is a 400, and a
+/// recording in the `file` part is not refused either - it is dropped, and the model answers a
+/// question about bytes it never received.
 fn parts_of(content: &Content) -> Option<Value> {
     fn part(content: &Content) -> Value {
         let data = |blob: &Blob| format!("data:{};base64,{}", blob.media_type, blob.data);
@@ -677,6 +677,18 @@ fn parts_of(content: &Content) -> Option<Value> {
             Some(blob) if blob.media_type.starts_with("image/") => json!({
                 "type": "image_url",
                 "image_url": { "url": data(blob) },
+            }),
+            Some(blob) if audio(&blob.media_type).is_some() => json!({
+                // note: the bare base64, which is what this one field holds, where the other
+                // parts take a `data:` URI
+                "type": "input_audio",
+                "input_audio": { "data": blob.data, "format": audio(&blob.media_type) },
+            }),
+            // note: a film goes in as a `data:` URI, which is the only form any endpoint has
+            // been seen to take
+            Some(blob) if blob.media_type.starts_with("video/") => json!({
+                "type": "video_url",
+                "video_url": { "url": data(blob) },
             }),
             Some(blob) => json!({
                 "type": "file",
@@ -701,6 +713,32 @@ fn parts_of(content: &Content) -> Option<Value> {
             }),
         _ => None,
     }
+}
+
+/// What `input_audio` calls the two containers it names, by media type.
+///
+/// note: that field takes the container and the codec as one word where everything else here takes
+/// a media type, so the mapping is a table and not a rule: a media type is a claim the producer
+/// made, and reading `audio/wav` as `wav` and `audio/mpeg` as `mp3` is this dialect's
+/// vocabulary, not a fact about the media types. A type with no word here goes out as a `file`,
+/// where a document is wanted anyway, and the endpoint refusing it is better than a guess.
+///
+/// note: `audio/mp3` and `audio/x-wav` beside the two are the spellings a producer reaches for
+/// when the producer is a person, and they are the same containers. `audio/flac` and `audio/ogg`
+/// are not in the table, because what this dialect names them is not settled here and a `file`
+/// part is where a document is looked for.
+const AUDIO: &[(&str, &str)] = &[
+    ("audio/wav", "wav"),
+    ("audio/x-wav", "wav"),
+    ("audio/mpeg", "mp3"),
+    ("audio/mp3", "mp3"),
+];
+
+/// The word `input_audio` takes for a media type, or `None` where it takes none.
+fn audio(media_type: &str) -> Option<&'static str> {
+    AUDIO
+        .iter()
+        .find_map(|(type_, format)| (*type_ == media_type).then_some(*format))
 }
 
 /// What to call a payload that is not a picture, because this dialect's `file` part will not go

@@ -69,15 +69,16 @@ without it.
   be wrong if it were inferred. `kamchatka`'s `attach::TYPES` maps ten extensions and refuses
   anything else that is not valid text, rather than sniffing the bytes - an uncompressed PDF is
   valid UTF-8 for pages at a time, so "is this text?" answers yes and the model is sent PDF
-  source. The OpenAI dialect then reads the media type to pick between `image_url` and `file`,
-  because in that dialect `image_url` means an image and a PDF sent through it is a 400; Google's
-  `inline_data` needs no such split. And `Blob::meta["name"]` is what fills that `file` part's
-  required filename - a convention between a caller and a provider, which is what a free-form
-  `meta` is for, and *not* a key the kernel knows. A derived `file.pdf` is the fallback because
-  the part is refused without one.
+  source. The OpenAI dialect then reads the media type to pick between its four parts -
+  `image_url`, `input_audio`, `video_url` and `file` - because in that dialect `image_url` means
+  an image and a PDF sent through it is a 400, and the `file` part is not refused for a recording
+  or a film: it drops them, and the model answers a question about bytes it never received.
+  Google's `inline_data` needs no such split. And `Blob::meta["name"]` is what fills that `file`
+  part's required filename - a convention between a caller and a provider, which is what a
+  free-form `meta` is for, and *not* a key the kernel knows. A derived `file.pdf` is the
+  fallback because the part is refused without one.
 
-  `nachalnik-providers` deliberately does not implement the OpenAI dialect's third payload shape,
-  `input_audio`. No test in the workspace sends a recording, so it would be a shape written from a
-  specification and pinned by nothing - which is exactly what the `file` part was until
-  `a_document_goes_out_as_a_document` in `nachalnik/tests/live.rs` sent one at a real endpoint.
-  That test is the reason to trust the shape; there is no offline equivalent.
+  A shape is trusted once a test has sent it to a real endpoint, which is what
+  `a_document_goes_out_as_a_document` in `nachalnik/tests/live.rs` does for `file`. No test sends
+  a recording or a film yet, so `input_audio` and `video_url` are pinned only by `blobs.rs`, which
+  checks the part each media type goes out in and not that an endpoint takes it.

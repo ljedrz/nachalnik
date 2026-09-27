@@ -164,6 +164,114 @@ fn a_document_goes_out_as_a_file_part_and_not_as_a_picture() {
     );
 }
 
+/// A recording goes out in the part that says it is one, and a film in the part that takes a URL.
+///
+/// note: a `file` part is refused for neither, and refused is what a caller needs: a recording sent
+/// that way is dropped, and the model answers a question about bytes it never received. An audio
+/// type the table says nothing about still goes out as a `file`, since guessing a container for it
+/// is worse than an endpoint naming the one it wants.
+#[cfg(feature = "openai")]
+#[test]
+fn a_recording_goes_out_as_audio_and_a_film_as_a_video() {
+    use nachalnik_providers::OpenAiCompatible;
+
+    let provider = || {
+        Arc::new(OpenAiCompatible::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ))
+    };
+    let spoken = |media_type: &str| {
+        let body = rendered(
+            provider(),
+            vec![ContextItem::user(Content::blob(media_type, PIXEL))],
+        );
+        body["messages"][0]["content"][0].clone()
+    };
+
+    // a media type, and the word this dialect's `input_audio` wants for it
+    for (media_type, format) in [
+        ("audio/wav", "wav"),
+        ("audio/x-wav", "wav"),
+        ("audio/mpeg", "mp3"),
+        ("audio/mp3", "mp3"),
+    ] {
+        let part = spoken(media_type);
+        assert_eq!(part["type"], "input_audio", "{media_type}: {part}");
+        assert_eq!(part["input_audio"]["data"], PIXEL, "{media_type}: {part}");
+        assert_eq!(
+            part["input_audio"]["format"], format,
+            "{media_type}: {part}"
+        );
+    }
+
+    // a film is a data URL under `video_url`, and the data URL is the whole of it
+    let part = spoken("video/mp4");
+    assert_eq!(part["type"], "video_url", "{part}");
+    assert_eq!(
+        part["video_url"]["url"],
+        json!(format!("data:video/mp4;base64,{PIXEL}"))
+    );
+
+    // and an audio type the table says nothing about stays a file, rather than being sent as
+    // something it is not
+    let part = spoken("audio/ogg");
+    assert_eq!(part["type"], "file", "{part}");
+    assert_eq!(part["file"]["filename"], "file.ogg");
+}
+
+/// A turn that is a question about a recording carries the question and the recording.
+///
+/// note: the shape `/attach` builds, and the reason the placement above is a one-liner rather than
+/// a conversion anywhere: a blob reached through `nachalnik` is a turn of `Blocks` with the
+/// payload first, and the parts go out in the order they were put in.
+#[test]
+fn a_sentence_about_a_recording_carries_both() {
+    let asked = Content::blocks([
+        Block::text(Content::text("what is said in this?")),
+        Block::text(Content::blob("audio/wav", PIXEL)),
+    ]);
+
+    #[cfg(feature = "openai")]
+    {
+        let provider = Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked.clone())]);
+        let parts = &body["messages"][0]["content"];
+
+        assert_eq!(
+            parts[0],
+            json!({ "type": "text", "text": "what is said in this?" })
+        );
+        assert_eq!(parts[1]["type"], "input_audio", "{parts}");
+        assert_eq!(parts[1]["input_audio"]["format"], "wav", "{parts}");
+    }
+
+    // Google's dialect has one part for a payload of any media type, and it already carries
+    // recordings; a sentence and a recording are two parts there for the same reason as here
+    #[cfg(feature = "gemini")]
+    {
+        let provider = Arc::new(nachalnik_providers::Gemini::new(
+            "m",
+            "https://example.invalid",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let parts = &body["contents"][0]["parts"];
+
+        assert_eq!(parts[0]["text"], "what is said in this?");
+        assert_eq!(
+            parts[1]["inline_data"],
+            json!({ "mime_type": "audio/wav", "data": PIXEL }),
+            "{parts}"
+        );
+    }
+}
+
 /// A turn that is a sentence *and* a picture goes out as both.
 ///
 /// note: the shape a caller building a multimodal client reaches for, and the one a byte-for-byte
