@@ -3822,6 +3822,36 @@ async fn a_turn_that_stopped_short_says_why() {
     assert_eq!(run.prose.matches("\n· ").count(), 3, "{}", run.prose);
 }
 
+/// `/note` and `/attach` say what went in, which a screen draws from the item and a pipe has no
+/// other sight of.
+#[tokio::test]
+async fn what_a_command_put_in_is_said() {
+    let dir = common::scratch("attached-headless");
+    let file = dir.join("notes.txt");
+    std::fs::write(&file, "PLUM").expect("a file to attach");
+
+    let run = run(
+        &format!(
+            "/note the runner has no network\n/attach {}\n",
+            file.display()
+        ),
+        Vec::new(),
+        |_| {},
+    )
+    .await;
+
+    assert!(
+        run.prose.contains("note (memory) went into the context"),
+        "{}",
+        run.prose
+    );
+    assert!(
+        run.prose.contains("(file) went into the context"),
+        "{}",
+        run.prose
+    );
+}
+
 /// One answer does not run into the next on a person's half of the output.
 ///
 /// note: found live: a `/step` answered `42` straight onto the end of the previous answer's last

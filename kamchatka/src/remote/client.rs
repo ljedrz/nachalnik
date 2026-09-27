@@ -602,7 +602,7 @@ impl<'a> Client<'a> {
 
     /// Takes in one thing that happened, whether it came numbered or not.
     ///
-    /// note: which of them are printed is the same three `--headless` prints, and the reasoning is
+    /// note: which of them are printed is the same four `--headless` prints, and the reasoning is
     /// its: the whole trace is in the records, and a session that printed all of it would bury the
     /// answer somebody is waiting for under the forty lines it took to get there. The two that are
     /// extra here are the permission pair, because unlike a headless run there *is* somebody to
@@ -670,7 +670,12 @@ impl<'a> Client<'a> {
                 self.tell(&format!("{tool}: {grant}"))?;
             }
             Event::SessionFinished => self.over = true,
-            _ => {}
+            event => {
+                if let Some(line) = crate::app::text::went_in(event) {
+                    self.fresh_line()?;
+                    self.tell(&line)?;
+                }
+            }
         }
 
         self.prose.flush().map_err(|e| e.to_string())

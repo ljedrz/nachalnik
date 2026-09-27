@@ -106,6 +106,30 @@ async fn an_answer_that_was_not_streamed_is_printed() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A `/note` typed at a client says what went in, as it does down a pipe.
+#[tokio::test]
+async fn what_a_command_put_in_is_said() {
+    let session = served(Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &session.at,
+            BufReader::new(&b"/note the runner has no network\n"[..]),
+        )
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("note (memory) went into the context"),
+        "{prose}"
+    );
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client whose socket is pulled out from under it picks the session back up, and still leaves
 /// when it is done.
 ///

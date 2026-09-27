@@ -661,6 +661,32 @@ pub(crate) fn charged(usage: &Usage) -> String {
     }
 }
 
+/// What a loop with no chat prints for a reference that went into the context, read off the
+/// event that says so.
+///
+/// note: the chat draws a line for every reference from the item itself, which is the only thing
+/// `/attach` and `/note` say for themselves - so with no chat they said nothing at all. The event
+/// is all a `--connect` client has, and `--headless` says the same words so that the two stay a
+/// drop-in for each other.
+///
+/// note: no count, which is where this parts from the chat's line. The event carries the counter's
+/// figure and not how much of the item it could not price, and `0 tokens` about an attached
+/// picture is the one figure that reads as good news when it is the opposite.
+pub(crate) fn went_in(event: &Event) -> Option<String> {
+    match event {
+        Event::ContextAdded {
+            id,
+            kind,
+            source,
+            label,
+            ..
+        } if kind == "reference" => {
+            Some(format!("[{id}] {label} ({source}) went into the context"))
+        }
+        _ => None,
+    }
+}
+
 /// Why a model stopped before it had finished, in a line; `None` where it finished, or where
 /// something else says why.
 ///

@@ -241,6 +241,12 @@ impl<'a> Headless<'a> {
                         // `App::loose` for the ones that arrive with no line to answer either;
                         // the page is this call's alone and has no other way out
                         let opened = app.submit(line.trim()).await.page;
+                        // what the line did to the context is said with it, rather than on some
+                        // later turn round - after the next line, or never if this was the last
+                        while let Ok(event) = events.try_recv() {
+                            self.say(&app.kernel, &event)?;
+                            app.on_event(event);
+                        }
                         if let Some(Overlay::Text { title, pages, .. }) = opened {
                             self.fresh_line()?;
                             writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
@@ -562,17 +568,17 @@ impl<'a> Headless<'a> {
 
     /// The part of an event a person watching wants to see go by.
     ///
-    /// note: three, rather than `text::trace_line` over everything. The whole trace is in the
+    /// note: four, rather than `text::trace_line` over everything. The whole trace is in the
     /// records, and a session that printed all of it would bury the answer somebody is waiting
     /// for under the forty lines it took to get there.
     ///
-    /// note: and no more than three. `App::on_event` already says something about a stop, a
+    /// note: and no more than four. `App::on_event` already says something about a stop, a
     /// compaction and a failure, and those go out through `echo` - so an arm here for any of them
     /// would print the same news twice in two wordings. What is left is what nothing else says: the
     /// model's words, which `App` files under a speaker `echo` skips precisely so that this one can
-    /// stream them, and the two tool lines, which the terminal draws from the context and a
-    /// headless run has no other sight of. A request prints nothing and ends the line the last
-    /// answer left open, so that one answer does not run into the next.
+    /// stream them, and the two tool lines and a reference going in, which the terminal draws from
+    /// the context and a headless run has no other sight of. A request prints nothing and ends the
+    /// line the last answer left open, so that one answer does not run into the next.
     ///
     /// note: the model's words are the fragments, and the recorded turn where there were none. A
     /// provider that does not stream, or an endpoint that ignores being asked to, answers in one
@@ -606,6 +612,11 @@ impl<'a> Headless<'a> {
                 .unwrap_or_default();
 
             return self.write_answer(&said);
+        }
+        if let Some(line) = crate::app::text::went_in(event) {
+            self.fresh_line()?;
+
+            return writeln!(self.prose, "· {line}").map_err(|e| e.to_string());
         }
         if !matches!(
             event,

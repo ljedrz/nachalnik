@@ -352,6 +352,11 @@ minor bump may break you.
   record's `stop` had it. Each now puts a line under the turn: the length limit with `/continue` for
   the rest, or the warning that a call the model was writing when it hit the limit may be cut
   short.
+- **`/attach` and `/note` say what went in, in a headless run and at a `--connect` client.** Their
+  only confirmation is the line the chat draws from the item, so with no chat they printed nothing.
+  Both loops now print a line for every reference that goes into the context, off the event that
+  says so, and a headless run says what a command did to the context before it reads the next
+  line.
 
 ## [0.15.1] - 2026-09-24
 
