@@ -274,15 +274,17 @@ async fn a_command_the_session_confined_is_not_a_client() {
     let loop_ = tokio::spawn(async move {
         let _ = server.run(&mut app, &mut events, &mut finished).await;
     });
-    // a session that refuses the connection may leave the line unread, which closes it with a
-    // reset rather than an end, and both are a hang-up
+    // a session that refuses the connection may have closed it before the line is written, or
+    // leave the line unread and close it with a reset rather than an end, and each of those is a
+    // hang-up. The connect stays outside, so a command that could not reach the socket at all
+    // fails here rather than passing as refused
     let probe = format!(
         r#"python3 -c "
 import socket
 s = socket.socket(socket.AF_UNIX)
 s.connect('{}')
-s.sendall(b'{{\n')
 try:
+    s.sendall(b'{{\n')
     got = s.recv(4096)
 except OSError:
     got = b''
