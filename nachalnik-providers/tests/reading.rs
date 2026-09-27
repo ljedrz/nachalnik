@@ -785,3 +785,25 @@ async fn a_request_that_finds_nothing_there_names_where_it_asked() {
         );
     }
 }
+
+/// A request that never reached a server says why, not only that it failed.
+///
+/// note: the transport's own line is its category and the URL, and the reason - nothing listening,
+/// an address that is not one - is further down its chain, where a recorded error never looks.
+#[tokio::test]
+async fn a_request_that_reached_nobody_says_why() {
+    // bound and let go, so the port is refused rather than filtered
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let nobody = format!("http://{}", listener.local_addr().expect("its own address"));
+    drop(listener);
+
+    for (address, why) in [
+        (nobody.as_str(), "refused"),
+        ("not-a-url", "relative URL without a base"),
+    ] {
+        for (dialect, provider) in dialects(address) {
+            let error = asked(provider).await.expect_err("nobody there");
+            assert!(error.contains(why), "{dialect}, {address}: {error}");
+        }
+    }
+}

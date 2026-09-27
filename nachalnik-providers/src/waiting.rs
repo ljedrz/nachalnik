@@ -202,7 +202,7 @@ impl Unsent {
     /// that is wrong.
     pub(crate) fn giving_up(self, model: &str, tried: usize) -> BoxError {
         match self {
-            Self::Transport(e) => e.into(),
+            Self::Transport(e) => with_causes(&e).into(),
             Self::Silent(waited) if tried > 1 => format!(
                 "{model} never answered, asked {tried} times and given {}s each; giving up",
                 waited.as_secs()
@@ -216,6 +216,28 @@ impl Unsent {
             Self::Interrupted => "interrupted".into(),
         }
     }
+}
+
+/// A transport's failure, with every cause under it.
+///
+/// note: the error's own line is only its category and the URL - `error sending request for url
+/// (…)`, or `builder error` - and the part a person can act on, `Connection refused` or `relative
+/// URL without a base`, is further down the chain. The kernel records an error as its `Display`,
+/// so a cause left in the chain is a cause nobody is shown. A layer that already repeats the one
+/// under it is not repeated again.
+fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut said = e.to_string();
+    let mut cause = e.source();
+    while let Some(under) = cause {
+        let words = under.to_string();
+        if !said.contains(&words) {
+            said.push_str(": ");
+            said.push_str(&words);
+        }
+        cause = under.source();
+    }
+
+    said
 }
 
 /// The answer to a request that was stopped before it had one.

@@ -15,7 +15,10 @@ minor bump may break you.
   the trimmed address.
 - **A 404 names the address it was asked at.** It is the answer to a wrong base URL, and what
   such a server sends back is usually its own "Not Found" and nothing else.
-
+- **A request that never reached a server says why.** The transport's own line is its category
+  and the URL - `error sending request for url (…)`, `builder error` - and the reason, such as
+  `Connection refused` or `relative URL without a base`, was left in its chain, where a recorded
+  error is never read. Both dialects now put the causes in the error's message.
 - **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
   context limit, and each held both locks together - `info` taking the limit first and `respond`
   the model first - so a caller reading `info` on one thread while a request began on another
