@@ -182,7 +182,11 @@ pub(crate) async fn read(
                 break;
             }
 
-            let line = String::from_utf8_lossy(&buffer[..end]).trim().to_owned();
+            // a byte-order mark may open the stream, and is not part of its first line
+            let line = String::from_utf8_lossy(&buffer[..end])
+                .trim_start_matches('\u{feff}')
+                .trim()
+                .to_owned();
             buffer.drain(..=end);
 
             // the OpenAI dialect's own end of the stream, which a server may send and then keep

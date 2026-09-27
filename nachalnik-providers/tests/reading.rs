@@ -126,6 +126,40 @@ async fn a_last_event_with_nothing_after_it_is_still_read() {
     }
 }
 
+/// A byte-order mark before the first event does not cost the event.
+///
+/// note: the mark is not whitespace to `trim`, so the first line began with it rather than with
+/// `data:` and was skipped as a line that is not an event - and a stream whose first event is its
+/// only one came back empty.
+#[tokio::test]
+async fn a_byte_order_mark_does_not_cost_the_first_event() {
+    for (dialect, body) in [
+        (
+            "openai",
+            "\u{feff}data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"},\"finish_reason\":\"stop\"}]}\n\n",
+        ),
+        (
+            "gemini",
+            "\u{feff}data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\
+             \"finishReason\":\"STOP\"}]}\n\n",
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("an answer");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+    }
+}
+
 /// Answers every request with `status` and a stream that promises more than `body` and then hangs
 /// up, which is what the transport reads as a body broken off.
 async fn broken_off(status: &'static str, body: &'static str) -> String {

@@ -52,6 +52,8 @@ minor bump may break you.
   never came is sent again, up to four tries of 150s each, and the error then said "giving up
   after 150s" over ten minutes of waiting. It names the tries and each one's wait, and the readme
   says which silences are sent again and which are not.
+- **A byte-order mark before a stream's first event does not cost the event.** The mark is not
+  whitespace, so the first line did not begin with `data:` and was skipped.
 
 ## [0.6.1] - 2026-09-24
 
