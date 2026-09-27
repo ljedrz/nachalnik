@@ -462,7 +462,11 @@ here.
 Down a pipe there are no keys, so `--headless` prints the `/compact` list to stderr and takes it.
 That is the opposite of what `--on-ask` does with a tool's question, and they are different
 questions: a tool's is the model asking to do something nobody vouched for, and this one is a line
-the operator typed.
+the operator typed. A script that answers it anyway with a bare `y` or `n` does not get the other
+half of what a screen offers — the pass is taken before the line is read, and an `n` cannot
+decline it. That line is dropped with a word saying so, rather than sent to the model as a
+message. Only the line straight after is read that way: a blank line, or anything longer than one
+letter, is a line somebody wrote and goes to the model like any other.
 
 `/compact` is also the way out of a session too big to send. The tool that prunes a context is the
 *model's* — `context` — and reaching it costs a request, which is the thing that is failing.

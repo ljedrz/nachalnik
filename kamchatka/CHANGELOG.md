@@ -149,6 +149,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The `y` or `n` a script answers `/compact` with is not a message.** `--headless` takes the pass
+  on the `/compact` line itself, so the next line is the answer to a question nothing asked; read as
+  a message it started a turn, and the model spent a request on a letter. A bare `y` or `n`
+  immediately after a compaction that was taken is now taken with a word saying so - and only
+  immediately: a blank line, or any line that is not a bare letter, is a line somebody wrote.
 - **A run whose stream nobody is reading goes on.** The three lines of the program's own prose
   were printed with the macros, which panic when the write fails: the notice saying stdout is not a
   terminal, the address a served run is serving on, and the settings file `--print-config` hands
