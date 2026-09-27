@@ -279,6 +279,12 @@ minor bump may break you.
   nobody wrote to held the session with no deadline or signal seen, and `/dev/zero` ran it out of
   memory. Anything else is refused by name, and an attachment is read no further than its limit,
   so a file growing under the read is bounded too.
+- **`/save DIR/` no longer writes over another session's record.** It named the files after the
+  session, and a resumed session keeps the name of the one it resumed - so saving a resumed
+  session into the directory it came from replaced the log it was carried on from with one that
+  starts at the resume. Two sessions started in the same second collided the same way. The first
+  save into a directory now goes beside anything of that name, as `NAME-2`, the way the record
+  at the end of a run does; saving there again replaces this session's own pair.
 
 ## [0.15.1] - 2026-09-24
 

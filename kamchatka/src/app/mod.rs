@@ -640,6 +640,13 @@ pub struct App {
     /// note: a property of the endpoint rather than news about a turn, like `thought_unseen` above
     /// and for the same reason.
     unreported: bool,
+    /// The files `/save` wrote this session to in each directory it was given, by directory.
+    ///
+    /// note: so that saving into one again replaces this sitting's own pair, which is the
+    /// ordinary case, while the first save into it takes a name nothing else has written. A
+    /// session's name is shared with the session it resumed and with any other started in the
+    /// same second, so the name alone would have written over theirs.
+    saved_into: BTreeMap<std::path::PathBuf, (String, String)>,
 }
 
 impl App {
@@ -737,6 +744,7 @@ impl App {
             spent: 0,
             overspent: false,
             unreported: false,
+            saved_into: BTreeMap::new(),
         }
     }
 

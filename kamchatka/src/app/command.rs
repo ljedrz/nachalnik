@@ -1682,31 +1682,43 @@ impl App {
         // dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads as
         // though it had worked. The session's own name is what goes in a directory, which is
         // what this program already does when it writes a session out on its own.
-        let stem = match stem.ends_with(std::path::MAIN_SEPARATOR)
-            || std::path::Path::new(stem).is_dir()
-        {
-            true => format!(
-                "{}{}{}",
-                stem.trim_end_matches(std::path::MAIN_SEPARATOR),
-                std::path::MAIN_SEPARATOR,
-                self.kernel.session_name()
-            ),
-            false => stem.to_owned(),
+        //
+        // note: and it goes in beside whatever holds that name already, as the record at the end
+        // of a run does and for its reason: a resumed session keeps the name of the one it
+        // resumed, so the name alone would write over the log this session was carried on from.
+        // Only this sitting's own earlier save there is replaced - see `App::saved_into`
+        let directory =
+            stem.ends_with(std::path::MAIN_SEPARATOR) || std::path::Path::new(stem).is_dir();
+        let into: std::path::PathBuf = std::path::Path::new(stem).components().collect();
+        let (log, state, claimed) = match (directory, self.saved_into.get(&into)) {
+            (false, _) => (format!("{stem}.jsonl"), format!("{stem}.json"), false),
+            (true, Some((log, state))) => (log.clone(), state.clone(), false),
+            (true, None) => {
+                match crate::wiring::unclaimed(&into.join(self.kernel.session_name())) {
+                    Ok((log, state)) => (log, state, true),
+                    Err(e) => return self.say(Speaker::Error, e),
+                }
+            }
         };
-        let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
 
         // said rather than asked about: writing the same session again is the ordinary case and
         // a prompt every time would be noise, but a typo landing on somebody else's file should
-        // not pass in silence
+        // not pass in silence. A name just claimed is this save's own, empty file
         let replacing: Vec<&str> = [log.as_str(), state.as_str()]
             .into_iter()
-            .filter(|path| std::path::Path::new(path).exists())
+            .filter(|path| !claimed && std::path::Path::new(path).exists())
             .collect();
 
         let written = self.write_session(&log, &state);
+        if claimed && written.is_err() {
+            let _ = std::fs::remove_file(&log);
+        }
 
         match written {
             Ok(records) => {
+                if directory {
+                    self.saved_into.insert(into, (log.clone(), state.clone()));
+                }
                 if !replacing.is_empty() {
                     self.say(
                         Speaker::Note,

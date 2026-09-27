@@ -812,7 +812,9 @@ which is not the same as a clean bill. The percentage is on the line so that a y
 explain is visibly a yellow nobody was sure of.
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
-context. The snapshot has two ways back in.
+context. Given a directory, it names them after the session, and the first save into one goes
+beside a record already there under that name rather than over it - a resumed session has the
+name of the one it carried on from. The snapshot has two ways back in.
 
 `kamchatka -r PATH` starts a fresh session from it, which is the faithful one: the item numbers,
 the model parameters and what the token counter had learned all come back exactly as they were,

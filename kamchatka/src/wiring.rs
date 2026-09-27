@@ -815,7 +815,7 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 /// note: a name that is taken is passed over and nothing else is: a directory that cannot be
 /// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
 /// a thousand tries later would be the wrong one.
-fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
+pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
     // bounded, so that a directory full of these is an error rather than a loop
     for nth in 1..1_000 {
         let stem = match nth {

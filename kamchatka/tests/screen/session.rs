@@ -339,6 +339,45 @@ async fn a_load_says_when_it_replaces_the_parameters() {
     assert!(second.app.kernel.params().is_empty());
 }
 
+/// Saving into a directory goes in beside a record of the same name, never over it.
+///
+/// note: a resumed session keeps the name of the one it resumed, and two started in one second
+/// share one, so `/save rec/` after `-r rec/NAME.json` wrote over the very log it had carried on
+/// from. What it may replace is its own earlier save there, which is the ordinary case of saving
+/// twice.
+#[tokio::test]
+async fn saving_into_a_directory_leaves_another_sessions_record_alone() {
+    let dir = common::scratch("save-dir-taken");
+
+    let mut harness = Harness::new([ModelResponse::text("noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+
+    let stamp = harness.app.kernel.session_name();
+    let (theirs, their_log) = (
+        dir.join(format!("{stamp}.json")),
+        dir.join(format!("{stamp}.jsonl")),
+    );
+    std::fs::write(&theirs, "theirs").expect("written");
+    std::fs::write(&their_log, "theirs").expect("written");
+
+    harness.send(&format!("/save {}/", dir.display())).await;
+    assert_eq!(std::fs::read_to_string(&theirs).unwrap(), "theirs");
+    assert_eq!(std::fs::read_to_string(&their_log).unwrap(), "theirs");
+    let ours = dir.join(format!("{stamp}-2.json"));
+    assert!(ours.exists(), "{}", harness.screen());
+    assert!(dir.join(format!("{stamp}-2.jsonl")).exists());
+    assert!(!harness.flat().contains("replaced"), "{}", harness.screen());
+
+    // and a second save is this sitting's own again, not a third pair
+    harness.send(&format!("/save {}", dir.display())).await;
+    assert!(harness.flat().contains("replaced"), "{}", harness.screen());
+    assert!(!dir.join(format!("{stamp}-3.json")).exists());
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 4);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_there() {
     let dir = common::scratch("load");
