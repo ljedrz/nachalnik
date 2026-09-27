@@ -646,6 +646,149 @@ async fn since_the_first_record_is_not_since_the_beginning_and_the_schema_says_s
     );
 }
 
+/// A resumed log says it was resumed, wherever an answer turns on the records it does not hold.
+///
+/// note: the rule the tool states in its own module - a short answer is never absence - was false
+/// in a resumed session, and a resumed session is the one this tool is for. A kernel continues
+/// numbering from the snapshot's last record, so a resumed log always starts above 1, and the
+/// branch that read the number alone called that a drain: false, and on the paths where the number
+/// is never printed, not said at all. A session resumed over a `context.replaced` asked for that
+/// kind and got "0 match, nothing matched" beside a total, with nothing saying the record is in
+/// the log written beside the snapshot rather than here. So all three of the answers that turn on
+/// records this log has not got say where the log begins, and say *resumed* rather than *drained*
+/// when that is what happened to it.
+#[tokio::test]
+async fn a_resumed_log_says_it_was_resumed_rather_than_drained_where_it_matters() {
+    let first = Kernel::new(Config::default());
+    for n in 0..40 {
+        first.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    let item = first.push(ContextItem::memory(
+        "scratch",
+        "the parser is in src/parser.rs",
+    ));
+    first
+        .replace(item, "the parser is in src/parse.rs")
+        .unwrap();
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    let resumed = kernel.history()[0].seq;
+    // the last record numbered before this log begins, which is one `since` can name and this log
+    // cannot show - and in a resumed session it is the session it was resumed from that holds it
+    let before = resumed - 1;
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        // a kind the session it was resumed from held and this one has not
+        call(
+            "c1",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"] }),
+        ),
+        // a `since` below the first record here, so the record it names is not in this log
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "since": before - 1 }),
+        ),
+        // an item from before the resume, which has no beginning here
+        call("c3", "log", json!({ "action": "read", "ids": [2] })),
+    ]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    kernel.push(ContextItem::user("what did I do before you started?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    for answer in &said {
+        assert!(
+            !answer.contains("drained"),
+            "nothing was drained - the log begins at a resume, and saying otherwise is false: \
+             {answer}"
+        );
+        assert!(
+            answer.contains(&format!("begins at record {resumed}")),
+            "a resumed log says where it begins, since a model reading a zero beside a total \
+             would otherwise take it for the whole of what happened: {answer}"
+        );
+    }
+
+    // and each of the three is told in the words that are true of it, rather than left to the
+    // shared sentence above them
+    assert!(
+        said[0].contains("0 match") && said[0].contains("Nothing matched"),
+        "a kind this session has not emitted matches nothing, and says so: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("resumed"),
+        "and says why the kind is missing from it: {}",
+        said[0]
+    );
+    assert!(
+        said[1].contains(&format!("Nothing numbered {before} to {before} is here")),
+        "`since: {}` named a record this log has never had, and an answer that did not say so \
+         read as there being none: {}",
+        before - 1,
+        said[1]
+    );
+    assert!(
+        said[2].contains("[2] has no `context.added` here"),
+        "an item from the session this was resumed from has no beginning here: {}",
+        said[2]
+    );
+}
+
+/// The two causes stay two, and the drained one still says it.
+///
+/// note: the other half of the test above, because a fix that made every log starting above 1 say
+/// it was resumed would be wrong in the other direction: `Kernel::drain_history` leaves the
+/// counter alone and a drained log is exactly a log whose first record is not 1, with nothing
+/// having been resumed. A model told a drained log was resumed would go looking for a snapshot
+/// that does not exist.
+#[tokio::test]
+async fn a_drained_log_still_says_it_was_drained_where_a_resumed_one_says_it_was_resumed() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"] }),
+        ),
+        call("c2", "log", json!({ "action": "read", "since": 0 })),
+    ]));
+    for n in 0..5 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    let through = kernel.last_seq();
+    let taken = kernel.drain_history(through);
+    assert!(!taken.is_empty(), "there was something to drain");
+    kernel.push(ContextItem::user("and now?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    for answer in &said {
+        assert!(
+            answer.contains("drained"),
+            "records were carried away and kept where this session cannot read them, which is not \
+             a resume: {answer}"
+        );
+        assert!(
+            !answer.contains("resumed"),
+            "nothing was resumed here, and a model told so would go looking for a snapshot: \
+             {answer}"
+        );
+    }
+    assert!(
+        said[1].contains(&format!("Nothing numbered 1 to {through} is here")),
+        "`since: 0` named the drained records, which is a range with nothing in it here: {}",
+        said[1]
+    );
+}
+
 /// An empty filter is no filter; a filter full of the wrong thing is a mistake.
 ///
 /// note: found live. A model spelling "every argument the schema lists, none of them constraining

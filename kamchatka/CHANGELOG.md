@@ -164,6 +164,12 @@ minor bump may break you.
   on the counter's own scale now, and a pass that does not clear its own cost is not run. Its
   reason names the context's share of the limit, which is the figure its report counts, and its
   summary counts only what a compactor elided.
+- **A resumed log says where it begins, and that it was resumed.** A resumed session numbers on
+  from where its snapshot left off, so its log always starts above 1, and `log` called that a drain
+  where it said anything: a filter matching nothing, or a `since` below the first record, answered
+  as though nothing had happened. Those answers now say the log begins at the resume and the
+  records before it belong to the session it was resumed from; *drained* is said only where records
+  were carried away.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

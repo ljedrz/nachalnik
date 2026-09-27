@@ -191,6 +191,10 @@ impl Tool for Log {
                 total: session.len(),
                 last_seq: session.last_seq(),
                 first_seq: session.records().next().map(|r| r.seq).unwrap_or_default(),
+                resumed: matches!(
+                    session.records().next().map(|r| &r.event),
+                    Some(Event::SessionResumed { .. })
+                ),
                 kinds,
                 every,
                 matched,
@@ -225,17 +229,34 @@ struct Read {
     hits: usize,
     /// The sequence number of the oldest record still here; `0` when there are none.
     ///
-    /// note: what says a log was *drained* rather than never written. `Session::drain_through`
-    /// takes records out and leaves the counter alone, so a log whose first record is not 1 is one
-    /// somebody has carried away - and an answer that reported that as "nothing happened" would be
-    /// making the one mistake this tool exists not to make.
+    /// note: with [`Read::resumed`], what says which of the two records before it are missing.
+    /// `Session::drain_through` takes records out and leaves the counter alone, so a log whose
+    /// first record is not 1 is one that does not hold everything that happened - and an answer
+    /// that reported that as "nothing happened" would be making the one mistake this tool exists
+    /// not to make.
     first_seq: u64,
+    /// Whether this log begins at a session that was picked back up.
+    ///
+    /// note: which cause belongs to which half of `first_seq > 1`, and the two are opposite
+    /// answers to the same question. A resumed session numbers on from the record the snapshot
+    /// left off after, so it *always* starts above 1 - and an answer that read the number alone
+    /// would tell a model its earlier records were drained, which is false, and would say nothing
+    /// at all on the paths where the number is never printed. The event at the head of the log
+    /// is what tells them apart.
+    resumed: bool,
     /// The items this log holds a `context.added` for.
     ///
     /// note: kept so that the *absence* of one can be reported, which is the fact an `ids` filter
     /// is usually really after. An item with no creation record here was in the context before
     /// this log began, and nothing else in an answer says so.
     added: BTreeSet<ContextId>,
+}
+
+impl Read {
+    /// Whether a `since` below the oldest record held asked for records this log has not got.
+    fn skipped(&self, since: u64) -> bool {
+        self.first_seq > 0 && since + 1 < self.first_seq
+    }
 }
 
 /// What a call asked for, and how to say it back.
@@ -425,6 +446,10 @@ impl Query {
                 // that matched nothing is usually one spelled for a session other than this one
                 out.push_str(" Nothing matched; these are the kinds this session holds:\n");
                 out.push_str(&histogram(read));
+                // and the records this log does not hold, because a filter for a kind this
+                // session never emitted is the shape a resumed one is in: the kind is in the log
+                // written beside the snapshot, not here
+                out.push_str(&earlier(read));
                 // and here most of all, because an `ids` filter that matched nothing is the exact
                 // shape an inherited item makes, and "nothing matched" is the least useful way to
                 // say so
@@ -455,6 +480,19 @@ impl Query {
                     false => "older are",
                 },
             )),
+        }
+        // `since` below the oldest record held, which is the whole of what a resumed session is:
+        // the filter asks for records this log has never had, and without this it says so as
+        // silence between the count and the records, which reads as there being none
+        if let Some(since) = self.since
+            && read.skipped(since)
+        {
+            out.push_str(&format!(
+                "\nNothing numbered {} to {} is here, so `since: {since}` skipped them.\n",
+                since + 1,
+                read.first_seq - 1,
+            ));
+            out.push_str(&earlier(read));
         }
         out.push_str(&self.inherited(kernel, read));
         out.push('\n');
@@ -495,19 +533,39 @@ impl Query {
             "{never}\n{} {has} no `context.added` here: {they} already in the context before this \
              log begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
             numbered(&unborn),
-            match read.first_seq > 1 {
-                // the records that would have said are gone rather than never written, and which
-                // of the two it is changes the answer completely
-                true => format!(
-                    "This log starts at record {}, so earlier ones were drained and may have said.",
-                    read.first_seq
-                ),
-                false => "A session resumed from a snapshot starts that way.".to_owned(),
-            },
+            earlier(read),
             if_offered(kernel, "setup", || {
                 " `setup` with `model` says whether this one did.".to_owned()
             }),
         )
+    }
+}
+
+/// Where this log's records stop being the whole of what happened, when it does not hold them all.
+///
+/// note: the same sentence for every answer that turns on records this log cannot show, because
+/// the two causes are opposite and a model told the wrong one is worse off than one told neither.
+/// A log that starts above 1 either had records *drained* out of it - carried away and kept where
+/// this session cannot read - or begins at a session that was *resumed*, in which case the
+/// records before it belong to the session it was resumed from and were never taken away. `since`
+/// below the first record and an `ids` filter with no match are both the same question, so both
+/// are answered with this. An empty string is the answer for a log that starts at 1, where
+/// nothing is missing.
+fn earlier(read: &Read) -> String {
+    if read.first_seq <= 1 {
+        return String::new();
+    }
+
+    match read.resumed {
+        true => format!(
+            "This log begins at record {}, because the session was resumed; records before it \
+             belong to the session it was resumed from and this one cannot read them.",
+            read.first_seq
+        ),
+        false => format!(
+            "This log starts at record {}, so earlier ones were drained and may have said.",
+            read.first_seq
+        ),
     }
 }
 
