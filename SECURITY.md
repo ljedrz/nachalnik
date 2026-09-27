@@ -87,13 +87,17 @@ Referenced from [AGENTS.md](AGENTS.md).
   servers and a local advisor keep them: those are programs the person chose, running unconfined
   with everything the person can read, and stripping their environment would be a nuisance rather
   than a boundary.
-- **A confined command does not have the terminal.** The child starts a session of its own before
-  it runs anything, so it has no controlling terminal: `/dev/tty` does not open, and `TIOCSTI` is
-  refused on every other one. With the terminal it would have had the one this program's screen
-  reads its keys from - `/dev` is granted and Landlock restricts no `ioctl` here - so it could push
-  a `y` into that input and answer its own question, where the kernel still allows `TIOCSTI`, or
-  draw over the question on any kernel. A child that cannot leave the terminal runs nothing. Under
-  `--no-sandbox` a command keeps it, with everything else the person has.
+- **A confined command does not have the terminal, and reaches five devices.** The child starts a
+  session of its own before it runs anything, so it has no controlling terminal: `/dev/tty` does
+  not open, and `TIOCSTI` is refused on every other one. With the terminal it could have pushed a
+  `y` into the input this program's screen reads its keys from and answered its own question, where
+  the kernel still allows `TIOCSTI`, or drawn over the question on any kernel. A child that cannot
+  leave the terminal runs nothing. Under `/dev` the ruleset grants `null`, `zero`, `full`, `random`
+  and `urandom` by name and nothing else, since the rest reaches past the command: the person's
+  other terminals in `/dev/pts`, which a command could read what is typed into, the shared memory
+  in `/dev/shm`, and on a desktop the camera and the microphone. A pty goes with them, because its
+  far end is a file in `/dev/pts`. Under `--no-sandbox` a command keeps the terminal and `/dev`,
+  with everything else the person has.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
   the process behind it act for it, and that process is not in the domain: `systemd-run --user`
   over the session bus read and wrote a home directory the same command was refused directly, and

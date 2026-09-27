@@ -331,26 +331,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   "confined" for `Full` and name what a `Partial` one leaves open, or leave the words and make the
   hedge a statement where the kernel is known.
 
-- **What the shell may reach under `/dev`.** The ruleset gives a confined command read and write on
-  every file that already exists under `/dev`, so that `/dev/null`, `/dev/urandom` and the rest
-  work, and it restricts no `ioctl`. That reaches more than devices a command needs:
-  - the POSIX shared-memory segments in `/dev/shm` of any other process running as the same user,
-    which a command cannot make but can write into;
-  - the person's other terminals under `/dev/pts`, which are theirs: a command can read one, taking
-    what is typed there from the shell it was typed at, a password given to `sudo` included. It
-    cannot push input into one, having no controlling terminal;
-  - on a desktop, the camera, the microphone and the GPU that logind hands the seated user, where
-    capturing needs only `ioctl`s and the result reaches the provider through a file the model
-    reads.
-
-  The choice is between granting named devices only - `/dev/null`, `/dev/zero`, `/dev/full`,
-  `/dev/random`, `/dev/urandom`, and `/dev/fd`, which is a link into `/proc` - after looking at
-  what the live suite, `cargo`, `git`, `python` and `ssh` open under `/dev`, since a tool that
-  opens one nobody listed breaks; handling V5's `IoctlDev` where the kernel has it, which refuses
-  the `ioctl`s of a device the command opened itself and leaves its inherited streams alone, at the
-  cost of the ptys `script` and `expect` make (see the note above `let abi` in `sandbox.rs`); or
-  both. Either way SECURITY.md should say what `/dev` reaches.
-
 - **A process that leaves the command's group outlives a stop.** Stopping a call signals the
   command's process group, and a process run under `setsid`, or a daemon that detaches itself, is in
   a group of its own: it runs on after the call has said it stopped. It stays confined and gated,

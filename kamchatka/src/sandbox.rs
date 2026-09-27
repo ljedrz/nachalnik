@@ -256,11 +256,11 @@ impl Sandbox {
         {
             return false;
         }
-        // note: `/dev` is granted reading and writing its files and nothing else - see `confine` -
-        // so a device that is there was reached and a refusal of it is its own permissions, and a
-        // listing of `/dev` or a file made in it is the boundary
+        // note: under `/dev` only the devices in [`DEVICES`] are granted - see `confine` - so one of
+        // those was reached and a refusal of it is its own permissions, and anything else there is
+        // the boundary
         if resolved.starts_with("/dev") {
-            return resolved.metadata().is_ok_and(|meta| !meta.is_dir());
+            return DEVICES.iter().any(|device| resolved == Path::new(device));
         }
 
         SYSTEM
@@ -1176,6 +1176,26 @@ const SYSTEM: &[&str] = &[
     "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
 ];
 
+/// The devices a confined command may read and write, by name; nothing else under `/dev`.
+///
+/// note: by name rather than `/dev` beneath, because beneath reaches more than a command needs.
+/// The person's other terminals under `/dev/pts` are theirs, so a command could read one and take
+/// what is typed there - a password given to `sudo` included; the shared memory in `/dev/shm` of
+/// any process of theirs can be written into; and on a desktop, logind hands the seated user the
+/// camera, the microphone and the GPU. `/dev/stdin` and `/dev/fd` are links into `/proc`, which is
+/// readable, and on to the command's own descriptors, so they still work.
+///
+/// note: what it costs is a pty. Opening the peer of a `/dev/ptmx` is opening a file in
+/// `/dev/pts` - `TIOCGPTPEER` too - so granting one is granting the other terminals, and `script`
+/// or `expect` fails. A confined command has no terminal to want one for.
+const DEVICES: &[&str] = &[
+    "/dev/null",
+    "/dev/zero",
+    "/dev/full",
+    "/dev/random",
+    "/dev/urandom",
+];
+
 /// Whether this kernel refuses a confined command a connection to a unix socket outside what it
 /// may write.
 ///
@@ -1214,8 +1234,9 @@ pub fn confines_unix_sockets() -> bool {
 /// directory that has gone away costs its own rule and nothing else - which is a fact about
 /// `landlock` rather than about this program, and `tests/sandbox.rs` holds the version to it.
 ///
-/// note: `/dev` gets reading and writing of files and nothing else, because `/dev/null` is not
-/// optional and creating things in `/dev` is not something a shell command needs to do.
+/// note: under `/dev`, reading and writing `null`, `zero`, `full`, `random` and `urandom` and
+/// nothing else, because `/dev/null` is not optional and the rest of `/dev` reaches past the
+/// command: another terminal of the person's, their shared memory, a camera.
 pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     use landlock::{
         ABI, Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
@@ -1231,11 +1252,10 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     // between two directories of the working directory is allowed, which is what anybody would
     // expect of a shell in there.
     //
-    // note: not V5's `IoctlDev`, which POSTPONED.md weighs. A file's ioctls are decided when it is
-    // opened, so the streams a command inherits keep theirs; what handling it refuses is an ioctl
-    // on a device the command opens itself - the pty `script` or `expect` makes out of `/dev/ptmx`,
-    // or a `/dev/null` it opened, which answers `EACCES` where it would answer `ENOTTY`. It is also
-    // Linux 6.10, so it would have to be asked for where the kernel has it, as `ResolveUnix` is.
+    // note: not V5's `IoctlDev`. A file's ioctls are decided when it is opened, so what handling it
+    // would refuse is an ioctl on a device the command opened itself, and the only devices it can
+    // open are [`DEVICES`], whose ioctls do nothing worth refusing. A `/dev/null` it opened would
+    // answer `EACCES` where it answers `ENOTTY`, and the kernel would have to be 6.10.
     //
     // note: on a kernel older than 6.2 the rights below V3 still apply and the status comes back
     // `Partial`, which is said out loud rather than rounded up.
@@ -1289,7 +1309,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         })
         .and_then(|created| {
             created.add_rules(path_beneath_rules(
-                &["/dev"],
+                DEVICES,
                 AccessFs::ReadFile | AccessFs::WriteFile,
             ))
         })
@@ -1455,11 +1475,12 @@ pub fn run_if_asked() -> Option<i32> {
     let (sandbox, cmd) = Sandbox::from_argv(&argv)?;
 
     // note: a session of its own, which leaves the terminal behind. The terminal is the one this
-    // program's screen reads its keys from, and `/dev` is granted: a command that kept it could
-    // push a `y` into that input with `TIOCSTI` and answer its own question, or draw over the
-    // question somebody is reading. With no controlling terminal `/dev/tty` does not open, and
-    // `TIOCSTI` is refused on every other one. It is also a group of its own, the one `shell`
-    // stops, with this process's identifier, which is the number `shell` signals
+    // program's screen reads its keys from: a command that kept it could push a `y` into that
+    // input with `TIOCSTI` and answer its own question, or draw over the question somebody is
+    // reading. [`DEVICES`] leaves `/dev/tty` out as well, and this holds for whatever else could
+    // open it: with no controlling terminal `/dev/tty` does not open, and `TIOCSTI` is refused on
+    // every other one. It is also a group of its own, the one `shell` stops, with this process's
+    // identifier, which is the number `shell` signals
     let detached = rustix::process::setsid().is_ok() || std::fs::File::open("/dev/tty").is_err();
 
     // a temporary directory of this run's own, made before anything is restricted and handed to
