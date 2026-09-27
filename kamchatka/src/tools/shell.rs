@@ -462,6 +462,11 @@ impl Tool for Shell {
         // the child holds its end of the pair now; this one's copy goes with the command, or a
         // child that ends without sending a listener would never be seen to have ended
         drop(command);
+        // a confined child's session is its own and named by its pid, and a served session refuses
+        // anything in it; see `sandbox::from_a_command`
+        if let (Some(_), Some(pid)) = (&sandbox, child.id()) {
+            crate::sandbox::began(pid);
+        }
         let gatekeeper = arriving.map(|arriving| {
             Gatekeeper::keep(
                 arriving,

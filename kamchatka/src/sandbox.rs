@@ -43,9 +43,11 @@
 //! that needs no thought.
 
 use std::{
+    collections::BTreeSet,
     ffi::OsString,
     fmt,
     path::{Path, PathBuf},
+    sync::{Mutex, PoisonError},
 };
 
 use nachalnik::{Capability, Verdict};
@@ -81,6 +83,13 @@ pub struct Sandbox {
     pub writable: bool,
     /// What the command may do about the network.
     pub network: Network,
+    /// Ports on this machine the command may not connect to, whatever `network` says: the ones this
+    /// process serves a session on.
+    ///
+    /// note: a served session takes a client's answer to a permission question, so a command that
+    /// could reach it could answer its own. Under `Open`, and under `Asked` once somebody said yes,
+    /// Landlock is asked to refuse these and nothing else; `NoTcp` and `Shut` refuse them already.
+    pub closed: Vec<u16>,
 }
 
 /// What a confined command may do about the network, and what refuses it.
@@ -102,8 +111,8 @@ pub enum Network {
     Shut,
     /// Every internet socket is held by the gate until the person is asked, once per command.
     ///
-    /// note: Landlock leaves TCP alone here, because a ruleset cannot be lifted and a `yes` has to
-    /// be able to let the connection through. What stands in the way is the gate alone, which is
+    /// note: Landlock leaves TCP alone here, but for [`Sandbox::closed`], because a ruleset cannot
+    /// be lifted and a `yes` has to be able to let the connection through. What stands in the way is the gate alone, which is
     /// why this is never asked for where the gate cannot be installed.
     Asked,
 }
@@ -183,6 +192,10 @@ impl Sandbox {
                 (false, true) if stance == Verdict::Deny => Network::Shut,
                 (false, true) => Network::Asked,
             },
+            closed: SERVED
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .clone(),
         }
     }
 
@@ -201,6 +214,12 @@ impl Sandbox {
         argv.extend(self.extra.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.readable.len().to_string()));
         argv.extend(self.readable.iter().map(|path| path.clone().into()));
+        argv.push(OsString::from(self.closed.len().to_string()));
+        argv.extend(
+            self.closed
+                .iter()
+                .map(|port| OsString::from(port.to_string())),
+        );
         argv.push(cmd.into());
 
         argv
@@ -219,6 +238,12 @@ impl Sandbox {
         let extra: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
+        let count: usize = argv.next()?.to_str()?.parse().ok()?;
+        let closed = argv
+            .by_ref()
+            .take(count)
+            .map(|port| port.to_str()?.parse().ok())
+            .collect::<Option<Vec<u16>>>()?;
         let cmd = argv.next()?.clone();
 
         Some((
@@ -228,6 +253,7 @@ impl Sandbox {
                 readable,
                 writable,
                 network,
+                closed,
             },
             cmd,
         ))
@@ -1196,6 +1222,64 @@ const DEVICES: &[&str] = &[
     "/dev/urandom",
 ];
 
+/// The ports this process serves a session on, which [`Sandbox::of`] closes to every command.
+///
+/// note: the process's rather than a session's, because a command that reached any session served
+/// from here could answer that session's questions, its own among them.
+static SERVED: Mutex<Vec<u16>> = Mutex::new(Vec::new());
+
+/// The sessions this process's confined commands have run in, each named by the command's pid.
+///
+/// note: every one ever started rather than the ones still running. A command's session outlives
+/// the command in whatever it left running, which is what would come knocking, and a pid is four
+/// bytes a command.
+static SESSIONS: Mutex<BTreeSet<u32>> = Mutex::new(BTreeSet::new());
+
+/// Closes `port` to every command confined from here on; see [`Sandbox::closed`].
+pub(crate) fn serving_on(port: u16) {
+    SERVED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .push(port);
+}
+
+/// Opens `port` again, once nothing is served on it.
+pub(crate) fn stopped_serving_on(port: u16) {
+    SERVED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .retain(|served| *served != port);
+}
+
+/// Remembers the session a confined command runs in, which is its own and named by its pid; see
+/// `run_if_asked`.
+pub(crate) fn began(pid: u32) {
+    SESSIONS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(pid);
+}
+
+/// Whether the process `pid` is in the session of a command confined from here, or cannot be told
+/// apart from one.
+///
+/// note: `SO_PEERCRED` is what hands a served socket this pid, and a process that has gone since
+/// has no session left to ask about. Nothing is lost by refusing it, since there is nobody there to
+/// serve.
+pub(crate) fn from_a_command(pid: u32) -> bool {
+    let session = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+        .and_then(|pid| rustix::process::getsid(Some(pid)).ok());
+    match session {
+        Some(session) => SESSIONS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .contains(&session.as_raw_nonzero().get().unsigned_abs()),
+        None => true,
+    }
+}
+
 /// Whether this kernel refuses a confined command a connection to a unix socket outside what it
 /// may write.
 ///
@@ -1239,8 +1323,8 @@ pub fn confines_unix_sockets() -> bool {
 /// command: another terminal of the person's, their shared memory, a camera.
 pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     use landlock::{
-        ABI, Access, AccessFs, AccessNet, Ruleset, RulesetAttr, RulesetCreatedAttr, RulesetStatus,
-        path_beneath_rules,
+        ABI, Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
+        RulesetError, RulesetStatus, path_beneath_rules,
     };
 
     // note: V3 rather than V1, for `Truncate`. An access right the ruleset does not *handle* is
@@ -1289,6 +1373,19 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
             Err(_) => return Confinement::Unavailable,
         }
     }
+    // note: a port is closed by granting every other one, since a ruleset only ever grants. That is
+    // a rule a port, built in a few tens of milliseconds, and paid only by a command confined while
+    // a session is served over TCP. `BindTcp` stays unhandled: listening refuses nobody's answer
+    let closing = !sandbox.network.refuses_tcp() && !sandbox.closed.is_empty();
+    if closing {
+        match ruleset.handle_access(AccessNet::ConnectTcp) {
+            Ok(with_net) => ruleset = with_net,
+            Err(_) => return Confinement::Unavailable,
+        }
+    }
+    let open = (1..=u16::MAX)
+        .filter(|port| closing && !sandbox.closed.contains(port))
+        .map(|port| Ok::<_, RulesetError>(NetPort::new(port, AccessNet::ConnectTcp)));
 
     let writable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
         .filter(|_| sandbox.writable)
@@ -1314,6 +1411,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
             ))
         })
         .and_then(|created| created.add_rules(path_beneath_rules(&writable, rights)))
+        .and_then(|created| created.add_rules(open))
         .and_then(|created| created.restrict_self());
 
     match restricted {
@@ -1406,6 +1504,7 @@ pub fn available(program: &Path) -> Probed {
         readable: Vec::new(),
         writable: true,
         network: Network::Shut,
+        closed: Vec::new(),
     };
     // where there is no gate the child has nothing to send, fails to install one, and says so
     let (stdin, _arriving) = match crate::gate::pair() {

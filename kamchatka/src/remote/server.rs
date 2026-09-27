@@ -59,6 +59,8 @@ pub struct Server {
     /// note: with the device and inode the bind made, because the path is only a name. A file
     /// removed by hand and bound again by another session is that session's socket.
     unlink: Option<(std::path::PathBuf, u64, u64)>,
+    /// The port, when it is one, closed to this process's confined commands while it is served.
+    closed: Option<u16>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -183,6 +185,7 @@ impl Server {
         Ok(Self {
             listener: Listener::Unix(listener),
             unlink: Some((path, made.0, made.1)),
+            closed: None,
         })
     }
 
@@ -204,10 +207,20 @@ impl Server {
         let listener = tokio::net::TcpListener::bind(address)
             .await
             .map_err(|e| format!("could not listen on {address}: {e}"))?;
+        // note: closed to every command this process confines from here on, since a client answers
+        // permission questions. Only the port can be refused this way: a loopback connection
+        // carries no pid, so a command allowed the network would otherwise be a client like any
+        // other. See `Sandbox::closed`
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("could not read back where {address} is: {e}"))?
+            .port();
+        crate::sandbox::serving_on(port);
 
         Ok(Self {
             listener: Listener::Tcp(listener),
             unlink: None,
+            closed: Some(port),
         })
     }
 
@@ -614,6 +627,25 @@ impl Serving {
 
     /// Takes on a connection that has just arrived.
     pub fn attend(&mut self, app: &mut App, arrived: Arrived) {
+        // note: a command this process confined, or anything it left running in its session, is
+        // not a client, because a client answers permission questions and it would be answering its
+        // own. A socket file is reachable by every confined command below Linux 7.1, and from 7.1
+        // by one that may write where it is. A process a command started under a `setsid` of its
+        // own is in a session nothing here has seen, and gets through
+        if let Incoming::Unix(stream) = &arrived.0
+            && stream
+                .peer_cred()
+                .ok()
+                .and_then(|cred| cred.pid())
+                .and_then(|pid| u32::try_from(pid).ok())
+                .is_none_or(crate::sandbox::from_a_command)
+        {
+            app.trace(
+                "client.refused",
+                "a connection from a command this session confined".to_owned(),
+            );
+            return;
+        }
         self.clients += 1;
         // note: the *trace* rather than the conversation. A session somebody else can type into
         // should say when somebody else can type into it - but said through `App::say` it would go
@@ -693,12 +725,15 @@ impl Serving {
 }
 
 impl Drop for Server {
-    /// Takes the socket file away again.
+    /// Takes the socket file away again, or opens the port to confined commands again.
     ///
-    /// note: only the one this process made, and only because a socket file that outlives its
+    /// note: only the file this process made, and only because a socket file that outlives its
     /// listener is a path every later client is refused at and every later `--serve` refuses as
-    /// stale. There is nothing to do for a port.
+    /// stale.
     fn drop(&mut self) {
+        if let Some(port) = self.closed {
+            crate::sandbox::stopped_serving_on(port);
+        }
         if let Some((path, dev, ino)) = &self.unlink {
             use std::os::unix::fs::MetadataExt as _;
 

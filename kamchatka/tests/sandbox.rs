@@ -90,6 +90,7 @@ fn sandbox(workdir: PathBuf, writable: bool, network: Network) -> Sandbox {
         readable: Vec::new(),
         writable,
         network,
+        closed: Vec::new(),
     }
 }
 
@@ -1147,6 +1148,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         readable: Vec::new(),
         writable: true,
         network: Network::NoTcp,
+        closed: Vec::new(),
     };
     // spawned rather than run in one call, for the reason `run` is: the directory a confined
     // command gets is named after *that* command, it cannot remove its own, and only whoever
@@ -1742,6 +1744,34 @@ fn beside_a_terminal(argv: &[std::ffi::OsString], dir: &Path) -> String {
         .expect("python3 is here");
 
     String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// A port the process serves a session on is closed to a confined command whose network is open,
+/// and every other port is not.
+///
+/// note: two listeners of the test's own, one standing for the served port. The other is the
+/// control: a command that reached neither would pass the first half.
+#[test]
+fn a_served_port_is_closed_to_a_command_allowed_the_network() {
+    if !enforced() {
+        return;
+    }
+    let served = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let other = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    let port = |listener: &std::net::TcpListener| listener.local_addr().expect("bound").port();
+    let mut open = sandbox(common::workdir("sandbox-served-port"), true, Network::Open);
+    open.closed = vec![port(&served)];
+    let connect = |port: u16| {
+        format!(
+            "python3 -c \"import socket; socket.create_connection(('127.0.0.1', {port}), timeout=5)\" \
+             2>/dev/null && echo reached || echo refused"
+        )
+    };
+
+    let (_, said) = run(&open, &connect(port(&other)));
+    assert!(said.contains("reached"), "{said}");
+    let (_, said) = run(&open, &connect(port(&served)));
+    assert!(said.contains("refused"), "{said}");
 }
 
 /// Runs `argv` in a session whose controlling terminal is a new one, and returns what it wrote.

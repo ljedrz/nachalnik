@@ -30,6 +30,9 @@ minor bump may break you.
   written by hand that said `network: false` says `Network::NoTcp`.
 - **`sandbox::available` hands back a `Probed`**, the `Confinement` it returned before beside
   whether the gate holds. `available(&program).confinement` is the old answer.
+- **`Sandbox` has a `closed` field**: the ports on this machine a confined command may not connect
+  to whatever its network is, which `Sandbox::of` fills with the ones this process serves a session
+  on. A confinement written by hand says `closed: Vec::new()`.
 
 ### added
 
@@ -102,6 +105,14 @@ minor bump may break you.
   own before anything runs, so `/dev/tty` does not open; one that cannot leave the terminal runs
   nothing. `shell` no longer spawns it leading a group, since `setsid` is refused to a process that
   does, and the session is the group it stops. Under `--no-sandbox` a command keeps the terminal.
+- **A served session is not reachable by the commands it confines.** A client answers permission
+  questions, and a confined command could be one: a `--serve unix:` socket is reachable by every
+  confined command below Linux 7.1, and from 7.1 by one that may write where it is, and a loopback
+  port by a command allowed the network. The port a session is served on is now closed to every
+  command confined while it is served, by a rule for each other port, and a connection to a socket
+  file whose peer is in the session of a command this process confined is refused, with a
+  `client.refused` line in the trace. A process a command started under a `setsid` of its own is
+  not caught, nor a relay's port, which SECURITY.md says.
 - **A confined command reaches five devices under `/dev`, not all of it.** `/dev` was granted
   reading and writing beneath, which reached the person's other terminals - a command could read
   what was typed into one, a `sudo` password included - the shared memory in `/dev/shm`, and on a

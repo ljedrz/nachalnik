@@ -192,15 +192,19 @@ what stands in the way, and what does not.
   all and the permission question is the only thing in the way.
 - **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
   reaching the machine as the person who started it. `--serve` binds loopback only and makes its
-  socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples
-  put a page in front of a session and will listen wherever they are told: whoever reaches that
-  page drives the session, the same as the person at the keyboard. A web page open in a browser on
-  the same machine is refused - the relay takes only requests whose host is an address or
-  `localhost`, that name no origin but its own, and that post JSON - so a site cannot drive a
-  session through the visitor's browser. None of that keeps out the session's own commands: below
-  Linux 7.1 a confined command can reach a served unix socket, from 7.1 one inside what it may
-  write, and a command allowed the network can reach a loopback port - and a client may answer the
-  permission questions. POSTPONED.md has the options.
+  socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples put
+  a page in front of a session and will listen wherever they are told: whoever reaches that page
+  drives the session, the same as the person at the keyboard. A web page open in a browser on the
+  same machine is refused - the relay takes only requests whose host is an address or `localhost`,
+  that name no origin but its own, and that post JSON - so a site cannot drive a session through the
+  visitor's browser. A client may answer the permission questions, so the session's own commands are
+  kept out too. A port the session is served on is closed to every command confined while it is,
+  under an open network as under a held one. A socket file is reachable by every confined command
+  below Linux 7.1, and from 7.1 by one that may write where it is, so a connection is refused when
+  the peer is in the session of a command this process confined - each runs in one of its own -
+  which covers anything it left running. What gets through is a process a command started under a
+  `setsid` of its own, and the `gateway` and `phone` relays, whose ports the session does not know:
+  a command allowed the network can reach those.
 - **An MCP server or a local advisor.** These are programs the person chose, and they run
   unconfined with the person's environment and everything the person can read. What `kamchatka`
   controls is what their answers do: a server's tools are judged under the server's name, and what
