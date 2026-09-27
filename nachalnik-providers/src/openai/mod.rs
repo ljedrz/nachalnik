@@ -650,11 +650,16 @@ impl OpenAiCompatible {
                 .collect();
         }
 
-        entry["context_length"]
-            .as_u64()
-            .or_else(|| entry["top_provider"]["context_length"].as_u64())
-            .or_else(|| entry["inputTokenLimit"].as_u64())
-            .map(|limit| limit as usize)
+        // a limit of nothing is a listing that did not know, which the kernel already declines to
+        // measure against - and reported as a limit it is a window of `0` on every screen
+        [
+            &entry["context_length"],
+            &entry["top_provider"]["context_length"],
+            &entry["inputTokenLimit"],
+        ]
+        .into_iter()
+        .find_map(|limit| limit.as_u64().filter(|limit| *limit > 0))
+        .map(|limit| limit as usize)
     }
 }
 
@@ -843,6 +848,27 @@ mod tests {
 
         assert_eq!(provider.info().context_limit, Some(4096));
         assert!(provider.info().parameters.is_empty());
+    }
+
+    /// A listing that gives a limit of nothing has given no limit.
+    ///
+    /// note: reported as the limit, `0` was the window every client showed and measured a budget
+    /// against, while the kernel itself declined to refuse anything by it.
+    #[tokio::test]
+    async fn a_listed_limit_of_nothing_is_no_limit() {
+        for (body, limit) in [
+            (r#"{"data":[{"id":"m","context_length":0}]}"#, None),
+            (
+                r#"{"data":[{"id":"m","context_length":0,"top_provider":{"context_length":8192}}]}"#,
+                Some(8192),
+            ),
+        ] {
+            let provider =
+                OpenAiCompatible::new("m", routed(&[("/models", body)]).await, "no key needed");
+            provider.probe().await;
+
+            assert_eq!(provider.info().context_limit, limit, "{body}");
+        }
     }
 
     /// An ollama is measured against the context length its running model is served with, read

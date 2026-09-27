@@ -58,6 +58,9 @@ minor bump may break you.
   newlines and ended by a blank line, and each line was read as an event on its own and dropped.
   A line that parses alone is still an event at once, so a server that sends no blank lines
   between events reads as it did.
+- **A listed `context_length` of `0` is no limit.** It was reported as the model's window, so a
+  client showed a context of `0` tokens and measured its budget against it; a limit elsewhere in
+  the entry is read instead, and failing that the limit is unknown.
 
 ## [0.6.1] - 2026-09-24
 
