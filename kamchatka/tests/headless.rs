@@ -1317,21 +1317,61 @@ async fn a_ceiling_over_the_next_endpoint_that_reports_nothing_says_so_again() {
     );
 }
 
-/// A response that was interrupted carries no figures, and that is not the endpoint's silence.
+/// A response whose stream never finished carries no figures, and that is not the endpoint's
+/// silence.
 ///
-/// note: a stream cut short never reaches the chunk its usage rides on, so after a ctrl+c or a
-/// `--deadline` an endpoint that reports usage on every other response was being called one that
-/// reports none - telling whoever set the ceiling that it had stopped holding when it had not.
+/// note: a stream cut short never reaches the chunk its usage rides on, so after a ctrl+c, a
+/// `--deadline` or a connection dropped mid-answer an endpoint that reports usage on every other
+/// response was being called one that reports none - telling whoever set the ceiling that it had
+/// stopped holding when it had not, and saying it once, so the next endpoint that really is silent
+/// went unmentioned.
 #[tokio::test]
-async fn an_interrupted_response_does_not_say_the_endpoint_reports_nothing() {
-    let script = vec![ModelResponse {
-        stop: StopReason::Other("interrupted".to_owned()),
-        ..ModelResponse::text("cut sh")
-    }];
-    let run = run_capped("go\n", script, 1000, |_| {}).await;
+async fn an_unfinished_response_does_not_say_the_endpoint_reports_nothing() {
+    for why in ["interrupted", "cut off"] {
+        let script = vec![ModelResponse {
+            stop: StopReason::Other(why.to_owned()),
+            ..ModelResponse::text("cut sh")
+        }];
+        let run = run_capped("go\n", script, 1000, |_| {}).await;
 
-    assert!(run.prose.contains("cut sh"), "{}", run.prose);
-    assert!(!run.prose.contains("reports no usage"), "{}", run.prose);
+        assert!(run.prose.contains("cut sh"), "{why}: {}", run.prose);
+        assert!(
+            !run.prose.contains("reports no usage"),
+            "{why}: {}",
+            run.prose
+        );
+    }
+}
+
+/// A usage with no figures in it is no usage, and one with half of them is said to be half.
+#[tokio::test]
+async fn a_usage_without_its_figures_says_so() {
+    let empty = ModelResponse {
+        usage: Some(Usage::default()),
+        ..ModelResponse::text("nothing on this one")
+    };
+    let run = run_capped("go\n", vec![empty], 1000, |_| {}).await;
+    assert!(run.prose.contains("reports no usage"), "{}", run.prose);
+
+    let half = ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(400),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("half on this one")
+    };
+    let run = run_capped("go\n", vec![half], 1000, |_| {}).await;
+    assert!(run.prose.contains("only half"), "{}", run.prose);
+    assert_eq!(run.app.spent(), 400);
+}
+
+/// A figure no endpoint would send does not wrap the total round to nothing.
+#[tokio::test]
+async fn a_bill_past_counting_is_counted_as_everything() {
+    let script = vec![priced(ModelResponse::text("dear"), u64::MAX, 1)];
+    let run = run("go\n", script, |_| {}).await;
+
+    assert_eq!(run.app.spent(), u64::MAX);
 }
 
 /// The program itself runs headless, and keeps its two streams apart.

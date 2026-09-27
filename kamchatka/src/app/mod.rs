@@ -1279,11 +1279,16 @@ impl App {
     /// and a limit quietly never reached is worse than no limit at all: whoever set it would be
     /// reading the session as bounded when nothing is bounding it.
     ///
-    /// note: except for a response that was interrupted. A stream cut short never reaches the
-    /// chunk the figures ride on, so its silence is about this end rather than the endpoint's -
-    /// and saying otherwise after a ctrl+c or a `--deadline` tells whoever set the ceiling it has
-    /// stopped meaning anything when it has not. `interrupted` is the stop reason both of
-    /// `nachalnik-providers`' dialects give a stream they were told to stop.
+    /// note: except for a response whose stream never finished. It never reaches the chunk the
+    /// figures ride on, so its silence is about the stream rather than the endpoint - and saying
+    /// otherwise after a ctrl+c, a `--deadline` or a dropped connection tells whoever set the
+    /// ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off` are
+    /// the stop reasons both of `nachalnik-providers`' dialects give a stream they were told to
+    /// stop and one that ended mid-answer.
+    ///
+    /// note: a usage with neither figure in it is no usage, and one with only one of them is said
+    /// once as well: what is added up is then a floor, and a ceiling counted against a floor is
+    /// reached late.
     ///
     /// note: it stops *after* the response that crosses the line, because that is the first moment
     /// anybody knows what the response cost. A ceiling is a stopping rule, not a cap: the session
@@ -1293,14 +1298,17 @@ impl App {
     /// the session spent, and a model drafting over and over would otherwise spend without limit
     /// under a ceiling that says there is one.
     fn charge(&mut self, usage: Option<Usage>, stop: &StopReason) {
+        let usage = usage.filter(|it| it.input_tokens.is_some() || it.output_tokens.is_some());
+        // said only where it changes something: with no ceiling, a total nobody set a limit on
+        // being short by one response is not news
+        let telling = self.spend.is_some() && !self.unreported;
         let Some(usage) = usage else {
-            let interrupted = matches!(stop, StopReason::Other(why) if why == "interrupted");
-            // said only where it changes something: with no ceiling, a total nobody set a limit on
-            // being short by one response is not news
-            if self.spend.is_some()
-                && !interrupted
-                && !std::mem::replace(&mut self.unreported, true)
-            {
+            let unfinished = matches!(
+                stop,
+                StopReason::Other(why) if why == "interrupted" || why == "cut off"
+            );
+            if telling && !unfinished {
+                self.unreported = true;
                 self.say(
                     Speaker::Note,
                     "this endpoint reports no usage, so nothing is counted against the ceiling; \
@@ -1310,8 +1318,21 @@ impl App {
 
             return;
         };
+        if telling && (usage.input_tokens.is_none() || usage.output_tokens.is_none()) {
+            self.unreported = true;
+            self.say(
+                Speaker::Note,
+                "this endpoint reports only half of what a response cost, so the ceiling is \
+                 counted against less than was spent",
+            );
+        }
 
-        self.count(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0));
+        self.count(
+            usage
+                .input_tokens
+                .unwrap_or(0)
+                .saturating_add(usage.output_tokens.unwrap_or(0)),
+        );
     }
 
     /// Adds what a provider charged to what this session has spent, and stops the turn once that

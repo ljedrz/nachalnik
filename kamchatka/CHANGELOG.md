@@ -370,6 +370,13 @@ minor bump may break you.
   but before the program heard it had - the ceiling does this whenever the response that crosses it
   is the turn's last, and `esc` can - left the next message in the context with no turn and nothing
   said. The next turn now spends it first.
+- **The spend total is honest about what it could not count.** A response cut off mid-answer was
+  taken as an endpoint that reports no usage, which said "only a deadline can stop this session"
+  about one that reports it on every other response, and said it once, so a later silent endpoint
+  went unmentioned. A usage with neither figure in it counted as nothing and said nothing, one with
+  only one of them said nothing either, and the two figures were added with a `+` that wraps in a
+  release build. An unfinished stream is now exempt like an interrupted one, an empty usage is no
+  usage, half of one is said once, and the sum saturates.
 
 ## [0.15.1] - 2026-09-24
 
