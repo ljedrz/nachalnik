@@ -152,6 +152,11 @@ minor bump may break you.
   an address that publishes no listing or one that could not be reached, and the line says so.
 - **A `KAMCHATKA_BASE_URL` that is not an address is refused at startup,** by name and with what
   it held. It went unchecked until the first request, which failed as `builder error`.
+- **A `/model` or `/provider` notice is printed when the switch is done.** A run with no screen
+  looked for one only when a turn ended, so `/model` with a name the address does not list said
+  so after the next answer, as though about the model that had just given it, and a script ending
+  on the switch never said so. The next line, and the end of the input, now wait for the switch and
+  print what it said.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -

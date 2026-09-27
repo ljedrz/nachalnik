@@ -3513,6 +3513,77 @@ async fn provider_refuses_what_is_not_an_address() {
     assert_eq!(app.kernel.model_info().expect("a model").model, "first");
 }
 
+/// Serves `answer` - a status line, its headers and a body - to every request, for as long as anybody
+/// asks.
+async fn answering(answer: &'static str) -> String {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut discard = vec![0u8; 65536];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket.write_all(answer.as_bytes()).await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    format!("http://{at}")
+}
+
+/// Drives `input` against the OpenAI dialect at `address`, asking for `model`, and hands back the
+/// prose.
+async fn prose_at(address: String, model: &str, input: &str) -> String {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(model, address, "")))
+    .expect("the wiring failed");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    // a failed last turn is an `Err`, and some of these are about what was said on the way to one
+    let _ = Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, input.as_bytes())
+        .await;
+
+    String::from_utf8(prose).expect("the prose is text")
+}
+
+/// A switch's notice is printed when the switch is done: before the next line, and on the last.
+///
+/// note: the run looked for a notice only when a turn ended, so `/model` with a name the address
+/// does not list said so after the *next* answer - blaming whichever model had just given it - and
+/// a script ending on the switch never said so at all.
+#[tokio::test]
+async fn a_switchs_notice_is_printed_when_the_switch_is_done() {
+    const LISTS: &str = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: 28\r\n\r\n{\"data\":[{\"id\":\"resident\"}]}";
+    let missing = "bogus/nope is not one of";
+
+    let prose = prose_at(
+        answering(LISTS).await,
+        "resident",
+        "/model bogus/nope\n/model resident\n",
+    )
+    .await;
+    let said = prose.find(missing).expect(&prose);
+    let next = prose.find("switching to resident").expect(&prose);
+    assert!(said < next, "before the next line: {prose}");
+    assert_eq!(prose.matches(missing).count(), 1, "{prose}");
+
+    let prose = prose_at(answering(LISTS).await, "resident", "/model bogus/nope\n").await;
+    assert!(prose.contains(missing), "on the last line: {prose}");
+}
+
 /// A switch on a script's last line is in the record before the session ends.
 ///
 /// note: the line after a switch is what waits for it, and at the end of the input there is none.

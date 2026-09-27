@@ -51,9 +51,7 @@ impl App {
     pub async fn submit(&mut self, line: &str) -> Reply {
         // a switch still in flight is finished before this line is read, so that nothing acts on
         // a session part-way through changing model. See `App::settling`
-        if let Some(settling) = self.settling.take() {
-            let _ = settling.await;
-        }
+        self.settled(None).await;
 
         let (from, pages) = (self.loose.len(), self.previews);
         // whatever this line turns into, the time before it was somebody deciding what to type.

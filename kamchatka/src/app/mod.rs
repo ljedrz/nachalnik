@@ -826,6 +826,50 @@ impl App {
         self.say(Speaker::Note, format!("step → {told}"));
     }
 
+    /// Says whatever the provider and the advisor have put up since the last look, and whether
+    /// there was anything.
+    ///
+    /// note: each holds one notice and a newer one replaces it, so a loop has to look often -
+    /// while a turn runs, and not only when it ends - or all but the last retry of a turn is lost
+    /// and the last arrives after the failure it led up to. The loops call this on a tick; the
+    /// places below call it where a notice is known to be about something that has just finished.
+    pub fn take_notices(&mut self) -> bool {
+        let mut heard = false;
+        if let Some(notice) = self.provider.take_notice() {
+            self.say(Speaker::Note, notice);
+            heard = true;
+        }
+        // note: the advisor's beside the provider's. It is a second thing this session depends on
+        // and cannot see
+        #[cfg(feature = "shell-advisor")]
+        if let Some(notice) = self.advisor.as_ref().and_then(|advised| advised.notice()) {
+            self.say(Speaker::Note, notice);
+            heard = true;
+        }
+
+        heard
+    }
+
+    /// Waits for a `/model` or `/provider` still settling, and says what the switch had to say.
+    ///
+    /// note: the notice is taken here, the moment the switch is done, because it is about that
+    /// switch: left for the next look, it lands after whatever the next line does, and a script's
+    /// last line never has a next look at all.
+    async fn settled(&mut self, within: Option<std::time::Duration>) {
+        let Some(settling) = self.settling.take() else {
+            return;
+        };
+        match within {
+            Some(bound) => {
+                let _ = tokio::time::timeout(bound, settling).await;
+            }
+            None => {
+                let _ = settling.await;
+            }
+        }
+        self.take_notices();
+    }
+
     /// Takes in the end of a turn.
     pub fn on_outcome(&mut self, outcome: Outcome) {
         self.busy = false;
@@ -834,21 +878,13 @@ impl App {
         // note: before anything this says about the turn, because most of what a provider puts
         // here is *about* the turn that just ended - "the model was cut off mid-answer; what had
         // arrived is kept" is the account of the answer above it, and reads as a remark about the
-        // next one if it lands after. The loop also drains this on a tick, for the notices that
-        // belong to no turn at all, and taking it twice costs nothing.
+        // next one if it lands after. The loops also look on a tick, and taking it twice costs
+        // nothing.
         //
-        // note: here rather than only in that loop, so that a notice is not something only the
-        // program's own `main` receives: an embedder driving `App` directly would otherwise never
+        // note: here rather than only in those loops, so that a notice is not something only this
+        // program's own loops receive: an embedder driving `App` directly would otherwise never
         // hear that an answer was cut off.
-        if let Some(notice) = self.provider.take_notice() {
-            self.say(Speaker::Note, notice);
-        }
-        // note: the advisor's beside the provider's, for the same reason and in the same place.
-        // It is a second thing this session depends on and cannot see
-        #[cfg(feature = "shell-advisor")]
-        if let Some(notice) = self.advisor.as_ref().and_then(|advised| advised.notice()) {
-            self.say(Speaker::Note, notice);
-        }
+        self.take_notices();
 
         // note: a turn that stopped to ask a question has not ended - the call it is asking about
         // still has a result to come - and a message pushed now would land between the call and
@@ -1421,9 +1457,7 @@ impl App {
         // a `/model` or `/provider` still settling first, for the reason the turn is waited for:
         // its change is a record, and a script whose last line is the switch reaches the end of
         // its input with no next line to wait for it. Under the same bound, and left the same way
-        if let Some(settling) = self.settling.take() {
-            let _ = tokio::time::timeout(LEAVING, settling).await;
-        }
+        self.settled(Some(LEAVING)).await;
         if !self.busy {
             return None;
         }
