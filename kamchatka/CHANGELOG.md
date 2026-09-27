@@ -437,6 +437,9 @@ minor bump may break you.
   with the new session's records under the old one's and nothing between them. It now stops at
   the refusal with an error naming the session it was following and saying to run it again, and a
   session that ends - by `/quit` or `/restart` - is said to have ended.
+- **`--connect` exits `1` when the last turn failed**, as `--headless` does. It left with `0`
+  whatever happened, so a script piping a question into a session whose model could not be
+  reached read a success.
 
 ## [0.15.1] - 2026-09-24
 

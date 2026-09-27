@@ -989,6 +989,30 @@ async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody() {
     }
 }
 
+/// A client whose turn failed leaves with a failure, as `--headless` does.
+///
+/// note: it left with `0` whatever happened, so a script piping a question into a session whose
+/// model could not be reached read a success. The script here has nothing in it, which is a
+/// provider failing to answer.
+#[tokio::test]
+async fn a_turn_that_failed_is_a_client_that_failed() {
+    let session = served(vec![], |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let left = tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(&b"ask something\n"[..])),
+    )
+    .await
+    .expect("the client never left");
+    assert_eq!(left, Err("the last turn failed".to_owned()));
+
+    quit(&session.at).await;
+    // and the session's own outcome says the same from the other end
+    assert!(session.ended().await.1.is_err());
+}
+
 /// A client whose input closes after a command writes the records that command made before it
 /// leaves.
 ///

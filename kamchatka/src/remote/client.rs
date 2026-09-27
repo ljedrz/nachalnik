@@ -146,6 +146,13 @@ pub struct Client<'a> {
     /// what it was asked. `session.finished` is a record like any other, so this is the session
     /// saying so rather than this client inferring it from a silence.
     over: bool,
+    /// Whether the last turn this client saw end failed.
+    ///
+    /// note: what the exit status says, as it does for `--headless`: a script whose question never
+    /// reached a model must not read a `0`. The last one rather than any, for headless's reason - a
+    /// session that failed once and was carried on from has recovered - so a request that finishes
+    /// clears it.
+    failed: bool,
     /// Whether the session has said anything on this connection.
     ///
     /// note: what makes [`GIVE_UP`] a minute from the last drop rather than a minute across the
@@ -189,6 +196,7 @@ impl<'a> Client<'a> {
             outstanding: 0,
             detaching: false,
             over: false,
+            failed: false,
             reached: false,
         }
     }
@@ -216,6 +224,9 @@ impl<'a> Client<'a> {
             let left = self.attend(address, &mut typed, first).await;
             first = false;
             match left {
+                // the reason is not repeated, for headless's reason: it went by as the session said
+                // it, and what is left to say is the exit status
+                Left::Done if self.failed => return Err("the last turn failed".to_owned()),
                 Left::Done => return Ok(()),
                 Left::Failed(e) => return Err(e),
                 Left::Dropped if waited >= GIVE_UP => {
@@ -661,13 +672,13 @@ impl<'a> Client<'a> {
 
         match event {
             Event::ModelRequested { .. } => (self.streamed, self.fetching) = (false, false),
-            Event::ModelFinished { item, .. } => match std::mem::take(&mut self.streamed) {
-                true => {}
-                false => {
+            Event::ModelFinished { item, .. } => {
+                self.failed = false;
+                if !std::mem::take(&mut self.streamed) {
                     self.unstreamed.push_back(*item);
                     self.fetching = true;
                 }
-            },
+            }
             Event::ToolRequested { tool, args, .. } => {
                 self.fresh_line()?;
                 writeln!(self.prose, "⟩ {tool}({})", one_line(&args.to_string()))
@@ -709,6 +720,7 @@ impl<'a> Client<'a> {
                 self.tell(&format!("{tool}: {grant}"))?;
             }
             Event::SessionFinished => self.over = true,
+            Event::ModelFailed { .. } | Event::StepFailed { .. } => self.failed = true,
             event => {
                 if let Some(line) = crate::app::text::went_in(event) {
                     self.fresh_line()?;
