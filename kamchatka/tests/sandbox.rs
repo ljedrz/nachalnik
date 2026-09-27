@@ -1155,32 +1155,7 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
-    // spawned rather than run in one call, for the reason `run` is: the directory a confined
-    // command gets is named after *that* command, it cannot remove its own, and only whoever
-    // spawned it knows the identifier. These two used to call `output()` and then remove
-    // `scratch_for(std::process::id())` - this test's own identifier, naming a directory that
-    // never existed - so every run of this file left two of the child's behind for good
-    let spawned = Command::new(common::program())
-        .args(confined.argv("git log -n 1 --oneline"))
-        .env("HOME", &home)
-        .env_remove("GIT_CONFIG_GLOBAL")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
-    let scratch = kamchatka::sandbox::scratch_for(spawned.id());
-    let child = spawned.wait_with_output().expect("it was spawned");
-    let _ = std::fs::remove_dir_all(&scratch);
-    let said = format!(
-        "{}{}",
-        String::from_utf8_lossy(&child.stdout),
-        String::from_utf8_lossy(&child.stderr)
-    );
-
-    assert!(
-        child.status.success(),
-        "git should still run confined: {said}"
-    );
+    let said = git_says(&confined, &home, None, "git log -n 1 --oneline");
     assert!(said.contains("one"), "{said}");
     assert!(
         !said.contains("fatal"),
@@ -1190,24 +1165,133 @@ fn git_is_not_killed_by_a_configuration_it_cannot_read() {
     // ... and opened up, it is git's own configuration again rather than nothing
     let mut opened = confined.clone();
     opened.readable = vec![home.join(".gitconfig")];
-    let spawned = Command::new(common::program())
-        .args(opened.argv("git config --get user.name"))
-        .env("HOME", &home)
-        .env_remove("GIT_CONFIG_GLOBAL")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .expect("the binary under test is built");
-    let scratch = kamchatka::sandbox::scratch_for(spawned.id());
-    let child = spawned.wait_with_output().expect("it was spawned");
-    let _ = std::fs::remove_dir_all(&scratch);
-    let said = String::from_utf8_lossy(&child.stdout).into_owned();
-
+    let said = git_says(&opened, &home, None, "git config --get user.name");
     assert_eq!(
         said.trim(),
         "someone",
         "a configuration in reach is not thrown away"
     );
+}
+
+/// Git is not killed by a configuration in `GIT_CONFIG_GLOBAL` either, which is where a person or
+/// a wrapper script can put one.
+///
+/// note: the same trap, reached by the other door. The override is asked for and given out of
+/// reach, git asks whether that path is readable, is told yes, opens it, gets `EACCES` and takes
+/// the *unreadable configuration* branch. `git log` came back `fatal: unknown error occurred
+/// while reading the configuration files` for every command in the session, and a person who
+/// points the variable at something has no reason to expect a sandbox to override it.
+#[test]
+fn git_is_not_killed_by_a_configuration_named_in_the_environment() {
+    if !enforced() {
+        return;
+    }
+    if Command::new("git").arg("--version").output().is_err() {
+        eprintln!("skipped: no git here");
+        return;
+    }
+
+    // the file exists, is readable to whoever runs this, and is out of reach to the command: the
+    // only thing standing between the two is the ruleset
+    let elsewhere = common::workdir("git-elsewhere");
+    let named = elsewhere.join("gitconfig");
+    std::fs::write(&named, "[user]\n\tname = someone\n").expect("a configuration");
+
+    let dir = common::workdir("git-repo-named");
+    // a commit in it, so that `git log` has something to print and every `fatal` it says is about
+    // the configuration rather than about an empty history
+    for args in [
+        vec!["init", "-q"],
+        vec![
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "one",
+        ],
+    ] {
+        let done = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .output()
+            .expect("git runs");
+        assert!(
+            done.status.success(),
+            "{}",
+            String::from_utf8_lossy(&done.stderr)
+        );
+    }
+
+    let confined = sandbox(dir, true, Network::NoTcp);
+    let said = git_says(
+        &confined,
+        &elsewhere,
+        Some(&named),
+        "git log -n 1 --oneline",
+    );
+    assert!(said.contains("one"), "{said}");
+    assert!(
+        !said.contains("fatal"),
+        "a configuration out of reach is not git's problem to solve, whichever hand it was given \
+         in: {said}"
+    );
+
+    // ... and where it is in reach, it is the configuration the command is given, because that is
+    // what the person naming it asked for
+    let mut opened = confined.clone();
+    opened.readable = vec![named.clone()];
+    let said = git_says(
+        &opened,
+        &elsewhere,
+        Some(&named),
+        "git config --get user.name",
+    );
+    assert_eq!(
+        said.trim(),
+        "someone",
+        "a configuration somebody pointed at is not thrown away for a command that could have had \
+         it"
+    );
+}
+
+/// Runs `git` under `confined` with `GIT_CONFIG_GLOBAL` set to `named`, and says what it said.
+///
+/// note: spawned rather than run in one call, for the reason `run` is: the directory a confined
+/// command gets is named after *that* command, it cannot remove its own, and only whoever spawned
+/// it knows the identifier. These two used to call `output()` and then remove
+/// `scratch_for(std::process::id())` - this test's own identifier, naming a directory that never
+/// existed - so every run of this file left two of the child's behind for good
+fn git_says(confined: &Sandbox, home: &Path, named: Option<&Path>, git: &str) -> String {
+    let mut command = Command::new(common::program());
+    command
+        .args(confined.argv(git))
+        .env("HOME", home)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    match named {
+        Some(named) => {
+            command.env("GIT_CONFIG_GLOBAL", named);
+        }
+        None => {
+            command.env_remove("GIT_CONFIG_GLOBAL");
+        }
+    }
+
+    let child = command.spawn().expect("the binary under test is built");
+    let scratch = kamchatka::sandbox::scratch_for(child.id());
+    let child = child.wait_with_output().expect("it was spawned");
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&child.stdout),
+        String::from_utf8_lossy(&child.stderr)
+    )
 }
 
 /// ... and the `shell` tool actually puts it in front of the model.
@@ -1305,6 +1389,50 @@ except PermissionError: sys.exit('dial unix ' + path + ': connect: permission de
     .await;
     assert!(said.contains("permission denied"), "{said}");
     assert!(!said.contains("is a socket outside"), "{said}");
+}
+
+/// A command's standard input is `/dev/null`, so a command that reads it reads end-of-file.
+///
+/// note: through the tool rather than by asserting on the description's words: the description is
+/// what a model reads, the child is what the words have to be true of, and only the second can be
+/// caught here. The gate is the case where it could be otherwise - the socket the gate's listener
+/// came back up is the child's standard input, and the child is what puts `/dev/null` in front of
+/// the command instead - so a command under the gate is the one that has to answer this. A command
+/// that waited for ever instead would be a call nobody can stop.
+#[tokio::test]
+async fn a_command_reading_its_input_reads_end_of_file() {
+    if !enforced() {
+        return;
+    }
+
+    let dir = common::workdir("shell-input");
+    // a shell that confines nothing, which is what a `--no-sandbox` session gets, so the only
+    // thing standing between a command and a wait is what `shell` hands it
+    let open = Shell {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        policy: Arc::new(Careful::new()),
+        confiner: None,
+        limits: Limits::default(),
+    };
+
+    let said = through(&open, "read line; echo read").await;
+    assert!(said.contains("read"), "{said}");
+
+    let said = through(&open, "cat; echo end").await;
+    assert!(said.contains("end"), "{said}");
+
+    // ... and under the gate, where the socket the listener came back up is the child's standard
+    // input; see `gate::hold`. The gate asks only where a command reaches for the network, and
+    // reading its own input is not that, so nothing is answered here
+    if !gated() {
+        return;
+    }
+    let (gated, _policy) = gated_shell(&dir);
+    let said = through(&gated, "read line; echo read").await;
+    assert!(said.contains("read"), "{said}");
 }
 
 /// A confined shell whose policy knows the gate holds, and the policy, for answering it.

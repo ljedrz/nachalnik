@@ -465,16 +465,17 @@ impl Sandbox {
     /// session is dead. A missing file is fine; an unreadable one is not, and a confined command
     /// cannot tell git which it has.
     ///
-    /// note: only when one of them is actually out of reach, and only when nobody set the
-    /// variable already. Git reads a person's aliases and identity out of these, and quietly
-    /// throwing them away for a command that could have had them would be its own bug.
+    /// note: only when a configuration a confined command could not read is what git would open
+    /// otherwise. Git reads a person's aliases and identity out of these, and quietly throwing
+    /// them away for a command that could have had them would be its own bug. A path set in
+    /// `GIT_CONFIG_GLOBAL` is a choice somebody made, and is left alone where it is readable - but
+    /// left alone out of reach is what kills git, the same as any other configuration, and the
+    /// *no configuration* case is the one it handles.
     fn git_config_global(&self) -> Option<PathBuf> {
-        if std::env::var_os("GIT_CONFIG_GLOBAL").is_some() {
-            return None;
-        }
-
-        let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = global_git_config()
+        let (mine, missed): (Vec<PathBuf>, Vec<PathBuf>) = std::env::var_os("GIT_CONFIG_GLOBAL")
+            .map(PathBuf::from)
             .into_iter()
+            .chain(global_git_config())
             .filter(|path| path.is_file())
             .partition(|path| self.reaches(path, None));
 

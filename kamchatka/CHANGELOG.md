@@ -471,6 +471,15 @@ minor bump may break you.
 - **A command stopped by `--deadline` is not said to have been stopped by the person.** Every
   stopped command was "stopped before it finished, at the request of the person you are working
   with", whatever interrupted the turn; it now says it was stopped when the turn was interrupted.
+- **`shell`'s description says a command reading its input reads end-of-file.** It said such a
+  command waits for ever, and a command's standard input is `/dev/null`: `read` and `cat` return at
+  once.
+- **Git is not killed by a configuration named in `GIT_CONFIG_GLOBAL`.** A path already in the
+  environment was taken on trust, so one outside the reach came back `fatal: unknown error occurred
+  while reading the configuration files` and every git command in the session was dead - which is
+  what `RUNNING.md` says a confined command is never left with. A path the variable names is now
+  judged like any other configuration and overridden when it is out of reach, and left as it is
+  where it is readable.
 - **Two `fs edit`s of one file in a parallel batch both land.** Each read the file, changed it and
   renamed the result over it, so the second kept only its own change while both answered that
   they had replaced one occurrence. A `write` or an `edit` now holds the file, by the path it

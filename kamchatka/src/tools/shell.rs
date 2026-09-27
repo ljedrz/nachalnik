@@ -329,7 +329,7 @@ impl Tool for Shell {
             format!(
                 "runs one command with `sh -c` in the working directory and returns its exit \
                  status, its errors and its output.{cut} Nothing \
-                 is typed at it: a command that waits for input waits for ever.{}",
+                 is typed at it: a command reading its input reads end-of-file.{}",
                 match self.confiner.is_some() {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \

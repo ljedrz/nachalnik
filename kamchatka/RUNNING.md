@@ -961,8 +961,10 @@ git would ask whether `~/.gitconfig` is readable, be told yes, open it, get `EAC
 *unreadable configuration* branch — `fatal: unknown error occurred while reading the configuration
 files`, and every git command in the session dead. So a confined command is handed
 `GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out of reach, and git gets the
-*no configuration* case, which it handles. Pass `--sandbox-read ~/.gitconfig` if you want
-your identity and aliases in there too.
+*no configuration* case, which it handles. A path you have set in `GIT_CONFIG_GLOBAL` yourself is
+treated the same way: a reachable one is left as you set it, one out of reach is replaced rather
+than left to kill every git command. Pass `--sandbox-read ~/.gitconfig` if you want your identity
+and aliases in there too.
 
 **A permission error says where it came from.** When a confined command is refused a path outside
 its reach, the tool result names the path and says it is outside what this session reaches, so
