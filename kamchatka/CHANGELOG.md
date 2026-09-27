@@ -427,6 +427,11 @@ minor bump may break you.
   read of the log, so `/quit` and then another line, typed together, left `--connect` reading a
   dropped socket and reattaching for a minute to a session that had ended. A refused reattach
   during the ending sends the rest of the log too.
+- **A client that resumes is told the model and the network questions waiting.** Both are said
+  only when they change and a resume carries no projection, so `--connect` coming back after a
+  drop never heard of a command that had reached for the network meanwhile, and its `y` went to
+  the model as a message. A resume is now sent `model` and `reaching` ahead of its answer, and
+  `--connect` names the model only where it changed.
 
 ## [0.15.1] - 2026-09-24
 

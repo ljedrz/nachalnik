@@ -109,6 +109,11 @@ pub struct Client<'a> {
     let_through: BTreeSet<u64>,
     /// Whether this connection opened with a resume that has not been answered yet.
     resuming: bool,
+    /// The model this last said the session was talking to, once it has said one.
+    ///
+    /// note: so that a resume, which is told the model whether or not it changed, prints it only
+    /// where it did.
+    model: Option<Option<String>>,
     /// What a question is answered with once there is nobody left here to answer it.
     ///
     /// note: the same flag `--headless` reads, and it reaches the same two states for the same
@@ -176,6 +181,7 @@ impl<'a> Client<'a> {
             told: BTreeSet::new(),
             let_through: BTreeSet::new(),
             resuming: false,
+            model: None,
             busy: false,
             outstanding: 0,
             detaching: false,
@@ -494,11 +500,18 @@ impl<'a> Client<'a> {
             // and a model switch is in neither - so without this, a session that changed model
             // under it would read as one that had not
             Message::Model { model } => {
+                let model = model.map(|model| model.model);
+                if self.model.as_ref() == Some(&model) {
+                    return Ok(());
+                }
                 self.fresh_line()?;
-                self.tell(&match model {
-                    Some(model) => format!("the model is {}", model.model),
+                self.tell(&match &model {
+                    Some(model) => format!("the model is {model}"),
                     None => "there is no model".to_owned(),
-                })
+                })?;
+                self.model = Some(model);
+
+                Ok(())
             }
             Message::Done { busy, .. } => {
                 self.busy = busy;
@@ -562,6 +575,7 @@ impl<'a> Client<'a> {
     fn arrived(&mut self, attached: &Attached) -> Result<(), String> {
         self.last = attached.seq;
         self.session = Some(attached.session.clone());
+        self.model = Some(attached.model.as_ref().map(|model| model.model.clone()));
         self.busy = attached.busy;
         self.answered();
         writeln!(

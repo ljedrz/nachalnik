@@ -223,6 +223,11 @@ async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
         1,
         "a resume was answered with a second projection: {prose}"
     );
+    // a resume is told the model whether or not it changed, and one that had not is not news
+    assert!(
+        !prose.contains("the model is"),
+        "a model that had not changed was announced on the way back: {prose}"
+    );
     assert!(records.contains("model.finished"), "{records}");
 
     quit(&session.at).await;

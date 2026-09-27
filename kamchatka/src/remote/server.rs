@@ -77,15 +77,22 @@ enum Listener {
 
 /// What the session loop says back about one command.
 ///
-/// note: two things, and only an attach has the second. A subscription to the program's own voice
-/// has to be taken in the same breath as the projection it goes with, and the session loop is the
-/// only place both can happen with nothing in between - see the note on `Attached::seq`, which
-/// makes the same argument about the records.
+/// note: an attach has more than the answer. A subscription to the program's own voice has to be
+/// taken in the same breath as the projection it goes with, and the session loop is the only place
+/// both can happen with nothing in between - see the note on `Attached::seq`, which makes the same
+/// argument about the records.
 struct Answered {
     /// The message that answers it, where it has one; `None` means the records will carry it.
     message: Option<Message>,
     /// The program's own voice, from this moment on.
     voice: Option<broadcast::Receiver<Arc<Message>>>,
+    /// Where the session stands on what the voice says only when it changes, for a resume.
+    ///
+    /// note: a resume is answered with no projection, and the model and the questions a running
+    /// command is waiting on are in no record - so a client that was away when either changed would
+    /// otherwise go on showing the old one, and answer a network question it had never heard of
+    /// with a `y` that went to the model as a message. Taken with the subscription, for its reason.
+    standing: Vec<Message>,
 }
 
 /// One thing a client has asked for, waiting for the loop that owns the [`App`] to do it.
@@ -656,9 +663,14 @@ impl Serving {
                 // order is which way to be wrong if anything ever does
                 let voice =
                     matches!(command, Command::Attach { .. }).then(|| self.voice.subscribe());
+                let standing = match command {
+                    Command::Attach { since: Some(_), .. } => standing(app),
+                    _ => Vec::new(),
+                };
                 let _ = answer.send(Answered {
                     message: apply(app, client, command).await,
                     voice,
+                    standing,
                 });
             }
         }
@@ -996,6 +1008,23 @@ fn unrated(app: &App, asking: &[nachalnik::PermissionRequest]) -> Vec<Unjudged> 
 #[cfg(not(feature = "shell-advisor"))]
 fn unrated(_: &App, _: &[nachalnik::PermissionRequest]) -> Vec<Unjudged> {
     Vec::new()
+}
+
+/// What a client coming back is told of what the voice only says on a change; see
+/// [`Answered::standing`].
+///
+/// note: both, whether or not they changed, because this end cannot know what the client last
+/// heard. An empty list is news too, to a client still offering a question somebody else answered
+/// while it was gone.
+fn standing(app: &App) -> Vec<Message> {
+    vec![
+        Message::Model {
+            model: app.kernel.model_info(),
+        },
+        Message::Reaching {
+            waiting: app.policy.reaching().waiting(),
+        },
+    ]
 }
 
 /// Where the session stands, in the form a client can start rendering from.
@@ -1432,6 +1461,9 @@ async fn watermark<W: AsyncWrite + Unpin>(
     // reply are held to. Written after, a client coming back to collect the end of an answer was
     // told the session was resting and left before the records it had come back for
     flush(kernel, &mut last, write).await?;
+    for standing in &answered.standing {
+        protocol::write(write, standing).await?;
+    }
     protocol::write(write, &message).await?;
 
     Ok((last, voice))

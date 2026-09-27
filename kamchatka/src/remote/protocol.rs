@@ -357,7 +357,8 @@ pub enum Message {
         busy: bool,
     },
     /// The running commands waiting to hear whether they may reach the network, sent whenever
-    /// that changes: the whole list, oldest first, and empty once none are.
+    /// that changes and to a client that resumes: the whole list, oldest first, and empty once none
+    /// are.
     ///
     /// note: the whole list rather than one arrival at a time, because nothing numbers these on the
     /// wire. The question is not the kernel's, so it is in no record - see
@@ -372,7 +373,8 @@ pub enum Message {
         /// The questions, oldest first.
         waiting: Vec<Reached>,
     },
-    /// Which model the requests are going to, sent whenever that changes.
+    /// Which model the requests are going to, sent whenever that changes and to a client that
+    /// resumes.
     ///
     /// note: on the wire as well as in the records, which since `Kernel::provider_changed` say
     /// when the model changed. `/model` and `/provider` finish inside the

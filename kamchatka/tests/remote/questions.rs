@@ -13,7 +13,7 @@ use nachalnik::{
 };
 use serde_json::json;
 
-use crate::{Peer, Reacher, records, served, streamed};
+use crate::{Peer, Reacher, attaching, records, served, served_as, streamed};
 
 /// A question raised by a tool is answered from a client, and the turn carries on.
 #[tokio::test]
@@ -222,4 +222,72 @@ async fn a_command_reaching_for_the_network_is_answered_from_a_client() {
             .any(|item| item.content.to_text().contains("answered Some(true)")),
         "the answer reached the command"
     );
+}
+
+/// A client that comes back is told of a running command's question raised while it was away, and
+/// of the model.
+///
+/// note: a resume is answered with no projection, and both are in no record and said only when they
+/// change - so the client came back to a session whose command was waiting on it and never heard,
+/// and its `y` went to the model as a message.
+#[tokio::test]
+async fn a_client_coming_back_hears_what_the_voice_said_while_it_was_away() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "reacher", json!({}))]),
+        ModelResponse::text("it went"),
+    ];
+    let session = served_as(Some("the-one-session"), script, |app| {
+        app.kernel.add_tool(Arc::new(Reacher(app.policy.clone())));
+    })
+    .await;
+
+    let (away, attached) = Peer::attached(&session.at).await;
+    away.drop_it().await;
+
+    let (mut here, _) = Peer::attached(&session.at).await;
+    here.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    let heard = here
+        .until(|message| matches!(message, Message::Reaching { waiting } if !waiting.is_empty()))
+        .await;
+    let Some(Message::Reaching { waiting }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    let id = waiting[0].id;
+
+    let mut back = Peer::connect(&session.at).await;
+    back.send(attaching(Some(attached.seq), Some("the-one-session")))
+        .await;
+    let heard = back
+        .until(|message| matches!(message, Message::Done { .. }))
+        .await;
+    assert!(
+        heard.iter().any(|message| matches!(
+            message,
+            Message::Reaching { waiting } if waiting.iter().any(|it| it.cmd == "curl x")
+        )),
+        "the question was never mentioned to the client that came back: {heard:?}"
+    );
+    assert!(
+        heard
+            .iter()
+            .any(|message| matches!(message, Message::Model { model: Some(_) })),
+        "the client that came back was not told the model: {heard:?}"
+    );
+
+    // answered, because a `/quit` waits for the turn and the turn waits for this
+    back.send(Command::Reach {
+        id,
+        grant: Grant::Deny,
+        remember: false,
+    })
+    .await;
+    here.until_words("it went").await;
+    here.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
 }
