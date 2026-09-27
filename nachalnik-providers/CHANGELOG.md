@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **Only an address that answers like an ollama is asked for one.** Every `/v1` base whose
+  listing named no context length was sent `GET /api/ps` and then an unauthenticated
+  `POST /api/generate` with an empty prompt, to make ollama load the model and say what `num_ctx`
+  it is serving it with; against anything else those two were given fifteen seconds and two
+  minutes to refuse a request it does not have, and a startup waited out both of them. A base is
+  now asked for its version first, and neither probe goes out unless it answers `{"version":…}`.
 - **A base URL ending in `/` is used without it.** Every path is appended to the base, so
   `…/v1/` asked for `…/v1//chat/completions` and a server routing on the path answered with a bare
   404. All three clients trim it, at construction and on `set_endpoint`, and `endpoint()` reports

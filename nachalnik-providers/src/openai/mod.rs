@@ -569,7 +569,17 @@ impl OpenAiCompatible {
     /// would fire, and the server would quietly drop the front of the conversation instead.
     /// `/api/ps` reports what a loaded model is really serving, and a model that is not loaded
     /// yields nothing at all, because "unknown" is a better answer than a number that is wrong.
+    ///
+    /// note: the address is asked whether it is an ollama before either probe goes out, because
+    /// every `/v1` base is asked and most of them answer `/v1/models` perfectly well while saying
+    /// nothing about a context length. An address that is not ollama has no `/api/ps` to answer,
+    /// and one that took the request rather than refusing it would sit through both waits - a
+    /// minute and a half of a startup with nothing to show for it - to answer the same nothing.
     async fn loaded_limit(&self, root: &str) -> Option<usize> {
+        if !self.answers_like_ollama(root).await {
+            return None;
+        }
+
         if let Some(limit) = self.running_limit(root).await {
             return Some(limit);
         }
@@ -589,6 +599,35 @@ impl OpenAiCompatible {
             .ok()?;
 
         self.running_limit(root).await
+    }
+
+    /// Whether this address is an ollama, asked of the version it reports.
+    ///
+    /// note: ollama's `/api/version` answers `{"version":"…"}` to a server no key is needed for,
+    /// and it is the one question the two probes can put to any `/v1` address without loading a
+    /// model or waiting out a generation. What the address says is not what the probes need, only
+    /// that there is something behind them that will answer: a proxy in front of a model server
+    /// will not say so, and is then measured against the limit it declares, which is what a
+    /// listing that said one would have been.
+    async fn answers_like_ollama(&self, root: &str) -> bool {
+        // note: bounded by a timeout on the request rather than the client's own, which is unset -
+        // an address that takes the connection and says nothing is the case this whole question
+        // is for
+        let Ok(version) = self
+            .client
+            .get(format!("{root}/api/version"))
+            .timeout(crate::ASKING)
+            .send()
+            .await
+        else {
+            return false;
+        };
+
+        // the body under the same bound, so a server that announced an answer it never sends ends
+        // the wait here rather than a second time
+        tokio::time::timeout(crate::ASKING, version.json::<Value>())
+            .await
+            .is_ok_and(|said| said.is_ok_and(|body| body["version"].is_string()))
     }
 
     /// The context length ollama has a model loaded with, if it has it loaded at all.
@@ -719,6 +758,8 @@ impl Dialect for OpenAiCompatible {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use nachalnik::Provider;
 
     use super::*;
@@ -765,14 +806,22 @@ mod tests {
         assert!(late.is_timeout(), "{late:?}");
     }
 
-    /// Serves each path its own body and `{}` to any other, so what comes back says which address
-    /// was read.
-    async fn routed(routes: &[(&'static str, &'static str)]) -> String {
+    /// Serves each path its own body and `{}` to any other, and keeps every path it was asked
+    /// for, so what comes back says which address was read and what else was wanted.
+    ///
+    /// note: named against the provider's own [`OpenAiCompatible::recording`], which keeps the
+    /// requests it sent rather than the paths a server was asked for.
+    async fn watching(
+        routes: &[(&'static str, &'static str)],
+    ) -> (String, Arc<Mutex<Vec<String>>>) {
         let routes = routes.to_vec();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a port");
         let at = listener.local_addr().expect("its address");
+        let asked = Arc::new(Mutex::new(Vec::new()));
+        let keeping = asked.clone();
+
         tokio::spawn(async move {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             while let Ok((mut socket, _)) = listener.accept().await {
@@ -791,6 +840,9 @@ mod tests {
                     .iter()
                     .find(|(route, _)| *route == path)
                     .map_or("{}", |(_, body)| *body);
+                // kept before the answer goes out, so a client that has been answered has been
+                // recorded
+                keeping.lock().push(path.to_owned());
                 let _ = socket
                     .write_all(
                         format!(
@@ -805,7 +857,12 @@ mod tests {
             }
         });
 
-        format!("http://{at}")
+        (format!("http://{at}"), asked)
+    }
+
+    /// [`watching`], for a test that only wants the answers.
+    async fn routed(routes: &[(&'static str, &'static str)]) -> String {
+        watching(routes).await.0
     }
 
     /// note: the two shapes are quoted from what the two endpoints really answer, trimmed to the
@@ -878,14 +935,16 @@ mod tests {
     }
 
     /// An ollama is measured against the context length its running model is served with, read
-    /// off `/api/ps`, since its listing publishes none.
+    /// off `/api/ps`, since its listing publishes none - and only an ollama's, which is what the
+    /// version is asked first for.
     ///
     /// note: its `/api/show` advertises the architecture's maximum instead, and measured against
     /// that nothing would ever look full while the server dropped the front of the conversation.
     #[tokio::test]
     async fn an_ollama_is_measured_by_what_its_running_model_is_served_with() {
-        let at = routed(&[
+        let (at, asked) = watching(&[
             ("/v1/models", r#"{"data":[{"id":"m"}]}"#),
+            ("/api/version", r#"{"version":"0.12.0"}"#),
             (
                 "/api/ps",
                 r#"{"models":[{"name":"m:latest","context_length":4096}]}"#,
@@ -896,6 +955,26 @@ mod tests {
         provider.probe().await;
 
         assert_eq!(provider.info().context_limit, Some(4096));
+        assert!(asked.lock().contains(&"/api/ps".to_owned()));
+    }
+
+    /// A `/v1` address whose listing names no context length is asked whether it is an ollama, and
+    /// one that does not answer like one is left alone: nothing asks it for `/api/ps`, and nothing
+    /// sends it the empty prompt that loads a model - the second given two minutes to load a model
+    /// an address that is not ollama does not have, and both to answer nothing.
+    #[tokio::test]
+    async fn an_address_that_does_not_say_it_is_ollama_is_asked_for_nothing_else() {
+        let (at, asked) = watching(&[("/v1/models", r#"{"data":[{"id":"m"}]}"#)]).await;
+        let provider = OpenAiCompatible::new("m", format!("{at}/v1"), "no key needed");
+        provider.probe().await;
+
+        let asked = asked.lock().clone();
+        assert_eq!(
+            asked,
+            ["/v1/models", "/api/version"],
+            "what else it was asked for"
+        );
+        assert_eq!(provider.info().context_limit, None);
     }
 
     /// Where the conventional listing says nothing, a base ending in `/openai` is asked one path
