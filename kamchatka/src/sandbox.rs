@@ -628,9 +628,9 @@ fn refused(line: &str) -> bool {
 /// does not start with a slash at all.
 ///
 /// note: opening quotes and brackets from the front, and closing ones and a sentence's punctuation
-/// from the back - never a `.` from the front, which turned `./build.sh` into `/build.sh`, a file
-/// outside the reach that the note then blamed for a missing execute bit. And a trailing `.` only
-/// after a name, so `../..` keeps its meaning.
+/// from the back - never a `.` from the front, which turned a relative `./x` into an absolute `/x`
+/// outside the reach, and the note then blamed the confinement for the file's own permissions. And
+/// a trailing `.` only after a name, so `../..` keeps its meaning.
 ///
 /// note: a relative path needs a `/` to count, because every refusal has words in it, and a word
 /// taken for a path in the working directory would be a path reached - silencing the general

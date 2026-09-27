@@ -260,7 +260,7 @@ impl Server {
     /// two calls because a `select!` branch may borrow the listener or the `App` and not both.
     ///
     /// note: a failure is handed back once, and until a connection arrives again every later one is
-    /// waited out quietly, [`RESTING`] apart. Both loops say what this hands back to everybody
+    /// waited out quietly, `RESTING` apart. Both loops say what this hands back to everybody
     /// attached, and out of file descriptors it would otherwise be a line to each of them for every
     /// turn of the loop until somebody closed something.
     pub async fn arrived(&self) -> std::io::Result<Arrived> {
