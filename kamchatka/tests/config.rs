@@ -577,7 +577,7 @@ fn a_missing_file_says_which() {
 /// reached everybody except the people who installed this the way the readme tells them to - and
 /// a file that applies because of where you are standing is a file that can surprise you. The
 /// first half of that is closed by looking; the second by saying out loud what was found, into
-/// the conversation rather than onto a stream a screen is about to cover.
+/// the conversation as well as onto a stream a screen is about to cover.
 #[test]
 fn a_file_underfoot_is_read_without_being_named_and_is_said() {
     let dir = common::scratch("underfoot");
@@ -596,6 +596,23 @@ fn a_file_underfoot_is_read_without_being_named_and_is_said() {
         said.contains("settings read from kamchatka.json"),
         "a file nobody asked for has to say it was read: {said}"
     );
+}
+
+/// A file underfoot is said before a server it names is started, and not only once a session is.
+///
+/// note: the server fails its handshake, so the program stops before there is a conversation to
+/// say anything in - and a file that could start programs has been read by then.
+#[cfg(feature = "mcp")]
+#[test]
+fn a_file_underfoot_is_said_before_its_servers_start() {
+    let dir = common::scratch("underfoot-server");
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "mcp": ["broken=false"] }"#)
+        .expect("a settings file where the program will stand");
+
+    let (ok, said) = run_from(&dir, &[], "");
+
+    assert!(!ok, "a server that never answers stops the run: {said}");
+    assert!(said.contains("settings read from kamchatka.json"), "{said}");
 }
 
 /// A named file beats the one underfoot, and saying so is not needed for a path somebody typed.

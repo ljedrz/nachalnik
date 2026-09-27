@@ -148,6 +148,15 @@ async fn session() -> Result<()> {
 
         return Ok(());
     }
+    // note: printed before anything the file asked for is done, because what it can ask for
+    // includes MCP servers - programs started a few lines below - and a sandbox turned off. The
+    // conversation exists only once the session is wired, which is too late to be the first place
+    // this is said. A screen covers the line while it is up and leaves it behind when it goes; the
+    // conversation says it again, for the screen and for a served session's clients. Written
+    // rather than `eprintln!`ed, which panics with nobody left reading and takes the run with it
+    if let Some(path) = &found {
+        let _ = writeln!(std::io::stderr(), "· settings read from {}", path.display());
+    }
 
     // note: before any of the wiring below, which is why it is here rather than beside the three
     // loops at the bottom. A client assembles nothing: the model, the key that pays for it, the
@@ -319,8 +328,8 @@ async fn session() -> Result<()> {
         if !headless && server.is_none() && !(first && args.resume.is_some()) {
             app.say(Speaker::Note, ui::GREETING);
         }
-        // said here rather than where it was read, because there is no screen at that point and
-        // this is the one line a person needs before they wonder where a setting came from
+        // said again here, where a screen and a served session's clients read, because this is
+        // the one line a person needs before they wonder where a setting came from
         if let Some(path) = &found {
             app.say(
                 Speaker::Note,

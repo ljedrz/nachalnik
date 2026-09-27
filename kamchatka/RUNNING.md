@@ -576,8 +576,9 @@ terminal.
 because a file sitting next to the thing it describes is the one you mean; nothing walks *up* from
 there, because the surprise grows with the distance and typing the flag costs one flag. A file that
 applies because of where you are standing is one that can surprise you, and the answer to that is
-not to hide it — a session that picked one up says which file it read, in the conversation, before
-anything else happens.
+not to hide it — a session that picked one up says which file it read before anything else
+happens: on standard error before a server is started or a provider reached, and again in the
+conversation.
 
 A path you typed is not announced: you already know which file it was.
 

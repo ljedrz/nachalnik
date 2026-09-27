@@ -44,6 +44,10 @@ minor bump may break you.
   and the shell could read and write everything beneath it, with no screen saying so. A device is
   now resolved, `..` and links alike, before it is checked and again before the ruleset grants it,
   and `/dev` itself is refused.
+- **A settings file found underfoot is said on standard error before anything it asks for is
+  done.** It was said only in the conversation, which exists after the MCP servers it names have
+  been started - so a `kamchatka.json` in a cloned repository could run a program before anything
+  said the file had been read. The conversation still says it.
 
 ### added
 
