@@ -1312,6 +1312,9 @@ async fn a_tilde_comes_back_as_a_sentence_about_tildes() {
 
 /// A shortened result says so where the model reads it, the whole is kept, and `/limit` changes
 /// what the next call is cut at.
+///
+/// note: `shell` rather than `fs read`, which stops itself at a line under its limit and has no
+/// whole to keep.
 #[tokio::test]
 async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     let _serial = SERIAL.lock().await;
@@ -1326,23 +1329,26 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     std::fs::write(dir.join("big.txt"), &big).expect("a file");
 
     let (mut app, limits, mut finished) = agent!(&dir);
-    limits.set("fs:read", 600).expect("a row for `fs:read`");
+    limits.set("exec:run", 600).expect("a row for `exec:run`");
 
     send(
         &mut app,
         &mut finished,
-        "Read the file big.txt with the read tool. Tell me the very last line of the file, and \
+        "Run `cat big.txt` with the shell tool. Tell me the very last line of its output, and \
          say plainly whether you received the whole file or only part of it.",
     )
     .await;
 
     let said = answer(&app);
-    println!("  with read cut at 600 bytes, it said: {said}");
+    println!("  with output cut at 600 bytes, it said: {said}");
     let short = app
         .kernel
         .items()
         .into_iter()
-        .find(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .find(|item| {
+            matches!(item.kind, ContextKind::ToolResult { .. })
+                && matches!(item.state, ContextState::Active)
+        })
         .expect("a result");
     println!("  because: {:?}", short.included_because);
     assert!(
@@ -1362,21 +1368,24 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
     );
 
     // raising it does not recover that result, and does not need to: this is for the next call
-    command(&mut app, "/limit fs:read 64000").await;
+    command(&mut app, "/limit exec:run 64000").await;
     assert!(
-        flat(&mut app).contains("fs:read"),
+        flat(&mut app).contains("exec:run"),
         "the command said something: {}",
         flat(&mut app)
     );
-    assert_eq!(limits.of("fs:read"), Some(64_000));
+    assert_eq!(limits.of("exec:run"), Some(64_000));
 
     send(
         &mut app,
         &mut finished,
-        "Read big.txt again now, and tell me the very last line.",
+        "Run `cat big.txt` again now, and tell me the very last line.",
     )
     .await;
-    println!("  with read cut at 64,000 bytes, it said: {}", answer(&app));
+    println!(
+        "  with output cut at 64,000 bytes, it said: {}",
+        answer(&app)
+    );
     // asserted on the result rather than on the answer, because whether the model bothers to read
     // it again is the model's business - one asked the person for a way to get the tail instead,
     // which is a fair thing to do and not a fact about the limit
@@ -1404,6 +1413,8 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
 /// The whole of a shortened output, put back beside the copy the model was shown, is `Active` and
 /// not in the request. The pane has to say that rather than charge it `0`, and the request that
 /// comes out of it has to be one a real API still accepts.
+///
+/// note: `shell`, for the reason the test above gives.
 #[tokio::test]
 async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
     let _serial = SERIAL.lock().await;
@@ -1415,11 +1426,11 @@ async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
     .expect("a file");
 
     let (mut app, limits, mut finished) = agent!(&dir);
-    limits.set("fs:read", 600).expect("a row for `fs:read`");
+    limits.set("exec:run", 600).expect("a row for `exec:run`");
     send(
         &mut app,
         &mut finished,
-        "Read big.txt with the read tool and say how many lines you got.",
+        "Run `cat big.txt` with the shell tool and say how many lines you got.",
     )
     .await;
 
