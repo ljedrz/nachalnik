@@ -21,7 +21,7 @@
 
 use std::{io::Write, time::Duration};
 
-use nachalnik::{Delta, Event, Grant};
+use nachalnik::{Delta, Event, Grant, Kernel};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt},
     sync::{broadcast, mpsc},
@@ -51,6 +51,8 @@ pub struct Headless<'a> {
     /// writes here is a whole line, and without this the two run together: an answer of `4` would
     /// have the closing line stuck to the end of it.
     mid_line: bool,
+    /// Whether any of the answer being written has been printed as it arrived.
+    streamed: bool,
 }
 
 impl<'a> Headless<'a> {
@@ -64,6 +66,7 @@ impl<'a> Headless<'a> {
             ctrl_c: false,
             terminated: false,
             mid_line: false,
+            streamed: false,
         }
     }
 
@@ -289,7 +292,7 @@ impl<'a> Headless<'a> {
                             // otherwise read that one on some later turn round - after the next
                             // line of the script, if there is one
                             while let Ok(event) = events.try_recv() {
-                                self.say(&event)?;
+                                self.say(&app.kernel, &event)?;
                                 app.on_event(event);
                             }
                         }
@@ -302,7 +305,7 @@ impl<'a> Headless<'a> {
                 },
                 event = events.recv() => match event {
                     Ok(event) => {
-                        self.say(&event)?;
+                        self.say(&app.kernel, &event)?;
                         app.on_event(event);
                     }
                     // note: the records are read out of the log rather than from here, so a
@@ -371,7 +374,7 @@ impl<'a> Headless<'a> {
                     // the turn's last events are still queued behind this one, and `select!` picks
                     // whichever branch is ready rather than whichever happened first
                     while let Ok(event) = events.try_recv() {
-                        self.say(&event)?;
+                        self.say(&app.kernel, &event)?;
                         app.on_event(event);
                     }
                     failed = match &outcome {
@@ -395,9 +398,10 @@ impl<'a> Headless<'a> {
         // what the prose fails to say here is not a reason to leave a turn running: the records
         // are the part that is kept, and they are read out of the log below
         if !at_once {
+            let kernel = app.kernel.clone();
             let waited = app
                 .wait_for_turn(events, finished, |event| {
-                    let _ = self.say(event);
+                    let _ = self.say(&kernel, event);
                 })
                 .await;
             failed = waited.or(failed);
@@ -534,6 +538,16 @@ impl<'a> Headless<'a> {
         Ok(())
     }
 
+    /// Writes some of the model's answer, which is not a whole line and ends none.
+    fn write_answer(&mut self, text: &str) -> Result<(), String> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        self.mid_line = !text.ends_with('\n');
+
+        write!(self.prose, "{text}").map_err(|e| e.to_string())
+    }
+
     /// Writes out every record the session has grown since the last time.
     fn flush(&mut self, app: &App, written: &mut u64) -> Result<(), String> {
         for record in app.kernel.history_since(*written) {
@@ -559,21 +573,39 @@ impl<'a> Headless<'a> {
     /// stream them, and the two tool lines, which the terminal draws from the context and a
     /// headless run has no other sight of. A request prints nothing and ends the line the last
     /// answer left open, so that one answer does not run into the next.
-    fn say(&mut self, event: &Event) -> Result<(), String> {
+    ///
+    /// note: the model's words are the fragments, and the recorded turn where there were none. A
+    /// provider that does not stream, or an endpoint that ignores being asked to, answers in one
+    /// piece with no fragment ahead of it - and the screen, which draws the item either way, never
+    /// notices, while a run printing only fragments printed nothing of the answer at all.
+    fn say(&mut self, kernel: &Kernel, event: &Event) -> Result<(), String> {
         // no newline after a fragment: this arrives in pieces and is a sentence being written.
         // Everything below it is a whole line, so each of them ends that one first
         if let Event::ModelDelta {
             delta: Delta::Text(text),
         } = event
         {
-            self.mid_line = !text.ends_with('\n');
+            self.streamed = true;
 
-            return write!(self.prose, "{text}").map_err(|e| e.to_string());
+            return self.write_answer(text);
         }
         // a new request is a new answer, which starts on a line of its own: the last one very
         // likely ended mid-line, and the first fragment of this one was written straight after it
         if matches!(event, Event::ModelRequested { .. }) {
+            self.streamed = false;
+
             return self.fresh_line();
+        }
+        if let Event::ModelFinished { item, .. } = event {
+            if std::mem::take(&mut self.streamed) {
+                return Ok(());
+            }
+            let said = kernel
+                .item(*item)
+                .map(|turn| turn.content.to_text().into_owned())
+                .unwrap_or_default();
+
+            return self.write_answer(&said);
         }
         if !matches!(
             event,

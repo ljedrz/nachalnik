@@ -66,6 +66,46 @@ async fn the_client_writes_the_records_and_the_prose() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A model that answers in one piece, with no fragment ahead of it.
+struct Whole(&'static str);
+
+#[nachalnik::async_trait]
+impl Provider for Whole {
+    fn info(&self) -> nachalnik::ModelInfo {
+        nachalnik::ModelInfo::new("whole", "whole")
+    }
+
+    async fn respond(
+        &self,
+        _: nachalnik::ModelRequest,
+        _: nachalnik::DeltaSink,
+    ) -> Result<ModelResponse, nachalnik::BoxError> {
+        Ok(ModelResponse::text(self.0))
+    }
+}
+
+/// An answer that arrived whole is printed, once, though not a fragment of it crossed the wire.
+#[tokio::test]
+async fn an_answer_that_was_not_streamed_is_printed() {
+    let session = served(Vec::new(), |app| {
+        app.kernel
+            .set_provider(Arc::new(Whole("said in one piece")));
+    })
+    .await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"ask something\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert_eq!(prose.matches("said in one piece").count(), 1, "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client whose socket is pulled out from under it picks the session back up, and still leaves
 /// when it is done.
 ///

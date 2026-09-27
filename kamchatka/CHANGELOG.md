@@ -341,6 +341,11 @@ minor bump may break you.
 - **A headless run that fails ends the answer's line before its parting line.** A run that left
   with an error - a line of input that was not UTF-8, say - skipped ending the model's last half
   line, so the line naming the record was written onto the end of it.
+- **A headless run and a `--connect` client print an answer that was not streamed.** Both printed
+  the model's words from the fragments alone, so a provider that answers in one piece - `/params
+  stream false`, or an endpoint that ignores being asked to stream - left nothing of the answer on
+  stderr. A turn that streamed none of its words is printed from the recorded item now; the client
+  fetches it with an `inspect`.
 
 ## [0.15.1] - 2026-09-24
 

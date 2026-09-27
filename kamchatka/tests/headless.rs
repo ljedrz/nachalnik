@@ -3806,6 +3806,38 @@ async fn one_answer_does_not_run_into_the_next() {
     assert!(run.prose.contains("first\nsecond"), "{:?}", run.prose);
 }
 
+/// A model that answers in one piece, with no fragment ahead of it, the way a provider that does
+/// not stream does - and an endpoint that ignores being asked to.
+struct Whole(&'static str);
+
+#[async_trait]
+impl Provider for Whole {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("whole", "whole")
+    }
+
+    async fn respond(&self, _: ModelRequest, _: DeltaSink) -> Result<ModelResponse, BoxError> {
+        Ok(ModelResponse::text(self.0))
+    }
+}
+
+/// An answer that arrived whole is printed, once.
+#[tokio::test]
+async fn an_answer_that_was_not_streamed_is_printed() {
+    let run = run("ask\n", Vec::new(), |app| {
+        app.kernel
+            .set_provider(Arc::new(Whole("said in one piece")));
+    })
+    .await;
+
+    assert_eq!(
+        run.prose.matches("said in one piece").count(),
+        1,
+        "{}",
+        run.prose
+    );
+}
+
 /// A run that fails still ends the last answer's line, so the caller's parting line is one of its
 /// own.
 ///

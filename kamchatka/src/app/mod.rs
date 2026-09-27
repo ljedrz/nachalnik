@@ -1110,9 +1110,10 @@ impl App {
                     });
                 }
                 // the turn is recorded, so whatever streamed is now the item's to say. This is
-                // also what makes a provider that does not stream work without being detected:
-                // there was nothing on the screen and there is an item, and the item is what
-                // gets drawn either way
+                // also what makes a provider that does not stream work on a screen without being
+                // detected: there was nothing on it and there is an item, and the item is what
+                // gets drawn either way. A loop that prints fragments has to print the item
+                // itself; see `Headless::say`
                 self.caught_up(item);
             }
             // the same fact from the two places that can know it, and the second line says which

@@ -62,6 +62,20 @@ pub struct Client<'a> {
     prose: crate::headless::Printable<&'a mut dyn Write>,
     /// Whether the prose is part-way through a line somebody else would finish.
     mid_line: bool,
+    /// Whether any of the answer being written has been printed as it arrived.
+    streamed: bool,
+    /// The recorded turns whose words were not streamed, to be fetched with an `inspect`.
+    ///
+    /// note: the same gap `--headless` fills from the item, filled the only way a client can: the
+    /// records name a turn and do not copy it, so a provider that answers in one piece puts
+    /// nothing on this wire but a `model.finished`.
+    unstreamed: VecDeque<ContextId>,
+    /// Whether the answer being fetched is one whose fragments may still arrive, and are dropped.
+    ///
+    /// note: a session behind the broadcast can write a turn's fragments after the record that
+    /// ends it, so a turn that looked unstreamed at `model.finished` may stream afterwards; printed
+    /// as well, it would be printed twice.
+    fetching: bool,
     /// The last record this client is sure it has.
     last: u64,
     /// The session those records came from, where this client has attached to one.
@@ -151,6 +165,9 @@ impl<'a> Client<'a> {
             records,
             prose: crate::headless::Printable(prose),
             mid_line: false,
+            streamed: false,
+            unstreamed: VecDeque::new(),
+            fetching: false,
             last: 0,
             session: None,
             asking: VecDeque::new(),
@@ -295,7 +312,7 @@ impl<'a> Client<'a> {
                     // the input closed is the case this exists for - the turn goes on producing
                     // them, and each one has to be answered by somebody or the session stops here
                     Ok(Some(message)) => match self.heard(message) {
-                        Ok(()) => match self.settle(&mut write).await {
+                        Ok(()) => match self.follow(&mut write).await {
                             Ok(()) if self.detaching && self.resting() => Some(Left::Done),
                             Ok(()) => None,
                             Err(e) => Some(Left::Failed(e)),
@@ -447,6 +464,14 @@ impl<'a> Client<'a> {
                 }
                 self.prose.flush().map_err(|e| e.to_string())
             }
+            // the words of a turn that was never streamed, which only this client asks for raw;
+            // `?N` asks for the reading
+            Message::Item {
+                body, raw: true, ..
+            } => {
+                self.answered();
+                self.write_answer(&body)
+            }
             Message::Item { id, body, .. } => {
                 self.answered();
                 self.fresh_line()?;
@@ -587,14 +612,23 @@ impl<'a> Client<'a> {
             delta: Delta::Text(text),
         } = event
         {
-            self.mid_line = !text.ends_with('\n');
+            if self.fetching {
+                return Ok(());
+            }
+            self.streamed = true;
 
-            return write!(self.prose, "{text}")
-                .and_then(|()| self.prose.flush())
-                .map_err(|e| e.to_string());
+            return self.write_answer(text);
         }
 
         match event {
+            Event::ModelRequested { .. } => (self.streamed, self.fetching) = (false, false),
+            Event::ModelFinished { item, .. } => match std::mem::take(&mut self.streamed) {
+                true => {}
+                false => {
+                    self.unstreamed.push_back(*item);
+                    self.fetching = true;
+                }
+            },
             Event::ToolRequested { tool, args, .. } => {
                 self.fresh_line()?;
                 writeln!(self.prose, "⟩ {tool}({})", one_line(&args.to_string()))
@@ -827,6 +861,24 @@ impl<'a> Client<'a> {
         !self.busy && self.outstanding == 0 && self.asking.is_empty() && self.reaching.is_empty()
     }
 
+    /// Sends what the last message heard calls for: a fetch of every turn that was not streamed,
+    /// and whatever [`Client::settle`] answers.
+    async fn follow<W: AsyncWrite + Unpin>(&mut self, write: &mut W) -> Result<(), String> {
+        while let Some(id) = self.unstreamed.pop_front() {
+            self.say_to(
+                write,
+                Command::Inspect {
+                    id,
+                    raw: true,
+                    version: None,
+                },
+            )
+            .await?;
+        }
+
+        self.settle(write).await
+    }
+
     /// Answers whatever is still being asked, once there is nobody here to ask.
     ///
     /// note: nothing at all until the input has closed, which is what makes this safe to call on
@@ -894,6 +946,18 @@ impl<'a> Client<'a> {
         }
 
         Ok(())
+    }
+
+    /// Writes some of the model's answer, which is not a whole line and ends none.
+    fn write_answer(&mut self, text: &str) -> Result<(), String> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        self.mid_line = !text.ends_with('\n');
+
+        write!(self.prose, "{text}")
+            .and_then(|()| self.prose.flush())
+            .map_err(|e| e.to_string())
     }
 
     /// Says something in the client's own voice.
