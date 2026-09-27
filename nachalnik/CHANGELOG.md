@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### fixed
 
+- **An item added in a state other than active is announced as being in it.** `context.added` says
+  what an item is and not what state it came in at, so an item pushed pinned, an item a resumed
+  session brought back elided, and an item the model pinned as it wrote it all reached the log as
+  active - and a log replayed by anybody but the kernel said the opposite of the context. Each such
+  addition is now followed by the `context.changed` from `Active` to the state it arrived in, with
+  its note, which is what a later `set_state` would have said. A field on `context.added` would
+  have said it in one record, and adding one is a break to `Event`'s variants.
 - **One implausible usage figure no longer scales the counter to its bound for the rest of the
   session.** `Calibrating::observe` added every report to the totals it draws its correction from
   and clamped the ratio afterwards, so an endpoint reporting `prompt_tokens: 1e15` (or `u64::MAX`)

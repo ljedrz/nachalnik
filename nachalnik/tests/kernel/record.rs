@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Config, ContextItem, ContextKind, ContextState, Delta, DeltaSink, Event, Kernel, ModelInfo,
-    ModelResponse, Params, Record, State,
+    Config, ContextId, ContextItem, ContextKind, ContextState, Delta, DeltaSink, Event, Kernel,
+    ModelInfo, ModelResponse, Params, Record, State,
     test::{ConstTool, EchoTool, LargestFirstCompactor, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -423,6 +423,57 @@ fn an_items_metadata_is_in_the_record_from_the_start() {
             ..
         }
     ));
+}
+
+/// An item that arrives in a state other than active is announced as being in it.
+///
+/// note: `context.added` named the item and said nothing about the state it was in, so an item
+/// pushed pinned, an item a loaded session brought back elided, and an item the model pinned as
+/// it wrote it all came out of the log as active. A log replayed by anybody but the kernel
+/// believed the opposite of the context.
+#[test]
+fn an_item_added_in_another_state_is_announced_in_it() {
+    let kernel = Kernel::new(Config::default());
+    let mut elided = ContextItem::user("gone");
+    elided.state = ContextState::Elided;
+    elided.note = Some("the user cannot see it any more".into());
+    kernel.push_all([
+        ContextItem::user("plain"),
+        ContextItem::user("held").pinned(),
+        elided,
+    ]);
+
+    // the log, read the way a replay reads it: every item is added active, and a `context.changed`
+    // is the only thing that can say otherwise
+    let mut replayed: Vec<(ContextId, ContextState, Option<String>)> = Vec::new();
+    for record in kernel.history() {
+        match record.event {
+            Event::ContextAdded { id, .. } => replayed.push((id, ContextState::Active, None)),
+            Event::ContextChanged { id, to, note, .. } => {
+                let added = replayed.last_mut().expect("an item was added first");
+                *added = (id, to, note);
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        replayed,
+        [
+            (ContextId(1), ContextState::Active, None),
+            (ContextId(2), ContextState::Pinned, None),
+            (
+                ContextId(3),
+                ContextState::Elided,
+                Some("the user cannot see it any more".into())
+            ),
+        ]
+    );
+    // ... and what the log says is what the context holds
+    for (id, state, note) in replayed {
+        let item = kernel.item(id).expect("the item was added");
+        assert_eq!((item.state, item.note.clone()), (state, note));
+    }
 }
 
 /// A `model.changed` written before a model said what parameters it takes still reads.

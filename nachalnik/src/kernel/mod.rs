@@ -1483,6 +1483,7 @@ impl Kernel {
                 let id = context.add(item, &*counter);
                 let item = context.item(id).expect("the item was just added");
                 announcements.push(addition(item));
+                announcements.extend(arriving(item));
                 added = Some(Removed {
                     id,
                     label: item.label.clone(),
@@ -1837,6 +1838,9 @@ impl Kernel {
         let id = context.add(item, counter);
         let item = context.item(id).expect("the item was just added");
         self.emit(addition(item));
+        if let Some(change) = arriving(item) {
+            self.emit(change);
+        }
 
         id
     }
@@ -1892,6 +1896,28 @@ fn addition(item: &ContextItem) -> Event {
         because: item.included_because.clone(),
         meta: item.meta.clone(),
     }
+}
+
+/// The change announcing an item that was added in a state other than [`ContextState::Active`].
+///
+/// note: `context.added` says what an item is and does not say what state it is in, because every
+/// state change is an event of its own and a state is not a change. An item that arrives pinned,
+/// or arrives elided because a loaded session left it that way, therefore reached the log as
+/// active - which is the opposite of the truth about it. A second event, saying from `Active` to
+/// what the item actually is, is what a later `set_state` would have said and what a log replayed
+/// needs to read the context back. `None` for an item that arrives active, whose state the
+/// addition already accounts for.
+///
+/// note: a field on `context.added` would say it in one record, and `Event` is
+/// `#[non_exhaustive]` - which says nothing about its variants, and a field on one of them is a
+/// break to every pattern and every struct literal written against it.
+fn arriving(item: &ContextItem) -> Option<Event> {
+    (item.state != ContextState::Active).then(|| Event::ContextChanged {
+        id: item.id,
+        from: ContextState::Active,
+        to: item.state,
+        note: item.note.clone(),
+    })
 }
 
 /// The calls an item is one half of a pair with: the ones an assistant turn asked for, or the one
