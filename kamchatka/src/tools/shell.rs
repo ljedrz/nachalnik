@@ -446,7 +446,8 @@ impl Tool for Shell {
                 }
                 Err(e) => {
                     return Ok(ToolOutput::error(format!(
-                        "could not run `{cmd}`: the network could not be held for a question: {e}"
+                        "could not run the command: the network could not be held for a question: \
+                         {e}"
                     )));
                 }
             },
@@ -461,7 +462,15 @@ impl Tool for Shell {
             .spawn()
         {
             Ok(child) => child,
-            Err(e) => return Ok(ToolOutput::error(format!("could not run `{cmd}`: {e}"))),
+            // note: the reason and not the command, which the model has in its own call. Quoted
+            // first, a command long enough to fail here pushed the reason past the output limit
+            Err(e) if e.kind() == std::io::ErrorKind::ArgumentListTooLong => {
+                return Ok(ToolOutput::error(format!(
+                    "could not run the command: {e}. It is too long to hand a program as one \
+                     argument; write it to a file and run the file"
+                )));
+            }
+            Err(e) => return Ok(ToolOutput::error(format!("could not run the command: {e}"))),
         };
         // the child holds its end of the pair now; this one's copy goes with the command, or a
         // child that ends without sending a listener would never be seen to have ended
@@ -1102,6 +1111,16 @@ mod tests {
         content.truncate_to(1_000).expect("it is over the limit");
         let said = content.to_text();
         assert!(said.contains("FATAL"), "{said}");
+    }
+
+    /// A command too long to start is answered with the reason and what to do instead, and not with
+    /// the command, which would push both past any limit.
+    #[tokio::test]
+    async fn a_command_too_long_to_start_says_why_first() {
+        let said = ran(&format!("echo {}", "a".repeat(200_000))).await;
+
+        assert!(said.len() < 500, "{}", &said[..said.len().min(500)]);
+        assert!(said.contains("write it to a file"), "{said}");
     }
 
     /// A command that finishes and leaves something running still answers.

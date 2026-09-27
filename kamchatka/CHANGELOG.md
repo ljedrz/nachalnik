@@ -391,6 +391,10 @@ minor bump may break you.
   with no execute bit came back as `/build.sh is outside what this session reaches`, and a model
   offered to open `/build.sh`. A relative path is now judged from the working directory and named
   as written: `./build.sh` gets no note, and a refused `../escape.txt` is named as that.
+- **A command `shell` cannot start is answered with the reason, not the command.** The answer
+  quoted the whole command before saying why it failed, so one too long to start came back as
+  the output limit's worth of the command and never reached `Argument list too long`. It now says
+  the reason alone, and for that one to write the command to a file and run the file.
 
 ## [0.15.1] - 2026-09-24
 
