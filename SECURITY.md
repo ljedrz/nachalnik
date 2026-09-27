@@ -226,6 +226,15 @@ what stands in the way, and what does not.
   controls is what their answers do: a server's tools are judged under the server's name, and what
   it returns reaches the context like any other tool result, where the model reads it - which is
   the first actor above again.
+- **Whoever wrote the directory it is run in.** Given no `--config-file`, `kamchatka` reads
+  `./kamchatka.json`, and that file may set every key the command line can: `mcp`, which starts
+  programs unconfined before the first message, `no-sandbox`, `allow`, `allow-server`, `on-ask` and
+  the sandbox lists. So running `kamchatka` in a repository somebody else wrote runs it with their
+  settings: their MCP servers start as you, and a file that turns the sandbox off and allows `exec`
+  leaves the model with nothing between what that repository's files tell it and your machine.
+  The file is announced before anything it names is started, and nothing is asked. What stands in
+  the way is reading an unfamiliar `kamchatka.json` before running the program next to it, or
+  giving `--config-file` a file of your own, which is then the only one read.
 - **The provider.** Everything in a request is sent, and a request is the context: the
   conversation, what the tools returned, and any file the reach let the model read. Nothing here
   stops that, and nothing can - it is what asking a model is.
