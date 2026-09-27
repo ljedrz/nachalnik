@@ -1643,7 +1643,8 @@ async fn an_attempt_after_the_call_is_over_is_refused_without_a_question() {
 ///
 /// note: under a terminal of the test's own, which `python3`'s `pty` makes, and with the standard
 /// streams `/dev/null` and a pipe as `shell` hands them out. The same command unconfined reaches the
-/// terminal first, or a harness that handed out none would pass this.
+/// terminal first, or a harness that handed out none would pass this; where no pty can be made -
+/// under a confinement of its own with the usual devices - it says so and stops.
 #[test]
 fn a_confined_command_has_no_terminal_to_type_into() {
     if !enforced() {
@@ -1653,7 +1654,10 @@ fn a_confined_command_has_no_terminal_to_type_into() {
     let reach = "if true 3<>/dev/tty; then echo reached; else echo refused; fi";
 
     let control = under_a_terminal(&["sh".into(), "-c".into(), reach.into()], &dir, false);
-    assert!(control.contains("reached"), "{control}");
+    if !control.contains("reached") {
+        eprintln!("skipped: no terminal to be had here: {control}");
+        return;
+    }
 
     let mut confined = vec![common::program().into_os_string()];
     confined.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(reach));
@@ -1704,7 +1708,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
 ///
 /// note: the terminal is one this test opens and types a line into, beside the command rather than
 /// its own. The same command unconfined reads the line, or a harness that typed nothing would pass
-/// this.
+/// this; where no pty can be made it says so and stops.
 #[test]
 fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
     if !enforced() {
@@ -1726,7 +1730,10 @@ fn a_confined_command_reaches_named_devices_and_not_another_terminal() {
 
     let reading = "if read -r line <\"$TERMINAL\"; then echo \"read $line\"; else echo refused; fi";
     let control = beside_a_terminal(&["sh".into(), "-c".into(), reading.into()], &dir);
-    assert!(control.contains("read typed"), "{control}");
+    if !control.contains("read typed") {
+        eprintln!("skipped: no terminal to be had here: {control}");
+        return;
+    }
     let said = beside_a_terminal(&confined(reading), &dir);
     assert!(said.contains("refused"), "{said}");
     assert!(!said.contains("typed"), "{said}");
@@ -1741,6 +1748,15 @@ fn the_devices_named_are_the_ones_reached() {
     }
     let dir = common::workdir("sandbox-named-devices");
     let pty = "python3 -c 'import os; os.openpty()' 2>/dev/null && echo made || echo refused";
+    let here = Command::new("sh")
+        .arg("-c")
+        .arg(pty)
+        .output()
+        .expect("sh is here");
+    if !String::from_utf8_lossy(&here.stdout).contains("made") {
+        eprintln!("skipped: no pty to be had here, confined or not");
+        return;
+    }
 
     let (_, said) = run(&sandbox(dir.clone(), true, Network::NoTcp), pty);
     assert!(said.contains("refused"), "{said}");
