@@ -422,6 +422,11 @@ minor bump may break you.
   connection it cannot take waits, so the loop failed to accept as fast as it could turn and said
   so each time - to every client, and into every projection handed out afterwards. A failure is
   now said once, and the listener is tried again a second apart until a connection arrives.
+- **A command still waiting when a served session ends no longer costs its connection
+  `session.finished`.** The connection wrote the command's refusal and closed without the last
+  read of the log, so `/quit` and then another line, typed together, left `--connect` reading a
+  dropped socket and reattaching for a minute to a session that had ended. A refused reattach
+  during the ending sends the rest of the log too.
 
 ## [0.15.1] - 2026-09-24
 

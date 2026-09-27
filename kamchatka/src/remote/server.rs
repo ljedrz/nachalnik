@@ -1146,7 +1146,14 @@ where
                     let settled = watermark(attach, kernel, asks, client, write).await;
                     let (at, fresh) = match settled {
                         Ok(settled) => settled,
-                        Err(refused) => return refuse(write, refused.about, refused.error).await,
+                        // note: caught up first, because the usual way to be refused on a live
+                        // connection is the session ending under the attach - and this is the
+                        // last chance to send `session.finished` to a client that is still here
+                        Err(refused) => {
+                            flush(kernel, &mut last, write).await?;
+
+                            return refuse(write, refused.about, refused.error).await;
+                        }
                     };
                     last = at;
                     // note: the subscription is swapped exactly where a projection is handed over,
@@ -1204,7 +1211,14 @@ where
                             answer(write, &message, about).await?
                         }
                         Ok(None) => {}
+                        // note: the session has ended with this command still waiting on it, and
+                        // the connection ends here rather than in the branch below that would have
+                        // written the last of the log - so it is written here. Without it the
+                        // client that typed `/quit` and then anything else is never sent
+                        // `session.finished`, reads the close as a drop, and goes looking for a
+                        // session that is gone
                         Err(error) => {
+                            flush(kernel, &mut last, write).await?;
                             protocol::write(write, &Message::Failed {
                                 about: about.to_owned(),
                                 error,
@@ -1387,7 +1401,8 @@ async fn watermark<W: AsyncWrite + Unpin>(
     }
     // note: refused above without troubling the session, and answered here by the session itself,
     // because the answer carries `busy` and nothing but the loop driving the kernel knows it
-    let answered = ask(
+    let mut last = since;
+    let answered = match ask(
         asks,
         client,
         Command::Attach {
@@ -1396,7 +1411,17 @@ async fn watermark<W: AsyncWrite + Unpin>(
             version: None,
         },
     )
-    .await?;
+    .await
+    {
+        Ok(answered) => answered,
+        // the session ended while this was on its way in: what it missed is still owed, and the
+        // end of the log is the one thing that tells it not to come back
+        Err(error) => {
+            flush(kernel, &mut last, write).await?;
+
+            return Err(error.into());
+        }
+    };
     let (Some(message), Some(voice)) = (answered.message, answered.voice) else {
         return Err("the session answered an attach with nothing"
             .to_owned()
@@ -1406,7 +1431,6 @@ async fn watermark<W: AsyncWrite + Unpin>(
     // whose input has closed leaves on `busy: false` - the rule `Message::Busy` and a command's
     // reply are held to. Written after, a client coming back to collect the end of an answer was
     // told the session was resting and left before the records it had come back for
-    let mut last = since;
     flush(kernel, &mut last, write).await?;
     protocol::write(write, &message).await?;
 

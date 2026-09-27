@@ -115,6 +115,51 @@ async fn a_quit_during_a_turn_waits_for_it_to_end() {
     assert!(!app.busy);
 }
 
+/// A command still waiting when the session ends does not cost its connection `session.finished`.
+///
+/// note: the connection wrote the command's refusal and closed, skipping the last read of the log
+/// the closing voice gives every other connection - so `/quit` and then anything else left whoever
+/// typed them reading a drop, and a `--connect` spent a minute looking for a session that had
+/// ended. A turn is running so that the second line waits: a `/quit` waits for the turn, and the
+/// loop takes nothing else meanwhile.
+#[tokio::test]
+async fn a_command_the_ending_left_waiting_still_hears_the_end() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+        ModelResponse::text("this should never be said"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Slow));
+    })
+    .await;
+
+    let (mut peer, _) = Peer::attached(&session.at).await;
+    peer.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    peer.until_record("tool.started").await;
+    for line in ["/quit", "/help"] {
+        peer.send(Command::Submit {
+            line: line.to_owned(),
+        })
+        .await;
+    }
+    let mut heard = Vec::new();
+    while let Some(message) = peer.next().await {
+        heard.push(message);
+    }
+
+    assert!(
+        heard.iter().any(|message| matches!(
+            message,
+            Message::Record(record) if record.event.name() == "session.finished"
+        )),
+        "the connection closed without saying the session had ended: {heard:?}"
+    );
+    session.ended().await.1.expect("the session failed");
+}
+
 #[tokio::test]
 async fn stopping_nothing_says_there_was_nothing_to_stop() {
     let session = served(vec![], |_| {}).await;
