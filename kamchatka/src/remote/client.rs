@@ -18,7 +18,7 @@ use std::{
 };
 
 use nachalnik::{ContextId, Delta, Event, Grant, PermissionRequest};
-use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader};
+use tokio::io::{AsyncBufRead, AsyncWrite, BufReader};
 
 use crate::{
     app::{
@@ -200,7 +200,7 @@ impl<'a> Client<'a> {
         // note: the reader is built once and handed to each attempt, because `next_line` is
         // cancellation-safe and holds whatever it has read so far. Rebuilding it per attempt would
         // lose half a line every time a socket died mid-read
-        let mut typed = input.lines();
+        let mut typed = crate::headless::Typed::new(input);
         let (mut first, mut waited, mut wait) = (true, Duration::ZERO, FIRST_WAIT);
 
         loop {
@@ -239,7 +239,7 @@ impl<'a> Client<'a> {
     async fn attend(
         &mut self,
         address: &str,
-        typed: &mut tokio::io::Lines<impl AsyncBufRead + Unpin>,
+        typed: &mut crate::headless::Typed<impl AsyncBufRead + Unpin>,
         first: bool,
     ) -> Left {
         // note: before the connect rather than after it. An attempt that cannot connect has not
@@ -338,11 +338,16 @@ impl<'a> Client<'a> {
                     // note: what `--headless` does with a blank line and with spaces round one,
                     // for its reason: a blank line sent is a request for nothing, and `  /help`
                     // would be a message here and a command there
-                    Ok(Some(line)) if line.trim().is_empty() => None,
-                    Ok(Some(line)) => match self.typed(&mut write, line.trim()).await {
-                        Ok(()) => None,
-                        Err(_) => Some(Left::Dropped),
-                    },
+                    Ok(Some((line, _))) if line.trim().is_empty() => None,
+                    Ok(Some((line, mangled))) => {
+                        if mangled {
+                            let _ = self.tell(&crate::headless::not_text(&line));
+                        }
+                        match self.typed(&mut write, line.trim()).await {
+                            Ok(()) => None,
+                            Err(_) => Some(Left::Dropped),
+                        }
+                    }
                     // note: the input closing detaches rather than stopping the session, and that
                     // is the invariant rather than a shortcut: a script that pipes a question in
                     // and goes away has asked a session that belongs to somebody else, and ending

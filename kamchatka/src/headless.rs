@@ -139,7 +139,7 @@ impl<'a> Headless<'a> {
         // same `/help` the program does. See `App::keys`
         app.keys = false;
 
-        let mut lines = input.lines();
+        let mut lines = Typed::new(input);
         let mut reading = true;
         // note: an instant rather than a duration, so that it means the same thing however many
         // times round the loop it is waited on; and taken once the run starts rather than when
@@ -235,8 +235,11 @@ impl<'a> Headless<'a> {
                     // line. Otherwise a blank line down a pipe is sent as an empty message and
                     // answered - a request for nothing - and `  /help` is a message here and a
                     // command there
-                    Ok(Some(line)) if line.trim().is_empty() => {}
-                    Ok(Some(line)) => {
+                    Ok(Some((line, _))) if line.trim().is_empty() => {}
+                    Ok(Some((line, mangled))) => {
+                        if mangled {
+                            app.say(Speaker::Note, not_text(&line));
+                        }
                         // the lines it said are printed by `echo` below, which is watching
                         // `App::loose` for the ones that arrive with no line to answer either;
                         // the page is this call's alone and has no other way out
@@ -686,6 +689,58 @@ impl<W: Write> Write for Printable<W> {
     fn flush(&mut self) -> std::io::Result<()> {
         self.0.flush()
     }
+}
+
+/// Lines off an input, whatever bytes they turn out to be.
+///
+/// note: rather than `AsyncBufReadExt::lines`, which fails the whole stream at the first line that
+/// is not UTF-8 - so one Latin-1 `é` in a script ended the session, dropped every line after it,
+/// and never said which line it was. A line is taken whatever it holds, with `U+FFFD` where the
+/// bytes were not text, and the caller says so, since what goes on is not quite what was typed.
+///
+/// note: as safe to drop mid-line as `lines` is, and for the same reason: `read_until` appends
+/// what it has read to a buffer this owns, so a `select!` that takes another branch loses nothing
+/// and the next call carries on from where that one stopped.
+pub(crate) struct Typed<R> {
+    input: R,
+    line: Vec<u8>,
+}
+
+impl<R: AsyncBufRead + Unpin> Typed<R> {
+    pub(crate) fn new(input: R) -> Self {
+        Self {
+            input,
+            line: Vec::new(),
+        }
+    }
+
+    /// The next line without its ending, and whether any of it had to be replaced; `None` once
+    /// the input has closed.
+    pub(crate) async fn next_line(&mut self) -> std::io::Result<Option<(String, bool)>> {
+        if self.input.read_until(b'\n', &mut self.line).await? == 0 && self.line.is_empty() {
+            return Ok(None);
+        }
+        let mut bytes = std::mem::take(&mut self.line);
+        if bytes.last() == Some(&b'\n') {
+            bytes.pop();
+            if bytes.last() == Some(&b'\r') {
+                bytes.pop();
+            }
+        }
+
+        Ok(Some(match String::from_utf8(bytes) {
+            Ok(line) => (line, false),
+            Err(e) => (String::from_utf8_lossy(e.as_bytes()).into_owned(), true),
+        }))
+    }
+}
+
+/// What is said about a line [`Typed`] had to replace part of, naming it.
+pub(crate) fn not_text(line: &str) -> String {
+    format!(
+        "a line that was not UTF-8 is read with `\u{FFFD}` where the bytes were: {}",
+        crate::app::text::one_line(line)
+    )
 }
 
 /// What a session that is about to be driven by lines should say for itself.

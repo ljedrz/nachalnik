@@ -357,6 +357,10 @@ minor bump may break you.
   Both loops now print a line for every reference that goes into the context, off the event that
   says so, and a headless run says what a command did to the context before it reads the next
   line.
+- **A line of input that is not UTF-8 no longer ends the session.** `--headless` and `--connect`
+  read their input as one stream of text, so a single Latin-1 byte stopped the run with `could not
+  read the input`, dropped every line after it, and named none of them. The line is now taken with
+  `U+FFFD` where the bytes were not text, and a note names it.
 
 ## [0.15.1] - 2026-09-24
 

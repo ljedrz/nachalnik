@@ -616,6 +616,50 @@ async fn a_blank_line_is_not_a_message() {
     );
 }
 
+/// A line that is not UTF-8 is read and said to be, rather than ending the session.
+///
+/// note: the input was read as a stream of text, and a stream that was not text at one line was an
+/// error for the whole run: the session ended there, every later line went unread, and nothing said
+/// which line it had choked on. `\r\n` is here because the reader that replaced it is written by
+/// hand, and `lines` took both endings off.
+#[tokio::test]
+async fn a_line_that_is_not_utf8_is_read_and_named() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![ModelResponse::text("read it")]);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            &b"/note caf\xe9\r\nand after it\n"[..],
+        )
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("not UTF-8") && prose.contains("/note caf\u{FFFD}"),
+        "{prose}"
+    );
+    assert!(
+        prose.contains("read it"),
+        "the next line went unread: {prose}"
+    );
+    let said: Vec<String> = app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert!(said.contains(&"caf\u{FFFD}".to_owned()), "{said:?}");
+    assert!(said.contains(&"and after it".to_owned()), "{said:?}");
+}
+
 /// A question left standing by a `/step` does not hold the session open for ever.
 ///
 /// note: this is the one case the exit condition gets wrong if a waiting question is allowed to
