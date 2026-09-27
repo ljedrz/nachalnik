@@ -1602,6 +1602,8 @@ impl App {
         // same `tool_call_id` twice. `-r` gets this from `Kernel::resume`; this is the same fact,
         // said to a kernel that is already running
         self.kernel.reserve_calls(snapshot.used_calls);
+        let params = snapshot.params.clone();
+        let replaced = self.kernel.params() != params;
         self.kernel.set_params(snapshot.params);
 
         let loaded: Vec<_> = ids.iter().filter_map(|id| self.kernel.item(*id)).collect();
@@ -1634,6 +1636,22 @@ impl App {
                      given new ones",
                     plural(renamed, "call identifier"),
                 ),
+            );
+        }
+        // note: said, because nothing else would: `u` walks the context back and not the
+        // parameters, and the next request goes out with the snapshot's
+        if replaced {
+            self.say(
+                Speaker::Note,
+                match params.is_empty() {
+                    true => {
+                        "the snapshot sets no parameters, so the ones set here are gone".to_owned()
+                    }
+                    false => format!(
+                        "parameters are the snapshot's now: {}",
+                        serde_json::to_string(&params).unwrap_or_default()
+                    ),
+                },
             );
         }
     }

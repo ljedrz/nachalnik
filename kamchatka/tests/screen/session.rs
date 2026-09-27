@@ -277,6 +277,48 @@ async fn saving_into_a_directory_names_the_session_rather_than_writing_a_dotfile
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A load that changes the parameters says so, and one that leaves them alone says nothing.
+///
+/// note: `u` walks back the context and not the parameters, so a load taking yours away without a
+/// word leaves the next request different from the last for no reason on the screen.
+#[tokio::test]
+async fn a_load_says_when_it_replaces_the_parameters() {
+    let dir = common::scratch("load-params");
+    let mut first = Harness::new([]);
+    first.app.kernel.push(ContextItem::user("remember 4817"));
+    first.send("/params seed 7").await;
+    first
+        .send(&format!("/save {}", dir.join("seeded").display()))
+        .await;
+    let seeded = dir.join("seeded.json");
+
+    let mut second = Harness::new([]);
+    second.send("/params temperature 0.2").await;
+    second.send(&format!("/load {}", seeded.display())).await;
+    let screen = second.screen();
+    assert!(
+        screen.contains(r#"parameters are the snapshot's now: {"seed":7}"#),
+        "{screen}"
+    );
+
+    // the same ones again are not news
+    second.send(&format!("/load {}", seeded.display())).await;
+    let said = second.screen().matches("the snapshot's now").count();
+    assert_eq!(said, 1, "{}", second.screen());
+
+    // and a snapshot with none says what became of the ones here
+    first.send("/params seed null").await;
+    first
+        .send(&format!("/save {}", dir.join("plain").display()))
+        .await;
+    second
+        .send(&format!("/load {}", dir.join("plain.json").display()))
+        .await;
+    let screen = second.screen();
+    assert!(screen.contains("the ones set here are gone"), "{screen}");
+    assert!(second.app.kernel.params().is_empty());
+}
+
 #[tokio::test]
 async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_there() {
     let dir = common::scratch("load");

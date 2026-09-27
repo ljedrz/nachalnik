@@ -271,6 +271,9 @@ minor bump may break you.
   ignored" - while the model answered the conversation in the parameter and the record named the
   one it was not sent. Those names, and Gemini's `contents` and `systemInstruction`, are refused
   with a line saying they are built from the session.
+- **`/load` says when it replaces the parameters.** The snapshot's took the place of the ones set
+  here without a word, and `u` does not bring them back. The answer now names the parameters in
+  force, or says the snapshot had none.
 
 ## [0.15.1] - 2026-09-24
 

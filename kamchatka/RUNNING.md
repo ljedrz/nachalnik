@@ -829,7 +829,8 @@ context operation and it plays by the same rule as the rest of them — nothing 
 was in the context is **archived**, keeping its numbers and its contents; anything **pinned**
 stays where it is, because a pin is you saying so and `--system` is pinned; the loaded items come
 in as new items with new numbers, and the conversation they were is read back onto the chat tab.
-<kbd>u</kbd> twice puts the whole thing back.
+<kbd>u</kbd> twice puts the whole thing back. The snapshot's model parameters replace yours, and
+<kbd>u</kbd> does not bring those back, so the load says so when that changes them.
 
 That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless,
 `/load good`, and carry on from where it was still working — without losing the detour, which is
