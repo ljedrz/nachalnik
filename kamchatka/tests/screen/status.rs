@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 
 use crossterm::event::KeyCode;
 use nachalnik::{
-    ContextItem, ContextState, ModelInfo, ModelResponse, Usage, test::ScriptedProvider,
+    Content, ContextItem, ContextState, ModelInfo, ModelResponse, Usage, test::ScriptedProvider,
 };
 use nachalnik_providers::OpenAiCompatible;
 
@@ -45,6 +45,64 @@ async fn the_budget_puts_the_estimate_beside_what_was_really_charged() {
         screen.contains("learned from 1 request"),
         "the correction it drew from the difference is missing: {screen}"
     );
+}
+
+/// A picture the counter cannot price is a floor under the estimate, and not under the anchored
+/// figure once a request carrying it has been answered.
+///
+/// note: the two figures `/budget` puts side by side are made two ways, and the unpriced piece
+/// only misses one of them. The estimate is the counter guessing at a whole request, and it has
+/// no number for a screenshot; the anchored figure starts from what the provider charged for the
+/// last request, which carried it, so that figure has it. Saying "every figure above is a floor"
+/// once a request has gone out describes a figure the corner is not showing.
+#[tokio::test]
+async fn the_budget_says_the_estimate_is_a_floor_and_not_the_anchored_figure() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(4_321),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    harness.app.kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(4_000),
+    )));
+
+    harness.send("what is on the screen?").await;
+    harness.settle().await;
+    harness.send("/budget").await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("anchored on the last response"), "{screen}");
+    assert!(
+        screen.contains("the estimate above is a floor"),
+        "the estimate is the figure the counter is guessing at: {screen}"
+    );
+    assert!(
+        screen.contains("the anchored figure has what was in the context"),
+        "and the provider counted the picture: {screen}"
+    );
+    assert!(
+        !screen.contains("every figure above is a floor"),
+        "which is not true of the anchored figure: {screen}"
+    );
+}
+
+/// And before anything has been sent there is nothing to anchor on, so every figure is the
+/// counter's.
+#[tokio::test]
+async fn the_budget_says_every_figure_is_a_floor_before_anything_has_gone_out() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user(Content::blob(
+        "image/png",
+        "A".repeat(4_000),
+    )));
+
+    harness.send("/budget").await;
+
+    let screen = harness.flat();
+    assert!(screen.contains("every figure above is a floor"), "{screen}");
 }
 
 /// A model billed for reasoning it never sends back leaves nothing on the context tab where the

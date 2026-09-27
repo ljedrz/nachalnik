@@ -1448,16 +1448,32 @@ impl App {
         // way to tell that from a context that is genuinely small - both look like a low
         // percentage.
         //
+        // note: which figure it is a floor *for* is said rather than left to the person, because
+        // the answer changes once a request has gone out. The estimate is the counter guessing
+        // at the whole request from text, and it has no number for a picture; the anchored figure
+        // starts from what the provider charged for a request that carried the pieces already in
+        // the context, so from that response on it has them inside it. What it still estimates is
+        // what has changed since, which is text until the next response anchors it again - so a
+        // picture added after the last one is not in the figure being called whole
+        //
         // note: the counter is not named either. `TokenCounter::name` defaults to the type path,
         // which would put `nachalnik::tokens::Calibrating<nachalnik::tokens::BytesPerToken>` in
         // the middle of a line meant to be read. `/seams` answers which counter, in a table where
         // a full path is the useful form
         if !budget.fully_counted() {
-            lines.push(format!(
-                "unpriced: {} piece(s) of content the counter would not put a number on, so \
-                 every figure above is a floor and the real request is larger",
-                budget.uncounted,
-            ));
+            lines.push(match anchored {
+                Some(_) => format!(
+                    "unpriced: {} piece(s) of content the counter would not put a number on, so \
+                     the estimate above is a floor; the anchored figure has what was in the \
+                     context when the last request went out, and the provider counted it",
+                    budget.uncounted,
+                ),
+                None => format!(
+                    "unpriced: {} piece(s) of content the counter would not put a number on, so \
+                     every figure above is a floor and the real request is larger",
+                    budget.uncounted,
+                ),
+            });
         }
         if withheld != 0 {
             // note: "tokens the next request does not carry", rather than "tokens in N items the

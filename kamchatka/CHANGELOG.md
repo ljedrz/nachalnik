@@ -163,6 +163,11 @@ minor bump may break you.
   servers are reinstalled before the line naming the record is said, so a server that had stopped
   made `py would not list its tools again` the first line of a fresh session, and it is about the
   old one.
+- **`/budget` says the estimate is a floor and not the anchored figure.** A picture in the context
+  is content nothing here can price, and the line said every figure above was a floor and the real
+  request was larger - including the anchored figure, which starts from what the provider charged
+  for a request that carried the picture and already has it inside it. The estimate is a floor;
+  the anchored figure is not, and the line says so once a response has anchored it.
 - **`--deadline` covers starting up.** It started counting once the session was driven, so an
   endpoint that never answered its probe, or an MCP server that never finished its handshake, held
   a headless run silent for as long as it liked. It counts from the program's start now, a run
