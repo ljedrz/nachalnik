@@ -399,6 +399,9 @@ minor bump may break you.
   was dropped whole, so `tr` over a large file came back as an empty standard output under a count
   of bytes "more" than nothing. The start of the line is kept now, up to the ceiling, as `fs read`
   does, and the count is of what went after it.
+- **A command stopped by `--deadline` is not said to have been stopped by the person.** Every
+  stopped command was "stopped before it finished, at the request of the person you are working
+  with", whatever interrupted the turn; it now says it was stopped when the turn was interrupted.
 
 ## [0.15.1] - 2026-09-24
 

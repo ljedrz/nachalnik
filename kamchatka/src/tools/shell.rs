@@ -44,7 +44,7 @@ pub enum Exit {
     Ok,
     /// The command finished and reported a failure.
     Failed,
-    /// The command never got to report: stopped at the person's request, killed by a signal, or
+    /// The command never got to report: stopped by an interrupt, killed by a signal, or
     /// a status that could not be read at all.
     Stopped,
 }
@@ -654,8 +654,11 @@ impl Tool for Shell {
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
                 Exit::Stopped,
-                "exit: stopped before it finished, at the request of the person you are working \
-                 with; what is below is what it had said by then"
+                // note: not "at the person's request": a deadline interrupts the same way, and
+                // the interrupt carries no word of who asked, so the model is told only what
+                // happened
+                "exit: stopped before it finished, when the turn was interrupted; what is below \
+                 is what it had said by then"
                     .to_owned(),
             ),
             (false, Ok(status)) => match status.code() {

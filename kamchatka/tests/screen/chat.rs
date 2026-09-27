@@ -1734,7 +1734,7 @@ async fn what_a_command_exited_with_is_visible_without_reading_it() {
         ("exit: 0", Color::Green),
         ("exit: 3 (the command reported a failure)", Color::Red),
         (
-            "exit: stopped before it finished, at the request of the person you are working with",
+            "exit: stopped before it finished, when the turn was interrupted",
             Color::Yellow,
         ),
     ] {

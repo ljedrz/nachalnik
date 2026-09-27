@@ -1263,8 +1263,8 @@ async fn a_stopped_command_says_so_where_a_limit_cannot_cut_it() {
     // an output limit cuts from the end, so a notice appended after the standard error is the
     // first thing a long-running command loses - and it is the line that explains why the output
     // stops mid-sentence. The first line survives anything
-    let interrupted = "exit: stopped before it finished, at the request of the person you are \
-                       working with; what is below is what it had said by then\n--- stdout ---\n";
+    let interrupted = "exit: stopped before it finished, when the turn was interrupted; what is \
+                       below is what it had said by then\n--- stderr ---\n\n--- stdout ---\n";
     let mut content = nachalnik::Content::text(format!("{interrupted}{}", "x".repeat(4_000)));
     content.truncate_to(200).expect("it is over the limit");
 
