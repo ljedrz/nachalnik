@@ -54,6 +54,10 @@ minor bump may break you.
   says which silences are sent again and which are not.
 - **A byte-order mark before a stream's first event does not cost the event.** The mark is not
   whitespace, so the first line did not begin with `data:` and was skipped.
+- **An event spread over several `data:` lines is read as one.** The format allows it, joined with
+  newlines and ended by a blank line, and each line was read as an event on its own and dropped.
+  A line that parses alone is still an event at once, so a server that sends no blank lines
+  between events reads as it did.
 
 ## [0.6.1] - 2026-09-24
 

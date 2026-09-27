@@ -85,6 +85,9 @@ pub(crate) async fn read(
     // whole, rather than as whatever followed its last newline
     let mut unstreamed: Vec<u8> = Vec::new();
     let mut seen: Vec<Value> = Vec::new();
+    // the `data:` lines of an event spread over several, joined as the format joins them, until
+    // the blank line that ends it
+    let mut spread = String::new();
     let mut stopped = Stopped::Ended;
     let mut done = false;
     let mut vigil = Vigil::new();
@@ -106,10 +109,10 @@ pub(crate) async fn read(
                 buffer.extend_from_slice(&bytes);
                 false
             }
-            // a last line with no newline after it is still a line, and the end of the body is
-            // what ends it
+            // a last line with no newline after it is still a line, and a last event with no blank
+            // line after it still an event: the end of the body is what ends both
             Ok(Ok(None)) => {
-                buffer.push(b'\n');
+                buffer.extend_from_slice(b"\n\n");
                 true
             }
             // the body stopped arriving in the middle of an answer. Everything parsed so far is
@@ -198,12 +201,32 @@ pub(crate) async fn read(
                 break;
             }
 
-            // comments are not JSON, and are skipped with everything else that is not
-            let Some(event) = line
-                .strip_prefix("data:")
-                .and_then(|data| serde_json::from_str::<Value>(data.trim()).ok())
-            else {
-                continue;
+            // note: an event may be spread over several `data:` lines, which the format joins with
+            // newlines and ends with a blank line. Each line is read on its own first, since that
+            // is how nearly every server sends one and some send no blank line between them; only
+            // what does not parse alone waits for the blank line
+            let event = match line.strip_prefix("data:").map(str::trim) {
+                Some(data) => match serde_json::from_str::<Value>(data) {
+                    Ok(event) => {
+                        spread.clear();
+                        event
+                    }
+                    Err(_) => {
+                        if !spread.is_empty() {
+                            spread.push('\n');
+                        }
+                        spread.push_str(data);
+                        continue;
+                    }
+                },
+                None if line.is_empty() && !spread.is_empty() => {
+                    match serde_json::from_str::<Value>(&std::mem::take(&mut spread)) {
+                        Ok(event) => event,
+                        Err(_) => continue,
+                    }
+                }
+                // comments are not JSON, and are skipped with everything else that is not
+                None => continue,
             };
             // an upstream failure - a rate limit, a dead provider - reported as an event rather
             // than as a status, sometimes after the answer has started
@@ -235,14 +258,14 @@ pub(crate) async fn read(
             seen.push(event);
         }
 
-        // what is left is a line not yet ended, and one that never ends is not read for ever: what
-        // arrived before it is kept, as for a stream cut off
-        if buffer.len() > LARGEST {
+        // what is left is a line or an event not yet ended, and one that never ends is not read for
+        // ever: what arrived before it is kept, as for a stream cut off
+        if buffer.len() + spread.len() > LARGEST {
             if seen.is_empty() {
                 return Err(too_large(asking.model));
             }
             asking.say(format!(
-                "{} sent more than {} MiB without ending a line; what had arrived is kept",
+                "{} sent more than {} MiB without ending an event; what had arrived is kept",
                 asking.model,
                 LARGEST >> 20
             ));

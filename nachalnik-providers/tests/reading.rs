@@ -160,6 +160,47 @@ async fn a_byte_order_mark_does_not_cost_the_first_event() {
     }
 }
 
+/// An event spread over several `data:` lines is read as one, and a line that is not JSON does not
+/// take the events after it with it.
+///
+/// note: each line was read as an event on its own, so an event the format allows to be written
+/// over several lines was dropped a line at a time.
+#[tokio::test]
+async fn an_event_spread_over_several_lines_is_one_event() {
+    for (dialect, body) in [
+        (
+            "openai",
+            "data: not json\n\
+             data: {\"choices\":[{\"delta\":{\"content\":\"all \"}}]}\n\
+             data: {\"choices\":[{\"delta\":\n\
+             data:  {\"content\":\"of it\"},\n\
+             data:  \"finish_reason\":\"stop\"}]}\n\n",
+        ),
+        (
+            "gemini",
+            "data: not json\n\
+             data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all \"}]}}]}\n\
+             data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"of it\"}]},\n\
+             data:  \"finishReason\":\"STOP\"}]}",
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("an answer");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+        assert_eq!(response.stop, StopReason::EndTurn, "{dialect}");
+    }
+}
+
 /// Answers every request with `status` and a stream that promises more than `body` and then hangs
 /// up, which is what the transport reads as a body broken off.
 async fn broken_off(status: &'static str, body: &'static str) -> String {
