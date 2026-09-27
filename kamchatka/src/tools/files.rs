@@ -16,10 +16,10 @@ use std::{
 };
 
 use crate::sandbox::{Access, Reach};
-use nachalnik::{BoxError, OutputSink, ToolOutput};
+use nachalnik::{BoxError, Capability, OutputSink, ToolOutput, Verdict};
 use serde_json::Value;
 
-use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
+use crate::tools::{CEILING, Careful, KEPT, Limits, Subject, arg, number};
 
 /// What every tool here says about the path it takes.
 ///
@@ -422,9 +422,41 @@ impl Write {
                 content.len(),
                 path.display()
             ))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Ok(ToolOutput::error(match unmade(&path, &self.1) {
+                    Some(refusal) => refusal,
+                    None => format!("{}: {e}", path.display()),
+                }))
+            }
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
+}
+
+/// Why a write found nowhere to put its file, naming the first directory on the way that is not
+/// there, or `None` where they all are.
+///
+/// note: the system says `No such file or directory` about the file, which is the one part of the
+/// path a write was never going to find, and nothing in it says `fs` makes no directories. What to
+/// do next depends on whether `shell` may run, since that is what makes one.
+fn unmade(path: &Path, policy: &Careful) -> Option<String> {
+    let dir = path.parent()?;
+    let missing = dir.ancestors().take_while(|it| !it.exists()).last()?;
+    let next = match policy.stance(&Subject::Capability(Capability::exec("run"))) {
+        Verdict::Deny => "`shell`, which makes directories, is refused in this session, so write                           it in a directory that is there, or say which one you need made."
+            .to_owned(),
+        _ => format!(
+            "Make it with `shell` - `mkdir -p {}` - and write again.",
+            dir.display()
+        ),
+    };
+
+    Some(format!(
+        "{}: the directory {} is not there, and `fs` makes no directories, so nothing was \
+         written. {next}",
+        path.display(),
+        missing.display(),
+    ))
 }
 
 pub(super) struct Edit(

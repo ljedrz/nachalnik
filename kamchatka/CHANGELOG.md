@@ -410,6 +410,10 @@ minor bump may break you.
   `--sandbox-allow notes.txt` it made its new file in the directory beside it and renamed that
   over it, writing in a directory the session was never given - and a process killed in between
   left the new file there, outside the reach. The shell under Landlock could not.
+- **`fs write` into a directory that is not there names the directory.** It answered with the
+  system's `No such file or directory` about the file. It now says which directory is missing,
+  that `fs` makes none, and to make it with `shell` - or, where `shell` is refused, to write where
+  a directory is or say which one is needed.
 
 ## [0.15.1] - 2026-09-24
 

@@ -662,3 +662,26 @@ async fn edits_of_one_file_at_once_all_land() {
     let upper: Vec<String> = words.iter().map(|word| word.to_uppercase()).collect();
     assert_eq!(held(&dir, "a.txt"), upper.join("\n") + "\n");
 }
+
+/// A write into a directory that is not there names the directory and how to make it.
+///
+/// note: `fs` makes no directories, and the system's `No such file or directory` is about the
+/// file, which reads as though the file were the missing part.
+#[tokio::test]
+async fn a_write_into_a_missing_directory_names_it() {
+    let dir = scratch("files-write-unmade");
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "src/util/helpers.rs", "content": "x" }),
+    )
+    .await;
+    let missing = dir.canonicalize().expect("it is there").join("src");
+    assert!(
+        said.contains(&format!("the directory {} is not there", missing.display())),
+        "{said}"
+    );
+    assert!(said.contains("`mkdir -p "), "{said}");
+    assert!(!dir.join("src").exists());
+}
