@@ -704,7 +704,10 @@ async fn models_says_when_the_endpoint_lists_none() {
         .map(|row| format!("{}\n", row.concat()))
         .collect();
 
-    assert!(screen.contains("lists no models"), "{screen}");
+    assert!(
+        screen.contains("did not answer with a list of models"),
+        "{screen}"
+    );
     assert!(app.overlay.is_none(), "and no empty box was opened");
 }
 

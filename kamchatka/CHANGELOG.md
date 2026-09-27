@@ -144,6 +144,12 @@ minor bump may break you.
 - **An MCP server that cannot be started says so**, where it said it did not answer the handshake,
   and **one that lists a tool twice is told that**, where it was told another server's tools
   already had the name.
+- **`/provider` refuses what is not an address, and keeps the one it had.** It took any word, so
+  `/provider not a url at all` announced `a url at all at not, from now on` and the next request
+  failed as `builder error`; `localhost:11434/v1`, the scheme left off, failed the same way. It now
+  wants `http://` or `https://` and a host, and says where the requests still go.
+- **`/models` with nothing back no longer says the address lists no models.** An empty answer is
+  an address that publishes no listing or one that could not be reached, and the line says so.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
@@ -280,7 +286,6 @@ minor bump may break you.
 - **`/load` says one `u` takes it back when it archived nothing.** Its note always said `u` twice,
   and with nothing of the session's own set aside the load is one undo, so the second took back
   something the person had done before it.
-<<<<<<< HEAD
 - **A bare `/step`, and `/continue` after a `/load` or `-r`, no longer ask for an answer again.**
   Only `/continue` straight after a finished turn was declined, so `/step` there, or `/continue`
   over a loaded conversation ending on an answer, sent a request with nothing new at its end and
@@ -319,12 +324,10 @@ minor bump may break you.
   argument that is only a suffix leaves nothing to name the files after, and is taken as no
   argument. `/load` given a directory says it is one, rather than that it could not read
   `DIR/.json`.
-=======
 - **`/raw` after a failed request says it failed.** The runtime keeps the last answer, and a
   request that fails leaves the one before it standing, so `/raw` showed an older turn's bytes as
   the provider's last answer. It now says the last request failed and with what, and labels the
   older answer as the one before it.
->>>>>>> 8f99881 (kamchatka: `/raw` after a failed request says it failed)
 
 ## [0.15.1] - 2026-09-24
 

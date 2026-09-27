@@ -400,10 +400,17 @@ impl App {
             "models" => {
                 let provider = self.provider.clone();
                 let listed = provider.models().await;
+                // note: "did not answer with" rather than "lists no": an empty answer is an
+                // address that publishes no listing *or* one that could not be reached, and the
+                // provider does not say which
                 if listed.is_empty() {
                     self.say(
                         Speaker::Error,
-                        format!("{} lists no models", provider.host()),
+                        format!(
+                            "{} did not answer with a list of models: it may publish none, or not \
+                             be reachable",
+                            provider.host()
+                        ),
                     );
                     return;
                 }
@@ -461,6 +468,19 @@ impl App {
                     Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
                     None => (rest.to_owned(), None),
                 };
+                // refused before anything is announced or changed, so the session keeps talking to
+                // the address it had rather than to one no request can reach
+                if !crate::endpoint::is_an_address(&url) {
+                    self.say(
+                        Speaker::Error,
+                        format!(
+                            "`{url}` is not an address: it wants http:// or https:// and a host, \
+                             as in `/provider http://localhost:11434/v1`; requests still go to {}",
+                            self.provider.endpoint()
+                        ),
+                    );
+                    return;
+                }
                 let provider = self.provider.clone();
                 self.say(
                     Speaker::Note,

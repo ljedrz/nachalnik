@@ -83,6 +83,25 @@ pub const KEYS: [&str; 5] = [
     "TYPESAFE_API_KEY",
 ];
 
+/// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, and a host.
+///
+/// note: read by hand rather than parsed, like `Endpoint::host`, because what it catches is the two
+/// ways a person gets an address wrong - a word that is not one, and a scheme left off, which
+/// makes `localhost:11434` a URL whose scheme is `localhost`. Either left to the provider fails on
+/// the next request, as a transport error, after the switch has already been announced. Anything
+/// subtler still reaches the provider, and its error says why.
+pub fn is_an_address(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else {
+        return false;
+    };
+
+    matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https")
+        && rest
+            .split(['/', '?', '#'])
+            .next()
+            .is_some_and(|host| !host.is_empty())
+}
+
 /// The endpoint to talk to; OpenRouter unless told otherwise.
 pub fn base_url() -> String {
     env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())

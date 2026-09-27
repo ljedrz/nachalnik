@@ -3463,6 +3463,56 @@ async fn a_switch_of_model_is_in_the_record() {
     assert!(changes.contains(&named("second", "third")), "{changes:?}");
 }
 
+/// `/provider` with something that is not an address refuses it and keeps the one it had.
+///
+/// note: it took any word, so `/provider not a url at all` announced `a url at all at not` and the
+/// next request failed as a `builder error`; and `/provider localhost:11434/v1`, the scheme left
+/// off, is a URL whose scheme is `localhost`.
+#[tokio::test]
+async fn provider_refuses_what_is_not_an_address() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "first",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            "/provider not a url at all\n/provider localhost:11434/v1\n/provider http:///v1\n"
+                .as_bytes(),
+        )
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("utf-8");
+    for typed in ["`not`", "`localhost:11434/v1`", "`http:///v1`"] {
+        assert!(
+            prose.contains(&format!("{typed} is not an address")),
+            "{typed}: {prose}"
+        );
+    }
+    assert!(
+        !prose.contains("from now on"),
+        "nothing was announced: {prose}"
+    );
+    assert_eq!(app.provider.endpoint(), "http://127.0.0.1:1");
+    assert_eq!(app.kernel.model_info().expect("a model").model, "first");
+}
+
 /// A switch on a script's last line is in the record before the session ends.
 ///
 /// note: the line after a switch is what waits for it, and at the end of the input there is none.
