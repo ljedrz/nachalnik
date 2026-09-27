@@ -1,7 +1,7 @@
 //! `context` reading itself: what `look` lists, what `budget` says it costs, and what `request`
 //! reports is going out.
 
-use crate::{agent, answered, answers_from, branch, one_turn};
+use crate::{agent, answered, answers_from, branch, one_turn, tokens_in};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
     Config, Content, ContextItem, ContextKind, ContextState, Kernel, ToolCallId, Verdict,
@@ -702,6 +702,81 @@ async fn unpriced_content_is_said_to_be_wherever_a_figure_is_given() {
             .any(|line| line.contains("user_message") && line.contains("0+")),
         "and the picture's own row carries the mark: {}",
         said[3]
+    );
+}
+
+/// A narrowed listing reads its figures against the context, not against the whole request.
+///
+/// note: the header put a part and a whole beside each other that were not one. `sending` and
+/// `held` are summed over the matched items; the figure they were read against was
+/// `budget().used()`, which is every item *plus* the tool definitions, which have no row in the
+/// table under it. So a listing of four tool results read `~1,531 tokens going ... out of ~6,107
+/// the whole request carries` and the missing 4,576 - most of it the JSON schemas of the tools
+/// the model is holding - was accounted to nothing. On a context that is mostly reasoning the
+/// first two figures exceeded the third outright, which is not something a part can do to the
+/// whole it is part of.
+///
+/// note: the request's own total is still here, with the tool definitions named in it, because a
+/// model budgeting its own work is also asking how much of the request is not its context. Two
+/// lines rather than one, and each on one basis.
+#[tokio::test]
+async fn a_narrowed_listing_reads_its_figures_against_the_context() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "select": "all" }),
+    )]));
+
+    // a turn that thought at length and sent a fraction of it, which is the shape that made the
+    // two figures exceed the whole
+    kernel.set_projector(Arc::new(nachalnik::LinearProjector {
+        send_reasoning: false,
+        ..Default::default()
+    }));
+    kernel.push(
+        ContextItem::assistant("the answer", Vec::new())
+            .with_reasoning(Some("weighing it. ".repeat(600).into())),
+    );
+    for n in 0..3 {
+        kernel.push(ContextItem::file(
+            format!("f{n}.rs"),
+            "some file the model read. ".repeat(200),
+        ));
+    }
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let context_line = said
+        .lines()
+        .find(|line| line.contains("are those items"))
+        .unwrap_or_else(|| panic!("the figures are on their own line: {said}"));
+    // the two figures on it are a part and the whole they are part of
+    let figures = tokens_in(context_line);
+    assert!(figures.len() >= 2, "{context_line}");
+    assert!(
+        figures[0] <= figures[1],
+        "the matched items are a part of the context, so they cannot be more than it: \
+         {context_line}"
+    );
+    assert!(
+        !context_line.contains("the whole request carries"),
+        "the request is not the whole of what the class is a part of: {context_line}"
+    );
+    // and the request's own total is named with what is in it
+    let request_line = said
+        .lines()
+        .find(|line| line.contains("the next request is"))
+        .unwrap_or_else(|| panic!("the request's own figures are named: {said}"));
+    assert!(
+        request_line.contains("is the tool definitions"),
+        "{request_line}"
+    );
+    let figures = tokens_in(request_line);
+    assert!(
+        figures[1] < figures[0],
+        "the tool definitions are a part of the request, and named as such: {request_line}"
     );
 }
 

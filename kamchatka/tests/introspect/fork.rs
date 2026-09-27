@@ -287,11 +287,19 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     let said = answers_from(&kernel, &["fork"]);
     let (pretended, ablated) = (&said[0], &said[1]);
 
-    // note: what it can say, which is that nothing was withheld. It used to say the copy saw all
-    // of the caller's items, and the projector had already repaired the unfinished call out of it
+    // note: what it can say, which is that nothing was withheld at the caller's request. It used
+    // to say the copy saw all of the caller's items, and the projector had already repaired the
+    // unfinished call out of it; it says what was named now, because a fork beside another call in
+    // the same turn is held away by this tool rather than by the caller, and the clause about that
+    // is below
     assert!(
-        pretended.contains("Nothing of yours was taken away"),
+        pretended.contains("Nothing you named with `without` was taken away"),
         "{pretended}"
+    );
+    assert!(
+        !pretended.contains("Nothing of yours was taken away"),
+        "that sentence has to be the one about what was named, or a sibling's result kept out of \
+         the copy reads as nothing withheld: {pretended}"
     );
     // and the count is the caller's items, not the two this tool adds: the copy's own system
     // instruction and the question put to it
@@ -312,6 +320,63 @@ async fn a_fork_says_whether_anything_was_actually_kept_from_it() {
     assert!(ablated.contains("without 1"), "{ablated}");
     assert!(ablated.contains("could not read at all"), "{ablated}");
     assert!(!ablated.contains("saw all of them"), "{ablated}");
+}
+
+/// A fork beside another call in the same turn says what that call kept out of the copy.
+///
+/// note: two `fork` calls in one turn each exclude the other's result from their own copy -
+/// deliberately, since the results do not exist when either snapshot is taken, and a fork handed
+/// the second one the first one's answer would be comparing two different contexts. The exclusion
+/// was not reported. The header sentence is chosen by whether `without` named anything, so a fork
+/// whose copy was silently shortened by a sibling's result still said "Nothing of yours was taken
+/// away, so this is the same context answering again" - a false statement about the copy the
+/// answer came from, in the one line whose whole job is to say what the copy could and could not
+/// read. A model comparing two forks reads it as "these two runs saw the same context", when in
+/// fact each was missing an item the other might have had - the one inference two forks in a turn
+/// exist to support.
+#[tokio::test]
+async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c1",
+                "context",
+                json!({ "action": "note", "content": "a finding", "reason": "because" }),
+            ),
+            call(
+                "c2",
+                "fork",
+                json!({ "action": "ask", "question": "what is the latest note?" }),
+            ),
+        ]),
+        ModelResponse::text("the copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("write something down, then ask a copy"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    // the fork ran after the note - calls in a turn run one at a time, so the note's result was
+    // already in the context when the fork's snapshot was taken
+    let said = answers_from(&kernel, &["fork"])[0].clone();
+    assert!(
+        said.contains("other call in this turn had not been answered"),
+        "the copy is one result short of the caller's context, and nothing in the answer said so: \
+         {said}"
+    );
+    assert!(
+        !said.contains("Nothing of yours was taken away"),
+        "and the sentence that says nothing was withheld has to be the one about what was named: \
+         {said}"
+    );
+    assert!(
+        said.contains("is not in it"),
+        "and what is missing is named, so a model can go and read it here: {said}"
+    );
+    assert!(
+        !said.contains(".."),
+        "the clause joins a sentence that already ended: {said}"
+    );
 }
 
 /// An item to leave out that is not there is refused before a request is spent on the copy.

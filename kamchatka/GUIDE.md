@@ -759,8 +759,10 @@ megabytes away could not look at any of it without undoing the saving it had jus
 make the archive write-only from the agent's side, which is not what *nothing is destroyed* is
 supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
 item. A search answers with how many lines say the text, what taking them all would cost, and which
-items they are in, with each one's state; `take` shows that many of the lines, and an answer
-without it says that searching an archived item left it archived.
+items they are in, with each one's state; `take` shows that many of the lines, up to 64 — a wider
+one is taken as 64 and the answer says so, with what narrows for the rest, because a result the
+compactor elides on the way in is one the model paid for and did not get. An answer without `take`
+says that searching an archived item left it archived.
 
 Case is ignored, because a model that searched for `landlock` in a context full of `Landlock` and
 was told there were no matches has been told something false about itself, silently — the one
@@ -845,7 +847,9 @@ with the true total**, not the filtered one, before how many matched and how man
 The total and the match count are separate questions, and a `take` on its own answers only the
 second: it shortens what is *shown* without narrowing what counts, so it says how many of the most
 recent it is showing and how many older ones are not here, rather than claiming that only those
-matched.
+matched. `take` is at most 64 — a log grows for as long as the run does, so a wider one is taken as
+64 and the answer says so, with `kinds`, `ids` or a `since` for the rest, and a session that read
+its own log in bulk can read it again to find out why.
 
 That one rule is what makes the tool safe to hand a model. A short answer is self-describing, so
 truncation cannot read as absence — which matters more here than anywhere else, because the one

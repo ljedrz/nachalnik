@@ -157,6 +157,16 @@ minor bump may break you.
   lost the whole run on the line telling it which mode it had chosen - before the session was
   written. All three are written with the error let go, the way `finish` has always written the
   parting lines.
+- **`context search` does not count the message that started the turn asking.** The fix for the
+  asking turn missed its first message, so a search for a word in the question still found it.
+- **`context search` and `log` hold a `take` to 64, and say so when they do.** An unbounded `take`
+  returned more than the tool's own answer is meant to carry, and the compactor elided it on
+  arrival.
+- **Four introspection answers say what is true.** A `fork` beside another call says what that
+  call kept out of the copy; `look` with `ids` says whose a pin is before a move would refuse it;
+  an `undo` that spent an entry on a refusal says so; and a narrowed `look` reads its figures
+  against the context rather than the whole request.
+- **`setup permissions` names `shell` for `net:reach`,** which it described as governing nothing.
 - **`/params stream false` is not called ignored.** A model's list of parameters has no word for
   `stream` or `stream_options`, so setting one was answered `sent, and ignored` while it turned the
   answer into one body. Those two are left out of that sentence.

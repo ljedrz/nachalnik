@@ -418,6 +418,58 @@ async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
     );
 }
 
+/// A rule the network gate consults names the tool it governs, even though no tool declares it.
+///
+/// note: the one row in this table that no registered tool declares. `net:reach` is not something
+/// a tool asks for - a model that wants the network writes `curl` - so the table, which is filled
+/// from what the tools declare, printed `net:reach  deny  nothing here is judged by it` beside a
+/// verdict that had just refused one of the model's commands, while the same session's own
+/// `/policy` said `shell, when the command reaches for it`. A model reading it has no way to work
+/// out that it may not reach the network, which is the whole question the tool's own description
+/// says it answers.
+///
+/// note: seeded only where somebody has written the rule, which is the table's own rule for a row
+/// - a capability nothing declares and nobody has an opinion about is not information, and a
+/// session that never mentions the network gets no row for it.
+#[tokio::test]
+async fn setup_permissions_names_the_shell_for_the_rule_the_network_gate_consults() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    // a shell, which is the tool the gate asks about, and a rule somebody has written about it
+    kernel.add_tool(Arc::new(
+        nachalnik::test::ConstTool::new("shell", "did it")
+            .with_capabilities([nachalnik::Capability::exec("run")]),
+    ));
+    policy.set(&Subject::parse("net:reach"), Verdict::Deny);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let row = said
+        .lines()
+        .find(|line| line.starts_with("net:reach"))
+        .unwrap_or_else(|| panic!("the row is there: {said}"));
+    assert!(row.contains("shell"), "{row}");
+    assert!(
+        row.contains("when the command reaches for it"),
+        "and says what makes it that time, the way the operator's own view does: {row}"
+    );
+    assert!(
+        !row.contains("nothing here is judged by it"),
+        "a rule that is refusing the model's commands cannot be reported as deciding for \
+         nothing: {row}"
+    );
+}
+
 /// `mcp:call` names no tool that came from a server this program spawned, because it does not
 /// decide for one.
 ///

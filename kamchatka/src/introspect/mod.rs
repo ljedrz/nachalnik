@@ -282,6 +282,27 @@ pub(crate) fn unmatched_file(select: &str) -> &'static str {
     }
 }
 
+/// How many lines one `search`, or records one `log` read, may hand back in a single call.
+///
+/// note: a ceiling at all, because both tools' whole purpose is to price what they are about to
+/// hand over and then hand it over - and a `take` of "as many as there are" is the one way to ask
+/// for it not to be priced. `search` on a real context and `log` on a real log each returned tens
+/// of thousands of tokens in one result, which the compactor elided on the way in: the tool paid
+/// for the answer, the model was left holding a marker saying `compacted to make room`, and the
+/// result of the read was in the record the read was supposed to explain. So a number above this
+/// is taken as this and the answer says so.
+///
+/// note: clamped rather than refused, and said in the answer either way. A refusal would be the
+/// stricter shape, and `undo`/`redo` refuse a `steps` above their own bound because a walk of
+/// sixty-four where a hundred was asked for reads as though the hundred was undone. Here the
+/// answer opens with the true count and the true price of every match whatever the `take` was, so
+/// a clamped answer is still the true one, and the only thing lost is the number of lines in it.
+///
+/// note: one number for both, because it is one word. `search` and `log` are the two tools that
+/// hand over pieces of the session, and a model that has learned what 64 buys from one of them
+/// has learned it from the other.
+pub(crate) const TAKE: usize = 64;
+
 /// The pins the model made itself, and the note each was made with.
 ///
 /// note: the note as well as the identifier, because an identifier alone goes stale. The list is

@@ -392,7 +392,27 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     for (subject, verdict) in policy.stances() {
         match subject {
             Subject::Capability(capability) => {
-                binds.entry(capability).or_default();
+                let reaches = capability == Capability::net("reach");
+                let tools = binds.entry(capability).or_default();
+                // note: a capability the policy consults without a tool declaring it, which is
+                // `net:reach` and the network gate. The gate is what asks about a command, and it
+                // asks about a `shell`, so a row for it read `nothing here is judged by it` beside
+                // a verdict that had just refused one of the model's commands - while the same
+                // session's own `/policy` said `shell, when the command reaches for it`. Named
+                // here, because the operator's view and the model's are one answer written twice
+                // and they cannot say opposite things
+                if reaches {
+                    for spec in kernel.tool_specs() {
+                        if spec
+                            .capabilities
+                            .iter()
+                            .any(|it| it == &Capability::exec("run"))
+                            && !tools.contains(&spec.id)
+                        {
+                            tools.push(spec.id.clone());
+                        }
+                    }
+                }
             }
             Subject::Domain(domain) => {
                 broader.push((
@@ -431,7 +451,20 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                 said(verdict),
                 match tools.is_empty() {
                     true => "nothing here is judged by it".to_owned(),
-                    false => tools.join(", "),
+                    // note: the clause the operator's own view puts beside that row, so a model
+                    // reading either of them learns the same thing about the one rule that
+                    // decides whether a command may open a socket
+                    // note: the clause the operator's own view puts beside that row, so a model
+                    // reading either of them learns the same thing about the one rule that
+                    // decides whether a command may open a socket
+                    false => format!(
+                        "{}{}",
+                        tools.join(", "),
+                        match capability == &Capability::net("reach") {
+                            true => ", when the command reaches for it",
+                            false => "",
+                        }
+                    ),
                 },
             ));
         }

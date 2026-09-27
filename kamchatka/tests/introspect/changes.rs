@@ -370,6 +370,130 @@ async fn a_pin_the_person_made_again_is_the_persons() {
     assert_eq!(kernel.item(file).unwrap().state, ContextState::Pinned);
 }
 
+/// The two views of a pin the person has taken over cannot disagree about whose it is.
+///
+/// note: the third thing wrong with an operator re-pinning an item the model pinned. The move
+/// refuses it - `pinned by the person you are working with, and a pin is a promise` - while
+/// `look` with `ids` printed the item's own metadata under `attached:`, which still read
+/// `{"pinned":{"by":"context","note":"mine"}}` for the pin the model made. So the model was shown
+/// `by: context` in one call and "not yours to move" in the next, for one item, with nothing in
+/// either saying the two are the same pin. A model that reads the metadata and believes it keeps
+/// believing the pin is its own and keeps being refused.
+///
+/// note: the metadata is still printed. It is a record of what was written when it was written,
+/// and somebody may be asking for it; what was added is what the move itself will say, from the
+/// same `protected` the move consults, so the two cannot come apart - which is what a listing
+/// narrowed by a `select` already did, and the reason this is a bug at all.
+#[tokio::test]
+async fn reading_an_item_back_says_whos_the_pin_is_before_a_move_would_refuse_it() {
+    let mut script = one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "pin", "ids": [1], "reason": "I need this" }),
+    )]);
+    script.extend(one_turn(vec![
+        call("c2", "context", json!({ "action": "look", "ids": [1] })),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "restore", "ids": [1], "reason": "no I do not" }),
+        ),
+    ]));
+    let (kernel, _provider, _anchor) = agent(script);
+
+    let file = kernel.push(ContextItem::file("maybe.rs", "..."));
+    kernel.push(ContextItem::user("think about it"));
+    kernel.turn().await.expect("the first turn failed");
+
+    // the person takes the pin off and puts their own on, which is what `/pin` does
+    kernel.set_state([file], ContextState::Active, None);
+    kernel.set_state([file], ContextState::Pinned, None);
+
+    kernel.push(ContextItem::user("and now?"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let said = all_answers(&kernel);
+    let read = said
+        .iter()
+        .find(|said| said.contains("attached:"))
+        .expect("the item was read back in full");
+    assert!(
+        read.contains("not yours to move: pinned by the person"),
+        "the metadata on this item still reads `by: context`, and the sentence that says the move \
+         will be refused is what keeps the two from contradicting each other: {read}"
+    );
+    // the move agrees with the reading, which is the point
+    assert!(said[2].contains("a pin is a promise"), "{said:?}");
+}
+
+/// An `undo` that spent an entry on a refusal says so, rather than saying there was nothing.
+///
+/// note: an entry that has since gone, or that is no longer the tool's to move, gives nothing to
+/// walk to and the entry is spent either way rather than left to be retried against a context it
+/// no longer describes - which is the right call and fails safe. The report was the problem. It
+/// opened with the same sentence as a walk that had never had an entry, so the only evidence that
+/// one had been consumed was the counter moving under it, and the sentence the model reads said
+/// the opposite: that there had been nothing of its to walk back.
+#[tokio::test]
+async fn an_undo_that_spent_an_entry_on_a_refusal_says_it_spent_one() {
+    let mut script = one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "note", "content": "LOCKIN-78", "label": "l2", "reason": "mine",
+                "pin": true }),
+    )]);
+    script.extend(one_turn(vec![
+        call(
+            "c2",
+            "context",
+            json!({ "action": "undo", "reason": "take it back" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "undo", "reason": "and again" }),
+        ),
+    ]));
+    let (kernel, _provider, _anchor) = agent(script);
+
+    kernel.push(ContextItem::user("write it down and keep it"));
+    kernel.turn().await.expect("the first turn failed");
+
+    // the person takes the note's pin over, so the model may no longer move it
+    let note = kernel
+        .items()
+        .iter()
+        .find(|item| item.label == "l2")
+        .expect("the note is on the context")
+        .clone();
+    kernel.set_state([note.id], ContextState::Active, None);
+    kernel.set_state([note.id], ContextState::Pinned, None);
+
+    kernel.push(ContextItem::user("now take it back"));
+    kernel.turn().await.expect("the second turn failed");
+
+    let said = all_answers(&kernel);
+    let (first, second) = (&said[1], &said[2]);
+    // the first one had an entry and lost it to a refusal
+    assert!(
+        first.contains("could be walked back") && first.contains("spent on it"),
+        "an entry that was spent on a refusal is not the same as an entry that was never there: \
+         {first}"
+    );
+    assert!(
+        first.contains("a pin is a promise"),
+        "and it says why, which is the refusal itself: {first}"
+    );
+    assert!(
+        second.contains("there was nothing of yours to walk back"),
+        "and the second walk, whose journal really is empty, is the one that says so: {second}"
+    );
+    assert!(
+        !second.contains("could be walked back"),
+        "a walk that spent nothing has spent nothing: {second}"
+    );
+}
+
 #[tokio::test]
 async fn context_will_not_touch_the_turn_it_is_speaking_in() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
@@ -1289,18 +1413,32 @@ async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
         !listing.contains("what is in here?"),
         "the listing is the class and not the context: {listing}"
     );
-    // the figures are the class's own, which is the number the decision turns on, with the
-    // session's beside it to read them against - so the two are not the same number
+    // the figures are the class's own, which is the number the decision turns on, read against
+    // the context's total on the same line - so the class is a part of something it can sum to,
+    // and the request's own total is named on the line below with the tool definitions it
+    // carries, rather than being the "whole" the class is read as a fraction of (which made the
+    // tool definitions, which have no row, look like part of the class's cost)
     let figures = listing
         .lines()
-        .find(|line| line.contains("out of ~"))
+        .find(|line| line.contains("are those items"))
         .map(tokens_in)
         .expect("the line with the figures on it");
     assert_eq!(figures.len(), 3, "{listing}");
     assert!(
-        figures[0] < figures[2],
-        "the class is charged for the whole session: {listing}"
+        figures[0] < figures[1],
+        "the class is a part of the context, not the whole of the request: {listing}"
     );
+    let request = listing
+        .lines()
+        .find(|line| line.contains("the next request is"))
+        .map(tokens_in)
+        .expect("the line with the request's own figures on it");
+    assert_eq!(request.len(), 2, "{listing}");
+    assert!(
+        request[1] < request[0],
+        "the tool definitions are named as part of the request, not of the class: {listing}"
+    );
+    assert!(listing.contains("is the tool definitions"), "{listing}");
     // the one a move would refuse, marked here rather than found out by moving
     assert!(
         listing.contains("not yours to move: pinned by the person"),

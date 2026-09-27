@@ -38,7 +38,7 @@ use super::{Reach, action, ids, named, protected, unknown};
 
 mod changes;
 
-use changes::{Changes, own_turn};
+use changes::{Changes, asking_turn, own_turn};
 
 /// The items the agent pinned itself, shared between the half that sets them and the half that
 /// reports them.
@@ -141,8 +141,8 @@ fn ops() -> Vec<Op> {
                 Arg::list("ids", "integer", "look only in these items, by number"),
                 Arg::whole(
                     "take",
-                    "show this many of the matching lines; left out, you get the count and the \
-                     price and no lines",
+                    "show this many of the matching lines, up to 64; left out, you get the count \
+                     and the price and no lines",
                 ),
             ],
         ),
@@ -343,7 +343,13 @@ impl Tool for Context {
                         &self.pinned.lock(),
                         own_turn(&kernel, &call.id),
                     ),
-                    None => look(&kernel, &named.ids, whole, own_turn(&kernel, &call.id)),
+                    None => look(
+                        &kernel,
+                        &named.ids,
+                        whole,
+                        own_turn(&kernel, &call.id),
+                        &self.pinned.lock(),
+                    ),
                 }))
             }
             "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
@@ -363,8 +369,8 @@ impl Tool for Context {
                     Ok(ids) => ids,
                     Err(why) => return Ok(ToolOutput::error(why)),
                 };
-                let own = own_turn(&kernel, &call.id);
-                Ok(ToolOutput::new(search(&kernel, text, &only, take, own)))
+                let own = asking_turn(&kernel, &call.id);
+                Ok(ToolOutput::new(search(&kernel, text, &only, take, &own)))
             }
             // note: asked for here *as well as* in the schema. A branch per operation lets eight
             // of the twelve require it and four not offer it at all, but nothing is sent
@@ -422,13 +428,19 @@ fn taken(args: &Value) -> Result<Option<usize>, String> {
 /// an inventory, the sending figure hides tens of thousands of tokens the agent really is
 /// carrying. Both, named, is the only honest answer, and it is what `held` in the next line and
 /// the expensive list under `budget` are counted from.
-fn look(kernel: &Kernel, ids: &[ContextId], whole: bool, own: Option<ContextId>) -> String {
+fn look(
+    kernel: &Kernel,
+    ids: &[ContextId],
+    whole: bool,
+    own: Option<ContextId>,
+    mine: &super::Mine,
+) -> String {
     let items = kernel.items();
     let going = Going::of(kernel);
     if !ids.is_empty() {
         return ids
             .iter()
-            .map(|id| full(&items, *id, &going, whole))
+            .map(|id| full(&items, *id, &going, whole, mine, own))
             .collect::<Vec<_>>()
             .join("\n");
     }
@@ -537,8 +549,17 @@ fn floor(items: &[Arc<ContextItem>]) -> &'static str {
 /// taken *after* taking it. Undoing that is one call, and knowing first is none.
 ///
 /// note: the figures are the matched items' own rather than the session's, because that is the
-/// number the decision turns on - what giving this class up would free - and the request's total
+/// number the decision turns on - what giving this class up would free - and the context's total
 /// is on the line beside it to read them against. The rest of the accounting is `budget`'s.
+///
+/// note: the context's total and not the request's, which is what this line used to say. The two
+/// figures are sums over the matched items and the request's total is a sum over every item plus
+/// the tool definitions, which have no row in the table under it - so a header that put one beside
+/// the other read as "this class is 1,531 of a 6,107 request, and 4,576 is somewhere else in it",
+/// and a model budgeting against it concluded that the tool definitions were a quarter of a
+/// context it cannot act on and that the four results it could give up were a quarter of what was
+/// costing it. Both are wrong, in the one direction that makes giving things up look futile. The
+/// definitions are named on the request's own line below, where they belong.
 ///
 /// note: the items a change would refuse are marked here rather than left to be discovered by the
 /// change. A preview that named four items where a move takes three is exactly the confident wrong
@@ -569,11 +590,14 @@ fn matched(
         .sum();
     let withheld: usize = picked.iter().map(|item| going.held_back(item)).sum();
     let carried: Vec<Arc<ContextItem>> = picked.iter().map(|item| Arc::clone(item)).collect();
+    let budget = kernel.budget();
 
     let mut out = inherited(kernel, &carried);
     out.push_str(&format!(
         "`{select}` matches {} of {} items · {} of them go into the next request\n\
-         ~{} tokens going and ~{} held back, out of ~{} the whole request carries\n\n\
+         ~{} of the ~{} tokens in the context are those items, and ~{} more of what they hold is \
+         not going into the request\n\
+         the next request is ~{}, of which ~{} is the tool definitions\n\n\
          {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
         picked.len(),
         items.len(),
@@ -582,8 +606,10 @@ fn matched(
             .filter(|item| going.costs.contains_key(&item.id) || Some(item.id) == own)
             .count(),
         thousands(sending),
+        thousands(budget.context_tokens),
         thousands(withheld),
-        thousands(kernel.budget().used()),
+        thousands(budget.used()),
+        thousands(budget.tool_tokens),
         "id",
         "state",
         "kind",
@@ -765,7 +791,14 @@ fn sampled(text: &str, whole: bool) -> String {
 }
 
 /// The whole of one item, or the fact that there is no such item.
-fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -> String {
+fn full(
+    items: &[Arc<ContextItem>],
+    id: ContextId,
+    going: &Going,
+    whole: bool,
+    mine: &super::Mine,
+    own: Option<ContextId>,
+) -> String {
     let Some(item) = items.iter().find(|item| item.id == id) else {
         return format!("[{id}] there is no such item\n");
     };
@@ -806,6 +839,23 @@ fn full(items: &[Arc<ContextItem>], id: ContextId, going: &Going, whole: bool) -
     if !item.meta.is_null() {
         out.push_str(&format!("  attached: {}\n", item.meta));
     }
+    // note: what the moves will say about it, beside whatever its own metadata says. The metadata
+    // is a record of what was written when it was written - a pin this tool made, still reading
+    // `by: context` on an item the person has since pinned again - and a model reading it that
+    // way keeps believing the pin is its own and keeps being refused. The refusal itself is what
+    // says whose it is, and this is the same [`protected`] the move consults, so the two cannot
+    // come apart; the alternative was to leave the metadata out, which would hide a record
+    // somebody may be asking for
+    if let Some(why) = protected(item, mine, own) {
+        out.push_str(&format!("  not yours to move: {why}\n"));
+    }
+    // note: what the moves will say about it, beside whatever its own metadata says. The metadata
+    // is a record of what was written when it was written - a pin this tool made, still reading
+    // `by: context` on an item the person has since pinned again - and a model reading it that
+    // way keeps believing the pin is its own and keeps being refused. The refusal itself is what
+    // says whose it is, and this is the same [`protected`] the move consults, so the two cannot
+    // come apart; the alternative was to leave the metadata out, which would hide a record
+    // somebody may be asking for
     // a turn that was recorded as an order is read back as one, block by block. This is the
     // thing `context` exists for and the one view of it that is not available anywhere else: the
     // request the model will be sent has the same parts in the same order, but by then the
@@ -864,7 +914,7 @@ fn search(
     text: &str,
     only: &[ContextId],
     take: Option<usize>,
-    own: Option<ContextId>,
+    own: &BTreeSet<ContextId>,
 ) -> String {
     let needle = text.to_lowercase();
     let items = kernel.items();
@@ -882,18 +932,19 @@ fn search(
         }
         read += 1;
         // but not the turn asking. Its calls carry the text being searched for, and so does
-        // whatever it said and thought on the way to making them - so a search that read the
-        // rest of it would find the needle in the question the model is in the middle of
-        // asking, and report a match it made itself
-        let mut hay = match Some(item.id) == own {
+        // whatever it said and thought on the way to making them - and so does the message that
+        // started the turn, which is a context item of its own. So a search that read the rest of
+        // the turn would find the needle in the question the model is in the middle of asking,
+        // and report a match it made itself
+        let mut hay = match own.contains(&item.id) {
             true => String::new(),
             false => item.content.to_text().into_owned(),
         };
-        if let Some(reasoning) = item.reasoning().filter(|_| Some(item.id) != own) {
+        if let Some(reasoning) = item.reasoning().filter(|_| !own.contains(&item.id)) {
             hay.push('\n');
             hay.push_str(&reasoning.to_text());
         }
-        for asked in item.calls().filter(|_| Some(item.id) != own) {
+        for asked in item.calls().filter(|_| !own.contains(&item.id)) {
             hay.push_str(&format!("\n{} {}", asked.tool, asked.args));
         }
         let lines: Vec<String> = hay
@@ -984,7 +1035,13 @@ fn search(
         return out;
     };
 
-    let shown = take.min(rendered.len());
+    // note: clamped, and said. A model that writes a "big enough" number - which is what a
+    // search over a whole context invites - got the entire match set in one tool result, and the
+    // compactor elided it on the way in, so the tool paid for the answer and the model was left
+    // holding a marker. There is no way to page further, so the sentence says what to narrow
+    // instead, rather than inviting a second call that will hand back the same first page
+    let capped = take.min(super::TAKE);
+    let shown = capped.min(rendered.len());
     match rendered.len() - shown {
         0 => out.push_str(&format!("\nall {} of them:\n", thousands(shown))),
         more => out.push_str(&format!(
@@ -992,6 +1049,13 @@ fn search(
             thousands(shown),
             thousands(more)
         )),
+    }
+    if capped < take && shown < rendered.len() {
+        out.push_str(&format!(
+            "\n`take` is at most {}, so a wider one will not show the rest: a narrower `text`, or \
+             `ids`, for the lines you did not get.\n",
+            thousands(super::TAKE)
+        ));
     }
     out.push_str(&rendered[..shown].concat());
 

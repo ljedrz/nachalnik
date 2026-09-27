@@ -318,6 +318,78 @@ async fn search_reaches_what_compaction_elided_out_of_the_request() {
     assert!(kernel.budget().used() > before);
 }
 
+/// A `take` above the ceiling is taken as the ceiling, and the answer says which and why.
+///
+/// note: the tool's whole rule is that it prices the matches before it hands any of them over, and
+/// a `take` of "as many as there are" is the one way to ask for it not to be priced. There was no
+/// bound: `take: 999999` over a real context returned 13,222 tokens in one tool result, the
+/// compactor elided it on the way in, and the model was left holding a marker saying `compacted to
+/// make room` - the tool paid for the answer and then had it taken away.
+///
+/// note: clamped rather than refused, and said. Refusing is what `undo`/`redo` do with a `steps`
+/// above their bound, and the reason there is that a walk of sixty-four where a hundred was asked
+/// for reads as though the hundred was undone. Here the header is the true count and the true
+/// price whatever the `take` was, so a clamped answer is still a true one.
+#[tokio::test]
+async fn a_take_wider_than_the_ceiling_is_clamped_and_says_so() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "hay", "take": 100_000 }),
+    )]));
+
+    // more matching lines than the ceiling, so the clamp and not the matches are what stops it
+    for n in 0..200 {
+        kernel.push(ContextItem::file(
+            format!("f{n}.txt"),
+            format!("hay on line one of file {n}\n"),
+        ));
+    }
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    // the count and the price are of every match, as they are for a `take` that fits
+    assert!(said.starts_with("200 line(s) say `hay`"), "{said}");
+    // and only the ceiling of them is here
+    assert!(said.contains("the first 64;"), "{said}");
+    assert!(
+        said.contains("`take` is at most 64"),
+        "a clamped answer that does not say it was clamped reads as the whole of what matched: \
+         {said}"
+    );
+    assert!(
+        said.contains("a narrower `text`"),
+        "and says what to do instead, because there is no way to page further: {said}"
+    );
+    let shown = said.matches("hay on line one of file").count();
+    assert_eq!(shown, 64, "the ceiling of them: {said}");
+}
+
+/// A `take` under the ceiling is left alone, and the sentence about the ceiling is not in it.
+#[tokio::test]
+async fn a_take_under_the_ceiling_is_not_announced_as_one() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "hay", "take": 3 }),
+    )]));
+    for n in 0..10 {
+        kernel.push(ContextItem::file(format!("f{n}.txt"), "hay\n"));
+    }
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(said.contains("the first 3;"), "{said}");
+    assert!(
+        !said.contains("`take` is at most"),
+        "the ceiling is said where it stopped the answer short, and nowhere else: {said}"
+    );
+}
+
 /// The edges nobody types on purpose: multi-byte text, a picture, and absurd arguments.
 ///
 /// note: `search` trims a long matching line to a window around the match, which is index
@@ -447,6 +519,14 @@ async fn search_finds_the_arguments_a_turn_called_a_tool_with() {
 /// the model had made itself. A search says what the context holds, and the turn asking is the one
 /// part of it the model has just written.
 ///
+/// note: and the message that started that turn, which is a context item of its own. Skipping the
+/// assistant turn covered the words and the thinking but not the question, so a model searching
+/// for a name, an identifier or an error string it had just been handed was told the context
+/// already held it - the only place it was being the question the model was in the middle of
+/// asking. The turn here is a *later* assistant turn of a turn already under way, so the words to
+/// skip are not beside the call either: the search is in the second of two, with a result between
+/// them.
+///
 /// note: the calling turn is put on the context by hand rather than recorded by a provider, so
 /// that it carries the words and the thinking a scripted turn would have had to be given.
 #[tokio::test]
@@ -468,9 +548,21 @@ async fn a_search_does_not_count_the_turn_asking_the_question() {
         "fn main() {}",
         false,
     ));
-    kernel.push(ContextItem::user("find it"));
 
-    // the turn that asks, carrying the same word in what it says and in what it thinks
+    // the turn that asks, opening with the word it is about to search for
+    kernel.push(ContextItem::user(
+        "the needle is in src/needle.rs - find it",
+    ));
+    kernel.push(ContextItem::assistant(
+        "reading it, then the needle",
+        vec![call("t2", "fs", json!({ "path": "needle.rs" }))],
+    ));
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("t2"),
+        "fs",
+        "the needle is a function",
+        false,
+    ));
     kernel.push(
         ContextItem::assistant(
             "the needle, then",
@@ -511,7 +603,58 @@ async fn a_search_does_not_count_the_turn_asking_the_question() {
         "and the match is the one that was already there: {said}"
     );
     assert!(
-        !said.contains("the needle, then") && !said.contains("searching for the needle"),
+        !said.contains("is in src/needle.rs - find it")
+            && !said.contains("reading it, then the needle")
+            && !said.contains("the needle is a function"),
         "a match in the turn that asked is a match the model made itself: {said}"
+    );
+    assert!(
+        !said.contains("the needle, then") && !said.contains("searching for the needle"),
+        "and neither is the one beside the call or the thinking in front of it: {said}"
+    );
+}
+
+/// A word that occurs in nothing but the question is not in the context, whatever the question is.
+///
+/// note: the plainest form of the same thing, and the one a model reaches for: the second turn
+/// hands the model a word and asks it to search for that word. Before the whole turn was skipped
+/// the answer came back `1 line(s) say \`qqqzzz\`, in 1 item(s)` - the one item being the message
+/// that had just asked. A model that is told its own question is already in its context will
+/// reason from that, and the word it was given a moment earlier is exactly the word it is about to
+/// be wrong about.
+#[tokio::test]
+async fn a_word_the_question_itself_carries_is_not_in_the_context() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+
+    // a context that holds the word nowhere, and a turn that is about to ask for it
+    kernel.push(ContextItem::assistant("I am here", Vec::new()));
+    kernel.push(ContextItem::user("what did we decide?"));
+    kernel.push(ContextItem::user(
+        "Now call the context tool once with action \"search\" and text \"qqqzzz\" and nothing \
+         else.",
+    ));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "c2",
+            "context",
+            json!({ "action": "search", "text": "qqqzzz" }),
+        )],
+    ));
+
+    let out = call(
+        "c2",
+        "context",
+        json!({ "action": "search", "text": "qqqzzz" }),
+    );
+    let tool = kernel.tool("context").expect("it is installed");
+    let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+        .await
+        .expect("the call was answered");
+
+    let said = answered.content.to_text();
+    assert!(
+        said.starts_with("no line of your context says `qqqzzz`"),
+        "the only place that word is, is the question: {said}"
     );
 }

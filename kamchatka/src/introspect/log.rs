@@ -54,8 +54,8 @@ fn ops() -> Vec<Op> {
         vec![
             Arg::whole(
                 "take",
-                "the most recent N of whatever matched; left out, all of them. The header says \
-                 how many there are either way",
+                "the most recent N of whatever matched, up to 64; left out, all of them. The \
+                 header says how many there are either way",
             ),
             Arg::list(
                 "ids",
@@ -461,7 +461,15 @@ impl Query {
 
         // `take` counts from the end, because a log is read from the end - but the records stay
         // in the order they happened, which is the order everything else here reports them in
-        let shown = match self.take {
+        //
+        // note: clamped, and said where the figure is. A log is the one thing here that grows
+        // without a call asking it to - a session's own record is append-only and grows for as
+        // long as the run does - so `take: 999999` on a real log was the whole of it in one
+        // answer, which the compactor then elided on the way in: a session that read its own log
+        // in bulk could not read it again to find out why, because the record of the read was in
+        // what the read had replaced with a marker
+        let capped = self.take.map(|take| take.min(super::TAKE));
+        let shown = match capped {
             Some(take) => take.min(read.matched.len()),
             None => read.matched.len(),
         };
@@ -480,6 +488,20 @@ impl Query {
                     false => "older are",
                 },
             )),
+        }
+        // note: said only where it stopped the answer short, because a `take` of a hundred on a
+        // log of nine records is a number nobody needed bounding. And it says what narrows rather
+        // than how to page, because this one can page: `since` is the cursor, and the figure it
+        // wants is the one on the record it stops at
+        if let Some(take) = self.take
+            && take > super::TAKE
+            && beyond != 0
+        {
+            out.push_str(&format!(
+                "`take` is at most {}, so the {beyond} above are not here; `kinds`, `ids` or a \
+                 `since` past the last record shown reach them.\n",
+                thousands(super::TAKE)
+            ));
         }
         // `since` below the oldest record held, which is the whole of what a resumed session is:
         // the filter asks for records this log has never had, and without this it says so as

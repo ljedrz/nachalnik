@@ -2,6 +2,7 @@
 //! any of it back.
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use nachalnik::{
     Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
@@ -721,6 +722,9 @@ impl Changes {
         let mut put_back = Vec::new();
         let mut left_alone = Vec::new();
         let mut touched = Vec::new();
+        // how many of this tool's own entries the walk took, whatever it did with them. It is what
+        // tells a walk that spent one on a refusal from a walk that had none to spend
+        let mut spent = 0;
         // taken before the journal, and copied, so that the two locks are never held in this
         // order anywhere - `note_pin` below holds the other one on its own
         let mut mine = self.pinned.lock().clone();
@@ -734,6 +738,7 @@ impl Changes {
                 let Some(Entry { undoing, left }) = taken else {
                     break;
                 };
+                spent += 1;
                 // an item that has since gone, or that is no longer this tool's to move, gives
                 // nothing to walk to, and the entry is spent either way rather than left to be
                 // retried against a context it no longer describes
@@ -782,6 +787,20 @@ impl Changes {
         };
 
         let mut out = match put_back.is_empty() {
+            // note: which of the two it was, because the sentence is the one the model reads and
+            // the two are opposites. An entry spent on a refusal is an entry that was there; a
+            // model told "there was nothing of yours to walk back" reads that as never having made
+            // the change, and the only other evidence is the counter moving under it
+            // note: which of the two it was, because the sentence is the one the model reads and
+            // the two are opposites. An entry spent on a refusal is an entry that was there; a
+            // model told "there was nothing of yours to walk back" reads that as never having made
+            // the change, and the only other evidence is the counter moving under it
+            true if spent > 0 => format!(
+                "none of your {} change(s) could be walked {direction}, and the {} of them there \
+                 were spent on it. `undo` and `redo` only move the changes this tool made; the \
+                 person you work with has an undo of their own, and it is not this one.\n",
+                spent, spent,
+            ),
             true => {
                 let mut said = format!(
                     "there was nothing of yours to walk {direction}. `undo` and `redo` only move \
@@ -881,6 +900,49 @@ fn state_of(word: &str) -> Option<ContextState> {
         "pin" => ContextState::Pinned,
         "restore" => ContextState::Active,
         _ => return None,
+    })
+}
+
+/// Every item of the turn this call is speaking in, from the assistant turn that asked to the
+/// message that started it.
+///
+/// note: `own_turn` answers for one item, and a turn is more than the one holding the call. The
+/// user message is a context item of its own, and the question the model is in the middle of
+/// asking sits in it - so a reading that skipped the assistant turn and nothing else told a model
+/// searching for a name, an identifier or an error string it had just been handed that the
+/// context already held it, when the only place it was is the question.
+///
+/// note: back to the boundary rather than one item, because the assistant turns of a turn are not
+/// adjacent to each other: each one's result lands between them, and a call in the fourth of them
+/// has two results and three turns in front of it. What a turn is made of is the message that
+/// started it, the assistant turns in it and their results; the first item that is none of those
+/// ends the walk. A session carried on past the request cap is a turn with no new message in it, so
+/// a walk from one of its later calls reaches the message the person wrote rather than stopping
+/// at the turn boundary the loop can see.
+pub(super) fn asking_turn(kernel: &Kernel, call: &ToolCallId) -> BTreeSet<ContextId> {
+    let Some(asked) = own_turn(kernel, call) else {
+        return BTreeSet::new();
+    };
+
+    kernel.with_context(|context| {
+        let mut turn = BTreeSet::from([asked]);
+        for item in context
+            .items()
+            .iter()
+            .rev()
+            .skip_while(|item| item.id != asked)
+            .skip(1)
+        {
+            turn.insert(item.id);
+            if !matches!(
+                item.kind,
+                ContextKind::AssistantMessage { .. } | ContextKind::ToolResult { .. }
+            ) {
+                break;
+            }
+        }
+
+        turn
     })
 }
 

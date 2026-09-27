@@ -296,6 +296,75 @@ async fn take_says_how_many_records_are_beyond_what_it_showed() {
     );
 }
 
+/// A `take` above the ceiling is taken as the ceiling, and the answer says which and why.
+///
+/// note: the same clamp as `search` gets, and the same reason, one step worse. A session log is
+/// append-only and grows for as long as the run does, so unlike a search - whose matches depend
+/// on what the model has in front of it - it is guaranteed to cross any fixed bound eventually. A
+/// live `log read` with `take: 999999` returned 9,637 tokens into a context already at 104% of its
+/// limit, the compactor elided it on arrival, and the record of the read was itself in the log
+/// that had just been elided: a session that read its own log in bulk could not read it again to
+/// find out why.
+#[tokio::test]
+async fn a_take_wider_than_the_ceiling_is_clamped_and_says_so() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "take": 100_000 }),
+    )]));
+
+    // more records than the ceiling, so the clamp and not the size of the log is what stops it
+    for n in 0..200 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"])[0].clone();
+    // the total is the true one, whatever the `take` was
+    assert!(said.contains(" records, ~"), "{said}");
+    // and only the ceiling of them is here
+    assert!(said.contains("Showing the 64 most recent"), "{said}");
+    assert!(
+        said.contains("`take` is at most 64"),
+        "a clamped answer that does not say it was clamped reads as the whole of the log: {said}"
+    );
+    assert!(
+        said.contains("`since` past the last record shown"),
+        "and says how to reach the rest, which `since` can do: {said}"
+    );
+    let numbered: Vec<&str> = said
+        .lines()
+        .filter(|line| line.starts_with("  ") && line.trim().starts_with(char::is_numeric))
+        .collect();
+    assert_eq!(numbered.len(), 64, "the ceiling of them: {said}");
+}
+
+/// A `take` under the ceiling is left alone, and the sentence about the ceiling is not in it.
+#[tokio::test]
+async fn a_take_under_the_ceiling_is_not_announced_as_one() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "take": 3 }),
+    )]));
+
+    for n in 0..6 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"])[0].clone();
+    assert!(said.contains("Showing the 3 most recent"), "{said}");
+    assert!(
+        !said.contains("`take` is at most"),
+        "the ceiling is said where it stopped the answer short, and nowhere else: {said}"
+    );
+}
+
 /// A filter nobody can read is a mistake to report, not a log with nothing in it.
 ///
 /// note: the one wrong answer this tool can give is *nothing happened*, and an empty result for a

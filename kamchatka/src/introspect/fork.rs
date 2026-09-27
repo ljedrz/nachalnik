@@ -223,12 +223,14 @@ async fn branch(
         })
         .unwrap_or_default();
     let mut left_out = Vec::new();
+    let mut unanswered = Vec::new();
     for item in &mut snapshot.items {
         if let ContextKind::ToolResult { call, .. } = &item.kind
             && siblings.contains(call)
         {
             item.state = ContextState::Excluded;
             item.note = Some("answered in the same turn this fork was asked in".into());
+            unanswered.push(item.id);
             continue;
         }
         if without.contains(&item.id) {
@@ -341,12 +343,19 @@ async fn branch(
     // something rather than take it away with `without`, and report the matching answer as an
     // ablation - the copy was asked to pretend, and nothing in the reply would distinguish the
     // two. Where the copy really did see everything, the reply says so.
+    //
+    // note: weakened to what was named, because something else may have been kept away. Two forks
+    // in one turn, or a fork beside any other call whose result had already landed, leaves the
+    // copy an item short of the caller's context - and "nothing of yours was taken away" beside a
+    // count that has already come up short is the one sentence here a model reads as "these two
+    // runs saw the same context", which is the inference two forks in a turn exist to support. What
+    // the other call kept out is a clause of its own below.
     match left_out.is_empty() {
         true => out.push_str(
-            ". Nothing of yours was taken away, so this is the same context answering again \
-             rather than a test of what any of it was doing. `without` takes items away from the \
-             copy, and a question that asks it to disregard something is not the same thing - it \
-             is still reading it.",
+            ". Nothing you named with `without` was taken away, so this is the same context \
+             answering again rather than a test of what any of it was doing. `without` takes items \
+             away from the copy, and a question that asks it to disregard something is not the same \
+             thing - it is still reading it.",
         ),
         false => {
             let numbers: Vec<String> = left_out.iter().map(|id| id.to_string()).collect();
@@ -355,6 +364,22 @@ async fn branch(
                 numbers.join(", ")
             ));
         }
+    }
+    // and what the calls beside this one kept out of the copy, which is a fact about the context
+    // it was asked on rather than about the question it was asked
+    if !unanswered.is_empty() {
+        let numbers: Vec<String> = unanswered.iter().map(|id| id.to_string()).collect();
+        out.push_str(&match numbers.as_slice() {
+            [one] => format!(
+                " Your other call in this turn had not been answered when this copy was taken, \
+                 so its result ({one}) is not in it."
+            ),
+            _ => format!(
+                " Your other calls in this turn had not been answered when this copy was taken, \
+                 so their results ({}) are not in it.",
+                numbers.join(", ")
+            ),
+        });
     }
     out.push_str(
         " None of this is in your context and nobody has read it; it is yours to use or drop.\n",
