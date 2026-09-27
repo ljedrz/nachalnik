@@ -336,14 +336,14 @@ is what makes the answers comparable. `/seams` names the six replaceable parts a
 of them right now, asked of the kernel rather than restated from what this program set up at
 startup.
 
-`/params KEY JSON` sets one model parameter and `/params` shows them — with what else this model
-takes, where the endpoint publishes it. It shows the second because a parameter a model does *not*
-take is not refused: it is sent, ignored, and nothing anywhere says so, which makes a `seed` set
-for a reproducible run buy no reproducibility and look exactly like one that worked. The runtime
-invents none of them — only what you set is sent, apart from the `thinkingConfig` a `--gemini`
-request asks for its thinking with, and a `generationConfig` of yours is merged over that — and a
-listing that publishes nothing is read as silence rather than as a prohibition, because ollama and
-a bare proxy both say nothing here.
+`/params KEY JSON` sets one model parameter, `/params KEY null` takes it away, and `/params` shows
+them — with what else this model takes, where the endpoint publishes it. It shows the second
+because a parameter a model does *not* take is not refused: it is sent, ignored, and nothing
+anywhere says so, which makes a `seed` set for a reproducible run buy no reproducibility and look
+exactly like one that worked. The runtime invents none of them — only what you set is sent, apart
+from the `thinkingConfig` a `--gemini` request asks for its thinking with, and a
+`generationConfig` of yours is merged over that — and a listing that publishes nothing is read as
+silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
 
 Where the listing is everything the model takes, a parameter you set that is not on it is named as
 sent and ignored, and the ones it takes that you have not set follow. Where the endpoint publishes

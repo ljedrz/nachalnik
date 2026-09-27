@@ -71,6 +71,9 @@ minor bump may break you.
   read and write**, replacing the usual five rather than adding to them; the shipped
   `kamchatka.json` lists those five. A path outside `/dev` is refused where it is given. Naming
   `/dev/ptmx` and `/dev/pts` has ptys back, and every other terminal of the person's with them.
+- **`/params KEY null` takes a parameter away.** There was no way back from one once set, short
+  of `/restart`; a null was sent as a null. The log records the parameters left, as it does when
+  one is set.
 
 ### changed
 

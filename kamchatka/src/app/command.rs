@@ -490,27 +490,38 @@ impl App {
             "params" => {
                 if let Some((key, value)) = rest.split_once(' ') {
                     let key = key.trim();
-                    if BUILT.contains(&key) {
-                        self.say(
-                            Speaker::Error,
-                            format!(
-                                "{key} is built from the session rather than set, so a parameter \
-                                 of that name is not sent"
-                            ),
-                        );
-                        return;
-                    }
-                    match serde_json::from_str(value.trim()) {
-                        Ok(value) => {
-                            let mut params = self.kernel.params();
-                            params.insert(key.to_owned(), value);
-                            self.kernel.set_params(params);
-                        }
+                    let value = match serde_json::from_str(value.trim()) {
+                        Ok(value) => value,
                         Err(e) => {
                             self.say(Speaker::Error, format!("{key} needs a JSON value: {e}"));
                             return;
                         }
+                    };
+                    let mut params = self.kernel.params();
+                    match value {
+                        // note: `null` takes a parameter away rather than sending one. An absent
+                        // field leaves the choice to the endpoint, which is what a null asks for
+                        // where one is taken at all, and without this nothing once set could be
+                        // taken back short of `/restart`. Ahead of the refusal below, so that one
+                        // arriving in a snapshot can be taken away too
+                        serde_json::Value::Null => {
+                            params.remove(key);
+                        }
+                        _ if BUILT.contains(&key) => {
+                            self.say(
+                                Speaker::Error,
+                                format!(
+                                    "{key} is built from the session rather than set, so a \
+                                     parameter of that name is not sent"
+                                ),
+                            );
+                            return;
+                        }
+                        value => {
+                            params.insert(key.to_owned(), value);
+                        }
                     }
+                    self.kernel.set_params(params);
                 }
                 let params = self.kernel.params();
                 let json = serde_json::to_string(&params).unwrap_or_default();

@@ -580,6 +580,45 @@ async fn a_parameter_that_would_replace_the_conversation_is_refused() {
     );
 }
 
+/// `null` takes a parameter away, and the log says so as it says a parameter was set.
+///
+/// note: a null is otherwise sent as one, and there was no other way back: a parameter once set,
+/// or one that arrived in a snapshot, stayed until `/restart`.
+#[tokio::test]
+async fn null_takes_a_parameter_away() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/params temperature 0.2").await;
+    harness.send("/params seed 7").await;
+    harness.send("/params temperature null").await;
+    assert_eq!(
+        harness.app.kernel.params(),
+        serde_json::json!({ "seed": 7 })
+            .as_object()
+            .cloned()
+            .expect("an object"),
+        "gone, rather than sent as a null"
+    );
+    let recorded = harness
+        .app
+        .kernel
+        .history()
+        .into_iter()
+        .rev()
+        .find_map(|record| match record.event {
+            nachalnik::Event::ModelParamsChanged { params } => Some(params),
+            _ => None,
+        });
+    assert_eq!(recorded, Some(harness.app.kernel.params()), "and recorded");
+
+    // including one that could never have been set here
+    let mut params = harness.app.kernel.params();
+    params.insert("messages".to_owned(), serde_json::json!([]));
+    harness.app.kernel.set_params(params);
+    harness.send("/params messages null").await;
+    assert!(!harness.app.kernel.params().contains_key("messages"));
+}
+
 #[tokio::test]
 async fn an_endpoint_that_publishes_no_parameters_is_not_read_as_forbidding_them() {
     // ollama and a bare OpenAI-compatible proxy both say nothing about parameters. Silence is
