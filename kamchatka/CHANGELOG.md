@@ -335,6 +335,9 @@ minor bump may break you.
   request that fails leaves the one before it standing, so `/raw` showed an older turn's bytes as
   the provider's last answer. It now says the last request failed and with what, and labels the
   older answer as the one before it.
+- **A count of one is singular.** `the turn paused after 1 requests` and `fs: 1 tokens`
+  say `1 request` and `1 token`, and a tool's line in a headless run and at a `--connect` client
+  puts the separator into a count past a thousand, as every other count here does.
 
 ## [0.15.1] - 2026-09-24
 

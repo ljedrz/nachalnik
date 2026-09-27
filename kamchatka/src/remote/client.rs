@@ -21,7 +21,10 @@ use nachalnik::{ContextId, Delta, Event, Grant, PermissionRequest};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, BufReader};
 
 use crate::{
-    app::{Speaker, text::one_line},
+    app::{
+        Speaker,
+        text::{one_line, plural},
+    },
     remote::protocol::{self, Address, Attached, Command, Message, Reached},
 };
 
@@ -606,7 +609,8 @@ impl<'a> Client<'a> {
                 self.fresh_line()?;
                 writeln!(
                     self.prose,
-                    "· {tool}: {tokens} tokens{}",
+                    "· {tool}: {}{}",
+                    plural(*tokens, "token"),
                     match is_error {
                         true => ", an error",
                         false => "",

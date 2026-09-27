@@ -44,7 +44,7 @@ mod keys;
 pub(crate) mod text;
 pub mod when;
 
-use text::{moved, one_line, thousands, trace_line};
+use text::{moved, one_line, plural, thousands, trace_line};
 // only the key that prints a request without a command: `/request` imports its own
 #[cfg(feature = "tui")]
 use text::request_preview;
@@ -935,11 +935,11 @@ impl App {
                     .kernel
                     .config()
                     .max_requests_per_turn
-                    .map(|max| max.to_string())
-                    .unwrap_or_else(|| "the".into());
+                    .map(|max| plural(max, "request"))
+                    .unwrap_or_else(|| "the requests".into());
                 self.say(
                     Speaker::Note,
-                    format!("the turn paused after {budget} requests; /continue to carry on"),
+                    format!("the turn paused after {budget}; /continue to carry on"),
                 );
             }
             Outcome::Stopped(_) => {}

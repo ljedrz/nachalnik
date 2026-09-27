@@ -28,7 +28,7 @@ use tokio::{
     time::Instant,
 };
 
-use crate::app::{App, Outcome, Overlay, Speaker};
+use crate::app::{App, Outcome, Overlay, Speaker, text::plural};
 
 /// A session driven by lines rather than by keys.
 pub struct Headless<'a> {
@@ -592,7 +592,8 @@ impl<'a> Headless<'a> {
                 ..
             } => writeln!(
                 self.prose,
-                "· {tool}: {tokens} tokens{}",
+                "· {tool}: {}{}",
+                plural(*tokens, "token"),
                 match is_error {
                     true => ", an error",
                     false => "",

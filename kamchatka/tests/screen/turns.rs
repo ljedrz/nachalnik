@@ -305,7 +305,7 @@ async fn a_turn_that_runs_out_of_requests_says_so_instead_of_looking_finished() 
     // the tool ran, and then the turn stopped without an answer; a screen that said nothing here
     // would look exactly like one where the model had finished
     let screen = harness.screen();
-    assert!(screen.contains("paused after 1 requests"), "{screen}");
+    assert!(screen.contains("paused after 1 request;"), "{screen}");
     assert!(screen.contains("/continue"), "{screen}");
 
     harness.send("/continue").await;

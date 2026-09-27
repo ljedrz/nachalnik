@@ -2190,7 +2190,7 @@ async fn the_request_ceiling_stops_the_program_itself() {
             "finish_reason": "tool_calls"}]})
     );
     let said = run("1", vec![calling, common::answer("asked again")]).await;
-    assert!(said.contains("paused after 1 requests"), "{said}");
+    assert!(said.contains("paused after 1 request;"), "{said}");
     assert!(!said.contains("asked again"), "{said}");
 
     let said = run("0", vec![common::answer("an answer")]).await;
