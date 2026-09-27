@@ -396,6 +396,13 @@ async fn a_client_whose_session_was_replaced_stops_rather_than_following_another
         refused.contains("not `the-one-that-went`") && refused.contains("Run it again"),
         "{refused}"
     );
+    // and the sentences in it are sentences: this one was reflowed to the source column and the
+    // inter-word spaces came with it, so the single line a script reads when a host restarts
+    // underneath it carried two runs of 26. `cargo fmt` cannot see inside a string literal
+    assert!(
+        !refused.contains("  "),
+        "the refusal carried a run of spaces: {refused:?}"
+    );
     assert!(
         prose.contains("--- the-one-that-went ·")
             && !prose.contains("--- the-one-that-came-back ·"),

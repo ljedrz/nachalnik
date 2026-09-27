@@ -15,7 +15,9 @@ use crate::{app::text::thousands, tools::Limits};
 
 use super::{
     App, Did, Proposed, Reply, Speaker, Tab,
-    text::{NOTHING_DECIDED, nothing_to_send, plural, pretty, request_preview, verdict_word},
+    text::{
+        NOTHING_DECIDED, nothing_to_send, one_line, plural, pretty, request_preview, verdict_word,
+    },
 };
 
 /// The fields of a request that either dialect builds from the session - the context, the tools
@@ -1941,13 +1943,21 @@ impl App {
 /// with that shape is `/exclude all` and the thing that had that name is `/cleanup`, so a refusal
 /// that said only "there is no `/clear`" would leave them looking for both. It is the trap
 /// `/load` declines to set by not calling itself `/resume`.
+///
+/// note: the name goes into the refusal through `one_line`, as every other line this program
+/// quotes back to somebody does. A name is one word, and a word with nothing else on the line is
+/// as long as somebody cares to make it - so a mistyped command of a hundred thousand characters
+/// was a hundred thousand characters of refusal, where every other notice is cut at 96.
 fn no_such_command(name: &str) -> String {
     match name {
         "clear" => "there is no `/clear`; `/cleanup` takes this program's own lines off the \
                     chat, and `/exclude all` takes the conversation out of the next request - \
                     which is a state change, so it comes back"
             .to_owned(),
-        other => format!("there is no `/{other}`; `/help` lists what there is"),
+        other => format!(
+            "there is no `/{}`; `/help` lists what there is",
+            one_line(other)
+        ),
     }
 }
 

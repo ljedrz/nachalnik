@@ -515,8 +515,11 @@ fn unmade(path: &Path, policy: &Careful) -> Option<String> {
     let dir = path.parent()?;
     let missing = dir.ancestors().take_while(|it| !it.exists()).last()?;
     let next = match policy.stance(&Subject::Capability(Capability::exec("run"))) {
-        Verdict::Deny => "`shell`, which makes directories, is refused in this session, so write                           it in a directory that is there, or say which one you need made."
-            .to_owned(),
+        Verdict::Deny => {
+            "`shell`, which makes directories, is refused in this session, so write it in a \
+             directory that is there, or say which one you need made."
+                .to_owned()
+        }
         _ => format!(
             "Make it with `shell` - `mkdir -p {}` - and write again.",
             dir.display()

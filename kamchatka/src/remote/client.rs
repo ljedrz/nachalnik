@@ -614,7 +614,9 @@ impl<'a> Client<'a> {
                     self.fresh_line()?;
 
                     return Err(format!(
-                        "the session at this address is not `{followed}`, which this client was                          following, and `--connect` follows one session: {error}. Run it again to                          attach to the one there now"
+                        "the session at this address is not `{followed}`, which this client was \
+                         following, and `--connect` follows one session: {error}. Run it again to \
+                         attach to the one there now"
                     ));
                 }
                 self.fresh_line()?;

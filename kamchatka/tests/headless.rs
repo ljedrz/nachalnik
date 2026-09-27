@@ -286,6 +286,38 @@ async fn a_command_needs_no_keys_and_is_not_silent() {
     assert!(!run.names().contains(&"model.requested".to_owned()));
 }
 
+/// A name no command answers to is cut before it is quoted back, as every other line is.
+///
+/// note: the dispatch splits on the first space, so a name given with arguments was short by
+/// accident and a bare one was not: a hundred thousand characters typed after the slash came back
+/// as a hundred thousand characters of refusal, on the stream a script is reading. `one_line` is
+/// what the neighbouring notices use and what cuts it now.
+#[tokio::test]
+async fn a_name_no_command_answers_to_is_cut_before_it_is_quoted_back() {
+    let typed = format!("/{}", "a".repeat(100_000));
+    let run = run(&format!("{typed}\n"), Vec::new(), |_| {}).await;
+
+    assert!(run.prose.contains("there is no `/aaa"), "{}", run.prose);
+    assert!(
+        run.prose.contains('…'),
+        "the whole name was written back: {}",
+        run.prose
+    );
+    // and it is a line like any other, not a hundred thousand bytes of one
+    let refusal = run
+        .prose
+        .lines()
+        .find(|line| line.contains("there is no"))
+        .expect("the name was refused");
+    assert!(
+        refusal.chars().count() < 200,
+        "the refusal is {} characters: {refusal}",
+        refusal.chars().count()
+    );
+    // and nothing was sent to the model to find out what it meant
+    assert!(!run.names().contains(&"model.requested".to_owned()));
+}
+
 /// A question nobody is there to answer is refused, and the model is told.
 #[tokio::test]
 async fn an_unanswerable_question_is_denied_by_default() {

@@ -1068,3 +1068,49 @@ async fn a_write_into_a_missing_directory_names_it() {
     assert!(said.contains("`mkdir -p "), "{said}");
     assert!(!dir.join("src").exists());
 }
+
+/// And the other half of that answer, where `shell` is refused, reads as one sentence.
+///
+/// note: this arm was reflowed to the source column and the inter-word spaces came with it, so
+/// the model - which reads this one line and has to choose what to do next - was told to `write`
+/// followed by 27 spaces and then `it`. `cargo fmt` cannot see inside a string literal, so nothing
+/// but a test catches it, and this is the only message in the two tools that carries one.
+#[tokio::test]
+async fn a_write_into_a_missing_directory_with_no_shell_is_one_sentence() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::{Capability, Verdict};
+
+    let dir = scratch("files-write-unmade-refused");
+    let policy = std::sync::Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
+
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let said = fs
+        .invoke(
+            &call(
+                "c1",
+                "fs",
+                json!({ "action": "write", "path": "src/x.txt", "content": "x" }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned();
+
+    assert!(said.contains("is refused in this session"), "{said}");
+    assert!(
+        said.contains("so write it in a directory that is there"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("  "),
+        "a message the model reads once carried a run of spaces: {said:?}"
+    );
+}

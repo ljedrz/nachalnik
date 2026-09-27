@@ -184,6 +184,16 @@ minor bump may break you.
 - **A `grep files_only` does not report a `context` clamp.** A `files_only` answer keeps no lines
   for context to be either side of, so the note described a limit that was never reached, about an
   argument that had no effect, and it was the second line of the answer.
+- **Every message this program writes is a whole sentence, and none of them carries a run of
+  spaces.** A help line cut mid-clause is a sentence that does not parse: `--send-oversized` ended
+  "or a counter that is" and `--connect` ended "a question still open is not", both in `--help` and
+  `-h`, and the second of the two also said the other flags were *ignored* where the program
+  refuses them and exits 1 - it now says they are refused and named. The `fs` refusal for a write
+  into a directory that is not there, and the `--connect` error naming the session a client was
+  following, each carried a run of two dozen spaces in the middle of their only sentence, left by a
+  reflow that `cargo fmt` cannot see inside a string literal. A command name no command answers to
+  is quoted back cut at 96 characters like every other line this program shows somebody, rather
+  than whole.
 - **`/params stream false` is not called ignored.** A model's list of parameters has no word for
   `stream` or `stream_options`, so setting one was answered `sent, and ignored` while it turned the
   answer into one body. Those two are left out of that sentence.

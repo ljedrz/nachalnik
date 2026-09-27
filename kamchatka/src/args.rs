@@ -162,7 +162,8 @@ pub struct Args {
     pub forget_truncated: bool,
 
     /// Send a request the counter puts over the model's context anyway, and let the endpoint be
-    /// the one that says no. For a limit that is advertised wrongly, or a counter that is.
+    /// the one that says no. For a limit that is advertised wrongly, or a counter that has
+    /// drifted, the endpoint's own count is worth more than any guess made here.
     #[arg(long)]
     pub send_oversized: bool,
 
@@ -180,9 +181,10 @@ pub struct Args {
     pub serve: Option<String>,
 
     /// Attach to a session somebody else is serving and drive it from lines on stdin, in the same
-    /// two streams `--headless` writes. Nothing else on this command line applies except
-    /// `--on-ask`: the model, the key, the tools and the sandbox are all the host's, and what a
-    /// detaching client does with a question still open is not.
+    /// two streams `--headless` writes. Nothing else is accepted on this command line but
+    /// `--on-ask`: anything else is an error naming it, because the model, the key, the tools and
+    /// the sandbox are all the host's, and what a detaching client does with a question still open
+    /// is the one thing that is the client's.
     #[arg(long, value_name = "ADDRESS")]
     pub connect: Option<String>,
 

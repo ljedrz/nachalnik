@@ -933,6 +933,46 @@ fn help_names_the_variables_the_program_reads() {
     }
 }
 
+/// Every argument's help is a whole sentence, in the long help and the short one alike.
+///
+/// note: two of them were not, and neither in a way anybody could have typed by accident: a
+/// comment wrapped at the column and lost its tail, so `--send-oversized` ended "or a counter
+/// that is" and `--connect` ended "a question still open is not". Nothing renders a doc comment,
+/// so a truncated one is only ever read as a sentence that does not parse, and the second of the
+/// two also said the other flags were *ignored* where the program refuses them and exits 1.
+#[test]
+fn every_help_line_is_a_whole_sentence() {
+    for flag in ["--help", "-h"] {
+        let out = Command::new(common::program())
+            .arg(flag)
+            .output()
+            .expect("the binary under test is built");
+        assert!(out.status.success(), "{flag}");
+        let help = String::from_utf8(out.stdout).expect("help is text");
+
+        // the two whose tails went off, each naming what the program actually does
+        assert!(
+            help.contains("the endpoint's own count is worth more than any guess made here"),
+            "{flag} lost the rest of `--send-oversized`:\n{help}"
+        );
+        assert!(
+            help.contains("is the one thing that is the client's"),
+            "{flag} lost the rest of `--connect`:\n{help}"
+        );
+        assert!(
+            !help.contains("Nothing else on this command line applies"),
+            "{flag} still says `--connect` ignores what it refuses:\n{help}"
+        );
+        // and a clause with no complement, which is what a lost tail leaves behind
+        for ends in ["that is\n", "that is.\n", "open is\n", "open is."] {
+            assert!(
+                !help.contains(ends),
+                "{flag} ends a line with {ends:?}:\n{help}"
+            );
+        }
+    }
+}
+
 /// A base URL that is not an address is refused at startup, by the variable's name, in either
 /// dialect.
 ///
