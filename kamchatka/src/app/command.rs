@@ -137,7 +137,14 @@ impl App {
             return None;
         }
         let projection = self.kernel.project();
-        let last = projection.messages.last()?;
+        // note: said here rather than left to the kernel's `EmptyProjection`, which comes back as
+        // a failed turn - and a headless run ending on one exits `1` for a request never sent
+        let Some(last) = projection.messages.last() else {
+            return Some(
+                "nothing in the context would be sent, so there is nothing to answer; a message \
+                 is what starts a turn",
+            );
+        };
         if last.role != Role::Assistant || last.calls().next().is_some() {
             return None;
         }

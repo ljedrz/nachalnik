@@ -253,6 +253,9 @@ minor bump may break you.
   over a loaded conversation ending on an answer, sent a request with nothing new at its end and
   the model repeated itself. Both now decline whenever the conversation ends on the model's own
   answer, except an answer cut short in this session, which still carries on.
+- **`/continue` and `/step` over a context with nothing to send say so.** They reached the kernel's
+  empty-projection error as a failed turn, and a headless run ending there exited `1` for a request
+  that was never sent.
 
 ## [0.15.1] - 2026-09-24
 

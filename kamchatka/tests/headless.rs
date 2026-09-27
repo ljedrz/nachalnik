@@ -3559,6 +3559,23 @@ async fn continue_over_a_loaded_answer_asks_nothing() {
     assert!(run.prose.contains("nothing to continue"), "{}", run.prose);
 }
 
+/// `/continue` with nothing to send says so, and is not a failed turn.
+///
+/// note: found live: it reached the kernel's empty-projection error, and a headless run ended on
+/// it exited `1` for a request that was never sent.
+#[tokio::test]
+async fn continue_with_nothing_to_send_is_not_a_failure() {
+    // `run` refuses a run that ended in a failed turn, which is the exit code
+    let run = run("/continue\n/step\n", Vec::new(), |_| {}).await;
+
+    assert_eq!(
+        run.prose.matches("nothing to answer").count(),
+        2,
+        "{}",
+        run.prose
+    );
+}
+
 /// An answer that was cut short is carried on from, which is what `/continue` is for.
 #[tokio::test]
 async fn continue_after_a_cut_short_answer_carries_on() {
