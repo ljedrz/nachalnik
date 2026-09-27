@@ -359,8 +359,9 @@ async fn a_limit_smaller_than_the_header_still_shows_what_fits() {
     assert_eq!(said, file, "the whole of a file that fits is the file");
 }
 
-/// A limit too small to hold the line naming the limit answers with a sentence that says so,
-/// rather than a fragment of that line and none of the file.
+/// A limit too small to hold the line naming the limit answers with a whole sentence saying so,
+/// rather than a fragment of that line and none of the file - and the sentence is itself no
+/// longer than the limit it is answering for.
 ///
 /// note: the header is the answer's first line and the output limit cuts from the end, so a
 /// `/limit fs:read` below what the header takes leaves the model the first few words of it. It
@@ -368,34 +369,73 @@ async fn a_limit_smaller_than_the_header_still_shows_what_fits() {
 /// the model that is shown it has no way to tell it from a cut. Nothing in it says a limit did
 /// it, and the only move left to the model is another tool, which is often a permission this
 /// session was never given.
+///
+/// note: the sentence naming the limit is the one answer the kernel is about to cut as well, and
+/// it was longer than every limit below 124 bytes - so the model was shown the first few words
+/// of the very sentence meant to tell it a limit had stopped the read, and a refusal is the one
+/// answer with nowhere to page on from. Each limit now gets the longest whole sentence it holds.
 #[tokio::test]
-async fn a_limit_smaller_than_the_header_says_so_rather_than_showing_a_fragment() {
+async fn a_limit_smaller_than_the_header_says_so_whole_and_within_it() {
     let dir = scratch("files-limit-under-header");
     // long enough that no limit here holds the whole of it, so every answer has a header
     std::fs::write(dir.join("lines.txt"), numbered(200)).expect("a file");
 
-    // every one of these leaves the header longer than the whole of it, and the answer says the
-    // limit is what stopped it rather than showing the words the cut happens to leave
-    for bytes in [5, 10, 20, 36, 60] {
+    for bytes in MIN..=200usize {
         let limits = Limits::default();
         limits.set("fs:read", bytes);
 
         let said = ask_within(&dir, limits, "read", json!({ "path": "lines.txt" })).await;
+        // what the kernel leaves of it, which is what the model reads
+        let mut shown = nachalnik::Content::text(said);
         assert!(
-            said.contains("too little to show a line of this file"),
-            "{bytes} bytes: {said}"
+            shown.truncate_to(bytes).is_none(),
+            "{bytes} bytes: the answer was cut by the kernel: {:?}",
+            shown.to_text()
         );
-        assert!(
-            said.contains(&format!(
-                "`/limit fs:read` for this session is {bytes} bytes"
-            )),
-            "{bytes} bytes names the limit that did it: {said}"
-        );
-        assert!(
-            said.contains("raise it with `/limit fs:read`"),
-            "{bytes} bytes says how to change it: {said}"
-        );
+        let shown = shown.to_text();
+
+        // either a whole sentence about the limit, or lines under a whole header naming them -
+        // and never one without the other
+        match shown.split_once('\n') {
+            Some((header, body)) => {
+                assert!(
+                    header.starts_with('[') && header.ends_with(']'),
+                    "{bytes}: {header:?}"
+                );
+                assert!(
+                    !body.is_empty(),
+                    "{bytes} bytes: no content under the header"
+                );
+                assert!(header.contains("read on with `from: "), "{bytes}: {header}");
+            }
+            None => {
+                assert!(
+                    shown.starts_with('[') && shown.ends_with(']'),
+                    "{bytes}: {shown:?}"
+                );
+                assert!(
+                    shown.contains(&format!("{bytes}")) && shown.contains("line"),
+                    "{bytes} bytes does not name the limit that did it: {shown}"
+                );
+            }
+        }
     }
+
+    // and where the long sentence fits, it is the one that is given - a limit below the header
+    // for 200 lines, and above what the sentence naming the limit takes
+    let said = {
+        let limits = Limits::default();
+        limits.set("fs:read", 124);
+        ask_within(&dir, limits, "read", json!({ "path": "lines.txt" })).await
+    };
+    assert!(
+        said.contains("too little to show a line of this file"),
+        "124 bytes: {said}"
+    );
+    assert!(
+        said.contains("raise it with `/limit fs:read`"),
+        "124 bytes says how to change it: {said}"
+    );
 
     // and a limit the header does fit under is the ordinary answer again: a whole file with
     // nothing added, and a file too long for the limit stopped at a whole line
@@ -421,6 +461,247 @@ async fn a_limit_smaller_than_the_header_says_so_rather_than_showing_a_fragment(
         body.lines().all(|line| line.starts_with("line ")),
         "the cut is at a whole line: {said}"
     );
+}
+
+/// The smallest `/limit fs:read` there is a whole answer for. Below it the model is shown
+/// nothing at all, which is the one case where a limit has no answer under it rather than a
+/// short one.
+///
+/// note: the shortest of the three sentences, and a limit under it holds no sentence and no part
+/// of one. `/limit` refuses zero for the same reason it is not a limit anybody means, and a
+/// person who sets one this small is asking what the tool does with almost nothing - which is
+/// that it says so in as many words as fit, and where even one bracketed sentence does not fit,
+/// says nothing at all rather than half a word.
+const MIN: usize = 19;
+
+/// Every limit, every kind of file: what the model is shown is a whole answer the limit paid
+/// for, or the file's own lines, and never a fragment of either.
+///
+/// note: what the tool returns and what the model is shown are not the same string, and that is
+/// how this was missed. `fs:read` is one number doing two jobs - what `read` shapes its answer to
+/// and what the kernel cuts that answer to, `Fs::limit` handing back the same row for both - so
+/// the tool's own answer was cut a second time, from the end, by the limit it was written to
+/// answer for. A header is the one line a model reads as the file's own first line, and a
+/// sentence about the limit is the one answer with nowhere to page on from, so the two worth
+/// protecting are the two that say something about the read rather than showing the file.
+///
+/// note: the cut is `Content::truncate_to`, which is what `record_output` calls on the way in,
+/// rather than a second copy of the rule: a test that reimplemented it would pass against a limit
+/// the kernel does not cut at, and would miss one it does.
+#[tokio::test]
+async fn every_limit_answers_whole_and_shows_what_fits() {
+    let dir = scratch("files-every-limit");
+    // a file with nothing in it, one short line, one line wider than any limit here, and one of
+    // many lines - the four shapes the answer is built differently for
+    let files = [
+        ("empty.txt", "".to_owned()),
+        ("one.txt", "just this\n".to_owned()),
+        ("wide.txt", format!("{}\nafter\n", "w".repeat(1_000))),
+        ("many.txt", numbered(200)),
+    ];
+    for (name, content) in &files {
+        std::fs::write(dir.join(name), content).expect("a file");
+    }
+
+    for bytes in 1..=400usize {
+        let limits = Limits::default();
+        limits.set("fs:read", bytes);
+
+        for (name, content) in &files {
+            let said = ask_within(&dir, limits.clone(), "read", json!({ "path": name })).await;
+            // what the kernel leaves of it, which is what the model reads
+            let mut shown = nachalnik::Content::text(said);
+            let cut = shown.truncate_to(bytes);
+            let label = format!("{name} at {bytes} bytes");
+            let shown = shown.to_text();
+
+            assert!(cut.is_none(), "{label} was cut by the kernel: {shown:?}");
+            // whatever comes back under any limit is a whole answer: a line in brackets and
+            // the file's lines under it, or one bracketed sentence saying the limit is what
+            // stopped it. Never one without the other, and never a header cut at a byte.
+            match shown.split_once('\n') {
+                // the file itself, which is an answer too and carries no line naming it
+                _ if content.starts_with(shown.as_ref()) => {}
+                Some((header, body)) => {
+                    assert!(header.starts_with('['), "{label} does not start: {shown:?}");
+                    assert!(header.ends_with(']'), "{label} cuts the header: {header:?}");
+                    assert!(shown.len() <= bytes, "{label} is {} bytes", shown.len());
+                    assert!(!body.is_empty(), "{label} has no content: {shown:?}");
+                    assert!(
+                        body.ends_with('\n') || header.contains("is longer than"),
+                        "{label} stops inside a line: {shown:?}"
+                    );
+                    // and where it names lines, it names the lines it is showing
+                    if let Some(first) = header
+                        .strip_prefix("[lines ")
+                        .and_then(|rest| rest.split('-').next())
+                        .and_then(|first| first.parse::<usize>().ok())
+                    {
+                        assert_eq!(
+                            first + body.lines().count() - 1,
+                            span_through(header),
+                            "{label} does not name the lines it shows: {shown:?}"
+                        );
+                    }
+                }
+                // no content under a line, so the whole answer is either one bracketed
+                // sentence, or nothing at all where the limit holds neither
+                None => assert!(
+                    shown.starts_with('[') && shown.ends_with(']')
+                        || (shown.is_empty() && bytes < MIN),
+                    "{label} is a whole sentence: {shown:?}"
+                ),
+            }
+        }
+    }
+}
+
+/// The last line a header says it is showing: the second number of the span it names.
+fn span_through(header: &str) -> usize {
+    let span = header
+        .strip_prefix("[lines ")
+        .and_then(|rest| rest.split(|c: char| !c.is_ascii_digit() && c != '-').next())
+        .expect("a header naming lines names the span it shows");
+    span.split('-')
+        .nth(1)
+        .expect("a span has a last line")
+        .parse()
+        .expect("a line number")
+}
+
+/// The band of limits where the header fitted on its own and the answer did not.
+///
+/// note: the guard was on the header alone, and `room` was half the limit below twice the
+/// header, so for a band of limits the header fitted, the guard declined to act, and the kernel
+/// cut the answer at a byte from the end - inside the header, which is the one place `read` was
+/// written never to be cut. A model shown `[lines 1-6 of 200: the output limit (90 by` reads it
+/// as the file's own first line; the cut marker that would have said otherwise was cut too.
+#[tokio::test]
+async fn a_limit_where_only_the_header_fitted_still_leaves_a_whole_answer() {
+    let dir = scratch("files-limit-band");
+    std::fs::write(dir.join("long.txt"), numbered(200)).expect("a file");
+
+    // the band the finding names, and both sides of it
+    for bytes in [60, 80, 88, 90, 95, 100, 104, 110, 122, 150] {
+        let limits = Limits::default();
+        limits.set("fs:read", bytes);
+
+        let said = ask_within(&dir, limits, "read", json!({ "path": "long.txt" })).await;
+        let mut shown = nachalnik::Content::text(said);
+        assert!(
+            shown.truncate_to(bytes).is_none(),
+            "{bytes} bytes: cut by the kernel: {:?}",
+            shown.to_text()
+        );
+        let shown = shown.to_text();
+
+        match shown.split_once('\n') {
+            Some((header, body)) => {
+                assert!(
+                    header.ends_with(']'),
+                    "{bytes} bytes cuts the header: {header:?}"
+                );
+                assert!(
+                    !body.is_empty(),
+                    "{bytes} bytes: no content under the header"
+                );
+                assert!(
+                    header.contains("read on with `from: "),
+                    "{bytes} bytes does not say where reading on starts: {header}"
+                );
+                assert!(
+                    body.ends_with('\n') && body.lines().all(|l| l.starts_with("line ")),
+                    "{bytes} bytes stops inside a line: {shown:?}"
+                );
+            }
+            None => assert!(
+                shown.starts_with('[') && shown.ends_with(']'),
+                "{bytes} bytes is not a whole answer: {shown:?}"
+            ),
+        }
+    }
+}
+
+/// What fits under a limit is shown, and the whole of the answer is inside it: the lines that
+/// stop it are whole lines of the file, and the header naming them fits alongside them.
+#[tokio::test]
+async fn what_fits_under_a_limit_is_shown_and_the_answer_is_inside_it() {
+    let dir = scratch("files-limit-fits");
+    let file = numbered(200);
+    std::fs::write(dir.join("many.txt"), &file).expect("a file");
+
+    // a limit with room for the file shows all of it, with nothing added - a limit is what is
+    // shown of a call, and the room a header would take is only spent where there is a header
+    let limits = Limits::default();
+    limits.set("fs:read", 4_000);
+    let said = ask_within(&dir, limits, "read", json!({ "path": "many.txt" })).await;
+    assert_eq!(said, file, "a file that fits is the file");
+
+    // and a limit it does not fit under shows the lines that do, stopped at a whole one, with a
+    // header that names where reading on starts and fits under the limit along with them
+    for bytes in [200, 260, 300, 400, 1_000] {
+        let limits = Limits::default();
+        limits.set("fs:read", bytes);
+        let said = ask_within(&dir, limits, "read", json!({ "path": "many.txt" })).await;
+        assert!(said.len() <= bytes, "{bytes} bytes: {} shown", said.len());
+        let (header, body) = said.split_once('\n').expect("a header, then the lines");
+        assert!(header.starts_with("[lines 1-"), "{bytes} bytes: {header}");
+        assert!(
+            header.ends_with(']'),
+            "{bytes} bytes cuts the header: {header}"
+        );
+        assert!(
+            header.contains("read on with `from: "),
+            "{bytes} bytes says where reading on starts: {header}"
+        );
+        assert!(
+            body.ends_with('\n') && body.lines().all(|line| line.starts_with("line ")),
+            "{bytes} bytes cuts inside a line: {said}"
+        );
+        assert!(
+            file.starts_with(body),
+            "{bytes} bytes shows lines that are not the file's: {body}"
+        );
+    }
+}
+
+/// A line too long for the limit is shown from its start and said to be one, at every limit -
+/// which is the case with no whole line to fall back on, and so the only one where the answer
+/// is cut inside a line on purpose.
+#[tokio::test]
+async fn a_wide_line_is_answered_for_at_every_limit() {
+    let dir = scratch("files-limit-wide");
+    let file = format!("{}\nafter\n", "w".repeat(300));
+    std::fs::write(dir.join("wide.txt"), &file).expect("a file");
+
+    for bytes in MIN..=400usize {
+        let limits = Limits::default();
+        limits.set("fs:read", bytes);
+        let said = ask_within(&dir, limits, "read", json!({ "path": "wide.txt" })).await;
+        assert!(said.len() <= bytes, "{bytes} bytes: {} shown", said.len());
+        match said.split_once('\n') {
+            // room for the header that names it, and the start of the line under it
+            Some((header, body)) => {
+                assert!(
+                    header.ends_with(']'),
+                    "{bytes} bytes cuts the header: {header}"
+                );
+                assert!(
+                    header.contains("is longer than the output limit"),
+                    "{bytes}: {header}"
+                );
+                assert!(body.chars().all(|c| c == 'w'), "{bytes} bytes: {body}");
+            }
+            // too little for a header and a start: the sentence about the limit, whole
+            None => {
+                assert!(
+                    said.starts_with('[') && said.ends_with(']'),
+                    "{bytes} bytes: {said}"
+                );
+                assert!(said.contains(&format!("{bytes}")), "{bytes} bytes: {said}");
+            }
+        }
+    }
 }
 
 /// A file with nothing in it read whole is a file with nothing in it, rather than a refusal about
