@@ -165,6 +165,7 @@ async fn session() -> Result<()> {
         args,
         matches,
         found,
+        filed,
     } = Args::given()?;
     if args.print_config {
         print!("{}", kamchatka::config::SHIPPED);
@@ -247,13 +248,13 @@ async fn session() -> Result<()> {
         .filter(|seconds| *seconds > 0 && headless && server.is_none())
         .and_then(|seconds| begun.checked_add(std::time::Duration::from_secs(seconds)));
 
-    let setup = args.setup()?;
-
-    // note: before the provider, which is a round trip and an API key away. Everything `check`
-    // answers is answerable from the arguments alone - a tool nobody offers, a path rule nothing
-    // can match - and being told about one of those by an endpoint's refusal to talk is being
-    // told about the wrong thing. `wire` asks it again for whoever is not `main`
-    setup.check().map_err(|e| anyhow::anyhow!("{e}"))?;
+    // note: before the provider, which is a round trip and an API key away. Everything the
+    // checks answer is answerable from the arguments alone - a tool nobody offers, a path rule
+    // nothing can match - and being told about one of those by an endpoint's refusal to talk is
+    // being told about the wrong thing. They are asked here rather than by a separate `check`,
+    // because that is where a value out of a settings file can still be named; `wire` asks again
+    // for whoever is not `main`
+    let setup = args.setup_from(filed.as_ref())?;
 
     #[cfg(feature = "shell-advisor")]
     let setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;

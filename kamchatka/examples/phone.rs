@@ -87,7 +87,9 @@ async fn main() -> Result<(), String> {
 
     let listen = std::env::var(LISTEN).unwrap_or_else(|_| "127.0.0.1:8080".to_owned());
     // the program's own, settings file and all, so that every flag means here what it means there
-    let Given { args, found, .. } = Args::given().map_err(|e| format!("{e:#}"))?;
+    let Given {
+        args, found, filed, ..
+    } = Args::given().map_err(|e| format!("{e:#}"))?;
     if args.print_config {
         print!("{}", kamchatka::config::SHIPPED);
 
@@ -111,8 +113,9 @@ async fn main() -> Result<(), String> {
 
     let provider = args.provider().await.map_err(|e| format!("{e:#}"))?;
     let flagged = kamchatka::wiring::Flagged::of(&*provider);
-    let setup = args.setup().map_err(|e| format!("{e:#}"))?;
-    setup.check()?;
+    let setup = args
+        .setup_from(filed.as_ref())
+        .map_err(|e| format!("{e:#}"))?;
     #[cfg(feature = "shell-advisor")]
     let setup = args.advised(setup).await.map_err(|e| format!("{e:#}"))?;
 

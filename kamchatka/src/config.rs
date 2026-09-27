@@ -145,8 +145,21 @@ impl Settings {
     pub fn read(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
-        let mut settings: Self =
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut settings: Self = serde_json::from_str(&text).map_err(|e| {
+            let e = e.to_string();
+            // note: a file holding a list is the commonest near miss - `[]` is what an editor's
+            // bracket pair and a hand-written file both produce first - and serde's own answer is
+            // about a struct and the number of fields it has. A settings file has no `--help`
+            // beside it, so what one is is said here instead of counted at it
+            if text.trim_start().starts_with('[') {
+                format!(
+                    "{}: a settings file is an object of the arguments, one key each - {e}",
+                    path.display()
+                )
+            } else {
+                format!("{}: {e}", path.display())
+            }
+        })?;
 
         // note: the home directory is looked up once rather than per path, which is also what
         // makes the expansion itself a function of a home rather than of the environment - see

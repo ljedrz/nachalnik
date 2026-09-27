@@ -358,6 +358,181 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
     );
 }
 
+/// A file the command line says nothing about is named in every refusal, whichever half of the
+/// startup is making it.
+///
+/// note: the half that bites is a file nobody named. `Args::under` holds a value to the file and
+/// says which key, and then `setup` and the wiring hold it to what this program can do - a
+/// fraction, a tool, a server, a path rule - with nothing said about where it came from. A file
+/// found underfoot is announced on standard error, where a screen covers it and a failure has
+/// already ended the run, so a `compact` of `2` or a `deny` of `b.txt` stopped the program without
+/// saying which file said so.
+#[test]
+fn a_value_out_of_a_file_is_refused_with_the_file_named() {
+    // the two halves, and the kinds of value each of them refuses
+    for (name, json, said) in [
+        ("compact", r#"{ "compact": 2 }"#, "was `2`"),
+        (
+            "tools",
+            r#"{ "tools": ["contxt"] }"#,
+            "not one of this program's tools",
+        ),
+        (
+            "rule",
+            r#"{ "deny": ["b.txt"] }"#,
+            "is read as a whole domain",
+        ),
+        (
+            "servers",
+            r#"{ "allow-server": ["nope"] }"#,
+            "is not a server this run starts",
+        ),
+        (
+            "device",
+            r#"{ "sandbox-device": ["/home"] }"#,
+            "names a device under `/dev`",
+        ),
+    ] {
+        let dir = common::scratch(&format!("named-{name}"));
+        let file = dir.join("kamchatka.json");
+        std::fs::write(&file, json).expect("written");
+
+        // found rather than named, which is the case that had nothing announced
+        let (ok, out) = run_from(&dir, &[], "");
+        assert!(
+            !ok,
+            "{name}: a value nobody can honour is not a success: {out}"
+        );
+        assert!(out.contains(said), "{name}: {out}");
+        assert!(
+            out.contains("kamchatka.json"),
+            "{name}: the file is not named: {out}"
+        );
+        assert!(out.contains("Error:"), "{name}: it is a refusal: {out}");
+
+        // and through `--config-file`, where the path is the one somebody typed
+        let path = file.display().to_string();
+        let (ok, out) = run(&["--config-file", &path], "");
+        assert!(!ok, "{name}: {out}");
+        assert!(out.contains(&path), "{name}: the file is not named: {out}");
+    }
+}
+
+/// And a value somebody *typed* is refused on its own, because the file is not what is wrong.
+///
+/// note: the file is read either way and it stands for everything the command line did not say,
+/// so an error naming it is true but beside the point - somebody looking at `--compact 2` is
+/// looking at what they wrote.
+#[test]
+fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
+    let dir = common::scratch("typed-not-the-file");
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "model": null }"#).expect("written");
+
+    let (ok, out) = run_from(&dir, &["--compact", "2"], "");
+
+    assert!(!ok, "{out}");
+    assert!(out.contains("was `2`"), "what was wrong: {out}");
+    assert!(
+        !out.contains("Error: kamchatka.json"),
+        "a file that says nothing is named as though it had: {out}"
+    );
+}
+
+/// A word the file gets wrong says what the word is for and what it can be.
+///
+/// note: clap's own answer to a `ValueEnum` is `invalid variant: maybe`, which is the name of a
+/// Rust derive and not of anything a person writing a file has heard of - and a file has no
+/// `--help` beside it. `deny` or `allow` are the two answers there are, and saying so is the
+/// whole of what is missing.
+#[test]
+fn a_word_the_file_gets_wrong_says_what_it_can_be() {
+    let path = settings("on-ask-choices", r#"{ "on-ask": "maybe" }"#);
+
+    let (ok, said) = run(&["--config-file", &path], "");
+
+    assert!(!ok, "a setting nobody can honour is not a success");
+    assert!(said.contains("`maybe`"), "what it was: {said}");
+    assert!(said.contains("`deny`"), "and what it can be: {said}");
+    assert!(said.contains("`allow`"), "both of them: {said}");
+    assert!(
+        !said.contains("invalid variant"),
+        "and not clap's word for a Rust derive: {said}"
+    );
+}
+
+/// A file that is not an object says what a file is, rather than how many fields a struct has.
+///
+/// note: `[]` is what a hand-written file and an editor's bracket pair both produce first, and
+/// serde's answer counts the fields of a struct nobody writing the file has heard of.
+#[test]
+fn a_settings_file_that_is_not_an_object_says_what_one_is() {
+    let dir = common::scratch("not-an-object");
+    std::fs::write(dir.join("kamchatka.json"), "[]").expect("written");
+
+    let (ok, said) = run_from(&dir, &[], "");
+
+    assert!(
+        !ok,
+        "a file this program cannot read is not a success: {said}"
+    );
+    assert!(
+        said.contains("a settings file is an object"),
+        "what a file is: {said}"
+    );
+    assert!(said.contains("kamchatka.json"), "and which: {said}");
+}
+
+/// A file name read as a domain says how to write it as a path rule.
+///
+/// note: a path rule is a file name in which `*` stands for any run of characters, matched against
+/// the last name in a path - so `b.txt` is a rule about nothing and `b.txt*` is a rule about that
+/// file. A bare name is read as a whole domain, which is what `files` and `shell` are too, so
+/// nothing in the text can say which was meant; taking every bare name as a file is the other
+/// reading and it is not this crate's to make. Saying how the rule is written is.
+///
+/// note: `src/main.rs` was answered by a different refusal - it *is* read as a path, and a rule
+/// about a directory is that directory's name and a slash - which says the same thing.
+#[test]
+fn a_file_name_read_as_a_domain_says_how_to_write_the_rule() {
+    use kamchatka::{
+        tools::{Subject, objection_to, path_matches},
+        wiring::Setup,
+    };
+
+    let checked = |rule: &str| {
+        Setup {
+            deny: vec![Subject::parse(rule)],
+            ..Setup::default()
+        }
+        .check()
+        .expect_err("a rule nothing is judged under is not a success")
+    };
+
+    for (rule, said) in [
+        ("b.txt", "`b.txt*`"),
+        ("main.rs", "`main.rs*`"),
+        (
+            "src/main.rs",
+            "a rule about a directory is that directory's name and a slash",
+        ),
+    ] {
+        let refusal = checked(rule);
+        assert!(refusal.contains(rule), "{rule}: {refusal}");
+        assert!(refusal.contains(said), "{rule}: {refusal}");
+    }
+
+    // a tool and a domain nothing declares are each still told what they are, so the refusal
+    // above is not a new message for every wrong rule
+    assert!(checked("shell").contains("judged as `exec:run`"));
+    assert!(checked("network").contains("no call here is judged under"));
+
+    // and the spellings the refusals give are rules the matcher takes
+    assert!(path_matches("b.txt*", "b.txt"));
+    assert!(path_matches("main.rs*", "main.rs"));
+    assert_eq!(objection_to("b.txt*"), None);
+    assert_eq!(objection_to("main.rs*"), None);
+}
+
 /// A path rule nothing can match stops the program, whichever door it came in by.
 ///
 /// note: `src/**` reads like the glob `fs` takes and is not one: a path rule is a file name or one

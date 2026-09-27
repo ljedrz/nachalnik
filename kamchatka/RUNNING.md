@@ -34,9 +34,14 @@ Nothing can be asked at a prompt that is not there, so the answers are given in 
 | `--on-ask deny` | what happens to a question nobody answered in advance. The default |
 
 A path rule is a file name in which `*` stands for any run of characters, or one directory name
-with a slash after it, which is about that directory wherever it sits in a path. It is not the
-glob language `fs`'s own `glob` argument takes, and a pattern that reads like one — `src/**` —
-stops the session rather than going onto the permissions tab as a rule no path can match.
+with a slash after it, which is about that directory wherever it sits in a path. It is matched
+against the *last* name in a path, so a rule about a file is that file's name and nothing else:
+`--deny 'b.txt*'` is a rule about `b.txt` and `--deny b.txt` is not one, because a bare name is
+read as a whole domain — which is what `files` and `shell` are too, so nothing in the text can say
+which was meant. A run stopped for naming a domain no call is judged under says how to write the
+rule. It is not the glob language `fs`'s own `glob` argument takes, and a pattern that reads like
+one — `src/**` — stops the session rather than going onto the permissions tab as a rule no path
+can match.
 
 `--on-ask deny` rather than `allow` is deliberate: a run nobody is watching should not be able to
 do a thing nobody has allowed. The model is told, and told that it was *this call* rather than a

@@ -11,6 +11,7 @@
 use std::sync::Arc;
 
 use anyhow::{Context as _, Result};
+use clap::parser::ValueSource;
 use clap::{CommandFactory as _, FromArgMatches as _, Parser, ValueEnum as _};
 use nachalnik::Grant;
 use nachalnik_providers::Dialect;
@@ -326,8 +327,14 @@ impl Args {
         // the tools it would be checking against are the ones it is about to build
         self.tools = settings.tools;
         if let Some(on_ask) = settings.on_ask.filter(|_| !typed("on_ask")) {
-            self.on_ask = OnAsk::from_str(&on_ask, true)
-                .map_err(|e| anyhow::anyhow!("`on-ask` in the settings file: {e}"))?;
+            self.on_ask = OnAsk::from_str(&on_ask, true).map_err(|_| {
+                // what the word is held to, rather than clap's own "invalid variant: maybe": a
+                // settings file has no `--help` beside it, and these two are the only answers
+                anyhow::anyhow!(
+                    "`on-ask` in the settings file is what a question nobody is there to answer \
+                     gets, and this is `{on_ask}`: it is `deny` or `allow`"
+                )
+            })?;
         }
         match settings.mcp {
             #[cfg(feature = "mcp")]
@@ -388,6 +395,7 @@ impl Args {
                 args,
                 matches,
                 found: None,
+                filed: None,
             });
         }
         let found = args
@@ -396,6 +404,7 @@ impl Args {
             .then(|| args.connect.is_none().then(config::found))
             .flatten()
             .flatten();
+        let mut filed = None;
         if let Some(path) = args.config_file.clone().or_else(|| found.clone()) {
             let settings = Settings::read(&path).map_err(|e| anyhow::anyhow!("{e}"))?;
             // the path the way `Settings::read` puts it on its own errors: what `under` refuses
@@ -403,12 +412,17 @@ impl Args {
             args = args
                 .under(settings, &matches)
                 .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
+            filed = Some(Filed {
+                at: path,
+                matches: matches.clone(),
+            });
         }
 
         Ok(Given {
             args,
             matches,
             found,
+            filed,
         })
     }
 
@@ -418,6 +432,29 @@ impl Args {
     /// messages worth writing - which path, and whether it was a session at all - belong to
     /// whoever was handed the path.
     pub fn setup(&self) -> Result<Setup> {
+        self.setup_from(None)
+    }
+
+    /// [`Args::setup`], for a run that read a settings file, and the file's own refusals with it.
+    ///
+    /// note: where the refusals of the merge ended and these began. `under` holds a value to the
+    /// file and says which key, `Setup::check` and the wiring hold them to what this program can
+    /// do and say nothing about where a value came from - and a file found underfoot is announced
+    /// on standard error, where a terminal's screen covers it and a failure has already ended the
+    /// run. So the two run together, and anything out of `self` rather than out of the file is
+    /// left as it would have been said: somebody who typed `--deny` is looking at it.
+    ///
+    /// note: a parameter rather than a field on [`Args`] because the file is not a setting: it is
+    /// two facts - which path, and which arguments were *typed* - and the second is what tells a
+    /// file's value from a flag's.
+    pub fn setup_from(&self, filed: Option<&Filed>) -> Result<Setup> {
+        // one function for the refusals that are about the arguments, so that a value out of a
+        // file is answered with the file beside it and a value off the command line is answered
+        // as it always was
+        let at = |field: &str| match filed {
+            Some(filed) if filed.typed(field) => None,
+            _ => filed.map(|filed| format!("{}: ", filed.at.display())),
+        };
         // note: here rather than where the limit is read, because that is a round trip away and a
         // session measuring itself against nothing is not a session anybody finds out about. Every
         // other figure this program settles at startup is refused here, and this one used to be
@@ -428,8 +465,9 @@ impl Args {
         // and anything at or below zero one that took every tool result
         anyhow::ensure!(
             self.compact > 0.0 && self.compact <= 1.0,
-            "`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
+            "{}`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
              `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
+            at("compact").unwrap_or_default(),
             self.compact
         );
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
@@ -451,7 +489,10 @@ impl Args {
             .find(|name| !servers.contains(name))
         {
             anyhow::bail!(
-                "`{unknown}` is not a server this run starts; {}",
+                "{}`{unknown}` is not a server this run starts; {}",
+                at("allow_server")
+                    .or_else(|| at("deny_server"))
+                    .unwrap_or_default(),
                 match servers.is_empty() {
                     true => "it starts none".to_owned(),
                     false => format!("they are {}", servers.join(", ")),
@@ -468,9 +509,10 @@ impl Args {
                 "mcp" | "mcp:call"
             )
         }) {
+            let at = at("allow").unwrap_or_default();
             anyhow::bail!(
-                "`--allow {granted}` grants nothing: a tool from an MCP server is judged under the \
-                 server's name, so `--allow-server NAME` is what lets one through"
+                "{at}`--allow {granted}` grants nothing: a tool from an MCP server is judged \
+                 under the server's name, so `--allow-server NAME` is what lets one through"
             );
         }
         let resume = match &self.resume {
@@ -493,8 +535,7 @@ impl Args {
             }
             None => None,
         };
-
-        Ok(Setup {
+        let setup = Setup {
             resume,
             // the runtime's own default is a counter that restarts at 0 with the process, which is
             // fine as an identity and useless as a filename: every session would write over the
@@ -542,7 +583,18 @@ impl Args {
             files: self.file.clone(),
             #[cfg(feature = "shell-advisor")]
             advisor: None,
-        })
+        };
+
+        // the last of the refusals, and the first one a value out of a file can reach without
+        // having said which file it came from: what this program offers and what a rule can match
+        // are both decided here, so a tool, a server and a path rule are all refused after the
+        // merge rather than in it
+        let refused = at("tools")
+            .or_else(|| at("sandbox_device"))
+            .unwrap_or_default();
+        setup.check().map_err(|e| anyhow::anyhow!("{refused}{e}"))?;
+
+        Ok(setup)
     }
 
     /// The same, with the advisor attached where `--advise` asked for one.
@@ -616,6 +668,36 @@ pub struct Given {
     /// note: never one named with `--config-file`: this is what has to be said out loud, and a
     /// path somebody typed does not.
     pub found: Option<std::path::PathBuf>,
+    /// The file the arguments were filled in from, where there was one at all; see
+    /// [`Args::setup_from`].
+    pub filed: Option<Filed>,
+}
+
+/// The settings file these arguments were filled in from, and which of them were *typed*.
+///
+/// note: the two things a refusal about somebody else's value has to answer and the struct cannot.
+/// The path is what a value has to name to be found, and the matches are what says whether it came
+/// from the file or from a flag on the command line - which is the difference between naming the
+/// file and leaving somebody to wonder. A value that failed after the merge is a value somebody
+/// wrote down, and a file applies because of where they are standing as much as anything else.
+pub struct Filed {
+    /// The file read, named the way `Settings::read` names it on its own errors.
+    pub at: std::path::PathBuf,
+    /// What clap matched, which is the only thing that can say which arguments were *typed*.
+    pub matches: clap::ArgMatches,
+}
+
+impl Filed {
+    /// Whether this argument was written on the command line, which is what says a value was not
+    /// read out of the file.
+    ///
+    /// note: `false` for a name clap knows nothing of, rather than a panic. Three settings are
+    /// `#[arg(skip)]` - a file only, with no argument behind them - and a refusal about one of
+    /// those has to be able to ask where the value came from like any other.
+    pub fn typed(&self, name: &str) -> bool {
+        self.matches.ids().any(|id| id.as_str() == name)
+            && self.matches.value_source(name) == Some(ValueSource::CommandLine)
+    }
 }
 
 /// What an unanswerable question is answered with.

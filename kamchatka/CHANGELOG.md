@@ -132,6 +132,20 @@ minor bump may break you.
   operation to call again; what a reason is for is in the argument's description, which every
   request carries.
 - **`context`'s description no longer says that each operation describes itself.**
+- **A file's value is refused with the file named, wherever the refusal happens.** Everything
+  after the merge - a `compact` that is not a fraction, a tool nobody offers, a server this run
+  does not start, a path rule nothing can match, a device outside `/dev` - said what was wrong and
+  nothing about where the value came from, so a `kamchatka.json` found underfoot or under the
+  config directory stopped the run with an error that could have been about any file. A value
+  *typed* is still refused on its own.
+- **A file's `on-ask` and a file that is not an object say what is expected.** `invalid variant:
+  maybe` named a Rust derive rather than the two answers, and a file holding `[]` was told it was
+  not `struct Settings with 24 elements`.
+- **A bare file name given as a rule says how to write it as a path rule.** `--deny b.txt` was
+  refused as a domain no call is judged under, which tells somebody holding a file name nothing.
+  A path rule is a file name in which `*` stands for any run of characters, matched against the
+  last name in a path, so `b.txt*` is the rule about `b.txt`; a bare name is still read as a whole
+  domain, which is what `files` and `shell` are too, and RUNNING.md says so.
 
 ### fixed
 

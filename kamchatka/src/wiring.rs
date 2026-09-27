@@ -241,6 +241,12 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
 /// typo like `fs:writ`. The domains a call here can be judged under are the ones this program's
 /// tools declare, `net:reach`, which `shell` asks about per command, and `mcp:call`, which every
 /// tool from a server declares; anything else can match nothing.
+///
+/// note: and the one refusal of that answer is about a file. A word holding a dot or a path is
+/// read as a domain by [`Subject::parse`], so `b.txt` and `main.rs` got here, and a sentence about
+/// domains tells somebody who wanted a path rule nothing. The rule is left as it is - taking a
+/// plain name as a path rule would answer a different question with a different subject, and see
+/// [`named`] - and what the refusal does is say how to write the rule instead.
 fn unreached(subject: &Subject) -> Option<String> {
     let (domain, op) = match subject {
         Subject::Capability(capability) => (capability.domain.to_string(), Some(&capability.op)),
@@ -261,27 +267,39 @@ fn unreached(subject: &Subject) -> Option<String> {
         .map(|it| it.op.as_str())
         .collect();
     if ops.is_empty() {
-        return Some(match specs.iter().find(|spec| spec.id == domain) {
-            Some(tool) => format!(
-                "`{subject}` names a tool, and a rule names what a call needs: `{domain}` is judged \
-                 as {}",
-                tool.capabilities
-                    .iter()
-                    .map(|it| format!("`{it}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+        let ids: Vec<&str> = specs.iter().map(|spec| spec.id.as_str()).collect();
+        return Some(match named(&domain, &ids) {
+            // a file somebody meant to rule about, and the grammar `objection_to` holds the other
+            // kind to - a rule about a path is a file name in which `*` stands for any run of
+            // characters, so `b.txt*` is one and `b.txt` is not what a path rule is written as
+            Some(_) => format!(
+                "`{subject}` is read as a whole domain, and no domain here is called `{domain}`. A \
+                 path rule is a file name in which `*` stands for any run of characters - \
+                 `{domain}*` - or one directory name with a slash after it - `{domain}/`"
             ),
-            None => {
-                let mut domains: Vec<String> =
-                    declared.iter().map(|it| it.domain.to_string()).collect();
-                domains.sort();
-                domains.dedup();
-                format!(
-                    "`{subject}` is about `{domain}`, which no call here is judged under: the \
-                     domains are {}",
-                    domains.join(", ")
-                )
-            }
+            // a tool, and what a call is judged by instead
+            None => match specs.iter().find(|spec| spec.id == domain) {
+                Some(tool) => format!(
+                    "`{subject}` names a tool, and a rule names what a call needs: `{domain}` is \
+                     judged as {}",
+                    tool.capabilities
+                        .iter()
+                        .map(|it| format!("`{it}`"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                None => {
+                    let mut domains: Vec<String> =
+                        declared.iter().map(|it| it.domain.to_string()).collect();
+                    domains.sort();
+                    domains.dedup();
+                    format!(
+                        "`{subject}` is about `{domain}`, which no call here is judged under: the \
+                         domains are {}",
+                        domains.join(", ")
+                    )
+                }
+            },
         });
     }
     match op {
@@ -296,6 +314,27 @@ fn unreached(subject: &Subject) -> Option<String> {
         }
         _ => None,
     }
+}
+
+/// Whether `domain` is the name of a file rather than of anything a rule here is written about.
+///
+/// note: the characters a file name may hold and a domain may not, read by that alone. A domain
+/// and a tool's id are both bare words and nothing in either says which it is - which is why a
+/// server is named on an argument of its own - so this is the one place a rule about a file can
+/// be recognised at all, and the refusal above is where it says so.
+///
+/// note: a path is read as a name too, since a path rule is a *file name* compared with the last
+/// name in a path: `main.rs*` is a rule about that file, and `src/main.rs` is not what a path
+/// rule is written as. `b.txt` is accepted here and refused, rather than taken: what a plain name
+/// means is a question about what a subject is, and the two ways of answering it - read every
+/// plain name as a file, or refuse one no domain claims - leave `shell` and `files` reading as
+/// files as well as domains nobody declared.
+fn named(domain: &str, ids: &[&str]) -> Option<String> {
+    if ids.contains(&domain) {
+        return None;
+    }
+    (domain.contains(['.', '/', '*']) || domain.starts_with('.') || domain.ends_with('/'))
+        .then(|| domain.to_owned())
 }
 
 /// Where a provider was pointed when the session began: the address and the model the flags gave
