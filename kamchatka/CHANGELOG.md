@@ -285,6 +285,10 @@ minor bump may break you.
   starts at the resume. Two sessions started in the same second collided the same way. The first
   save into a directory now goes beside anything of that name, as `NAME-2`, the way the record
   at the end of a run does; saving there again replaces this session's own pair.
+- **`/save .json` writes `session.json`, not two dotfiles**, and `/load .json` reads it back. An
+  argument that is only a suffix leaves nothing to name the files after, and is taken as no
+  argument. `/load` given a directory says it is one, rather than that it could not read
+  `DIR/.json`.
 
 ## [0.15.1] - 2026-09-24
 

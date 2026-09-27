@@ -742,6 +742,34 @@ fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
     );
 }
 
+/// `/save` and `/load` agree on an argument that is only a suffix, and `/load` says when it was
+/// given a directory.
+///
+/// note: `/save .json` took the suffix off and was left with nothing, and wrote `.json` and
+/// `.jsonl` - files `ls` does not show, under a confirmation that read as though it had worked.
+/// `/load rec/` after `/save rec/` answered that it could not read `rec/.json`.
+#[test]
+fn save_and_load_agree_on_a_bare_suffix_and_a_directory() {
+    let dir = common::scratch("save-suffix");
+    std::fs::create_dir(dir.join("rec")).expect("a directory");
+    let (ok, said) = run_from(
+        &dir,
+        &[],
+        "remember 4817\n/save .json\n/load .jsonl\n/load rec/\n",
+    );
+    assert!(ok, "{said}");
+
+    assert!(dir.join("session.json").exists(), "{said}");
+    assert!(dir.join("session.jsonl").exists(), "{said}");
+    assert!(!dir.join(".json").exists() && !dir.join(".jsonl").exists());
+    assert!(
+        said.contains("(session.json)"),
+        "`/load` reads it back: {said}"
+    );
+    // and a directory, which `/save` writes into by the session's name, is said to be one
+    assert!(said.contains("rec/ is a directory"), "{said}");
+}
+
 /// `-r` refuses a snapshot the runtime would have to repair, and says what is wrong with it.
 ///
 /// note: a snapshot is a record, and one read back from a file may have been edited or merged. The

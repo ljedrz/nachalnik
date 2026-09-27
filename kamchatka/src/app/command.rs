@@ -1511,10 +1511,19 @@ impl App {
         // the same spellings `/save` takes, because a pair of commands that accept different ones
         // is a pair that does not round-trip: `/save notes.jsonl` writes `notes.json` beside the
         // log, and `/load notes.jsonl` would otherwise go looking for `notes.jsonl.json`
-        let file = match path {
-            "" => "session.json".to_owned(),
-            given => format!("{}.json", without_suffix(given)),
-        };
+        let file = format!("{}.json", stem(path));
+        // `/save` takes a directory and names the files in it after the session, which this
+        // cannot know; saying what the argument is beats "could not read rec/.json"
+        if std::fs::metadata(&file).is_err() && std::path::Path::new(path).is_dir() {
+            self.say(
+                Speaker::Error,
+                format!(
+                    "{path} is a directory, and `/load` takes a session's file: `/save` names \
+                     the one it writes into a directory after the session, and said which"
+                ),
+            );
+            return;
+        }
         // a file and nothing else, for the reason `attach::contents` gives: a pipe with nobody
         // writing to it would be waited on by the thread this session runs on
         let snapshot: nachalnik::Snapshot = match std::fs::metadata(&file)
@@ -1673,10 +1682,7 @@ impl App {
     /// note: the snapshot is what `/load` reads back into a running session and what
     /// `kamchatka -r` starts from.
     fn save(&mut self, path: &str) {
-        let stem = match path {
-            "" => "session",
-            given => without_suffix(given),
-        };
+        let stem = stem(path);
         // note: a directory is a place to put it rather than a name for it. Taken whole as the
         // stem, `/save sessions/` would write `sessions/.json` and `sessions/.jsonl` - two
         // dotfiles, invisible to `ls`, under a confirmation that prints the path and so reads as
@@ -1836,6 +1842,18 @@ fn rename_taken_calls(snapshot: &mut nachalnik::Snapshot, taken: &HashSet<ToolCa
     snapshot.used_calls.iter_mut().for_each(&mut rename);
 
     renames.len()
+}
+
+/// What `/save` and `/load` name a session's two files after: the path without its suffix, or
+/// `session` where that leaves nothing.
+///
+/// note: nothing is left by no argument and by an argument that was only a suffix, and the second
+/// would otherwise be the stem of `.json` and `.jsonl` - two dotfiles `ls` does not show.
+fn stem(path: &str) -> &str {
+    match without_suffix(path) {
+        "" => "session",
+        stem => stem,
+    }
 }
 
 /// A session's path with the extension taken off, whichever of the two it was spelled with.
