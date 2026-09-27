@@ -407,9 +407,17 @@ impl Tool for Shell {
                 command.args(sandbox.argv(cmd));
                 command
             }
+            // a group of its own, so that stopping the command can stop everything the command
+            // started; see `stop`. A confined child makes its own, in a session of its own, so
+            // that it leaves the terminal behind - see `sandbox::run_if_asked` - and `setsid` is
+            // refused to a process that already leads a group
             _ => {
                 let mut command = tokio::process::Command::new("sh");
-                command.arg("-c").arg(cmd).current_dir(&self.workdir);
+                command
+                    .arg("-c")
+                    .arg(cmd)
+                    .current_dir(&self.workdir)
+                    .process_group(0);
                 command
             }
         };
@@ -419,10 +427,7 @@ impl Tool for Shell {
             command.env_remove(key);
         }
 
-        // a group of its own, so that stopping the command can stop everything the command
-        // started; see `stop`
-        command.process_group(0);
-        // and killed if this call is dropped before it is over; see `Running`
+        // killed if this call is dropped before it is over; see `Running`
         command.kill_on_drop(true);
 
         // note: where the network is held, the child's standard input is the socket the gate's
@@ -881,9 +886,9 @@ impl Drop for Running {
 ///
 /// note: through `sh`, because signalling a *group* is not in `std`, and this crate keeps its
 /// `unsafe` to [`crate::gate`]. It is the same `sh` the tool is built on, so it brings nothing new
-/// into the program. The group is the child's own - `process_group(0)` asked
-/// for that at spawn - and the child has not been waited on yet, so the identifier cannot yet mean
-/// anybody else.
+/// into the program. The group is the child's own - `process_group(0)` asked for that at spawn, or
+/// the confined child's `setsid` made it - and the child has not been waited on yet, so the
+/// identifier cannot yet mean anybody else.
 async fn stop(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
         let _ = tokio::process::Command::new("sh")

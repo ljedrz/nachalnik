@@ -188,9 +188,10 @@ landlock = "0.4"
 libc = "0.2"
 # `openat2` with `RESOLVE_BENEATH`, so that a path the file tools checked cannot be swapped for a
 # link out before it is opened - `std` has no way to ask for it. `net` and `event` for the gate's
-# safe half: the socket pair its listener is handed over on, and polling that listener. Already in
-# the tree under the screen, through `crossterm`; this names it for the build without one
-rustix = { version = "1", features = ["event", "fs", "net"] }
+# safe half: the socket pair its listener is handed over on, and polling that listener. `process`
+# for the `setsid` that leaves a confined command without the terminal. Already in the tree under
+# the screen, through `crossterm`; this names it for the build without one
+rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 
 # using TypeSafe's `jev` to decide what a full context can afford to lose, against the age order
 # `Trim` really uses. Nothing in the crate does this - it is here to be read and run by somebody

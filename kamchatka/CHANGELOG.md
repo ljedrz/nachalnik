@@ -95,6 +95,13 @@ minor bump may break you.
 
 ### fixed
 
+- **A confined command no longer has the terminal.** It kept the controlling terminal this
+  program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
+  that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
+  or draw over the question somebody was reading. The confined child now starts a session of its
+  own before anything runs, so `/dev/tty` does not open; one that cannot leave the terminal runs
+  nothing. `shell` no longer spawns it leading a group, since `setsid` is refused to a process that
+  does, and the session is the group it stops. Under `--no-sandbox` a command keeps the terminal.
 - **Under a refused `fs:write`, a refusal from `fs` calls the reach read-only.** It named the
   working directory and the `--sandbox-allow` paths read-write while `shell` in the same session
   called them read-only.

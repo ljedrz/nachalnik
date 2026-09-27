@@ -1627,3 +1627,104 @@ async fn an_attempt_after_the_call_is_over_is_refused_without_a_question() {
         "a question was put about a command that had ended"
     );
 }
+
+/// A confined command has no controlling terminal: it cannot open the one the program reads its
+/// keys from, to push a `y` into it or to draw over the question on it. Started by something that
+/// leads a group, and so could not leave that terminal, nothing is run.
+///
+/// note: under a terminal of the test's own, which `python3`'s `pty` makes, and with the standard
+/// streams `/dev/null` and a pipe as `shell` hands them out. The same command unconfined reaches the
+/// terminal first, or a harness that handed out none would pass this.
+#[test]
+fn a_confined_command_has_no_terminal_to_type_into() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("sandbox-terminal");
+    let reach = "if true 3<>/dev/tty; then echo reached; else echo refused; fi";
+
+    let control = under_a_terminal(&["sh".into(), "-c".into(), reach.into()], &dir, false);
+    assert!(control.contains("reached"), "{control}");
+
+    let mut confined = vec![common::program().into_os_string()];
+    confined.extend(sandbox(dir.clone(), true, Network::NoTcp).argv(reach));
+    let said = under_a_terminal(&confined, &dir, false);
+    assert!(said.contains("refused"), "{said}");
+    assert!(!said.contains("reached"), "{said}");
+
+    let led = under_a_terminal(&confined, &dir, true);
+    assert!(led.contains("nothing was run"), "{led}");
+    assert!(!led.contains("reached"), "{led}");
+}
+
+/// A confined command leads a session of its own, which is what leaves the terminal behind, and
+/// the group `stop` signals.
+///
+/// note: through the tool, because the tool is what makes it possible: `setsid` is refused to a
+/// process spawned leading a group. This suite has no terminal, so a `shell` that still spawned the
+/// child that way would pass everything else here and refuse every command a person ran. The `; :`
+/// keeps `sh` as the parent `python3` compares against, rather than replaced by it.
+#[tokio::test]
+async fn a_confined_command_leads_a_session_of_its_own() {
+    if !enforced() {
+        return;
+    }
+    let dir = common::workdir("sandbox-session");
+    let shell = Shell {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        policy: Arc::new(Careful::new()),
+        confiner: Some(common::program()),
+        limits: Limits::default(),
+    };
+
+    let said = through(
+        &shell,
+        "python3 -c \"import os; print('leads' if os.getsid(0) == os.getpgid(0) == os.getppid() \
+         else 'joined')\"; :",
+    )
+    .await;
+
+    assert!(said.contains("leads"), "{said}");
+}
+
+/// Runs `argv` in a session whose controlling terminal is a new one, and returns what it wrote.
+///
+/// note: `leading` runs it as the session's leader, which is also a group's; otherwise it is a
+/// child of a `sh` that leads, with its streams off the terminal, the way `shell` starts one. Its
+/// temporary directory goes under `dir`, since there is nobody here to remove it.
+fn under_a_terminal(argv: &[std::ffi::OsString], dir: &Path, leading: bool) -> String {
+    let output = Command::new("python3")
+        .arg("-c")
+        .arg(
+            "import os, pty, sys\n\
+             pid, fd = pty.fork()\n\
+             if pid == 0:\n\
+             \x20   argv = sys.argv[2:]\n\
+             \x20   if sys.argv[1] == 'wrapped':\n\
+             \x20       argv = ['sh', '-c', '\"$@\" </dev/null 2>&1 | cat; :', 'sh'] + argv\n\
+             \x20   os.execvp(argv[0], argv)\n\
+             out = b''\n\
+             while True:\n\
+             \x20   try:\n\
+             \x20       got = os.read(fd, 4096)\n\
+             \x20   except OSError:\n\
+             \x20       break\n\
+             \x20   if not got:\n\
+             \x20       break\n\
+             \x20   out += got\n\
+             os.waitpid(pid, 0)\n\
+             sys.stdout.buffer.write(out)\n",
+        )
+        .arg(match leading {
+            true => "leading",
+            false => "wrapped",
+        })
+        .args(argv)
+        .env("TMPDIR", dir)
+        .output()
+        .expect("python3 is here");
+
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
