@@ -662,3 +662,77 @@ async fn a_body_that_is_not_a_stream_is_not_read_for_ever() {
         assert!(said.contains("MiB"), "streaming: {streaming}: {said}");
     }
 }
+
+/// Accepts one request, answers it with a stream's headers and `body`, and then holds the socket
+/// open saying nothing - no `[DONE]` and no close.
+#[cfg(feature = "openai")]
+async fn held_open(body: &'static str) -> String {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 16384];
+        let _ = socket.read(&mut discard).await;
+        let _ = socket
+            .write_all(
+                format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n{body}")
+                    .as_bytes(),
+            )
+            .await;
+        let _ = socket.flush().await;
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    });
+
+    format!("http://{address}")
+}
+
+/// A stream that goes quiet keeps what it said: a finished answer is the answer once the quiet is
+/// worth mentioning, and one quiet mid-answer is cut off once the stall watch gives up.
+///
+/// note: both were thrown away. A server that sent the finish and the usage and then neither
+/// `[DONE]` nor a close sat out the whole stall bound and was reported as a failure, with no turn
+/// and no usage; a stall part-way through lost what had streamed. On a paused clock, so that the
+/// bound is not sat through.
+#[cfg(feature = "openai")]
+#[tokio::test(start_paused = true)]
+async fn a_stream_that_goes_quiet_keeps_what_it_said() {
+    for (body, stop, within) in [
+        (
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\n\
+             data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n\
+             data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2}}\n\n",
+            nachalnik::StopReason::EndTurn,
+            Duration::from_secs(30),
+        ),
+        (
+            "data: {\"choices\":[{\"delta\":{\"content\":\"all of it\"}}]}\n\n",
+            nachalnik::StopReason::Other("cut off".to_owned()),
+            Duration::from_secs(600),
+        ),
+    ] {
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "quiet",
+            held_open(body).await,
+            "no key needed",
+        )));
+        kernel.push(ContextItem::user("are you there?"));
+
+        tokio::time::timeout(within, kernel.step())
+            .await
+            .unwrap_or_else(|_| panic!("still waiting after {within:?}, expecting {stop:?}"))
+            .unwrap_or_else(|e| panic!("what arrived is kept, expecting {stop:?}: {e}"));
+        let kept = kernel.last_response().expect("a response");
+        assert_eq!(
+            kept.content.as_ref().map(|it| it.to_text().into_owned()),
+            Some("all of it".to_owned())
+        );
+        assert_eq!(kept.stop, stop);
+        if stop == nachalnik::StopReason::EndTurn {
+            assert_eq!(kept.usage.and_then(|usage| usage.input_tokens), Some(3));
+        }
+    }
+}

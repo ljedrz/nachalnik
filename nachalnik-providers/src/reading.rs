@@ -65,9 +65,9 @@ pub(crate) enum Read {
 
 /// Reads a stream to its end, handing each event to `events` as it arrives.
 ///
-/// note: what stops this is the server, an interrupt, or the stall watch - and the first two of
-/// those are answers rather than failures, which is why what comes back is what had arrived rather
-/// than an error. A turn that was cut off mid-answer has been generated and billed for; throwing it
+/// note: what stops this is the server, an interrupt, or the stall watch - and once anything has
+/// arrived, all three are answers rather than failures, which is why what comes back is what had
+/// arrived rather than an error. A turn that was cut off mid-answer has been generated and billed for; throwing it
 /// away is the one thing worse than reporting it short.
 pub(crate) async fn read(
     response: &mut reqwest::Response,
@@ -139,8 +139,28 @@ pub(crate) async fn read(
                     stopped = Stopped::Interrupted;
                     break;
                 }
-                match vigil.waited() {
-                    Silence::Enough => return Err(stalled(asking.model, PATIENCE)),
+                let silence = vigil.waited();
+                // note: a finish and then quiet is a server that has said all it is going to and
+                // kept the connection open without a `[DONE]`. What may still follow a finish is
+                // the usage, which comes with it or straight after, so the first silence worth
+                // mentioning is enough to stop waiting for it
+                if events.finished() && !matches!(silence, Silence::Ordinary) {
+                    break;
+                }
+                match silence {
+                    Silence::Enough if seen.is_empty() => {
+                        return Err(stalled(asking.model, PATIENCE));
+                    }
+                    // what arrived before the silence is kept, as for a stream broken off
+                    Silence::Enough => {
+                        asking.say(format!(
+                            "{} said nothing for {}s mid-answer; what had arrived is kept",
+                            asking.model,
+                            PATIENCE.as_secs()
+                        ));
+                        stopped = Stopped::CutOff;
+                        break;
+                    }
                     Silence::Worth(seconds) => asking.say(gone_quiet(asking.model, seconds)),
                     Silence::Ordinary => {}
                 }

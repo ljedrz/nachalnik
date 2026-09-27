@@ -26,6 +26,11 @@ minor bump may break you.
   written over the field the request had built, so the conversation that went out was not the one
   `model.requested` named - and a `null` one failed every request after it. Those parameters are
   now left off the wire, in both dialects.
+- **A stream that goes quiet keeps what it said.** A server that sent the finish and the usage and
+  then neither `[DONE]` nor a close sat out the whole 150s stall bound and ended the turn as a
+  failure, with the answer and its usage thrown away; one that stalled part-way through an answer
+  lost what had streamed. A finished answer now ends once the quiet after it is worth mentioning,
+  and a stall mid-answer keeps what arrived as a turn cut off, as a stream broken off already did.
 
 ## [0.6.1] - 2026-09-24
 
