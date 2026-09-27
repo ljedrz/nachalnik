@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### fixed
 
+- **A base URL ending in `/` is used without it.** Every path is appended to the base, so
+  `…/v1/` asked for `…/v1//chat/completions` and a server routing on the path answered with a bare
+  404. All three clients trim it, at construction and on `set_endpoint`, and `endpoint()` reports
+  the trimmed address.
+- **A 404 names the address it was asked at.** It is the answer to a wrong base URL, and what
+  such a server sends back is usually its own "Not Found" and nothing else.
+
 - **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
   context limit, and each held both locks together - `info` taking the limit first and `respond`
   the model first - so a caller reading `info` on one thread while a request began on another

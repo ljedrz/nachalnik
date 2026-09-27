@@ -144,7 +144,7 @@ impl OpenAiCompatible {
         install_crypto();
         Self {
             client: reqwest::Client::new(),
-            base_url: Mutex::new(base_url.into()),
+            base_url: Mutex::new(crate::address(base_url)),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
@@ -398,7 +398,7 @@ impl OpenAiCompatible {
     /// the prompt would be a key in the transcript - so what this is for is the endpoints that need
     /// no key or the same one: a local model, a proxy, a second base URL on the same account.
     pub async fn set_endpoint(&self, url: impl Into<String>, model: Option<String>) {
-        *self.base_url.lock() = url.into();
+        *self.base_url.lock() = crate::address(url);
         if let Some(model) = model {
             *self.model.lock() = model;
         }

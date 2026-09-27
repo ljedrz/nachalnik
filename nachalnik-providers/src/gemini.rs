@@ -77,7 +77,7 @@ impl Gemini {
         install_crypto();
         Self {
             client: reqwest::Client::new(),
-            base_url: Mutex::new(base_url.into()),
+            base_url: Mutex::new(crate::address(base_url)),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
@@ -719,7 +719,7 @@ impl Endpoint for Gemini {
     /// and a name that was right at the last address is exactly the one worth asking about at this
     /// one. Skipping it leaves the 404 on the next request to say so.
     async fn set_endpoint(&self, url: String, model: Option<String>) {
-        *self.base_url.lock() = url;
+        *self.base_url.lock() = crate::address(url);
         *self.context_limit.lock() = self.configured;
         match model {
             Some(model) => self.set_model(model).await,

@@ -222,3 +222,39 @@ async fn the_decisions_model_says_it_too_when_the_address_changes() {
     assert_eq!(moved.endpoint(), address);
     assert_eq!(moved.model(), "stranger");
 }
+
+/// An address given with a trailing `/` is used without it, whether it came in at construction or
+/// with a switch.
+///
+/// note: every path is appended to the base, so a copied `…/v1/` asked for `…/v1//chat/completions`,
+/// which a server routing on the path answers with a bare 404 that names no address.
+#[tokio::test]
+async fn an_address_is_used_without_its_trailing_slash() {
+    let address = serving(SERVES).await;
+    let providers: Vec<Box<dyn Endpoint>> = vec![
+        #[cfg(feature = "openai")]
+        Box::new(nachalnik_providers::OpenAiCompatible::new(
+            "resident",
+            "http://unused.invalid/v1/",
+            "no key",
+        )),
+        #[cfg(feature = "gemini")]
+        Box::new(nachalnik_providers::Gemini::new(
+            "resident",
+            "http://unused.invalid/v1/",
+            "no key",
+        )),
+        #[cfg(feature = "system1")]
+        Box::new(nachalnik_providers::system1::Jev::new(
+            "resident",
+            "http://unused.invalid/v1/",
+            "no key",
+        )),
+    ];
+
+    for provider in providers {
+        assert_eq!(provider.endpoint(), "http://unused.invalid/v1");
+        provider.set_endpoint(format!("{address}//"), None).await;
+        assert_eq!(provider.endpoint(), address);
+    }
+}

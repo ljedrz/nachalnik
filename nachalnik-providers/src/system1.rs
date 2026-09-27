@@ -637,7 +637,7 @@ impl Jev {
                 .timeout(PATIENCE)
                 .build()
                 .unwrap_or_default(),
-            base_url: Mutex::new(base_url.into()),
+            base_url: Mutex::new(crate::address(base_url)),
             api_key: api_key.into(),
             model: Mutex::new(model.into()),
             attempts: AtomicUsize::new(0),
@@ -962,7 +962,7 @@ impl Endpoint for Jev {
     }
 
     async fn set_endpoint(&self, url: String, model: Option<String>) {
-        *self.base_url.lock() = url;
+        *self.base_url.lock() = crate::address(url);
         match model {
             Some(model) => self.set_model(model).await,
             None => self.say_if_the_model_is_not_there().await,

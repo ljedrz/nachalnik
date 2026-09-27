@@ -240,6 +240,26 @@ pub fn is_openrouter(address: &str) -> bool {
     host == "openrouter.ai" || host.ends_with(".openrouter.ai")
 }
 
+/// A base URL as the requests are built on it: without the trailing `/` a copied address so often
+/// carries.
+///
+/// note: every path here is appended as `{base}/models` or `{base}/chat/completions`, so a trailing
+/// slash doubles, and a server that routes on the path answers the doubled one with a bare 404.
+/// Trimmed where an address comes in rather than where one is used, so that
+/// [`Endpoint::endpoint`] reports the address the requests actually go to.
+///
+/// note: never into the `//` after a scheme. `https://` is no address either way, but cut to
+/// `https:` it is one nobody typed.
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+pub(crate) fn address(url: impl Into<String>) -> String {
+    let mut url = url.into();
+    let kept = url.trim_end_matches('/').len();
+    if !url[..kept].ends_with(':') {
+        url.truncate(kept);
+    }
+    url
+}
+
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
 ///
 /// note: reqwest is built here with `rustls-no-provider`, so there is no default waiting behind

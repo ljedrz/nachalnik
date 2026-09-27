@@ -371,6 +371,9 @@ pub(crate) async fn sent(
             }
             Ok(response) => {
                 let status = response.status();
+                // read before the body takes the response, for the one refusal that is about the
+                // address rather than the request: see below
+                let url = response.url().clone();
                 // the server's own answer to "when?", where it gives one. Guessing at a doubling
                 // is for a server that did not say
                 let asked = response
@@ -410,7 +413,14 @@ pub(crate) async fn sent(
                     // one in a minute
                     false => Busy::Refused {
                         code: status.as_u16().into(),
-                        said: complaint(status, &body),
+                        // note: a 404 names where it was asked, because it is the answer to an
+                        // address that is wrong - a base URL missing its `/v1`, or one that is a
+                        // web site - and what such a server sends back is its own "Not Found",
+                        // which says nothing about which address that was
+                        said: match status == reqwest::StatusCode::NOT_FOUND {
+                            true => format!("{} - asked at {url}", complaint(status, &body)),
+                            false => complaint(status, &body),
+                        },
                         transient: passing(status.as_u16().into()) && !out_of_quota(&body),
                         asked,
                     },

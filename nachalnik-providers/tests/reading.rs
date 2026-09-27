@@ -766,3 +766,22 @@ async fn a_refusal_that_names_no_wait_is_waited_out_for_longer_each_time() {
         );
     }
 }
+
+/// A 404 says which address was asked, since a wrong address is what it is the answer to.
+///
+/// note: a server with no route at the path answers in its own words, and those are usually just
+/// "Not Found" - which, for a base URL missing its `/v1`, was the whole of what a session was told.
+#[tokio::test]
+async fn a_request_that_finds_nothing_there_names_where_it_asked() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let url = server("404 Not Found", "", "Not Found", requests).await;
+
+    for (dialect, provider) in dialects(&url) {
+        let error = asked(provider).await.expect_err("nothing there");
+        assert!(error.contains("404 Not Found"), "{dialect}: {error}");
+        assert!(
+            error.contains(&format!("asked at {url}/")),
+            "{dialect}: {error}"
+        );
+    }
+}
