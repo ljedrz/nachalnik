@@ -423,6 +423,10 @@ impl Kernel {
     /// which most providers reject, and which is very hard to see afterwards. See
     /// [`Event::ToolCallRepaired`].
     ///
+    /// note: a snapshot of this same session names identifiers this kernel *did* issue, and
+    /// reserving them changes nothing: the originals are still in the context. A client merging
+    /// one renames the colliding calls, and the results answering them, before pushing.
+    ///
     /// note: identifiers and nothing else. What they belonged to is not the kernel's business,
     /// and one reserved for an item that is later pruned stays reserved, because an identifier is
     /// never reused - not even by an item [`Kernel::undo`] took away.
