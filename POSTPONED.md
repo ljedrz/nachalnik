@@ -508,3 +508,34 @@ Referenced from [AGENTS.md](AGENTS.md).
   end of the input and a termination signal all leave with the status a finished run has, and now
   say which it was on the way out. A distinct status per cause would let a script tell them apart,
   and is a change to what every existing script sees.
+
+- **A turn paused by `--requests` is not in the record as a pause.** The kernel returns at the
+  request budget with the machine `Idle`, and the records of that turn read exactly as those of a
+  turn the model ended in as many requests, so a log read afterwards cannot tell them apart. A
+  `turn.stopped` event would say it, and is additive since `Event` is `#[non_exhaustive]`; it is a
+  new part of the runtime's record, which is why it waits for a person rather than a release week.
+
+- **Two endings the record does not say plainly.** A termination signal between `model.requested`
+  and the calls' results writes a snapshot holding a call that never ran, which resume repairs; and
+  a turn whose answer asked for a tool and named none ends as `tool_use`, as though it had called
+  one. Both want the same decision as the entry above: what the record should say about a turn that
+  did not end the way its last event suggests.
+
+- **`/save DIR/` into a directory that is not there.** It fails, and the error names the file
+  rather than the missing directory. Creating the directory is one answer and naming it the other;
+  the first changes what `/save` can do, like the `fs write` entry above.
+
+- **A heuristic refusal under `--no-sandbox` is described as a person's.** With no confinement,
+  `net:reach` is judged from a command's name; a command that trips it under `--on-ask deny` is
+  refused as though somebody had been asked, and the model is told a different approach may be
+  allowed, though the rule will refuse it for the rest of the session. Saying which subject was
+  asked about means letting a policy name it in `PermissionPolicy::why`, a `nachalnik` change.
+
+- **A person's re-pin of the model's pin.** When the person pins an item the model had pinned, the
+  pin stays the model's and the model can take it back, while `look` says whose it is. Whether the
+  person's pin should take ownership is what `/pin` means, and is left as it is.
+
+- **A compressed answer is refused, not read.** An endpoint that compresses its body despite not
+  being asked gets a sentence naming the encoding. Reading it means reqwest's `gzip` feature, one
+  more dependency in a crate that rations them.
+
