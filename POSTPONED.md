@@ -331,6 +331,17 @@ Referenced from [AGENTS.md](AGENTS.md).
   carries them verbatim, which is rule one, so this is written down rather than fixed: a caller that
   asks for alternatives gets what the provider does with them.
 
+- **A `/provider` that keeps the model name is in no record.** The kernel announces a switch by
+  comparing the `ModelInfo` a provider reports, and a `ModelInfo` carries no address, so
+  `/provider URL` with no model leaves the record saying the session never moved; only the line the
+  command printed says otherwise. `/provider URL MODEL` is recorded, because the name changes.
+
+  It waits because every fix costs something. An `endpoint` field on `ModelInfo` is the honest one
+  and a break, since the struct is not `#[non_exhaustive]`; a field on `Event::ModelChanged` is a
+  break too; and folding the address into the provider's `provider` label puts a URL where a name is
+  documented and drawn. What would settle it is the next release that may break `nachalnik`: mark
+  `ModelInfo` `#[non_exhaustive]` and give it the address in the same one.
+
 - **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
   `{label}:\n{text}`, which builds a new string from the item's content each time the context is
   projected - the largest cost in a projection, and the one place it copies content the rest of the

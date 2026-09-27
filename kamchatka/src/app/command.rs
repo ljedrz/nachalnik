@@ -521,8 +521,15 @@ impl App {
                 self.forget_the_last_model();
                 // the new endpoint has a context limit of its own, and a list of what it serves;
                 // both are round trips, the screen should not stop for them, and the next line does
-                // and then the kernel is told, as `/model` tells it, so that the record says the
-                // session is talking to somebody else from here on
+                // and then the kernel is told, as `/model` tells it
+                //
+                // note: which says the model the session is asking, and the record takes notice
+                // of a change only where that model changed. A `/provider` given no model keeps
+                // the old name, and `Kernel::provider_changed` compares what the provider reports
+                // about itself - so nothing is announced, and the only trace of the switch is the
+                // line above and the address inside the error the next request brings back.
+                // Carrying the address in the record means a `ModelInfo` that holds one, which is
+                // a field on a published struct; see POSTPONED.md.
                 let kernel = self.kernel.clone();
                 self.settling = Some(tokio::spawn(async move {
                     provider.set_endpoint(url, model).await;
