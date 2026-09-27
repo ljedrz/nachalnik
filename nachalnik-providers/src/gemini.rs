@@ -150,11 +150,13 @@ impl Gemini {
     /// do one of them - which is why this is asked after an address changes as well as after a
     /// name does, the same as the other dialect.
     ///
-    /// note: an empty listing is "it did not say" rather than "it has none", so it buys silence.
+    /// note: an empty listing is "it did not say" rather than "it has none", so it buys silence -
+    /// and silence clears a notice still waiting, for the reason the other dialect's gives.
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model.lock().clone();
         let listed = self.models().await;
         if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
+            *self.notice.lock() = None;
             return;
         }
 

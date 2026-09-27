@@ -22,6 +22,10 @@ minor bump may break you.
 - **`501 Not Implemented` and `505 HTTP Version Not Supported` are not retried.** Every 5xx was
   taken for a busy server and asked again with doublings, so an address serving something that
   does not take a `POST` - a plain file server - sat through three waits before saying so.
+- **A switch that finds its model takes down the notice the last switch put up.** Two switches
+  with nobody reading between them - a mistyped model, then the right one - left the first
+  switch's "is not one of the models this address lists" waiting, to be read later as though it
+  were about the model now in use. All three clients clear it.
 - **`info` and `respond` no longer deadlock when they run at once.** Both read the model and the
   context limit, and each held both locks together - `info` taking the limit first and `respond`
   the model first - so a caller reading `info` on one thread while a request began on another

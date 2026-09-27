@@ -828,11 +828,13 @@ impl Jev {
         self.say_if_the_model_is_not_there().await;
     }
 
-    /// Says so on the notice if the model being asked for is not one the endpoint lists.
+    /// Says so on the notice if the model being asked for is not one the endpoint lists, and
+    /// clears the notice if it is: whatever was waiting there is older than the switch.
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model();
         let listed = self.models().await;
         if listed.is_empty() || listed.iter().any(|it| same_model(it, &model)) {
+            *self.notice.lock() = None;
             return;
         }
 

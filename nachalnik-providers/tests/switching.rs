@@ -258,3 +258,33 @@ async fn an_address_is_used_without_its_trailing_slash() {
         assert_eq!(provider.endpoint(), address);
     }
 }
+
+/// A switch to a model the address serves takes down the notice the last switch put up.
+///
+/// note: two switches with nobody reading in between - a script's `/model` typo followed by the
+/// right name - left the typo's notice waiting, and it was read after the next answer as though
+/// the model that had just answered were the one missing.
+#[tokio::test]
+async fn a_switch_that_finds_its_model_takes_down_the_last_ones_notice() {
+    let address = serving(SERVES).await;
+    let providers: Vec<Box<dyn Endpoint>> = vec![
+        #[cfg(feature = "openai")]
+        Box::new(nachalnik_providers::OpenAiCompatible::new(
+            "resident", &address, "no key",
+        )),
+        #[cfg(feature = "gemini")]
+        Box::new(nachalnik_providers::Gemini::new(
+            "resident", &address, "no key",
+        )),
+        #[cfg(feature = "system1")]
+        Box::new(nachalnik_providers::system1::Jev::new(
+            "resident", &address, "no key",
+        )),
+    ];
+
+    for provider in providers {
+        provider.set_model("stranger".to_owned()).await;
+        provider.set_model("resident".to_owned()).await;
+        assert_eq!(provider.take_notice(), None, "{}", provider.endpoint());
+    }
+}

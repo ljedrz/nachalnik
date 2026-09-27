@@ -450,14 +450,20 @@ impl OpenAiCompatible {
         self.say_if_the_model_is_not_there(&listed);
     }
 
-    /// Puts a notice up if the model is not one the endpoint lists.
+    /// Puts a notice up if the model is not one the endpoint lists, and takes down whatever notice
+    /// was waiting if it is.
     ///
     /// note: the alternative is finding out on the next request, as a 404 with a paragraph of
     /// somebody's API prose in it. Switching address and model are two commands and it is easy to
     /// do one of them.
+    ///
+    /// note: a switch that finds its model still clears the slot, because what is waiting there is
+    /// older than the switch - usually the last switch's own complaint - and a client that reads
+    /// it afterwards would blame the model it has just moved away from.
     fn say_if_the_model_is_not_there(&self, listed: &[String]) {
         let model = self.model.lock().clone();
         if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
+            *self.notice.lock() = None;
             return;
         }
 
