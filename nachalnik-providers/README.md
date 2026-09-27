@@ -103,7 +103,9 @@ It **prints nothing**. Fragments are reported through `nachalnik::DeltaSink` and
 belongs to whoever owns it.
 
 It **invents no parameters**. What the caller set is what goes out, verbatim — which is the
-runtime's rule and not a provider's to break. `openai::NOT_A_STREAM` is the one concession: a list
+runtime's rule and not a provider's to break — beside the conversation and never in place of it:
+a parameter named after a field the request is built from, `messages` or `tools` or the like, is
+left off. `openai::NOT_A_STREAM` is the one concession: a list
 of parameter names that stop a stream being a stream, for a client that would like to warn before
 the request rather than be quietly wrong about its own record afterwards.
 

@@ -456,9 +456,14 @@ impl Provider for Gemini {
         // note: merged all the way down, so that `{"thinkingConfig": {"thinkingBudget": 1024}}`
         // sets a budget without also taking away the thoughts it is a budget for
         body["generationConfig"] = json!({ "thinkingConfig": { "includeThoughts": true } });
+        //
+        // note: the three fields built from the request itself are not replaced, for the reason
+        // the other dialect gives: a parameter is carried beside the conversation, not in place
+        // of it. The model is in the address rather than the body, so it needs no guarding here
         for (key, value) in &request.params {
             match key.as_str() {
                 "generationConfig" => merge(&mut body["generationConfig"], value),
+                "contents" | "systemInstruction" | "tools" => {}
                 _ => body[key] = value.clone(),
             }
         }

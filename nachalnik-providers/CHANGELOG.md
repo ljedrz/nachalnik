@@ -21,6 +21,11 @@ minor bump may break you.
   the first event, or as the whole of a body that was not a stream, is now retried on the same
   terms as one sent as a status. One after the answer has started is still an error, since what
   arrived before it has already been handed on.
+- **A parameter no longer replaces what a request is built from.** One named `messages`, `tools`
+  or `model` in the OpenAI dialect, or `contents`, `systemInstruction` or `tools` in Gemini's, was
+  written over the field the request had built, so the conversation that went out was not the one
+  `model.requested` named - and a `null` one failed every request after it. Those parameters are
+  now left off the wire, in both dialects.
 
 ## [0.6.1] - 2026-09-24
 

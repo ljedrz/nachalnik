@@ -524,6 +524,37 @@ fn the_tools_registered_are_declared_to_the_model() {
     assert_eq!(declared[0]["parameters"]["required"], json!(["value"]));
 }
 
+/// A parameter naming a field built from the request does not replace it.
+///
+/// note: the conversation, its instructions and its tools are what `model.requested` names, and a
+/// parameter put over them would send something the record does not describe.
+#[test]
+fn a_parameter_does_not_replace_what_the_request_is_built_from() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Gemini::new("gemini-test", "http://127.0.0.1:1", "no key"));
+    kernel.set_provider(provider.clone());
+    kernel.add_tool(Arc::new(EchoTool::new("weather", [])));
+    kernel.push(ContextItem::system("be brief"));
+    kernel.push(ContextItem::user("what is the weather?"));
+    let untouched = provider.render(&kernel.preview_request().unwrap()).unwrap();
+
+    let mut params = nachalnik::Params::new();
+    for key in ["contents", "systemInstruction", "tools"] {
+        params.insert(key.into(), json!(null));
+    }
+    params.insert(
+        "toolConfig".into(),
+        json!({ "functionCallingConfig": { "mode": "ANY" } }),
+    );
+    kernel.set_params(params);
+    let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
+
+    for key in ["contents", "systemInstruction", "tools"] {
+        assert_eq!(body[key], untouched[key], "{key}: {body:#}");
+    }
+    assert_eq!(body["toolConfig"]["functionCallingConfig"]["mode"], "ANY");
+}
+
 /// What this provider says about the model behind it.
 ///
 /// note: `tool_calling` and `reasoning` are what a client reads to decide whether to offer tools

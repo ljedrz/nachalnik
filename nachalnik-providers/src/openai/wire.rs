@@ -75,6 +75,10 @@ fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
     reasoning.push_str(summary);
 }
 
+/// The fields of a request this dialect builds from the [`ModelRequest`] and the model, which a
+/// parameter of the same name does not replace.
+const BUILT: [&str; 3] = ["model", "messages", "tools"];
+
 #[async_trait]
 impl Provider for OpenAiCompatible {
     fn info(&self) -> ModelInfo {
@@ -129,8 +133,15 @@ impl Provider for OpenAiCompatible {
         }
         // only what the user set, and nothing else: the kernel invents no parameters, and neither
         // does this provider. Last, so that `stream` is one of the things they can decide
+        //
+        // note: except the three fields built from the request itself. A parameter is carried
+        // beside the conversation, not in place of it: `messages` set here went out instead of
+        // the context, under a `model.requested` naming items that were never sent, and `model`
+        // asked somebody the record does not name
         for (key, value) in &request.params {
-            body[key] = value.clone();
+            if !BUILT.contains(&key.as_str()) {
+                body[key] = value.clone();
+            }
         }
 
         // note: after the parameters rather than beside `stream` above, because it has to follow
@@ -756,7 +767,7 @@ fn arguments_of(written: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use nachalnik::{ModelRequest, Params, ToolSpec};
+    use nachalnik::{Message, ModelRequest, Params, ToolSpec};
 
     use super::*;
 
@@ -903,6 +914,32 @@ mod tests {
         assert_eq!(body["tools"][0]["function"]["description"], "writes a file");
 
         assert!(rendered(Vec::new()).get("tools").is_none());
+    }
+
+    /// A parameter naming a field built from the request does not replace it.
+    ///
+    /// note: `messages` and `tools` are what `model.requested` names and `model` is who it names,
+    /// so a parameter put over them would send something the record does not describe.
+    #[test]
+    fn a_parameter_does_not_replace_what_the_request_is_built_from() {
+        let provider = OpenAiCompatible::new("m", "https://example.invalid/v1", "k");
+        let mut request = ModelRequest {
+            messages: vec![Message::user("hello")],
+            tools: vec![ToolSpec::new("write", "writes a file")],
+            params: Params::new(),
+        };
+        let untouched = provider.render(&request).expect("this provider renders");
+
+        for key in BUILT {
+            request.params.insert(key.to_owned(), json!(null));
+        }
+        request.params.insert("seed".to_owned(), json!(7));
+        let body = provider.render(&request).expect("this provider renders");
+
+        for key in BUILT {
+            assert_eq!(body[key], untouched[key], "{key}: {body:#}");
+        }
+        assert_eq!(body["seed"], 7);
     }
 
     /// `stream_options` follows whatever the parameters settled `stream` on, in both directions.
