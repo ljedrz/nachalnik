@@ -3163,7 +3163,8 @@ async fn the_answer_to_a_compact_down_a_pipe_is_not_a_message() {
     .await;
 
     assert!(
-        run.prose.contains("the pass was already taken down a pipe"),
+        run.prose
+            .contains("the question `/compact` asked down a pipe is settled"),
         "the line says why it went nowhere: {}",
         run.prose
     );
@@ -3179,6 +3180,47 @@ async fn the_answer_to_a_compact_down_a_pipe_is_not_a_message() {
             .iter()
             .any(|item| item.content.to_text().contains("I got just a y")),
         "so the model never saw it"
+    );
+}
+
+/// The `y` a script answers a `/compact` that found nothing to take with is not a message.
+///
+/// note: the pass was asked and there was none to take, which down a pipe is a question asked and
+/// answered in the same breath - and the operator's `y` is the answer to it. Read as a message it
+/// starts a turn, and the model spends a request on a letter.
+#[tokio::test]
+async fn the_answer_to_a_compact_that_found_nothing_is_not_a_message() {
+    let run = run(
+        "/compact\ny\n",
+        vec![ModelResponse::text("I got just a y")],
+        |app| {
+            app.kernel
+                .set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+                    threshold: 0.0,
+                    target: 0.0,
+                })));
+        },
+    )
+    .await;
+
+    assert!(
+        run.prose.contains(
+            "nothing was compacted, so the question `/compact` asked is already \
+         answered"
+        ),
+        "so the pass is said as having done nothing: {}",
+        run.prose
+    );
+    assert!(
+        run.prose
+            .contains("the question `/compact` asked down a pipe is settled"),
+        "and the `y` is not a message: {}",
+        run.prose
+    );
+    assert!(
+        !run.names().contains(&"model.requested".to_owned()),
+        "and nothing was asked: {}",
+        run.records
     );
 }
 
@@ -3226,7 +3268,8 @@ async fn a_blank_line_after_a_compact_ends_what_the_compact_was_answering() {
     .await;
 
     assert!(
-        !run.prose.contains("the pass was already taken down a pipe"),
+        !run.prose
+            .contains("the question `/compact` asked down a pipe is settled"),
         "the `y` is not the line after the `/compact`: {}",
         run.prose
     );
