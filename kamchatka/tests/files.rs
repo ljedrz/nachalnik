@@ -614,3 +614,51 @@ fn a_pipe_is_refused_rather_than_waited_on() {
     let found = asked("grep", json!({ "pattern": "needle", "path": "." }));
     assert!(found.contains("a.txt"), "{found}");
 }
+
+/// Edits of one file made at once each land, as a parallel batch makes them.
+///
+/// note: an edit reads the whole file and renames a changed copy over it, so two at once each read
+/// the old contents and the file kept whichever renamed last, with both answering that they had
+/// replaced one occurrence. Through one `fs`, as a session holds one, and under two names for the
+/// file, since a link is the same file to change.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn edits_of_one_file_at_once_all_land() {
+    let dir = scratch("files-edit-at-once");
+    let words: Vec<String> = (0..16).map(|n| format!("word{n}")).collect();
+    std::fs::write(dir.join("a.txt"), words.join("\n") + "\n").expect("a file");
+    std::os::unix::fs::symlink("a.txt", dir.join("b.txt")).expect("a second name for it");
+
+    let tools = common::builtin(&dir, true, Limits::default());
+    let fs = tools
+        .into_iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let edits: Vec<_> = words
+        .iter()
+        .enumerate()
+        .map(|(n, word)| {
+            let (fs, name) = (fs.clone(), ["a.txt", "b.txt"][n % 2]);
+            let args = json!({
+                "action": "edit",
+                "path": name,
+                "old": format!("{word}\n"),
+                "new": format!("{}\n", word.to_uppercase()),
+            });
+            tokio::spawn(async move {
+                fs.invoke(&call("c1", "fs", args), OutputSink::disconnected())
+                    .await
+                    .expect("the tool answers the call either way")
+                    .content
+                    .to_text()
+                    .into_owned()
+            })
+        })
+        .collect();
+    for edit in edits {
+        let said = edit.await.expect("the edit ran");
+        assert!(said.contains("replaced one occurrence"), "{said}");
+    }
+
+    let upper: Vec<String> = words.iter().map(|word| word.to_uppercase()).collect();
+    assert_eq!(held(&dir, "a.txt"), upper.join("\n") + "\n");
+}

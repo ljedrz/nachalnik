@@ -402,6 +402,10 @@ minor bump may break you.
 - **A command stopped by `--deadline` is not said to have been stopped by the person.** Every
   stopped command was "stopped before it finished, at the request of the person you are working
   with", whatever interrupted the turn; it now says it was stopped when the turn was interrupted.
+- **Two `fs edit`s of one file in a parallel batch both land.** Each read the file, changed it and
+  renamed the result over it, so the second kept only its own change while both answered that
+  they had replaced one occurrence. A `write` or an `edit` now holds the file, by the path it
+  resolves to, from the read through the rename.
 
 ## [0.15.1] - 2026-09-24
 

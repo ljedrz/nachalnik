@@ -9,7 +9,11 @@
 //! note: every open goes through [`Reach::open`] rather than a path handed to `tokio::fs`, so that
 //! what is opened is what was checked; see there.
 
-use std::{path::Path, sync::Arc};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Weak},
+};
 
 use crate::sandbox::{Access, Reach};
 use nachalnik::{BoxError, OutputSink, ToolOutput};
@@ -361,7 +365,40 @@ async fn write(reach: &Arc<Reach>, path: &Path, content: &str) -> std::io::Resul
         .map_err(std::io::Error::other)?
 }
 
-pub(super) struct Write(pub(super) Arc<Reach>, pub(super) Arc<Careful>);
+/// One lock for each file a `write` or an `edit` is changing, by the path it resolved to.
+///
+/// note: `edit` reads the whole file, changes it and writes it back, so two edits of one file in a
+/// parallel batch each read the old contents and the second rename keeps only its own change -
+/// and both answer that they replaced one occurrence. Held from the read through the rename, the
+/// second reads what the first wrote. Keyed by the resolved path, so that two names for one file
+/// are one lock; a lock nobody holds is dropped the next time one is taken.
+#[derive(Default)]
+pub(super) struct Changing(parking_lot::Mutex<HashMap<PathBuf, Weak<tokio::sync::Mutex<()>>>>);
+
+impl Changing {
+    /// Waits until nothing else here is changing `path`, and keeps it that way until dropped.
+    async fn hold(&self, path: &Path) -> tokio::sync::OwnedMutexGuard<()> {
+        let lock = {
+            let mut held = self.0.lock();
+            held.retain(|_, lock| lock.strong_count() > 0);
+            match held.get(path).and_then(Weak::upgrade) {
+                Some(lock) => lock,
+                None => {
+                    let lock = Arc::new(tokio::sync::Mutex::new(()));
+                    held.insert(path.to_path_buf(), Arc::downgrade(&lock));
+                    lock
+                }
+            }
+        };
+        lock.lock_owned().await
+    }
+}
+
+pub(super) struct Write(
+    pub(super) Arc<Reach>,
+    pub(super) Arc<Careful>,
+    pub(super) Arc<Changing>,
+);
 
 impl Write {
     pub(super) async fn invoke(
@@ -378,6 +415,7 @@ impl Write {
             return Ok(ToolOutput::error(refusal));
         }
 
+        let _changing = self.2.hold(&path).await;
         match write(&self.0, &path, content).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "wrote {} bytes to {}",
@@ -389,7 +427,11 @@ impl Write {
     }
 }
 
-pub(super) struct Edit(pub(super) Arc<Reach>, pub(super) Arc<Careful>);
+pub(super) struct Edit(
+    pub(super) Arc<Reach>,
+    pub(super) Arc<Careful>,
+    pub(super) Arc<Changing>,
+);
 
 impl Edit {
     pub(super) async fn invoke(
@@ -407,6 +449,7 @@ impl Edit {
             return Ok(ToolOutput::error(refusal));
         }
 
+        let _changing = self.2.hold(&path).await;
         let before = match whole(&self.0, &path).await {
             Ok(before) => before,
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),

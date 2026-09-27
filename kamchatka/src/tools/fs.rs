@@ -25,7 +25,7 @@ use crate::{
     sandbox::Reach,
     tools::{
         Limits,
-        files::{Edit, PATH_ARG, Read, Write},
+        files::{Changing, Edit, PATH_ARG, Read, Write},
         ops::{Arg, Op, action_of, actions, inner, schema, unread},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
     },
@@ -147,11 +147,11 @@ pub(super) struct Fs {
 
 impl Fs {
     pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
-        let ops = ops();
+        let (ops, changing) = (ops(), Arc::new(Changing::default()));
         Self {
             read: Read(reach.clone(), limits.clone(), looking.policy.clone()),
-            write: Write(reach.clone(), looking.policy.clone()),
-            edit: Edit(reach, looking.policy.clone()),
+            write: Write(reach.clone(), looking.policy.clone(), changing.clone()),
+            edit: Edit(reach, looking.policy.clone(), changing),
             glob: Glob(looking.clone()),
             grep: Grep(looking),
             limits,
