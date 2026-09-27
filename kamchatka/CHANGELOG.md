@@ -338,6 +338,9 @@ minor bump may break you.
 - **A count of one is singular.** `the turn paused after 1 requests` and `fs: 1 tokens`
   say `1 request` and `1 token`, and a tool's line in a headless run and at a `--connect` client
   puts the separator into a count past a thousand, as every other count here does.
+- **A headless run that fails ends the answer's line before its parting line.** A run that left
+  with an error - a line of input that was not UTF-8, say - skipped ending the model's last half
+  line, so the line naming the record was written onto the end of it.
 
 ## [0.15.1] - 2026-09-24
 

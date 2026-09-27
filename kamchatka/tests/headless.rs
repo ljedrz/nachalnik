@@ -3806,6 +3806,29 @@ async fn one_answer_does_not_run_into_the_next() {
     assert!(run.prose.contains("first\nsecond"), "{:?}", run.prose);
 }
 
+/// A run that fails still ends the last answer's line, so the caller's parting line is one of its
+/// own.
+///
+/// note: a line that is not UTF-8 is what fails it here, read after an answer with no newline at
+/// its end: the loop leaves with an error, and it used to leave before ending that line.
+#[tokio::test]
+async fn a_run_that_fails_still_ends_the_answer_s_line() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![ModelResponse::text("no newline")]);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let ran = Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"say it\n\xff\n"[..])
+        .await;
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(ran.is_err(), "{prose}");
+    assert!(prose.ends_with("no newline\n"), "{prose:?}");
+}
+
 /// A stop asked for inside that window is honoured by the turn it carries on, and a line waiting
 /// for the turn does not start another.
 #[tokio::test]

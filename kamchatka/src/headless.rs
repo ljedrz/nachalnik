@@ -409,13 +409,15 @@ impl<'a> Headless<'a> {
         // one down the stream.
         app.kernel.finish();
         let flushed = self.flush(app, &mut written);
-        driven?;
-        flushed?;
-        self.echo(app, &mut said, &mut cleared)?;
         // and the last answer's own line, which nothing else is going to end: a model that stops
         // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end
-        // of it
-        self.fresh_line()?;
+        // of it. Ended before either error is returned, because the caller has a parting line for
+        // a run that failed as well
+        let ended = self.fresh_line();
+        driven?;
+        flushed?;
+        ended?;
+        self.echo(app, &mut said, &mut cleared)?;
 
         // note: the reason is not repeated here. It has been on the prose since the moment it
         // happened, and what the caller wants from this is the exit code. A piped run whose model
