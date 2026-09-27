@@ -540,6 +540,22 @@ fn an_advisor_this_build_does_not_have_is_refused() {
     assert!(said.contains("no advisor in it"), "{said}");
 }
 
+/// A device named outside `/dev`, on the command line or in a file, is refused where it is given.
+///
+/// note: a device is granted reading and writing whatever is beneath it, which is `--sandbox-allow`
+/// anywhere else, and a writable path the screens never mention.
+#[test]
+fn a_device_outside_dev_is_refused() {
+    let (ok, said) = run(&["--sandbox-device", "/tmp/not-a-device"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("names a device under `/dev`"), "{said}");
+
+    let path = settings("device-outside", r#"{ "sandbox-device": ["/home"] }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("names a device under `/dev`"), "{said}");
+}
+
 /// A file that is not there says so, naming it.
 #[test]
 fn a_missing_file_says_which() {

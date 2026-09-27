@@ -1306,6 +1306,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
             workdir: std::path::PathBuf::from("/w"),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: harness.app.policy.clone(),
             confiner: None,
             limits: limits.clone(),

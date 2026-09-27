@@ -15,6 +15,7 @@
   "no-sandbox": false,
   "sandbox-allow": [],
   "sandbox-read": [],
+  "sandbox-device": ["/dev/null", "/dev/zero", "/dev/full", "/dev/random", "/dev/urandom"],
 
   "allow": [],
   "deny": [],

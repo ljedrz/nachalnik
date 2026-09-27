@@ -1544,6 +1544,74 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     );
 }
 
+/// `--sandbox-device` reaches the shell the program wires: a command that reads `/dev/zero`
+/// succeeds under the usual list and fails where only `/dev/null` was named.
+///
+/// note: read out of a `/save`, since a headless run prints no tool's output and a command that
+/// fails is not an error result. Through the binary, because what is under test is the flag's way
+/// to `Shell`.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_devices_the_program_is_given_are_the_shells() {
+    use std::io::Write as _;
+
+    let probed = kamchatka::sandbox::available(&common::program());
+    if probed.confinement != kamchatka::sandbox::Confinement::Full {
+        eprintln!("skipped: this machine cannot confine a command");
+        return;
+    }
+    let run = async |name: &str, devices: &[&str]| {
+        let base = common::endpoint(vec![
+            format!(
+                "data: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+                    {"index": 0, "id": "c1", "type": "function", "function": {"name": "shell",
+                     "arguments": "{\"cmd\": \"head -c 1 /dev/zero >/dev/null\"}"}}
+                ]}, "finish_reason": "tool_calls"}]})
+            ),
+            common::answer("read"),
+        ])
+        .await;
+        let dir = common::workdir(name);
+        let mut child = std::process::Command::new(common::program())
+            .args([
+                "--headless",
+                "--no-record",
+                "-m",
+                "nothing",
+                "--allow",
+                "exec:run",
+            ])
+            .args(devices)
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+        child
+            .stdin
+            .take()
+            .expect("stdin is a pipe")
+            .write_all(b"go\n/save saved.json\n")
+            .expect("the lines were sent");
+        let out = child.wait_with_output().expect("the program never ended");
+
+        std::fs::read_to_string(dir.join("saved.json"))
+            .unwrap_or_else(|_| panic!("{}", String::from_utf8_lossy(&out.stderr)))
+    };
+
+    let usual = run("program-devices-usual", &[]).await;
+    assert!(usual.contains("exit: 0"), "{usual}");
+    let narrowed = run(
+        "program-devices-narrowed",
+        &["--sandbox-device", "/dev/null"],
+    )
+    .await;
+    assert!(narrowed.contains("exit: 1"), "{narrowed}");
+}
+
 /// `ctrl+c` stops a command that is running, and what arrived is kept.
 ///
 /// note: the case this was written to test was a *second* press leaving a turn the first could not
@@ -3611,6 +3679,7 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
                 workdir: dir.clone(),
                 extra: Vec::new(),
                 readable: Vec::new(),
+                devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 confiner: Some(common::program()),
                 limits: kamchatka::tools::Limits::default(),
             }));

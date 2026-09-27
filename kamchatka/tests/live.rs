@@ -1097,6 +1097,7 @@ async fn agent(
             workdir: reach.workdir.clone(),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             // no Landlock: what is under test is what the tools say, and a session that cannot
             // start a confined child would report that as every one of these failing
             confiner: None,

@@ -287,6 +287,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
             workdir: dir.clone(),
             extra: vec![opened.clone()],
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: policy.clone(),
             confiner: None,
             limits: Limits::default(),
@@ -408,6 +409,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
             workdir: dir.clone(),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
             policy: Arc::new(Careful::new()),
             confiner: None,
             limits: Limits::default(),
@@ -555,6 +557,7 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
             readable: vec![PathBuf::from("/opt/three")],
             writable: false,
             network,
+            devices: vec![PathBuf::from("/dev/null"), PathBuf::from("/dev/pts")],
             closed: vec![7878, 9],
         };
 
@@ -577,6 +580,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
 
@@ -639,6 +643,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
 
@@ -681,6 +686,7 @@ fn a_refused_socket_is_the_confinement_where_the_kernel_says_it_is() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
     let refused = |socket: &std::path::Path| {
@@ -721,6 +727,7 @@ fn a_refusal_that_climbs_out_past_a_missing_directory_is_the_boundary() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
 
@@ -778,6 +785,7 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
         readable: Vec::new(),
         writable: true,
         network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     };
     let stderr: String = (0..300_000)

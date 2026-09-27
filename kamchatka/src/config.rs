@@ -79,6 +79,8 @@ pub struct Settings {
     pub sandbox_allow: Option<Vec<PathBuf>>,
     /// Paths outside the working directory the tools may read but not change.
     pub sandbox_read: Option<Vec<PathBuf>>,
+    /// The devices under `/dev` the shell may read and write, replacing the usual list.
+    pub sandbox_device: Option<Vec<PathBuf>>,
     /// Capabilities and path rules to allow before anything runs.
     pub allow: Option<Vec<String>>,
     /// The same, refused.

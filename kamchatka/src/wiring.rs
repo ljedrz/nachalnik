@@ -129,6 +129,9 @@ pub struct Setup {
     pub reachable: Vec<std::path::PathBuf>,
     /// Paths outside the working directory the tools may read but not change.
     pub readable: Vec<std::path::PathBuf>,
+    /// The devices under `/dev` a confined command may read and write, and no others;
+    /// [`sandbox::DEVICES`] unless somebody says otherwise.
+    pub devices: Vec<std::path::PathBuf>,
     /// Capabilities and path rules to allow before anything runs.
     ///
     /// note: answered in advance is the only way to decide in advance - [`Careful`] asks about
@@ -171,6 +174,10 @@ impl Default for Setup {
             confine: true,
             reachable: Vec::new(),
             readable: Vec::new(),
+            devices: sandbox::DEVICES
+                .iter()
+                .map(std::path::PathBuf::from)
+                .collect(),
             allow: Vec::new(),
             deny: Vec::new(),
             system: None,
@@ -212,6 +219,7 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
             workdir: std::path::PathBuf::new(),
             extra: Vec::new(),
             readable: Vec::new(),
+            devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
         },
@@ -407,6 +415,20 @@ impl Setup {
                     nested.display()
                 ));
             }
+            // note: a device is granted reading and writing whatever is beneath it, which is what
+            // `--sandbox-allow` is for anywhere else. Named here, it would be a writable path the
+            // screens never mention
+            if let Some(stray) = self
+                .devices
+                .iter()
+                .find(|device| !device.starts_with("/dev/"))
+            {
+                return Err(format!(
+                    "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
+                     `--sandbox-allow`",
+                    stray.display()
+                ));
+            }
         }
 
         Ok(())
@@ -541,6 +563,7 @@ impl Setup {
                     workdir: reach.workdir.clone(),
                     extra: reach.extra.clone(),
                     readable: reach.readable.clone(),
+                    devices: self.devices,
                     // only when it would actually confine anything. A binary that has been
                     // replaced since this one started, or a kernel with no Landlock, is a `shell`
                     // that runs unconfined and a permissions view that says so - rather than one

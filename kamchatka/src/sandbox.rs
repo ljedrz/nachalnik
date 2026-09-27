@@ -83,6 +83,9 @@ pub struct Sandbox {
     pub writable: bool,
     /// What the command may do about the network.
     pub network: Network,
+    /// The devices under `/dev` the command may read and write, and nothing else there; see
+    /// [`DEVICES`] for the ones it gets unless somebody says otherwise.
+    pub devices: Vec<PathBuf>,
     /// Ports on this machine the command may not connect to, whatever `network` says: the ones this
     /// process serves a session on.
     ///
@@ -192,6 +195,7 @@ impl Sandbox {
                 (false, true) if stance == Verdict::Deny => Network::Shut,
                 (false, true) => Network::Asked,
             },
+            devices: DEVICES.iter().map(PathBuf::from).collect(),
             closed: SERVED
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
@@ -214,6 +218,8 @@ impl Sandbox {
         argv.extend(self.extra.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.readable.len().to_string()));
         argv.extend(self.readable.iter().map(|path| path.clone().into()));
+        argv.push(OsString::from(self.devices.len().to_string()));
+        argv.extend(self.devices.iter().map(|path| path.clone().into()));
         argv.push(OsString::from(self.closed.len().to_string()));
         argv.extend(
             self.closed
@@ -239,6 +245,8 @@ impl Sandbox {
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let readable: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
         let count: usize = argv.next()?.to_str()?.parse().ok()?;
+        let devices: Vec<PathBuf> = argv.by_ref().take(count).map(PathBuf::from).collect();
+        let count: usize = argv.next()?.to_str()?.parse().ok()?;
         let closed = argv
             .by_ref()
             .take(count)
@@ -253,6 +261,7 @@ impl Sandbox {
                 readable,
                 writable,
                 network,
+                devices,
                 closed,
             },
             cmd,
@@ -282,11 +291,14 @@ impl Sandbox {
         {
             return false;
         }
-        // note: under `/dev` only the devices in [`DEVICES`] are granted - see `confine` - so one of
-        // those was reached and a refusal of it is its own permissions, and anything else there is
-        // the boundary
+        // note: under `/dev` only the devices named are granted - see `confine` - so one of those
+        // was reached and a refusal of it is its own permissions, and anything else there is the
+        // boundary
         if resolved.starts_with("/dev") {
-            return DEVICES.iter().any(|device| resolved == Path::new(device));
+            return self
+                .devices
+                .iter()
+                .any(|device| resolved.starts_with(device));
         }
 
         SYSTEM
@@ -1202,7 +1214,9 @@ const SYSTEM: &[&str] = &[
     "/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64", "/opt", "/proc", "/sys", "/run",
 ];
 
-/// The devices a confined command may read and write, by name; nothing else under `/dev`.
+/// The devices a confined command may read and write unless somebody says otherwise, by name;
+/// nothing else under `/dev`. `--sandbox-device` and the settings file's `sandbox-device` replace
+/// the list, which is how a pty is had back - `/dev/ptmx` and `/dev/pts` - at the price below.
 ///
 /// note: by name rather than `/dev` beneath, because beneath reaches more than a command needs.
 /// The person's other terminals under `/dev/pts` are theirs, so a command could read one and take
@@ -1214,7 +1228,7 @@ const SYSTEM: &[&str] = &[
 /// note: what it costs is a pty. Opening the peer of a `/dev/ptmx` is opening a file in
 /// `/dev/pts` - `TIOCGPTPEER` too - so granting one is granting the other terminals, and `script`
 /// or `expect` fails. A confined command has no terminal to want one for.
-const DEVICES: &[&str] = &[
+pub const DEVICES: &[&str] = &[
     "/dev/null",
     "/dev/zero",
     "/dev/full",
@@ -1318,9 +1332,9 @@ pub fn confines_unix_sockets() -> bool {
 /// directory that has gone away costs its own rule and nothing else - which is a fact about
 /// `landlock` rather than about this program, and `tests/sandbox.rs` holds the version to it.
 ///
-/// note: under `/dev`, reading and writing `null`, `zero`, `full`, `random` and `urandom` and
-/// nothing else, because `/dev/null` is not optional and the rest of `/dev` reaches past the
-/// command: another terminal of the person's, their shared memory, a camera.
+/// note: under `/dev`, reading and writing [`Sandbox::devices`] and nothing else - [`DEVICES`]
+/// unless somebody said otherwise - because `/dev/null` is not optional and the rest of `/dev`
+/// reaches past the command: another terminal of the person's, their shared memory, a camera.
 pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     use landlock::{
         ABI, Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
@@ -1406,7 +1420,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         })
         .and_then(|created| {
             created.add_rules(path_beneath_rules(
-                DEVICES,
+                &sandbox.devices,
                 AccessFs::ReadFile | AccessFs::WriteFile,
             ))
         })
@@ -1504,6 +1518,7 @@ pub fn available(program: &Path) -> Probed {
         readable: Vec::new(),
         writable: true,
         network: Network::Shut,
+        devices: DEVICES.iter().map(PathBuf::from).collect(),
         closed: Vec::new(),
     };
     // where there is no gate the child has nothing to send, fails to install one, and says so
