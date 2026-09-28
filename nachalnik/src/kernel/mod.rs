@@ -247,6 +247,12 @@ impl Drop for Restore<'_> {
 }
 
 /// The state a kernel holds; see [`Kernel`].
+///
+/// note: a reader that needs several of these to agree holds them together, in this order:
+/// `machine`, then `tools`, `projector`, `params` and `counter`, then `context`, then `session`.
+/// Nothing takes one while holding one after it, which is what keeps two readers and a writer from
+/// waiting on each other. Each setter holds only its own lock and then `session`, to announce; a
+/// reader holding a component's lock across the sequence it reads is what makes the two agree.
 struct InnerKernel {
     config: Config,
     machine: Mutex<Machine>,
@@ -481,17 +487,26 @@ impl Kernel {
     /// identifier `used_calls` does not have, for a resumed session to hand out again.
     pub fn snapshot(&self) -> Snapshot {
         let session = self.session_name();
-        let params = self.params();
-        let counter = self.counter();
 
         // `last_seq` under the context lock, because every change to the context is announced
         // while holding it: every record numbered up to it describes a change these items already
         // show, and every one after it a change they do not. That is what lets a caller write the
-        // log out to exactly this point and have the pair agree
-        let (items, next_item, last_seq): (Vec<ContextItem>, _, _) = {
+        // log out to exactly this point and have the pair agree.
+        //
+        // note: and under the parameters' and the counter's, for the same reason: each setter
+        // announces while holding its own, and a recalibration applies and announces under the
+        // context's. Read before the context lock and let go, a change landing in between was
+        // named by a sequence this snapshot did not reflect. The order is the one on
+        // `InnerKernel`
+        let (params, calibration, items, next_item, last_seq) = {
+            let params = self.0.params.read();
+            let counter = self.0.counter.read();
             let context = self.0.context.read();
+            let items: Vec<ContextItem> = context.items().iter().map(|i| (**i).clone()).collect();
             (
-                context.items().iter().map(|i| (**i).clone()).collect(),
+                params.clone(),
+                counter.calibration(),
+                items,
                 context.next_id(),
                 self.last_seq(),
             )
@@ -513,7 +528,7 @@ impl Kernel {
             used_calls,
             last_seq,
             next_permission: self.0.next_permission.load(SeqCst),
-            calibration: counter.calibration(),
+            calibration,
         }
     }
 
@@ -928,13 +943,17 @@ impl Kernel {
     /// handed, because a counter may apply less than it is offered.
     pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
         let counter = self.counter();
+        // the correction and the recount it causes under one lock, as a change and its
+        // announcement are: applied first and recounted after, a snapshot in between held the
+        // new scale beside figures counted on the old one
+        let mut context = self.0.context.write();
         let previous = counter.calibration()?;
         counter.recalibrate(calibration);
         // a counter is entitled to hold a correction to what it can actually apply, and
         // `Calibrating` does - so offering it a scale it refuses is not a change to recount for,
         // and a scale it takes in part is a recount against the part it took
         if counter.calibration() != Some(previous) {
-            self.recount();
+            self.recount_in(&mut context, &*counter);
         }
 
         Some(previous)
@@ -1278,9 +1297,13 @@ impl Kernel {
     /// Recounts every item's tokens with the active [`TokenCounter`].
     pub fn recount(&self) {
         let counter = self.counter();
-        let mut context = self.0.context.write();
+        self.recount_in(&mut self.0.context.write(), &*counter);
+    }
+
+    /// [`Kernel::recount`], for a caller already holding the context lock.
+    fn recount_in(&self, context: &mut Context, counter: &dyn TokenCounter) {
         let tokens_before = context.tokens();
-        context.recount(&*counter);
+        context.recount(counter);
 
         self.emit(Event::ContextRecounted {
             tokens_before,

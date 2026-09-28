@@ -47,6 +47,16 @@ minor bump may break you.
   `Ready` or `Deciding` therefore gave the model a reason from rules that never judged the call.
   The policy that evaluated each call is now kept with it and is the one asked.
 
+- **A snapshot and a request are each read at one moment.** `Kernel::snapshot` read the
+  parameters and the counter's calibration before it took the context lock and `last_seq`, so a
+  `set_params` or a `recalibrate` landing in between was named by a sequence the snapshot did not
+  reflect. A request was built from the tools, the projection and the parameters read one after
+  another, so a request could carry parameters set after a tool it did not have, which no prefix of
+  the log describes. Both now hold the locks they read together. `recalibrate` applies the
+  correction under the same context lock as the recount it causes, which it announced separately
+  before. A `Projector`'s `project` and a `Tool`'s `spec` are now called with the tool, projector
+  and parameter locks held as well as the context's, so neither may call back into the kernel.
+
 ## [0.7.2] - 2026-09-28
 
 ### fixed

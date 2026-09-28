@@ -949,3 +949,139 @@ async fn a_push_mid_turn_does_not_split_a_turn_from_its_answer() {
         );
     }
 }
+
+/// The parameters one of them.
+fn numbered(n: u64) -> nachalnik::Params {
+    json!({ "n": n }).as_object().expect("an object").clone()
+}
+
+/// A snapshot holds the parameters in force at the sequence it names.
+///
+/// note: the parameters were read before the context lock and the sequence under it, so a
+/// `set_params` in between was named by a sequence the snapshot did not reflect: resumed from it
+/// and replayed against its log, the session carried parameters the log says had been replaced.
+#[test]
+fn a_snapshot_holds_the_parameters_its_sequence_names() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+
+    let writer = std::thread::spawn({
+        let kernel = kernel.clone();
+        move || (1..=20_000).for_each(|n| _ = kernel.set_params(numbered(n)))
+    });
+    let mut snapshots = Vec::new();
+    while !writer.is_finished() {
+        snapshots.push(kernel.snapshot());
+    }
+    writer.join().expect("the writer panicked");
+
+    let changes: Vec<_> = kernel
+        .history()
+        .into_iter()
+        .filter_map(|record| match record.event {
+            Event::ModelParamsChanged { params } => Some((record.seq, params)),
+            _ => None,
+        })
+        .collect();
+    for snapshot in snapshots {
+        let applied = changes.partition_point(|(seq, _)| *seq <= snapshot.last_seq);
+        let in_force = applied
+            .checked_sub(1)
+            .map(|last| changes[last].1.clone())
+            .unwrap_or_default();
+        assert_eq!(
+            snapshot.params, in_force,
+            "a snapshot at record {} holds other parameters than the log",
+            snapshot.last_seq
+        );
+    }
+}
+
+/// A snapshot's calibration is the one its items were counted with.
+///
+/// note: a correction was applied to the counter and the context recounted after it, under a lock
+/// of its own, so a snapshot in between held the new scale and figures counted on the old one.
+#[test]
+fn a_snapshots_calibration_is_the_one_its_items_were_counted_with() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_counter(Arc::new(nachalnik::Calibrating::new(
+        nachalnik::BytesPerToken::default(),
+    )));
+    kernel.push(ContextItem::user(
+        "a sentence long enough to be counted ".repeat(40),
+    ));
+
+    let scale = |reported| nachalnik::Calibration {
+        scale: reported as f64 / 1000.0,
+        observations: 1,
+        estimated: 1000,
+        reported,
+    };
+    // what each correction counts the context as, measured with nothing else going on
+    let mut pairs = Vec::new();
+    for reported in [1000, 2000] {
+        kernel.recalibrate(scale(reported));
+        let snapshot = kernel.snapshot();
+        pairs.push((snapshot.calibration, snapshot.items[0].tokens));
+    }
+    assert_ne!(pairs[0].1, pairs[1].1, "the two corrections count alike");
+
+    let writer = std::thread::spawn({
+        let kernel = kernel.clone();
+        move || {
+            for n in 0..5_000 {
+                kernel.recalibrate(scale([1000, 2000][n % 2]));
+            }
+        }
+    });
+    let mut snapshots = Vec::new();
+    while !writer.is_finished() {
+        snapshots.push(kernel.snapshot());
+    }
+    writer.join().expect("the writer panicked");
+
+    for snapshot in snapshots {
+        let pair = (snapshot.calibration, snapshot.items[0].tokens);
+        assert!(pairs.contains(&pair), "{pair:?} is neither of {pairs:?}");
+    }
+}
+
+/// A request is built from one moment's tools and parameters.
+///
+/// note: the tools, the context and the parameters were read under three locks, one after
+/// another, so a client that added a tool and then set the parameters could have a request go out
+/// with the parameters and without the tool - which no prefix of the log describes. Here tool `n`
+/// is always added before parameters `n`, so a request holding `k` tools holds `k - 1` or `k`.
+#[test]
+fn a_request_is_built_from_one_moments_tools_and_parameters() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+
+    let writer = std::thread::spawn({
+        let kernel = kernel.clone();
+        move || {
+            for n in 1..=3_000 {
+                kernel.add_tool(Arc::new(ConstTool::new(format!("t{n}"), "ok")));
+                kernel.set_params(numbered(n));
+            }
+        }
+    });
+    let mut requests = Vec::new();
+    while !writer.is_finished() {
+        requests.push(kernel.preview_request().expect("a request"));
+    }
+    writer.join().expect("the writer panicked");
+
+    for request in requests {
+        let tools = request.tools.len() as u64;
+        let params = request
+            .params
+            .get("n")
+            .and_then(|n| n.as_u64())
+            .unwrap_or(0);
+        assert!(
+            params == tools || params + 1 == tools,
+            "a request with {tools} tools carried parameters {params}"
+        );
+    }
+}

@@ -188,10 +188,22 @@ impl Kernel {
         &self,
         counter: &dyn TokenCounter,
     ) -> Result<(ModelRequest, Projection, Cost)> {
-        let tools = self.tool_specs();
+        // note: the tools, the projector with the context, and the parameters are read under
+        // their locks held together, because each setter announces while holding its own. Read one
+        // after another, a client that added a tool and then set the parameters could have a
+        // request go out with the parameters and without the tool, which no prefix of the log
+        // describes. The order is the one on `InnerKernel`
+        let (tools, projection, params) = {
+            let tools = self.0.tools.read();
+            let projector = self.0.projector.read();
+            let params = self.0.params.read();
+            let context = self.0.context.read();
+            let specs: Vec<ToolSpec> = tools.values().map(|tool| tool.spec()).collect();
+            let projection = projector.project(context.items());
+            (specs, projection, params.clone())
+        };
         let tool_tokens = tool_tokens(&tools, counter);
-
-        let (projection, context) = self.projected_with(counter);
+        let context = projection_cost(&projection, counter);
 
         if projection.messages.is_empty() {
             return Err(Error::EmptyProjection);
@@ -200,7 +212,7 @@ impl Kernel {
         let request = ModelRequest {
             messages: projection.messages.clone(),
             tools,
-            params: self.params(),
+            params,
         };
         // a tool schema is JSON and a counter always has a number for one, so the tool side
         // contributes tokens and never an abstention

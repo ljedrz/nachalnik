@@ -535,11 +535,13 @@ for, so there is nothing for it to agree with.
 - **Emit while still holding the lock that made the change** - the machine lock for a transition,
   the context lock for anything the context did, and a component's own lock for the setter that
   swapped it. Announcing after the release looks tidier and is wrong: two threads changing the
-  same item apply in one order and get logged in the other. The lock order is machine → context →
-  session and nothing goes back up it; `emit` takes the session lock and nothing else, and a
-  broadcast `send` runs no subscriber code. What the setters ask in return is that a `Provider`'s
-  `info` and a component's `name` do not call back into the kernel: they are asked what was
-  replaced while the lock holding it is held.
+  same item apply in one order and get logged in the other. The lock order is machine → the
+  components (tools, projector, params, counter) → context → session and nothing goes back up it.
+  A reader that needs a component and the context to agree holds both, as `snapshot` and
+  `build_request` do. `emit` takes the session lock and nothing else, and a broadcast `send` runs
+  no subscriber code. What this asks in return is that a `Provider`'s `info`, a component's
+  `name`, a `Tool`'s `spec`, a `Projector`'s `project` and a counter's `recalibrate` do not call
+  back into the kernel: each is asked while locks are held.
 - **A guard lives to the end of the statement that took it**, so a struct literal or a tuple that
   reads two locked fields holds both at once. A provider's `info` filled a `ModelInfo` with the
   limit and then the model, its `respond` read the model and then the limit into a tuple, and a
