@@ -18,6 +18,16 @@ minor bump may break you.
 
 ### fixed
 
+- **`--advise` underlines a stage only where it is worse than another.** The tie that points at a
+  chain's destructive link rather than at the whole command also pointed at the first stage of any
+  chain whose stages all reached the band, so `cargo fmt && cargo test` drawn yellow had
+  `cargo fmt` underlined, and a green chain had its first stage underlined for nothing. Where no
+  stage stays below the band nothing is underlined now, on the panel and in `rating.worst` alike.
+
+- **A tab in a command no longer moves the underline and the joints off their text.** The
+  highlighter draws a tab as four spaces, and the ranges into the command were used on what it
+  drew unchanged, so everything after a tab was picked out three bytes early per tab.
+
 - **The record is written as the session goes, not when it is over.** It was written once, at
   the end, from the log the kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a
   pulled plug left no record at all, of a session whose point is that everything that happened is

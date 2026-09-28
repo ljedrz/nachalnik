@@ -90,11 +90,11 @@ pub struct Args {
 
     /// Ask a second model where each shell command a question is about lands on a three-level
     /// rubric, and colour the question by the answer - a command joined at its `|`, `&&` or `;`
-    /// is asked about stage by stage and rated by its worst one, which is underlined. The rating
-    /// decides nothing: what the rules allow runs and what they refuse is refused. Sends the
-    /// call's tool name, capabilities and arguments to the advisor; see SYSTEM1_ADVISOR_COMMAND
-    /// for one on this machine, where nothing is sent, and KAMCHATKA_SYSTEM1_API_KEY for the
-    /// hosted default.
+    /// is asked about stage by stage and rated by its worst one, underlined where it is worse than
+    /// the rest. The rating decides nothing: what the rules allow runs and what they refuse is
+    /// refused. Sends the call's tool name, capabilities and arguments to the advisor; see
+    /// SYSTEM1_ADVISOR_COMMAND for one on this machine, where nothing is sent, and
+    /// KAMCHATKA_SYSTEM1_API_KEY for the hosted default.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
     pub advise: bool,
