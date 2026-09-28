@@ -5,6 +5,22 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **The record is written as the session goes, not when it is over.** It was written once, at
+  the end, from the log the kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a
+  pulled plug left no record at all, of a session whose point is that everything that happened is
+  written down. The pair of files is claimed when the session starts, every event is appended the
+  moment it happens, and the snapshot is rewritten whenever the session comes to rest and as a
+  turn begins; a killed run leaves a log complete to its last event and a snapshot to carry on
+  from. The records are read out of the kernel's log by number rather than off the broadcast, so a
+  subscription that fell behind loses the record nothing. `wiring::Recorder` is the piece, on
+  `App::recorder`, and `wiring::record` finishes one where it finds one rather than writing a
+  second pair. A record that cannot be claimed at the start is said, not fatal, and the end of the
+  run writes the session the way it always did.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

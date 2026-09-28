@@ -319,11 +319,14 @@ now rather than a 404 on the next request. Both matter for different reasons: co
 models is one address and two names, while comparing a hosted model with the one running on this
 machine is two addresses. A comparison that cannot see the address is a comparison of names.
 
-Every session is written out when it ends, whether or not it ended well, and the last thing
-printed is where: a record of its events and a snapshot of its context, both in a `kamchatka`
-directory under the system's temporary one, and the `kamchatka -r` line that carries on from the
-snapshot. A `SIGTERM` or `SIGHUP` — a closed terminal, `timeout`, `docker stop` — ends the session
-the way `/quit` does: a running turn is stopped and waited for, and then the record is written.
+Every session is written down as it goes, and the last thing printed is where: a record of its
+events and a snapshot of its context, both in a `kamchatka` directory under the system's temporary
+one, and the `kamchatka -r` line that carries on from the snapshot. Each event is appended to the
+record the moment it happens, and the snapshot is rewritten whenever the session comes to rest
+and when a turn begins — so a `kill -9`, an out-of-memory kill or a pulled plug leaves the record
+complete to the last event, and a snapshot of where things stood before the turn that was cut
+short. A `SIGTERM` or `SIGHUP` — a closed terminal, `timeout`, `docker stop` — ends the session the
+way `/quit` does: a running turn is stopped and waited for, and the record says so.
 
 A session's name is when it started, in UTC, so that a list of them says something to whoever is
 reading it, and it is also the name of its two files.

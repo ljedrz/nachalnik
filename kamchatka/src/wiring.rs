@@ -17,12 +17,12 @@
 //! one line and `tests` hand in a scripted one.
 //!
 //! note: and where a session goes when it is over, so that an embedder with a loop of its own has
-//! it too. [`record`] writes a session out where nobody has to have asked for it, and
-//! [`Setup::relaunch`] is `/restart`: the same settings wired a second time, with the first
-//! session written out on the way. Without them a loop like `examples/phone.rs`, a session with a
-//! socket in front of it, ends the process on `/quit` or `/restart` with the session in memory and
-//! nothing on disk. A loop that ends a session owes it the same safety net the program's loops
-//! give one, and gets it from here.
+//! it too. [`Recorder`] writes a session down as it goes, [`record`] finishes that record - or
+//! writes the whole session out where nobody started one - and [`Setup::relaunch`] is `/restart`:
+//! the same settings wired a second time, with the first session written out on the way. Without
+//! them a loop like `examples/phone.rs`, a session with a socket in front of it, ends the process
+//! on `/quit` or `/restart` with the session in memory and nothing on disk. A loop that ends a
+//! session owes it the same safety net the program's loops give one, and gets it from here.
 
 use std::sync::Arc;
 
@@ -60,14 +60,15 @@ pub struct Setup {
     /// fine as an identity and useless as a filename. A resumed session keeps the name in its
     /// snapshot, so this is left empty when resuming.
     pub session_name: Option<String>,
-    /// Whether the session is written out when it is over: a log and a snapshot under the
-    /// temporary directory, by [`record`], which [`Setup::relaunch`] does for the session a
-    /// restart replaces. `--no-record` is this, off.
+    /// Whether the session is written down: a log and a snapshot under the temporary directory,
+    /// kept as it goes by a [`Recorder`] and finished by [`record`], which [`Setup::relaunch`]
+    /// does for the session a restart replaces. `--no-record` is this, off.
     ///
-    /// note: [`Setup::wire`] does not read it. A session is written when it ends, and the loop
-    /// that ends it is the caller's - so this is the setting and [`record`] is the act, and a
-    /// caller driving an [`App`] with a loop of its own honours the one with the other, the way
-    /// `main.rs` and `examples/phone.rs` do at the end of a run.
+    /// note: [`Setup::wire`] does not read it. Starting a record and finishing one are the acts
+    /// of the loop driving the session, which is the caller's - so this is the setting and
+    /// [`Recorder::start`] and [`record`] are the acts, and a caller driving an [`App`] with a loop
+    /// of its own honours the one with the others, the way `main.rs` does at both ends of a run
+    /// and `examples/phone.rs` at the end of one.
     pub record: bool,
     /// How many requests one turn may make before it stops; `None` is no limit.
     pub requests: Option<usize>,
@@ -802,44 +803,19 @@ impl std::fmt::Display for Recorded {
 /// every byte of output every tool produced, written without anybody asking for it; under the
 /// default umask that is a world-readable file in a directory everyone on the machine can list.
 /// Nobody would type `/save /tmp/everyone/notes.jsonl`, and this should not do it for them.
+///
+/// note: a session with a [`Recorder`] on it has been writing itself down since it started, and
+/// this finishes that record rather than claiming a second pair of files beside it. Without one
+/// the whole session is written here, at the end, which is what a loop that never started a
+/// recorder gets - and what the recorder itself falls back to, so a session whose record could
+/// not be claimed at the start still gets one chance at the end.
 pub fn record(app: &App) -> Result<Recorded, String> {
-    let mut dir = std::env::temp_dir();
-    dir.push("kamchatka");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
-    {
-        use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
-
-        // note: opened without following a link, and made private and looked at through what was
-        // opened, because the temporary directory is everybody's and this name is fixed. A link
-        // somebody left at it is refused before anything is done through it, a chmod of what it
-        // points at included. A directory somebody else made there first is one the chmod cannot
-        // make private - it fails, and is ignored - so without the look the transcript would go
-        // into a directory they can read. A real directory that nobody but its owner can enter is
-        // one this user owns, or one it cannot write in at all
-        let private = std::fs::OpenOptions::new()
-            .read(true)
-            .custom_flags(
-                (rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32,
-            )
-            .open(&dir)
-            .is_ok_and(|opened| {
-                // it may already exist from an earlier run, made before this did it; either way,
-                // this is the run that is about to write a transcript into it
-                let _ = opened.set_permissions(std::fs::Permissions::from_mode(0o700));
-                opened
-                    .metadata()
-                    .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0)
-            });
-        if !private {
-            return Err(format!(
-                "{} is not a directory only you can enter, so the session was not recorded \
-                 there; remove it, or use `--no-record` and `/save`",
-                dir.display()
-            ));
-        }
+    if let Some(recorder) = &app.recorder {
+        return recorder.finish(&app.kernel);
     }
 
-    let (log, state) = unclaimed(&dir.join(app.kernel.session_name()))?;
+    let dir = private_dir()?;
+    let (log, state, _) = unclaimed(&dir.join(app.kernel.session_name()))?;
     let records = app.write_session(&log, &state)?;
 
     Ok(Recorded {
@@ -849,7 +825,185 @@ pub fn record(app: &App) -> Result<Recorded, String> {
     })
 }
 
-/// A `.jsonl` and `.json` pair under `stem` that no other session has written.
+/// A session's record, written as the session goes rather than when it is over.
+///
+/// note: the record a process leaves behind was written once, at the end, from the log the
+/// kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a pulled plug left nothing
+/// at all, of a session whose whole point is that everything that happened is written down.
+/// This claims the pair of files when the session starts, appends every record the moment
+/// [`App::on_event`] hears of it, and rewrites the snapshot whenever the session comes to rest:
+/// the log is then complete to the last event however the process ends, and the snapshot is
+/// where things stood at the end of the last turn that finished.
+///
+/// note: the records are read out of the kernel's log by sequence number rather than taken off
+/// the broadcast, so a subscription that fell behind loses the screen a frame and the record
+/// nothing. And the log runs ahead of the snapshot on purpose, never behind it: a snapshot names
+/// the last record it reflects, so a log holding more than that is a session that went on after
+/// the snapshot and a log holding less is one that was tampered with - the runtime's own
+/// `tests/crash.rs` is where that ordering is argued.
+///
+/// note: `flush` after every append and `sync_all` only at the end. What this is for is the
+/// process dying, and a write the kernel has taken survives that; what `sync_all` adds is the
+/// machine dying, and a `sync_all` per event would cost a disk round trip for every fragment a
+/// tool streams. The snapshot is synced every time, since it is a whole file replaced by rename.
+#[derive(Debug)]
+pub struct Recorder {
+    log: String,
+    state: String,
+    kept: parking_lot::Mutex<Kept>,
+}
+
+/// What the recorder holds between two writes.
+#[derive(Debug)]
+struct Kept {
+    file: std::fs::File,
+    /// The sequence number of the last record written to the log.
+    written: u64,
+    /// How many records the log holds.
+    records: usize,
+}
+
+impl Recorder {
+    /// Claims a record under the temporary directory and writes what the session holds so far.
+    pub fn start(app: &App) -> Result<Self, String> {
+        Self::start_under(app, &private_dir()?)
+    }
+
+    /// Claims a record under `dir`, which has to be a directory only its owner can enter, and
+    /// writes what the session holds so far.
+    ///
+    /// note: the check is the one [`record`] makes of the temporary directory, and it is made of
+    /// any directory rather than only that one because what goes into the record is the same
+    /// wherever it is put.
+    pub fn start_under(app: &App, dir: &std::path::Path) -> Result<Self, String> {
+        private(dir)?;
+        let (log, state, file) = unclaimed(&dir.join(app.kernel.session_name()))?;
+        let recorder = Self {
+            log,
+            state,
+            kept: parking_lot::Mutex::new(Kept {
+                file,
+                written: 0,
+                records: 0,
+            }),
+        };
+        recorder.checkpoint(&app.kernel)?;
+
+        Ok(recorder)
+    }
+
+    /// The event log, one record per line.
+    pub fn log(&self) -> &str {
+        &self.log
+    }
+
+    /// The snapshot `kamchatka -r` starts from.
+    pub fn state(&self) -> &str {
+        &self.state
+    }
+
+    /// Appends every record the log has grown since the last time.
+    pub fn append(&self, kernel: &Kernel) -> Result<(), String> {
+        let mut kept = self.kept.lock();
+        Self::append_into(&mut kept, kernel)
+    }
+
+    /// Appends what the log has grown and rewrites the snapshot.
+    ///
+    /// note: the snapshot is taken first and the log written up to date after it, so the log is
+    /// never behind the snapshot it sits beside - see the note on the type.
+    pub fn checkpoint(&self, kernel: &Kernel) -> Result<(), String> {
+        let mut kept = self.kept.lock();
+        let snapshot = kernel.snapshot();
+        Self::append_into(&mut kept, kernel)?;
+        let snapshot = serde_json::to_vec_pretty(&snapshot)
+            .map_err(|e| format!("could not render the session: {e}"))?;
+        let beside = crate::app::beside(&self.state, &snapshot)
+            .map_err(|e| format!("could not write {}: {e}", self.state))?;
+        std::fs::rename(&beside, &self.state).map_err(|e| {
+            let _ = std::fs::remove_file(&beside);
+            format!("could not write {}: {e}", self.state)
+        })
+    }
+
+    /// Writes everything that is left and says where the record went.
+    pub fn finish(&self, kernel: &Kernel) -> Result<Recorded, String> {
+        self.checkpoint(kernel)?;
+        let kept = self.kept.lock();
+        kept.file
+            .sync_all()
+            .map_err(|e| format!("could not write {}: {e}", self.log))?;
+
+        Ok(Recorded {
+            records: kept.records,
+            log: self.log.clone(),
+            state: self.state.clone(),
+        })
+    }
+
+    fn append_into(kept: &mut Kept, kernel: &Kernel) -> Result<(), String> {
+        use std::io::Write as _;
+
+        for record in kernel.history_since(kept.written) {
+            let line = serde_json::to_string(&record)
+                .map_err(|e| format!("could not render record {}: {e}", record.seq))?;
+            writeln!(kept.file, "{line}").map_err(|e| format!("could not write the log: {e}"))?;
+            kept.written = record.seq;
+            kept.records += 1;
+        }
+
+        kept.file
+            .flush()
+            .map_err(|e| format!("could not write the log: {e}"))
+    }
+}
+
+/// The directory under the temporary one that a record goes in, made and checked.
+fn private_dir() -> Result<std::path::PathBuf, String> {
+    let mut dir = std::env::temp_dir();
+    dir.push("kamchatka");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
+    private(&dir)?;
+
+    Ok(dir)
+}
+
+/// Refuses `dir` unless it is a directory only its owner can enter.
+fn private(dir: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
+    // note: opened without following a link, and made private and looked at through what was
+    // opened, because the temporary directory is everybody's and this name is fixed. A link
+    // somebody left at it is refused before anything is done through it, a chmod of what it
+    // points at included. A directory somebody else made there first is one the chmod cannot
+    // make private - it fails, and is ignored - so without the look the transcript would go
+    // into a directory they can read. A real directory that nobody but its owner can enter is
+    // one this user owns, or one it cannot write in at all
+    let private = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32)
+        .open(dir)
+        .is_ok_and(|opened| {
+            // it may already exist from an earlier run, made before this did it; either way,
+            // this is the run that is about to write a transcript into it
+            let _ = opened.set_permissions(std::fs::Permissions::from_mode(0o700));
+            opened
+                .metadata()
+                .is_ok_and(|meta| meta.is_dir() && meta.permissions().mode() & 0o077 == 0)
+        });
+    if !private {
+        return Err(format!(
+            "{} is not a directory only you can enter, so the session was not recorded \
+             there; remove it, or use `--no-record` and `/save`",
+            dir.display()
+        ));
+    }
+
+    Ok(())
+}
+
+/// A `.jsonl` and `.json` pair under `stem` that no other session has written, and the log's
+/// open file, which is the claim itself.
 ///
 /// note: the name is a session's own, and a session's own name is not unique enough to be a
 /// filename. Two of them collide in two ways, both silently. Two runs started inside one second
@@ -872,7 +1026,7 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 /// note: a name that is taken is passed over and nothing else is: a directory that cannot be
 /// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
 /// a thousand tries later would be the wrong one.
-pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String), String> {
+pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String, std::fs::File), String> {
     // bounded, so that a directory full of these is an error rather than a loop
     for nth in 1..1_000 {
         let stem = match nth {
@@ -891,7 +1045,7 @@ pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String), Stri
             .create_new(true)
             .open(&log)
         {
-            Ok(_) => return Ok((log, state)),
+            Ok(file) => return Ok((log, state, file)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("could not write {log}: {e}")),
         }
@@ -922,7 +1076,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("a directory to work in");
         let stem = dir.join("2026-09-15T13-34-29Z");
 
-        let (log, state) = unclaimed(&stem).expect("nothing is there yet");
+        let (log, state, _) = unclaimed(&stem).expect("nothing is there yet");
         assert!(log.ends_with("2026-09-15T13-34-29Z.jsonl"), "{log}");
         assert!(state.ends_with("2026-09-15T13-34-29Z.json"), "{state}");
         // what a session that got this far would leave behind
@@ -930,7 +1084,7 @@ mod tests {
         std::fs::write(&state, "{}").expect("written");
 
         // the same name again - two runs in one second, or a resume - lands beside it
-        let (again, beside) = unclaimed(&stem).expect("a second name");
+        let (again, beside, _) = unclaimed(&stem).expect("a second name");
         assert!(again.ends_with("2026-09-15T13-34-29Z-2.jsonl"), "{again}");
         assert!(beside.ends_with("2026-09-15T13-34-29Z-2.json"), "{beside}");
         assert_eq!(
@@ -941,7 +1095,7 @@ mod tests {
 
         // and the claim is the file itself, so a third does not get the second's name back
         std::fs::write(&beside, "{}").expect("written");
-        let (third, _) = unclaimed(&stem).expect("a third name");
+        let (third, _, _) = unclaimed(&stem).expect("a third name");
         assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
     }
 
@@ -959,7 +1113,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.join("nowhere"), dir.join("2026-09-22T12-00-00Z.json"))
             .expect("a link");
 
-        let (log, state) = unclaimed(&stem).expect("a name beside it");
+        let (log, state, _) = unclaimed(&stem).expect("a name beside it");
         assert!(log.ends_with("2026-09-22T12-00-00Z-2.jsonl"), "{log}");
         assert!(state.ends_with("2026-09-22T12-00-00Z-2.json"), "{state}");
     }

@@ -1883,7 +1883,7 @@ impl App {
             (true, Some((log, state))) => (log.clone(), state.clone(), false),
             (true, None) => {
                 match crate::wiring::unclaimed(&into.join(self.kernel.session_name())) {
-                    Ok((log, state)) => (log, state, true),
+                    Ok((log, state, _)) => (log, state, true),
                     Err(e) => return self.say(Speaker::Error, e),
                 }
             }
