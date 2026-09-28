@@ -24,6 +24,14 @@ minor bump may break you.
   subcommand because the first word on the command line is already a message. `check::check` is
   the reader behind it, and works on the text of the two files.
 
+- **A release binary can be reproduced, and shows where it came from.** The release build remaps
+  `CARGO_HOME` out of the binary. Before, every dependency's source path was compiled in, so only a
+  machine with the runner's home directory could rebuild the same bytes. The release workflow
+  builds each binary a second time, from another checkout path and another `CARGO_HOME`, and
+  fails if the two differ. On a tag, the archive and the binary get a build provenance
+  attestation; `gh attestation verify ARCHIVE --repo ljedrz/nachalnik` checks it.
+  `CONTRIBUTING.md` has the command to reproduce a binary.
+
 ### changed
 
 - **`shell` says where every call starts.** Its description now names the working directory and
