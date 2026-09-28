@@ -164,14 +164,7 @@ impl Span {
     }
 }
 
-/// Room held back under a `/limit fs:read` for the line saying which lines these are.
-///
-/// note: more than any of the four takes. The longest says a line was longer than the limit,
-/// names `grep` and `shell`, and puts the whole of the limit in it twice over - which for a
-/// limit set high enough is most of any room the reading has, so a number here is wrong the
-/// moment a file holds a very great many lines. What the answer owes the limit is settled
-/// against the header as it is built rather than against this, and `too_little` answers where
-/// even the shortest header does not fit.
+/// Room kept under the output limit for the line saying which lines these are.
 const HEADER: usize = 256;
 
 /// The lines `span` names of a file `allows` answered for, as text, stopping at the last whole
@@ -201,12 +194,12 @@ fn read(
     // whether to count to the end, and a file claiming less than it holds is counted anyway
     let countable = file.metadata().is_ok_and(|meta| meta.len() <= KEPT as u64);
     let mut reader = std::io::BufReader::new(file);
-    // note: a small limit is a person's `/limit fs:read`, and it is two jobs at once - what this
-    // shapes its answer to and what the kernel cuts that answer to, since `fs:read` is the row
-    // `Fs::limit` hands back. So the whole of the answer is measured against it, header included,
-    // and a limit below twice the header gives the lines and the line naming them as much as the
-    // other, so that neither is cut at nothing. What is left over is settled after the reading,
-    // where the header has been built and its own length is known - see there
+    // note: a small limit is a person's `/limit fs:read`, and a header bigger than the whole of
+    // it left every read answered by the line saying the limit stops it there and nothing under
+    // it. Below twice the header the room is half the limit, so the lines and the line naming
+    // them each have as much as the other and neither is cut at nothing; the cut is then where
+    // it always was, a whole line. What no amount of room fixes is a limit too small to hold the
+    // header itself, which is checked where the header is built - see the note there
     let room = match budget {
         wide if wide > 2 * HEADER => budget - HEADER,
         _ => budget / 2,
@@ -258,12 +251,12 @@ fn read(
     // the end was reached, so the count is the file's, whichever way it went
     let total = ended.then_some(number);
 
-    let Some((first, mut through)) = shown else {
+    let Some((first, through)) = shown else {
         return Ok(match (number, span.whole()) {
             // a file with nothing in it read whole is a file with nothing in it: an answer rather
             // than a refusal, in the brackets a read's own header goes in, so that it cannot be
             // taken for a file holding those words
-            (0, true) => Ok(within("[the file is empty]", budget)),
+            (0, true) => Ok("[the file is empty]".to_owned()),
             (0, false) => Err("the file is empty, so there is no line to start from".to_owned()),
             _ => Err(format!(
                 "`from` is line {} and the file has {number} line(s); it starts at 1",
@@ -299,135 +292,42 @@ fn read(
         Some(total) => format!(" of {total}"),
         None => String::new(),
     };
-    // the line naming the lines, for the last one kept and whatever ended the reading; `None`
-    // where the whole file is shown and there is nothing to name
-    let header = |through: u64, stopped: Option<Stop>| match stopped {
-        None if span.whole() => None,
-        None => Some(match total {
+    let header = match stopped {
+        None if span.whole() => return Ok(Ok(text)),
+        None => match total {
             Some(_) => format!("[lines {first}-{through}{of}]"),
             None => format!("[lines {first}-{through}, and more after them]"),
-        }),
-        Some(Stop::Full(next)) => Some(format!(
+        },
+        Some(Stop::Full(next)) => format!(
             "[lines {first}-{through}{of}: the output limit ({budget} bytes) stops it there - \
              read on with `from: {next}`]"
-        )),
-        Some(Stop::Long) => Some(format!(
+        ),
+        Some(Stop::Long) => format!(
             "[line {first}{of} is longer than the output limit ({budget} bytes), so this is its \
              start; `grep` finds what is in it, and `shell` can read the rest]"
-        )),
+        ),
     };
-    if stopped.is_none() && span.whole() {
-        return Ok(Ok(within(&text, budget)));
-    }
 
-    // note: the whole of the answer, against the limit, which is one number doing two jobs - what
-    // `read` shapes the answer to and what the kernel cuts it to, `fs:read` being the row
-    // `Fs::limit` hands back. The lines were read into a room held back for the longest header, so
-    // what is left over is settled here: the last whole line comes out until the answer fits, and
-    // the header is rebuilt to name where the reading then stopped. A header that stops the
-    // reading carries the limit and the way past it, so it is longer than the one that does not,
-    // and dropping a line can make the answer longer before it makes it shorter - which is why
-    // this is a loop and not one subtraction.
-    //
     // note: a header is not a safe place to be cut. The kernel's output limit takes bytes from
     // the end, so a limit too small to hold the line naming the limit leaves the model with the
     // first few words of it and none of the file - a fragment it reads as the file's own first
     // line. The same reason `shell` puts `exit: ` first, and the same reason the limit is named
-    // here before the way out.
+    // here before the way out: a limit below even this sentence is cut too, and the one fact it
+    // has to carry is that the limit is what stopped it.
     //
-    // note: what no amount of fitting settles is a limit too small to hold a header and a line
-    // of the file together, and that is answered with the sentence about the limit - held to the
-    // same rule, being the one answer the kernel is about to cut as well. The whole of it is
-    // archived beside that sentence and one `space` from being sent instead, so what is given up
-    // is a turn rather than the file; `fs:read` otherwise stops itself at a line under the limit
-    // and says where to read on from, which is why it is the one answer that needs no archive.
-    // This is the case where it cannot, because there is nowhere for a line to start.
-    let mut lines = text.into_bytes();
-    // where the whole file is shown there is no line naming it, and the file is the answer
-    let Some(mut said) = header(through, stopped) else {
-        return Ok(Ok(String::from_utf8(lines).expect("whole lines are text")));
-    };
-    let mut room = budget.saturating_sub(said.len() + 1);
-    while lines.len() > room {
-        match lines.iter().rposition(|byte| *byte == b'\n') {
-            // the whole of the last line goes, and the newline that ends the one before it with
-            // it: what is kept is whole lines, and a cut inside one is the thing `read` was
-            // written to stop doing. The header that stops the reading is longer than the one
-            // that does not, so what is left is settled again - which is why this is a loop and
-            // not one subtraction
-            Some(at) if at + 1 < lines.len() && through > first => {
-                lines.truncate(at + 1);
-                through -= 1;
-                match header(through, Some(Stop::Full(through + 1))) {
-                    Some(next) => said = next,
-                    // a limit that will not hold the header naming what is there, and nothing
-                    // left of the file to put under one
-                    None => return Ok(Ok(too_little(budget))),
-                }
-                room = budget.saturating_sub(said.len() + 1);
-            }
-            // the start of a line too long for the limit and no whole line under it, which is
-            // what a wide line is answered with. There is no earlier line to stop at, so the
-            // start is cut to the room that is left - and where the header naming it uses all of
-            // the limit, there is no room for a start at all, and a header saying there is one
-            // under it would be a line the model reads as the file
-            _ if stopped == Some(Stop::Long) => {
-                if room == 0 {
-                    return Ok(Ok(too_little(budget)));
-                }
-                lines.truncate(room);
-                break;
-            }
-            // nothing left of the file, and no room for what the header names
-            _ => return Ok(Ok(too_little(budget))),
-        }
-    }
-    if said.len() + 1 + lines.len() > budget {
-        return Ok(Ok(too_little(budget)));
+    // note: the whole of the answer is archived beside this one and one `space` from being sent
+    // instead, so what is given up is a turn rather than the file. `fs:read` otherwise stops
+    // itself at a line under the limit and says where to read on from, which is why it is the
+    // one answer that needs no archive; this is the case where it cannot, because there is
+    // nowhere for a line to start
+    if header.len() + 1 > budget {
+        return Ok(Ok(format!(
+            "[the `/limit fs:read` for this session is {budget} bytes, too little to show a line \
+             of this file; raise it with `/limit fs:read`]"
+        )));
     }
 
-    Ok(Ok(format!(
-        "{said}\n{}",
-        String::from_utf8(lines).expect("whole lines are text")
-    )))
-}
-
-/// An answer that fits `budget`, or the sentence about the limit where nothing else does.
-///
-/// note: every answer `read` hands back goes through this, and not only the one with a header
-/// over it. `[the file is empty]` is an answer like any other and the kernel cuts it at the same
-/// limit as everything else, so a limit below what it takes would leave the model the first few
-/// characters of a sentence about a file that has nothing in it.
-fn within(said: &str, budget: usize) -> String {
-    match said.len() <= budget {
-        true => said.to_owned(),
-        false => too_little(budget),
-    }
-}
-
-/// What a `read` answers with where the limit is too small to hold a header and a line of the
-/// file - the sentence naming the limit, in the longest form that fits under it.
-///
-/// note: three lengths, and each one is a whole sentence rather than the first bytes of a longer
-/// one. A limit too small for the long form is given the short one, which carries the one fact
-/// that has to survive any limit; one too small even for that is told there is no answer to give
-/// at that size. The alternative is the kernel cutting whichever of these is nearest, and it cuts
-/// at a byte from the end, so the model would be shown the first few characters of a header -
-/// read as the file's own first line, and saying nothing about the limit that produced it.
-fn too_little(budget: usize) -> String {
-    let said = [
-        format!(
-            "[the `/limit fs:read` for this session is {budget} bytes, too little to show a \
-             line of this file; raise it with `/limit fs:read`]"
-        ),
-        format!("[/limit fs:read {budget}B is too small to show a line]"),
-        format!("[{budget}B: no line fits]"),
-    ];
-    said.into_iter()
-        .find(|said| said.len() <= budget)
-        // shorter than the shortest sentence there is, which `/limit` is at: there is no byte of
-        // it to answer in, and the kernel's cut of an empty answer is no cut at all
-        .unwrap_or_default()
+    Ok(Ok(format!("{header}\n{text}")))
 }
 
 /// What stopped a `read` short of the lines it was asked for.

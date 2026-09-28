@@ -235,21 +235,13 @@ minor bump may break you.
   an `undo` that spent an entry on a refusal says so; and a narrowed `look` reads its figures
   against the context rather than the whole request.
 - **`setup permissions` names `shell` for `net:reach`,** which it described as governing nothing.
-- **A `read` under any `/limit fs:read` answers whole: the lines that fit, under a header that
-  fits with them, or a whole sentence naming the limit as what stopped it.** The limit is one
-  number doing two jobs - what `read` shapes its answer to and what the kernel cuts that answer
-  to, `Fs::limit` handing back the same row for both - and only the first was measured, so the
-  kernel cut every answer a second time, at a byte from the end. Three ways that reached the
-  model. A limit below what the replacement sentence takes, which was every limit under 124
-  bytes, left it the first few words of the very sentence meant to say a limit had stopped the
-  read, and a refusal is the one answer with nowhere to page on from. A limit in a band where
-  the header fitted on its own and the answer did not left the header cut mid-word, which is the
-  one line a model reads as the file's own first line, with the marker that would have said
-  otherwise cut too. And `[the file is empty]` was cut at the same limit as everything else. The
-  whole of the answer is now measured against the limit, the last whole line comes out until it
-  fits, and a limit too small for a header and a line of the file together gets the longest
-  whole sentence it holds - which below the shortest of those is nothing at all rather than half
-  a word. The whole of the answer is archived beside a short one as any cut result is.
+- **A `read` under a `/limit fs:read` too small to hold its header says the limit is what stopped
+  it.** The header is the answer's first line and the output limit cuts from the end, so a limit
+  below what the header takes left the model the first few words of it and none of the file -
+  `[line`, `[lines 1-1`, `[line 1 of` - which it read as the file's own first line and answered
+  by reaching for a tool it may not have. It now answers with a sentence naming the limit, that
+  it is too little for this file, and `/limit fs:read` to raise it; the whole of the answer is
+  archived beside it as any cut result is.
 - **A capped `grep files_only` advises narrowing, not `files_only`.** The header told a caller that
   had already asked for `files_only` to ask for `files_only`, which is the shape of answer in
   front of it; the mode is already taken into account for the words around it, and now for this
