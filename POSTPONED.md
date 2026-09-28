@@ -311,14 +311,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
   denies is the other reading, at the cost of the two rules no longer being held alike.
 
-- **Reads that span more than one lock.** `snapshot()` reads `last_seq` under the context's lock,
-  so its items and its sequence agree, but it reads the parameters and the counter's calibration
-  before taking it - so a `set_params` or a recalibration landing in between is named by a sequence
-  the snapshot does not reflect. A request is built from the tools, the projector with the context,
-  and the parameters, read at separate moments; the counter is captured once, and a concurrent swap
-  of the others can still mix versions. Both are closed by taking the reads under one lock, which is
-  a change to the core's locking.
-
 - **`n` above 1.** The core refuses no parameter, so a request asking for several choices gets the
   first and loses the rest - or, streamed through the OpenAI dialect, which reads every chunk as the
   first choice, the choices merged into one. Parameters are the caller's to set and the runtime
