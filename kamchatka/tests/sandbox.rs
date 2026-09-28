@@ -44,7 +44,7 @@ mod common;
 /// every attempt, which is what `shell` does for a session that refuses the network; the tests that
 /// answer otherwise go through the tool.
 fn run(sandbox: &Sandbox, cmd: &str) -> (bool, String) {
-    let mut command = Command::new(common::program());
+    let mut command = common::command();
     command
         .args(sandbox.argv(cmd))
         .stdout(std::process::Stdio::piped())
@@ -426,7 +426,7 @@ fn a_command_with_no_temporary_directory_is_given_no_tmpdir() {
         return;
     }
 
-    let output = Command::new(common::program())
+    let output = common::command()
         .args(
             sandbox(common::workdir("no-tmpdir"), true, Network::NoTcp)
                 .argv("printf %s \"${TMPDIR-none}\""),
@@ -858,7 +858,7 @@ fn two_paths_go_in_as_one_flag() {
         return;
     }
 
-    let mut child = Command::new(common::program())
+    let mut child = common::command()
         .args([
             "-m",
             "nothing-serves-this",
@@ -1267,7 +1267,7 @@ fn git_is_not_killed_by_a_configuration_named_in_the_environment() {
 /// `scratch_for(std::process::id())` - this test's own identifier, naming a directory that never
 /// existed - so every run of this file left two of the child's behind for good
 fn git_says(confined: &Sandbox, home: &Path, named: Option<&Path>, git: &str) -> String {
-    let mut command = Command::new(common::program());
+    let mut command = common::command();
     command
         .args(confined.argv(git))
         .env("HOME", home)

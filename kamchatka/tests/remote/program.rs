@@ -38,7 +38,7 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
     let dir = crate::common::scratch("served");
     let socket = dir.join("kamchatka.sock");
 
-    let host = std::process::Command::new(crate::common::program())
+    let host = crate::common::command()
         .args(["--no-record", "-m", "nothing", "--serve"])
         .arg(format!("unix:{}", socket.display()))
         .env("KAMCHATKA_BASE_URL", &base)
@@ -165,6 +165,7 @@ fn the_phone_example_writes_every_session_out() {
     );
     let dir = crate::common::scratch("phone-record");
     let mut child = std::process::Command::new(example)
+        .current_dir(crate::common::nowhere())
         .env("TMPDIR", &dir)
         .env("KAMCHATKA_PHONE_LISTEN", "127.0.0.1:0")
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -361,7 +362,7 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
     let dir = crate::common::scratch("served-refused");
     for (flag, value) in [("--deadline", "60"), ("--on-ask", "allow")] {
         let socket = dir.join(format!("{}.sock", flag.trim_start_matches("--")));
-        let said = tokio::process::Command::new(crate::common::program())
+        let said = tokio::process::Command::from(crate::common::command())
             .args(["--no-record", "-m", "nothing", "--serve"])
             .arg(format!("unix:{}", socket.display()))
             .arg(flag)
@@ -388,7 +389,7 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
         let settings = dir.join(format!("{key}.json"));
         std::fs::write(&settings, format!(r#"{{ "{key}": "{value}" }}"#)).expect("a settings file");
         let socket = dir.join(format!("file-{key}.sock"));
-        let said = tokio::process::Command::new(crate::common::program())
+        let said = tokio::process::Command::from(crate::common::command())
             .args(["--no-record", "-m", "nothing", "--serve"])
             .arg(format!("unix:{}", socket.display()))
             .arg("--config-file")
@@ -432,7 +433,7 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
     )
     .expect("a settings file");
     let socket = dir.join("defaults.sock");
-    let mut host = tokio::process::Command::new(crate::common::program())
+    let mut host = tokio::process::Command::from(crate::common::command())
         .args(["--no-record", "-m", "nothing", "--serve"])
         .arg(format!("unix:{}", socket.display()))
         .env("KAMCHATKA_BASE_URL", CLOSED)
@@ -784,7 +785,7 @@ async fn a_served_run_says_the_address_it_got_and_a_client_can_reach_it() {
     )])
     .await;
 
-    let mut host = tokio::process::Command::new(crate::common::program())
+    let mut host = tokio::process::Command::from(crate::common::command())
         .args(["--no-record", "-m", "nothing", "--serve", "tcp:127.0.0.1:0"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -845,7 +846,7 @@ async fn a_served_run_whose_stdout_nobody_is_reading_still_serves() {
     let dir = crate::common::scratch("served-unread");
     let socket = dir.join("kamchatka.sock");
 
-    let mut host = tokio::process::Command::new(crate::common::program())
+    let mut host = tokio::process::Command::from(crate::common::command())
         .args(["--no-record", "-m", "nothing", "--serve"])
         .arg(format!("unix:{}", socket.display()))
         // no model is ever asked for, so nothing is sent to an endpoint and the address only has
@@ -934,7 +935,7 @@ async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
 
     // stdin is a pipe this test holds open and never writes to, so nothing but the signal can end
     // this client - which is what makes the assertion about the signal
-    let mut client = tokio::process::Command::new(crate::common::program())
+    let mut client = tokio::process::Command::from(crate::common::command())
         .args(["--connect", &session.at])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1580,6 +1581,7 @@ async fn a_session_out_of_descriptors_says_so_once() {
     let socket = dir.join("kamchatka.sock");
 
     let mut host = tokio::process::Command::new("sh")
+        .current_dir(crate::common::nowhere())
         .arg("-c")
         .arg("ulimit -n 64 && exec \"$0\" \"$@\"")
         .arg(crate::common::program())

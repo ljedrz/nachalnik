@@ -226,7 +226,8 @@ pub struct Args {
 
     /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
     /// here on the command line wins over what it says. Given none, `./kamchatka.json` is read if
-    /// it is there, and the one under your config directory if it is not.
+    /// it is there and you say yes when asked, and the one under your config directory if it is
+    /// not there.
     #[arg(long, value_name = "PATH")]
     pub config_file: Option<std::path::PathBuf>,
 
@@ -408,7 +409,7 @@ impl Args {
                 filed: None,
             });
         }
-        let found = args
+        let mut found = args
             .config_file
             .is_none()
             .then(|| args.connect.is_none().then(config::found))
@@ -441,14 +442,26 @@ impl Args {
             .into_iter()
             .filter_map(|(id, carried)| carried.then_some(id))
             .collect();
+            let granting = config::granting(&settings);
             args = args
                 .under(settings, &matches)
                 .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
             filed = Some(Filed {
-                at: path,
+                at: path.clone(),
                 matches: matches.clone(),
                 unserved,
             });
+
+            // note: asked after the file is read and merged, both of which only look at it, so a
+            // file this program would refuse is refused with what is wrong with it rather than
+            // asked about first
+            if found.as_deref().is_some_and(config::underfoot) && !asked(&path, &granting)? {
+                args = Self::from_arg_matches(&matches)
+                    .map_err(|e| e.exit())
+                    .unwrap();
+                found = None;
+                filed = None;
+            }
         }
 
         Ok(Given {
@@ -682,6 +695,32 @@ impl Args {
         .map_err(|e| anyhow::anyhow!("{e}"))
         .context("could not reach the model")
     }
+}
+
+/// Whether the settings file found underfoot may be read, asked of the terminal, and a refusal
+/// where there is nobody at one.
+///
+/// note: a refusal rather than a run without the file, because a file carrying `deadline` or
+/// `spend` is a script's bounds, and a script that quietly lost them would run unbounded. Naming
+/// the file with `--config-file` is how a run nobody can ask says it is meant.
+fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
+    use std::io::IsTerminal as _;
+
+    anyhow::ensure!(
+        std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
+        "{} is in the directory this was started in, and a settings file found there is read \
+         only when somebody at a terminal says it may be. `--config-file {}` reads it",
+        path.display(),
+        path.display()
+    );
+
+    config::trusted(
+        path,
+        granting,
+        &mut std::io::stdin().lock(),
+        &mut std::io::stderr(),
+    )
+    .context("could not ask about the settings file")
 }
 
 /// A command line, read: the arguments, what clap matched, and the settings file they were filled

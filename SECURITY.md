@@ -232,9 +232,10 @@ what stands in the way, and what does not.
   the sandbox lists. So running `kamchatka` in a repository somebody else wrote runs it with their
   settings: their MCP servers start as you, and a file that turns the sandbox off and allows `exec`
   leaves the model with nothing between what that repository's files tell it and your machine.
-  The file is announced before anything it names is started, and nothing is asked. What stands in
-  the way is reading an unfamiliar `kamchatka.json` before running the program next to it, or
-  giving `--config-file` a file of your own, which is then the only one read.
+  So that file is not read until somebody at a terminal says it may be: the question names which
+  of those keys it sets, and anything but a yes runs without it. A run with no terminal to ask at
+  is refused, and names the file with `--config-file` to read it. The file under your own config
+  directory is read without asking, since nobody else writes there.
 - **The provider.** Everything in a request is sent, and a request is the context: the
   conversation, what the tools returned, and any file the reach let the model read. Nothing here
   stops that, and nothing can - it is what asking a model is.

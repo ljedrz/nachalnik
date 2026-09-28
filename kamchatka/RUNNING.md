@@ -621,6 +621,13 @@ not to hide it — a session that picked one up says which file it read before a
 happens: on standard error before a server is started or a provider reached, and again in the
 conversation.
 
+**`./kamchatka.json` is asked about before it is read**, because whoever wrote the directory wrote
+it, and it may start MCP servers, turn the sandbox off and grant permissions. The question names
+which of those it sets, and anything but `y` runs without it. A run with no terminal to ask at — a
+pipe, a script, a served session with no screen — is refused instead, and `--config-file
+kamchatka.json` is how it says the file is meant. The one under your config directory is yours,
+and is read without asking.
+
 A path you typed is not announced: you already know which file it was.
 
 **A starting point ships with the crate**, as `kamchatka.json` beside this readme, and in the

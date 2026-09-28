@@ -412,6 +412,7 @@ async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
     // which session a line is in, and a turn against an endpoint that is not there would be the
     // run failing about something else
     let mut host = std::process::Command::new("script")
+        .current_dir(crate::common::nowhere())
         .arg("-qec")
         .arg(format!(
             "{} --serve unix:{}",
@@ -439,7 +440,7 @@ async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
     // made. A client that closed its input would leave of its own accord - which is what every
     // other client in this file does, and it proves nothing about who let go of whom. This one
     // says its piece and then waits, so the only thing that can end it is the host
-    let mut asked = std::process::Command::new(crate::common::program())
+    let mut asked = crate::common::command()
         .arg("--connect")
         .arg(format!("unix:{}", socket.display()))
         .stdin(std::process::Stdio::piped())
