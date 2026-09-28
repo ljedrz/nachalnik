@@ -171,6 +171,21 @@ fn numbering(records: &[(usize, Record)], findings: &mut Vec<String>) {
     }
 }
 
+/// Whether the log begins where a session does, so that what came before its first record is
+/// nothing rather than something it does not say.
+///
+/// note: a caller may drain a kernel's log and keep only what came after, and that log starts in
+/// the middle of a session. Read as a whole one, every item and every call from before the cut
+/// would be named as something the log never added or never asked for.
+fn begins(records: &[(usize, Record)]) -> bool {
+    records.first().is_none_or(|(_, record)| {
+        matches!(
+            record.event,
+            Event::SessionStarted { .. } | Event::SessionResumed { .. }
+        )
+    })
+}
+
 /// Calls asked for and never finished, and calls finished that were never asked for.
 ///
 /// note: a session at a time. Nothing waiting is carried across a resume - a resumed kernel starts
@@ -179,6 +194,8 @@ fn numbering(records: &[(usize, Record)], findings: &mut Vec<String>) {
 fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
     let mut open: Vec<(String, String, u64)> = Vec::new();
     let mut asked: HashSet<String> = HashSet::new();
+    // whether a call finished here could have been asked for before the log begins
+    let mut cut = !begins(records);
 
     let close = |open: &mut Vec<(String, String, u64)>, findings: &mut Vec<String>, why: &str| {
         for (call, tool, seq) in open.drain(..) {
@@ -193,6 +210,7 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
             Event::SessionStarted { .. } | Event::SessionResumed { .. } => {
                 close(&mut open, findings, "another session begins after it");
                 asked.clear();
+                cut = false;
             }
             Event::ToolRequested { call, tool, .. } => {
                 if !asked.insert(call.0.clone()) {
@@ -208,6 +226,7 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
                     Some(at) => {
                         open.remove(at);
                     }
+                    None if cut && !asked.contains(&call.0) => {}
                     None => findings.push(format!(
                         "record {} finishes the call `{}`, which {}",
                         record.seq,
@@ -265,6 +284,9 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
     let mut items: HashMap<ContextId, Option<ContextState>> = HashMap::new();
     // how many items there are, where a resume began from some the log does not name
     let mut resumed: Option<usize> = None;
+    // where the log begins part way through a session, what came before its first record is
+    // not known, and the count is not either
+    let mut cut = !begins(&records[..=taken]);
     let count = |resumed: &mut Option<usize>, by: isize| {
         if let Some(count) = resumed {
             *count = count.saturating_add_signed(by);
@@ -275,10 +297,12 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
             Event::SessionStarted { .. } => {
                 items.clear();
                 resumed = None;
+                cut = false;
             }
             Event::SessionResumed { items: brought, .. } => {
                 items.clear();
                 resumed = Some(*brought);
+                cut = false;
             }
             Event::ContextAdded { id, .. } => {
                 items.insert(*id, Some(ContextState::Active));
@@ -290,7 +314,7 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
                         "record {} changes item {id} from {from:?}, where the log had it {was:?}",
                         record.seq
                     )),
-                    None if resumed.is_none() => findings.push(format!(
+                    None if resumed.is_none() && !cut => findings.push(format!(
                         "record {} changes item {id}, which the log never added",
                         record.seq
                     )),
@@ -328,7 +352,7 @@ fn agrees(records: &[(usize, Record)], snapshot: &Snapshot, findings: &mut Vec<S
                 "the snapshot has item {} {:?}, and the log leaves it {state:?}",
                 item.id, item.state
             )),
-            None if resumed.is_none() => findings.push(format!(
+            None if resumed.is_none() && !cut => findings.push(format!(
                 "the snapshot has item {}, which the log never added",
                 item.id
             )),

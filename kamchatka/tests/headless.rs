@@ -5165,6 +5165,16 @@ async fn the_record_a_run_leaves_checks_clean_and_a_spoiled_one_does_not() {
     };
     let found = |log: &str, snapshot: Option<&str>| check(Some(log), snapshot).findings;
 
+    // a log drained part way through, which begins in the middle of the session, is not taken
+    // for a whole one: what came before its first record is not the log's to account for
+    let asked = lines
+        .iter()
+        .position(|line| line.contains("\"tool.requested\""))
+        .expect("the run asked for a call");
+    let drained = lines[asked + 1..].join("\n");
+    let findings = found(&drained, Some(&snapshot));
+    assert!(findings.is_empty(), "{findings:?}");
+
     // a record taken out is a gap
     let gap = without(&|line| line.contains("\"model.requested\""));
     let findings = found(&gap, None);
