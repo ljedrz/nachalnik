@@ -235,13 +235,6 @@ minor bump may break you.
   an `undo` that spent an entry on a refusal says so; and a narrowed `look` reads its figures
   against the context rather than the whole request.
 - **`setup permissions` names `shell` for `net:reach`,** which it described as governing nothing.
-- **A `read` under a `/limit fs:read` too small to hold its header says the limit is what stopped
-  it.** The header is the answer's first line and the output limit cuts from the end, so a limit
-  below what the header takes left the model the first few words of it and none of the file -
-  `[line`, `[lines 1-1`, `[line 1 of` - which it read as the file's own first line and answered
-  by reaching for a tool it may not have. It now answers with a sentence naming the limit, that
-  it is too little for this file, and `/limit fs:read` to raise it; the whole of the answer is
-  archived beside it as any cut result is.
 - **A capped `grep files_only` advises narrowing, not `files_only`.** The header told a caller that
   had already asked for `files_only` to ask for `files_only`, which is the shape of answer in
   front of it; the mode is already taken into account for the words around it, and now for this
@@ -480,11 +473,6 @@ minor bump may break you.
   model either gave up on the edit or rewrote the text and hit the same refusal. The refusal now
   names the file's own spelling. A file with lines of both endings says nothing, since neither
   spelling is the one it holds.
-- **A `/limit fs:read` under 257 bytes shows what fits.** 256 bytes were kept for the line naming
-  which lines these are, so a limit below that left no room for any of the file and every read
-  answered with the marker and nothing under it. The room is half the limit below that size, so
-  the lines and the line naming them each have as much as the other and neither is cut at
-  nothing.
 - **`grep` and `glob` count the paths they passed over that are not files.** A pipe, a socket or
   a device was left out of a walk in silence, so `grep` over a directory holding one answered
   `0 file(s) searched` and a model reading that concludes the pipe is not there - while the tool's
