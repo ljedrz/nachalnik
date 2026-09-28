@@ -158,6 +158,51 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
         .collect()
 }
 
+/// `--check`: reads the pair `path` names, says what it found, and fails if it found anything.
+fn checked(path: &str) -> Result<()> {
+    let (log, state) = kamchatka::check::pair(path);
+    let read = |file: &Path| match std::fs::read_to_string(file) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(anyhow::anyhow!("could not read {}: {e}", file.display())),
+    };
+    let (logged, snapshot) = (read(&log)?, read(&state)?);
+    if logged.is_none() && snapshot.is_none() {
+        anyhow::bail!(
+            "there is no session at {path}: neither {} nor {} is there",
+            log.display(),
+            state.display()
+        );
+    }
+
+    let checked = kamchatka::check::check(logged.as_deref(), snapshot.as_deref());
+    let mut out = stdout();
+    for finding in &checked.findings {
+        let _ = writeln!(out, "{finding}");
+    }
+    let read = [
+        logged
+            .is_some()
+            .then(|| format!("{} records in {}", checked.records, log.display())),
+        snapshot
+            .is_some()
+            .then(|| format!("the snapshot in {}", state.display())),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" and ");
+    match checked.findings.len() {
+        0 => {
+            let _ = writeln!(out, "read {read}: nothing that does not add up");
+            Ok(())
+        }
+        found => Err(anyhow::anyhow!(
+            "read {read}: {found} thing(s) that do not add up"
+        )),
+    }
+}
+
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<()> {
     let begun = tokio::time::Instant::now();
@@ -178,6 +223,9 @@ async fn session() -> Result<()> {
         let _ = write!(stdout(), "{}", kamchatka::config::SHIPPED);
 
         return Ok(());
+    }
+    if let Some(path) = &args.check {
+        return checked(path);
     }
     // note: printed before anything the file asked for is done, because what it can ask for
     // includes MCP servers - programs started a few lines below - and a sandbox turned off. The

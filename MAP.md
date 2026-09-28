@@ -45,6 +45,9 @@ caller has to keep. It also holds `record` and `Setup::relaunch`, where a sessio
 over and what `/restart` is, because an example driving a session with a loop of its own had
 neither and lost every session it ran.
 
+`check.rs` is `--check`: a session's two files read the way somebody else's program would read
+them, with no kernel built, and what does not add up said rather than repaired.
+
 `headless.rs` is the other loop: a line of stdin where the terminal has a key, the session log on
 stdout and what a person reads on stderr. `remote/` is the *third* loop, and a client for it:
 `protocol.rs` is the wire, `server.rs` is a session with a socket in front of it and `client.rs` is

@@ -5127,3 +5127,130 @@ async fn a_tool_that_panics_is_a_failed_call_in_the_record() {
     assert_eq!(tools, ["tool.started", "tool.panicked", "tool.finished"]);
     assert!(run.prose.contains("it fell over"), "{}", run.prose);
 }
+
+/// The record a run leaves checks clean, and each way of spoiling it is named.
+///
+/// note: a real run rather than a written log, because the claim `--check` makes is about the
+/// records this program writes: that a record it left is one nothing is wrong with. A check that
+/// found something in an ordinary session would be a check nobody could use.
+#[tokio::test]
+async fn the_record_a_run_leaves_checks_clean_and_a_spoiled_one_does_not() {
+    use kamchatka::check::check;
+
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("read it"),
+    ];
+    let run = run_with("look around\n/exclude 1\n", script, Grant::Allow, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+    let snapshot = serde_json::to_string(&run.app.kernel.snapshot()).unwrap();
+    let log = &run.records;
+
+    let clean = check(Some(log), Some(&snapshot));
+    assert!(clean.findings.is_empty(), "{:?}", clean.findings);
+    assert_eq!(clean.records, log.lines().count());
+
+    let lines: Vec<&str> = log.lines().collect();
+    let without = |pick: &dyn Fn(&str) -> bool| {
+        lines
+            .iter()
+            .filter(|line| !pick(line))
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let found = |log: &str, snapshot: Option<&str>| check(Some(log), snapshot).findings;
+
+    // a record taken out is a gap
+    let gap = without(&|line| line.contains("\"model.requested\""));
+    let findings = found(&gap, None);
+    assert!(
+        findings.iter().any(|it| it.contains("missing")),
+        "{findings:?}"
+    );
+
+    // a finished call taken out is a call that never finished
+    let open = without(&|line| line.contains("\"tool.finished\""));
+    let findings = found(&open, None);
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("`c1`") && it.contains("never finished")),
+        "{findings:?}"
+    );
+
+    // a line cut short, a record twice and an event from a later version are each named
+    let spoiled = format!(
+        "{log}{}\n{}\n{{\"seq\": 9998, \"at\": 1, \"event\": {{\"event\": \"tool.teleported\"}}}}\n\
+         {{\"seq\": 9999, \"at\"",
+        lines[lines.len() - 1],
+        lines[lines.len() - 1],
+    );
+    let findings = found(&spoiled, None);
+    for said in ["numbered the same", "`tool.teleported`", "is not a record"] {
+        assert!(
+            findings.iter().any(|it| it.contains(said)),
+            "{said}: {findings:?}"
+        );
+    }
+
+    // and a snapshot edited to say something the log does not
+    let mut edited: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    edited["items"][0]["state"] = json!("pinned");
+    let findings = found(log, Some(&edited.to_string()));
+    assert!(
+        findings.iter().any(|it| it.contains("the log leaves it")),
+        "{findings:?}"
+    );
+    let mut dropped: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
+    dropped["items"].as_array_mut().unwrap().remove(0);
+    let findings = found(log, Some(&dropped.to_string()));
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("the snapshot does not have it")),
+        "{findings:?}"
+    );
+}
+
+/// A session carried on from a snapshot checks clean too, against the items it brought back and
+/// through an undo, and a count the log cannot account for is named.
+#[test]
+fn a_resumed_record_checks_clean_and_a_miscounted_one_does_not() {
+    use kamchatka::check::check;
+    use nachalnik::{Config, ContextState, Kernel};
+
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("one"));
+    first.push(ContextItem::user("two"));
+
+    let resumed = Kernel::resume(Config::default(), first.snapshot());
+    let three = resumed.push(ContextItem::user("three"));
+    resumed.set_state([nachalnik::ContextId(1)], ContextState::Excluded, None);
+    resumed.push(ContextItem::user("four"));
+    resumed.undo().expect("the push is undone");
+    resumed.set_state([three], ContextState::Pinned, None);
+
+    let log: String = resumed
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).unwrap() + "\n")
+        .collect();
+    let snapshot = resumed.snapshot();
+    let clean = check(Some(&log), Some(&serde_json::to_string(&snapshot).unwrap()));
+    assert!(clean.findings.is_empty(), "{:?}", clean.findings);
+
+    let mut short = serde_json::to_value(&snapshot).unwrap();
+    short["items"].as_array_mut().unwrap().remove(1);
+    let findings = check(Some(&log), Some(&short.to_string())).findings;
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("the log leaves 3 items") && it.contains("the snapshot has 2")),
+        "{findings:?}"
+    );
+}

@@ -340,6 +340,14 @@ terminal. The directory is `0700`: what goes in it is a whole conversation and e
 produced, written without anybody asking, and under an ordinary umask that would be a
 world-readable file on a shared machine.
 
+`kamchatka --check PATH` reads a record without starting anything. PATH is the log, the snapshot, or
+their shared name. It says what does not add up: a line that is not a record, an event this version
+does not know, a record missing or numbered twice, a call asked for and never finished, and a
+snapshot whose items the log does not account for. A killed run leaves a call that never finished,
+so a finding is not always a fault; anything found makes the exit status non-zero. The shapes it
+reads are in `nachalnik/tests/records/`, one of every event and a snapshot per format, and a
+reader written against those does not need this program.
+
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
 `gemini-3.5-flash` at another, and after a `/provider` there is no other way to find out which

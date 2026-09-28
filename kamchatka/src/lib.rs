@@ -108,6 +108,7 @@ pub mod advisor;
 pub mod app;
 pub mod args;
 pub mod attach;
+pub mod check;
 pub mod clipboard;
 pub mod config;
 pub mod endpoint;

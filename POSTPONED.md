@@ -540,3 +540,11 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A `y` typed at `--connect` before its question arrives.** It goes to the model as a message
   and the question is then answered by `--on-ask`. Holding a bare letter until a question comes, and
   dropping it if none does, changes when the client reads its input at all.
+
+- **A record that shows it has not been edited.** Each record could carry a hash of the one before
+  it, so that `--check` could say a log is unedited from its first record to its last. That says
+  "unedited", not "authenticated": whoever edits a record can recompute every hash after it, and a
+  key to sign with is something this workspace does not hold. It is cheap to add on top of `FORMAT`
+  and `Record::format`, because the field is additive, and it waits because it is worth less than
+  what `--check` already reads: a reader that is not this program, and a record that says what went
+  wrong with it.
