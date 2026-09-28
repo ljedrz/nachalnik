@@ -277,12 +277,6 @@ minor bump may break you.
   snapshot and nothing on the screen showed them, so a file left `max_tokens: 5` in and the next
   strange answer was a puzzle. The line `-r` already prints now carries them, verbatim as they
   will be sent, when there are any.
-- **A `-f` file that has gone no longer ends the run at `/restart`, and is named as left out.** The
-  settings are wired a second time, so a file deleted halfway through - by another agent, by
-  `git clean`, by hand - took the new session down with it and the program exited. A restart
-  starts without it and says which file and how many; the first session still refuses a file it
-  cannot read, because there a missing attachment is somebody being told the session they asked
-  for is not the one they typed.
 - **A `/restart` says the old session ended before it says what an MCP server could not offer.** The
   servers are reinstalled before the line naming the record is said, so a server that had stopped
   made `py would not list its tools again` the first line of a fresh session, and it is about the
