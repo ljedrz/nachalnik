@@ -76,14 +76,20 @@ fn token(name: &str) -> Style {
     Style::default().fg(colour)
 }
 
+/// How many spaces the highlighter draws a tab as.
+const TAB: usize = 4;
+
 /// Each line of `text`, in pieces coloured the way [`token`] colours them - or all of it in cyan,
 /// where nothing recognises `extension`.
 ///
 /// note: the text is handed to the highlighter whole, so that a string or a comment running
 /// across lines is one token rather than several guesses.
+///
+/// note: the pieces are not the text byte for byte - a tab comes back as [`TAB`] spaces - so an
+/// offset into `text` is moved by [`drawn_at`] before it is used on them.
 fn tokens(extension: &str, text: &str) -> Vec<Vec<(String, Style)>> {
     let source: Vec<String> = text.lines().map(str::to_owned).collect();
-    let mut highlighter = synoptic::from_extension(extension, 4);
+    let mut highlighter = synoptic::from_extension(extension, TAB);
     if let Some(highlighter) = &mut highlighter {
         highlighter.run(&source);
     }
@@ -166,7 +172,11 @@ pub(super) fn command(
     // note: `worst` is safe in the same row-by-row loop for the same reason and not by luck - the
     // advisor takes a command apart with this function, so a command it declines is one with no
     // stage to be worst
-    let picked = joints(cmd);
+    let picked: Vec<(usize, usize)> = joints(cmd)
+        .into_iter()
+        .map(|range| drawn_at(cmd, range))
+        .collect();
+    let worst = worst.map(|range| drawn_at(cmd, range));
 
     let mut drawn = Vec::new();
     for spans in tokens("sh", cmd) {
@@ -192,6 +202,17 @@ pub(super) fn command(
     }
 
     drawn
+}
+
+/// A byte range into `cmd` as a range into what the highlighter made of it, where every tab is
+/// [`TAB`] spaces.
+///
+/// note: without it every joint and underline after a tab lands `TAB - 1` bytes early for each
+/// one, and `ls\t&& rm -rf target` underlines `&& rm -rf tar`.
+fn drawn_at(cmd: &str, (from, to): (usize, usize)) -> (usize, usize) {
+    let tabs = |at: usize| cmd.bytes().take(at).filter(|byte| *byte == b'\t').count();
+    let moved = |at: usize| at + (TAB - 1) * tabs(at);
+    (moved(from), moved(to))
 }
 
 /// The same pieces, cut where a joint or the worst stage starts and ends, and restyled there.
@@ -504,4 +525,36 @@ pub(super) fn rule(line: &Line<'_>) -> bool {
         && (text.chars().all(|c| c == '-')
             || text.chars().all(|c| c == '*')
             || text.chars().all(|c| c == '_'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What is underlined in a drawn command is the stage it was handed, tabs or no tabs.
+    #[test]
+    fn the_underlined_run_is_the_stage_it_was_handed() {
+        for cmd in [
+            "ls && rm -rf target",
+            "ls\t&& rm -rf target",
+            "ls\t&&\trm -rf\ttarget",
+        ] {
+            let from = cmd.find("rm").expect("a stage");
+            let under: String = command(cmd, 200, Some((from, cmd.len())))
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .filter(|span| {
+                    span.style
+                        .add_modifier
+                        .contains(ratatui::style::Modifier::UNDERLINED)
+                })
+                .map(|span| span.content.as_ref())
+                .collect();
+            assert_eq!(
+                under,
+                cmd[from..].replace('\t', &" ".repeat(TAB)),
+                "{cmd:?}"
+            );
+        }
+    }
 }

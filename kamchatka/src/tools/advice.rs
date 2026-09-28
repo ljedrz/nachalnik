@@ -290,18 +290,39 @@ impl Rated {
     /// only where no stage reaches its band: a destructive link usually makes the whole command
     /// read as destructive too, and keeping the whole on that tie would point at nothing in
     /// exactly the chain the pointing is for.
+    ///
+    /// note: and nothing is pointed at where every stage reaches the band. A stage is worth
+    /// pointing at for being worse than the rest, and where none is, the first of equals says
+    /// nothing: `cargo fmt && cargo test` drawn yellow with `cargo fmt` underlined reads as `fmt`
+    /// being the part to worry about, and a green chain had its first stage underlined for no
+    /// reason at all.
     fn worst_of(parts: impl IntoIterator<Item = Self>) -> Option<Self> {
-        parts
-            .into_iter()
-            .reduce(|best, next| match next.shown().cmp(&best.shown()) {
-                std::cmp::Ordering::Greater => next,
-                std::cmp::Ordering::Equal if best.worst.is_none() && next.worst.is_some() => next,
-                _ => best,
-            })
-            .map(|worst| Self {
-                scored: worst.shown(),
-                ..worst
-            })
+        let parts: Vec<Self> = parts.into_iter().collect();
+        let folded =
+            parts
+                .iter()
+                .copied()
+                .reduce(|best, next| match next.shown().cmp(&best.shown()) {
+                    std::cmp::Ordering::Greater => next,
+                    std::cmp::Ordering::Equal if best.worst.is_none() && next.worst.is_some() => {
+                        next
+                    }
+                    _ => best,
+                })?;
+        let band = folded.shown();
+        let below = |span: (usize, usize)| {
+            parts
+                .iter()
+                .filter(|part| part.worst == Some(span))
+                .all(|part| part.shown() < band)
+        };
+        let singled_out = parts.iter().filter_map(|part| part.worst).any(below);
+
+        Some(Self {
+            scored: band,
+            worst: folded.worst.filter(|_| singled_out),
+            ..folded
+        })
     }
 
     /// The band this is actually drawn as.
@@ -999,6 +1020,44 @@ mod tests {
             .expect("it folds");
         assert_eq!(folded.worst, Some((7, 11)));
         assert_eq!(folded.shown(), Rating::Grave);
+    }
+
+    /// And nothing is pointed at where no stage is worse than another, whatever the band.
+    #[test]
+    fn stages_that_all_reach_the_band_point_at_none_of_them() {
+        let at = |span, score| Rated {
+            worst: Some(span),
+            ..Rated::of(score, 0.99)
+        };
+
+        for score in [0.0, 1.0, 2.0] {
+            let folded = Rated::worst_of([
+                Rated::of(score, 0.99),
+                at((0, 9), score),
+                at((13, 23), score),
+            ])
+            .expect("it folds");
+            assert_eq!(folded.worst, None, "every stage scored {score}");
+        }
+
+        // a stage's two readings are one stage: the claim below the band does not single it out
+        // while its score is at it
+        let folded = Rated::worst_of([
+            Rated::of(1.0, 0.99),
+            at((0, 9), 1.0),
+            Rated {
+                worst: Some((0, 9)),
+                ..Rated::claimed(0.0)
+            },
+            at((13, 23), 1.0),
+        ])
+        .expect("it folds");
+        assert_eq!(folded.worst, None);
+
+        // and one stage kept below it is what lets the others be pointed at
+        let folded = Rated::worst_of([Rated::of(1.0, 0.99), at((0, 9), 1.0), at((13, 23), 0.0)])
+            .expect("it folds");
+        assert_eq!(folded.worst, Some((0, 9)));
     }
 
     /// `shown` run over its own answer answers the same thing, which is what `worst_of` leans on.
