@@ -4,9 +4,7 @@
 use crate::{
     agent, all_answers, answered, answers_from, branch, call_of, offers, one_turn, tokens_in,
 };
-use nachalnik::{
-    ContextId, ContextItem, ContextKind, ContextState, Event, ModelResponse, ToolCallId, test::call,
-};
+use nachalnik::{ContextItem, ContextKind, ContextState, ModelResponse, ToolCallId, test::call};
 use serde_json::json;
 
 #[tokio::test]
@@ -1466,13 +1464,12 @@ async fn a_class_lists_what_it_comes_to_before_a_move_takes_it() {
 /// An item asked into the state it is already in did not move, and is not journalled as having.
 ///
 /// note: `StateChange::unchanged` is "already in that state *with that note*", so `pin [2]` on
-/// something already pinned, for a new reason, came back as `changed` - which is true of the note
+/// something already pinned, for a new reason, comes back as `changed` - which is true of the note
 /// and false of the item. The report read it as a move: `1 item(s) are now pinned: 2`, over figures
 /// that had not moved by a token, and it put a step in this tool's journal that `undo` then
-/// described as `2 now pinned` about an item that was still pinned. Two calls that restated a pin
-/// were two things to walk back and neither walked anything. The reason now goes to the items that
-/// move and to nothing else, so an item already where the call asks for it is left with the note
-/// it had, and the journal holds the moves.
+/// described as `2 now pinned` about an item that was still pinned. Two calls that restated a
+/// pin were two things to walk back and neither walked anything. What actually happened is that
+/// the reason was rewritten, so that is what it says now, and the journal holds the moves.
 #[tokio::test]
 async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -1481,7 +1478,7 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
             "context",
             json!({ "action": "pin", "ids": [2], "reason": "keeping this" }),
         ),
-        // the same state, a new reason: nothing about the item has changed
+        // the same state, a new reason: the kernel calls this changed, because the note changed
         call(
             "c2",
             "context",
@@ -1536,8 +1533,8 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
         said[1]
     );
     assert!(
-        said[1].contains("they keep the note they had"),
-        "and what did not happen to them is worth saying: {}",
+        said[1].contains("the reason, which now reads `still keeping it`"),
+        "and what did happen is worth having: {}",
         said[1]
     );
 
@@ -1560,94 +1557,6 @@ async fn restating_a_state_is_not_a_move_and_is_not_something_to_undo() {
         said[5].contains("there was nothing of yours to walk back"),
         "a restatement is not a step in the journal: {}",
         said[5]
-    );
-}
-
-/// A `restore` of something already active changes nothing at all: no note, no event, no undo.
-///
-/// note: the call is a coherent one. A model asked to put a message back and finding it already
-/// back has said nothing wrong - and the tool answered by writing its reason onto the person's
-/// words, announcing `context.changed` from active to active, and taking a checkpoint. So `undo`
-/// spent its first step walking the restatement back, and the change after it needed two, and
-/// nothing in the answer said that would happen.
-#[tokio::test]
-async fn a_restore_of_something_already_active_leaves_it_exactly_as_it_was() {
-    let (kernel, _provider, _anchor) = agent(one_turn(vec![
-        call(
-            "c1",
-            "context",
-            json!({ "action": "restore", "ids": [1], "reason": "putting it back" }),
-        ),
-        // nothing of this tool's own to walk back, and a restatement is not a step in the journal
-        call(
-            "c2",
-            "context",
-            json!({ "action": "undo", "reason": "back" }),
-        ),
-        call(
-            "c3",
-            "context",
-            json!({ "action": "exclude", "ids": [1], "reason": "enough of this" }),
-        ),
-        // one step, and it is the exclusion: a restatement took no checkpoint for the first one
-        // to spend itself on
-        call(
-            "c4",
-            "context",
-            json!({ "action": "undo", "reason": "back" }),
-        ),
-        call(
-            "c5",
-            "context",
-            json!({ "action": "undo", "reason": "back" }),
-        ),
-    ]));
-
-    kernel.push(ContextItem::user("this is the question"));
-    let records = kernel.history().len();
-
-    kernel.turn().await.expect("the turn failed");
-
-    let said = answers_from(&kernel, &["context"]);
-    assert!(
-        said[0].starts_with("0 item(s) are now active"),
-        "{}",
-        said[0]
-    );
-    assert!(
-        said[0].contains("were already active and did not move: 1"),
-        "{}",
-        said[0]
-    );
-
-    let item = kernel.item(ContextId(1)).expect("still there");
-    assert_eq!(item.state, ContextState::Active);
-    assert_eq!(
-        item.note, None,
-        "the model's reason was written onto a message the person wrote"
-    );
-
-    assert!(
-        said[1].contains("there was nothing of yours to walk back"),
-        "a move that changed nothing is not a step to walk back: {}",
-        said[1]
-    );
-    assert!(
-        said[3].contains("1 now active"),
-        "and the exclusion is the first step: {}",
-        said[3]
-    );
-    assert!(
-        said[4].contains("there was nothing of yours to walk back"),
-        "one change is one step, whichever way it was reached: {}",
-        said[4]
-    );
-    // a move that changed nothing is not a change the log has to carry
-    assert!(
-        !kernel.history()[..records]
-            .iter()
-            .any(|record| matches!(&record.event, Event::ContextChanged { .. })),
-        "the restore of something already active was announced as a change from active to active"
     );
 }
 

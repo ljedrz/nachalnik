@@ -428,24 +428,23 @@ impl Changes {
             .filter_map(|id| kernel.item(*id))
             .map(|item| (item.id, item.state, item.note.clone()))
             .collect();
-        // note: the reason goes to the items that move and to nothing else. An item already in
-        // the state this call asks for is passed no note, so the kernel finds nothing to change
-        // and changes nothing - which is the rule an operation that changes nothing follows.
-        // Passing it to those as well wrote the model's reason onto whatever note the item
-        // already carried, announced `context.changed` from active to active, and took a
-        // checkpoint, so `undo` spent itself walking a restatement back and never reached the
-        // change the model was asking about
-        let (moved, standing): (Vec<_>, Vec<_>) =
-            was.into_iter().partition(|(_, had, _)| *had != state);
-        let changed = kernel.set_state(
-            moved.iter().map(|(id, ..)| *id).collect::<Vec<_>>(),
-            state,
-            Some(reason.to_owned()),
-        );
+        let changed = kernel.set_state(allowed, state, Some(reason.to_owned()));
         for id in &changed.changed {
             self.note_pin(kernel, *id, state, Some(reason.to_owned()));
         }
         self.journal.lock().refresh(kernel, &changed.changed);
+        // note: `StateChange::unchanged` is "already in that state *with that note*", so an item
+        // that was pinned and is being pinned again for a different reason comes back as changed -
+        // which is true of the note and false of the item. Read as a move, `pin [2]` on something
+        // already pinned would say "1 item(s) are now pinned: 2" over figures that had not moved,
+        // and put a step in the journal that `undo` would describe as "2 back to pinned" about an
+        // item that is still pinned. What actually happened is that the reason was rewritten, so
+        // that is what it says. `was` is read before the change and already
+        // holds the state each item had, so telling the two apart costs nothing.
+        let (moved, restated): (Vec<_>, Vec<_>) = was
+            .into_iter()
+            .filter(|(id, ..)| changed.changed.contains(id))
+            .partition(|(_, had, _)| *had != state);
         if !moved.is_empty() {
             self.record(kernel, Undoing::States(moved.clone()));
         }
@@ -458,16 +457,34 @@ impl Changes {
             out.push_str(&format!(": {}", numbers_of(&moved)));
         }
         out.push('\n');
-        // everything that did not move, said once and in one place. The kernel counts an item it
-        // was not given a note for as unchanged whatever it was before, so the two lists are read
-        // off `was` - which is the distinction about the item, and the one the report is about
-        if !standing.is_empty() {
+        // everything that did not move, said once and in one place. The kernel splits it in two -
+        // `unchanged` is same state *and* same note, `restated` is same state with a new reason -
+        // and that is a distinction about the record rather than about the item, so it goes in the
+        // clause rather than in a second line of its own
+        let still = [numbers_of(&restated), numbers(&changed.unchanged)];
+        let still: Vec<&str> = still
+            .iter()
+            .map(String::as_str)
+            .filter(|n| !n.is_empty())
+            .collect();
+        if !still.is_empty() {
             out.push_str(&format!(
-                "{} item(s) were already {state} and did not move: {} - they keep the note they \
-                 had, and nothing was written on them\n",
-                standing.len(),
-                numbers_of(&standing),
+                "{} item(s) were already {state} and did not move: {}",
+                restated.len() + changed.unchanged.len(),
+                still.join(", "),
             ));
+            out.push_str(&match (restated.is_empty(), changed.unchanged.is_empty()) {
+                (true, _) => "\n".to_owned(),
+                // named only where there is something to tell them from; the reason was rewritten
+                // on the ones the kernel reported as changed, and those are all of them here
+                (false, true) => {
+                    format!(" - what changed is the reason, which now reads `{reason}`\n")
+                }
+                (false, false) => format!(
+                    " - what changed is the reason on {}, which now reads `{reason}`\n",
+                    numbers_of(&restated)
+                ),
+            });
         }
         // the way back, at the moment it becomes worth knowing. A model that has just put a batch
         // of items away otherwise spends calls guessing at how to put them back; a line here is

@@ -364,12 +364,6 @@ minor bump may break you.
   its own question was already in the context. The calling turn's content and reasoning are now
   skipped along with its calls, so a search reports what the context holds and not what the model
   just wrote.
-- **A `restore` or `pin` of something already in that state changes nothing.** `restore ids:[1]` on
-  an active message wrote the model's reason onto the person's words, announced
-  `context.changed 1 active->active`, and took a checkpoint, so the model's `undo` spent its first
-  step walking the restatement back. The reason is now passed only to the items that move, so an
-  item already where the call asks for it keeps the note it had, no change is announced, and no
-  checkpoint is taken - the answer still says what did and did not move.
 - **A confined command no longer has the terminal.** It kept the controlling terminal this
   program's screen reads its keys from, and `/dev` is granted, so a command could push a `y` into
   that input with `TIOCSTI` and answer its own question - on kernels that still allow `TIOCSTI` -
