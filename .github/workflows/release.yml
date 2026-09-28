@@ -58,6 +58,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+      # the two an attestation needs: a token that says which workflow run this is, and the right
+      # to record what it built
+      id-token: write
+      attestations: write
     strategy:
       # a target that will not build is worth knowing about on its own rather than through the
       # other one being cancelled, and on a tag the release is already made by the time these run
@@ -84,6 +88,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y musl-tools
 
+      # note: the one path a build leaves in the binary. The workspace's own sources reach rustc
+      # by relative paths, but every dependency's is under `CARGO_HOME`, and a panic names where it
+      # happened - so without this a binary is reproducible only by somebody whose home directory
+      # is the runner's. Remapped, it is reproducible by anybody with the same toolchain and
+      # `Cargo.lock`; `reproduce` below is what checks that it is
+      - name: the paths a build leaves in the binary
+        run: echo "RUSTFLAGS=--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo" >> "$GITHUB_ENV"
+
       # note: static musl rather than glibc, so that what a release attaches runs wherever the
       # kernel is new enough rather than wherever the distribution is. The confinement survives
       # it: `kamchatka`'s suite has passed against the x86_64 target, Landlock tests included,
@@ -96,7 +108,8 @@ jobs:
       # building in a container. There is nothing to cross here but one C dependency, the line
       # above is the compiler for it, and a binary built by the toolchain the tests ran under is
       # worth more than one built somewhere else.
-      - uses: taiki-e/upload-rust-binary-action@v1
+      - id: upload
+        uses: taiki-e/upload-rust-binary-action@v1
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CC_aarch64_unknown_linux_musl: musl-gcc
@@ -142,3 +155,39 @@ jobs:
           leading-dir: true
           dry-run: ${{ github.event_name == 'workflow_dispatch' }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # note: the binary built a second time, from a checkout at another path with crates fetched
+      # into another `CARGO_HOME`, and compared byte for byte with the one above. Those are the two
+      # things somebody reproducing a release will not have the same, and a second build from the
+      # same directories agrees whatever is embedded in it, which proves nothing. After the upload
+      # rather than before, because the upload is also the build; on a tag a red step here is a
+      # release that has gone out and cannot be reproduced, and on a dispatch it is the check
+      - name: reproduce
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
+          CC_aarch64_unknown_linux_musl: musl-gcc
+        run: |
+          shipped="$PWD/target/${{ matrix.target }}/release/kamchatka"
+          again="$RUNNER_TEMP/again"
+          git worktree add --detach "$again" HEAD
+          cd "$again"
+          CARGO_HOME="$RUNNER_TEMP/cargo-again" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/target-again" \
+            RUSTFLAGS="--remap-path-prefix=$RUNNER_TEMP/cargo-again=/cargo" \
+            cargo build --release --locked -p kamchatka --bin kamchatka \
+              --features shell-advisor --target ${{ matrix.target }}
+          rebuilt="$RUNNER_TEMP/target-again/${{ matrix.target }}/release/kamchatka"
+          sha256sum "$shipped" "$rebuilt"
+          cmp "$shipped" "$rebuilt"
+
+      # note: what ties the archive to this repository, this workflow and this tag, which a
+      # checksum beside it cannot - whoever could replace the one could replace the other.
+      # `gh attestation verify ARCHIVE --repo ljedrz/nachalnik` checks it. On a tag and nothing
+      # else, because a dispatch builds a binary nobody is handed, and an attestation is a public
+      # record of one
+      - uses: actions/attest-build-provenance@v4
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+        with:
+          subject-path: |
+            ${{ steps.upload.outputs.tar }}
+            target/${{ matrix.target }}/release/kamchatka

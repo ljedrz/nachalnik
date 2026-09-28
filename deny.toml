@@ -1,0 +1,52 @@
+# What `cargo deny check` holds the dependency tree to, in CI's `deny` job.
+#
+# note: every feature and every target, because a released `kamchatka` is built with
+# `shell-advisor` and the libraries are built on three platforms. A licence or an advisory in a
+# crate only one configuration pulls in is still one somebody ships.
+[graph]
+all-features = true
+
+# note: the defaults, which fail on a known vulnerability, an unmaintained crate and a yanked
+# version. Nothing is ignored; an entry here would need the advisory's id and a sentence on why
+# it does not reach this workspace.
+[advisories]
+version = 2
+
+# note: the licences the tree actually needs, and no others, so a new one is a decision rather
+# than something that arrived with an update. A crate that offers a choice is satisfied by MIT or
+# Apache-2.0 where it offers one, so what is listed past those two is here for a crate that does
+# not: MPL-2.0 for `nucleo-matcher` and `char_index`, file-level copyleft that asks nothing of
+# this code; CDLA-Permissive-2.0 for the root certificates in `webpki-root-certs`; ISC,
+# BSD-3-Clause, Zlib and BSL-1.0 for `ring`, `untrusted`, `rustls-webpki`, `subtle`, `foldhash`
+# and `ryu`; and the Unicode licence for the Unicode tables.
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# `nachalnik-utils` is never published and is nobody else's to license
+private = { ignore = true }
+
+# note: two versions of one crate is a warning and not a failure. The tree has several, all
+# pulled in by dependencies rather than chosen here, and the fix is somebody else's release.
+# A wildcard version is refused, except on a path dependency: `nachalnik-utils` is depended on
+# with no version on purpose - see the workspace manifest.
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+# crates.io and nothing else: no git dependency and no other registry
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

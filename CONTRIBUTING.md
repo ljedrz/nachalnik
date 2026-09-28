@@ -446,6 +446,22 @@ for, so there is nothing for it to agree with.
   single file that claims to sandbox what it runs. The only thing in the tree needing a cross
   toolchain is `ring`, which compiles C; rust ships its own musl libc for the rest.
 
+  **Each binary is built twice and attested.** The second build is from a checkout at another
+  path, with the crates fetched into another `CARGO_HOME`, and has to match the shipped binary byte
+  for byte. The shipped build remaps `CARGO_HOME` to `/cargo`, because a dependency's source path
+  is otherwise compiled in, as the location a panic names. So anybody with the same stable
+  toolchain and `Cargo.lock` gets the same bytes from:
+
+  ```console
+  RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo" cargo build --release --locked \
+    -p kamchatka --bin kamchatka --features shell-advisor --target x86_64-unknown-linux-musl
+  ```
+
+  On a tag, the archive and the binary also get a build provenance attestation. That ties them to
+  this repository, the workflow and the tag, which the `sha256` beside them cannot do: whoever can
+  replace the archive can replace the checksum. `gh attestation verify ARCHIVE --repo
+  ljedrz/nachalnik` checks it.
+
   **Run it on `workflow_dispatch` before tagging.** It builds and packages and uploads nothing,
   which is how to find out that a musl toolchain, a C dependency and somebody else's action still
   work on a day that is not the day of the release.
