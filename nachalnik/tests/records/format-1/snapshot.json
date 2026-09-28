@@ -1,0 +1,138 @@
+{
+  "format": 1,
+  "session": "0",
+  "items": [
+    {
+      "id": 1,
+      "kind": {
+        "kind": "reference"
+      },
+      "source": "file",
+      "label": "src/a.rs",
+      "content": {
+        "text": "fn a() {}"
+      },
+      "tokens": 3,
+      "uncounted": 0,
+      "state": "pinned",
+      "meta": null,
+      "included_because": null,
+      "note": null
+    },
+    {
+      "id": 2,
+      "kind": {
+        "kind": "user_message"
+      },
+      "source": "user",
+      "label": "user",
+      "content": {
+        "text": "have a look"
+      },
+      "tokens": 3,
+      "uncounted": 0,
+      "state": "active",
+      "meta": null,
+      "included_because": null,
+      "note": null
+    },
+    {
+      "id": 3,
+      "kind": {
+        "kind": "assistant_message",
+        "tool_calls": [
+          {
+            "id": "c1",
+            "tool": "peek",
+            "args": {
+              "path": "src/a.rs"
+            }
+          }
+        ],
+        "reasoning": {
+          "text": "i should look"
+        }
+      },
+      "source": "model",
+      "label": "assistant",
+      "content": {
+        "text": "looking"
+      },
+      "tokens": 12,
+      "uncounted": 0,
+      "state": "active",
+      "meta": null,
+      "included_because": null,
+      "note": null
+    },
+    {
+      "id": 4,
+      "kind": {
+        "kind": "tool_result",
+        "call": "c1",
+        "tool": "peek",
+        "is_error": false
+      },
+      "source": "tool_result",
+      "label": "peek",
+      "content": {
+        "text": "ok"
+      },
+      "tokens": 1,
+      "uncounted": 0,
+      "state": "active",
+      "meta": null,
+      "included_because": null,
+      "note": null
+    },
+    {
+      "id": 5,
+      "kind": {
+        "kind": "assistant_message",
+        "tool_calls": [],
+        "reasoning": null
+      },
+      "source": "model",
+      "label": "assistant",
+      "content": {
+        "text": "it says ok"
+      },
+      "tokens": 3,
+      "uncounted": 0,
+      "state": "active",
+      "meta": null,
+      "included_because": null,
+      "note": null
+    },
+    {
+      "id": 6,
+      "kind": {
+        "kind": "reference"
+      },
+      "source": "file",
+      "label": "src/big.rs",
+      "content": {
+        "text": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+      },
+      "tokens": 10,
+      "uncounted": 0,
+      "state": "excluded",
+      "meta": null,
+      "included_because": null,
+      "note": "too big"
+    }
+  ],
+  "params": {},
+  "next_item": 7,
+  "used_calls": [
+    "c1"
+  ],
+  "last_seq": 26,
+  "next_permission": 2,
+  "calibration": {
+    "scale": 1.0,
+    "observations": 0,
+    "estimated": 0,
+    "reported": 0
+  }
+}

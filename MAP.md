@@ -20,7 +20,7 @@ from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `tokens.rs` | `TokenCounter`, `BytesPerToken`, `Calibrating`. |
 | `compaction.rs` | `Compactor`, `Budget`, `CompactionPlan`/`Report`. |
 | `event.rs` | `Event` (the whole observability story), `Delta`, `DeltaSink`, `OutputSink`. |
-| `session.rs` | `Session`, `Record`, `Snapshot`. |
+| `session.rs` | `Session`, `Record`, `Snapshot`, and `FORMAT`, the number both are written in. `tests/records/` holds one of each event and a snapshot per format, and is the schema a reader who is not this crate builds against. |
 | `config.rs`, `error.rs` | `Config` (with the reasoning for each default in the docs), `Error`. |
 | `selectors.rs` | feature `selectors`: `17`, `tool:grep:latest`, `all:tool_results`, `file:src/foo.rs`. |
 | `test.rs` | feature `test`: `ScriptedProvider`/`TooLongProvider`, `EchoTool`/`ConstTool`/`BrokenTool`, `AllowAll`/`DenyAll`/`Table`, `LargestFirstCompactor`. Use these rather than writing another mock. |

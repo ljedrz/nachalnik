@@ -1,0 +1,17 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "model.params",
+    "params": {
+      "contents": null,
+      "systemInstruction": null,
+      "toolConfig": {
+        "functionCallingConfig": {
+          "mode": "ANY"
+        }
+      },
+      "tools": null
+    }
+  }
+}

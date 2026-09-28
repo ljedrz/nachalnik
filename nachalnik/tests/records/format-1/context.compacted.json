@@ -1,0 +1,32 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "context.compacted",
+    "report": {
+      "removed": [
+        {
+          "id": 1,
+          "label": "src/a.rs",
+          "tokens": 100
+        }
+      ],
+      "elided": [
+        {
+          "id": 2,
+          "label": "src/b.rs",
+          "tokens": 100
+        }
+      ],
+      "refused": [],
+      "summary": {
+        "id": 3,
+        "label": "summary",
+        "tokens": 4
+      },
+      "reason": "the context was full",
+      "tokens_before": 206,
+      "tokens_after": 16
+    }
+  }
+}

@@ -254,7 +254,7 @@ pub use crate::{
         PermissionRequest, Verdict,
     },
     projection::{LinearProjector, Projection, Projector, Skipped},
-    session::{Record, Session, Snapshot},
+    session::{FORMAT, Record, Session, Snapshot},
     tokens::{BytesPerToken, Calibrating, Calibration, TokenCounter},
     tool::{Tool, ToolOutput, ToolSpec},
 };

@@ -7,6 +7,27 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **The log and the snapshot say what format they are written in.** `nachalnik::FORMAT` is `1`.
+  `Snapshot::format` carries it, and so does `Record::format`, but only on the record a session
+  begins with: its `session.started` or `session.resumed`. Both have `serde(default)`, so anything
+  written before reads as format `0` (a snapshot) or with no format (a record), and resumes as it
+  always did. The number moves only when something already written would be read differently.
+  Adding an event or a field does not move it.
+- **`Event::Unknown`: a log from a later version reads, one record at a time.** It is
+  `#[serde(other)]`, so an event tag this version does not know reads as `Unknown` instead of
+  failing the whole log. A known tag that is missing fields is still an error, because that log is
+  wrong rather than newer. The kernel never emits it.
+- **`Snapshot::problems` names a call and a result that do not pair**: a result answering a call
+  that no earlier item makes, and a second result for the same call. The kernel records neither.
+  A call with no result is not named, because a snapshot taken while the call ran holds one. It
+  also names a snapshot written in a later format.
+- **`tests/records/` holds one fixture of every event and one snapshot, per format.** The tests
+  there check that every past format still reads, that the current fixtures are exactly what this
+  version writes, and that every event has a fixture. Those files are the schema someone other
+  than this crate can build a reader, a `jq` filter or a dashboard against.
+
 ### changed
 
 - **A tool that panics is a call that failed, not a step that unwinds.** The panic is caught

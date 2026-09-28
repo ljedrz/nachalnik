@@ -1,0 +1,32 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "model.requested",
+    "model": {
+      "provider": "scripted",
+      "model": "scripted",
+      "context_limit": 128000,
+      "max_output_tokens": null,
+      "tool_calling": true,
+      "reasoning": false,
+      "parameters": []
+    },
+    "messages": 2,
+    "tools": 4,
+    "tokens": 2826,
+    "items": [
+      2,
+      3
+    ],
+    "skipped": [
+      {
+        "id": 1,
+        "reason": "an orphaned tool result"
+      }
+    ],
+    "repairs": [
+      "dropped item 1 (a result of `shell`): the call `c0` is not in the projection"
+    ]
+  }
+}

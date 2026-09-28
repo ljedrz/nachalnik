@@ -30,6 +30,16 @@ use crate::{
     tokens::Calibration,
 };
 
+/// The format the log and the snapshot are written in, which [`Snapshot::format`] and
+/// [`Record::format`] carry.
+///
+/// note: a number that moves when something already written would be read differently, and not
+/// when something is added: a new event, a new field with a `serde(default)` and a new state all
+/// leave it where it is, because a reader of this format reads them already - an event it does not
+/// know as [`Event::Unknown`], a field it does not know not at all. `0` is what a record or a
+/// snapshot written before formats were numbered reads as.
+pub const FORMAT: u32 = 1;
+
 /// A single entry in a session's history.
 ///
 /// note: `#[non_exhaustive]` because the log is written here and read everywhere else. A reader
@@ -38,6 +48,16 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Record {
+    /// The [`FORMAT`] the log is written in, on the record that begins a session - its
+    /// [`Event::SessionStarted`] or [`Event::SessionResumed`] - and on no other.
+    ///
+    /// note: on those two because a log begins with one of them, and a log carried on across a
+    /// resume has the second where it was carried on, so a reader meets the format before
+    /// anything written in it. Not a line of its own ahead of the records, which a reader that
+    /// takes every line for a record could not read, and not on every record, where it would be the
+    /// same number a million times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<u32>,
     /// The entry's sequence number, starting at 1 and never reused.
     pub seq: u64,
     /// When it was recorded, in milliseconds since the Unix epoch.
@@ -144,6 +164,11 @@ impl Session {
     pub(crate) fn append(&mut self, event: Event) {
         self.seq = self.seq.saturating_add(1);
         let record = Record {
+            format: matches!(
+                event,
+                Event::SessionStarted { .. } | Event::SessionResumed { .. }
+            )
+            .then_some(FORMAT),
             seq: self.seq,
             at: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -177,6 +202,13 @@ impl Session {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Snapshot {
+    /// The [`FORMAT`] it is written in.
+    ///
+    /// note: `serde(default)`, so a snapshot written before this existed reads as `0`, and
+    /// resumes as it always did. One from a later format is named by [`Snapshot::problems`]
+    /// rather than read as though it were this one.
+    #[serde(default)]
+    pub format: u32,
     /// The session's name.
     pub session: String,
     /// Every context item, in order, with the identifiers it had.
@@ -243,8 +275,24 @@ impl Snapshot {
     /// out of order are sorted by identifier, a `next_item` that is not past every item is moved
     /// past them, and every call the items name is reserved whether or not `used_calls` lists it -
     /// and cannot repair a number too near the top of a `u64` to count on from.
+    ///
+    /// note: and a call and its result that do not pair: a result answering a call no item makes,
+    /// or made only after it, and two results answering one call. The kernel records neither, so
+    /// either is a snapshot something else changed. A call with no result is not among them - a
+    /// snapshot taken while the call ran, or before a crash, holds one, and the projector leaves
+    /// it out of the next request and says so.
+    ///
+    /// note: and a snapshot in a later [`FORMAT`] than this one, which is read as far as it fits
+    /// this version's types and may mean something this version cannot tell.
     pub fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
+
+        if self.format > FORMAT {
+            problems.push(format!(
+                "it is written in format {}, and this reads format {FORMAT} and earlier",
+                self.format
+            ));
+        }
 
         let mut held = std::collections::HashSet::new();
         let mut highest_so_far = 0;
@@ -269,6 +317,25 @@ impl Snapshot {
                     "the call `{}` is in the items and not in `used_calls`",
                     call.0
                 ));
+            }
+        }
+
+        let mut made = std::collections::HashSet::new();
+        let mut answered = std::collections::HashSet::new();
+        for item in &self.items {
+            made.extend(item.calls().map(|call| &call.id));
+            if let crate::context::ContextKind::ToolResult { call, .. } = &item.kind {
+                if !made.contains(call) {
+                    problems.push(format!(
+                        "item {} answers the call `{}`, which no item before it makes",
+                        item.id, call.0
+                    ));
+                } else if !answered.insert(call) {
+                    problems.push(format!(
+                        "item {} answers the call `{}` a second time",
+                        item.id, call.0
+                    ));
+                }
             }
         }
 

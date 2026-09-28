@@ -754,6 +754,76 @@ fn a_next_item_the_items_have_passed_is_named() {
     assert_eq!(resumed.push(ContextItem::user("three")).0, 3);
 }
 
+/// A result that answers no call before it, or answers one a second time, is named; a call with
+/// no result is not.
+///
+/// note: the kernel records neither of the first two, so a snapshot holding one is a snapshot
+/// something else changed. The third is what a snapshot taken while a call ran looks like.
+#[tokio::test]
+async fn a_result_that_pairs_with_no_call_is_named_and_an_unanswered_call_is_not() {
+    let kernel = worked_session().await;
+    let clean = kernel.snapshot();
+    assert!(clean.problems().is_empty(), "{:?}", clean.problems());
+    let result = clean
+        .items
+        .iter()
+        .position(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .expect("the session ran a tool");
+
+    let mut twice = clean.clone();
+    let mut again = twice.items[result].clone();
+    again.id = nachalnik::ContextId(twice.next_item);
+    twice.next_item += 1;
+    twice.items.push(again);
+    let problems = twice.problems();
+    assert!(
+        problems.iter().any(|it| it.contains("a second time")),
+        "{problems:?}"
+    );
+
+    let mut early = clean.clone();
+    let turn = result - 1;
+    early.items.swap(turn, result);
+    let problems = early.problems();
+    assert!(
+        problems
+            .iter()
+            .any(|it| it.contains("no item before it makes")),
+        "{problems:?}"
+    );
+
+    let mut unanswered = clean.clone();
+    unanswered.items.remove(result);
+    assert!(
+        unanswered.problems().is_empty(),
+        "{:?}",
+        unanswered.problems()
+    );
+}
+
+/// A snapshot says the format it is written in, and one from a later format is named.
+#[test]
+fn a_snapshot_from_a_later_format_is_named() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("hello"));
+    let mut snapshot = kernel.snapshot();
+    assert_eq!(snapshot.format, nachalnik::FORMAT);
+
+    snapshot.format = nachalnik::FORMAT + 1;
+    let problems = snapshot.problems();
+    assert!(
+        problems.iter().any(|it| it.contains("format")),
+        "{problems:?}"
+    );
+
+    // and one written before formats were numbered is format 0, and reads as it always did
+    let mut written = serde_json::to_value(kernel.snapshot()).unwrap();
+    written.as_object_mut().unwrap().remove("format");
+    let older: Snapshot = serde_json::from_value(written).unwrap();
+    assert_eq!(older.format, 0);
+    assert!(older.problems().is_empty(), "{:?}", older.problems());
+}
+
 /// Numbers at the top of what a `u64` holds are named as a problem, and resuming one anyway is
 /// not a panic.
 #[test]

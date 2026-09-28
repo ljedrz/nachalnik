@@ -1,0 +1,14 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "tool.finished",
+    "call": "c1",
+    "tool": "big",
+    "is_error": false,
+    "truncated": 949,
+    "tokens": 25,
+    "item": 4,
+    "whole": 3
+  }
+}

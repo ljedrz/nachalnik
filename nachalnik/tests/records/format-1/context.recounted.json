@@ -1,0 +1,9 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "context.recounted",
+    "tokens_before": 0,
+    "tokens_after": 0
+  }
+}
