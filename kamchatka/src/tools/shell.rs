@@ -324,12 +324,18 @@ impl Tool for Shell {
             _ => "",
         };
 
+        // note: the directory named, and said to be where every call starts. A model that cannot
+        // see where it is, or has been trained where a shell's directory drifts between calls,
+        // opens each command with `cd` to a path it guessed - a stage the advisor asks about, and
+        // a relative path `Sandbox::note_for` then judges from the wrong place
         ToolSpec::new(
             "shell",
             format!(
-                "runs one command with `sh -c` in the working directory and returns its exit \
-                 status, its errors and its output.{cut} Nothing \
+                "runs one command with `sh -c` and returns its exit status, its errors and its \
+                 output. Every call starts afresh in the working directory, {}, so a `cd` lasts \
+                 only as long as the command it is in.{cut} Nothing \
                  is typed at it: a command reading its input reads end-of-file.{}",
+                self.workdir.display(),
                 match self.confiner.is_some() {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \
@@ -993,6 +999,27 @@ mod tests {
             .to_text()
             .into_owned();
         assert!(said.contains("is not something `shell` does"), "{said}");
+    }
+
+    /// The description names the directory every call starts in, and a `cd` in one call is gone
+    /// by the next - which is the claim that lets a model stop opening each command with one.
+    #[tokio::test]
+    async fn every_call_starts_where_the_description_says() {
+        let here = std::env::temp_dir();
+        let said = unconfined().spec().description;
+        assert!(
+            said.contains(&format!("working directory, {},", here.display())),
+            "{said}"
+        );
+
+        let moved = ran("cd / && pwd").await;
+        assert!(moved.lines().any(|line| line == "/"), "{moved}");
+        let after = ran("pwd").await;
+        let at = here.canonicalize().expect("the temporary directory");
+        assert!(
+            after.lines().any(|line| std::path::Path::new(line) == at),
+            "{after}"
+        );
     }
 
     /// A shell with no confinement, in the temporary directory.
