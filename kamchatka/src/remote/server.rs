@@ -62,7 +62,8 @@ pub struct Server {
     unlink: Option<(std::path::PathBuf, u64, u64)>,
     /// The port, when it is one, closed to this process's confined commands while it is served.
     closed: Option<u16>,
-    /// When a connection last failed to arrive, and so when to try again; `None` while they do.
+    /// When to try again after a connection last failed to arrive; `None` once they have been
+    /// arriving for a while. See [`Server::arrived`].
     ///
     /// note: behind a lock because [`Server::arrived`] takes `&self`, for the `select!` it is a
     /// branch of - and a future holding a `Cell` would not be `Send`.
@@ -300,10 +301,15 @@ impl Server {
     /// note: this and `attend` are the pair a loop that is not [`Server::run`] needs, and they are
     /// two calls because a `select!` branch may borrow the listener or the `App` and not both.
     ///
-    /// note: a failure is handed back once, and until a connection arrives again every later one is
-    /// waited out quietly, `RESTING` apart. Both loops say what this hands back to everybody
-    /// attached, and out of file descriptors it would otherwise be a line to each of them for every
-    /// turn of the loop until somebody closed something.
+    /// note: a failure is handed back once, and every later one in the same run of them is waited
+    /// out quietly, `RESTING` apart. Both loops say what this hands back to everybody attached, and
+    /// out of file descriptors it would otherwise be a line to each of them for every turn of the
+    /// loop until somebody closed something.
+    ///
+    /// note: a run ends once a whole `RESTING` has gone by past the retry without another failure,
+    /// and not when one connection arrives. Descriptors come back one at a time, as the tasks
+    /// holding them read to the end, so the first connection taken on the way out of a shortage is
+    /// often followed by another failure - and ended there, the run would be said twice.
     pub async fn arrived(&self) -> std::io::Result<Arrived> {
         loop {
             let resting = *self.resting.lock().unwrap_or_else(|e| e.into_inner());
@@ -312,22 +318,24 @@ impl Server {
             }
             let accepted = self.accept().await;
             let mut resting = self.resting.lock().unwrap_or_else(|e| e.into_inner());
+            let now = tokio::time::Instant::now();
+            let over = run_is_over(*resting, now);
             match accepted {
                 Ok(connection) => {
-                    *resting = None;
+                    if over {
+                        *resting = None;
+                    }
 
                     return Ok(Arrived(connection));
                 }
                 Err(e) => {
-                    if resting
-                        .replace(tokio::time::Instant::now() + RESTING)
-                        .is_none()
-                    {
+                    *resting = Some(now + RESTING);
+                    if over {
                         return Err(std::io::Error::new(
                             e.kind(),
                             format!(
                                 "{e}; waiting a moment between attempts from here on, and saying \
-                                 nothing more until one succeeds"
+                                 nothing more until they have stopped failing"
                             ),
                         ));
                     }
@@ -459,6 +467,12 @@ impl Server {
             None => Ok(()),
         }
     }
+}
+
+/// Whether a run of failed arrivals is over by `now`, given when the listener was next to be tried
+/// after the last of them; see [`Server::arrived`].
+fn run_is_over(resting: Option<tokio::time::Instant>, now: tokio::time::Instant) -> bool {
+    resting.is_none_or(|until| now >= until + RESTING)
 }
 
 /// Takes on a connection, or says why there is not one; one branch of [`Server::run`]'s loop.
@@ -1760,4 +1774,29 @@ pub fn opening(app: &mut App, address: &str) {
              give"
         ),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A run of failed arrivals is one run until a whole `RESTING` goes by past the retry, however
+    /// many connections got through in the middle of it.
+    #[test]
+    fn a_run_of_failures_ends_with_a_quiet_rest_and_not_with_one_arrival() {
+        let start = tokio::time::Instant::now();
+        let at = |millis: u64| start + Duration::from_millis(millis);
+
+        // nothing has failed yet, so the first failure is said
+        assert!(run_is_over(None, at(0)));
+
+        // failed at 0, so tried again at 1000: a failure there, and one just after a connection
+        // got through at 1000, are both the same run
+        let resting = Some(at(0) + RESTING);
+        assert!(!run_is_over(resting, at(1_000)));
+        assert!(!run_is_over(resting, at(1_010)));
+
+        // and a whole rest past the retry with nothing failing is the end of it
+        assert!(run_is_over(resting, at(2_000)));
+    }
 }
