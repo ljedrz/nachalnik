@@ -209,7 +209,9 @@ line, and that is the question a log is for.
 `Kernel::subscribe` is the live stream; `Kernel::history` is the append-only session log (both
 written under one lock, so their order agrees), which keeps `model.delta` and `tool.output` only
 when `Config::record_progress` is on. Records are plain `serde` types, so persisting a session is
-one line per event.
+one line per event. The record a session begins with carries `FORMAT`, and so does a snapshot. An
+event a reader's version does not know reads as `Event::Unknown` rather than failing the log. And
+`tests/records/` holds one of every event and a snapshot, per format, as the shapes to read against.
 
 The log stays small by *naming* things rather than copying them: `model.requested` records the
 context ids a request was projected from, not the messages. The one event that carries content is

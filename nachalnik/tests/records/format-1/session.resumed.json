@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "session.resumed",
+    "session": "3",
+    "items": 1,
+    "tokens": 1
+  }
+}

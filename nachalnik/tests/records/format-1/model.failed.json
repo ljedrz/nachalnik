@@ -1,0 +1,12 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "model.failed",
+    "error": "the request is 286315 tokens long and the model takes 262144",
+    "overrun": {
+      "tokens": 286315,
+      "limit": 262144
+    }
+  }
+}

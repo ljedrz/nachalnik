@@ -522,6 +522,15 @@ pub enum Event {
         /// What makes room now; `None` means nothing will ever be dropped to make it.
         to: Option<String>,
     },
+    /// An event this version does not know, read from a log a later one wrote.
+    ///
+    /// note: the kernel never emits it. It is what a reader gets instead of an error, so that one
+    /// new event in a log a newer runtime wrote costs that record rather than the whole log. What
+    /// the event was called and what it held are not kept - the line it was read from still has
+    /// both - and a record that names an event this version *does* know and does not fit it is
+    /// still an error, because that is a log that is wrong rather than one that is newer.
+    #[serde(rename = "unknown", other)]
+    Unknown,
 }
 
 impl Event {
@@ -565,6 +574,7 @@ impl Event {
             Self::ProjectorChanged { .. } => "projector.changed",
             Self::CounterChanged { .. } => "counter.changed",
             Self::CompactorChanged { .. } => "compactor.changed",
+            Self::Unknown => "unknown",
         }
     }
 }

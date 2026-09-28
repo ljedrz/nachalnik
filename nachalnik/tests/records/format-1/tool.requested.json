@@ -1,0 +1,17 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "tool.requested",
+    "call": "c1",
+    "tool": "log",
+    "args": {
+      "action": "read",
+      "ids": [],
+      "kinds": [],
+      "since": 0,
+      "take": 2,
+      "whole": false
+    }
+  }
+}

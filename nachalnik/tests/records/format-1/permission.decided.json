@@ -1,0 +1,12 @@
+{
+  "seq": 7,
+  "at": 1790000000000,
+  "event": {
+    "event": "permission.decided",
+    "id": 1,
+    "call": "c1",
+    "tool": "fs",
+    "grant": "deny",
+    "source": "user"
+  }
+}

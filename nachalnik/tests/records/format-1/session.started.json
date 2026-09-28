@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "seq": 1,
+  "at": 1790000000000,
+  "event": {
+    "event": "session.started",
+    "session": "9"
+  }
+}

@@ -499,6 +499,7 @@ impl Kernel {
         used_calls.dedup();
 
         Snapshot {
+            format: crate::session::FORMAT,
             session,
             items,
             params,
