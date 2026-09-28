@@ -194,6 +194,12 @@ struct PreparedCall {
     tool: Arc<dyn Tool>,
     request: PermissionRequest,
     grant: Option<(Grant, GrantSource)>,
+    /// The policy that evaluated the call, which is the one asked why it refused.
+    ///
+    /// note: kept rather than read again when the refusal is written, because a call rests in
+    /// `Ready` or `Deciding` between the two and a `set_policy` there is ordinary. Asked then, the
+    /// installed policy explains a decision it did not make, in rules the call was never held to.
+    policy: Arc<dyn PermissionPolicy>,
 }
 
 /// The state machine and the calls it is holding on to.
