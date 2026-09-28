@@ -43,6 +43,12 @@ minor bump may break you.
   runtime answers it as a failed call with `tool.panicked` in the record; what does is a panic in a
   provider or in the kernel itself.
 
+- **A served session out of file descriptors says so once, however it drains.** One connection
+  taken on the way out of a shortage ended the run of failures, and the next failure was said
+  again. Descriptors come back one at a time, so that next failure often came, and
+  `a_session_out_of_descriptors_says_so_once` failed whenever CI was slow enough to show it. A run
+  now ends only once a whole second goes by past the retry with nothing failing.
+
 - **The record is written as the session goes, not when it is over.** It was written once, at
   the end, from the log the kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a
   pulled plug left no record at all, of a session whose point is that everything that happened is
