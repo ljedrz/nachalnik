@@ -19,9 +19,9 @@ use kamchatka::{
     wiring::{Setup, Wired},
 };
 use nachalnik::{
-    BoxError, Capability, ContextItem, ContextKind, DeltaSink, Grant, ModelInfo, ModelRequest,
-    ModelResponse, OutputSink, Provider, Record, StopReason, Tool, ToolCall, ToolOutput, ToolSpec,
-    Usage, Verdict, async_trait,
+    BoxError, Capability, ContextItem, ContextKind, DeltaSink, Event, Grant, ModelInfo,
+    ModelRequest, ModelResponse, OutputSink, Provider, Record, StopReason, Tool, ToolCall,
+    ToolOutput, ToolSpec, Usage, Verdict, async_trait,
     test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -1106,6 +1106,60 @@ async fn a_ceiling_is_charged_while_the_turn_is_still_running() {
     );
     // the point of reading it there: the turn is stopped before it asks again, rather than after
     assert!(!run.prose.contains("never reached"), "{}", run.prose);
+}
+
+/// A response whose `model.finished` the broadcast dropped is still charged, and still stops the
+/// turn before it asks again.
+///
+/// note: what a lag does to a subscriber, done on purpose: every event but that one is handed in.
+/// The ceiling was counted off the event, so a subscriber that fell behind a fast stream missed the
+/// response that crossed it and the session went on spending.
+#[tokio::test]
+async fn a_response_the_broadcast_dropped_is_still_charged() {
+    let script = vec![
+        priced(
+            ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+            900,
+            300,
+        ),
+        priced(ModelResponse::text("never reached"), 900, 300),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, Some(1000));
+    app.kernel.add_tool(Arc::new(Slow));
+
+    app.submit("go").await;
+    loop {
+        tokio::select! {
+            Ok(event) = events.recv() => {
+                if !matches!(event, Event::ModelFinished { .. }) {
+                    app.on_event(event);
+                }
+            }
+            Some(outcome) = finished.recv() => {
+                while let Ok(event) = events.try_recv() {
+                    if !matches!(event, Event::ModelFinished { .. }) {
+                        app.on_event(event);
+                    }
+                }
+                app.on_outcome(outcome);
+                break;
+            }
+        }
+    }
+
+    assert_eq!(app.spent(), 1200);
+    assert!(app.overspent());
+    let requests = app
+        .kernel
+        .history()
+        .iter()
+        .filter(|record| record.event.name() == "model.requested")
+        .count();
+    assert_eq!(requests, 1, "the turn asked again past the ceiling");
 }
 
 /// What a `fork` is charged counts against the ceiling, as the session's own requests do.
