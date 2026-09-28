@@ -235,6 +235,14 @@ pub struct Args {
     #[arg(long)]
     pub print_config: bool,
 
+    /// Read a session's record and say what does not add up, and stop. PATH is the log, the
+    /// snapshot, or their name without the suffix, and whichever of the pair is there is read:
+    /// lines that are not records, events this version does not know, records missing or
+    /// numbered twice, calls asked for and never finished, and a snapshot that disagrees with its
+    /// log. Nothing is started, and anything found makes the exit status non-zero.
+    #[arg(long, value_name = "PATH")]
+    pub check: Option<String>,
+
     /// The frame's colour, which only a settings file can say; see `Settings::border`.
     ///
     /// note: `skip` rather than an argument nobody would type twice, and it lives on `Args` all
@@ -392,7 +400,7 @@ impl Args {
         // note: before anything is looked for, because what this flag is for is
         // `--print-config > kamchatka.json` - and the shell has emptied that file before this runs,
         // so reading it first is a parse error about the file this was about to write
-        if args.print_config {
+        if args.print_config || args.check.is_some() {
             return Ok(Given {
                 args,
                 matches,

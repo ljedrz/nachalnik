@@ -7,6 +7,23 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`--check PATH` reads a session's record and says what does not add up.** PATH is the log,
+  the snapshot, or their name without the suffix, and whichever of the pair is there is read. It
+  reports:
+  - lines that are not records, and events this version does not know, by name;
+  - a session written in a later format;
+  - records missing, or numbered twice;
+  - calls asked for and never finished, and calls finished that were never asked for;
+  - the snapshot's own `problems()`;
+  - a snapshot whose items and states disagree with the log replayed to the record it was taken
+    at.
+
+  Nothing is started, and anything found makes the exit status non-zero. It is a flag rather than a
+  subcommand because the first word on the command line is already a message. `check::check` is
+  the reader behind it, and works on the text of the two files.
+
 ### changed
 
 - **`shell` says where every call starts.** Its description now names the working directory and
