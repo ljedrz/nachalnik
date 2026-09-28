@@ -198,14 +198,6 @@ minor bump may break you.
   refused with the whole of itself echoed back. The count, the limit, `$XDG_RUNTIME_DIR` or `/tmp`
   and `tcp:127.0.0.1:PORT` are what `--serve` says now, and `--connect` says the same rather than
   reporting a path it could never have reached.
-- **The `y` or `n` a script answers `/compact` with is not a message, whichever pass it found.**
-  `--headless` takes the pass on the `/compact` line itself, so the next line is the answer to a
-  question nothing asked; read as a message it started a turn, and the model spent a request on a
-  letter. A bare `y` or `n` immediately after a `/compact` is now taken with a word saying so, and
-  the line is said too when the pass found nothing to take, which asked its question and answered
-  it in one line and so left no proposal behind for the guard to find - a `y` after one was a
-  message the model was asked about. Only the line straight after is read that way: a blank line,
-  or any line that is not a bare letter, is a line somebody wrote.
 - **A message given on the command line is judged by its text, so an empty one is nothing.** It
   was gated on whether any argument was given at all, so `kamchatka … "$MESSAGE"` with the
   variable never set paid a round trip and a failed turn for a request the provider refuses, where

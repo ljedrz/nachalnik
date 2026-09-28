@@ -160,9 +160,6 @@ impl<'a> Headless<'a> {
 
         let mut lines = Typed::new(input);
         let mut reading = true;
-        // whether the last line asked the compaction command's question, so that the `y` or `n` a
-        // script answers it with is not read as a message; see `Headless::unneeded`
-        let mut taken = false;
         // note: an instant rather than a duration, so that it means the same thing however many
         // times round the loop it is waited on; and taken once the run starts rather than when
         // the driver was built, since a caller may have held it for a while. One too far off to
@@ -259,22 +256,8 @@ impl<'a> Headless<'a> {
                         // note: what the prompt does with enter on nothing, and with spaces round a
                         // line. Otherwise a blank line down a pipe is sent as an empty message and
                         // answered - a request for nothing - and `  /help` is a message here and a
-                        // command there.
-                        //
-                        // note: a blank line is not the answer to a compaction either, so it clears
-                        // the flag rather than leaving the line after it holding an answer to
-                        // something nothing asked
-                        Ok(Some((line, _))) if line.trim().is_empty() => taken = false,
-                        // note: the answer to a `/compact` this loop has already settled, which is a
-                        // line of a script's own making and not a message. Ahead of the ceiling
-                        // below, since a run that has spent what it was given is being told about
-                        // the next line, and this one is not going to the model either way
-                        Ok(Some((line, _)))
-                            if taken && matches!(line.trim(), "y" | "n") =>
-                        {
-                            taken = false;
-                            self.unneeded(&line)?;
-                        }
+                        // command there
+                        Ok(Some((line, _))) if line.trim().is_empty() => {}
                         // note: a session that has spent what it was given still reads, because the
                         // way back is a line: `/spend N` raises the ceiling and `/spend 0` takes it
                         // away, and a loop that stopped reading dropped the very command its stop had
@@ -283,9 +266,6 @@ impl<'a> Headless<'a> {
                         // whatever turn the script paid for next - so it is passed over here, and said
                         // to be once rather than a refusal a line for the rest of a script
                         Ok(Some((line, _))) if app.overspent() && !line.trim().starts_with('/') => {
-                            // and this line is not the answer to a compaction either, whatever
-                            // becomes of it
-                            taken = false;
                             if !std::mem::replace(&mut passing, true) {
                                 app.say(
                                     Speaker::Note,
@@ -296,14 +276,6 @@ impl<'a> Headless<'a> {
                             }
                         }
                         Ok(Some((line, mangled))) => {
-                            // note: a `/compact` asked the question the line after it is answering,
-                            // whatever the pass found - so that the loop, and not the proposal it
-                            // may or may not have left standing, is what marks the next line
-                            let compacted = line.trim().strip_prefix('/').is_some_and(|it| {
-                                it.split_once(' ').unwrap_or((it, "")).0 == "compact"
-                            });
-                            // whatever this line is, it is not the answer to a compaction above
-                            taken = false;
                             if mangled {
                                 app.say(Speaker::Note, not_text(&line));
                             }
@@ -352,10 +324,7 @@ impl<'a> Headless<'a> {
                             // *model* asking to do something nobody vouched for, so the default is
                             // no; this one is the operator's own line, and a script that says
                             // `/compact` and is answered "left alone" has been refused the thing it
-                            // asked for. The list is on stderr above it either way, and a `y` or an
-                            // `n` the script answers it with is taken rather than answered - see
-                            // `Headless::unneeded`
-                            let mut took = false;
+                            // asked for. The list is on stderr above it either way
                             if let Some(proposed) = app.proposed.clone() {
                                 // the list itself, which on a screen is in the panel and down a pipe
                                 // has nowhere else to go. Without it this mode takes items on the
@@ -374,29 +343,7 @@ impl<'a> Headless<'a> {
                                     self.say(&app.kernel, &event)?;
                                     app.on_event(event);
                                 }
-                                took = true;
                             }
-                            // and the line a script answers the question with is the next one rather
-                            // than the one after, so the answer is not a message. Set from the line
-                            // and not from the proposal, because a pass that found nothing to take
-                            // asks its question and answers it in one line - leaving nothing
-                            // proposed for a later branch to find - and a `y` after one is the same
-                            // letter for the same reason
-                            //
-                            // note: with the nothing-to-take and the refused cases said too, since a
-                            // letter arriving with nothing to answer it is the same letter as one
-                            // arriving after a pass, and reading it as a message is what the whole
-                            // of this is for
-                            if compacted && !took {
-                                self.fresh_line()?;
-                                writeln!(
-                                    self.prose,
-                                    "· nothing was compacted, so the question `/compact` asked is \
-                                     already answered"
-                                )
-                                .map_err(|e| e.to_string())?;
-                            }
-                            taken = compacted;
                         }
                         // stdin has closed. Whatever is running still finishes, and the loop leaves
                         // when it has: a script that pipes one question in and goes away is asking
@@ -592,27 +539,6 @@ impl<'a> Headless<'a> {
         self.prose.flush().map_err(|e| e.to_string())?;
 
         Ok(())
-    }
-
-    /// Says that the line answering a compaction nobody asked is not a message.
-    ///
-    /// note: the question has been answered by the time this is reached - taken, or found nothing
-    /// to take, or left alone - so a `y` is not agreeing to it and an `n` is not declining it.
-    /// Left as a message either one spends a request on a letter the operator wrote as an answer
-    /// to a question this program had already settled, and the reply is about a context nobody
-    /// asked about.
-    ///
-    /// note: a bare letter, and only a bare letter, because that is the whole of what the keys
-    /// answer a compaction with. `y n` is two of them, so it is a message somebody meant, and the
-    /// guard above lets it through.
-    fn unneeded(&mut self, line: &str) -> Result<(), String> {
-        self.fresh_line()?;
-        writeln!(
-            self.prose,
-            "· `{line}`: the question `/compact` asked down a pipe is settled, so this is not an \
-             answer to it and not a message either"
-        )
-        .map_err(|e| e.to_string())
     }
 
     /// Answers every question waiting on somebody who is not there, and carries on.
