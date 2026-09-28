@@ -1,0 +1,24 @@
+Read nachalnik/src/kernel/mod.rs and explain the state machine it implements: the states, and what moves it from each one to the next. Your context is limited, so keep it tidy as you go.
+Which of the public methods on Kernel are refused while a step is running? Answer from what you read, and check anything you are unsure of.
+Read kamchatka/src/app/mod.rs, kamchatka/src/tools/fs.rs and kamchatka/src/tools/shell.rs, and tell me in one paragraph each what they are for.
+Write down what you concluded so it survives, then free up as much of your context as you can without losing it, and tell me how much you freed.
+Go back to kamchatka/src/tools/shell.rs: what does it say about the heartbeat? Answer without reading the file again if you can.
+/budget
+Read GUIDE.md in the kamchatka crate and tell me what the four tabs are.
+Put the GUIDE.md read out of your context, then change your mind and bring it back.
+Pin a note with the names of the four tabs so it cannot be compacted away, then show me what is in your context now.
+/save @SOAK@/ckpt-a
+Write yourself a note saying the default context undo depth is 32.
+Now check that figure in the code, and if the note is wrong, correct the note rather than writing a new one.
+Show me the note as it stands, and tell me what it said before.
+/pin tool:fs:first
+Find every place the constant TRACE_DEPTH is defined or used, and write what you found - file, line and what each use does - into a new file notes/trace-depth.md.
+Add a second section to that file listing every other constant defined in the same file as TRACE_DEPTH, with its value.
+/compact
+/undo
+/redo
+In CONTRIBUTING.md, every occurrence of the phrase "a thousand-odd" should become "about a thousand". Make the change and show me each line you changed.
+In the same file, find the paragraph about `nachalnik-eval`'s live suite and rewrite its first sentence to be shorter without losing any fact.
+In nachalnik/src/tokens.rs, find the doc comment on `TokenCounter::observe` and replace its whole first paragraph with a single sentence that says the same thing.
+Show me the diff of what you changed, using git.
+/budget
