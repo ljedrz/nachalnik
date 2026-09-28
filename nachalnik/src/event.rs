@@ -431,6 +431,23 @@ pub enum Event {
         /// The fragment.
         chunk: String,
     },
+    /// A tool panicked while running a call, and the call is answered as a failure.
+    ///
+    /// note: a panic is the most a `Tool` can fail by, and it is answered the way any other
+    /// failure is - an error result the model is shown, and the [`Event::ToolFinished`] that
+    /// follows it - rather than unwinding through [`Kernel::step`](crate::Kernel::step). This is
+    /// the one thing that says it was a panic, since `is_error` cannot. What the panic said is in
+    /// the result and not here, because the log names things rather than copying them.
+    ///
+    /// note: a panic still runs the process's panic hook, which by default writes to standard
+    /// error, and a build with `panic = "abort"` is ended by one before anything here happens.
+    #[serde(rename = "tool.panicked")]
+    ToolPanicked {
+        /// The call's identifier.
+        call: ToolCallId,
+        /// The tool's identifier.
+        tool: String,
+    },
     /// A tool finished, and its output was recorded in the context.
     #[serde(rename = "tool.finished")]
     ToolFinished {
@@ -540,6 +557,7 @@ impl Event {
             Self::ToolCallsReserved { .. } => "tool.reserved",
             Self::ToolStarted { .. } => "tool.started",
             Self::ToolOutput { .. } => "tool.output",
+            Self::ToolPanicked { .. } => "tool.panicked",
             Self::ToolFinished { .. } => "tool.finished",
             Self::Compacted { .. } => "context.compacted",
             Self::ToolsChanged { .. } => "tools.changed",

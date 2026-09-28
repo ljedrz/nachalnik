@@ -456,39 +456,71 @@ async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
     );
 }
 
-/// Run together, a tool that panics takes the step with it, as it does when the calls run in turn.
+/// A tool that panics has failed, and is answered like any failing tool, however the calls run.
 ///
-/// note: a panic is a bug in the tool rather than something it has to tell the model, and being
-/// spawned beside other calls does not make it survivable. The step unwinds with the tool's own
-/// panic, not with one of the kernel's about it.
-#[tokio::test]
-async fn run_together_a_panicking_tool_is_a_panic_of_the_step() {
-    let kernel = three_calls(true, Arc::new(Panics));
+/// note: the call is answered with an error the model is shown, `tool.panicked` says why, and
+/// the calls beside it and the rest of the turn go on. Unwound instead, the turn ended with no
+/// answer to the call and no record of what happened to it, and a client awaiting the step on a
+/// task of its own never heard back.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_panicking_tool_is_a_failing_tool_run_in_turn_or_together() {
+    for parallel in [false, true] {
+        let kernel = three_calls(parallel, Arc::new(Panics));
 
-    let unwound = tokio::spawn(async move { kernel.turn().await })
-        .await
-        .expect_err("the step unwinds");
-    assert_eq!(
-        unwound.into_panic().downcast_ref::<&str>(),
-        Some(&"the tool panicked")
-    );
+        let end = kernel.turn().await.expect("the turn survives the tool");
+        assert!(matches!(end, State::Finished { .. }), "{end:?}");
+
+        let results = tool_results_text(&kernel);
+        assert_eq!(results.len(), 3, "every call is answered: {results:?}");
+        assert!(
+            results[0].contains("ran") && results[2].contains("ran"),
+            "the calls beside it go on: {results:?}"
+        );
+        assert!(
+            results[1].contains("crashed") && results[1].contains("c2 panicked"),
+            "the model is told, with what the panic said: {results:?}"
+        );
+
+        let about_c2: Vec<&str> = kernel
+            .history()
+            .iter()
+            .filter_map(|record| match &record.event {
+                Event::ToolStarted { call, .. }
+                | Event::ToolPanicked { call, .. }
+                | Event::ToolFinished { call, .. }
+                    if call.0 == "c2" =>
+                {
+                    Some(record.event.name())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            about_c2,
+            ["tool.started", "tool.panicked", "tool.finished"],
+            "parallel: {parallel}"
+        );
+    }
 }
 
-/// A tool that panics when it is run.
+/// A tool that panics on the second call and answers the others.
 struct Panics;
 
 #[nachalnik::async_trait]
 impl nachalnik::Tool for Panics {
     fn spec(&self) -> nachalnik::ToolSpec {
-        nachalnik::ToolSpec::new("slow", "panics")
+        nachalnik::ToolSpec::new("slow", "panics on c2")
     }
 
     async fn invoke(
         &self,
-        _call: &nachalnik::ToolCall,
+        call: &nachalnik::ToolCall,
         _output: nachalnik::OutputSink,
     ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
-        panic!("the tool panicked")
+        match call.id.0.as_str() {
+            "c2" => panic!("c2 panicked"),
+            id => Ok(nachalnik::ToolOutput::new(format!("{id} ran"))),
+        }
     }
 }
 

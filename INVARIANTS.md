@@ -37,7 +37,8 @@ without it.
   turn - one checkpoint each. An operation that changes nothing takes no checkpoint, and one that
   is about to fail takes none either.
 - **A failing `Tool` is not a kernel error.** It becomes an error tool result the model is shown.
-  `Error` is only for conditions that stop the loop.
+  `Error` is only for conditions that stop the loop. A tool that panics has failed too: the panic
+  is caught where the kernel polls the tool, answered the same way, and named by `tool.panicked`.
 - **Nothing in a model's output reaches the policy** except the tool name and the arguments, both
   as data. A model insisting it already has permission has no effect.
 - **`Content` is shared, not copied.** Every variant is behind an `Arc`; pruning a four-megabyte
