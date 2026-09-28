@@ -630,6 +630,13 @@ pub struct App {
     streamed_bytes: usize,
     /// Where a finished turn reports itself.
     outcomes: UnboundedSender<Outcome>,
+    /// The session's record on disk, written as it goes, where one was started.
+    ///
+    /// note: here rather than on a loop, because [`App::on_event`] is the door every loop comes
+    /// through and a record kept by one loop is a record the other two do not write. `main.rs`
+    /// starts one with [`crate::wiring::Recorder::start`] unless `--no-record` says otherwise; an
+    /// embedder that wants the same safety net puts one here.
+    pub recorder: Option<crate::wiring::Recorder>,
     /// How many pages have been opened over the session.
     ///
     /// note: a counter rather than a flag, and it exists for one question: did *this* call open a
@@ -765,6 +772,7 @@ impl App {
             recalled: None,
             streamed_bytes: 0,
             outcomes,
+            recorder: None,
             previews: 0,
             spent: 0,
             overspent: false,
@@ -801,6 +809,9 @@ impl App {
             return;
         }
 
+        // with the message that starts the turn in it: a snapshot taken before this is the
+        // session before the question, and a resume from one would lose the question
+        self.keep_record();
         self.busy = true;
         self.since = Instant::now();
         self.stepping = stepping;
@@ -902,6 +913,7 @@ impl App {
     pub fn on_outcome(&mut self, outcome: Outcome) {
         self.busy = false;
         self.close();
+        self.keep_record();
 
         // note: before anything this says about the turn, because most of what a provider puts
         // here is *about* the turn that just ended - "the model was cut off mid-answer; what had
@@ -993,10 +1005,44 @@ impl App {
         self.kernel.recount();
     }
 
+    /// Writes the session down as far as it has got, where a record is being kept.
+    ///
+    /// note: every record the log has grown, and the snapshot too when the session is resting: a
+    /// snapshot carries every item's content and a turn announces something every few
+    /// milliseconds, so one per event mid-turn would write the whole context over and over for a
+    /// snapshot that the end of the turn rewrites anyway. At rest the events are a person's, and
+    /// each of them - an exclusion, a note, an undo - is a change the snapshot should show.
+    ///
+    /// note: a record that cannot be written stops being kept, and says so once. Saying it on every
+    /// event would be a red line per event for the rest of the session, and the end of the run
+    /// still tries once more, the way a session with no recorder is written.
+    fn keep_record(&mut self) {
+        let Some(recorder) = &self.recorder else {
+            return;
+        };
+        let kept = match self.busy {
+            true => recorder.append(&self.kernel),
+            false => recorder.checkpoint(&self.kernel),
+        };
+        if let Err(e) = kept {
+            self.recorder = None;
+            self.say(
+                Speaker::Error,
+                format!(
+                    "the record stopped being written, and will be tried again at the end: {e}"
+                ),
+            );
+        }
+    }
+
     // ------------------------------------------------------------------------- kernel events
 
     /// Takes in one event from the runtime.
     pub fn on_event(&mut self, event: Event) {
+        // before anything is made of the event, so that whatever else this does with it - and
+        // whatever a screen does after - happens to a session already written down
+        self.keep_record();
+
         // a line per streamed fragment would push everything else out of the trace before it could
         // be read - a long `cat` would erase the whole of it, one `tool.output` at a time. The
         // fragments themselves are on the chat tab; the session log
@@ -2373,7 +2419,7 @@ impl App {
 }
 
 /// Writes `bytes` to a new file beside `path`, flushed to disk, for a rename to put in its place.
-fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
     use std::io::Write as _;
 
     static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);

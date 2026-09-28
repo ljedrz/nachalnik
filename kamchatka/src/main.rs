@@ -306,6 +306,7 @@ async fn session() -> Result<()> {
     } = setup
         .wire(provider.clone())
         .map_err(|e| anyhow::anyhow!("{e}"))?;
+    start_recording(&mut app, base.record);
 
     // the servers have to outlive every session this run has, not just the first: dropping one
     // takes its child process with it, and leaves its tools unable to answer. A restart installs
@@ -515,6 +516,7 @@ async fn session() -> Result<()> {
         // the first thing the new session says, because it is the only place the old one's name
         // and the file it went to are still written down
         app.say(Speaker::Note, said);
+        start_recording(&mut app, base.record);
 
         // note: the servers keep running and their tools are installed into the new kernel, which
         // is why `attach` is above the loop and this is not it. Re-spawning them would be seconds
@@ -530,6 +532,25 @@ async fn session() -> Result<()> {
     };
 
     finish(&app, base.record, headless && server.is_none(), outcome)
+}
+
+/// Starts writing the session down as it goes, unless `--no-record` was given.
+///
+/// note: a record that cannot be claimed is said and not fatal, because `--no-record` is the
+/// flag for wanting none and a temporary directory somebody else has made unusable should not
+/// keep a person from running the program. `finish` tries once more at the end, which is how a
+/// session with no recorder was always written.
+fn start_recording(app: &mut App, record: bool) {
+    if !record {
+        return;
+    }
+    match kamchatka::wiring::Recorder::start(app) {
+        Ok(recorder) => app.recorder = Some(recorder),
+        Err(e) => app.say(
+            Speaker::Error,
+            format!("the session is not being written down as it goes: {e}"),
+        ),
+    }
 }
 
 /// Ends the session if nothing else has, says where it got to, and writes it down.

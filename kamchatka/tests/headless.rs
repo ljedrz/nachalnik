@@ -2488,6 +2488,175 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
     }
 }
 
+/// A run killed outright leaves the record it had written up to that moment, and a snapshot to
+/// carry on from.
+///
+/// note: `SIGKILL` cannot be caught, so nothing here runs on the way out - which is the case the
+/// record is written as it goes for. The two above leave by the ordinary door and write the
+/// session then; this one, and an out-of-memory kill or a pulled plug, leave nothing but what
+/// was already on disk. The log has to hold the command being started, since that is what a
+/// person reading the record afterwards needs to know happened, and it cannot hold the session's
+/// end, since there was none.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_killed_outright_leaves_what_it_had_written() {
+    let dir = common::scratch("killed").canonicalize().expect("it exists");
+    let cmd = "sleep 3";
+    let base = common::endpoint(vec![format!(
+        "data: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+            "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+            "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
+        ]}, "finish_reason": "tool_calls"}]})
+    )])
+    .await;
+
+    let mut child = std::process::Command::new(common::program())
+        .args(["--headless", "-m", "nothing", "--allow", "exec:run"])
+        .arg("go")
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .env("TMPDIR", &dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    until_said(&said, "⟩ shell(", "the command").await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let sent = std::process::Command::new("kill")
+        .args(["-KILL", &child.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+    let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
+    assert!(!status.success(), "a killed run does not succeed");
+
+    let mut files = std::fs::read_dir(dir.join("kamchatka"))
+        .expect("the record directory was made at the start")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    files.sort();
+    let log = files
+        .iter()
+        .find(|path| path.extension().is_some_and(|it| it == "jsonl"))
+        .expect("the log was claimed at the start");
+    let names: Vec<String> = std::fs::read_to_string(log)
+        .expect("readable")
+        .lines()
+        .map(|line| {
+            serde_json::from_str::<Record>(line)
+                .expect("every line is a whole record")
+                .event
+                .name()
+                .to_owned()
+        })
+        .collect();
+    assert!(
+        names.contains(&"tool.started".to_owned()),
+        "the record holds the command being started: {names:?}"
+    );
+    assert!(
+        !names.contains(&"session.finished".to_owned()),
+        "a killed session did not end: {names:?}"
+    );
+
+    // the snapshot is where things stood when the session last came to rest, which is before
+    // the turn began: the message is in it, the model's call is not
+    let state = files
+        .iter()
+        .find(|path| path.extension().is_some_and(|it| it == "json"))
+        .expect("a snapshot was written before the turn began");
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_slice(&std::fs::read(state).expect("readable")).expect("a session");
+    assert!(
+        snapshot
+            .items
+            .iter()
+            .any(|item| item.kind == ContextKind::UserMessage && item.content.to_string() == "go"),
+        "the message is in the snapshot"
+    );
+    assert!(
+        !snapshot
+            .items
+            .iter()
+            .any(|item| matches!(item.kind, ContextKind::AssistantMessage { .. })),
+        "the snapshot is from before the turn, and says so by holding nothing of it"
+    );
+    assert!(
+        !dir.join("kamchatka")
+            .read_dir()
+            .expect("listable")
+            .any(|entry| {
+                entry.is_ok_and(|entry| entry.path().to_string_lossy().ends_with(".writing"))
+            }),
+        "no half-written snapshot was left beside the record"
+    );
+}
+
+/// A record kept as the session goes holds every record the kernel does, and a snapshot that
+/// names the last of them.
+///
+/// note: the same `Recorder` the program starts, on a session with no screen and no socket, so
+/// that what it writes is checked against the kernel's own log rather than against what a
+/// process left behind. The file is read the way anything else would read it, a record per line.
+#[tokio::test]
+async fn a_record_kept_as_it_goes_holds_the_whole_log() {
+    let dir = common::scratch("kept");
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+        ModelResponse::text("done"),
+    ];
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, None);
+    app.kernel.add_tool(Arc::new(Slow));
+    let recorder = kamchatka::wiring::Recorder::start_under(&app, &dir).expect("a record");
+    let (log, state) = (recorder.log().to_owned(), recorder.state().to_owned());
+    app.recorder = Some(recorder);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Allow, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"go\n"[..])
+        .await
+        .expect("the run failed");
+    let written = kamchatka::wiring::record(&app).expect("finished");
+    assert_eq!(
+        (written.log.as_str(), written.state.as_str()),
+        (log.as_str(), state.as_str())
+    );
+
+    let kept: Vec<Record> = std::fs::read_to_string(&log)
+        .expect("readable")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("every line is a record"))
+        .collect();
+    let history = app.kernel.history();
+    assert_eq!(kept.len(), history.len(), "{kept:?}");
+    assert!(
+        kept.iter()
+            .zip(&history)
+            .all(|(kept, held)| kept.seq == held.seq && kept.event == held.event),
+        "the file is the log, in order"
+    );
+    assert_eq!(written.records, kept.len());
+    assert_eq!(
+        kept.last().map(|record| record.event.name()),
+        Some("session.finished")
+    );
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_slice(&std::fs::read(&state).expect("readable")).expect("a session");
+    assert_eq!(
+        snapshot.last_seq,
+        kept.last().map(|r| r.seq).unwrap_or_default()
+    );
+}
+
 /// A run with nobody left reading either stream still writes its record.
 ///
 /// note: `kamchatka --headless … 2>&1 | head` gets here once `head` has gone. The closing lines
