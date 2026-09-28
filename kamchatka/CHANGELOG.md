@@ -149,6 +149,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A `--connect` that typed `/quit` is told the session ended, rather than exiting on a broken
+  pipe.** A client whose input had closed asks for the records it has not written, and that request
+  could meet a socket the finished session had already closed - which ended the client with an
+  error before it read the `session.finished` waiting in front of it. A refused write now leaves
+  what is left to read to decide: a session that said it was finished is `Done`, and anything else
+  is a drop.
 - **Two forks asked in one turn are not called the same context where a call between them wrote to
   it.** The clause saying the copy is the caller's context again, rather than an ablation, held
   whatever the copy held - and the exclusion of the turn's other results does not cover a call that

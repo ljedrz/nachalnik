@@ -171,6 +171,15 @@ pub struct Client<'a> {
     /// it goes is a drop of its own. Without this, short outages over a day add up to the minute,
     /// and the next one gives up without a single attempt, saying the session has not answered.
     reached: bool,
+    /// Whether a write to this connection has failed.
+    ///
+    /// note: what keeps a refused write from ending the connection by itself. A session that
+    /// finishes writes `session.finished` and closes, and a resume this client sent in the
+    /// meantime meets a closed socket - so a client that gave up on the write never read the
+    /// ending already sitting in front of it, and reported a session that did what it was told
+    /// as a failure. What is left to read decides instead: the end of it, after the session said
+    /// it was finished, is `Left::Done`, and anything else is a drop.
+    unwritable: bool,
 }
 
 /// Why a connection ended.
@@ -210,6 +219,7 @@ impl<'a> Client<'a> {
             over: false,
             failed: false,
             reached: false,
+            unwritable: false,
         }
     }
 
@@ -279,6 +289,7 @@ impl<'a> Client<'a> {
         // wait on every failure - so a client whose session had gone would try every quarter of a
         // second for as long as the process lived, and never reach `GIVE_UP`
         self.reached = false;
+        self.unwritable = false;
         let stream = match connect(address).await {
             Ok(stream) => stream,
             // a first attempt that cannot connect is a wrong address or a session that is not
@@ -347,6 +358,7 @@ impl<'a> Client<'a> {
                         Ok(()) => match self.follow(&mut write).await {
                             Ok(()) if self.detaching && self.resting() => Some(Left::Done),
                             Ok(()) => None,
+                            Err(_) if self.unwritable => None,
                             Err(e) => Some(Left::Failed(e)),
                         },
                         Err(e) => Some(Left::Failed(e)),
@@ -404,6 +416,7 @@ impl<'a> Client<'a> {
                         self.detaching = true;
                         match self.settle(&mut write).await {
                             Ok(()) => self.resting().then_some(Left::Done),
+                            Err(_) if self.unwritable => None,
                             Err(e) => Some(Left::Failed(e)),
                         }
                     }
@@ -948,7 +961,9 @@ impl<'a> Client<'a> {
     ) -> Result<(), String> {
         self.outstanding += 1;
 
-        protocol::write(write, &command).await
+        protocol::write(write, &command)
+            .await
+            .inspect_err(|_| self.unwritable = true)
     }
 
     /// Takes one of the answers this was owed.
