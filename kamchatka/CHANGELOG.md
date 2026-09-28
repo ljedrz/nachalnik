@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **`shell` says where every call starts.** Its description now names the working directory and
+  says that each call starts there afresh, so a `cd` lasts only for the command it is in. Before,
+  it said only "in the working directory". A model that could not see where it was, or was trained
+  where a shell's directory drifts between calls, began nearly every command with a `cd` to a path
+  it had guessed. Under `--advise` that `cd` was one more stage to ask about, and it moved relative
+  paths away from the place the confinement note judges them from.
+
 ### fixed
 
 - **The record is written as the session goes, not when it is over.** It was written once, at
