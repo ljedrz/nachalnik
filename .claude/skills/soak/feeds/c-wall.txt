@@ -1,0 +1,16 @@
+Before anything else: your context is close to its limit, and most of it is your own earlier replies, which compaction never takes. Free room by putting away what you no longer need - note anything you will still need first - and tell me how much you freed.
+/budget
+Write a small bash script at scripts/crates.sh that prints the name and version of every crate in this workspace, one per line, reading them from the Cargo.toml files. Make it executable and run it to show me it works.
+Change the script so it also prints whether each crate has publish = false, and run it again.
+Grep the workspace for "note:" in kamchatka/src/tools and read three of the files that have the most hits.
+Take every result of a file read out of the request in one go, keeping the grep results, and tell me what the request costs now.
+Tell me exactly what your next request to the model will contain: how many items, which ones are held back, and the biggest three by cost.
+Read kamchatka/README.md, then tell me how the answer to the first question has changed.
+Run `cargo clippy --offline -p nachalnik-eval --all-targets` and tell me whether it is clean.
+Read the top-level README.md and AGENTS.md, then tell me what this session has cost so far in tokens, and which of your tool calls was the most expensive.
+Look at your session's own record and tell me every tool call you have made so far, in order, with whether it succeeded.
+Work out which crates in this workspace depend on which (from their Cargo.toml files). Before you give me the answer, draft it and check the draft against the files, then give me the final one.
+Ask a copy of yourself that has not seen the Cargo.toml files what it would guess the dependency graph is, and tell me where its guess differs from what you found.
+What model are you, what tools do you have, and what are you allowed to do in this session without asking? Check rather than guess.
+Could you run `curl https://example.com` here? Find out what would happen, and tell me why.
+/budget
