@@ -12,7 +12,6 @@
 use std::{
     io::Write,
     path::{Path, PathBuf},
-    process::Command,
     sync::OnceLock,
 };
 
@@ -74,7 +73,7 @@ fn spawn(
     env: &[(&str, &str)],
     keyed: bool,
 ) -> (bool, String) {
-    let mut command = Command::new(common::program());
+    let mut command = common::command();
     command
         .current_dir(dir)
         .args(["--no-record"])
@@ -397,8 +396,9 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         let file = dir.join("kamchatka.json");
         std::fs::write(&file, json).expect("written");
 
-        // found rather than named, which is the case that had nothing announced
-        let (ok, out) = run_from(&dir, &[], "");
+        // named as it is spelled where it was found: a file underfoot is read only after a yes at a
+        // terminal, and this is the name it is refused under once it has been
+        let (ok, out) = run_from(&dir, &["--config-file", "kamchatka.json"], "");
         assert!(
             !ok,
             "{name}: a value nobody can honour is not a success: {out}"
@@ -428,7 +428,11 @@ fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
     let dir = common::scratch("typed-not-the-file");
     std::fs::write(dir.join("kamchatka.json"), r#"{ "model": null }"#).expect("written");
 
-    let (ok, out) = run_from(&dir, &["--compact", "2"], "");
+    let (ok, out) = run_from(
+        &dir,
+        &["--config-file", "kamchatka.json", "--compact", "2"],
+        "",
+    );
 
     assert!(!ok, "{out}");
     assert!(out.contains("was `2`"), "what was wrong: {out}");
@@ -764,15 +768,14 @@ fn a_missing_file_says_which() {
     assert!(said.contains("/nowhere/kamchatka.json"), "{said}");
 }
 
-/// A file in the working directory is read without being named, and the session says it was.
+/// A file in the working directory is not read with nobody at a terminal to say it may be, and the
+/// refusal says how to read it.
 ///
-/// note: the pair is the point. `cargo install` copies no files, so the shipped starting point
-/// reached everybody except the people who installed this the way the readme tells them to - and
-/// a file that applies because of where you are standing is a file that can surprise you. The
-/// first half of that is closed by looking; the second by saying out loud what was found, into
-/// the conversation as well as onto a stream a screen is about to cover.
+/// note: the file may start programs, turn the sandbox off and grant permissions, and whoever wrote
+/// the directory wrote it. A run nobody can be asked in is refused rather than run without it,
+/// because a script's `deadline` and `spend` are in that file too.
 #[test]
-fn a_file_underfoot_is_read_without_being_named_and_is_said() {
+fn a_file_underfoot_is_not_read_with_nobody_to_ask() {
     let dir = common::scratch("underfoot");
     std::fs::write(
         dir.join("kamchatka.json"),
@@ -781,33 +784,56 @@ fn a_file_underfoot_is_read_without_being_named_and_is_said() {
     .expect("a settings file where the program will stand");
 
     let (ok, said) = run_from(&dir, &[], "/model\n/spend\n");
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("`--config-file kamchatka.json` reads it"),
+        "{said}"
+    );
+    assert!(!said.contains("a-model-from-underfoot"), "{said}");
 
+    // and named, it is read, and not announced: somebody who typed the path knows which file
+    let (ok, said) = run_from(
+        &dir,
+        &["--config-file", "kamchatka.json"],
+        "/model\n/spend\n",
+    );
     assert!(ok, "{said}");
     assert!(said.contains("a-model-from-underfoot"), "{said}");
     assert!(said.contains("of 4,321"), "{said}");
-    assert!(
-        said.contains("settings read from kamchatka.json"),
-        "a file nobody asked for has to say it was read: {said}"
-    );
-    // once: a headless run's conversation goes to the stream the early line went to
-    assert_eq!(said.matches("settings read from").count(), 1, "{said}");
+    assert!(!said.contains("settings read from"), "{said}");
 }
 
-/// A file underfoot is said before a server it names is started, and not only once a session is.
-///
-/// note: the server fails its handshake, so the program stops before there is a conversation to
-/// say anything in - and a file that could start programs has been read by then.
+/// A server named by a file underfoot is not started with nobody to ask.
 #[cfg(feature = "mcp")]
 #[test]
-fn a_file_underfoot_is_said_before_its_servers_start() {
+fn a_file_underfoot_starts_no_server_with_nobody_to_ask() {
     let dir = common::scratch("underfoot-server");
-    std::fs::write(dir.join("kamchatka.json"), r#"{ "mcp": ["broken=false"] }"#)
-        .expect("a settings file where the program will stand");
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{ "mcp": ["unasked=false"] }"#,
+    )
+    .expect("a settings file where the program will stand");
 
     let (ok, said) = run_from(&dir, &[], "");
 
-    assert!(!ok, "a server that never answers stops the run: {said}");
-    assert!(said.contains("settings read from kamchatka.json"), "{said}");
+    assert!(!ok, "{said}");
+    assert!(said.contains("--config-file"), "{said}");
+    // every server is named on standard error before it is started
+    assert!(!said.contains("unasked"), "{said}");
+}
+
+/// A file underfoot that this program would refuse is refused for what is wrong with it, before
+/// anybody is asked about it.
+#[test]
+fn a_file_underfoot_is_refused_before_it_is_asked_about() {
+    let dir = common::scratch("underfoot-broken");
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "on-ask": "maybe" }"#).expect("written");
+
+    let (ok, said) = run_from(&dir, &[], "");
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("`maybe`"), "{said}");
+    assert!(!said.contains("--config-file"), "{said}");
 }
 
 /// A named file beats the one underfoot, and saying so is not needed for a path somebody typed.
@@ -850,7 +876,7 @@ fn a_directory_with_no_file_in_it_reads_none() {
 /// no flag at all.
 #[test]
 fn print_config_hands_over_a_file_this_program_would_accept() {
-    let out = Command::new(common::program())
+    let out = common::command()
         .arg("--print-config")
         .output()
         .expect("the binary under test is built");
@@ -868,15 +894,14 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
     std::fs::write(&path, &printed).expect("written back out");
     Settings::read(&path).expect("and read back in");
 
-    let (ok, said) = run_from(&dir, &[], "/spend\n");
+    let (ok, said) = run_from(&dir, &["--config-file", "kamchatka.json"], "/spend\n");
     assert!(ok, "{said}");
-    assert!(said.contains("settings read from kamchatka.json"), "{said}");
 
     // and redirected where the documentation says to put it, which the shell empties before the
     // program starts - so a program that looked for a settings file first read an empty one
     let empty = common::scratch("print-into");
     std::fs::write(empty.join("kamchatka.json"), "").expect("the file the shell truncated");
-    let out = Command::new(common::program())
+    let out = common::command()
         .current_dir(&empty)
         .arg("--print-config")
         .output()
@@ -897,7 +922,7 @@ fn print_config_hands_over_a_file_this_program_would_accept() {
 /// script closes as readily as one a person redirects.
 #[test]
 fn print_config_into_a_stdout_nobody_is_reading_ends_the_run() {
-    let mut child = Command::new(common::program())
+    let mut child = common::command()
         .arg("--print-config")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -926,7 +951,7 @@ fn print_config_into_a_stdout_nobody_is_reading_ends_the_run() {
 /// and a variable nothing on the screen mentions is one nobody finds.
 #[test]
 fn help_names_the_variables_the_program_reads() {
-    let out = Command::new(common::program())
+    let out = common::command()
         .arg("--help")
         .output()
         .expect("the binary under test is built");
@@ -961,7 +986,7 @@ fn help_names_the_variables_the_program_reads() {
 #[test]
 fn every_help_line_is_a_whole_sentence() {
     for flag in ["--help", "-h"] {
-        let out = Command::new(common::program())
+        let out = common::command()
             .arg(flag)
             .output()
             .expect("the binary under test is built");
@@ -1017,7 +1042,7 @@ fn a_compaction_threshold_that_is_not_a_fraction_is_refused() {
 
     let dir = common::scratch("compact-percent");
     std::fs::write(dir.join("kamchatka.json"), r#"{"compact": 0}"#).expect("written");
-    let (ok, said) = run_from(&dir, &[], "");
+    let (ok, said) = run_from(&dir, &["--config-file", "kamchatka.json"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("was `0`"), "{said}");
 }
@@ -1031,12 +1056,20 @@ fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
     let dir = common::scratch("resumed-system");
     std::fs::write(dir.join("kamchatka.json"), r#"{"system": "BE BRIEF"}"#).expect("written");
 
-    let (ok, said) = run_from(&dir, &[], "/save first.json\n");
+    let (ok, said) = run_from(
+        &dir,
+        &["--config-file", "kamchatka.json"],
+        "/save first.json\n",
+    );
     assert!(ok, "{said}");
     let first = std::fs::read_to_string(dir.join("first.json")).expect("the session was saved");
     assert_eq!(first.matches("BE BRIEF").count(), 1, "{first}");
 
-    let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
+    let (ok, said) = run_from(
+        &dir,
+        &["--config-file", "kamchatka.json", "-r", "first.json"],
+        "/save second.json\n",
+    );
     assert!(ok, "{said}");
     let second =
         std::fs::read_to_string(dir.join("second.json")).expect("the resumed session was saved");

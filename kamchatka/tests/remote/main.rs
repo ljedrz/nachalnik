@@ -466,7 +466,7 @@ async fn quit_over_a_socket(at: &str) {
 fn connect(socket: &std::path::Path, typed: &[u8]) -> std::process::Output {
     use std::io::Write as _;
 
-    let mut client = std::process::Command::new(crate::common::program())
+    let mut client = crate::common::command()
         .arg("--connect")
         .arg(format!("unix:{}", socket.display()))
         .stdin(std::process::Stdio::piped())

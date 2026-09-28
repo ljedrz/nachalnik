@@ -206,7 +206,8 @@ pub const SHIPPED: &str = include_str!("../kamchatka.json");
 /// note: a file that applies because of where you are standing is a file that can surprise you,
 /// and the answer to that is not to hide it: what is read is said out loud, into the conversation
 /// every projection carries, before anything else happens. A session that picked something up is
-/// a session that says which file and where from.
+/// a session that says which file and where from. The working directory's is also asked about
+/// first; see [`underfoot`].
 ///
 /// note: `XDG_CONFIG_HOME` and then `~/.config`, which is where the people who set the variable
 /// expect it to be read from.
@@ -223,6 +224,93 @@ pub fn found() -> Option<PathBuf> {
         .join(FILE);
 
     config.is_file().then_some(config)
+}
+
+/// Whether this is the settings file in the working directory, which is read only once somebody
+/// says it may be.
+///
+/// note: that one and not the one under the config directory, because what the working
+/// directory holds is whoever wrote the repository's, and the config directory is the person's
+/// own. A file there that starts a server is a server the person asked for.
+pub fn underfoot(path: &Path) -> bool {
+    path == Path::new(FILE)
+}
+
+/// The keys a settings file may set that start a program or grant something, by the name the file
+/// spells them with.
+///
+/// note: the list SECURITY.md gives for a file found underfoot. `deny` and `deny-server` are not
+/// on it, because a file that only refuses is a file that can only take something away.
+pub const GRANTING: [&str; 8] = [
+    "mcp",
+    "no-sandbox",
+    "allow",
+    "allow-server",
+    "on-ask",
+    "sandbox-allow",
+    "sandbox-read",
+    "sandbox-device",
+];
+
+/// The keys among [`GRANTING`] that these settings give a value this program would not have
+/// chosen by itself.
+///
+/// note: measured against [`SHIPPED`] rather than against `null`, because the shipped file is
+/// every key at the program's own default and a copy of it is the commonest settings file there
+/// is. Its `sandbox-device` lists five devices and its `on-ask` says `deny`, and a question
+/// naming those would be a question about nothing.
+pub fn granting(settings: &Settings) -> Vec<&'static str> {
+    let shipped: serde_json::Value =
+        serde_json::from_str(SHIPPED).expect("the shipped settings are JSON");
+    let Ok(these) = serde_json::to_value(settings) else {
+        return GRANTING.to_vec();
+    };
+
+    GRANTING
+        .into_iter()
+        .filter(|key| !these[key].is_null() && these[key] != shipped[key])
+        .collect()
+}
+
+/// Asks whoever is at the terminal whether the settings file found underfoot is read, and answers
+/// `true` only for a yes.
+///
+/// note: what the file grants is named in the question, because a question with nothing in it
+/// gets answered by reflex, and the keys are the difference between a file that picks a model and
+/// one that starts somebody else's programs. The answer is read as the line it is: anything that
+/// is not `y` or `yes`, the end of the input included, leaves the file unread.
+pub fn trusted(
+    path: &Path,
+    granting: &[&str],
+    input: &mut impl std::io::BufRead,
+    prose: &mut impl std::io::Write,
+) -> std::io::Result<bool> {
+    let grants = match granting {
+        [] => "starts nothing and grants nothing".to_owned(),
+        keys => format!(
+            "sets {}, which start programs or grant permissions",
+            keys.join(", ")
+        ),
+    };
+    write!(
+        prose,
+        "· {} is in the directory this was started in, and {grants}. Read it? [y/N] ",
+        path.display()
+    )?;
+    prose.flush()?;
+
+    let mut answer = String::new();
+    input.read_line(&mut answer)?;
+    let yes = matches!(answer.trim().to_lowercase().as_str(), "y" | "yes");
+    if !yes {
+        writeln!(
+            prose,
+            "· not read; `--config-file {}` reads it without asking",
+            path.display()
+        )?;
+    }
+
+    Ok(yes)
 }
 
 /// Where the home directory is, according to the environment and nothing else.
@@ -314,5 +402,53 @@ mod tests {
             expanded("/srv/~/x".into(), &home),
             PathBuf::from("/srv/~/x")
         );
+    }
+
+    /// What a file underfoot is asked about is what it grants, and a copy of the shipped file
+    /// grants nothing.
+    #[test]
+    fn a_file_underfoot_is_asked_about_what_it_grants() {
+        let shipped: Settings = serde_json::from_str(SHIPPED).expect("the shipped file");
+        assert_eq!(granting(&shipped), Vec::<&str>::new());
+        assert_eq!(granting(&Settings::default()), Vec::<&str>::new());
+
+        let hostile: Settings = serde_json::from_str(
+            r#"{ "model": "m", "mcp": ["x=y"], "no-sandbox": true, "on-ask": "allow",
+                 "deny": ["exec"] }"#,
+        )
+        .expect("a settings file");
+        assert_eq!(granting(&hostile), ["mcp", "no-sandbox", "on-ask"]);
+    }
+
+    /// Only a yes reads it, and the question says what it is asking about.
+    #[test]
+    fn only_a_yes_reads_a_file_underfoot() {
+        let ask = |typed: &str| {
+            let mut said = Vec::new();
+            let yes = trusted(
+                Path::new(FILE),
+                &["mcp", "allow"],
+                &mut typed.as_bytes(),
+                &mut said,
+            )
+            .expect("asked");
+            (yes, String::from_utf8(said).expect("text"))
+        };
+
+        for typed in ["y\n", "yes\n", " Y \n"] {
+            let (yes, said) = ask(typed);
+            assert!(yes, "{typed:?}: {said}");
+            assert!(said.contains("kamchatka.json"), "{said}");
+            assert!(said.contains("sets mcp, allow"), "{said}");
+            assert!(!said.contains("not read"), "{said}");
+        }
+        for typed in ["\n", "n\n", "yep\n", ""] {
+            let (yes, said) = ask(typed);
+            assert!(!yes, "{typed:?}: {said}");
+            assert!(
+                said.contains("`--config-file kamchatka.json` reads it"),
+                "{said}"
+            );
+        }
     }
 }

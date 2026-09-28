@@ -1500,9 +1500,7 @@ async fn a_bill_past_counting_is_counted_as_everything() {
 /// which is the auto-detection doing its job, and the announcement is on stderr where it belongs.
 #[test]
 fn the_program_runs_headless_and_keeps_its_streams_apart() {
-    let program = common::program();
-
-    let out = std::process::Command::new(&program)
+    let out = common::command()
         .args(["-m", "nothing-serves-this", "--no-record", "hello"])
         // an address nothing answers on: the session is set up, the request is built, and the
         // send is what fails - which is the failure a piped run actually meets
@@ -1553,9 +1551,7 @@ fn the_program_runs_headless_and_keeps_its_streams_apart() {
 /// record says so.
 #[test]
 fn an_empty_message_on_the_command_line_is_nothing() {
-    let program = common::program();
-
-    let out = std::process::Command::new(&program)
+    let out = common::command()
         // the shape a script has when the variable it interpolates is unset or all spaces
         .args(["-m", "nothing-serves-this", "--no-record", " ", "  "])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -1593,9 +1589,7 @@ fn an_empty_message_on_the_command_line_is_nothing() {
 /// record stream left on stdout is what a reader of a piped run is promised.
 #[test]
 fn a_run_nobody_is_reading_still_says_which_mode_it_chose() {
-    let program = common::program();
-
-    let mut child = std::process::Command::new(&program)
+    let mut child = common::command()
         .args(["-m", "nothing-serves-this", "--no-record", "hello"])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1649,9 +1643,7 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
     )
     .expect("written");
 
-    let program = common::program();
-
-    let out = std::process::Command::new(&program)
+    let out = common::command()
         .args(["--headless", "--no-record", "-r"])
         .arg(&path)
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -1679,11 +1671,9 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
 fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     use std::io::Read as _;
 
-    let program = common::program();
-
     // stdin is a pipe this test holds open and never writes to, which is a run waiting for
     // somebody who has not typed anything yet - the state `ctrl+c` is for
-    let mut child = std::process::Command::new(&program)
+    let mut child = common::command()
         .args(["--headless", "--no-record", "-m", "nothing-serves-this"])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1769,10 +1759,9 @@ fn a_termination_signal_says_it_ended_the_run() {
     use std::io::Read as _;
 
     for what in ["an idle run", "a run with a turn in flight"] {
-        let program = common::program();
         // a pipe this test holds open, which is a run waiting for somebody who has not typed
         // anything yet - the state a signal is most often the only thing to end
-        let mut child = std::process::Command::new(&program)
+        let mut child = common::command()
             .args(["--headless", "--no-record", "-m", "nothing-serves-this"])
             .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
             .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1850,7 +1839,7 @@ fn a_resumed_run_says_the_parameters_it_came_back_with() {
         )
         .expect("written");
 
-        let out = std::process::Command::new(common::program())
+        let out = common::command()
             .args(["--headless", "--no-record", "-r"])
             .arg(&path)
             .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -1913,7 +1902,7 @@ fn a_resumed_run_says_the_spend_is_this_runs() {
     )
     .expect("written");
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "--no-record", "-r"])
         .arg(&path)
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -2053,7 +2042,7 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     ])
     .await;
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args([
             "--headless",
             "--no-record",
@@ -2134,7 +2123,7 @@ async fn the_devices_the_program_is_given_are_the_shells() {
         ])
         .await;
         let dir = common::workdir(name);
-        let mut child = std::process::Command::new(common::program())
+        let mut child = common::command()
             .args([
                 "--headless",
                 "--no-record",
@@ -2197,7 +2186,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     )])
     .await;
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args([
             "--headless",
             "--no-record",
@@ -2281,7 +2270,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
         ])
         .await;
 
-        let mut command = std::process::Command::new(common::program());
+        let mut command = common::command();
         // `fs:write` too, because a confined shell is read-only where writing is refused - and
         // headless, a question nobody can be asked is refused
         command.args([
@@ -2420,7 +2409,7 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
         "py=python3 {}",
         concat!(env!("CARGO_MANIFEST_DIR"), "/tests/mcp_server.py")
     );
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "--no-record", "-m", "nothing"])
         .args(["--mcp", &server, "--allow-server", "py", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
@@ -2473,7 +2462,7 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
         )])
         .await;
 
-        let mut child = std::process::Command::new(common::program())
+        let mut child = common::command()
             .args([
                 "--headless",
                 "-m",
@@ -2564,7 +2553,7 @@ async fn a_run_killed_outright_leaves_what_it_had_written() {
     )])
     .await;
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "-m", "nothing", "--allow", "exec:run"])
         .arg("go")
         .current_dir(&dir)
@@ -2721,7 +2710,7 @@ async fn a_run_nobody_is_reading_still_writes_its_record() {
     let base = common::endpoint(vec![common::answer("said to nobody")]).await;
     let dir = common::scratch("unread");
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "-m", "nothing", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -2782,7 +2771,7 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
     let dir = common::scratch("restart-failed");
     std::fs::write(dir.join("notes.md"), "notes").expect("a file to attach");
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "-m", "nothing", "--file", "notes.md"])
         .current_dir(&dir)
         .env("KAMCHATKA_BASE_URL", &base)
@@ -2831,7 +2820,7 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
 async fn the_spend_ceiling_stops_the_program_itself() {
     let base = common::endpoint(vec![common::answer("as much as it likes")]).await;
 
-    let out = std::process::Command::new(common::program())
+    let out = common::command()
         .args([
             "--headless",
             "--no-record",
@@ -2863,7 +2852,7 @@ async fn the_spend_ceiling_stops_the_program_itself() {
 async fn a_deadline_of_nothing_is_none() {
     let base = common::endpoint(vec![common::answer("with time to spare")]).await;
 
-    let out = std::process::Command::new(common::program())
+    let out = common::command()
         .args([
             "--headless",
             "--no-record",
@@ -2895,7 +2884,7 @@ async fn a_deadline_of_nothing_is_none() {
 async fn the_request_ceiling_stops_the_program_itself() {
     let run = async |requests: &str, answers: Vec<String>| {
         let base = common::endpoint(answers).await;
-        let out = std::process::Command::new(common::program())
+        let out = common::command()
             .args(["--headless", "--no-record", "-m", "nothing", "--requests"])
             .args([requests, "go"])
             .current_dir(common::scratch(&format!("requests-{requests}")))
@@ -2948,7 +2937,7 @@ async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
         ])
         .await;
         let dir = common::scratch(name);
-        let mut child = std::process::Command::new(common::program())
+        let mut child = common::command()
             .args([
                 "--headless",
                 "--no-record",
@@ -2997,7 +2986,7 @@ async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
     let base = common::endpoint(vec![common::answer("something to keep")]).await;
     let dir = common::scratch("recorded");
 
-    let out = std::process::Command::new(common::program())
+    let out = common::command()
         .args(["--headless", "-m", "nothing", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -3052,7 +3041,7 @@ async fn a_recorded_run_writes_the_session_where_it_says_it_did() {
 fn a_run_that_keeps_no_record_says_so_when_it_ends() {
     let dir = common::scratch("unrecorded");
 
-    let out = std::process::Command::new(common::program())
+    let out = common::command()
         .args(["--headless", "--no-record"])
         .env("TMPDIR", &dir)
         // no model and nothing typed, so nothing is asked of anybody - what is under test is the
@@ -3092,7 +3081,7 @@ fn a_run_that_fails_still_records_an_ending() {
     use std::io::Write as _;
 
     let dir = common::scratch("failed-record");
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "-m", "nothing"])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -3152,6 +3141,7 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
     }
 
     let out = std::process::Command::new("script")
+        .current_dir(common::nowhere())
         .args([
             "-q",
             "-c",
@@ -3190,7 +3180,7 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
 #[tokio::test(flavor = "multi_thread")]
 async fn the_deadline_ends_the_program_itself() {
     // stdin is a pipe this test holds and never writes to, so nothing but the deadline can end it
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args([
             "--headless",
             "--no-record",
@@ -3243,7 +3233,7 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         ),
         (vec!["-m", "nothing"], silent.as_str(), "reaching the model"),
     ] {
-        let mut child = std::process::Command::new(common::program())
+        let mut child = common::command()
             .args(["--headless", "--no-record", "--deadline", "1"])
             .args(&args)
             .env("KAMCHATKA_BASE_URL", base)
@@ -4024,7 +4014,7 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a directory to record into");
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless", "-m", "flagged-model"])
         .env("TMPDIR", &dir)
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -4069,7 +4059,7 @@ fn restart_writes_the_session_out_and_starts_another() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a directory to record into");
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         // note: no `-m`, so a message is put in the context and nothing is sent. What this is
         // about is which session a line lands in, and a turn against an endpoint that is not there
         // would be the run failing about something else
@@ -4189,7 +4179,7 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
     };
     let before = mode(&elsewhere);
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args(["--headless"])
         .env("TMPDIR", &dir)
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")

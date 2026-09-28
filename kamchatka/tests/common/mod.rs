@@ -177,6 +177,25 @@ pub fn program() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_BIN_EXE_kamchatka"))
 }
 
+/// A directory with nothing in it, for the program to stand in.
+///
+/// note: the suites run from the crate root, which is where the shipped `kamchatka.json` is, and a
+/// settings file in the working directory is read only once somebody at a terminal says so. A test
+/// that means a directory of its own sets one over this.
+pub fn nowhere() -> &'static std::path::Path {
+    static NOWHERE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+    NOWHERE.get_or_init(|| scratch("nowhere"))
+}
+
+/// The binary, to be run standing in [`nowhere`].
+pub fn command() -> std::process::Command {
+    let mut command = std::process::Command::new(program());
+    command.current_dir(nowhere());
+
+    command
+}
+
 /// An example built beside the binary, by name.
 ///
 /// note: cargo sets no variable for an example the way it does for a binary, so this is the one

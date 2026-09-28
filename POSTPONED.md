@@ -463,13 +463,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   records - but `scripts/` is shell, and a campaign that finds errors rather than reviews code is
   a different thing from the skill.
 
-- **A settings file found underfoot is trusted as if typed.** `./kamchatka.json` may set `mcp`,
-  `no-sandbox`, `allow`, `allow-server`, `on-ask` and the sandbox lists, so running `kamchatka`
-  inside a repository somebody else wrote starts their MCP servers and applies their permissions.
-  It is announced before anything starts, and SECURITY.md names it as a risk under who `kamchatka`
-  defends against. Closing it is honouring those keys only from a file named with `--config-file`
-  or under the config directory, or asking once per file and remembering the answer; either breaks
-  a project that relies on its local file to start servers or grant permissions.
 - **A command's background process outlives the session.** `sleep 300 &` in a `shell` call is in
   the command's own session, so it survives the call and the program's exit, reparented to init.
   The tool result says so while the session lasts; nothing does at exit. Killing the command's

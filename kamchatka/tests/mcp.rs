@@ -305,9 +305,7 @@ async fn a_dropped_server_fails_its_calls_instead_of_hanging() {
 fn the_program_offers_a_spawned_servers_tools() {
     let spec = spec!();
 
-    let program = common::program();
-
-    let mut child = std::process::Command::new(&program)
+    let mut child = common::command()
         .args(["-m", "nothing-serves-this", "--no-record", "--mcp", &spec])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -471,7 +469,7 @@ fn a_restart_says_the_old_session_ended_before_it_says_what_a_server_could_not()
         None => return,
     };
 
-    let mut child = std::process::Command::new(common::program())
+    let mut child = common::command()
         .args([
             "--headless",
             "--no-record",
