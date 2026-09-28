@@ -43,6 +43,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`--spend` counts a response the broadcast dropped.** What a session spent was added up from
+  the `model.finished` events it read, and a subscriber that fell behind a fast stream loses events,
+  so a ceiling could be passed by whatever a lag took. It is now read off the log, which drops
+  nothing, on the next event that arrives - which is still before the turn asks again.
+
 - **A turn that panics is a turn that failed, and the session goes on.** The turn ran on a task
   whose panic sent no outcome, so `busy` stayed set for good: a headless run waited forever, no
   later line was read, and the record stopped at `tool.started`. The turn now runs on a task of

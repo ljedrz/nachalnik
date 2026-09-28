@@ -647,6 +647,13 @@ pub struct App {
     /// What the provider has charged for this session so far: every response's own figure, added
     /// up.
     spent: u64,
+    /// The sequence number of the last record in the log that [`App::charge`] has seen.
+    ///
+    /// note: the log rather than the broadcast, because a broadcast that falls behind drops
+    /// events, `model.finished` among them, and a response dropped there was never counted - so a
+    /// ceiling could be passed by whatever the lag took. The log drops nothing, and nothing in this
+    /// program drains it.
+    charged: u64,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
     /// Whether it has already said that the endpoint reports no figures to add up.
@@ -701,6 +708,8 @@ impl App {
 
             input
         };
+        // what the kernel did before this was here to watch is not this session's to charge
+        let charged = kernel.with_history(|log| log.last_seq());
 
         Self {
             kernel,
@@ -775,6 +784,7 @@ impl App {
             recorder: None,
             previews: 0,
             spent: 0,
+            charged,
             overspent: false,
             unreported: false,
             saved_into: BTreeMap::new(),
@@ -1056,6 +1066,7 @@ impl App {
         // before anything is made of the event, so that whatever else this does with it - and
         // whatever a screen does after - happens to a session already written down
         self.keep_record();
+        self.charge_since();
 
         // a line per streamed fragment would push everything else out of the trace before it could
         // be read - a long `cat` would erase the whole of it, one `tool.output` at a time. The
@@ -1187,7 +1198,6 @@ impl App {
                             .to_owned(),
                     );
                 }
-                self.charge(usage, &stop);
                 // the provider has just said what that request really cost, and what it was
                 // made of is still here from the event that sent it. Paired, they are the one
                 // exact figure in this program's accounting; see `Anchor`
@@ -1411,6 +1421,31 @@ impl App {
                 .unwrap_or(0)
                 .saturating_add(usage.output_tokens.unwrap_or(0)),
         );
+    }
+
+    /// Charges every response the log has recorded since the last one charged.
+    ///
+    /// note: called on every event rather than on `model.finished` alone, because the event
+    /// that follows a lag is the first moment anybody here can know one was lost. That is always
+    /// before another request goes out: a lag keeps the latest events and drops the oldest, so
+    /// whatever follows the lost response is still on its way.
+    fn charge_since(&mut self) {
+        // the cursor is moved in the same read, or a response recorded between two would be
+        // passed over by both
+        let (responses, last): (Vec<_>, _) = self.kernel.with_history(|log| {
+            let responses = log
+                .since(self.charged)
+                .filter_map(|record| match &record.event {
+                    Event::ModelFinished { usage, stop, .. } => Some((*usage, stop.clone())),
+                    _ => None,
+                })
+                .collect();
+            (responses, log.last_seq())
+        });
+        self.charged = last;
+        for (usage, stop) in responses {
+            self.charge(usage, &stop);
+        }
     }
 
     /// Adds what a provider charged to what this session has spent, and stops the turn once that

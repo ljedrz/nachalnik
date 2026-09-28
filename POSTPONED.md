@@ -355,11 +355,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   A number the context bumps on every change would make every one of them a cache, and it is a core
   addition for clients' sake - which is the reason it waits.
 
-- **`--spend` and a lagging broadcast.** The `App` counts spend from the events it reads, and a
-  broadcast it falls behind drops them, `model.finished` included - so a ceiling can be passed by
-  whatever the lag took. Reading spend from the log, which drops nothing, rather than from the
-  broadcast is the fix.
-
 - **The model's `undo` in the person's undo history.** The `context` tool's own undo of a move over
   several states takes one kernel checkpoint for each state and note it puts items back into,
   because `set_state` moves items into one state at a time and the kernel has no operation that
