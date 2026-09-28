@@ -5,7 +5,11 @@
 //! here happens between the model asking for tools and the machine coming back to
 //! [`super::State::Idle`].
 
-use std::sync::{Arc, atomic::Ordering::SeqCst};
+use std::{
+    panic::AssertUnwindSafe,
+    sync::{Arc, atomic::Ordering::SeqCst},
+    task::Poll,
+};
 
 use crate::{
     context::{ContextId, ContextItem, ContextState},
@@ -166,8 +170,9 @@ impl Kernel {
         while let Some(finished) = running.join_next().await {
             match finished {
                 Ok((index, output)) => outputs[index] = Some(output),
-                // a tool that panics unwinds through `step` exactly as it does when the calls
-                // run one at a time; being run beside another one does not make it survivable
+                // a tool's panic is caught inside `invoke`, so one that reaches here is the
+                // kernel's own, and unwinds through `step` as it would with the calls run one at
+                // a time
                 Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
                 Err(_) => {}
             }
@@ -209,10 +214,33 @@ impl Kernel {
         });
 
         // a tool that fails is not a kernel failure: the model is told, and the loop goes on
+        //
+        // note: and one that panics has failed too, so the panic is caught at each poll rather
+        // than left to unwind through `step`. Unwound, it took the turn with it and answered
+        // nothing: the record ended at `tool.started`, and a client awaiting the step was handed
+        // a panic in place of a state. `AssertUnwindSafe` because what the tool leaves behind is
+        // its own; the kernel's state is changed under its locks, and none is held across a poll
         let sink = OutputSink::new(self.clone(), call.id.clone(), call.tool.clone());
-        match tool.invoke(&call, sink).await {
-            Ok(output) => output,
-            Err(e) => ToolOutput::error(e.to_string()),
+        let mut running = tool.invoke(&call, sink);
+        let caught = std::future::poll_fn(|cx| {
+            match std::panic::catch_unwind(AssertUnwindSafe(|| running.as_mut().poll(cx))) {
+                Ok(Poll::Pending) => Poll::Pending,
+                Ok(Poll::Ready(answered)) => Poll::Ready(Ok(answered)),
+                Err(panic) => Poll::Ready(Err(panic)),
+            }
+        })
+        .await;
+
+        match caught {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => ToolOutput::error(e.to_string()),
+            Err(panic) => {
+                self.emit(Event::ToolPanicked {
+                    call: call.id.clone(),
+                    tool: call.tool.clone(),
+                });
+                ToolOutput::error(panicked(&*panic))
+            }
         }
     }
 
@@ -392,6 +420,23 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
                               rule, so a different approach may well be allowed."
             .to_owned(),
         other => format!("the call was not permitted: {other:?}"),
+    }
+}
+
+/// What a call whose tool panicked is told: that it crashed, and what the panic said.
+///
+/// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
+/// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
+/// and is said to have said nothing rather than rendered as a type name.
+fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
+    let said = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+
+    match said {
+        Some(said) => format!("the tool crashed while making this call: {said}"),
+        None => "the tool crashed while making this call, and said nothing about why".to_owned(),
     }
 }
 

@@ -5,6 +5,19 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **A tool that panics is a call that failed, not a step that unwinds.** The panic is caught
+  where the kernel polls the tool. The call is answered with an error result the model is shown,
+  holding what the panic said, and `Event::ToolPanicked` (`tool.panicked`) comes before its
+  `tool.finished` to say it was a panic. The calls beside it and the rest of the turn go on, run in
+  turn or together. Before, the panic unwound through `Kernel::step`: the state machine came back
+  to `Idle`, but the call had no answer and nothing in the log said what had happened to it, and a
+  client that awaited the step on a task of its own never heard back. A panic in the kernel itself
+  still unwinds, and a build with `panic = "abort"` is ended by the panic as before.
+
 ## [0.7.2] - 2026-09-28
 
 ### fixed

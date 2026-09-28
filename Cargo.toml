@@ -26,10 +26,10 @@ members = [
 # tenth of the artifact for half a minute of a job that runs when a tag is pushed. Thin is the
 # right answer for the trade made per-commit, and nothing here is built per-commit in release.
 #
-# note: `panic = "abort"` is the obvious next lever and is deliberately not pulled. A panicking
-# tool is reported through a `JoinError` and the turn carries on; aborting would take the session
-# with it, which is not a trade a program whose point is an honest account of what happened gets
-# to make for a smaller download.
+# note: `panic = "abort"` is the obvious next lever and is deliberately not pulled. The kernel
+# answers a panicking tool as a failed call and says so in `tool.panicked`, and the turn carries
+# on; aborting would take the session with it, which is not a trade a program whose point is an
+# honest account of what happened gets to make for a smaller download.
 [profile.release]
 codegen-units = 1
 lto = "fat"

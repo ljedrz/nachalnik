@@ -195,7 +195,8 @@ tools.changed      context.undone      model.payload      tool.started
 policy.changed     context.redone      model.finished     tool.output
 projector.changed  context.annotated   model.failed       tool.finished
 counter.changed    context.recounted   step.failed        permission.requested
-compactor.changed  context.compacted                      permission.decided
+compactor.changed  context.compacted                      tool.panicked
+                                                          permission.decided
                                                           policy.ruled
 ```
 
