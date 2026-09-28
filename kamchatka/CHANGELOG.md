@@ -55,6 +55,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A `--connect` client told the session is finished leaves when the socket resets.** A session
+  that ends while a client's last command is still unread closes the connection with a reset, and
+  the client took that for a dropped connection: it said so and tried to reattach for a minute to
+  a session that had just told it it was over. After `session.finished`, a reset is the end, as a
+  clean close already was.
+
 - **`--spend` counts a response the broadcast dropped.** What a session spent was added up from
   the `model.finished` events it read, and a subscriber that fell behind a fast stream loses events,
   so a ceiling could be passed by whatever a lag took. It is now read off the log, which drops

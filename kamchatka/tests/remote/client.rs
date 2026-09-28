@@ -1389,3 +1389,48 @@ async fn a_connection_that_stops_reads_as_a_connection_and_not_as_a_message() {
         "the connection going was not said: {prose}"
     );
 }
+
+/// A session that said it was finished and then reset the connection has ended, and is not looked
+/// for again.
+///
+/// note: a Unix socket closed with something still unread in it reads at the other end as a reset,
+/// after whatever was written before it. A session ending under a client that had just written - a
+/// `/quit` followed by the input closing is enough - closes that way, and the client that typed
+/// `/quit` spent a minute trying to reattach to a session that had told it it was over. The
+/// listener here does that on purpose: it waits for the attach to arrive, leaves it unread, says
+/// the session is finished and hangs up.
+#[tokio::test]
+async fn a_reset_after_the_session_finished_is_the_end() {
+    let dir = crate::common::scratch("reset-after-finished");
+    let socket = dir.join("kamchatka.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).expect("a socket");
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let _ = stream.readable().await;
+                let record: nachalnik::Record = serde_json::from_value(
+                    json!({ "seq": 1, "at": 0, "event": { "event": "session.finished" } }),
+                )
+                .expect("a record");
+                let _ = protocol::write(&mut stream, &Message::Record(record)).await;
+            });
+        }
+    });
+
+    let (_feed, input) = tokio::io::duplex(256);
+    let heard = Heard::default();
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    let mut client = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose);
+    let at = format!("unix:{}", socket.display());
+    let run = client.run(&at, BufReader::new(input));
+    let ran = tokio::time::timeout(PATIENCE, run).await;
+    let prose = heard.text();
+
+    assert!(
+        ran.is_ok(),
+        "the client looked for a session that had ended: {prose}"
+    );
+    assert!(!prose.contains("attaching again"), "{prose}");
+    assert!(!prose.contains("stopped talking"), "{prose}");
+    assert!(prose.contains("the session has ended"), "{prose}");
+}
