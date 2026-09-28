@@ -5043,3 +5043,87 @@ async fn a_policy_nobody_has_decided_anything_about_says_so() {
         run.prose
     );
 }
+
+/// A model that panics on its first request and answers the second.
+struct PanicsOnce(std::sync::atomic::AtomicBool);
+
+#[async_trait]
+impl Provider for PanicsOnce {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("panics", "panics")
+    }
+
+    async fn respond(&self, _: ModelRequest, _: DeltaSink) -> Result<ModelResponse, BoxError> {
+        if !self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            panic!("the provider fell over");
+        }
+        Ok(ModelResponse::text("second answer"))
+    }
+}
+
+/// A turn that panics is a failed turn: it is said, and the next line is still read.
+///
+/// note: the turn runs on a task of its own, and a panic there used to send no outcome at all,
+/// so `busy` stayed set and the run waited for good. A provider is the seam that can still do it
+/// - a tool's panic is answered by the kernel as a failed call - and a timeout is what turns a
+/// hang into a failure here rather than into a suite that never ends.
+#[tokio::test]
+async fn a_turn_that_panics_fails_and_the_session_carries_on() {
+    let run = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        run("first\nsecond\n", Vec::new(), |app| {
+            app.kernel
+                .set_provider(Arc::new(PanicsOnce(Default::default())));
+        }),
+    )
+    .await
+    .expect("the run hung on the panicked turn");
+
+    assert!(
+        run.prose
+            .contains("the turn panicked: the provider fell over"),
+        "{}",
+        run.prose
+    );
+    assert!(run.prose.contains("second answer"), "{}", run.prose);
+    assert!(!run.app.busy);
+}
+
+/// A tool that panics when it is run.
+struct Falls;
+
+#[async_trait]
+impl Tool for Falls {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("falls", "panics").with_capabilities([Capability::fs("read")])
+    }
+
+    async fn invoke(&self, _: &ToolCall, _: OutputSink) -> Result<ToolOutput, BoxError> {
+        panic!("the tool fell over")
+    }
+}
+
+/// A tool that panics is a call that failed, and the record says which and how.
+#[tokio::test]
+async fn a_tool_that_panics_is_a_failed_call_in_the_record() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "falls", json!({}))]),
+        ModelResponse::text("it fell over"),
+    ];
+    let run = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        run_with("try it\n", script, Grant::Allow, |app| {
+            app.kernel.add_tool(Arc::new(Falls));
+        }),
+    )
+    .await
+    .expect("the run hung on the panicked tool");
+
+    let tools: Vec<String> = run
+        .names()
+        .into_iter()
+        .filter(|name| name.starts_with("tool.") && name != "tool.requested")
+        .collect();
+    assert_eq!(tools, ["tool.started", "tool.panicked", "tool.finished"]);
+    assert!(run.prose.contains("it fell over"), "{}", run.prose);
+}

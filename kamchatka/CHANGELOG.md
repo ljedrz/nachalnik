@@ -18,6 +18,14 @@ minor bump may break you.
 
 ### fixed
 
+- **A turn that panics is a turn that failed, and the session goes on.** The turn ran on a task
+  whose panic sent no outcome, so `busy` stayed set for good: a headless run waited forever, no
+  later line was read, and the record stopped at `tool.started`. The turn now runs on a task of
+  its own, and the task that reports the outcome awaits it and turns a panic into
+  `Outcome::Failed`, saying what the panic said. A tool's panic no longer reaches here, since the
+  runtime answers it as a failed call with `tool.panicked` in the record; what does is a panic in a
+  provider or in the kernel itself.
+
 - **The record is written as the session goes, not when it is over.** It was written once, at
   the end, from the log the kernel keeps in memory - so a `kill -9`, an out-of-memory kill or a
   pulled plug left no record at all, of a session whose point is that everything that happened is
