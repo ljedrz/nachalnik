@@ -51,7 +51,9 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             ),
             None => format!("{stop:?}"),
         },
-        Event::ToolRequested { tool, .. } | Event::ToolStarted { tool, .. } => tool.clone(),
+        Event::ToolRequested { tool, .. }
+        | Event::ToolStarted { tool, .. }
+        | Event::ToolPanicked { tool, .. } => tool.clone(),
         Event::ToolFinished { tool, tokens, .. } => format!("{tool}, {tokens} tokens"),
         Event::PermissionRequested { request } => format!("{} ({})", request.tool, request.id),
         Event::PermissionDecided {
@@ -803,4 +805,13 @@ pub fn waited_since(gap: std::time::Duration) -> Option<String> {
             gap.as_secs() % 60
         )),
     }
+}
+
+/// What a panic said, where it said it as text.
+pub(crate) fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|said| (*said).to_owned())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "it said nothing about why".to_owned())
 }

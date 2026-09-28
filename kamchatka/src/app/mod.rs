@@ -44,7 +44,7 @@ mod keys;
 pub(crate) mod text;
 pub mod when;
 
-use text::{moved, one_line, plural, thousands, trace_line};
+use text::{moved, one_line, panicked, plural, thousands, trace_line};
 // only the key that prints a request without a command: `/request` imports its own
 #[cfg(feature = "tui")]
 use text::request_preview;
@@ -818,7 +818,7 @@ impl App {
         self.interrupting = false;
         self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
-        tokio::spawn(async move {
+        let turn = tokio::spawn(async move {
             // note: a stop asked for between the kernel finishing a turn and this `App` hearing
             // that it had is still standing, because the kernel keeps an interrupt on a resting
             // session for the next attempt to spend - and that attempt is this one, which would
@@ -833,7 +833,21 @@ impl App {
                 true => kernel.step().await.map(Outcome::Stepped),
                 false => kernel.turn().await.map(Outcome::Stopped),
             };
-            let _ = outcomes.send(outcome.unwrap_or_else(|e| Outcome::Failed(e.to_string())));
+            outcome.unwrap_or_else(|e| Outcome::Failed(e.to_string()))
+        });
+        // note: the turn on a task of its own and the outcome sent from this one, because a turn
+        // that panics sends nothing from inside itself. The kernel answers a tool's panic as a
+        // failed call, so what reaches here is a panic in the kernel or in something this program
+        // handed it, and unanswered it left `busy` set for good: the headless loop waited for
+        // an outcome that never came and read no more input
+        tokio::spawn(async move {
+            let outcome = turn.await.unwrap_or_else(|e| {
+                Outcome::Failed(match e.try_into_panic() {
+                    Ok(panic) => format!("the turn panicked: {}", panicked(&*panic)),
+                    Err(e) => format!("the turn was stopped: {e}"),
+                })
+            });
+            let _ = outcomes.send(outcome);
         });
     }
 
