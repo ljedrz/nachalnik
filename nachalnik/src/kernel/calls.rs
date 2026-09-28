@@ -16,7 +16,7 @@ use crate::{
     error::Result,
     event::{Event, OutputSink},
     model::ToolCall,
-    permissions::{Grant, GrantSource, PermissionId, PermissionRequest, Verdict},
+    permissions::{Grant, GrantSource, PermissionId, PermissionPolicy, PermissionRequest, Verdict},
     tool::{Tool, ToolOutput},
 };
 
@@ -69,7 +69,8 @@ impl Kernel {
             // what the call needs rather than what the tool might: see `Tool::needs`
             let request = PermissionRequest::new(id, call, tool.needs(call));
 
-            let grant = match self.policy().evaluate(&request).await {
+            let policy = self.policy();
+            let grant = match policy.evaluate(&request).await {
                 Verdict::Allow => Some((Grant::Allow, GrantSource::Policy)),
                 Verdict::Deny => Some((Grant::Deny, GrantSource::Policy)),
                 Verdict::Ask => None,
@@ -93,6 +94,7 @@ impl Kernel {
                 tool,
                 request,
                 grant,
+                policy,
             });
         }
 
@@ -141,6 +143,7 @@ impl Kernel {
                             prepared.call.clone(),
                             prepared.request.clone(),
                             prepared.grant,
+                            &*prepared.policy,
                         )
                         .await
                     }
@@ -161,9 +164,12 @@ impl Kernel {
         let mut running = tokio::task::JoinSet::new();
         for (index, call) in prepared.iter().enumerate() {
             let (kernel, tool, grant) = (self.clone(), call.tool.clone(), call.grant);
-            let request = call.request.clone();
+            let (request, policy) = (call.request.clone(), call.policy.clone());
             let call = call.call.clone();
-            running.spawn(async move { (index, kernel.invoke(tool, call, request, grant).await) });
+            running.spawn(async move {
+                let output = kernel.invoke(tool, call, request, grant, &*policy).await;
+                (index, output)
+            });
         }
 
         let mut outputs: Vec<Option<ToolOutput>> = (0..prepared.len()).map(|_| None).collect();
@@ -194,6 +200,7 @@ impl Kernel {
         call: ToolCall,
         request: PermissionRequest,
         grant: Option<(Grant, GrantSource)>,
+        policy: &dyn PermissionPolicy,
     ) -> ToolOutput {
         let (grant, source) = grant.expect("every claimed call has been decided");
         if grant == Grant::Deny {
@@ -201,7 +208,7 @@ impl Kernel {
             // standing-rule wording and into no other, so asking anywhere else computes an
             // explanation of somebody else's decision and drops it
             let why = match source {
-                GrantSource::Policy => self.policy().why(&request),
+                GrantSource::Policy => policy.why(&request),
                 _ => None,
             };
 

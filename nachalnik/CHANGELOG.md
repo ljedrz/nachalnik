@@ -39,6 +39,14 @@ minor bump may break you.
   client that awaited the step on a task of its own never heard back. A panic in the kernel itself
   still unwinds, and a build with `panic = "abort"` is ended by the panic as before.
 
+### fixed
+
+- **A refusal is explained by the policy that made it.** A call refused by the policy is decided
+  when the turn is answered and refused when it is executed, and `PermissionPolicy::why` was asked
+  of whichever policy was installed at the second moment. A `set_policy` while the calls waited in
+  `Ready` or `Deciding` therefore gave the model a reason from rules that never judged the call.
+  The policy that evaluated each call is now kept with it and is the one asked.
+
 ## [0.7.2] - 2026-09-28
 
 ### fixed

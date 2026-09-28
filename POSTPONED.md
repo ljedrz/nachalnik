@@ -311,12 +311,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
   denies is the other reading, at the cost of the two rules no longer being held alike.
 
-- **A refusal explained by the policy installed now.** A denied call's `why` is asked of whichever
-  policy is installed when the explanation is written, so a `set_policy` while calls wait explains a
-  refusal with the rules of a policy that did not make it. Keeping the deciding policy beside the
-  call - an `Arc<dyn PermissionPolicy>` in `PreparedCall` - is the fix, and it is a change inside
-  the kernel: `PreparedCall` is private.
-
 - **Reads that span more than one lock.** `snapshot()` reads `last_seq` under the context's lock,
   so its items and its sequence agree, but it reads the parameters and the counter's calibration
   before taking it - so a `set_params` or a recalibration landing in between is named by a sequence

@@ -63,6 +63,49 @@ async fn a_policy_that_knows_why_it_refused_can_tell_the_model() {
     );
 }
 
+/// A policy installed while a refused call waits does not explain the refusal.
+///
+/// note: the call is decided when the turn is answered and refused when it is executed, and the
+/// machine rests in `Ready` in between. The reason was asked of whichever policy was installed at
+/// the second moment, so the model was told a refusal came from rules that never judged it.
+#[tokio::test]
+async fn a_refusal_is_explained_by_the_policy_that_made_it() {
+    struct Other;
+
+    #[nachalnik::async_trait]
+    impl nachalnik::PermissionPolicy for Other {
+        async fn evaluate(&self, _request: &nachalnik::PermissionRequest) -> Verdict {
+            Verdict::Allow
+        }
+
+        fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
+            Some("a rule this call was never held to".to_owned())
+        }
+    }
+
+    let (kernel, _) = inquisitive([
+        ModelResponse::tool_calls(vec![call("c1", "shell", json!({}))]),
+        ModelResponse::text("fine"),
+    ]);
+    kernel.set_policy(Arc::new(Fussy));
+    kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "it ran!").with_capabilities([Capability::exec("run")]),
+    ));
+    kernel.push(ContextItem::user("do it"));
+
+    let ready = kernel.step().await.unwrap();
+    assert!(matches!(ready, State::Ready { .. }), "{ready:?}");
+    kernel.set_policy(Arc::new(Other));
+    kernel.step().await.unwrap();
+
+    let said = tool_results(&kernel)[0].content.to_text().into_owned();
+    assert!(
+        said.contains("`shell` is off for the whole of this session"),
+        "{said}"
+    );
+    assert!(!said.contains("never held to"), "{said}");
+}
+
 #[tokio::test]
 async fn a_call_refused_by_whoever_was_asked_says_it_was_about_this_call() {
     let (kernel, _) = inquisitive([
