@@ -370,6 +370,11 @@ impl<'a> Client<'a> {
                         true => Some(Left::Done),
                         false => Some(Left::Dropped),
                     },
+                    // note: a reset after `session.finished` is the end too, for the same reason. A
+                    // session that has ended can close with something this client wrote still
+                    // unread, and a socket closed that way reads here as a reset once the last of
+                    // what the session wrote has been read
+                    Err(_) if self.over => Some(Left::Done),
                     // note: a connection going is not a session saying something, and the two read
                     // one way at a reader: a reset is `ECONNRESET` and nothing was said in it. A
                     // sentence about what was unreadable sends whoever reads it looking for a
