@@ -1295,57 +1295,6 @@ fn a_read_only_path_inside_the_working_directory_is_refused() {
     assert!(said.contains("--sandbox-read"), "{said}");
 }
 
-/// A `~` in a path a person typed is their home directory, in every command that takes one.
-///
-/// note: the settings file expanded one because nothing was in front of it, and `/attach` did not,
-/// so a path under the home directory was read out of a file and refused when the same path was
-/// typed at the prompt. The prompt has no shell in front of it either, which is the whole of the
-/// argument, and the three commands are the ones a person types a path into.
-///
-/// note: the tools still refuse a `~`, on purpose: those paths are written by a model. This is
-/// about what the person who owns the home directory types, and the two are told apart by where
-/// the path came from rather than by the shape of the path.
-///
-/// note: a home of the test's own, over the top of whatever the machine has. `config::home` reads
-/// `HOME` and nothing else - a password database's answer and the one the person is working from
-/// are allowed to differ, and a path that quietly goes somewhere else is worse than one that
-/// fails - so setting it is how a test says which home it means.
-#[test]
-fn a_tilde_typed_at_the_prompt_is_the_home_directory() {
-    let home = common::scratch("typed-tilde-home");
-    std::fs::write(home.join("notes.txt"), "PLUM").expect("a file in it");
-    let home = home.display().to_string();
-
-    // `/attach`, which is the one the guide shows a `~` in
-    let (ok, said) = run_with(&[], "/attach ~/notes.txt\n", &[("HOME", &home)]);
-    assert!(ok, "{said}");
-    assert!(said.contains("went into the context"), "{said}");
-    assert!(
-        said.contains(&format!("{home}/notes.txt")),
-        "the path that went in was not the home directory's: {said}"
-    );
-
-    // and `/save`, which writes rather than reads and used to make a directory called `~` under
-    // wherever the session was standing
-    let (ok, said) = run_with(&[], "/save ~/session\n", &[("HOME", &home)]);
-    assert!(ok, "{said}");
-    assert!(
-        said.contains(&format!("{home}/session.json")),
-        "the save did not land in the home directory: {said}"
-    );
-    assert!(
-        Path::new(&home).join("session.json").is_file(),
-        "and nothing was written there"
-    );
-
-    // a `~` that is somebody else's is left as it was typed: resolving another user's home means
-    // asking the password database, and a path that quietly is not what it says is worse than one
-    // that is obviously wrong
-    let (ok, said) = run_with(&[], "/attach ~root/.ssh\n", &[("HOME", "/nowhere")]);
-    assert!(!said.contains("went into the context"), "{said}");
-    assert!(!ok || said.contains("~root/.ssh"), "{said}");
-}
-
 /// A `KAMCHATKA_CONTEXT_LIMIT` that is not a number of tokens is refused at startup, by name.
 ///
 /// note: a value that did not parse used to read as *no limit at all*, so a mistyped figure - or

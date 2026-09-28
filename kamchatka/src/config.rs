@@ -225,33 +225,6 @@ pub fn found() -> Option<PathBuf> {
     config.is_file().then_some(config)
 }
 
-/// A leading `~` in a path somebody typed at this program's prompt, made into the home directory
-/// it stands for.
-///
-/// note: the same expansion [`Settings::read`] does, through [`expanded`], and for the same
-/// reason - a person types `/attach ~/notes.txt` into a prompt that has no shell in front of it,
-/// and the alternative is `--sandbox-read ~/.rustup` working while the same path typed at the
-/// prompt reaches nothing.
-///
-/// note: nothing to expand against leaves the path exactly as it was typed, and so does a `~` that
-/// is not followed by a separator or nothing - see [`expanded`].
-///
-/// note: a person's own home, never a model's. The tools refuse a leading `~` rather than
-/// expanding it and that stays; those paths are written by a model, and expanding one there is how
-/// `~/.ssh/id_rsa` becomes a real path on a string it made up. This one is typed by the person
-/// whose home it is.
-pub(crate) fn expanded_for_a_person(path: &str) -> String {
-    match home() {
-        // note: looked up once per path rather than per component, and a home that is not in the
-        // environment leaves the path as it was - the same `home()` the settings file is read
-        // against, so `~` means one thing in this program
-        Some(home) => expanded(PathBuf::from(path), &home)
-            .to_string_lossy()
-            .into_owned(),
-        None => path.to_owned(),
-    }
-}
-
 /// Where the home directory is, according to the environment and nothing else.
 ///
 /// note: the environment and nothing else, for the same reason `~user` is left alone below: the
@@ -264,15 +237,13 @@ fn home() -> Option<PathBuf> {
 /// A leading `~`, made into the home directory it stands for.
 ///
 /// note: this is the one place in this crate that expands one, and the exception is narrower than
-/// it looks: it is a path a *person* wrote. A settings file has no shell in front of it and the
-/// prompt has none either, so not expanding here would not be one rule applied evenly - it would
-/// be `--sandbox-read ~/.rustup` working, the same path in a file silently reaching nothing, and
-/// `/attach ~/notes.txt` refused. Everything else this program takes a path from has a shell in
-/// front of it, which expanded `~` before the program saw anything.
-///
-/// note: the tools refuse a leading `~` rather than expanding it and that stays: those paths are
-/// written by a *model*, and expanding one there is how `~/.ssh/id_rsa` becomes a real path on a
-/// string it made up. This one is written by the person whose home it is.
+/// it looks: every *other* way of giving these paths has a shell in front of it, which expanded
+/// `~` before the program saw anything. A settings file has nothing in front of it, so not
+/// expanding here would not be one rule applied evenly - it would be `--sandbox-read ~/.rustup`
+/// working and the same path in a file silently reaching nothing. The tools refuse a leading `~`
+/// rather than expanding it and that stays: those paths are written by a *model*, and expanding
+/// one there is how `~/.ssh/id_rsa` becomes a real path on a string it made up. This one is
+/// written by the person whose home it is.
 ///
 /// note: `~user` is left alone. Resolving somebody else's home means asking the password database,
 /// and a path that is quietly not what it says is worse than one that is obviously wrong.

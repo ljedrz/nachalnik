@@ -576,13 +576,10 @@ before the session starts. `/tools toggle` works on every tool, including the on
 brought, and a tool turned off this way is kept rather than thrown away: `/tools toggle` again
 offers the same one back, still holding whatever it was remembering.
 
-A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory, and so is one in a
-path you type at the prompt — `/attach ~/notes.txt`, `/save ~/session`, `/load ~/session`. Those are
-the places a path arrives with no shell in front of it to have expanded it, which is the whole
-reason this program does it; every other way of giving a path has one. The tools still refuse a
-leading `~` rather than expanding it, because those paths are written by a *model* rather than by
-you. A `~` that is somebody else's is left alone: resolving another user's home means asking the
-password database, and a path that quietly is not what it says is worse than one that fails.
+A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
+this program expands one, because every other way of giving those paths has a shell in front of it
+that expanded `~` before the program saw anything, and a file has nothing in front of it. The tools
+still refuse a leading `~` rather than expanding it, because those paths are written by a *model*.
 
 A key nothing reads is an error naming it, not a line that quietly does nothing: the program stops
 and names the file, the key it did not know, and the keys it would have.

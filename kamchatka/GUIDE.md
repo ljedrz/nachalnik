@@ -638,7 +638,7 @@ is `sed -n` through `shell`, which is `exec:run` again, for a file the session m
 go out as one request:
 
 ```text
-/attach ~/reports/q3.pdf what is the headline number, and what is it compared against?
+/attach reports/q3.pdf what is the headline number, and what is it compared against?
 ```
 
 What goes in depends on what the file is. Source, markdown, logs, CSV — anything this program has no

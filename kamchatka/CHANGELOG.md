@@ -292,10 +292,6 @@ minor bump may break you.
   request was larger - including the anchored figure, which starts from what the provider charged
   for a request that carried the picture and already has it inside it. The estimate is a floor;
   the anchored figure is not, and the line says so once a response has anchored it.
-- **A `~` a person types at the prompt is their home directory, in `/attach`, `/save` and
-  `/load`.** Only the settings file expanded one, and its note said the prompt had a shell in front
-  of it, which it does not - so the guide's own `/attach ~/reports/q3.pdf` was refused. The tools
-  still refuse a leading `~`: those paths are written by a model.
 - **A file `-f` could not read says why, once.** A missing file came out as `missing.png: could not
   read missing.png`, the path twice and no reason; it reads as `/attach` puts it now.
 - **A `KAMCHATKA_CONTEXT_LIMIT` that is not a positive whole number is refused at startup, by
