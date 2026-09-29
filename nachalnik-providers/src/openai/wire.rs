@@ -593,7 +593,7 @@ fn completion(body: &Value) -> bool {
 /// an event at a time - and the same words for both. The body is quoted because it is the only
 /// account of what came back, and a caller who cannot see it has nothing to act on.
 fn not_a_completion(body: &Value) -> BoxError {
-    let short: String = body.to_string().chars().take(300).collect();
+    let short = crate::markup::quoted(&body.to_string());
     format!("the answer was not a completion: {short}").into()
 }
 
