@@ -540,6 +540,10 @@ fn makes_directories(policy: &Careful) -> bool {
     policy.stance(&Subject::Capability(Capability::exec("run"))) != Verdict::Deny
 }
 
+/// How to add text with an edit, for the two refusals of an `edit` that names nothing to replace.
+const INSERTING: &str = "`edit` replaces `old` with `new`, so to add text, put a line it goes \
+                         next to in `old` and that line with the addition in `new`";
+
 pub(super) struct Edit(
     pub(super) Arc<Reach>,
     pub(super) Arc<Careful>,
@@ -552,6 +556,14 @@ impl Edit {
         args: &Value,
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
+        // note: said with how to add text, because that is what an `edit` with a `new` and no
+        // `old` is almost always trying to do, and "required" alone sends a model back with the
+        // same call and an `old` it has to invent
+        if args["old"].is_null() && !args["new"].is_null() {
+            return Ok(ToolOutput::error(format!(
+                "the `old` argument is required, and nothing was done; {INSERTING}"
+            )));
+        }
         let (old, new) = (arg(args, "old")?, arg(args, "new")?);
         let named = arg(args, "path")?;
         if let Some(refusal) = dir(named, "changed", &self.1) {
@@ -580,7 +592,7 @@ impl Edit {
         if old.is_empty() {
             return Ok(ToolOutput::error(format!(
                 "`old` is empty, so it names no text in {}; give the text to replace, or use \
-                 `write` for the whole file",
+                 `write` for the whole file. {INSERTING}",
                 path.display()
             )));
         }

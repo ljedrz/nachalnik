@@ -134,11 +134,28 @@ async fn an_empty_edit_is_refused_rather_than_written_at_the_front() {
     .await;
 
     assert!(said.contains("names no text"), "{said}");
+    assert!(
+        said.contains("to add text"),
+        "and says how to add some: {said}"
+    );
     assert_eq!(
         held(&dir, "a.rs"),
         "fn go() {}\n",
         "and nothing was written"
     );
+}
+
+/// An edit with a `new` and no `old` says how to add text, and writes nothing.
+#[tokio::test]
+async fn an_edit_with_nothing_to_replace_says_how_to_add_text() {
+    let dir = scratch("files-edit-no-old");
+    std::fs::write(dir.join("a.rs"), "fn go() {}\n").expect("a file");
+
+    let said = ask(&dir, "edit", json!({ "path": "a.rs", "new": "// oh\n" })).await;
+
+    assert!(said.contains("the `old` argument is required"), "{said}");
+    assert!(said.contains("to add text"), "{said}");
+    assert_eq!(held(&dir, "a.rs"), "fn go() {}\n");
 }
 
 /// An `old` that is not there is said to be not there, and the file is left alone.
