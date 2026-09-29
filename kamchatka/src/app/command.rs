@@ -1104,13 +1104,13 @@ impl App {
                 // refused. It is a legitimate thing to want - one way to stop a session is to tell
                 // it that it has spent enough - so it is answered rather than argued with
                 Some(limit) if self.overspent() => format!(
-                    "the ceiling is {} tokens and this run has spent {spent}, so nothing more \
-                     will be sent",
-                    thousands(limit as usize)
+                    "the ceiling is {} and this run has spent {spent}, so nothing more will be \
+                     sent",
+                    plural(limit as usize, "token")
                 ),
                 Some(limit) => format!(
-                    "the ceiling is {} tokens; this run has spent {spent}",
-                    thousands(limit as usize)
+                    "the ceiling is {}; this run has spent {spent}",
+                    plural(limit as usize, "token")
                 ),
                 None => format!("no ceiling; this run has spent {spent} tokens"),
             };
