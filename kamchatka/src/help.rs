@@ -123,7 +123,8 @@ pub fn everything() -> String {
 pub const CHAT: &str =
     "  THE PROMPT, which is on the chat tab, and wherever an item is being edited
     enter               send
-    alt+enter           a new line
+    shift+enter         a new line; alt+enter where the terminal cannot tell
+                        shift+enter from enter
     up                  in an empty prompt, the last message back: the one
                         still waiting, if one is, and otherwise a copy of the
                         last one sent. With anything typed it moves the cursor

@@ -295,7 +295,7 @@ and running that through a renderer would be inventing structure it never had.
 
 | key | what happens |
 | --- | --- |
-| <kbd>enter</kbd> / <kbd>alt+enter</kbd> | send / a new line |
+| <kbd>enter</kbd> / <kbd>shift+enter</kbd> | send / a new line; <kbd>alt+enter</kbd> too, for a terminal that sends <kbd>shift+enter</kbd> as <kbd>enter</kbd> |
 | <kbd>up</kbd> | in an empty prompt, the last message back: the one still waiting, or a copy of the last one sent |
 | <kbd>down</kbd> | put a recalled line away again, while nothing has been typed over it |
 | <kbd>ctrl+l</kbd> | take this program's own lines off the chat; the conversation stays |

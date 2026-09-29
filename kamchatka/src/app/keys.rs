@@ -38,12 +38,15 @@ impl App {
 
     /// Keys that belong to the prompt.
     pub(super) async fn input_key(&mut self, key: KeyEvent) {
-        let alt = key.modifiers.contains(KeyModifiers::ALT);
+        // shift+enter is the one people reach for, and alt+enter the one every terminal can send
+        let newline = key
+            .modifiers
+            .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT);
 
         match key.code {
             // the prompt is editing an item rather than composing a message; enter commits it and
             // escape puts it back the way it was
-            KeyCode::Enter if !alt && self.editing.is_some() => {
+            KeyCode::Enter if !newline && self.editing.is_some() => {
                 let text = self.input.lines().join("\n");
                 self.clear_input();
                 self.commit_edit(&text);
@@ -56,9 +59,8 @@ impl App {
             // what `/stop` does there, which is the promise its help line makes: in `ready`
             // nothing is running, and the calls waiting to run are what stopping takes
             KeyCode::Esc if self.ready() => self.drop_decided(),
-            // enter sends, because that is what a prompt is for; a newline is alt+enter, which
-            // is the one every terminal agrees on
-            KeyCode::Enter if !alt => {
+            // enter sends, because that is what a prompt is for
+            KeyCode::Enter if !newline => {
                 let line = self.input.lines().join("\n").trim().to_owned();
                 if line.is_empty() {
                     return;
@@ -85,9 +87,19 @@ impl App {
                 self.clear_input()
             }
             // at the edges of the prompt, the arrows go on to the conversation
-            KeyCode::Up if self.input.cursor().0 == 0 => self.scroll_by(-1),
-            KeyCode::Down if self.input.cursor().0 + 1 == self.input.lines().len() => {
-                self.scroll_by(1)
+            //
+            // note: an edge is where the cursor stops moving, not the first or last line typed.
+            // A paste is often one line wrapped over every row of the box, and asking which line
+            // the cursor is on sent `up` to the conversation from anywhere in it
+            KeyCode::Up | KeyCode::Down => {
+                let was = self.input.cursor();
+                self.input.input(key);
+                if self.input.cursor() == was {
+                    self.scroll_by(match key.code {
+                        KeyCode::Up => -1,
+                        _ => 1,
+                    });
+                }
             }
             KeyCode::PageUp => self.scroll_by(-(self.viewport as isize / 2)),
             KeyCode::PageDown => self.scroll_by(self.viewport as isize / 2),

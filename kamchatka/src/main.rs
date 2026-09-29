@@ -23,7 +23,10 @@ use anyhow::Context as _;
 use clap::CommandFactory as _;
 #[cfg(feature = "tui")]
 use crossterm::{
-    event::{DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream},
+    event::{
+        DisableBracketedPaste, EnableBracketedPaste, Event as TerminalEvent, EventStream,
+        KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    },
     execute,
 };
 
@@ -675,7 +678,7 @@ async fn drawn(
     // ratatui installs a hook of its own that restores the terminal and then calls this one
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(stdout(), DisableBracketedPaste);
+        let _ = execute!(stdout(), PopKeyboardEnhancementFlags, DisableBracketedPaste);
         previous(info);
     }));
 
@@ -684,7 +687,15 @@ async fn drawn(
     let mut serving = server.is_some().then(|| remote::Serving::new(app));
 
     let mut terminal = ratatui::init();
-    let _ = execute!(stdout(), EnableBracketedPaste);
+    // note: the kitty keyboard protocol, asked for rather than checked for, is the only way a
+    // terminal sends `shift+enter` as anything but `enter`. One that does not speak it ignores
+    // the request, and `alt+enter` is the newline there. Only the flag that disambiguates:
+    // releases and repeats are further flags, and nothing here wants them
+    let _ = execute!(
+        stdout(),
+        EnableBracketedPaste,
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    );
     let outcome = run(
         &mut terminal,
         app,
@@ -694,7 +705,7 @@ async fn drawn(
         serving.as_mut(),
     )
     .await;
-    let _ = execute!(stdout(), DisableBracketedPaste);
+    let _ = execute!(stdout(), PopKeyboardEnhancementFlags, DisableBracketedPaste);
     ratatui::restore();
     // however the loop was left - `/quit`, a signal, or a terminal that stopped answering - a turn
     // still running is stopped and waited for before anybody writes `session.finished`
