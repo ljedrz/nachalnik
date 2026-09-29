@@ -8,7 +8,10 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use nachalnik::{Config, Kernel};
+use nachalnik::{
+    BoxError, Config, Content, ContextItem, DeltaSink, Kernel, ModelInfo, ModelRequest,
+    ModelResponse, Provider, Role, StopReason, Usage, async_trait,
+};
 use nachalnik_eval::{
     Act, Answer, Error, Experiment, Faced, Kind, Outcome, Reading, Step, Subject, Trial, evaluate,
     suite,
@@ -758,6 +761,128 @@ async fn the_other_session_is_let_run_exactly_as_long_as_the_subject() {
     assert_eq!((briefed, asked), (1, 0));
 }
 
+/// A model that answers in words, and never reaches for the handles it is given.
+///
+/// note: the rulebook in `common` tests the opposite on purpose, because a harness that hands
+/// over a tool and watches it go unused has measured nothing. This one is the other half of that
+/// finding: a subject that declines every handle, which the checks have to report rather than
+/// score.
+struct InWordsOnly;
+
+#[async_trait]
+impl Provider for InWordsOnly {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("in-words-only", "in-words-only")
+    }
+
+    async fn respond(
+        &self,
+        request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        // the first of the answers the question offers, and a plain no for anything else
+        let last = request
+            .messages
+            .iter()
+            .rev()
+            .find(|message| matches!(message.role, Role::User | Role::Tool))
+            .and_then(|message| message.content.as_ref())
+            .map(|content| content.to_text().into_owned())
+            .unwrap_or_default();
+        let said = last
+            .rsplit("one of: ")
+            .nth(1)
+            .and_then(|options| options.split_whitespace().next())
+            .map_or_else(
+                || "ANSWER: no\nCONFIDENCE: 60".to_owned(),
+                |first| format!("ANSWER: {first}"),
+            );
+
+        Ok(ModelResponse {
+            content: Some(Content::text(said)),
+            reasoning: None,
+            tool_calls: Vec::new(),
+            stop: StopReason::EndTurn,
+            usage: Some(Usage::default()),
+            raw: None,
+        })
+    }
+}
+
+/// The rulebook, with the copies of any session that did not arrive with the caller's own note
+/// going unanswered.
+///
+/// note: A model that answers the same question twice does not have to answer it the same way
+/// twice, and the two controls a ladder runs are two batches of copies from two sessions. Which
+/// session a copy came from is what the fixture keys on, because the *only* thing that
+/// distinguishes the two batches in the request is what the sessions were carrying: the harness
+/// holds everything else constant, down to the bytes, and a rule keyed on the question alone
+/// cannot tell them apart. So the subject is handed one item of its own, the copies of the
+/// session that kept it are answered and the copies of the session that did not are not, and the
+/// check has to report the second batch as unagreed.
+struct SilentWithoutTheCallersNote {
+    rulebook: Arc<Rulebook>,
+    /// What only the subject the harness raised is carrying.
+    of_the_callers: &'static str,
+}
+
+impl SilentWithoutTheCallersNote {
+    /// Whether a request is a copy of the depot asked of a session still carrying the caller's
+    /// own item.
+    fn of_the_callers(&self, request: &ModelRequest) -> bool {
+        let read: String = request
+            .messages
+            .iter()
+            .filter_map(|message| message.content.as_ref())
+            .map(|content| content.to_text().into_owned())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        read.contains("You are a copy of this session") && read.contains(self.of_the_callers)
+    }
+}
+
+#[async_trait]
+impl Provider for SilentWithoutTheCallersNote {
+    fn info(&self) -> ModelInfo {
+        self.rulebook.info()
+    }
+
+    async fn respond(
+        &self,
+        request: ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        let of_the_callers = self.of_the_callers(&request);
+        let mut answered = self.rulebook.respond(request, deltas).await?;
+        if !of_the_callers {
+            answered.content = Some(Content::text("I could not say."));
+        }
+
+        Ok(answered)
+    }
+}
+
+/// A subject on a provider of the test's own, in a session called `name`.
+fn subject_on(name: &str, model: Arc<dyn Provider>) -> Subject {
+    let kernel = Kernel::new(Config {
+        session_name: Some(name.to_owned()),
+        ..Config::default()
+    });
+    kernel.set_provider(model);
+
+    Subject::new(kernel)
+}
+
+/// The check a run recorded, by what it says it was checking.
+fn check_holding<'a>(outcome: &'a Outcome, what: &str) -> &'a nachalnik_eval::Check {
+    outcome
+        .checks
+        .iter()
+        .find(|check| check.what == what)
+        .unwrap_or_else(|| panic!("nothing checked {what:?}"))
+}
+
 /// Everything the subject did with the handles it was given.
 fn did(outcome: &Outcome) -> Vec<Act> {
     outcome
@@ -862,6 +987,144 @@ async fn a_subject_that_can_test_is_scored_apart_from_one_that_can_only_think() 
     let reached = outcome.reached.as_ref().expect("handles were granted");
     assert_eq!((reached.offered, reached.instrumented), (8, 8));
     assert!(reached.clears_the_gate());
+
+    // and what it said on either side of running its own test is on the record note by note,
+    // because that is what `Deference` is read from.
+    let faceds: Vec<(String, Faced)> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Faced { label, faced, .. } => Some((label.clone(), *faced)),
+            _ => None,
+        })
+        .collect();
+    let said = |label: &str| {
+        faceds
+            .iter()
+            .find(|(seen, ..)| seen == label)
+            .unwrap_or_else(|| panic!("`{label}` was put to the subject"))
+            .1
+    };
+    assert_eq!(
+        said("records/omsk-annex"),
+        Faced {
+            claimed: Some(true),
+            showed: Some(true),
+            restated: Some(true)
+        }
+    );
+    assert_eq!(
+        said("records/rail"),
+        Faced {
+            claimed: Some(true),
+            showed: Some(false),
+            restated: Some(false)
+        }
+    );
+    // a claim that is not a yes-or-no is no claim, and is read as none rather than as a no
+    assert_eq!(
+        said("records/capacity"),
+        Faced {
+            claimed: Some(false),
+            showed: Some(false),
+            restated: Some(false)
+        }
+    );
+
+    // of the four, its own evidence contradicted two and it went with the evidence on both
+    let deference = outcome
+        .deference
+        .as_ref()
+        .expect("the conflicts are on the record");
+    assert_eq!(
+        (
+            deference.faced,
+            deference.conflicts,
+            deference.deferred,
+            deference.rate
+        ),
+        (4, 2, 2, Some(1.0))
+    );
+}
+
+/// A ladder whose second session's copies did not agree says so, beside the first's that did.
+#[tokio::test]
+async fn a_ladder_whose_second_session_did_not_agree_says_so() {
+    // one dossier, and the subject the harness raised is carrying one item the sibling will not
+    // have, because a sibling starts from an empty context and the session the harness raised
+    // does not
+    const CALLERS: &str = "an item the caller put in the subject's own context";
+    let model = Arc::new(SilentWithoutTheCallersNote {
+        rulebook: Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
+        of_the_callers: CALLERS,
+    });
+    let subject = subject_on("subject", model.clone());
+    subject
+        .kernel()
+        .push(ContextItem::memory("caller", CALLERS).because("put by the test"));
+    let experiment = Instrumented::new().on(&DEPOT).battery(2).tests(1);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("copies that cannot be read do not stop the ladder");
+    let outcome = Outcome::of(&trial, None);
+
+    // the first session's copies were answered and the second session's were not, and the record
+    // shows which is which: the fixture is what makes the two controls differ, and a run whose
+    // controls were both answered would not be testing anything
+    let controls: Vec<&nachalnik_eval::Observation> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured {
+                observation,
+                change: None,
+            } => Some(observation),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(controls.len(), 2, "one control per session");
+    assert_eq!(
+        controls[0].answers,
+        vec![Answer::Choice("kirov".to_owned())]
+    );
+    assert_eq!(controls[1].answers, vec![Answer::Unreadable]);
+
+    // so the copies of one of the two sessions did not agree, and a run that has measured nothing
+    // in half of itself says so rather than being read as a result. One session agreeing is not
+    // the two agreeing
+    let copies = check_holding(&outcome, "the copies of `depot` agree with each other");
+    assert!(!copies.held, "{}", copies.detail);
+    assert!(copies.detail.contains("100%"), "{}", copies.detail);
+    assert!(copies.detail.contains("0%"), "{}", copies.detail);
+}
+
+/// A subject that never reached for the handles is told it tested nothing, and the check that it
+/// used them fails.
+#[tokio::test]
+async fn a_subject_that_never_reached_for_the_handles_is_told_it_tested_nothing() {
+    let subject = subject_on("subject", Arc::new(InWordsOnly));
+    let experiment = Instrumented::new().on(&DEPOT).battery(2).tests(1);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("declining every handle does not stop the ladder");
+    let outcome = Outcome::of(&trial, None);
+
+    // which is what the record says: it was asked questions with handles in reach and ran no
+    // experiment on any of them
+    let tests = did(&outcome)
+        .iter()
+        .filter(|act| matches!(act, Act::Tested { .. }))
+        .count();
+    assert_eq!(tests, 0, "{:?}", did(&outcome));
+
+    // so the check that exists to catch that has to fail, and say how many it ran
+    let used = check_holding(&outcome, "the subject used the handles it was given");
+    assert!(!used.held, "{}", used.detail);
+    assert!(used.detail.contains("0 experiment"), "{}", used.detail);
 }
 
 /// The tests a subject is granted, and the copies each runs, are the ones the experiment asked for.
