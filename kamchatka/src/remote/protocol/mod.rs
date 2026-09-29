@@ -820,9 +820,9 @@ pub struct Printed {
 
 /// Whether an event is a fragment of something still arriving, rather than a thing that happened.
 ///
-/// note: the same two the kernel keeps out of its log unless asked, and the list is deliberately
-/// read off that decision rather than made here. If the runtime ever records a third kind of
-/// progress, a copy of this list is where the two would disagree.
+/// note: the same two the kernel keeps out of its log unless asked. The runtime does not publish
+/// that list, so this is a copy of the one in `Kernel::emit`: if the runtime ever records a third
+/// kind of progress, this is where the two would disagree, and it has to move with it.
 pub fn is_progress(event: &Event) -> bool {
     matches!(event, Event::ModelDelta { .. } | Event::ToolOutput { .. })
 }
