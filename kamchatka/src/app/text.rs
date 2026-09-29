@@ -204,7 +204,7 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
 }
 
 /// The request the kernel would send, or what stopped it building one.
-pub(super) fn request_preview(kernel: &Kernel) -> String {
+pub(super) fn request_preview(kernel: &Kernel, keys: bool) -> String {
     // "why is that not in there?" is the question somebody opens this to answer, and the JSON on
     // its own can only say what *is* in there. The projection knows what it left out and what it
     // had to change to keep the request valid, so both go above it - and above the reason there
@@ -235,7 +235,7 @@ pub(super) fn request_preview(kernel: &Kernel) -> String {
             Ok(value) => pretty(&value),
             Err(e) => format!("it will not serialize: {e}"),
         },
-        Err(e) => nothing_to_send(kernel, &e.to_string()),
+        Err(e) => nothing_to_send(kernel, &e.to_string(), keys),
     };
     if header.is_empty() {
         return request;
@@ -257,7 +257,10 @@ pub(super) fn request_preview(kernel: &Kernel) -> String {
 /// the projector is working perfectly. And when the context is *not* empty, this is the moment
 /// the list of what was left out is worth most, so `request_preview` builds that list before it
 /// asks for the request and prints it above this sentence.
-pub(super) fn nothing_to_send(kernel: &Kernel, why: &str) -> String {
+///
+/// note: `keys` is [`super::App::keys`]: the way back is a key on the context tab where there is
+/// one, and `/restore` where the caller has no keys to press.
+pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String {
     match kernel.items().len() {
         0 => "nothing yet: there is nothing in the context to send. Whatever you type next goes \
               in as an item, and this is where you will see what it turns into - as will \
@@ -265,7 +268,11 @@ pub(super) fn nothing_to_send(kernel: &Kernel, why: &str) -> String {
             .to_owned(),
         items => format!(
             "{why}: not one of the {items} item(s) it holds is going. The list above says which \
-             and why; `space` on the context tab puts one back."
+             and why; {} puts one back.",
+            match keys {
+                true => "`space` on the context tab",
+                false => "`/restore` with its number",
+            }
         ),
     }
 }

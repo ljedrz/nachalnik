@@ -288,12 +288,12 @@ impl App {
                     },
                 }
             }
-            "request" => self.preview("the next request", request_preview(&self.kernel)),
+            "request" => self.preview("the next request", request_preview(&self.kernel, self.keys)),
             "payload" => {
                 let body = match self.kernel.preview_payload() {
                     Ok(Some(payload)) => pretty(&payload),
                     Ok(None) => "this provider cannot render a request without sending it".into(),
-                    Err(e) => nothing_to_send(&self.kernel, &e.to_string()),
+                    Err(e) => nothing_to_send(&self.kernel, &e.to_string(), self.keys),
                 };
                 self.preview("the payload, as it would go out", body);
             }
@@ -953,9 +953,15 @@ impl App {
         if rest.is_empty() {
             self.say(
                 Speaker::Error,
-                "`/note` takes whatever the model should know without being asked to answer it: \
-                 `/note the CI runner has no network`. It goes in with the next request rather \
-                 than starting one, and `p` on the context tab keeps it from being compacted",
+                format!(
+                    "`/note` takes whatever the model should know without being asked to answer \
+                     it: `/note the CI runner has no network`. It goes in with the next request \
+                     rather than starting one, and {} keeps it from being compacted",
+                    match self.keys {
+                        true => "`p` on the context tab",
+                        false => "`/pin` with its number",
+                    }
+                ),
             );
             return;
         }
@@ -1198,9 +1204,13 @@ impl App {
                 "{}\n\nhow much of a call's output the model is shown, keyed by the same subject \
                  its permission is. `/limit <subject> <bytes>` changes one, by name or by the \
                  number beside it, from the next call onwards; the whole of anything already \
-                 shortened is archived beside it on the context tab, one `space` from being sent \
-                 instead.{}",
+                 shortened is archived beside it, {} from being sent instead.{}",
                 table(&self.limits),
+                // `/restore` is the same act as the key: both make the archived copy active
+                match self.keys {
+                    true => "one `space` on the context tab away",
+                    false => "one `/restore` with its number away",
+                },
                 match self
                     .limits
                     .all()
@@ -1431,8 +1441,11 @@ impl App {
                     return self.say(
                         Speaker::Note,
                         format!(
-                            "`/copy` takes an item number, and `{number}` is not one; `y` on the \
-                             context tab copies the row it is on"
+                            "`/copy` takes an item number, and `{number}` is not one{}",
+                            match self.keys {
+                                true => "; `y` on the context tab copies the row it is on",
+                                false => "",
+                            }
                         ),
                     );
                 }

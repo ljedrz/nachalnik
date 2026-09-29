@@ -209,6 +209,11 @@ minor bump may break you.
   after the answer it had held up, and of several retries in one turn only the last was said. Both
   now look for it while a turn runs, as the screen does.
 
+- **A command answered with no keys to press names a command, not a key.** Under `--headless`
+  and to a client over `--serve`, `/limit`, `/note` with nothing after it, `/copy` given something
+  other than a number, and `/request` with nothing left to send each ended on a key of the context
+  tab. They now name `/restore` or `/pin` instead, which do the same, or leave the key out.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

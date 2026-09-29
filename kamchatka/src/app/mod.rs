@@ -1673,7 +1673,7 @@ impl App {
             (KeyCode::Char('3'), _) if alt => self.show(Tab::Trace),
             (KeyCode::Char('4'), _) if alt => self.show(Tab::Permissions),
             (KeyCode::Char('p'), true) => {
-                self.preview("the next request", request_preview(&self.kernel))
+                self.preview("the next request", request_preview(&self.kernel, self.keys))
             }
             // the way back down from wherever the reading got to, without paging through however
             // much arrived in the meantime. Scrolling to the bottom does it too, and that is the

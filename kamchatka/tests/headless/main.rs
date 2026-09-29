@@ -1331,6 +1331,33 @@ async fn help_with_no_keys_is_the_commands() {
     assert!(run.prose.contains("/attach PATH"), "{}", run.prose);
 }
 
+/// And what a command answers names the command for what a key would do, rather than the key.
+///
+/// note: `/limit`, `/note`, `/copy` and `/request` each ended on a key of the context tab - the
+/// way back to an archived copy, a pin, a row to copy, an item to put back - down a pipe that has
+/// neither the tab nor the key. `/restore` and `/pin` are the same acts.
+#[tokio::test]
+async fn a_command_with_no_keys_names_no_key() {
+    let run = run(
+        "hello\n/limit\n/note\n/copy x\n/exclude all\n/request\n",
+        vec![ModelResponse::text("hi")],
+        |_| {},
+    )
+    .await;
+
+    assert!(!run.prose.contains("context tab"), "{}", run.prose);
+    assert!(
+        run.prose.contains("`/restore` with its number"),
+        "{}",
+        run.prose
+    );
+    assert!(
+        run.prose.contains("`/pin` with its number"),
+        "{}",
+        run.prose
+    );
+}
+
 /// `/compact` down a pipe is taken rather than left waiting for a key that is never coming.
 ///
 /// note: the opposite of what `--on-ask` does with a tool's question, and they are different
