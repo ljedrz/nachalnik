@@ -75,8 +75,8 @@ impl From<&str> for Domain {
 /// without saying so would be reporting a restriction that does not exist. What closes the gap is
 /// the arguments: a [`PermissionPolicy`] is handed the call the model actually made
 /// ([`PermissionRequest::args`]), so it can judge `curl https://…` against whatever it thinks of
-/// the network. See `kamchatka`'s `Careful` for one that does, and
-/// for an honest account of what a heuristic over a command line is and is not worth.
+/// the network. See `kamchatka`'s `Careful` for one that does, and its `reaches_the_network` for
+/// an honest account of what a heuristic over a command line is and is not worth.
 ///
 /// note: `net` still earns its place, though a session that also has a shell can reach the
 /// network through it whatever this says. That objection is not about the domain: `fs:read` is
