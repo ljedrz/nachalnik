@@ -603,12 +603,12 @@ the ones with most matches near the top where they can be read properly. A `file
 that fills up says the other three instead — narrow the pattern, give a path, or pass a `glob` —
 because it has already said where they are.
 
-**And it accounts for what it did not read.** The count of files searched is what tells
-"the symbol is not there" from "nothing was opened" — the same distinction the context pane draws
-between an empty pane and a filtered one — and the `skipped:` line names every category: a path
-rule, a link out of reach, a binary file, one that could not be read. A binary file is named by
-the byte that made it one, so the line joins up with what `read` did with the same file: a NUL is
-a character to `read`, and where the search stops.
+**And it accounts for what it did not read.** The count of files searched is what tells "the symbol
+is not there" from "nothing was opened" — the same distinction the context pane draws between an
+empty pane and a filtered one — and the `skipped:` line names every category: a path rule, a link
+out of reach, a binary file, one that could not be read, and a path that is not a file at all — a
+pipe, a socket, a device. A binary file is named by the byte that made it one, so the line joins up
+with what `read` did with the same file: a NUL is a character to `read`, and where the search stops.
 
 The rules it walks by, all of which are said in the tool's own description so the model is not
 guessing: what a `.gitignore` hides is skipped, `.git` always; hidden files **are** searched, since
