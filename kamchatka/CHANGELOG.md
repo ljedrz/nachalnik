@@ -120,6 +120,11 @@ minor bump may break you.
   only when a whole line ended it. The program's own standard error was never buffered and reads
   as it did.
 
+- **`fs` does not answer a path ending in a separator with a `mkdir` for a refused `shell`.** The
+  refusal of `write trail/` told the model to make the directory with `shell` even where `shell`
+  was refused, which the answer to a write into a missing directory already did not. Both read the
+  same stance now, and say that `shell` is refused instead.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

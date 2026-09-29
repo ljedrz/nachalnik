@@ -958,6 +958,45 @@ async fn a_write_into_a_missing_directory_names_it() {
     assert!(!dir.join("src").exists());
 }
 
+/// A path ending in a separator, where `shell` is refused, is not answered with a `mkdir` to run.
+///
+/// note: the same stance the missing-directory answer reads, so a model is not sent to a tool the
+/// session has just refused it.
+#[tokio::test]
+async fn a_path_ending_in_a_separator_with_no_shell_offers_no_mkdir() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::{Capability, Verdict};
+
+    let dir = scratch("files-trail-refused");
+    let policy = std::sync::Arc::new(Careful::new());
+    policy.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
+
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let said = fs
+        .invoke(
+            &call(
+                "c1",
+                "fs",
+                json!({ "action": "write", "path": "trail/", "content": "x" }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned();
+
+    assert!(said.contains("ends in a separator"), "{said}");
+    assert!(said.contains("`trail`"), "{said}");
+    assert!(!said.contains("mkdir"), "{said}");
+    assert!(said.contains("is refused in this session"), "{said}");
+}
+
 /// And the other half of that answer, where `shell` is refused, reads as one sentence.
 ///
 /// note: this arm was reflowed to the source column and the inter-word spaces came with it, so
