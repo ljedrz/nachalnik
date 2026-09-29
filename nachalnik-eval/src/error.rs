@@ -107,3 +107,33 @@ impl From<nachalnik::Error> for Error {
         Self::Runtime(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every error says what it was, and only the runtime's names a cause.
+    ///
+    /// note: the other four are conditions of the harness rather than failures something else
+    /// reported, so a cause printed for one of them would be invented.
+    #[test]
+    fn an_error_says_what_it_was_and_only_the_runtimes_has_a_cause() {
+        let runtime = Error::from(nachalnik::Error::NoProvider);
+        let source = std::error::Error::source(&runtime).expect("the runtime's error is the cause");
+        assert_eq!(source.to_string(), nachalnik::Error::NoProvider.to_string());
+
+        for error in [
+            Error::Silent,
+            Error::Undecided,
+            Error::Exhausted,
+            Error::Setup("nothing to run it on".to_owned()),
+        ] {
+            assert!(!error.to_string().is_empty(), "{error:?} says nothing");
+            assert!(std::error::Error::source(&error).is_none(), "{error}");
+        }
+        assert!(
+            runtime.to_string().contains(&source.to_string()),
+            "{runtime}"
+        );
+    }
+}
