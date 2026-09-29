@@ -287,6 +287,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   see it. Whether a recount is an operation `undo` should see - and so a checkpoint, and the undo
   history it costs - or a fact that `undo` should re-apply on the way back is the decision.
 
+- **A compaction report's two totals leave out what could not be priced.** `tokens_before` and
+  `tokens_after` are the `tokens` half of the projection's cost, and the `uncounted` half beside it
+  is dropped, so a pass that elides a picture the counter could not price reports a request smaller
+  by the whole difference when it may be bigger than either figure says. `Budget` carries the
+  other half as `uncounted`; `CompactionReport` has no field for it. It is `#[non_exhaustive]`, so
+  two fields are additive - the decision is whether the report of a pass should say it too, or
+  whether a client that wants the floor reads `Kernel::budget` after the pass as it does now.
+
 - **Screenshots in the guide.** `kamchatka`'s readme shows the chat and context tabs, from
   `kamchatka/assets/`; the guide still carries no pictures, only prose about what each screen
   holds. A capture pasted in as text is a copy of one session's output: the program's words move
