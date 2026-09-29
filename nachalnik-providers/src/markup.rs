@@ -37,11 +37,9 @@ pub(crate) fn unmarked(body: &str) -> String {
         // a `<style>` or `<script>` is skipped whole: its contents are not prose, and taking
         // only the tags off would leave the stylesheet behind as if it were
         let named = rest[1..].trim_start();
-        let skip = ["style", "script"].into_iter().find(|element| {
-            named
-                .get(..element.len())
-                .is_some_and(|it| it.eq_ignore_ascii_case(element))
-        });
+        let skip = ["style", "script"]
+            .into_iter()
+            .find(|element| names(named.as_bytes(), element.as_bytes()));
         rest = match skip {
             Some(element) => match closing(rest, element) {
                 Some(end) => &rest[end..],
@@ -50,10 +48,11 @@ pub(crate) fn unmarked(body: &str) -> String {
             },
             None => rest,
         };
-        // and past the tag itself, or - for a `<` that never closes - past the `<`
+        // and past the tag itself, or - for a `<` that never closes - past the `<`, so that
+        // `retry in <60s` keeps what follows it
         rest = match rest.find('>') {
             Some(end) => &rest[end + 1..],
-            None => "",
+            None => rest.get(1..).unwrap_or_default(),
         };
     }
     out.push_str(rest);
@@ -87,11 +86,18 @@ const READ: usize = 64 << 10;
 /// Where `</element` starts in `text`, in any case.
 fn closing(text: &str, element: &str) -> Option<usize> {
     let bytes = text.as_bytes();
-    let wanted = element.as_bytes();
-    (0..bytes.len()).find(|&at| {
-        bytes[at..].starts_with(b"</")
-            && bytes
-                .get(at + 2..at + 2 + wanted.len())
-                .is_some_and(|it| it.eq_ignore_ascii_case(wanted))
-    })
+    (0..bytes.len())
+        .find(|&at| bytes[at..].starts_with(b"</") && names(&bytes[at + 2..], element.as_bytes()))
+}
+
+/// Whether a tag's name, at the start of `tag`, is `element`, in any case.
+///
+/// note: the whole name, so that `<stylesheet-error>` is a tag like any other rather than a
+/// stylesheet whose contents are skipped.
+fn names(tag: &[u8], element: &[u8]) -> bool {
+    tag.get(..element.len())
+        .is_some_and(|it| it.eq_ignore_ascii_case(element))
+        && tag
+            .get(element.len())
+            .is_none_or(|next| *next == b'>' || *next == b'/' || next.is_ascii_whitespace())
 }

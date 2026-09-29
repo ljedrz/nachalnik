@@ -660,6 +660,20 @@ mod tests {
         );
         assert_eq!(script, "405 Method Not Allowed: This site has moved.");
 
+        // a tag whose name only starts with one of theirs is a tag like any other
+        let named = complaint(
+            reqwest::StatusCode::FORBIDDEN,
+            "<stylesheet-error>the key was refused</stylesheet-error>",
+        );
+        assert_eq!(named, "403 Forbidden: the key was refused");
+
+        // and a `<` that is not a tag takes nothing after it with it
+        let bare = complaint(
+            reqwest::StatusCode::TOO_MANY_REQUESTS,
+            "retry in <60s, please",
+        );
+        assert!(bare.ends_with("retry in 60s, please"), "{bare}");
+
         // and so does nothing at all
         assert!(complaint(status, "").contains("429"));
     }
