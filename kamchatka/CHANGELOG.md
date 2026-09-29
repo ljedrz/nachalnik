@@ -55,6 +55,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A link to a directory is not counted by `grep` or `glob`.** A walk leaves one alone, since it
+  reaches the files under it by their own names, and it was counted among the `path(s) that are
+  not files` as if something had been withheld. A link to a pipe or a device still is.
+
 - **The `/compact` question counts its items as the rest of the screen does**: `1 item`, `3 items`,
   rather than the `item(s)` spelling kept for what a model reads.
 

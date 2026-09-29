@@ -321,8 +321,9 @@ fn walked(
         if kind.is_symlink() {
             match followed(reach, entry.path()) {
                 Link::Read(resolved) => leads = Some(resolved),
+                Link::Skip => continue,
                 // a link to something that is not a file, so nothing to search or list
-                Link::Skip => {
+                Link::Elsewhere => {
                     skipped.elsewhere += 1;
                     continue;
                 }
@@ -381,9 +382,11 @@ fn walked(
 enum Link {
     /// A file with a second name: search it, by its first.
     Read(PathBuf),
-    /// A directory the walk reaches by its own name, or something that is not a file at all:
-    /// nothing to do and nothing to say.
+    /// A directory the walk reaches by its own name: nothing to do and nothing to say.
     Skip,
+    /// Something that is not a file at all - a pipe, a socket, a device: passed over, and counted
+    /// as the thing itself would be.
+    Elsewhere,
     /// Somewhere this session does not reach: count it and say so.
     Refuse,
 }
@@ -391,11 +394,10 @@ enum Link {
 fn followed(reach: &Reach, path: &Path) -> Link {
     match reach.allows(&path.to_string_lossy(), Access::Reading) {
         Err(_) => Link::Refuse,
-        // a link to a directory, a pipe or a device is skipped as the thing itself would be
-        Ok(resolved) => match path.is_file() {
-            false => Link::Skip,
-            true => Link::Read(resolved),
-        },
+        Ok(resolved) if path.is_file() => Link::Read(resolved),
+        Ok(_) if path.is_dir() => Link::Skip,
+        // a link to a pipe or a device is passed over as the thing itself would be
+        Ok(_) => Link::Elsewhere,
     }
 }
 
