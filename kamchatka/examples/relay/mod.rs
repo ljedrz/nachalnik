@@ -90,8 +90,14 @@ pub async fn run(session: &str, listen: &str) -> Result<(), String> {
     let tabs: Tabs = Arc::default();
     let named: Named = Arc::default();
     loop {
-        let Ok((browser, _)) = listener.accept().await else {
-            continue;
+        // said, like a connection that fails: out of descriptors, this is the loop going round
+        // with nothing on the terminal to say why no page loads
+        let browser = match listener.accept().await {
+            Ok((browser, _)) => browser,
+            Err(e) => {
+                eprintln!("· a browser could not be accepted: {e}");
+                continue;
+            }
         };
         let _ = browser.set_nodelay(true);
         let (session, tabs, named) = (session.clone(), tabs.clone(), named.clone());
