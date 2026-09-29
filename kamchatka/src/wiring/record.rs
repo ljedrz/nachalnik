@@ -95,6 +95,8 @@ struct Kept {
     written: u64,
     /// How many records the log holds.
     records: usize,
+    /// The last record the snapshot on disk reflects, once one has been written.
+    snapshotted: Option<u64>,
 }
 
 impl Recorder {
@@ -119,6 +121,7 @@ impl Recorder {
                 file,
                 written: 0,
                 records: 0,
+                snapshotted: None,
             }),
         };
         recorder.checkpoint(&app.kernel)?;
@@ -150,6 +153,14 @@ impl Recorder {
         let mut kept = self.kept.lock();
         let snapshot = kernel.snapshot();
         Self::append_into(&mut kept, kernel)?;
+        // note: every change to a session is a record in its log, so a snapshot naming the record
+        // the last one named is that file again. Skipping it is what keeps a person's one command
+        // one write: an exclusion or a compaction announces every item, and the kernel has made all
+        // of the changes before the first announcement arrives here
+        let reflects = snapshot.last_seq;
+        if kept.snapshotted == Some(reflects) {
+            return Ok(());
+        }
         let snapshot = serde_json::to_vec_pretty(&snapshot)
             .map_err(|e| format!("could not render the session: {e}"))?;
         let beside = crate::app::beside(&self.state, &snapshot)
@@ -157,7 +168,10 @@ impl Recorder {
         std::fs::rename(&beside, &self.state).map_err(|e| {
             let _ = std::fs::remove_file(&beside);
             format!("could not write {}: {e}", self.state)
-        })
+        })?;
+        kept.snapshotted = Some(reflects);
+
+        Ok(())
     }
 
     /// Writes everything that is left and says where the record went.

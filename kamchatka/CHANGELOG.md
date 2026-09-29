@@ -55,6 +55,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A command at rest writes the session's snapshot once, not once per item it changed.** An
+  exclusion or a pin over a range, or a compaction, announces every item it moves, and each
+  announcement rendered, synced and renamed the whole snapshot again - the same file every time,
+  since the kernel had made every change before the first announcement arrived. A snapshot is now
+  written only when something was logged since the last one.
+
 - **A call whose arguments were not JSON is refused as that.** Where the permission policy
   refused it, having no operation to judge it by, the refusal said the call "names no operation",
   and a model whose arguments had stopped at `{"call":` read that as being about something else and
