@@ -55,6 +55,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The `/compact` question counts its items as the rest of the screen does**: `1 item`, `3 items`,
+  rather than the `item(s)` spelling kept for what a model reads.
+
 - **`endpoint::configured_limit` is `None` for a `KAMCHATKA_CONTEXT_LIMIT` of `0`**, as its
   documentation says, rather than a limit every request is refused against. The program reads
   `checked_limit`, which already refused it.

@@ -15,7 +15,10 @@ use ratatui::{
 };
 
 use crate::{
-    app::{App, Focus, Overlay, Page, Tab, text::thousands},
+    app::{
+        App, Focus, Overlay, Page, Tab,
+        text::{plural, thousands},
+    },
     ui::text::{refit, wrapped},
 };
 
@@ -308,9 +311,9 @@ fn compaction_parts(
 
     let head: Vec<Line<'static>> = wrapped(
         &format!(
-            "compacting would take {} item(s), holding {} tokens - less what the markers cost. \
+            "compacting would take {}, holding {} tokens - less what the markers cost. \
              Nothing has happened yet: `p` on the context tab keeps one out of it\n",
-            proposed.count,
+            plural(proposed.count, "item"),
             thousands(proposed.holding),
         ),
         columns,
