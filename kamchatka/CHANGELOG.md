@@ -46,6 +46,11 @@ minor bump may break you.
 
 ### changed
 
+- **An `edit` with nothing to replace says how to add text.** A call with a `new` and no `old`
+  was told only that `old` is required, and an empty `old` to give the text to replace. Both now
+  say that `edit` replaces `old` with `new`, so adding text means putting a line it goes next to in
+  `old` and that line with the addition in `new`.
+
 - **A call whose `action` is `true` or `false` is refused in the words every refusal uses.** It
   said the `action` was "a truth value", where every other refusal naming a value's kind says
   `` `true` or `false` ``.
