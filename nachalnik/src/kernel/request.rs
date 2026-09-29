@@ -83,6 +83,24 @@ impl Kernel {
             repairs: projection.repairs,
         });
 
+        // what the provider says this request cost, beside the estimate made of it, is how the
+        // counter learns; it decides for itself whether that is worth anything to it.
+        //
+        // note: unless the counter said it could not price part of what went out, in which case
+        // the two numbers are not about the same thing and the difference between them is not an
+        // error to learn from. `Calibrating` corrects with a single multiplier, so a screenshot
+        // it estimated at nothing and the provider billed a thousand tokens for gets spread over
+        // the bytes it *could* see: two thousand tokens of prose beside one picture settles on a
+        // scale of about 1.5, and from then on the prose reads three thousand while the picture
+        // still reads nothing. The ratio is cumulative, so deleting the picture does not undo it.
+        // The counter disowned that content; respecting the disownment is the kernel's half, and
+        // both figures below go through this one door so that neither can skip it
+        let observe = |reported: usize| {
+            if cost.uncounted == 0 {
+                counter.observe(cost.tokens, reported);
+            }
+        };
+
         let mut response = match provider
             .respond(request, DeltaSink::new(self.clone()))
             .await
@@ -94,14 +112,10 @@ impl Kernel {
                 // learns only from answered requests learns nothing from the point where every
                 // request fails, which is the point it most needs correcting at: the figure on
                 // screen stays under a limit the model is already over, and the same request
-                // goes out again. It goes through the same door a reported usage does, with the
-                // same condition on it - a counter that disowned part of what went out is not
-                // being told about the same bytes
+                // goes out again. It goes through the same door a reported usage does
                 let overrun = TooLong::of(&*e).map(|too_long| too_long.overrun);
-                if let Some(overrun) = overrun
-                    && cost.uncounted == 0
-                {
-                    counter.observe(cost.tokens, overrun.tokens as usize);
+                if let Some(overrun) = overrun {
+                    observe(overrun.tokens as usize);
                 }
 
                 self.emit(Event::ModelFailed {
@@ -116,22 +130,9 @@ impl Kernel {
         // disagrees is read the way the dialect meant before either the counter or a client
         // sees it, so that both are looking at the same repaired number
         response.usage = response.usage.map(Usage::settled);
-        // the provider has just said what the request it was handed actually cost, beside the
-        // estimate that was made of it; the counter is told, and decides for itself whether that
-        // is worth anything to it.
-        //
-        // note: unless the counter said it could not price part of what went out, in which case
-        // the two numbers are not about the same thing and the difference between them is not an
-        // error to learn from. `Calibrating` corrects with a single multiplier, so a screenshot
-        // it estimated at nothing and the provider billed a thousand tokens for gets spread over
-        // the bytes it *could* see: two thousand tokens of prose beside one picture settles on a
-        // scale of about 1.5, and from then on the prose reads three thousand while the picture
-        // still reads nothing. The ratio is cumulative, so deleting the picture does not undo it.
-        // The counter disowned that content; respecting the disownment is the kernel's half
-        if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens)
-            && cost.uncounted == 0
-        {
-            counter.observe(cost.tokens, reported as usize);
+        // the provider has just said what the request it was handed actually cost
+        if let Some(reported) = response.usage.and_then(|usage| usage.input_tokens) {
+            observe(reported as usize);
         }
 
         // a model's tool calls are only useful if their identifiers are, and in practice they
