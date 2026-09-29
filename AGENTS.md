@@ -84,7 +84,7 @@ thing the kernel keeps - `context.rs`, `model.rs`, `projection.rs`, `tool.rs`, `
 scripted provider, the fake tools and the table policy: use those rather than writing another mock.
 
 `kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem
-and the shell, `introspect/` the four an agent reads and manages its own session with, `wiring.rs`
+and the shell, `introspect/` the four an agent reads and manages its own session with, `wiring/`
 assembles a session in nine steps, `args.rs` turns flags and a settings file into one set of
 answers, and `main.rs` picks the loop and says where the record went - which is the shape to keep
 it in.

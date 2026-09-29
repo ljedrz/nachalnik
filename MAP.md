@@ -39,11 +39,11 @@ turns a runtime value into a line. `search.rs` is the `/` filter over a pane's r
 the clock a trace line is stamped with; both are here rather than in `ui/` because a pane that
 searched one string and drew another would find nothing where it says there is something.
 
-`wiring.rs` is `Setup`: the nine steps a session is assembled in. Two of them are not guessable -
+`wiring/` is `Setup`: the nine steps a session is assembled in. Two of them are not guessable -
 the subscription has to come before the wiring, and `introspect::install` hands back a handle the
-caller has to keep. It also holds `record` and `Setup::relaunch`, where a session goes when it is
-over and what `/restart` is, because an example driving a session with a loop of its own had
-neither and lost every session it ran.
+caller has to keep. It also holds `Setup::relaunch`, which is what `/restart` is, and in
+`record.rs` the `Recorder` and `record`, where a session goes when it is over - because an example
+driving a session with a loop of its own had neither and lost every session it ran.
 
 `check.rs` is `--check`: a session's two files read the way somebody else's program would read
 them, with no kernel built, and what does not add up said rather than repaired.
