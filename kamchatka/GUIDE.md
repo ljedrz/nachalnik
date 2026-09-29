@@ -145,8 +145,8 @@ over — and the byte count is what to compare against whatever turns up in the 
 
 An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
 whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
-row is how you say **send the whole thing** — it is the only way to say it, and the token count in
-the row is what it will cost you.
+row is how you say **send the whole thing**, as `/restore` with its number is, and the token count
+in the row is what it will cost you.
 
 <kbd>enter</kbd> opens the item, and an item has more than one honest answer to *what is this?*
 The box is titled with the item's number, label, kind, state and cost, and it is paged: a strip
