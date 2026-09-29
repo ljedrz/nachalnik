@@ -838,6 +838,34 @@ async fn a_walk_that_puts_its_own_pin_back_can_walk_past_it() {
     assert_eq!(item.note, None);
 }
 
+/// A list put inside an `item` is refused as that, with the call it should have been.
+#[tokio::test]
+async fn a_list_inside_an_item_is_refused_with_the_list_it_should_have_been() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "elide", "ids": { "item": ["1", "2"] }, "reason": "read" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "look", "select": { "item": ["1", "2"] } }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::file("big.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    for said in &said[..2] {
+        assert!(said.contains("inside an `item`"), "{said}");
+        assert!(said.contains("`ids: [1, 2]`"), "{said}");
+        assert!(said.contains("nothing was done"), "{said}");
+    }
+}
+
 /// A number that is not an item number is refused, and the same number twice is one item.
 ///
 /// note: `ids` dropped whatever it could not read, so `[-1]` arrived as no items at all - which is

@@ -171,6 +171,14 @@ fn ids(args: &Value, name: &str) -> Result<Vec<ContextId>, String> {
     if args[name].is_null() {
         return Ok(Vec::new());
     }
+    if let Some(inside) = wrapped(&args[name]) {
+        return Err(format!(
+            "`{name}` is `{}`: the list is inside an `item`, and nothing was done. Send the list \
+             itself, as numbers - `{name}: {}`.",
+            args[name],
+            as_numbers(inside)
+        ));
+    }
     let Some(given) = args[name].as_array() else {
         return Err(format!(
             "`{name}` is `{}`, and nothing was done. It is a list of the numbers `look` prints, \
@@ -194,6 +202,33 @@ fn ids(args: &Value, name: &str) -> Result<Vec<ContextId>, String> {
     }
 
     Ok(ids)
+}
+
+/// What an argument holds when a model has put it inside an object of one `item` key.
+///
+/// note: a spelling of lists some models carry over from markup, where each element is an
+/// `<item>`. Read through it, a call would be a guess at what was meant; refused as an argument
+/// that is not a list, the model is not told where its list went, and sends it the same way again.
+fn wrapped(value: &Value) -> Option<&Value> {
+    let fields = value.as_object()?;
+    (fields.len() == 1).then(|| fields.get("item")).flatten()
+}
+
+/// A list of item numbers written the way `ids` takes it, for a refusal to show.
+fn as_numbers(value: &Value) -> String {
+    let numbers: Vec<String> = value
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or(std::slice::from_ref(value))
+        .iter()
+        .filter_map(|it| it.as_u64().or_else(|| it.as_str()?.trim().parse().ok()))
+        .map(|n: u64| n.to_string())
+        .collect();
+
+    match numbers.is_empty() {
+        true => "[7]".to_owned(),
+        false => format!("[{}]", numbers.join(", ")),
+    }
 }
 
 /// Which items a call named, and which of the two ways it named them.
@@ -222,6 +257,14 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
     // note: refused rather than read as no selector. A `select` that is not a string would
     // otherwise drop out here, and `look` would list everything as though it had never been
     // given - the call ignoring an argument, answered as a call that did what it was told
+    if let Some(inside) = wrapped(&args["select"]).filter(|inside| inside.is_array()) {
+        return Err(format!(
+            "`select` holds `{}`, which is not a selector: it is a list inside an `item`, and \
+             nothing was done. Items named by number go in `ids`, as numbers - `ids: {}`.",
+            args["select"],
+            as_numbers(inside)
+        ));
+    }
     if !args["select"].is_null() && !args["select"].is_string() {
         return Err(format!(
             "`select` holds `{}`, which is not a selector, and nothing was done. A selector is \
