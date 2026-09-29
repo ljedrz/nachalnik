@@ -569,8 +569,9 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 ///
 /// note: `look` says whether an item is going into the next request. It has never said what
 /// decided that, and a model that can read the verdict but not the rule cannot argue with either.
-/// These are the four seams that rewrite a context on their own, named so that they can be looked
-/// up, with the numbers that say when each of them acts.
+/// These are the two seams that rewrite a context on their own, the projector and the compactor,
+/// and the counter and the limit they are measured by, named so that they can be looked up, with
+/// the numbers that say when each of them acts.
 fn rules(kernel: &Kernel) -> String {
     let config = kernel.config();
     let budget = kernel.budget();
