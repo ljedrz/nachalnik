@@ -400,4 +400,31 @@ mod tests {
         );
         assert_eq!(spend.tokens(), 37);
     }
+
+    /// Adding two stretches of a session adds each of the four figures to its own.
+    #[test]
+    fn adding_two_stretches_adds_every_figure_to_its_own() {
+        let mut total = Spend {
+            requests: 1,
+            input: 10,
+            output: 5,
+            reasoning: 3,
+        };
+        total += Spend {
+            requests: 2,
+            input: 4,
+            output: 6,
+            reasoning: 7,
+        };
+
+        assert_eq!(
+            total,
+            Spend {
+                requests: 3,
+                input: 14,
+                output: 11,
+                reasoning: 10,
+            }
+        );
+    }
 }
