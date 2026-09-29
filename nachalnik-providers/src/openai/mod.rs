@@ -17,6 +17,7 @@ use crate::{
     Dialect, Endpoint, Keyed, Published, RETRIES, install_crypto, same_model, waiting::WHOLE_ANSWER,
 };
 
+mod batch;
 mod responses;
 mod wire;
 

@@ -99,6 +99,12 @@ let provider = OpenAiCompatible::new(model, base_url, key)
 assert_eq!(provider.requests()[0].params["max_tokens"], json!(1));
 ```
 
+**An OpenRouter `:batch` model is asked through its Batch API**, since chat completions refuses
+one. The request goes out as a batch of one, is looked at until it ends, and comes back as the
+whole answer it holds - within the day the API allows, rather than at once, and at the batch's
+price. An interrupt stops the waiting; the batch itself goes on, because the API cannot cancel
+one, and is billed if it completes.
+
 `recording(true)` keeps a copy of every request the provider sends, and `requests()` returns them.
 It's off by default, since a long session would keep every request it made. `render` shows what
 will be sent; this shows what was.

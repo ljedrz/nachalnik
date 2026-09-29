@@ -648,7 +648,7 @@ async fn watched(
 /// note: in heartbeats rather than one sleep, because a request asked to stop must not be sent
 /// again: one sleep would keep a stopped turn waiting as long as the server asked (a minute for
 /// `Retry-After: 60`) and then send it anyway, to be answered and billed.
-async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
+pub(crate) async fn backed_off(wait: Duration, deltas: &DeltaSink) -> bool {
     let until = Instant::now() + wait;
     loop {
         if deltas.is_interrupted() {

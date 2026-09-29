@@ -15,6 +15,7 @@ use nachalnik::{
 };
 use serde_json::{Value, json};
 
+use super::batch;
 use crate::{
     Keyed,
     openai::OpenAiCompatible,
@@ -108,8 +109,9 @@ impl Provider for OpenAiCompatible {
         if self.responses {
             return Some(super::responses::render(self, request));
         }
+        let model = self.model.lock().clone();
         let mut body = json!({
-            "model": *self.model.lock(),
+            "model": model,
             "messages": request
                 .messages
                 .iter()
@@ -175,6 +177,11 @@ impl Provider for OpenAiCompatible {
             }
         }
 
+        // a `:batch` variant is answered through the Batch API alone, and this is what it is sent
+        if batch::batched(&self.endpoint(), &model) {
+            return Some(batch::submission(body, &model));
+        }
+
         Some(body)
     }
 
@@ -205,6 +212,9 @@ impl Provider for OpenAiCompatible {
             tries: self.tries(),
             patience: self.patience(),
         };
+        if batch::batched(&endpoint, &model) {
+            return self.batch(&body, &asking, limit).await;
+        }
 
         let sending = || {
             self.attributed(
@@ -265,7 +275,7 @@ impl Provider for OpenAiCompatible {
 /// note: not the answer yet: `text` still holds whatever thinking the model wrote into it, and a
 /// call's arguments are still the string they arrived in.
 #[derive(Default)]
-struct Streamed {
+pub(super) struct Streamed {
     /// What the model said, as it was streamed.
     text: String,
     /// What it thought, where the server sent that in a slot of its own.
@@ -610,7 +620,7 @@ fn said_and_thought(
 ///
 /// note: a choice rather than the array. `choices: []` is the array and no answer, and read as one
 /// it is the empty turn the check is there to refuse.
-fn completion(body: &Value) -> bool {
+pub(super) fn completion(body: &Value) -> bool {
     body["choices"]
         .as_array()
         .is_some_and(|choices| !choices.is_empty())
@@ -622,7 +632,7 @@ fn completion(body: &Value) -> bool {
 /// note: one refusal for both shapes it arrives in - a whole body and a stream read an event at a
 /// time - with the same words for both. The body is quoted because it is the only account of what
 /// came back; a caller who cannot see it has nothing to act on.
-fn not_a_completion(body: &Value) -> BoxError {
+pub(super) fn not_a_completion(body: &Value) -> BoxError {
     let short = crate::markup::quoted(&body.to_string());
     format!("the answer was not a completion: {short}").into()
 }
@@ -648,7 +658,7 @@ fn never_answered(answered: bool, empty: bool) -> bool {
 /// handed `message` finished. The two must agree on arguments that will not parse, usage whose
 /// reasoning is inferred, and thinking written into the content: the first goes through
 /// [`crate::called`] on both paths, the other two through `usage_of` and `said_and_thought`.
-fn whole(body: Value, inline: bool) -> ModelResponse {
+pub(super) fn whole(body: Value, inline: bool) -> ModelResponse {
     let choice = &body["choices"][0];
     let message = &choice["message"];
 

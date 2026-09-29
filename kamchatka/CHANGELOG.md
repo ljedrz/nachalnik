@@ -46,6 +46,10 @@ minor bump may break you.
 - **A served session sends its sandbox, and the web page draws it.** `Attached::sandbox` carries it
   as a `Sandboxing`, with its parts as `Sandboxed` rows; it is `None` from a session older than the
   field. The `--web` page lists it under the rules, each part's paths folded until opened.
+- **An OpenRouter `:batch` model can be used.** `-m` or `/model` with one sent every request to
+  chat completions, which refuses it with a 404 that read as a wrong address. It is now asked
+  through OpenRouter's Batch API, which answers at half the price within a day rather than at
+  once; the session says which batch it is waiting for and when its state changes.
 
 ### changed
 
