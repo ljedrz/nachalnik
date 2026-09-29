@@ -144,8 +144,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   an identical path back again and again in a single turn. And every concrete path in a refusal is
   read as a path to try, because a refusal is read under pressure to try something else - a
   parenthesis offering `./~` for the rare file genuinely called that had two models reading `./~`,
-  a file neither of them wanted. Rare spellings belong in the argument's description, which is
-  read while choosing; the refusal gets the one instruction that applies. Two suites test it:
+  a file neither of them wanted. Rare spellings belong in the tool's description, which is read
+  while choosing; the refusal gets the one instruction that applies. Two suites test it:
   `tests/boundary.rs` pins the sentence, and only the section of `tests/live.rs` about `~` can
   watch a real model read it, because a scripted provider agrees with every refusal it is handed.
 - **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no
@@ -154,8 +154,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   model believes an absent file and concludes the home directory is empty. Expanding it is the
   wrong fix: under `--no-sandbox` `Reach::allows` returns the path unchecked, so `~/.ssh/id_rsa`
   would resolve for real on a path the model wrote. It is refused with a sentence instead, before
-  the unconfined early return, and the argument's own description says the rule so the refusal is
-  not a surprise. `shell` is the other way round - `sh -c` does expand it, and the confinement
+  the unconfined early return, and `fs`'s description says the rule for every `path` so the
+  refusal is not a surprise. `shell` is the other way round - `sh -c` does expand it, and the confinement
   refuses what it expands to.
 - **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
   program that probes before it opens is told yes and then refused - and lands in whichever branch

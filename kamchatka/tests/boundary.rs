@@ -470,9 +470,10 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
     assert_eq!(reach.allows("./~", Access::Reading), Ok(dir.join("~")));
 
     // the other half of the pair. A sentence at the point of failure is what lands, but it lands
-    // as a surprise unless the argument said so first - which is the arrangement `shell` already
-    // has with its confinement, and the reason a description is worth the tokens
-    for tool in kamchatka::tools::builtin(
+    // as a surprise unless the tool said so first - which is the arrangement `shell` already has
+    // with its confinement, and the reason a description is worth the tokens. Said once for every
+    // `path` in `fs`'s own description, since each operation's arguments sit under `call`
+    let fs = kamchatka::tools::builtin(
         Shell {
             workdir: dir.clone(),
             extra: Vec::new(),
@@ -484,25 +485,22 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
         },
         reach,
         Limits::default(),
-    ) {
-        let spec = tool.spec();
-        let Some(path) = spec.schema["properties"].get("path") else {
-            continue;
-        };
-        let said = path["description"].as_str().unwrap_or_default();
-        assert!(
-            said.contains("`~` is not expanded"),
-            "`{}`'s path argument does not warn about it: {said}",
-            spec.id
-        );
-        // and this is where the literal-`~` spelling lives, because here it is read while
-        // choosing rather than while looking for something else to try
-        assert!(
-            said.contains("`./~`"),
-            "`{}`'s path argument does not say how to name one: {said}",
-            spec.id
-        );
-    }
+    )
+    .into_iter()
+    .map(|tool| tool.spec())
+    .find(|spec| spec.id == "fs")
+    .expect("`fs` is built in");
+    let said = &fs.description;
+    assert!(
+        said.contains("Every `path` is") && said.contains("`~` is not expanded"),
+        "`fs` does not warn about it: {said}"
+    );
+    // and this is where the literal-`~` spelling lives, because here it is read while choosing
+    // rather than while looking for something else to try
+    assert!(
+        said.contains("`./~`"),
+        "`fs` does not say how to name one: {said}"
+    );
 }
 
 /// The scratch directory is never made *through* whatever is already at its name. Its name has to
