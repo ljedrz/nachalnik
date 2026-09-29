@@ -869,8 +869,10 @@ async fn run(
                 // loading a checkpoint before the first question - and no event carries those
                 stale |= app.take_notices();
                 // the two things on the screen that move with nothing to announce them: the busy
-                // line's clock, and a question's rating, which the advisor writes from a task of
-                // its own
+                // line's clock, and a question a running command asks at the network gate, which
+                // is read out of `Careful::reaching` rather than arriving as an event. An
+                // advisor's rating is not one of them: the kernel awaits the policy before it
+                // raises a question, so the rating is there before the panel is
                 quiet_ticks += 1;
                 stale |= app.busy || app.asking() || quiet_ticks >= HEARTBEAT;
                 continue;
