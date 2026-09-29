@@ -7,7 +7,7 @@
 
 use std::{cell::RefCell, sync::Arc};
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::app::{Outcome, Speaker, Tab};
 use nachalnik::{
     ContextItem, ContextKind, ContextState, Delta, Event, ModelInfo, ModelResponse, State,
@@ -340,6 +340,55 @@ async fn a_pasted_block_arrives_as_the_lines_it_was_pasted_as() {
             "{line} is not in the prompt: {screen}"
         );
     }
+}
+
+/// `shift+enter` breaks the line, as `alt+enter` does, and neither of them sends it.
+#[tokio::test]
+async fn shift_enter_and_alt_enter_break_the_line_rather_than_send_it() {
+    let mut harness = Harness::new([]);
+
+    harness.press(KeyCode::Char('a')).await;
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT))
+        .await;
+    harness.press(KeyCode::Char('b')).await;
+    harness.alt(KeyCode::Enter).await;
+    harness.press(KeyCode::Char('c')).await;
+
+    assert_eq!(harness.app.input.lines(), ["a", "b", "c"]);
+}
+
+/// `up` in a paste that is one long line walks back through the rows it wraps over, and only the
+/// top row goes on to scroll the conversation.
+#[tokio::test]
+async fn up_walks_back_through_a_wrapped_paste_before_it_scrolls() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+    harness.app.paste(&"word ".repeat(100));
+    // drawn, because how many rows a line wraps over is a fact about the width it was drawn at
+    harness.screen();
+    assert!(harness.app.follow);
+
+    let mut presses = 0;
+    while harness.app.follow {
+        harness.press(KeyCode::Up).await;
+        presses += 1;
+        assert!(presses < 10, "up never reached the top of the paste");
+    }
+    assert!(
+        presses > 1,
+        "up scrolled the conversation from the paste's last row"
+    );
+    assert!(
+        harness.app.input.cursor().1 < 98,
+        "up scrolled the conversation from column {} of the paste",
+        harness.app.input.cursor().1
+    );
 }
 
 #[tokio::test]

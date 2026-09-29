@@ -44,6 +44,10 @@ minor bump may break you.
   attestation; `gh attestation verify ARCHIVE --repo ljedrz/nachalnik` checks it.
   `CONTRIBUTING.md` has the command to reproduce a binary.
 
+- **`shift+enter` puts a new line in the prompt.** The screen asks the terminal for the kitty
+  keyboard protocol, which is what lets `shift+enter` arrive as anything but `enter`. A terminal
+  that does not speak it sends `enter`, and `alt+enter` is still the new line there.
+
 ### changed
 
 - **A list of items put inside an `item` is refused as that.** Some models write a list as an
@@ -193,6 +197,12 @@ minor bump may break you.
   window a panel may take was worked out in a type that overflows there, so the box came out four
   rows high - and a debug build panicked - and a body of more than sixty-five thousand rows was
   sized as if it had a handful.
+
+- **`up` and `down` move through every row of the prompt.** They went on to scroll the
+  conversation whenever the cursor was on the first or the last line typed, so in a paste that is
+  one long line wrapped over the box, `up` scrolled the conversation instead of moving the cursor,
+  and only `ctrl+a` reached the start. They now go on to the conversation only from the top or
+  bottom row.
 
 ## [0.16.0] - 2026-09-28
 
