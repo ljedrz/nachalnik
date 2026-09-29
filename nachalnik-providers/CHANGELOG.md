@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A streamed summary of the thinking is kept when its words were already said.** A summary was
+  passed over when its text appeared anywhere in the reasoning held so far, so one repeating a
+  phrase of the streamed thinking, or of a longer summary before it, was dropped from the turn. A
+  summary is now passed over only when the same summary has already been appended.
+
 - **A switch to Google's compatible endpoint asks for its native listing once.** Where the
   conventional listing says nothing, the context limit and the names both fall back to the native
   one a path up, and each fetched it for itself, so every `set_model` and `set_endpoint` there
