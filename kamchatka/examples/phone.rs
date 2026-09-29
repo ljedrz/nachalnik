@@ -192,23 +192,13 @@ async fn main() -> Result<(), String> {
                 finished: reported,
             } = wired;
             (app, events, finished) = (fresh, replaced, reported);
-            #[cfg(feature = "mcp")]
-            for server in &servers {
-                match server.install(&app.kernel).await {
-                    Ok(installed) => {
-                        for tool in &installed.added {
-                            app.policy.came_from(tool, server.name());
-                        }
-                    }
-                    Err(e) => app.say(
-                        Speaker::Error,
-                        format!("`{}` would not list its tools again: {e}", server.name()),
-                    ),
-                }
-            }
             // the first thing the new session says, because it is the only place the old one's
             // name and the file it went to are still written down
             app.say(Speaker::Note, said);
+            #[cfg(feature = "mcp")]
+            for left_out in kamchatka::mcp::reinstall(&app.kernel, &app.policy, &servers).await {
+                app.say(Speaker::Error, left_out);
+            }
         };
 
         // the last session of the run, written out the way every one before it was.
