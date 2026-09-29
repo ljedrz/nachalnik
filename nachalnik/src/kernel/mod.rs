@@ -22,7 +22,7 @@ use tokio::sync::broadcast;
 use crate::{
     compaction::Compactor,
     config::Config,
-    context::{Context, ContextId, ContextItem, ContextKind, ContextState},
+    context::{Context, ContextId, ContextItem, ContextState},
     error::{Error, Result},
     event::Event,
     model::{ModelInfo, ModelResponse, Params, Provider, StopReason, ToolCall, ToolCallId},
@@ -1399,15 +1399,4 @@ fn arriving(item: &ContextItem) -> Option<Event> {
         to: item.state,
         note: item.note.clone(),
     })
-}
-
-/// The calls an item is one half of a pair with: the ones an assistant turn asked for, or the one
-/// a tool result answers.
-fn paired(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
-    let answers = match &item.kind {
-        ContextKind::ToolResult { call, .. } => Some(call),
-        _ => None,
-    };
-
-    item.calls().map(|call| &call.id).chain(answers)
 }
