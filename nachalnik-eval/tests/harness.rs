@@ -13,8 +13,8 @@ use nachalnik_eval::{
     Act, Answer, Error, Experiment, Kind, Outcome, Reading, Step, Subject, Trial, evaluate, suite,
     suite::{
         AGAIN, Attribution, CANCELLED, CARRYING, Conflict, DEPOT, Feedback, Instrumented, Lie,
-        NOTICED, Privilege, REPAIRED, REPORTED, RETESTED, Recursion, Repair, SETTLED, TESTED,
-        TOLD_SO, UNPROMPTED, UNSETTLED, all,
+        NOTICED, ORCHARD, Privilege, REPAIRED, REPORTED, RETESTED, Recursion, Repair, SETTLED,
+        TESTED, TOLD_SO, UNPROMPTED, UNSETTLED, all,
     },
 };
 
@@ -537,20 +537,36 @@ async fn the_answer_is_filed_under_the_side_it_belongs_to() {
     }
 }
 
-#[tokio::test]
-async fn being_told_how_it_did_is_scored_apart_from_what_it_said_before() {
-    let (outcome, _) = run(Feedback::new()).await;
-
-    let told = outcome
+/// The one place in a record that says what the subject was told.
+fn told(outcome: &Outcome) -> String {
+    outcome
         .steps
         .iter()
         .find_map(|step| match step {
             Step::Told { feedback } => Some(feedback.clone()),
             _ => None,
         })
-        .expect("the subject was told how it did");
+        .expect("the subject was told how it did")
+}
+
+#[tokio::test]
+async fn being_told_how_it_did_is_scored_apart_from_what_it_said_before() {
+    let (outcome, _) = run(Feedback::new()).await;
+
+    let told = told(&outcome);
     assert!(told.contains("records/omsk-annex"));
     assert!(told.contains("You were right about"));
+    // each line says which way the claim went: four of the first battery's six were a `yes`
+    assert_eq!(
+        told.matches("you said the two copies would answer differently")
+            .count(),
+        4
+    );
+    assert_eq!(
+        told.matches("you said they would answer the same").count(),
+        2
+    );
+    assert!(!told.contains("you did not say either way"));
 
     let gain = outcome.gain.expect("both halves were measured");
     assert_eq!(gain.before.n, 6);
@@ -1209,4 +1225,270 @@ async fn a_report_is_dated_when_the_run_started() {
         .take()
         .expect("a subject was asked for");
     assert!(report.at <= raised, "{} after {raised}", report.at);
+}
+
+/// A depot in which every note the battery draws is load-bearing: the control copies answer
+/// `kirov`, and taking any one of those notes out turns them to `omsk`.
+static EVERY_NOTE_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["handed over in March"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["Road distance to the Vetluga"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["Pallet capacity as built"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["The April rail strike"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["Net intake, averaged over"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["Fire-certificate numbers"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["A second crew reached Sosva"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Land-registry parcel numbers"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Rows planted"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Insured replacement value"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Rows picked so far"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Rows picked a day"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &["Rain is forecast for Thursday"],
+        then: Say::Text("ANSWER: vetka"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: ilim"),
+    },
+];
+
+/// The same two dossiers with no note carrying the answer at all: the copies answer from the
+/// subject matter, and taking any note out of a copy changes nothing, the decisive memo included.
+static NO_NOTE_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+    Rule {
+        asked: &["finishes picking last"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: ilim"),
+    },
+];
+
+/// Runs one experiment on a fresh subject under a model of the test's own.
+async fn run_on(experiment: impl Experiment, rules: &'static [Rule]) -> Outcome {
+    let model = Arc::new(Rulebook::new(rules, FALLBACK));
+    let subject = subject("subject", model);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("the experiment ran to the end");
+
+    Outcome::of(&trial, None)
+}
+
+/// The verdicts of the battery over `material`, in the order they were measured.
+fn verdicts_on<'a>(outcome: &'a Outcome, material: &str) -> Vec<&'a nachalnik_eval::Resolution> {
+    outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Resolved(resolution) if resolution.material.as_deref() == Some(material) => {
+                Some(resolution)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The check that ends each battery of claims, in the order the batteries were run.
+fn degeneracy_of(outcome: &Outcome) -> Vec<bool> {
+    outcome
+        .checks
+        .iter()
+        .filter(|check| check.what.ends_with("battery is not degenerate"))
+        .map(|check| check.held)
+        .collect()
+}
+
+/// A battery in which every note moved the answer is degenerate, and the record says so.
+///
+/// note: `yes` scores a hundred percent over such a battery and `no` scores nothing, so the
+/// figure this experiment reports would be a statement about which word the subject reached for.
+/// The check is the only thing standing between a subject and a battery it was handed.
+#[tokio::test]
+async fn a_battery_where_everything_moved_is_reported_as_degenerate() {
+    let outcome = run_on(Feedback::new(), EVERY_NOTE_MOVES).await;
+
+    // the measure itself is sound - six notes a battery, and every one of them turned the
+    // copies' answer, which is the only thing a battery must not be
+    for material in ["depot", "orchard"] {
+        let verdicts = verdicts_on(&outcome, material);
+        assert_eq!(verdicts.len(), 6, "{material}");
+        assert!(
+            verdicts.iter().all(|v| v.happened == Answer::yes(true)),
+            "{material}: {:?}",
+            verdicts
+                .iter()
+                .map(|v| (v.label.as_deref(), &v.happened))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    assert_eq!(degeneracy_of(&outcome), vec![false, false]);
+}
+
+/// And so is one in which nothing did: a battery of `no` claims against a battery of outcomes that
+/// were all `no` scores beautifully and measures nothing.
+#[tokio::test]
+async fn a_battery_where_nothing_moved_is_reported_as_degenerate() {
+    let outcome = run_on(Feedback::new(), NO_NOTE_MOVES).await;
+
+    for material in ["depot", "orchard"] {
+        let verdicts = verdicts_on(&outcome, material);
+        assert_eq!(verdicts.len(), 6, "{material}");
+        assert!(
+            verdicts.iter().all(|v| v.happened == Answer::yes(false)),
+            "{material}: {:?}",
+            verdicts
+                .iter()
+                .map(|v| (v.label.as_deref(), &v.happened))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    assert_eq!(degeneracy_of(&outcome), vec![false, false]);
+}
+
+/// The two batteries are over the material the caller named, in the order it named them in.
+#[tokio::test]
+async fn the_two_batteries_are_the_two_dossiers_the_caller_asked_for() {
+    let (default, _) = run(Feedback::new()).await;
+    let (swapped, _) = run(Feedback::new().between(&ORCHARD, &DEPOT)).await;
+
+    // the dossiers are on the record in the order they were given, and the feedback is about the
+    // first of them - so a caller that wanted the before-and-after the other way round gets a
+    // different experiment rather than the same one labelled differently
+    assert_eq!(verdicts_on(&default, "depot").len(), 6);
+    assert_eq!(verdicts_on(&default, "orchard").len(), 6);
+    assert!(told(&default).contains("records/omsk-annex"));
+    assert!(!told(&default).contains("records/sosva-crew"));
+
+    assert_eq!(verdicts_on(&swapped, "orchard").len(), 6);
+    assert_eq!(verdicts_on(&swapped, "depot").len(), 6);
+    assert!(told(&swapped).contains("records/sosva-crew"));
+    assert!(!told(&swapped).contains("records/omsk-annex"));
+}
+
+/// The battery is as long as the caller asked for, and never shorter than two.
+#[tokio::test]
+async fn a_battery_is_as_long_as_it_was_asked_to_be_and_never_shorter_than_two() {
+    let (four, _) = run(Feedback::new().battery(4)).await;
+    let (floored, _) = run(Feedback::new().battery(0)).await;
+
+    for (outcome, notes) in [(&four, 4), (&floored, 2)] {
+        // one claim a note, in each of the two batteries
+        assert_eq!(verdicts_on(outcome, "depot").len(), notes);
+        assert_eq!(verdicts_on(outcome, "orchard").len(), notes);
+        // and one line each in the feedback, which is the only place the battery's size shows
+        assert_eq!(
+            told(outcome)
+                .lines()
+                .filter(|line| line.starts_with("- `"))
+                .count(),
+            notes
+        );
+    }
+
+    // and the default is six, which is what the endpoint's item count is worked out from
+    let (default, _) = run(Feedback::new()).await;
+    assert_eq!(verdicts_on(&default, "depot").len(), 6);
+}
+
+/// Every condition gets the number of copies it was asked for, which is the noise floor under
+/// every figure derived from one.
+#[tokio::test]
+async fn every_condition_gets_the_copies_it_was_asked_for() {
+    let (outcome, _) = run(Feedback::new().replicates(3)).await;
+
+    let copies: Vec<usize> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured { observation, .. } => Some(observation.answers.len()),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(
+        copies.len(),
+        14,
+        "a control and six notes, in each of two batteries"
+    );
+    assert!(copies.iter().all(|copies| *copies == 3), "{copies:?}");
 }
