@@ -477,6 +477,66 @@ async fn a_disagreement_nothing_settles_is_scored_from_both_sides() {
     }
 }
 
+/// Which side of a disagreement the subject's own answer was on, as the record says it.
+///
+/// note: the subject picked a side, and the record has to say which. A subject that followed the
+/// return the harness planted and one that followed the dossier's own decisive note have done
+/// different things, and a report that said only that it answered `omsk` would leave a reader to
+/// work out which from a dossier they may not have in front of them. Four answers the solve can
+/// come back with, and the record tells the four apart: the side the disputed note is on, the
+/// side the planted return is on, an answer on neither, and nothing readable at all.
+///
+/// note: run against a model rather than asserted, because the four arms are guards on a match
+/// over the answer. A test that only ever saw one of the four would pass with any of them
+/// rewritten to `true`, and each guard has to be seen failing to fire on the answer the arm
+/// beside it claims.
+#[tokio::test]
+async fn the_answer_is_filed_under_the_side_it_belongs_to() {
+    // the depot, the disputed annex memo and the return planted against it: `kirov` is what the
+    // notes support with the memo in, `omsk` what they support with it out, and `tara` is on
+    // neither side
+    let filed = |answer: &str, notes: Vec<String>| {
+        notes
+            .into_iter()
+            .find(|note| note.starts_with(&format!("it answered `{answer}`")))
+            .unwrap_or_else(|| panic!("the record does not say which side `{answer}` is on"))
+    };
+
+    for (answer, rules) in [
+        ("kirov", common::depot_answering("kirov")),
+        ("omsk", common::depot_answering("omsk")),
+        ("tara", common::depot_answering("tara")),
+    ] {
+        let model = Arc::new(Rulebook::new(rules, FALLBACK));
+        let subject = subject("subject", model);
+        let experiment = Conflict::new();
+        let trial = Trial::new(experiment.name(), &subject);
+        experiment
+            .run(&subject, &trial)
+            .await
+            .expect("the experiment stopped early");
+
+        let notes: Vec<String> = trial
+            .steps()
+            .iter()
+            .filter_map(|step| match step {
+                Step::Noted { note } => Some(note.clone()),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(
+            filed(answer, notes),
+            match answer {
+                "kirov" => "it answered `kirov`, which is the side `records/omsk-annex` is on",
+                "omsk" => "it answered `omsk`, which is the side `records/omsk-return` is on",
+                _ => "it answered `tara`, which is neither side of the disagreement",
+            },
+            "`{answer}` was filed under the wrong side of the disagreement"
+        );
+    }
+}
+
 #[tokio::test]
 async fn being_told_how_it_did_is_scored_apart_from_what_it_said_before() {
     let (outcome, _) = run(Feedback::new()).await;
@@ -501,6 +561,33 @@ async fn being_told_how_it_did_is_scored_apart_from_what_it_said_before() {
     assert_eq!(gain.after.correct, 6);
     assert!(gain.accuracy() > 0.0);
     assert!(gain.brier().unwrap() > 0.0);
+}
+
+/// The copies each condition of an unsettled disagreement got, and the agreement over them.
+///
+/// note: `Conflict`'s own note on `replicates`. The detection question is one bit, and a
+/// contradiction the harness planted is the case where a copy has least reason to answer the same
+/// way twice, so [`Observation::agreement`](nachalnik_eval::Observation::agreement) over the
+/// control arm is a finding here rather than a health check - and at one replicate it is not
+/// measured at all. A run that asked for three and got one reports a detection rate off a single
+/// copy per condition, and nothing in the record says so.
+#[tokio::test]
+async fn an_unsettled_disagreement_gets_the_copies_it_asked_for() {
+    let (outcome, _) = run(Conflict::new().replicates(3)).await;
+
+    let conditions: Vec<usize> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured { observation, .. } => Some(observation.answers.len()),
+            _ => None,
+        })
+        .collect();
+    assert!(!conditions.is_empty(), "nothing was measured");
+    assert!(
+        conditions.iter().all(|n| *n == 3),
+        "the conditions ran {conditions:?} copies, and every one of them was asked for three"
+    );
 }
 
 #[tokio::test]
