@@ -281,8 +281,9 @@ impl Snapshot {
     /// note: and a call and its result that do not pair: a result answering a call no item makes,
     /// or made only after it, and two results answering one call. The kernel records neither, so
     /// either is a snapshot something else changed - apart from the whole of an output an output
-    /// limit shortened, which [`Config::keep_truncated_output`](crate::Config::keep_truncated_output)
-    /// keeps as a second result for the call, and which is not counted. A call with no result is not among them - a
+    /// limit shortened, which
+    /// [`Config::keep_truncated_output`](crate::Config::keep_truncated_output) keeps as a second
+    /// result for the call, and which is not counted. A call with no result is not among them - a
     /// snapshot taken while the call ran, or before a crash, holds one, and the projector leaves
     /// it out of the next request and says so.
     ///
