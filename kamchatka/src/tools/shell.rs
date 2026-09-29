@@ -888,15 +888,9 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         if let Some(pid) = self.group {
-            // `std` rather than tokio's, because a drop cannot wait on a future and this may be
-            // the last thing the runtime does
-            let _ = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!("kill -KILL -{pid}"))
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+            // waited for here rather than through tokio, because a drop cannot wait on a future
+            // and this may be the last thing the runtime does
+            let _ = killing(pid).status();
         }
         if let Some(scratch) = &self.scratch {
             let _ = std::fs::remove_dir_all(scratch);
@@ -923,17 +917,23 @@ impl Drop for Running {
 /// identifier cannot yet mean anybody else.
 async fn stop(child: &mut tokio::process::Child) {
     if let Some(pid) = child.id() {
-        let _ = tokio::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!("kill -KILL -{pid}"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
+        let _ = tokio::process::Command::from(killing(pid)).status().await;
     }
     // and the child itself, in case it was never in a group of its own
     let _ = child.start_kill();
+}
+
+/// The command that kills process group `pid`, for [`stop`] and for a [`Running`] dropped with
+/// its command still going; see the note on `stop` for why it is `sh`.
+fn killing(pid: u32) -> std::process::Command {
+    let mut kill = std::process::Command::new("sh");
+    kill.arg("-c")
+        .arg(format!("kill -KILL -{pid}"))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    kill
 }
 
 /// Keeps one line of standard output, or as much of its start as fits under [`KEPT`], unless the
