@@ -663,6 +663,8 @@ provider that will not say how much context its model has; and `KAMCHATKA_NO_ATT
 stops the program naming itself to OpenRouter. The advisor's variables are listed by a build that
 has an `--advise` to use them and by no other.
 
+## 🚦 an advisor on the question
+
 ### a colour on the question
 
 `--advise` is off unless the program was built with `--features shell-advisor`, and then it still
@@ -864,6 +866,8 @@ passed, and a rating the advisor was not sure of is never drawn green and never 
 scored — a distribution spread across a safety rubric is the advisor saying it could not tell,
 which is not the same as a clean bill. The percentage is on the line so that a yellow you cannot
 explain is visibly a yellow nobody was sure of.
+
+## 💾 a session on disk
 
 `/save` writes two files: a `.jsonl` of every event that happened, and a `.json` snapshot of the
 context. Given a directory, it names them after the session, and the first save into one goes
