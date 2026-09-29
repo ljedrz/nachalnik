@@ -128,6 +128,11 @@ pub async fn endpoint(answers: Vec<String>) -> String {
                         r#"{"data":[{"id":"nothing","context_length":128000}]}"#.to_owned(),
                     ),
                     false => match answers.get(nth.fetch_add(1, SeqCst)) {
+                        Some(whole) if whole.starts_with("HTTP/") => {
+                            let _ = socket.write_all(whole.as_bytes()).await;
+                            let _ = socket.shutdown().await;
+                            return;
+                        }
                         Some(sse) => ("text/event-stream", format!("{sse}\n\ndata: [DONE]\n\n")),
                         // a request nobody wrote an answer for is held open rather than refused,
                         // which is a model that has gone quiet - and the one thing a test must not
@@ -154,6 +159,14 @@ pub async fn endpoint(answers: Vec<String>) -> String {
 
     format!("http://{at}/v1")
 }
+
+/// A refusal for [`endpoint`] to hand out in place of an answer: busy, and asking for a second's
+/// wait, which the provider takes and then asks again.
+///
+/// note: an answer that begins as a response is sent as it is, which is what makes this one of
+/// the bodies rather than a second endpoint.
+pub const BUSY: &str =
+    "HTTP/1.1 502 Bad Gateway\r\nRetry-After: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 
 /// One streamed answer for [`endpoint`], with what it cost on the end of it.
 pub fn answer(text: &str) -> String {

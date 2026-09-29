@@ -8,12 +8,17 @@ use std::sync::Arc;
 
 use kamchatka::{
     app::Did,
-    remote::protocol::{Command, Message},
+    remote::{
+        Server,
+        protocol::{Command, Message},
+    },
+    wiring::{Setup, Wired},
 };
 use nachalnik::{ModelResponse, test::call};
+use nachalnik_providers::OpenAiCompatible;
 use serde_json::json;
 
-use crate::{Peer, Slow, attaching, records, served};
+use crate::{Peer, Slow, attaching, common, quit, records, served, streamed};
 
 /// A turn carries on while nobody is attached, and the records are all there afterwards.
 ///
@@ -186,4 +191,50 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
     })
     .await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A provider's retry reaches a client while the provider waits, above the answer it held up.
+///
+/// note: the pair of the headless suite's `a_retry_is_said_before_the_answer_it_held_up`. A notice
+/// has no event to carry it, so the served loop reads it on a tick of its own; without one, a
+/// client heard `trying again` when the turn ended, after the answer.
+#[tokio::test]
+async fn a_retry_reaches_a_client_before_the_answer_it_held_up() {
+    let base = common::endpoint(vec![
+        common::BUSY.to_owned(),
+        common::answer("held up, then answered"),
+    ])
+    .await;
+    // the provider the wiring builds, rather than a scripted one swapped in: the notice is its
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new("nothing", base, "")))
+    .expect("the wiring failed");
+    let mut server = Server::bind("tcp:127.0.0.1:0")
+        .await
+        .expect("nothing would listen");
+    let at = server.address();
+    tokio::spawn(async move { server.run(&mut app, &mut events, &mut finished).await });
+
+    let (mut peer, _) = Peer::attached(&at).await;
+    peer.send(Command::Submit {
+        line: "ask".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("trying again")))
+        .await;
+    assert!(
+        !streamed(&heard).contains("held up"),
+        "the retry was said after the answer"
+    );
+
+    quit(&at).await;
 }

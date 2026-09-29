@@ -251,6 +251,46 @@ async fn a_line_is_a_message_and_the_answer_is_printed() {
     assert!(run.names().contains(&"model.requested".to_owned()));
 }
 
+/// A provider's retry is said while it waits, above the answer it held up.
+///
+/// note: nothing the kernel emits carries the notice, so a loop that read it only when the turn
+/// ended printed `trying again` under an answer somebody had already read.
+#[tokio::test]
+async fn a_retry_is_said_before_the_answer_it_held_up() {
+    let base = common::endpoint(vec![
+        common::BUSY.to_owned(),
+        common::answer("held up, then answered"),
+    ])
+    .await;
+
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new("nothing", base, "")))
+    .expect("the wiring failed");
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, "ask\n".as_bytes())
+        .await
+        .expect("the run failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    let retried = prose
+        .find("trying again")
+        .expect("the retry was never said");
+    let answered = prose.find("held up, then answered").expect("no answer");
+    assert!(
+        retried < answered,
+        "the retry was said after the answer:\n{prose}"
+    );
+}
+
 /// The stream on stdout is the session log, not a rendering of it.
 ///
 /// note: the claim this pins is the one that makes the mode worth having - that a reader of the

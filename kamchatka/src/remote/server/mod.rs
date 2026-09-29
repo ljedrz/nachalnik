@@ -19,10 +19,11 @@ use nachalnik::Event;
 use tokio::{
     sync::{broadcast, mpsc, oneshot},
     task::JoinSet,
+    time::MissedTickBehavior,
 };
 
 use crate::{
-    app::{App, Did, Outcome, Overlay, Speaker, text},
+    app::{App, Did, NOTICES, Outcome, Overlay, Speaker, text},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
         Unjudged,
@@ -400,6 +401,9 @@ impl Server {
         // it stands: one of them is nested inside a second `select!`, and a `break` there ends the
         // wrong loop
         let mut leaving = false;
+        // what a provider says while it waits, which no event carries; `pump` hands it on
+        let mut notices = tokio::time::interval(NOTICES);
+        notices.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
             serving.pump(app);
@@ -456,6 +460,10 @@ impl Server {
                 () = terminations.arrived() => app.quit = true,
                 Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
                 Ok(()) = reaching.changed() => {}
+                // note: while a turn runs, for the reason `headless.rs` gives
+                _ = notices.tick(), if app.busy => {
+                    app.take_notices();
+                }
             }
         }
 
