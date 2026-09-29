@@ -204,6 +204,11 @@ minor bump may break you.
   and only `ctrl+a` reached the start. They now go on to the conversation only from the top or
   bottom row.
 
+- **A retry is said while it is waited out, under `--headless` and `--serve`.** Neither loop
+  looked for the provider's notice until the turn ended, so `answered 502; trying again` came out
+  after the answer it had held up, and of several retries in one turn only the last was said. Both
+  now look for it while a turn runs, as the screen does.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

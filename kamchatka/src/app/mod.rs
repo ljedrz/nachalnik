@@ -258,6 +258,12 @@ pub struct Anchor {
 /// searches and `fork` do - and short enough that a `/quit` does not look like a hang.
 pub const LEAVING: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// How often a loop with nothing drawing it looks for a notice while a turn runs; see
+/// [`App::take_notices`].
+///
+/// note: the drawn loop has a tick of its own and reads them on that.
+pub(crate) const NOTICES: std::time::Duration = std::time::Duration::from_millis(120);
+
 /// What the kernel's task reports when it stops.
 pub enum Outcome {
     /// The turn ended in this state.

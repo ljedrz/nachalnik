@@ -25,10 +25,10 @@ use nachalnik::{Delta, Event, Grant, Kernel};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt},
     sync::{broadcast, mpsc},
-    time::Instant,
+    time::{Instant, MissedTickBehavior},
 };
 
-use crate::app::{App, Outcome, Overlay, Speaker, text::plural};
+use crate::app::{App, NOTICES, Outcome, Overlay, Speaker, text::plural};
 
 /// A session driven by lines rather than by keys.
 pub struct Headless<'a> {
@@ -188,6 +188,9 @@ impl<'a> Headless<'a> {
         // whether it has said that messages are being passed over, for want of a ceiling to spend
         // or of room in a request
         let mut passing = false;
+        // what a provider says while it waits, which no event carries
+        let mut notices = tokio::time::interval(NOTICES);
+        notices.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         // note: an async block rather than the loop alone, so that every way out of it - a
         // `break`, and an error writing the prose or reading the input as much as `/quit` - ends
@@ -452,6 +455,12 @@ impl<'a> Headless<'a> {
                     }
                     // answered at the top of the loop, like the kernel's questions
                     Ok(()) = reaching.changed() => {}
+                    // note: while a turn runs, because that is when a provider waits and says so.
+                    // Read only when the turn ended, a retry's notice came out after the answer it
+                    // had held up, and of several retries only the last was said at all
+                    _ = notices.tick(), if app.busy => {
+                        app.take_notices();
+                    }
                 }
             }
             Ok(())
