@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`Endpoint::host` stops at a query or a fragment, not only at a path.** A base URL with no path
+  and a query, such as `https://example.com?key=...`, came back with the whole query, so a key
+  passed that way was drawn wherever the host is shown, and the host read as another one where it
+  decides something - whether an endpoint is OpenRouter, which service `system1` is talking to.
+
 - **A refusal quoting a page keeps words that the markup reading used to drop.** A tag whose
   name only started with `style` or `script`, such as `<stylesheet-error>`, had everything up to
   a matching close skipped as if it were a stylesheet, and a `<` that was not a tag, as in

@@ -416,6 +416,8 @@ fn the_address_on_the_status_line_is_the_host() {
         ("https://openrouter.ai", "openrouter.ai"),
         ("http://127.0.0.1:1", "127.0.0.1:1"),
         ("localhost:8080/v1", "localhost:8080"),
+        ("https://example.com?key=secret", "example.com"),
+        ("https://example.com#v1", "example.com"),
         ("", ""),
         ("https://", "https://"),
     ];
