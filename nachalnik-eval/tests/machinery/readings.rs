@@ -123,6 +123,61 @@ fn the_shape_of_the_answer_is_part_of_the_question() {
     assert!(Reading::Claim.instructions().contains("CONFIDENCE"));
 }
 
+/// A minus in front of the digits is a sign, and one after them is not.
+#[test]
+fn a_sign_belongs_to_the_digits_in_front_of_it() {
+    let probe = Probe::new("how many?", Reading::Number);
+
+    assert_eq!(probe.read("ANSWER: -5"), Answer::Number(-5));
+    // a hyphen once the digits are in is not a sign, and the reading stops where it is
+    assert_eq!(probe.read("ANSWER: 2-3 of them"), Answer::Number(2));
+}
+
+/// A thousands separator between digits is read through.
+#[test]
+fn a_separator_is_one_between_digits_and_nothing_else() {
+    let probe = Probe::new("how many?", Reading::Number);
+
+    assert_eq!(probe.read("ANSWER: 3,593"), Answer::Number(3593));
+    assert_eq!(probe.read("ANSWER: 1_000"), Answer::Number(1000));
+}
+
+/// A number is read up to the first word after it.
+#[test]
+fn a_number_stops_where_the_words_start() {
+    let probe = Probe::new("how many?", Reading::Number);
+
+    assert_eq!(probe.read("ANSWER: 4 of the 5 items"), Answer::Number(4));
+    assert_eq!(probe.read("ANSWER: -4 of 5"), Answer::Number(-4));
+}
+
+/// A confidence is read past the words around it, as a percentage or as a fraction.
+#[test]
+fn a_confidence_is_found_past_the_words_written_around_it() {
+    let probe = Probe::claim("would it change?");
+
+    assert_eq!(
+        probe
+            .read("ANSWER: yes\nCONFIDENCE: about 80%")
+            .confidence(),
+        Some(0.8)
+    );
+    // a leading point belongs to the figure, and the figure is already a fraction
+    assert_eq!(
+        probe.read("ANSWER: yes\nCONFIDENCE: .5").confidence(),
+        Some(0.5)
+    );
+}
+
+/// A negative item number is unreadable, not the nearest item that could be meant.
+#[test]
+fn a_negative_item_number_is_not_an_item() {
+    let probe = Probe::item("which item?");
+
+    assert_eq!(probe.read("ITEM: 3"), Answer::Item(ContextId(3)));
+    assert_eq!(probe.read("ITEM: -3"), Answer::Unreadable);
+}
+
 #[test]
 fn an_answer_naming_two_of_the_options_commits_to_neither() {
     // note: the reading requires a unique match, so a subject hedging across two options is
