@@ -627,9 +627,11 @@ pub(super) fn head(text: &str, lines: usize) -> String {
     // the blank ones first, or a provider that opens every message with two of them spends two
     // of the rows a tool result gets to make its case in, and truncates two lines early
     let text = unpadded(text);
-    let mut kept: Vec<&str> = text.lines().take(lines).collect();
-    let total = text.lines().count();
-    if total > lines {
+    // note: one line past the ones kept is all the mark needs. This runs for every tool result on
+    // the chat tab every frame, and counting to the end walked the whole of each one
+    let mut all = text.lines();
+    let mut kept: Vec<&str> = all.by_ref().take(lines).collect();
+    if all.next().is_some() {
         kept.push("…");
     }
 
@@ -817,4 +819,18 @@ pub(crate) fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
         .map(|said| (*said).to_owned())
         .or_else(|| payload.downcast_ref::<String>().cloned())
         .unwrap_or_else(|| "it said nothing about why".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A tool result's first lines carry a mark when there were more, and none when there were not.
+    #[test]
+    fn the_head_of_something_says_when_there_was_more() {
+        assert_eq!(head("a\nb\nc", 3), "a\nb\nc");
+        assert_eq!(head("a\nb\nc\nd", 3), "a\nb\nc\n…");
+        // the blank lines a provider opens with are not counted against the ones kept
+        assert_eq!(head("\n\na\nb", 2), "a\nb");
+    }
 }
