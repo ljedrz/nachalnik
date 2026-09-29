@@ -609,7 +609,7 @@ one to be dropped without a word, because whoever wrote it is not looking at thi
 line. So `--serve` refuses both, from the file as well as from the flags, naming the path.
 
 `on-ask: deny` in a file is not refused, because that is what the run would have used anyway, and
-`--print-config` above writes it: a file that is the shipped one with nothing changed in it is
+`--print-config` below writes it: a file that is the shipped one with nothing changed in it is
 still a file a reader is meant to be able to serve from. Everything else in that key's place is
 refused, `allow` included.
 
