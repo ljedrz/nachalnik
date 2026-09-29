@@ -68,15 +68,19 @@ What each is for:
   `/compact`, `/undo`, `/redo`, `/budget` - and leaves normally.
 - **b** is cut by SIGTERM, which is a leaving: the turn is stopped and waited for, and the snapshot
   is current.
-- **c** starts by asking the model to free room. At 40000 the context reaches the limit here or
-  soon after: `Trim` takes only tool results, and the model's own turns are what fills a long
-  session. That is POSTPONED's *a context the model's own turns have filled*, and the soak's
-  evidence for it rather than a finding. Its SIGKILL rarely fires, because nothing runs past the
-  wall.
-- **d** is the person raising the limit and asking for the unsent messages, and is cut by
-  SIGKILL: the snapshot is from the start of the turn and the log runs past it.
+- **c** starts by asking the model to free room. At 40000 the context reaches the limit in c or
+  before it - a run can get there in a: `Trim` takes only tool results, and the model's own turns
+  are what fills a long session. That is POSTPONED's *a context the model's own turns have filled*,
+  and the soak's evidence for it rather than a finding. Past the limit, headless passes each
+  message over unsent and says so once, so a segment that reaches it ends having done little, and
+  its signal rarely fires.
+- **d** is the person raising the limit and sending the work again, and is cut by SIGKILL: the
+  snapshot is from the start of the turn and the log runs past it. It needs the room to run fifteen
+  calls, which is why it carries real tasks rather than asking about the messages that were passed
+  over.
 - **e** resumes from that snapshot, `/load`s segment a's checkpoint, and undoes twice and redoes
-  once.
+  once. The resume has to number past d's log rather than its snapshot, and says how many records
+  it carried on without.
 
 If a segment goes somewhere useless (the model stuck, a feed line misread), rerun that segment from
 the same FROM; the chain is whichever stems you give the checker.
@@ -99,9 +103,9 @@ chain says `skip`; the resume cases need two segments. The chain's own violation
 first - they are the soak's findings - and a case passes only on a violation its break added.
 
 `check.py` runs `kamchatka --check` on each pair, then walks the chain. A **VIOLATION** is an
-invariant broken. A **NOTE** is a fact that is not one: a snapshot behind its log, a call a kill
-left open, and a record number, item or permission reissued after a resume from such a snapshot,
-each noted with the record that reissued it.
+invariant broken, and that includes a resume that numbers a record, item, call or permission
+again that the log before it had numbered past its snapshot. A **NOTE** is a fact that is not one:
+a snapshot behind its log, and a call a kill left open.
 
 `stats.py` gives each segment's counts, the floor - what each compaction left behind - and what the
 last snapshot is made of. A floor climbing towards the limit is a session that will stop being able
@@ -117,22 +121,17 @@ to send.
   its own is a checker bug until shown otherwise; fix the checker and run `selftest.py` again.
 - Check POSTPONED.md and the `note:`s before calling anything new.
 
-## known at 2026-09-29
+## what the first soak found
 
-What the first soak found, so that the next one checks whether it still holds instead of finding
-it again:
+Each is fixed, with a test, and a soak after the fix ran clean where the first one did not - so a
+return of any of them is a regression, and the checker says so:
 
-- **`Snapshot::problems` calls a truncated output a second answer.** With `keep_truncated_output`
-  the kernel records the archived whole and the shortened copy as two results for one call, and
-  `problems()` - whose note says the kernel records no such thing - reports it, so `--check` fails
-  every snapshot holding one. Reproduced by one tool call over its output limit.
-- **A resume from a snapshot behind its log reissues numbers.** After a SIGKILL the snapshot is
-  from the start of the turn, and the resumed session numbers records, items and permissions again
-  from there, so two files of one lineage hold different things under one identifier. The log
-  beside the snapshot is already read at resume, and is where the numbers could be carried from.
-- **Headless keeps messages refused for being over the limit.** Each one goes into the context and
-  makes the overflow larger, and all of them go out together once there is room; a run over its
-  `--spend` ceiling passes messages over for exactly this reason.
+- **`Snapshot::problems` called a truncated output a second answer**, so `--check` failed every
+  snapshot holding one. The kernel's whole copy is now told apart by its `WHOLE_OUTPUT` reason.
+- **A resume from a snapshot behind its log reissued numbers**: records, items and permissions
+  the killed run had already used. `-r` now numbers past the log beside the snapshot.
+- **Headless kept messages refused for being over the limit**, each making the overflow larger
+  and all going out together once there was room. They are passed over now, as past `--spend`.
 
 ## gotchas
 
