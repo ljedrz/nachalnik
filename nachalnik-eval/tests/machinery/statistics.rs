@@ -2,8 +2,8 @@
 
 use nachalnik::{Config, ContextId, Kernel, StopReason};
 use nachalnik_eval::{
-    Act, Answer, Deference, Faced, Kind, Paired, Reached, Reading, Resolution, Scores, Spend, Step,
-    Subject,
+    Act, Answer, Deference, Faced, Gain, Kind, Paired, Reached, Reading, Resolution, Scores, Spend,
+    Step, Subject,
 };
 
 /// A comparison about one note of one dossier, at one stage.
@@ -442,4 +442,83 @@ fn a_grant_does_not_outlive_the_session_it_was_made_in() {
     );
     assert_eq!(reached.instrumented, 2);
     assert!(reached.clears_the_gate());
+}
+
+/// One battery of claims: `said` is the answer the subject gave, `truth` what came of the test,
+/// and `informed` whether it had been told how it was doing when it answered.
+fn battery(claims: &[(bool, bool)], informed: bool) -> Vec<Resolution> {
+    claims
+        .iter()
+        .map(|&(said, truth)| {
+            Resolution::new(Kind::Counterfactual, Answer::yes(said), Answer::yes(truth))
+                .informed(informed)
+        })
+        .collect()
+}
+
+/// What being told how it was doing bought a subject is the difference between its two
+/// batteries, in accuracy and in skill over guessing.
+///
+/// note: both batteries have outcomes half `yes`, so guessing scores the same on each and the two
+/// skill figures are shares of the same room.
+#[test]
+fn being_told_is_scored_as_a_difference_and_not_as_a_sum_or_a_ratio() {
+    let mut claims = battery(
+        &[
+            (true, true),
+            (true, true),
+            (true, true),
+            (false, true),
+            (true, false),
+            (true, false),
+            (false, false),
+            (false, false),
+        ],
+        false,
+    );
+    claims.extend(battery(
+        &[
+            (true, true),
+            (true, true),
+            (true, true),
+            (false, true),
+            (true, false),
+            (false, false),
+            (false, false),
+            (false, false),
+        ],
+        true,
+    ));
+
+    let gain = Gain::over(&claims);
+
+    assert!(gain.is_measurable());
+    assert_eq!((gain.before.n, gain.before.correct), (8, 5));
+    assert_eq!((gain.after.n, gain.after.correct), (8, 6));
+    assert_eq!((gain.before.majority, gain.after.majority), (0.5, 0.5));
+    assert_eq!(gain.accuracy(), 0.125);
+    assert_eq!(
+        (gain.before.skill, gain.after.skill),
+        (Some(0.25), Some(0.5))
+    );
+    assert_eq!(gain.skill(), Some(0.25));
+}
+
+/// A battery with no room above guessing has an accuracy gained and no skill gained.
+///
+/// note: `None` rather than a zero, which would read as having gained nothing.
+#[test]
+fn a_battery_with_nothing_to_be_right_about_has_an_accuracy_and_no_skill() {
+    let mut claims = battery(
+        &[(true, true), (false, true), (true, true), (false, true)],
+        false,
+    );
+    claims.extend(battery(&[(true, true); 4], true));
+
+    let gain = Gain::over(&claims);
+
+    assert_eq!((gain.before.n, gain.before.correct), (4, 2));
+    assert_eq!(gain.before.majority, 1.0);
+    assert_eq!(gain.accuracy(), 0.5);
+    assert_eq!(gain.skill(), None);
 }
