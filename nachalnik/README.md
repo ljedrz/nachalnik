@@ -324,7 +324,8 @@ Google AI Studio speaks the same dialect and has a free tier of its own:
 
 ```console
 $ NACHALNIK_API_KEY=... NACHALNIK_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
-  NACHALNIK_TEST_MODEL=gemini-3.5-flash cargo test --test live
+  NACHALNIK_TEST_MODEL=gemini-3.5-flash-lite NACHALNIK_TEST_MODEL_B=gemini-3.5-flash \
+  cargo test --test live -- --test-threads=1
 ```
 
 It covers: a plain turn on the wire and the recorded payload being the one that went out; a call
