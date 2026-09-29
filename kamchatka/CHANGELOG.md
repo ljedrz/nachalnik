@@ -55,6 +55,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`endpoint::configured_limit` is `None` for a `KAMCHATKA_CONTEXT_LIMIT` of `0`**, as its
+  documentation says, rather than a limit every request is refused against. The program reads
+  `checked_limit`, which already refused it.
+
 - **`--serve` beside a settings file saying `on-ask: Deny` serves.** The value is read without
   regard to case, and the check that lets the default through beside `--serve` compared it
   exactly, so `Deny` was refused as if it said `allow`.

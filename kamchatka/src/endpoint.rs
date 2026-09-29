@@ -57,6 +57,7 @@ pub fn configured_limit() -> Option<usize> {
     env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
+        .filter(|&limit| limit > 0)
 }
 
 /// The context limit somebody set by hand, or what is wrong with what they set.
