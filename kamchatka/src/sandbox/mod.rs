@@ -919,7 +919,9 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     }
     // note: a port is closed by granting every other one, since a ruleset only ever grants. That is
     // a rule a port, built in a few tens of milliseconds, and paid only by a command confined while
-    // a session is served over TCP. `BindTcp` stays unhandled: listening refuses nobody's answer
+    // a session is served over TCP. `BindTcp` stays unhandled: listening refuses nobody's answer.
+    // Never together with the refusal above - `closing` is false whenever TCP is refused outright -
+    // which is the only reason `ConnectTcp` can be handled here as well as there
     let closing = !sandbox.network.refuses_tcp() && !sandbox.closed.is_empty();
     if closing {
         match ruleset.handle_access(AccessNet::ConnectTcp) {
