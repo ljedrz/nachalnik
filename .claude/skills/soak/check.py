@@ -14,7 +14,9 @@ across it, states carried over and never jumped, a pin never compacted, no item 
 changed without the event that says so, and no call run without a decision to run it.
 
 Exit status 1 when anything is a VIOLATION. A NOTE is a fact worth reading that is not one: a
-resume from a snapshot taken before the end of its log is what a killed process leaves.
+snapshot taken before the end of its log is what a killed process leaves, and the resume after it
+has to number past the log rather than the snapshot - reissuing anything the log numbered is a
+violation.
 """
 
 import hashlib
@@ -94,7 +96,7 @@ class Lineage:
         self.calls |= set(snapshot.get("used_calls", []))
 
 
-def segment(name, records, snapshot, previous, lineage, report):
+def segment(name, records, snapshot, previous, tail, lineage, report):
     """Walks one segment's log against what the lineage carried into it."""
     if not records:
         report.violation(name, "the log is empty")
@@ -112,12 +114,13 @@ def segment(name, records, snapshot, previous, lineage, report):
                 f"resumed with {first['items']} items, and the snapshot it was resumed from "
                 f"holds {len(previous['items'])}",
             )
-        expected = previous["last_seq"] + 1
+        # past the snapshot, and past whatever the log beside it recorded after it was taken
+        expected = max(previous["last_seq"], tail) + 1
         if records[0]["seq"] != expected:
             report.violation(
                 name,
                 f"its first record is {records[0]['seq']}, and the snapshot it was resumed from "
-                f"was taken at {previous['last_seq']}",
+                f"was taken at {previous['last_seq']} with its log running to {tail}",
             )
 
     replaced = set()  # items whose content an event said changed
@@ -146,7 +149,7 @@ def segment(name, records, snapshot, previous, lineage, report):
         elif kind == "context.added":
             cid = event["id"]
             if ("item", cid) in lineage.stale:
-                report.note(name, f"record {seq} adds item {cid} again: the last segment issued it past its snapshot")
+                report.violation(name, f"record {seq} adds item {cid} again: the last segment issued it past its snapshot")
             elif cid in lineage.added:
                 report.violation(name, f"record {seq} adds item {cid}, an identifier already issued")
             if lineage.added and cid <= max(lineage.added):
@@ -202,7 +205,7 @@ def segment(name, records, snapshot, previous, lineage, report):
         elif kind == "permission.requested":
             pid = event["request"]["id"]
             if ("permission", pid) in lineage.stale:
-                report.note(name, f"record {seq} asks permission {pid} again: the last segment issued it past its snapshot")
+                report.violation(name, f"record {seq} asks permission {pid} again: the last segment issued it past its snapshot")
             elif pid in lineage.permissions:
                 report.violation(name, f"record {seq} asks permission {pid} a second time")
             lineage.permissions.add(pid)
@@ -211,14 +214,14 @@ def segment(name, records, snapshot, previous, lineage, report):
             # a question the policy answered is numbered too, with no `permission.requested`
             pid = event["id"]
             if ("permission", pid) in lineage.stale and pid not in lineage.decided:
-                report.note(name, f"record {seq} decides permission {pid} again: the last segment issued it past its snapshot")
+                report.violation(name, f"record {seq} decides permission {pid} again: the last segment issued it past its snapshot")
             elif pid in lineage.decided:
                 report.violation(name, f"record {seq} decides permission {pid} a second time")
             lineage.decided.add(pid)
         elif kind == "tool.requested":
             call = event["call"]
             if ("call", call) in lineage.stale:
-                report.note(name, f"record {seq} asks for call `{call}` again: the last segment issued it past its snapshot")
+                report.violation(name, f"record {seq} asks for call `{call}` again: the last segment issued it past its snapshot")
             elif call in lineage.calls:
                 report.violation(name, f"record {seq} asks for call `{call}`, already issued")
             lineage.calls.add(call)
@@ -344,10 +347,10 @@ def main():
             lineage.decided -= {v for k, v in lineage.stale if k == "permission"}
             reissued = [r["seq"] for r in records if r["seq"] <= stale_tail]
             if reissued:
-                report.note(name, f"records {reissued[0]} to {reissued[-1]} are numbered again: "
-                            "the last segment's log had already used those numbers past its snapshot")
+                report.violation(name, f"records {reissued[0]} to {reissued[-1]} are numbered again: "
+                                 "the last segment's log had already used those numbers past its snapshot")
             lineage.seed(previous)
-        segment(name, records, snapshot, previous, lineage, report)
+        segment(name, records, snapshot, previous, last_tail, lineage, report)
         kinds = {}
         for r in records:
             kinds[r["event"]["event"]] = kinds.get(r["event"]["event"], 0) + 1
