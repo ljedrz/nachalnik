@@ -79,7 +79,7 @@ pub(super) fn look(
          you set a state or because the endpoint will not take it\n\
          {} change(s) in the person's own undo stack, which is theirs; `undo` walks back what \
          you did\n\n\
-         {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
+         {HEAD}",
         items.len(),
         // what the projection carries, and the turn this call is in, which it will carry once
         // this call has an answer
@@ -98,26 +98,10 @@ pub(super) fn look(
             .unwrap_or_default(),
         thousands(withheld),
         theirs,
-        "id",
-        "state",
-        "kind",
-        "sending",
-        "held",
     ));
 
     for item in &items {
-        out.push_str(&format!(
-            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}\n",
-            item.id.0,
-            item.state.to_string(),
-            item.kind.name(),
-            figure(item, &going),
-            match going.held_back(item) {
-                0 => String::new(),
-                held => thousands(held),
-            },
-            row(item, &going),
-        ));
+        out.push_str(&line(item, &going, &row(item, &going)));
     }
     out.push_str(floor(&items));
 
@@ -134,6 +118,24 @@ pub(super) fn look(
     );
 
     out
+}
+
+/// The head of the table `look` lists items in, with a selector or without one.
+const HEAD: &str = "  id  state       kind                 sending      held  what it is\n";
+
+/// One row of that table, ending in what the item is.
+fn line(item: &ContextItem, going: &Going, said: &str) -> String {
+    format!(
+        "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {said}\n",
+        item.id.0,
+        item.state.to_string(),
+        item.kind.name(),
+        figure(item, going),
+        match going.held_back(item) {
+            0 => String::new(),
+            held => thousands(held),
+        },
+    )
 }
 
 /// What one row says an item is sending: its figure, with a `+` where part of it is unpriced.
@@ -216,7 +218,7 @@ pub(super) fn matched(
          ~{} of the ~{} tokens in the context are those items, and ~{} more of what they hold is \
          not going into the request\n\
          the next request is ~{}, of which ~{} is the tool definitions\n\n\
-         {:>4}  {:<10}  {:<18}  {:>8}  {:>8}  what it is\n",
+         {HEAD}",
         picked.len(),
         items.len(),
         picked
@@ -228,11 +230,6 @@ pub(super) fn matched(
         thousands(withheld),
         thousands(budget.used()),
         thousands(budget.tool_tokens),
-        "id",
-        "state",
-        "kind",
-        "sending",
-        "held",
     ));
 
     let mut refused = 0;
@@ -242,18 +239,7 @@ pub(super) fn matched(
             refused += 1;
             said.push_str(&format!(" · not yours to move: {why}"));
         }
-        out.push_str(&format!(
-            "{:>4}  {:<10}  {:<18}  {:>8}  {:>8}  {}\n",
-            item.id.0,
-            item.state.to_string(),
-            item.kind.name(),
-            figure(item, &going),
-            match going.held_back(item) {
-                0 => String::new(),
-                held => thousands(held),
-            },
-            said,
-        ));
+        out.push_str(&line(item, &going, &said));
     }
 
     out.push_str(floor(&carried));
