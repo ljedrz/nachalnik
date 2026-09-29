@@ -115,6 +115,11 @@ minor bump may break you.
   second pair. A record that cannot be claimed at the start is said, not fatal, and the end of the
   run writes the session the way it always did.
 
+- **`Headless` flushes the model's answer as it writes it.** A `--connect` client did, and the
+  headless loop did not, so an embedder handing `Headless::new` a buffered writer saw the answer
+  only when a whole line ended it. The program's own standard error was never buffered and reads
+  as it did.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

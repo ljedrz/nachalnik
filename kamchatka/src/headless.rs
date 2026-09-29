@@ -37,20 +37,13 @@ pub struct Headless<'a> {
     /// The session log, one JSON record per line: the same bytes `/save` writes.
     records: &'a mut dyn Write,
     /// The model's own words, and what the program has to say about the run.
-    prose: Printable<&'a mut dyn Write>,
+    prose: Prose<&'a mut dyn Write>,
     /// How long the whole run may take, if anything says.
     deadline: Option<Duration>,
     /// Whether a `ctrl+c` stops the run rather than killing the process.
     ctrl_c: bool,
     /// Whether `SIGTERM` and `SIGHUP` end the session rather than the process.
     terminated: bool,
-    /// Whether the prose is part-way through a line somebody else would finish.
-    ///
-    /// note: the model's answer arrives in fragments and is printed as it does, so the last thing
-    /// written is nearly always half a sentence with no newline after it. Everything else that
-    /// writes here is a whole line, and without this the two run together: an answer of `4` would
-    /// have the closing line stuck to the end of it.
-    mid_line: bool,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
     /// Fragments of the answer that went by too fast to print, counted until the answer they
@@ -78,11 +71,10 @@ impl<'a> Headless<'a> {
         Self {
             on_ask,
             records,
-            prose: Printable(prose),
+            prose: Prose::new(prose),
             deadline: None,
             ctrl_c: false,
             terminated: false,
-            mid_line: false,
             streamed: false,
             missed: 0,
             answering: false,
@@ -129,15 +121,6 @@ impl<'a> Headless<'a> {
     pub fn leaves_when_terminated(mut self) -> Self {
         self.terminated = true;
         self
-    }
-
-    /// Ends whatever half-written line the model left, so a whole one can follow it.
-    fn fresh_line(&mut self) -> Result<(), String> {
-        if std::mem::take(&mut self.mid_line) {
-            writeln!(self.prose).map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
     }
 
     /// Reads lines, drives the kernel, and returns when there is nothing left of either.
@@ -306,7 +289,7 @@ impl<'a> Headless<'a> {
                                 app.on_event(event);
                             }
                             if let Some(Overlay::Text { title, pages, .. }) = opened {
-                                self.fresh_line()?;
+                                self.prose.fresh_line()?;
                                 writeln!(self.prose, "--- {title} ---").map_err(|e| e.to_string())?;
                                 // note: every page rather than the one it was opened at. A screen
                                 // turns them with `←` and `→` and there is no key to press down a
@@ -346,7 +329,7 @@ impl<'a> Headless<'a> {
                                 // has nowhere else to go. Without it this mode takes items on the
                                 // strength of a line saying how many, which is the opposite of what
                                 // the command is for
-                                self.fresh_line()?;
+                                self.prose.fresh_line()?;
                                 for row in &proposed.rows {
                                     writeln!(self.prose, "· {row}").map_err(|e| e.to_string())?;
                                 }
@@ -405,7 +388,7 @@ impl<'a> Headless<'a> {
                         ends = None;
                         reading = false;
                         app.interrupt();
-                        self.fresh_line()?;
+                        self.prose.fresh_line()?;
                         writeln!(self.prose, "· out of time; stopping")
                             .map_err(|e| e.to_string())?;
                     }
@@ -430,7 +413,7 @@ impl<'a> Headless<'a> {
                                 stopping = true;
                                 reading = false;
                                 app.interrupt();
-                                self.fresh_line()?;
+                                self.prose.fresh_line()?;
                                 writeln!(
                                     self.prose,
                                     "· stopping; what has arrived is kept, and again leaves at once"
@@ -463,7 +446,7 @@ impl<'a> Headless<'a> {
                         }
                     } => {
                         app.quit = true;
-                        self.fresh_line()?;
+                        self.prose.fresh_line()?;
                         writeln!(self.prose, "· ended by a termination signal; leaving")
                             .map_err(|e| e.to_string())?;
                     }
@@ -497,7 +480,7 @@ impl<'a> Headless<'a> {
         // mid-sentence, or on a closing fence, leaves the caller's parting line stuck to the end
         // of it. Ended before either error is returned, because the caller has a parting line for
         // a run that failed as well
-        let ended = self.fresh_line();
+        let ended = self.prose.fresh_line();
         driven?;
         flushed?;
         ended?;
@@ -548,7 +531,7 @@ impl<'a> Headless<'a> {
             .collect::<Vec<_>>();
         *said += fresh.len();
         for text in fresh {
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             writeln!(self.prose, "· {text}").map_err(|e| e.to_string())?;
         }
 
@@ -576,7 +559,7 @@ impl<'a> Headless<'a> {
             let widened = app.widened(&pending);
             app.decide(pending.id, self.on_ask, false)
                 .map_err(|e| format!("could not answer for `{tool}`: {e}"))?;
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             writeln!(
                 self.prose,
                 "· {tool}: {}, because nobody is here to be asked",
@@ -605,7 +588,7 @@ impl<'a> Headless<'a> {
             if app.decide_reach(waiting.id, self.on_ask, false).is_err() {
                 continue;
             }
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             writeln!(
                 self.prose,
                 "· `{}` reached for the network: {}, because nobody is here to be asked",
@@ -634,23 +617,13 @@ impl<'a> Headless<'a> {
         if missed == 0 {
             return Ok(());
         }
-        self.fresh_line()?;
+        self.prose.fresh_line()?;
         writeln!(
             self.prose,
             "· {missed} fragment(s) of an answer went by too fast to print; nothing here holds \
              them, and the record names that answer without holding it"
         )
         .map_err(|e| e.to_string())
-    }
-
-    /// Writes some of the model's answer, which is not a whole line and ends none.
-    fn write_answer(&mut self, text: &str) -> Result<(), String> {
-        if text.is_empty() {
-            return Ok(());
-        }
-        self.mid_line = !text.ends_with('\n');
-
-        write!(self.prose, "{text}").map_err(|e| e.to_string())
     }
 
     /// Writes out every record the session has grown since the last time.
@@ -700,7 +673,7 @@ impl<'a> Headless<'a> {
         {
             self.streamed = true;
 
-            return self.write_answer(text);
+            return self.prose.write_answer(text);
         }
         // a new request is a new answer, which starts on a line of its own: the last one very
         // likely ended mid-line, and the first fragment of this one was written straight after it
@@ -712,7 +685,7 @@ impl<'a> Headless<'a> {
             self.streamed = false;
             self.said_missed()?;
 
-            return self.fresh_line();
+            return self.prose.fresh_line();
         }
         if let Event::ModelFinished { item, .. } = event {
             if std::mem::take(&mut self.streamed) {
@@ -722,12 +695,12 @@ impl<'a> Headless<'a> {
                 .item(*item)
                 .map(|turn| turn.content.to_text().into_owned())
                 .unwrap_or_default();
-            self.write_answer(&said)?;
+            self.prose.write_answer(&said)?;
 
             return self.said_missed();
         }
         if let Some(line) = crate::app::text::went_in(event) {
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
 
             return writeln!(self.prose, "· {line}").map_err(|e| e.to_string());
         }
@@ -737,7 +710,7 @@ impl<'a> Headless<'a> {
         ) {
             return Ok(());
         }
-        self.fresh_line()?;
+        self.prose.fresh_line()?;
 
         match event {
             Event::ToolRequested { tool, args, .. } => {
@@ -760,6 +733,61 @@ impl<'a> Headless<'a> {
             _ => Ok(()),
         }
         .map_err(|e| e.to_string())
+    }
+}
+
+/// What a person reads, and whether it is part-way through a line somebody else would finish.
+///
+/// note: the model's answer arrives in fragments and is printed as it does, so the last thing
+/// written is nearly always half a sentence with no newline after it. Everything else that writes
+/// here is a whole line, and without this the two run together: an answer of `4` would have the
+/// closing line stuck to the end of it. The headless loop and a `--connect` client are the same
+/// reader of it, so they share this rather than each keeping a copy.
+pub(crate) struct Prose<W> {
+    out: Printable<W>,
+    mid_line: bool,
+}
+
+impl<W: Write> Prose<W> {
+    pub(crate) fn new(out: W) -> Self {
+        Self {
+            out: Printable(out),
+            mid_line: false,
+        }
+    }
+
+    /// Ends whatever half-written line the model left, so a whole one can follow it.
+    pub(crate) fn fresh_line(&mut self) -> Result<(), String> {
+        if std::mem::take(&mut self.mid_line) {
+            writeln!(self.out).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    /// Writes some of the model's answer, which is not a whole line and ends none.
+    ///
+    /// note: flushed as it is written, because the point of printing an answer as it arrives is
+    /// lost on a writer that holds it until the line ends.
+    pub(crate) fn write_answer(&mut self, text: &str) -> Result<(), String> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        self.mid_line = !text.ends_with('\n');
+
+        write!(self.out, "{text}")
+            .and_then(|()| self.out.flush())
+            .map_err(|e| e.to_string())
+    }
+}
+
+impl<W: Write> Write for Prose<W> {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.out.write(bytes)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.out.flush()
     }
 }
 
