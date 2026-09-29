@@ -619,7 +619,7 @@ fn rules(kernel: &Kernel) -> String {
     }
 
     out.push_str(&format!(
-        "\na tool result longer than its limit is cut, and {}\n",
+        "\na tool result longer than its limit is truncated, and {}\n",
         match config.keep_truncated_output {
             true =>
                 "the whole of it is archived beside the copy you were shown, so it is still \
