@@ -9,7 +9,8 @@ from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 
 | file | what lives there |
 | --- | --- |
-| `kernel/mod.rs` | `Kernel`, `State`, `StateChange`, the state machine and every public operation. The big one. |
+| `kernel/mod.rs` | `Kernel`, `State`, `StateChange`, the state machine and every public operation but the context's. |
+| `kernel/context.rs` | the public operations on the context: push, set a state, replace, undo and redo, count, project, compact. |
 | `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
 | `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context.rs` | `Context`, `ContextItem`, `ContextId`, `ContextKind`, `ContextState`, undo/redo. |
