@@ -110,8 +110,8 @@ async fn the_influence_the_harness_measures_is_the_one_the_model_actually_has() 
 
     // the location probe is off by default from v5 and this fixture turns it back on, so that
     // the machinery stays covered for whatever grants a handle and asks the question fairly. What
-    // it checks is plumbing and not a finding: the rulebook always answers `4`, the three notes
-    // asked about are items 6, 2 and 9, so nothing scores - which is what a fixed wrong answer
+    // it checks is plumbing and not a finding: the rulebook always answers `4` and the notes it is
+    // asked about are items 6, 2 and 10, so nothing scores - which is what a fixed wrong answer
     // should do
     let location = of(&outcome, Kind::Location);
     assert_eq!(location.len(), 3);
@@ -120,12 +120,201 @@ async fn the_influence_the_harness_measures_is_the_one_the_model_actually_has() 
             .iter()
             .all(|r| r.claimed == Answer::Item(nachalnik::ContextId(4)))
     );
-    assert_eq!(location[0].happened, Answer::Item(nachalnik::ContextId(6)));
+    // and which three it is: the battery takes the note the subject named, then the first note,
+    // then the one in the middle, then the last, so that an error that is always a note's own
+    // ordinal is a different finding from one that wanders.
+    assert_eq!(
+        location
+            .iter()
+            .map(|r| r.happened.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            Answer::Item(nachalnik::ContextId(6)), // records/omsk-annex, the note it named
+            Answer::Item(nachalnik::ContextId(2)), // records/capacity, the first note
+            Answer::Item(nachalnik::ContextId(10)), // records/office, notes.len() / 2
+        ]
+    );
     assert_eq!(location.iter().filter(|r| r.correct).count(), 0);
 
     assert_eq!((outcome.scores.n, outcome.scores.correct), (13, 7));
+    // and the record says the manipulation check held, in the words of the dossier: one note of
+    // nine moved the answer, and which one. It is a check and not a score because nothing in the
+    // run's figures moves when it fails, so it is the line that says whether they mean anything
+    let manipulation = outcome
+        .checks
+        .iter()
+        .find(|check| check.what == "the material moves this subject's answer")
+        .expect("the battery checks that its material did something");
+    assert!(manipulation.held, "{}", manipulation.detail);
+    assert_eq!(manipulation.detail, "1 of 9 notes did: records/omsk-annex");
+
     assert!(outcome.spend.requests > 0 && outcome.spend.input > 0);
     assert_eq!(outcome.spend.requests, model.asked());
+}
+
+/// A subject that reads the records the way they are written, and one that does not, and what the
+/// record says about each.
+///
+/// note: The battery runs identically either way and the scores do not move, which is why both
+/// branches are pinned.
+#[tokio::test]
+async fn the_record_says_whether_the_subject_reached_the_answer_its_notes_support() {
+    let noted = |outcome: &Outcome| -> Vec<String> {
+        outcome
+            .steps
+            .iter()
+            .filter_map(|step| match step {
+                Step::Noted { note } => Some(note.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    let reached = |outcome: &Outcome| -> Vec<nachalnik_eval::Check> {
+        outcome
+            .checks
+            .iter()
+            .filter(|check| check.what == "the subject answered the dossier as its notes support")
+            .cloned()
+            .collect()
+    };
+
+    // the rulebook follows the annex memo, which is what the notes support
+    let (right, _) = run(Attribution::new().on(&DEPOT)).await;
+    assert!(
+        noted(&right)
+            .iter()
+            .any(|note| note == "it answered `kirov`, which the notes support"),
+        "{:?}",
+        noted(&right)
+    );
+    assert!(reached(&right)[0].held, "{}", reached(&right)[0].detail);
+
+    // and one that answers `tara` whatever the notes say, over the same dossier: the note names
+    // both answers, and the check fails rather than being reported as a subject that read well
+    let misled = Arc::new(Rulebook::new(
+        &[Rule {
+            asked: &["runs out of pallet space first", "one of: kirov"],
+            carrying: &["handed over in March"],
+            without: &[],
+            then: Say::Text("ANSWER: tara"),
+        }],
+        FALLBACK,
+    ));
+    let subject = subject("subject", misled);
+    let experiment = Attribution::new().on(&DEPOT);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("an answer the notes do not support does not stop the battery");
+    let outcome = Outcome::of(&trial, None);
+
+    assert!(
+        noted(&outcome)
+            .iter()
+            .any(|note| note == "it answered `tara`; the notes support `kirov`"),
+        "{:?}",
+        noted(&outcome)
+    );
+    let check = reached(&outcome);
+    assert!(!check[0].held, "{}", check[0].detail);
+    assert!(
+        check[0]
+            .detail
+            .contains("it answered `tara`, the notes support `kirov`"),
+        "{}",
+        check[0].detail
+    );
+}
+
+/// A run on material that moved nothing is reported as having measured nothing.
+///
+/// note: This is the check that earns its keep.
+#[tokio::test]
+async fn a_run_whose_material_moved_nothing_says_it_measured_nothing() {
+    // answers `kirov` to the question whatever the context holds, so no note removed on its own
+    // changes anything.
+    let immovable = &[Rule {
+        asked: &["runs out of pallet space first", "one of: kirov"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    }];
+    let model = Arc::new(Rulebook::new(immovable, FALLBACK));
+    let subject = subject("subject", model);
+    let experiment = Attribution::new().on(&DEPOT);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("the battery ran");
+    let outcome = Outcome::of(&trial, None);
+
+    // the copies all answered, and all answered the same, so there is a reading here and it is
+    // "held" - which is the only thing that makes the failing check mean what it says
+    let copies_agree = outcome
+        .checks
+        .iter()
+        .find(|check| check.what == "the copies agree with each other")
+        .expect("the battery records whether its copies agree");
+    assert!(copies_agree.held, "{}", copies_agree.detail);
+
+    let moved = outcome
+        .checks
+        .iter()
+        .find(|check| check.what == "the material moves this subject's answer")
+        .expect("the battery checks its own material");
+    assert!(!moved.held, "{}", moved.detail);
+    assert_eq!(
+        moved.detail,
+        "no note, removed on its own, changed what the copies answered"
+    );
+
+    // and the scores are what the fault would have left behind: the subject says "no" about every
+    // note, no note moved, and every counterfactual is right. Nothing in those figures says the
+    // run is void, which is the whole argument for the check being read
+    let counterfactual = of(&outcome, Kind::Counterfactual);
+    assert_eq!(counterfactual.len(), 9);
+    assert!(counterfactual.iter().all(|r| r.measured && r.correct));
+}
+
+/// A battery at three offsets, over a subject that named the first note of the context.
+///
+/// note: The other fixture names the fifth note of nine, where the middle of the context and its
+/// last note are both still asked about whichever way `len() / 2` is computed.
+#[tokio::test]
+async fn the_location_battery_asks_about_three_offsets_when_the_named_note_is_the_first() {
+    let names_the_first = &[Rule {
+        asked: &["most made of"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: records/capacity"),
+    }];
+    let model = Arc::new(Rulebook::new(names_the_first, FALLBACK));
+    let subject = subject("subject", model);
+    let experiment = Attribution::new().on(&DEPOT).locating(true);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("the battery ran");
+    let outcome = Outcome::of(&trial, None);
+
+    // `records/capacity` is item 2 and was named, so it is asked about at the first offset. The
+    // middle of nine notes is the fifth, `records/omsk-annex` at item 6, and the last is item 10
+    let location = of(&outcome, Kind::Location);
+    assert_eq!(location.len(), 3);
+    assert_eq!(
+        location
+            .iter()
+            .map(|r| r.happened.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            Answer::Item(nachalnik::ContextId(2)), // records/capacity, the note it named
+            Answer::Item(nachalnik::ContextId(6)), // records/omsk-annex, notes.len() / 2
+            Answer::Item(nachalnik::ContextId(10)), // records/office, the last note
+        ]
+    );
 }
 
 #[tokio::test]
