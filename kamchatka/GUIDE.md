@@ -590,9 +590,9 @@ was left unopened, and then the matching lines, each as `path:line:text`.
 
 **It cuts at matches, not at bytes,** and says that it stopped. A byte limit takes the tail of the
 last file searched and leaves the model believing it has seen the rest, which is what makes an
-agent run the same search three times. A hundred matches is the ceiling, a line is cut at two
-hundred characters with a `…`, and when either fires the first line says so and says what to do
-about it.
+agent run the same search three times. A hundred matches is the ceiling, and when it is reached
+the first line says so and what to do about it; a line is cut at two hundred characters with a
+`…`, which the tool's description tells the model beforehand.
 
 **On a lines answer, `files_only` is the first thing it suggests**, and it is what `grep -l` is
 for: the files that matched and how many each has, most first, instead of the lines. A common
