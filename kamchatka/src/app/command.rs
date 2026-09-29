@@ -1,8 +1,9 @@
 //! The slash commands: everything typed at the prompt that is not a message.
 //!
 //! note: a command is answered here and now rather than turned into anything the kernel has to
-//! know about. `/context`, `/seams` and `/budget` read public values off a [`nachalnik::Kernel`]
-//! and print them; nothing in this file is a capability the runtime had to grow.
+//! know about. `/seams`, `/budget` and `/request` read public values off a
+//! [`nachalnik::Kernel`] and print them; nothing in this file is a capability the runtime had to
+//! grow.
 
 use std::collections::{HashMap, HashSet};
 
@@ -20,13 +21,6 @@ use super::{
     },
 };
 
-/// The fields of a request that either dialect builds from the session - the context, the tools
-/// and the model - which both leave off the wire when a parameter names one.
-///
-/// note: refused here as well, and in the union of the two, because a dialect skipping one says
-/// nothing where a person can see it: set and then quietly not sent, it would read on the
-/// `/params` line as a parameter in force. `contents` means nothing to the other dialect, so
-/// refusing it there costs nobody anything.
 /// Parameters that shape how an answer is delivered rather than what the model does, which every
 /// endpoint of the dialect reads and no model lists.
 ///
@@ -34,6 +28,13 @@ use super::{
 /// answer into one body, on a model whose list has no word for it.
 const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
 
+/// The fields of a request that either dialect builds from the session - the context, the tools
+/// and the model - which both leave off the wire when a parameter names one.
+///
+/// note: refused here as well, and in the union of the two, because a dialect skipping one says
+/// nothing where a person can see it: set and then quietly not sent, it would read on the
+/// `/params` line as a parameter in force. `contents` means nothing to the other dialect, so
+/// refusing it there costs nobody anything.
 const BUILT: [&str; 5] = [
     "model",
     "messages",
