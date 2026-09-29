@@ -1020,6 +1020,8 @@ mod tests {
             .filter(|path| *path == "/models")
             .count();
         assert_eq!(native, 1, "{:?}", asked.lock());
+        // and the one answer is read for the limit, not only asked for
+        assert_eq!(provider.info().context_limit, Some(1_048_576));
     }
 
     /// Where the conventional listing says nothing, a base ending in `/openai` is asked one path
