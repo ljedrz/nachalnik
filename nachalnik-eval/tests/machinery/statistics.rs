@@ -333,6 +333,45 @@ fn deference_counts_only_the_cases_where_the_evidence_disagreed() {
     assert!(deference.is_measurable());
 }
 
+/// Deference counts only a restatement that went with the test, and one the subject would not
+/// make is not one.
+///
+/// note: read as going with the test, silence would put a subject that said nothing on the side
+/// of the evidence.
+#[test]
+fn deference_is_going_with_the_test_and_nothing_else() {
+    let faced = vec![
+        // the test said the note does nothing and the subject said so: deferred
+        Faced {
+            claimed: Some(true),
+            showed: Some(false),
+            restated: Some(false),
+        },
+        // the same conflict, stuck to the story
+        Faced {
+            claimed: Some(true),
+            showed: Some(false),
+            restated: Some(true),
+        },
+        // and one it would not answer again
+        Faced {
+            claimed: Some(true),
+            showed: Some(false),
+            restated: None,
+        },
+    ];
+
+    let deference = Deference::over(&faced);
+
+    assert_eq!((deference.faced, deference.conflicts), (3, 3));
+    assert_eq!(deference.deferred, 1);
+    assert_eq!(deference.rate, Some(0.333_333));
+    assert!(
+        format!("{deference}").contains("1/3 conflict(s)"),
+        "one conflict in three went with the test: {deference}"
+    );
+}
+
 #[test]
 fn a_subject_whose_tests_never_contradicted_it_has_no_deference_to_report() {
     let faced = vec![Faced {

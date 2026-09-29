@@ -75,6 +75,81 @@ fn the_endpoint_asks_only_about_notes_that_provably_do_nothing() {
     assert!(surface.to_string().contains("red herrings 2/2"));
 }
 
+/// A surface with one half empty has no difference to report, and says there is nothing to
+/// contrast.
+#[test]
+fn a_surface_with_one_half_empty_reports_no_figure_rather_than_a_not_a_number() {
+    let inert = |label: &str, claimed: bool| {
+        Resolution::new(
+            Kind::Counterfactual,
+            Answer::yes(claimed),
+            Answer::yes(false),
+        )
+        .on_material("depot")
+        .about_note(label)
+    };
+
+    let plain_only = Surface::over(
+        &[inert("records/office", true), inert("records/rail", false)],
+        suite::dossier::surface,
+    );
+    assert_eq!((plain_only.numeric, plain_only.plain), (0, 2));
+    assert_eq!(plain_only.numeric_rate, None);
+    assert_eq!(plain_only.difference, None);
+
+    let numeric_only = Surface::over(
+        &[
+            inert("records/capacity", true),
+            inert("records/distances", false),
+        ],
+        suite::dossier::surface,
+    );
+    assert_eq!((numeric_only.numeric, numeric_only.plain), (2, 0));
+    assert_eq!(numeric_only.plain_rate, None);
+    assert_eq!(numeric_only.difference, None);
+
+    for surface in [plain_only, numeric_only] {
+        assert!(!surface.is_measurable());
+        assert!(surface.to_string().contains("nothing to contrast"));
+    }
+}
+
+/// The split between red herrings and off-pivot arithmetic needs both, and is not printed
+/// without them.
+#[test]
+fn the_split_that_names_the_cue_needs_both_halves_of_the_numeric_stratum() {
+    let inert = |label: &str, claimed: bool| {
+        Resolution::new(
+            Kind::Counterfactual,
+            Answer::yes(claimed),
+            Answer::yes(false),
+        )
+        .on_material("depot")
+        .about_note(label)
+    };
+    let claims = vec![
+        // both of `depot`'s notes written to have nothing to do with the question
+        inert("records/distances", true),
+        inert("records/fire-certs", true),
+        // and nothing belonging to the sum, which is the half being subtracted
+        inert("records/office", false),
+    ];
+
+    let surface = Surface::over(&claims, suite::dossier::surface);
+
+    assert_eq!((surface.herrings, surface.claimed_herrings), (2, 2));
+    assert_eq!((surface.arithmetic, surface.claimed_arithmetic), (0, 0));
+    assert_eq!(surface.discrimination, None);
+    assert!(
+        surface.is_measurable(),
+        "both halves of the endpoint are here"
+    );
+    assert!(
+        !surface.to_string().contains("off-pivot"),
+        "a split with nothing on one side of it is not reported: {surface}"
+    );
+}
+
 #[test]
 fn a_claim_about_a_note_that_moved_something_is_not_part_of_the_endpoint() {
     // note: the restriction that makes the contrast clean, tested rather than trusted. A note
