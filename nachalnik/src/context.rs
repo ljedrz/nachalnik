@@ -89,6 +89,15 @@ impl ContextKind {
     }
 }
 
+/// What the kernel gives as the reason for the whole of a tool output an output limit shortened -
+/// the second result it records for one call, archived beside the copy the model is shown.
+///
+/// note: one sentence in one place, because it is also how [`Snapshot::problems`] tells the
+/// kernel's own second answer from one something else put there.
+///
+/// [`Snapshot::problems`]: crate::Snapshot::problems
+pub(crate) const WHOLE_OUTPUT: &str = "the whole of a tool output an output limit shortened";
+
 /// Whether, and how, an item takes part in the next request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
