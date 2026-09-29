@@ -53,10 +53,11 @@ them, with no kernel built, and what does not add up said rather than repaired.
 
 `headless.rs` is the other loop: a line of stdin where the terminal has a key, the session log on
 stdout and what a person reads on stderr. `remote/` is the *third* loop, and a client for it:
-`protocol.rs` is the wire, `server.rs` is a session with a socket in front of it and `client.rs` is
-`--connect`. `server::Serving` is the half of that loop which is not a loop - the voice, the
-questions and the bookkeeping - because the drawn loop in `main.rs` can serve as well, and a
-session driven from a desk and a phone at once is one `App` with two things selecting on it.
+`protocol.rs` is the wire, `server/` is a session with a socket in front of it - one client's side
+of the conversation in `connection.rs` - and `client.rs` is `--connect`. `server::Serving` is the
+half of that loop which is not a loop - the voice, the questions and the bookkeeping - because the
+drawn loop in `main.rs` can serve as well, and a session driven from a desk and a phone at once is
+one `App` with two things selecting on it.
 
 `help.rs` is the key listing and the selector listing: `/help` and `/exclude` print them, and the
 `context` tool hands the selector listing to a model. `config.rs` is `Settings`: the JSON
@@ -107,15 +108,15 @@ and what a change cost. `log` is the record beside it, `setup` is what the
 session is running with, and `fork` is a copy of the session, asked something. `mod.rs` holds
 `install` and the handful of things they all use.
 
-`sandbox/` is the Landlock ruleset the `shell` tool is re-executed under, `Reach` in `reach.rs`
-for what the in-process tools will open, and `Confinement` for every way the first of those can
-fail to be there - see [SECURITY.md](SECURITY.md) before changing any of it. `gate.rs` is the seccomp filter
+`sandbox/` is the Landlock ruleset the `shell` tool is re-executed under, `Reach` in `reach.rs` for
+what the in-process tools will open, and `Confinement` for every way the first of those can fail to
+be there - see [SECURITY.md](SECURITY.md) before changing any of it. `gate.rs` is the seccomp filter
 the same child installs after the ruleset, which holds every internet socket a command opens until
 the process that spawned it answers - the one module in the workspace that writes `unsafe`, and
-Linux on x86_64 and aarch64 only. `attach.rs` is one file into the
-context: the short table of media types this program is prepared to name, and text for everything
-else. `endpoint.rs` is where the requests go: the environment variables this program reads, and
-the `connect` functions that turn them into a provider and an advisor.
+Linux on x86_64 and aarch64 only. `attach.rs` is one file into the context: the short table of media
+types this program is prepared to name, and text for everything else. `endpoint.rs` is where the
+requests go: the environment variables this program reads, and the `connect` functions that turn
+them into a provider and an advisor.
 
 `advisor.rs` (feature `advise`) is a System One engine running on *this* machine, spoken to over a
 pipe in the body `Jev` already sends. It is one long-lived child rather than one per question,
