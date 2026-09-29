@@ -40,6 +40,22 @@ fn the_suite_states_what_it_asks_and_two_dossiers_differ() {
     // and the default is every dossier, because the endpoint's denominator is inert items and one
     // dossier yields about seven of them
     assert_eq!(suite::Attribution::new().instrument().material.len(), 6);
+    // which is what `over` replaces: the material it states is the material it will be run on
+    let two = [&suite::DEPOT, &suite::ORCHARD];
+    assert_eq!(
+        suite::Attribution::new().over(&two).instrument().material,
+        vec!["depot".to_owned(), "orchard".to_owned()]
+    );
+    // and an empty set is no instruction rather than an instruction to run nothing, which is what
+    // the guard is for: a caller who has not chosen takes the default the item count needs
+    assert_eq!(
+        suite::Attribution::new()
+            .over(&[])
+            .instrument()
+            .material
+            .len(),
+        6
+    );
     assert_ne!(depot.digest, orchard.digest);
     // the digest is over the text, so the same dossier under a different experiment - which asks
     // different questions - is a different instrument
