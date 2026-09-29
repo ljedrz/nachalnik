@@ -829,8 +829,8 @@ told instead is two lines and no more — that the advisor is not ready yet, and
 
 The second one means it answered a question, not that it printed a word: the advisor is asked
 one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
-answer is found before a question depends on it, rather than at the first `y` — the
-same startup check the hosted advisor gets from `Jev::probe`.
+answer is found before a question depends on it, rather than at the first `y` — at startup,
+where the hosted advisor has `Jev::probe`.
 
 The last twenty lines of whatever the engine wrote are kept and hung on the end of the note that
 says it failed, so a traceback shows up in the session rather than having scrolled past.
