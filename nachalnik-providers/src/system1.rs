@@ -752,9 +752,9 @@ impl Jev {
                     waited *= 2;
                     continue;
                 }
-                // with its causes, for the reason `waiting::with_causes` gives: the error's own
+                // with its causes, for the reason `with_causes` gives: the error's own
                 // line names the URL, and the part somebody can act on is under it
-                Err(e) => return Err(crate::waiting::with_causes(&e).into()),
+                Err(e) => return Err(crate::with_causes(&e).into()),
             };
 
             let status = response.status();

@@ -114,6 +114,29 @@ pub use crate::openai::OpenAiCompatible;
 #[cfg(feature = "system1")]
 pub use crate::system1::{Jev, SystemOne};
 
+/// A transport's failure, with every cause under it.
+///
+/// note: the error's own line is only its category and the URL - `error sending request for url
+/// (…)`, or `builder error` - and the part a person can act on, `Connection refused` or `relative
+/// URL without a base`, is further down the chain. The kernel records an error as its `Display`,
+/// so a cause left in the chain is a cause nobody is shown. A layer that already repeats the one
+/// under it is not repeated again.
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+pub(crate) fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut said = e.to_string();
+    let mut cause = e.source();
+    while let Some(under) = cause {
+        let words = under.to_string();
+        if !said.contains(&words) {
+            said.push_str(": ");
+            said.push_str(&words);
+        }
+        cause = under.source();
+    }
+
+    said
+}
+
 /// Whether an error means an account is out of free requests for the day, rather than having hit
 /// a momentary upstream limit.
 ///
