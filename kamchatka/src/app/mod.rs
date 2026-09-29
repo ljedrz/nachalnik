@@ -32,6 +32,7 @@ use crate::{
 mod command;
 mod going;
 mod search;
+mod session;
 mod transcript;
 mod views;
 
@@ -43,6 +44,8 @@ pub use views::Stance;
 mod keys;
 pub(crate) mod text;
 pub mod when;
+
+pub(crate) use session::beside;
 
 use text::{moved, one_line, panicked, plural, thousands, trace_line};
 // only the key that prints a request without a command: `/request` imports its own
@@ -2396,124 +2399,4 @@ impl App {
     fn draft(&self) -> String {
         String::new()
     }
-
-    // ---------------------------------------------------------------- the session, written out
-
-    /// A name for a session, from the seconds since the epoch it started at.
-    ///
-    /// note: this is the session's identity *and* the name of the two files it leaves behind.
-    /// Those go in a directory called `kamchatka`, so the program's name in a filename would say
-    /// what the directory already says, and a bare count of seconds says nothing to anybody
-    /// reading it. `2026-09-08T06-45-17Z` names the session, sorts the same way, and answers the
-    /// question somebody is looking at a list of them to ask.
-    ///
-    /// note: UTC, and it says so, because a local time would be a name that quietly means
-    /// something different depending on where it was written.
-    ///
-    /// note: to the second, so two sessions started inside one second collide. The identifier a
-    /// session gets from the runtime by default is a counter that restarts with the process,
-    /// which is fine as an identity and writes over the last session's record.
-    pub fn session_stamp(secs: u64) -> String {
-        // note: the epoch where the seconds are past what the calendar holds, year 9999, which is
-        // not a moment this program is started at
-        let at = i64::try_from(secs)
-            .ok()
-            .and_then(|secs| time::OffsetDateTime::from_unix_timestamp(secs).ok())
-            .unwrap_or(time::OffsetDateTime::UNIX_EPOCH);
-
-        format!(
-            "{:04}-{:02}-{:02}T{:02}-{:02}-{:02}Z",
-            at.year(),
-            u8::from(at.month()),
-            at.day(),
-            at.hour(),
-            at.minute(),
-            at.second()
-        )
-    }
-
-    /// Writes the event log and a resumable snapshot, and says how many records that was.
-    ///
-    /// note: separate from `save` because the last write of a session happens after the terminal
-    /// has been restored, where `say` has nowhere to put a sentence. Both go through here so that
-    /// what `/save` produces and what a session leaves behind on its way out are the same pair of
-    /// files, written the same way.
-    ///
-    /// note: the snapshot first, and the log only up to the record it names. A snapshot reads the
-    /// log's last number under the lock every change to the context is announced under, so those
-    /// records are exactly the ones whose changes it shows - and a pair written while a turn runs
-    /// agrees rather than holding items whose `context.added` came after the log was read.
-    ///
-    /// note: each file is written beside itself, flushed to disk and renamed over, both before
-    /// either is renamed. `/save good` a second time is the checkpoint `/load good` is for, and an
-    /// overwrite that ran out of disk half way would have destroyed the one it was replacing.
-    pub fn write_session(&self, log: &str, state: &str) -> Result<usize, String> {
-        let snapshot = self.kernel.snapshot();
-        let history = self.kernel.history();
-        let records = history
-            .iter()
-            .filter(|record| record.seq <= snapshot.last_seq)
-            .map(|record| {
-                serde_json::to_string(record)
-                    .map_err(|e| format!("could not render record {}: {e}", record.seq))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let snapshot = serde_json::to_vec_pretty(&snapshot)
-            .map_err(|e| format!("could not render the session: {e}"))?;
-
-        // named, because "No such file or directory" on its own leaves somebody guessing which
-        // one; `-r` says which file it could not read and this should match it
-        let log_beside = beside(log, (records.join("\n") + "\n").as_bytes())
-            .map_err(|e| format!("could not write {log}: {e}"))?;
-        let state_beside = match beside(state, &snapshot) {
-            Ok(it) => it,
-            Err(e) => {
-                let _ = std::fs::remove_file(&log_beside);
-                return Err(format!("could not write {state}: {e}"));
-            }
-        };
-        std::fs::rename(&log_beside, log).map_err(|e| {
-            let _ = std::fs::remove_file(&log_beside);
-            let _ = std::fs::remove_file(&state_beside);
-            format!("could not write {log}: {e}")
-        })?;
-        std::fs::rename(&state_beside, state).map_err(|e| {
-            let _ = std::fs::remove_file(&state_beside);
-            format!("wrote {log}, and could not write {state} beside it: {e}")
-        })?;
-
-        Ok(records.len())
-    }
-}
-
-/// Writes `bytes` to a new file beside `path`, flushed to disk, for a rename to put in its place.
-pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
-    use std::io::Write as _;
-
-    static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    // `create_new`, which follows no link, because `/save` names a path anywhere - a shared
-    // directory included - and a name somebody predicted could be a link they left there
-    let (at, mut file) = loop {
-        let at = std::path::PathBuf::from(format!(
-            "{path}.{}.{}.writing",
-            std::process::id(),
-            MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-        ));
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&at)
-        {
-            Ok(file) => break (at, file),
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(e),
-        }
-    };
-    let written = file.write_all(bytes).and_then(|()| file.sync_all());
-    if let Err(e) = written {
-        let _ = std::fs::remove_file(&at);
-        return Err(e);
-    }
-
-    Ok(at)
 }
