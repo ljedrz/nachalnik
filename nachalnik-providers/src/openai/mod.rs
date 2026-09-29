@@ -416,38 +416,57 @@ impl OpenAiCompatible {
     /// proxy may serve no listing at all, and treating a silence as a denial would be inventing a
     /// restriction nobody stated.
     pub async fn models(&self) -> Vec<String> {
-        let listing = self
-            .listing(&format!("{}/models", self.endpoint()), true)
-            .await;
-        self.models_in(listing.as_ref()).await
+        let mut listings = self.listings().await;
+        self.models_in(&mut listings).await
     }
 
-    /// [`Self::models`], given what the conventional listing already said.
-    async fn models_in(&self, listing: Option<&Value>) -> Vec<String> {
-        let listed = listing.map(names_in).unwrap_or_default();
+    /// [`Self::models`], out of what has already been read.
+    async fn models_in(&self, listings: &mut Listings) -> Vec<String> {
+        let listed = listings
+            .conventional
+            .as_ref()
+            .map(names_in)
+            .unwrap_or_default();
         if !listed.is_empty() {
             return listed;
         }
-        match self.endpoint().strip_suffix("/openai") {
-            Some(native) => self
-                .listing(&format!("{native}/models"), false)
-                .await
-                .as_ref()
-                .map(names_in)
-                .unwrap_or_default(),
-            None => listed,
-        }
+        self.native(listings)
+            .await
+            .map(names_in)
+            .unwrap_or_default()
     }
 
     /// What a switch of model or address asks the new one: its limit, and whether it serves the
-    /// model at all - from one read of the listing, which answers both.
+    /// model at all - from one read of each listing, which answers both.
     async fn switched(&self) {
-        let listing = self
-            .listing(&format!("{}/models", self.endpoint()), true)
-            .await;
-        self.probe_in(listing.as_ref()).await;
-        let listed = self.models_in(listing.as_ref()).await;
+        let mut listings = self.listings().await;
+        self.probe_in(&mut listings).await;
+        let listed = self.models_in(&mut listings).await;
         self.say_if_the_model_is_not_there(&listed);
+    }
+
+    /// The conventional listing, read; the native one waits until something needs it.
+    async fn listings(&self) -> Listings {
+        Listings {
+            conventional: self
+                .listing(&format!("{}/models", self.endpoint()), true)
+                .await,
+            native: None,
+        }
+    }
+
+    /// Google's native listing, one path up from a base ending in `/openai`, read the first time
+    /// it is asked for and kept; `None` for any other base, or one that did not answer.
+    async fn native<'a>(&self, listings: &'a mut Listings) -> Option<&'a Value> {
+        if listings.native.is_none() {
+            let native = match self.endpoint().strip_suffix("/openai") {
+                Some(native) => self.listing(&format!("{native}/models"), false).await,
+                None => None,
+            };
+            listings.native = Some(native);
+        }
+
+        listings.native.as_ref()?.as_ref()
     }
 
     /// Puts a notice up if the model is not one the endpoint lists, and takes down whatever notice
@@ -525,29 +544,24 @@ impl OpenAiCompatible {
     /// context is is measured against this number. An unknown limit is reported as unknown rather
     /// than guessed at, which is the honest answer but not a useful one.
     pub async fn probe(&self) {
-        let listing = self
-            .listing(&format!("{}/models", self.endpoint()), true)
-            .await;
-        self.probe_in(listing.as_ref()).await;
+        let mut listings = self.listings().await;
+        self.probe_in(&mut listings).await;
     }
 
-    /// [`Self::probe`], given what the conventional listing already said.
-    async fn probe_in(&self, listing: Option<&Value>) {
+    /// [`Self::probe`], out of what has already been read.
+    async fn probe_in(&self, listings: &mut Listings) {
         // a limit somebody set for themselves is a decision about what to measure against; it is
         // not a statement about which parameters the model takes, so the listing is still worth
         // reading. Only the limit is left alone
         let settled = self.context_limit.lock().is_some();
 
         let base = self.endpoint();
-        let mut limit = listing.and_then(|body| self.listed_limit(body));
+        let mut limit = (listings.conventional.as_ref()).and_then(|body| self.listed_limit(body));
 
         // an OpenAI-compatible listing does not have to carry a context length, and Google's does
         // not; its native one does, one path up
-        if limit.is_none()
-            && let Some(native) = base.strip_suffix("/openai")
-        {
-            let listing = self.listing(&format!("{native}/models"), false).await;
-            limit = listing.and_then(|body| self.listed_limit(&body));
+        if limit.is_none() {
+            limit = (self.native(listings).await).and_then(|body| self.listed_limit(body));
         }
         // ollama's does not either, and the number its `/api/show` advertises is the wrong one
         if limit.is_none()
@@ -754,6 +768,17 @@ impl Dialect for OpenAiCompatible {
     fn lists_every_parameter(&self) -> bool {
         *self.every_parameter.lock()
     }
+}
+
+/// What an address lists, read once for everything one question of it needs.
+///
+/// note: the native listing is kept because a limit and a list of names both fall back to it on
+/// Google's compatible endpoint, and a switch asks for both - each reading it for itself was the
+/// same request twice on every `/model` and `/provider`.
+struct Listings {
+    conventional: Option<Value>,
+    /// `None` until asked for; then what the native listing answered, if anything.
+    native: Option<Option<Value>>,
 }
 
 #[cfg(test)]
@@ -975,6 +1000,26 @@ mod tests {
             "what else it was asked for"
         );
         assert_eq!(provider.info().context_limit, None);
+    }
+
+    /// A switch to an address whose conventional listing says nothing asks the native one once,
+    /// for the limit and the names both.
+    #[tokio::test]
+    async fn a_switch_asks_for_the_native_listing_once() {
+        let (at, asked) = watching(&[(
+            "/models",
+            r#"{"models":[{"name":"models/gemini-x","inputTokenLimit":1048576}]}"#,
+        )])
+        .await;
+        let provider = OpenAiCompatible::new("gemini-x", "http://127.0.0.1:1", "k");
+        provider.set_endpoint(format!("{at}/openai"), None).await;
+
+        let native = asked
+            .lock()
+            .iter()
+            .filter(|path| *path == "/models")
+            .count();
+        assert_eq!(native, 1, "{:?}", asked.lock());
     }
 
     /// Where the conventional listing says nothing, a base ending in `/openai` is asked one path
