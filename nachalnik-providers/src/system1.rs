@@ -840,10 +840,18 @@ impl Jev {
             return;
         }
 
+        // three of them and how many, as the OpenAI dialect says it: an endpoint that lists
+        // hundreds would otherwise put every one of them on one line
+        let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
         *self.notice.lock() = Some(format!(
-            "{} does not list {model}; it serves {}",
+            "{} does not list {model}; it serves {} models ({}{})",
             self.host(),
-            listed.join(", ")
+            listed.len(),
+            some.join(", "),
+            match listed.len() > some.len() {
+                true => ", …",
+                false => "",
+            }
         ));
     }
 }
@@ -1399,6 +1407,26 @@ mod tests {
         let resident = Jev::new("jev-latest", format!("http://{at}"), "k");
         resident.probe().await;
         assert_eq!(resident.take_notice(), None);
+    }
+
+    /// A probe names three of what an address serves, and how many, rather than all of them.
+    #[tokio::test]
+    async fn a_long_listing_is_named_in_part() {
+        let at = answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
+              {\"models\":[{\"name\":\"a\"},{\"name\":\"b\"},{\"name\":\"c\"},{\"name\":\"d\"},\
+              {\"name\":\"e\"}]}",
+        )
+        .await;
+
+        let stranger = Jev::new("jev-nope", format!("http://{at}"), "k");
+        stranger.probe().await;
+        let said = stranger.take_notice().expect("an unlisted model");
+        assert!(said.contains("5 models (a, b, c, …)"), "{said}");
+        assert!(
+            !said.contains(", d"),
+            "the rest are counted, not named: {said}"
+        );
     }
 
     /// A 200 that carries no answer is an error, not a response with every question unanswered.

@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **An advisor's notice about a model it does not list names three and counts the rest.** It named
+  every model the endpoint lists, so pointed at OpenRouter it was one line of hundreds of names.
+  It now says how many there are and names three, as the OpenAI dialect's notice does.
+
 - **An advisor that could not be reached says why.** A question `system1` could not send failed
   with the transport's own line, which names the URL and nothing else, so a refused connection
   or a name that did not resolve read as `error sending request for url (...)`. It now carries the
