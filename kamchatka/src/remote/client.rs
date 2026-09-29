@@ -534,8 +534,8 @@ impl<'a> Client<'a> {
                 writeln!(self.prose, "--- {} ---", page.title).map_err(|e| e.to_string())?;
                 // note: every page rather than the one it opened at, for the reason `--headless`
                 // gives: a screen turns them with the arrow keys and there is no key to press down
-                // a socket, so a caller handed one page of seven would be reading a reference whose
-                // other six it has no way to ask for
+                // a socket, so a caller handed one page would be reading a reference whose other
+                // pages it has no way to ask for
                 for face in &page.pages {
                     if page.pages.len() > 1 {
                         writeln!(self.prose, "-- {} --", face.name).map_err(|e| e.to_string())?;

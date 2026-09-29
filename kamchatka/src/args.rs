@@ -818,7 +818,7 @@ impl Filed {
     /// Whether this argument was written on the command line, which is what says a value was not
     /// read out of the file.
     ///
-    /// note: `false` for a name clap knows nothing of, rather than a panic. Three settings are
+    /// note: `false` for a name clap knows nothing of, rather than a panic. Some settings are
     /// `#[arg(skip)]` - a file only, with no argument behind them - and a refusal about one of
     /// those has to be able to ask where the value came from like any other.
     pub fn typed(&self, name: &str) -> bool {

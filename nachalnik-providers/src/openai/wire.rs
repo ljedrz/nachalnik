@@ -273,8 +273,9 @@ struct Streamed {
     ///
     /// note: what tells a finished turn from a body that was never an answer. `{"choices":[]}`
     /// is the array and no answer, and so is the usage that arrives with an empty one beside it,
-    /// which every endpoint that reports a cost sends as the last event of a turn - so a stream of
-    /// nothing but those ends as a turn that said nothing, and a session that ended normally.
+    /// which every endpoint that reports a cost sends as the last event of a turn - so, read as
+    /// answers, a stream of nothing but those would end as a turn that said nothing, and a session
+    /// that ended normally.
     ///
     /// note: read on the array rather than on `choices[0]`, which is `null` for an event with
     /// nothing in it and would be a choice that is not there.
