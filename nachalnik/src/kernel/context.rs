@@ -12,11 +12,12 @@ use crate::{
     event::Event,
     model::{Content, ModelRequest, ToolCallId},
     projection::Projection,
+    session::named_calls,
     tokens::TokenCounter,
 };
 
 use super::{
-    Kernel, State, StateChange, addition, arriving, paired,
+    Kernel, State, StateChange, addition, arriving,
     request::{projection_cost, tool_tokens},
 };
 
@@ -448,7 +449,7 @@ impl Kernel {
                 .items()
                 .iter()
                 .filter(|item| item.state == ContextState::Pinned && carrying.contains(&item.id))
-                .flat_map(|item| paired(item))
+                .flat_map(|item| named_calls(item))
                 .collect();
 
             // what the plan comes to is worked out before anything moves, because the checkpoint
@@ -470,7 +471,7 @@ impl Kernel {
                     tokens: item.tokens,
                 };
                 if item.state == ContextState::Pinned
-                    || paired(item).any(|call| pinned_calls.contains(call))
+                    || named_calls(item).any(|call| pinned_calls.contains(call))
                 {
                     if refused_removal.insert(id) {
                         refused.push(entry);

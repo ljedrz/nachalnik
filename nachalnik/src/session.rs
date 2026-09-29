@@ -369,11 +369,13 @@ impl Snapshot {
     }
 }
 
-/// Every tool call identifier an item names: the calls a turn made, and the one a result answers.
-pub(crate) fn named_calls(item: &ContextItem) -> Vec<&ToolCallId> {
-    let mut named: Vec<_> = item.calls().map(|call| &call.id).collect();
-    if let crate::context::ContextKind::ToolResult { call, .. } = &item.kind {
-        named.push(call);
-    }
-    named
+/// Every tool call identifier an item names, which is the calls it is one half of a pair with:
+/// the ones an assistant turn asked for, or the one a tool result answers.
+pub(crate) fn named_calls(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
+    let answers = match &item.kind {
+        crate::context::ContextKind::ToolResult { call, .. } => Some(call),
+        _ => None,
+    };
+
+    item.calls().map(|call| &call.id).chain(answers)
 }
