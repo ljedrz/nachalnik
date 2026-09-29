@@ -1,6 +1,21 @@
 //! What a question needs to be fair.
 
-use nachalnik_eval::{Answer, Probe, Reading, suite};
+use nachalnik_eval::{Answer, Experiment, Probe, Reading, Subject, Trial, async_trait, suite};
+
+/// An experiment written outside this crate, which the trait says needs neither an instrument nor
+/// a list of templates to compile.
+struct ThirdParty;
+
+#[async_trait]
+impl Experiment for ThirdParty {
+    fn name(&self) -> &str {
+        "third-party"
+    }
+
+    async fn run(&self, _subject: &Subject, _trial: &Trial) -> nachalnik_eval::Result<()> {
+        Ok(())
+    }
+}
 
 #[test]
 fn a_question_that_needs_an_address_comes_with_a_way_to_look() {
@@ -61,6 +76,24 @@ fn every_experiment_states_the_templates_it_asks() {
             );
         }
     }
+}
+
+/// An experiment that states no instrument is reported as unstated, and asks nothing.
+///
+/// note: `instrument` is read back into every report, so an unstated one has to say so rather
+/// than read as blank; and a default `asks` naming any template would put one of this crate's own
+/// into a third party's list.
+#[test]
+fn an_experiment_that_states_nothing_asks_nothing_and_is_told_so() {
+    let unstated = ThirdParty.instrument();
+
+    assert!(!unstated.is_stated());
+    assert_eq!(unstated, Default::default());
+    assert_eq!(unstated.to_string(), "an unstated instrument");
+
+    let asked = ThirdParty.asks();
+
+    assert!(asked.is_empty(), "{asked:?}");
 }
 
 #[test]

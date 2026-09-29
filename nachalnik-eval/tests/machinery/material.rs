@@ -302,6 +302,64 @@ fn a_run_that_measured_nothing_never_displaces_one_that_did() {
     assert_eq!(two.len(), 2);
 }
 
+/// An outcome with one precondition met and one not, and a claim to read beside them.
+fn checked(held: bool, what: &str) -> nachalnik_eval::Outcome {
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let trial = nachalnik_eval::Trial::new("any", &subject);
+    trial.check("the copies agree with each other", true, "4 agreed 100%");
+    trial.check(what, held, "3 agreed 50% over 2 replicate(s)");
+    trial.resolve(Resolution::new(
+        Kind::Counterfactual,
+        Answer::yes(true),
+        Answer::yes(false),
+    ));
+    nachalnik_eval::Outcome::of(&trial, None)
+}
+
+/// A report's pooled line is scored from every claim its steps carry.
+#[test]
+fn the_pooled_line_of_a_report_is_the_scores_of_every_claim_it_carries() {
+    let report = report_of("x-ai/grok-4.6", 1_000, true);
+
+    let pooled = report.scores();
+
+    assert_eq!(pooled.n, 2, "both endpoint claims are carried");
+    assert_eq!(pooled.correct, 1);
+    assert_eq!(pooled.accuracy, 0.5);
+    assert!(!pooled.is_empty());
+    // and it is the line the report ends with
+    let rendered = report.to_string();
+    assert!(rendered.contains("pooled: 1/2 right (50%"), "{rendered}");
+    assert!(!rendered.contains("pooled: nothing measured"), "{rendered}");
+}
+
+/// A precondition that did not hold is printed with its figures, and one that held is not.
+///
+/// note: an unmet check says the scores beside it measure nothing, and `compare` reads these
+/// lines to warn a reader off a run.
+#[test]
+fn a_precondition_that_did_not_hold_is_printed_and_one_that_did_is_not() {
+    let unmet = checked(false, "the subject used the handles it was given");
+    let rendered = unmet.to_string();
+
+    assert!(rendered.contains("unmet:"), "{rendered}");
+    assert!(
+        rendered.contains(
+            "the subject used the handles it was given: 3 agreed 50% over 2 \
+                          replicate(s)"
+        ),
+        "the unmet check is printed with the figures behind it: {rendered}"
+    );
+    assert!(
+        !rendered.contains("the copies agree with each other"),
+        "a check that held is not an unmet one and must not be printed as one: {rendered}"
+    );
+
+    // and with none unmet, the word does not appear at all
+    let all_met = checked(true, "the subject used the handles it was given");
+    assert!(!all_met.to_string().contains("unmet:"), "{}", all_met);
+}
+
 #[test]
 fn one_model_through_two_providers_is_one_model() {
     // a sign test counts models as independent, and the same weights reached two ways are not
