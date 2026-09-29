@@ -123,7 +123,8 @@ picking the session up an hour later picks up the same session. A client's input
 it; it never ends anybody's session on the way out, and `/quit` is how you say you meant to.
 
 `--connect` writes what `--headless` writes — the records to stdout, what a person reads to
-stderr — so it is a drop-in for it in a script. It answers a permission question with the same
+stderr — so it is a drop-in for it in a script, and like it, it sends a piped line only once the
+turn before it is over; at a terminal, what is typed goes at once. It answers a permission question with the same
 three letters the panel takes, `y`, `n` and `a`; `ctrl+c` stops the turn and a second one detaches;
 and `?4` prints what item 4 actually holds, which is the one thing a stream of records can never
 say, because [the log names things rather than copying them](#-a-session-on-disk). A running command

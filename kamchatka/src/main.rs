@@ -255,7 +255,11 @@ async fn session() -> Result<()> {
             ));
         }
         let (mut records, mut prose) = (stdout(), std::io::stderr());
-        return remote::Client::new(args.on_ask.grant(), &mut records, &mut prose)
+        let mut client = remote::Client::new(args.on_ask.grant(), &mut records, &mut prose);
+        if !std::io::stdin().is_terminal() {
+            client = client.waits_for_turns();
+        }
+        return client
             .run(&address, tokio::io::BufReader::new(tokio::io::stdin()))
             .await
             .map_err(|e| anyhow::anyhow!("{e}"));

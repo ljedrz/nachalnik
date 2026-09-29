@@ -219,6 +219,13 @@ minor bump may break you.
   resumed session the summary and a `kinds` answer counted only what had happened since the
   resume, and a model asked how many tool calls there had been took that for the whole session.
 
+- **`--connect` down a pipe waits for each turn before the next line, as `--headless` does.** It
+  sent every line of a script the moment it was read, so a `/note` after a question was refused
+  for a turn still running, a second message replaced the first one waiting, and a `/quit` at the
+  end stopped the turn the script had asked for. A question a line does not answer is answered
+  with `--on-ask`, and the line waits for the turn. At a terminal, what is typed still goes at
+  once. `remote::Client::waits_for_turns` is the switch.
+
 - **`/spend 1` says `1 token`.** The two sentences that answer a new ceiling wrote its figure
   beside `tokens` whatever it was.
 
