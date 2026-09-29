@@ -425,6 +425,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   through a weak handle the way the introspection tools reach it. Whether two minutes is worth
   either is the decision.
 
+- **The advisor's tokens are not counted against `--spend`.** `Answers::usage` reads what the
+  System One service reports for each ask, and `kamchatka` drops it: the ceiling adds up
+  `model.finished`, and the advisor asks from inside the permission policy, which writes no event.
+  So `/spend` reports what the session's model spent, and a session borrowing its own key for
+  `--advise` spends more than the ceiling says on the same account. Counting it needs the rating
+  to carry the figure back to `App` through `Advised`, and a sentence saying which of the two a
+  ceiling holds. Whether a limit on the model is also a limit on the advisor is the decision.
+
 - **A stream silent before its headers is sent again.** A streamed request that has heard nothing
   for `PATIENCE` is retried up to `RETRIES` times, on the reading that a server which took the
   connection and went quiet is busy - and it is for a whole answer, whose headers come with its last
