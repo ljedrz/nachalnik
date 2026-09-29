@@ -332,8 +332,8 @@ async fn a_selector_with_nothing_to_select_teaches_the_language() {
 
     harness.send("/prune").await;
 
-    // an error saying the empty string is not a selector is true and useless; the grammar has
-    // ten forms and this is where somebody goes looking for them
+    // an error saying the empty string is not a selector is true and useless; this is where
+    // somebody goes looking for the grammar
     let screen = harness.sized(110, 40);
     assert!(screen.contains("tool:fs:latest"), "{screen}");
     assert!(screen.contains("state:excluded"), "{screen}");

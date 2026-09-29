@@ -148,8 +148,9 @@ async fn a_filtered_log_opens_with_the_whole_total_and_not_the_filtered_one() {
 ///
 /// note: measured rather than assumed, and the measurement moved what this test is for. Taking
 /// the content out of `ContextReplaced` - the "fix" the stale sentence in `session.rs` used to
-/// invite - is already caught by five tests across two crates, `undo::a_replacement_is_the_one_/// thing_that_would_otherwise_be_lost` among them, so this is not the guard on that and saying it
-/// was would have been a false sense of a well-watched seam. What nothing else catches is the
+/// invite - is already caught elsewhere,
+/// `undo::a_replacement_is_the_one_thing_that_would_otherwise_be_lost` among them, so this is not
+/// the guard on that and saying it was would have been a false sense of a well-watched seam. What nothing else catches is the
 /// pair of things this tool adds: finding the record by the *item* number rather than by kind,
 /// and `whole` - drop either and only this fails.
 /// `take` counts records, which is what it says it counts, and a whole one is not one line.

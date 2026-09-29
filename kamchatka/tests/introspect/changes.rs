@@ -1795,8 +1795,8 @@ async fn the_only_hand_that_records_itself_as_the_tool_is_the_tool() {
 /// `note` writes a new item and has no use for an id, so a call that gave it one is refused
 /// rather than quietly written anyway.
 ///
-/// note: found live, twice in one evening, by two different models. `note` is one of the nine
-/// that change, the `ids` argument says it is for the nine that change, and so `ids` on a `note`
+/// note: found live, twice in one evening, by two different models. `note` is one of the
+/// operations that change, the `ids` argument says it is for those, and so `ids` on a `note`
 /// reads as *which item to annotate*. Nothing annotates an item here. The call used to succeed,
 /// write a free-standing note, and answer with its new number - and the session went on believing
 /// the item it had named now carried the words.

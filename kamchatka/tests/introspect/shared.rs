@@ -469,8 +469,8 @@ async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
 ///
 /// note: the shape nothing was testing. The schema tells a model to put its arguments inside a
 /// `call` object; `inner` also accepts them flat, because refusing an unambiguous call costs a
-/// turn - and every test in this workspace was written before the wrapper existed, so all 133 of
-/// them take the flat path and the real one was exercised by almost nothing. Three readers had
+/// turn - and every test in this workspace was written before the wrapper existed, so they took
+/// the flat path and the real one was exercised by almost nothing. Three readers had
 /// already been found reading the outside of the wrapper by hand.
 ///
 /// note: `invoke` directly rather than through a turn, because what is under test is reading the
