@@ -227,3 +227,82 @@ pub fn all_with(replicates: usize, ladders: usize) -> Vec<Arc<dyn Experiment>> {
         Arc::new(Feedback::new().replicates(replicates)),
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use nachalnik::{Config, Kernel};
+
+    use super::*;
+    use crate::{Answer, Observation, Spend, Step, Subject};
+
+    /// One condition, under which the copies said these.
+    fn copies_saying(words: &[&str]) -> Observation {
+        Observation {
+            intervention: "nothing at all".to_owned(),
+            applied: Default::default(),
+            repairs: Vec::new(),
+            items: 0,
+            said: words.iter().map(|word| (*word).to_owned()).collect(),
+            answers: words
+                .iter()
+                .map(|word| Answer::Choice((*word).to_owned()))
+                .collect(),
+            spend: Spend::default(),
+        }
+    }
+
+    /// An empty record to write into.
+    fn record() -> Trial {
+        Trial::new("suite", &Subject::new(Kernel::new(Config::default())))
+    }
+
+    /// A copy that answered what the session answered is not drift, and a copy that answered
+    /// something else is not a failure either.
+    ///
+    /// note: the two lines are read apart in every report, because the second is the caveat every
+    /// other figure in the record is read under.
+    #[test]
+    fn a_copy_that_answered_the_same_is_not_a_copy_that_drifted() {
+        let drifted = |control: &Observation, live: &Answer| {
+            let trial = record();
+            note_drift(&trial, live, control);
+
+            trial
+                .steps()
+                .into_iter()
+                .filter_map(|step| match step {
+                    Step::Noted { note } => Some(note),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let live = Answer::Choice("kirov".to_owned());
+
+        assert_eq!(
+            drifted(&copies_saying(&["kirov"]), &live),
+            vec!["the session and a copy of it both answered `kirov`"]
+        );
+
+        // the copies' own commonest answer, against a session that said another thing: the
+        // sentence the doc says begins `the session`, and it is what says the rest of the
+        // figures are copies measured against copies
+        assert_eq!(
+            drifted(&copies_saying(&["omsk", "omsk", "kirov"]), &live),
+            vec![
+                "the session answered `kirov` and a copy of the same context answered `omsk`: the \
+                 copies below are measured against each other, not against the session"
+            ]
+        );
+
+        // and nothing either side could be read is a third sentence rather than a variant of the
+        // second: with no answer from the copies there is no comparison to report
+        assert_eq!(
+            drifted(&copies_saying(&[]), &Answer::Unreadable),
+            vec!["the session or its copies did not answer readably"]
+        );
+        assert_eq!(
+            drifted(&copies_saying(&["kirov"]), &Answer::Cut),
+            vec!["the session or its copies did not answer readably"]
+        );
+    }
+}
