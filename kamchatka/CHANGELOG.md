@@ -226,6 +226,11 @@ minor bump may break you.
   with `--on-ask`, and the line waits for the turn. At a terminal, what is typed still goes at
   once. `remote::Client::waits_for_turns` is the switch.
 
+- **`setup` names the turns another model wrote before a `/model` switch.** It said only whether
+  the session was resumed, so after a switch and back it told the model the conversation started
+  here, and the model took the other model's turns for its own. It now names each other model
+  and the items it wrote that are still in the context.
+
 - **`/spend 1` says `1 token`.** The two sentences that answer a new ceiling wrote its figure
   beside `tokens` whatever it was.
 

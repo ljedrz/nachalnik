@@ -194,6 +194,37 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
     );
 }
 
+/// And it names the turns another model wrote before a switch, which read as its own.
+///
+/// note: found live. A session switched to another model with `/model` and back, then asked which
+/// model had answered the question in between; `setup` said the conversation started here and
+/// nothing was inherited, and the model took the other's turn for its own.
+#[tokio::test]
+async fn setup_model_names_the_turns_another_model_wrote() {
+    let (kernel, _provider, _anchor) = agent([ModelResponse::text("written by the first")]);
+    kernel.push(ContextItem::user("say something"));
+    kernel.turn().await.expect("the turn failed");
+    let first = kernel.items().last().expect("it answered").id;
+
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new(one_turn(vec![call(
+            "c1",
+            "setup",
+            json!({ "action": "model" }),
+        )]))
+        .with_info(nachalnik::ModelInfo::new("scripted", "second")),
+    ));
+    kernel.push(ContextItem::user("who answered before?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("you are `second`"), "{said}");
+    assert!(
+        said.contains(&format!("`scripted` wrote item {first}")),
+        "{said}"
+    );
+}
+
 /// An undecided domain is not the last word, and an undecided server is; the report says which.
 ///
 /// note: one sentence used to cover both - "will stop and ask, whatever the rows above say" -
