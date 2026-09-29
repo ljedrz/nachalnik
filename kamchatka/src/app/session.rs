@@ -5,7 +5,10 @@ use std::collections::{HashMap, HashSet};
 
 use nachalnik::{Block, Content, ContextItem, ContextKind, ContextState, ToolCallId};
 
-use super::{App, Speaker, text::plural};
+use super::{
+    App, Speaker,
+    text::{MID_TURN, plural},
+};
 
 impl App {
     /// A name for a session, from the seconds since the epoch it started at.
@@ -120,10 +123,7 @@ impl App {
             || !self.kernel.pending_permissions().is_empty()
             || !self.kernel.pending_calls().is_empty()
         {
-            self.say(
-                Speaker::Error,
-                "not while a turn is running or a call is waiting to be answered",
-            );
+            self.say(Speaker::Error, MID_TURN);
             return;
         }
 
