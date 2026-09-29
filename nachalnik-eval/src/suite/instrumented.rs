@@ -506,6 +506,29 @@ mod tests {
         }
     }
 
+    /// The material an experiment is asked about is the one it was given, and asking for none of
+    /// it is asking for the default rather than for a run that does nothing.
+    ///
+    /// note: `over` is the only one of these builders that is given a set, and the guard on it is
+    /// the difference between "run the usual six" and "run no dossier at all", which is a run
+    /// that records a ladder, no claims and a failed check.
+    #[test]
+    fn the_dossiers_an_experiment_asks_about_are_the_ones_it_was_given() {
+        let asked_about = |built: Instrumented| built.instrument().material;
+
+        assert_eq!(
+            asked_about(Instrumented::new().over(&[&crate::suite::ORCHARD])),
+            vec!["orchard".to_owned()],
+            "the set it was given is the set it asks about"
+        );
+        // and an empty one is not a set of nothing: the caller has said no more than that
+        assert_eq!(
+            asked_about(Instrumented::new().on(&crate::suite::DEPOT).over(&[])),
+            vec!["depot".to_owned()],
+            "an empty set left the default experiment running on one dossier"
+        );
+    }
+
     /// A test is evidence about an item only when that item is all it took out.
     ///
     /// note: `showed_by` matched any test whose `without` contained the item, so taking two notes

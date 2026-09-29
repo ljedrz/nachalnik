@@ -10,7 +10,8 @@ use std::{borrow::Cow, sync::Arc};
 
 use nachalnik::{Config, Kernel};
 use nachalnik_eval::{
-    Act, Answer, Error, Experiment, Kind, Outcome, Reading, Step, Subject, Trial, evaluate, suite,
+    Act, Answer, Error, Experiment, Faced, Kind, Outcome, Reading, Step, Subject, Trial, evaluate,
+    suite,
     suite::{
         AGAIN, Attribution, CANCELLED, CARRYING, Conflict, DEPOT, Feedback, Instrumented, Lie,
         NOTICED, ORCHARD, Privilege, REPAIRED, REPORTED, RETESTED, Recursion, Repair, SETTLED,
@@ -861,6 +862,110 @@ async fn a_subject_that_can_test_is_scored_apart_from_one_that_can_only_think() 
     let reached = outcome.reached.as_ref().expect("handles were granted");
     assert_eq!((reached.offered, reached.instrumented), (8, 8));
     assert!(reached.clears_the_gate());
+}
+
+/// The tests a subject is granted, and the copies each runs, are the ones the experiment asked for.
+#[tokio::test]
+async fn the_budget_a_subject_is_granted_is_the_one_the_experiment_asked_for() {
+    let experiment = Instrumented::new()
+        .on(&DEPOT)
+        .battery(4)
+        .tests(2)
+        .replicates(3);
+
+    let (outcome, _) = run(experiment).await;
+
+    // two tests a note times the four notes of the battery, and the grant says so twice: once
+    // for the session that was asked first and once for the fresh one
+    let granted: Vec<usize> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Granted { budget, .. } => Some(*budget),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(granted, vec![8, 8]);
+
+    // and three copies of every condition is three, in the subject's own measurements as well as
+    // the harness's
+    let copies: Vec<usize> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured { observation, .. } => Some(observation.answers.len()),
+            _ => None,
+        })
+        .collect();
+    assert!(!copies.is_empty());
+    assert!(copies.iter().all(|copies| *copies == 3), "{copies:?}");
+}
+
+/// Each claim is faced with the test of the note it was about, what the subject said before it,
+/// and what it said after.
+#[tokio::test]
+async fn a_claim_is_faced_with_the_note_it_was_about() {
+    let (outcome, _) = run(Instrumented::new().on(&DEPOT).battery(4)).await;
+
+    let faced: Vec<(&str, Faced)> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Faced { label, faced, .. } => Some((label.as_str(), *faced)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        faced,
+        vec![
+            // said it mattered, its test said so too, and it said it again
+            (
+                "records/omsk-annex",
+                Faced {
+                    claimed: Some(true),
+                    showed: Some(true),
+                    restated: Some(true),
+                }
+            ),
+            // the figures do nothing: it claimed they did, the test said otherwise, and it
+            // believed the test
+            (
+                "records/distances",
+                Faced {
+                    claimed: Some(true),
+                    showed: Some(false),
+                    restated: Some(false),
+                }
+            ),
+            // and one it had no rule about, which the test contradicted and it accepted
+            (
+                "records/capacity",
+                Faced {
+                    claimed: Some(false),
+                    showed: Some(false),
+                    restated: Some(false),
+                }
+            ),
+            // a note whose figures are a single date, over-claimed and corrected the same way
+            (
+                "records/rail",
+                Faced {
+                    claimed: Some(true),
+                    showed: Some(false),
+                    restated: Some(false),
+                }
+            ),
+        ]
+    );
+
+    // which is two conflicts, both resolved in favour of the evidence: read off the record, and
+    // not off a stage, because the three readings are the record's own
+    let deference = outcome
+        .deference
+        .as_ref()
+        .expect("two claims were contradicted");
+    assert_eq!((deference.faced, deference.conflicts), (4, 2));
+    assert_eq!((deference.deferred, deference.rate), (2, Some(1.0)));
 }
 
 #[tokio::test]
