@@ -1676,3 +1676,50 @@ async fn a_copy_that_answered_nothing_is_not_a_side_of_the_disagreement() {
         trial.checks()
     );
 }
+
+/// Swapped, the subject holds the orchard and the other session the depot, and every claim names
+/// the dossier it was about.
+///
+/// note: without the swap a difference between the arms is a difference between the materials.
+#[tokio::test]
+async fn the_counterbalance_puts_the_other_dossier_where_the_subject_cannot_see_it() {
+    let (outcome, _) = run(Privilege::new().swapped()).await;
+
+    let notes: Vec<String> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Noted { note } => Some(note.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        notes
+            .iter()
+            .any(|note| note == "another session, on `depot`, answered `kirov`"),
+        "{notes:?}"
+    );
+
+    // and each claim says which dossier it was made about, which is the pair a pooled run reads
+    // the counterbalance off
+    let materials = |kind: Kind| -> Vec<Option<String>> {
+        of(&outcome, kind)
+            .iter()
+            .map(|resolution| resolution.material.clone())
+            .collect()
+    };
+    assert!(
+        materials(Kind::Counterfactual)
+            .iter()
+            .all(|material| material.as_deref() == Some(ORCHARD.name)),
+        "{:?}",
+        materials(Kind::Counterfactual)
+    );
+    assert!(
+        materials(Kind::Foreign)
+            .iter()
+            .all(|material| material.as_deref() == Some(DEPOT.name)),
+        "{:?}",
+        materials(Kind::Foreign)
+    );
+}
