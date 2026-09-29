@@ -61,9 +61,20 @@ pub(crate) fn unmarked(body: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// The start of `text`, as much of it as an error quotes.
+///
+/// note: one bound for every error this crate quotes a body in, so that a refusal reads the same
+/// length whichever path found it.
+pub(crate) fn quoted(text: &str) -> String {
+    text.chars().take(QUOTED).collect()
+}
+
+/// How many characters of a body an error quotes.
+const QUOTED: usize = 300;
+
 /// A refused request's status, with the first words of its body after it if there are any.
 pub(crate) fn status_and_words(status: impl std::fmt::Display, body: &str) -> String {
-    let words: String = unmarked(body).chars().take(300).collect();
+    let words = quoted(&unmarked(body));
     match words.is_empty() {
         true => status.to_string(),
         false => format!("{status}: {words}"),

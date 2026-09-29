@@ -11,7 +11,7 @@ use nachalnik::{BoxError, DeltaSink};
 use serde_json::Value;
 
 use crate::{
-    markup::{status_and_words, unmarked},
+    markup::{quoted, status_and_words, unmarked},
     waiting::{
         Asking, HEARTBEAT, LARGEST, PATIENCE, Silence, Vigil, gone_quiet, stalled, too_large,
     },
@@ -387,13 +387,13 @@ pub(crate) fn compressed(model: &str, headers: &reqwest::header::HeaderMap) -> O
 /// go into the conversation, the session log and any file a user is invited to send on. The
 /// words are the account of what happened; the markup is not.
 pub(crate) fn not_json(e: &serde_json::Error, body: &str) -> BoxError {
-    let short: String = unmarked(body).chars().take(300).collect();
+    let short = quoted(&unmarked(body));
     format!("the answer was not JSON ({e}): {short}").into()
 }
 
 /// The error for a body that was neither a stream nor anything a dialect could read whole.
 pub(crate) fn not_a_stream(body: &str) -> BoxError {
-    let short: String = unmarked(body).chars().take(300).collect();
+    let short = quoted(&unmarked(body));
     match short.is_empty() {
         true => "the stream carried no data".into(),
         false => format!("the stream carried no data: {short}").into(),
@@ -402,7 +402,7 @@ pub(crate) fn not_a_stream(body: &str) -> BoxError {
 
 /// What to say about an error object: the sentence in it, or failing that the start of it.
 pub(crate) fn failure(error: &Value) -> String {
-    said(error).unwrap_or_else(|| error.to_string().chars().take(300).collect())
+    said(error).unwrap_or_else(|| quoted(&error.to_string()))
 }
 
 /// What to say about a request the server refused: its own sentence, rather than its envelope.
@@ -447,7 +447,7 @@ fn said(value: &Value) -> Option<String> {
         .filter(|raw| !raw.is_empty() && !message.contains(*raw))
     {
         said.push_str(" - ");
-        said.push_str(&raw.chars().take(300).collect::<String>());
+        said.push_str(&quoted(raw));
     }
     Some(said)
 }

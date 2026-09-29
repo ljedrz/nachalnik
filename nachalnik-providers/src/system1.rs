@@ -769,7 +769,7 @@ impl Jev {
                 // body cut short, a proxy's page - comes back as every question unanswered, which
                 // is also what a model that declined all of them looks like
                 Err(e) if status.is_success() => {
-                    let words: String = crate::markup::unmarked(&said).chars().take(300).collect();
+                    let words = crate::markup::quoted(&crate::markup::unmarked(&said));
                     return Err(
                         format!("{} answered with no JSON ({e}): {words}", self.model()).into(),
                     );
