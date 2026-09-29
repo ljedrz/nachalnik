@@ -92,9 +92,9 @@ It is a variant of `Content` rather than a field on `Message` because content is
 into the context where it is counted and pruned like anything else, and back out again.
 
 A turn is recorded *either* that way *or* in the three conventional slots, never both, so nothing
-can hold two accounts of it; `calls()` and `thinking()` read whichever is in use.
-`LinearProjector::send_blocks` decides which shape goes out, and flattening reports what it cost
-in `Projection::repairs` rather than doing it quietly.
+can hold two accounts of it; `calls()` and `thinking()` on an item or a response read whichever is
+in use. `LinearProjector::send_blocks` decides which shape goes out, and flattening reports what it
+cost in `Projection::repairs` rather than doing it quietly.
 
 ---
 

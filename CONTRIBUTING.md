@@ -235,7 +235,7 @@ one failure this program cannot report.
 `headless` is the program with nothing drawing it, and half of it runs the *binary*: a settings
 file, a signal, a pty, and a session written where it said it was. The program builds its own
 provider out of two environment variables in a process of its own, so a scripted one cannot be
-swapped into it. `endpoint` there answers on a socket instead, which is the only seam a child
+swapped into it. `common::endpoint` answers on a socket instead, which is the only seam a child
 process has, and is what lets a tool call, a spend ceiling and a recorded session be driven
 without a key. `config` is the settings file through the same door, and `mcp` is somebody else's
 server spawned as a child.
@@ -382,7 +382,7 @@ for, so there is nothing for it to agree with.
   a patch. A change a caller cannot compile through bumps `x` and resets `y`; everything else, new
   API included, bumps `y`. A changelog heading decides nothing: `### added` is not a minor, and
   `nachalnik` 0.3.2 added `ModelResponse::thinking` and was right to be a patch, while `kamchatka`
-  0.6.0 took `App::new`'s arguments apart and was right not to be one.
+  0.6.0 removed `App::open` and was right not to be one.
 
   Breaking is an item removed, a signature or a public field changed, a required method added to a
   trait, or a variant added to an enum that is not `#[non_exhaustive]` - which is what that
