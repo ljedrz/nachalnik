@@ -4,7 +4,7 @@ use nachalnik::{Config, ContextId, Kernel, ModelInfo};
 use nachalnik_eval::{
     Answer, Cohort, Error, ErrorKind, Experiment, Failure, Kind, Report, Resolution, Scores, Step,
     Subject, Surface, per_model, suite,
-    suite::dossier::{ALL as ALL_DOSSIERS, Expected, MILL},
+    suite::dossier::{ALL as ALL_DOSSIERS, DEPOT, Expected, MILL, id_of, label_of},
     suite::{PLANTED, RIFTS},
 };
 use std::collections::BTreeSet;
@@ -877,4 +877,17 @@ fn a_turn_that_was_cut_off_is_not_a_wrong_answer() {
     assert_eq!((scores.n, scores.correct), (1, 0));
     assert_eq!((scores.unmeasured, scores.cut), (1, 1));
     assert!(format!("{scores}").contains("raise --max-tokens"));
+}
+
+/// A planted note is found by its label, and read back as it.
+#[test]
+fn a_planted_item_is_called_the_label_the_experiment_gave_it() {
+    let notes = DEPOT.install(&Subject::new(Kernel::new(Config::default())));
+
+    for note in &notes {
+        assert_eq!(label_of(&notes, note.id), Some(note.label.as_str()));
+        assert_eq!(id_of(&notes, &note.label), Some(note.id));
+    }
+    assert_eq!(label_of(&notes, ContextId(9_999)), None);
+    assert_eq!(id_of(&notes, "records/invented"), None);
 }
