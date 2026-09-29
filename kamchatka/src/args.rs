@@ -576,6 +576,8 @@ impl Args {
                     "{path} is a session this will not carry on from: {}",
                     problems.join("; ")
                 );
+                let mut snapshot = snapshot;
+                past_the_snapshot(&mut snapshot, std::path::Path::new(path));
 
                 Some(snapshot)
             }
@@ -703,6 +705,48 @@ impl Args {
 /// note: a refusal rather than a run without the file, because a file carrying `deadline` or
 /// `spend` is a script's bounds, and a script that quietly lost them would run unbounded. Naming
 /// the file with `--config-file` is how a run nobody can ask says it is meant.
+/// Moves a snapshot's numbering past everything the log beside it numbered after it was taken.
+///
+/// note: the snapshot is rewritten when a turn begins and when the session rests, and the log is
+/// appended to as each event happens, so a run killed in the middle of a turn leaves a log that runs
+/// past its snapshot. Carried on from as it stands, the snapshot would have the next session number
+/// records, items, calls and permissions again from where it was taken - and two files of one
+/// session would say different things under one identifier. The log is the one `-r` already reads
+/// for `App::recall`, and one that is missing or cut off mid-line costs what it cannot say.
+fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path) {
+    use nachalnik::{Event, Record};
+
+    let Ok(log) = std::fs::read_to_string(path.with_extension("jsonl")) else {
+        return;
+    };
+    let taken = snapshot.last_seq;
+    let past = log
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Record>(line).ok())
+        .filter(|record| record.seq > taken);
+    for record in past {
+        snapshot.last_seq = snapshot.last_seq.max(record.seq);
+        let permission = match record.event {
+            Event::ContextAdded { id, .. } => {
+                snapshot.next_item = snapshot.next_item.max(id.0 + 1);
+                None
+            }
+            Event::ToolRequested { call, .. } | Event::ToolCallRepaired { call, .. } => {
+                snapshot.used_calls.push(call);
+                None
+            }
+            Event::PermissionRequested { request } => Some(request.id),
+            Event::PermissionDecided { id, .. } => Some(id),
+            _ => None,
+        };
+        if let Some(id) = permission {
+            snapshot.next_permission = snapshot.next_permission.max(id.0 + 1);
+        }
+    }
+    snapshot.used_calls.sort();
+    snapshot.used_calls.dedup();
+}
+
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
     use std::io::IsTerminal as _;
 

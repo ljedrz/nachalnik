@@ -509,16 +509,36 @@ impl App {
     /// `session.resumed`, so a `/save` of it writes a record with none of these rewrites in it
     /// and a resume of *that* file reads nothing. Two hops back is the earlier `.jsonl`, which is
     /// why an append-only log is worth keeping rather than overwriting.
+    ///
+    /// note: and only up to the record the snapshot was taken at. A run killed in the middle of a
+    /// turn leaves a log that runs past its snapshot, and what those records did is not in this
+    /// session - a rewrite among them is of an item it does not hold. That they are there is
+    /// said, because it is a turn's worth of work the session carried on without.
     pub fn recall(&mut self, state: &Path) -> usize {
+        /// The one field of the snapshot this needs, read without the rest of it.
+        #[derive(Deserialize)]
+        struct Taken {
+            #[serde(default)]
+            last_seq: u64,
+        }
+
         let Ok(log) = File::open(state.with_extension("jsonl")) else {
             return 0;
         };
+        let taken = File::open(state)
+            .ok()
+            .and_then(|file| serde_json::from_reader::<_, Taken>(BufReader::new(file)).ok())
+            .map_or(u64::MAX, |taken| taken.last_seq);
 
-        let mut recalled = 0;
+        let (mut recalled, mut past) = (0, 0);
         for line in BufReader::new(log).lines().map_while(Result::ok) {
             let Ok(record) = serde_json::from_str::<Record>(&line) else {
                 continue;
             };
+            if record.seq > taken {
+                past += 1;
+                continue;
+            }
             let Event::ContextReplaced { id, was, .. } = record.event else {
                 continue;
             };
@@ -526,6 +546,17 @@ impl App {
                 self.remember(id, was);
                 recalled += 1;
             }
+        }
+        if past > 0 {
+            self.say(
+                Speaker::Note,
+                format!(
+                    "the record beside the snapshot runs {} past it, from a run that stopped \
+                     before it could write another: what they did is not in this session, and \
+                     nothing they numbered is numbered again",
+                    plural(past, "record")
+                ),
+            );
         }
 
         recalled

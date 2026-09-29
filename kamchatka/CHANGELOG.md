@@ -55,6 +55,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`-r` numbers nothing again that the log past the snapshot numbered.** A run killed in the
+  middle of a turn leaves its snapshot from when the turn began and its log running past it, and a
+  session carried on from that snapshot numbered records, items, calls and permissions again from
+  where it was taken, so two files of one session named different things with one identifier. The
+  numbering is now carried past the log beside the snapshot, the rewrites replayed from it stop at
+  the snapshot, and the resumed session says how many records it carried on without.
 - **A `--connect` client told the session is finished leaves when the socket resets.** A session
   that ends while a client's last command is still unread closes the connection with a reset, and
   the client took that for a dropped connection: it said so and tried to reattach for a minute to

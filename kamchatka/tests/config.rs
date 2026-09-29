@@ -1080,6 +1080,70 @@ fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
     );
 }
 
+/// `-r` from a snapshot its log runs past numbers nothing again that the log already numbered,
+/// and says the records are there.
+///
+/// note: the shape a run killed in the middle of a turn leaves: the snapshot from when the turn
+/// began, and the log with the turn's records after it. Carried on from the snapshot alone, the
+/// next session reissued every record number, item, call and permission the lost turn had used.
+#[test]
+fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
+    let dir = common::scratch("resumed-past");
+    let (ok, said) = run_from(&dir, &[], "remember 4817\n/save first.json\n");
+    assert!(ok, "{said}");
+
+    let first: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("first.json")).expect("saved"))
+            .expect("a snapshot");
+    let (seq, item, permission) = (
+        first.last_seq,
+        first.next_item + 3,
+        first.next_permission + 4,
+    );
+    let tail = [
+        serde_json::json!({ "seq": seq + 1, "at": 0, "event": {
+            "event": "context.added", "id": item, "kind": "user_message", "source": "user",
+            "label": "user", "tokens": 1, "because": null } }),
+        serde_json::json!({ "seq": seq + 2, "at": 0, "event": {
+            "event": "tool.requested", "call": "lost", "tool": "fs", "args": {} } }),
+        serde_json::json!({ "seq": seq + 3, "at": 0, "event": {
+            "event": "permission.decided", "id": permission, "call": "lost", "tool": "fs",
+            "grant": "allow", "source": "policy" } }),
+    ];
+    let mut log = std::fs::read_to_string(dir.join("first.jsonl")).expect("saved");
+    for record in tail {
+        log.push_str(&format!("{record}\n"));
+    }
+    std::fs::write(dir.join("first.jsonl"), log).expect("written");
+
+    let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
+    assert!(ok, "{said}");
+    assert!(said.contains("runs 3 records past it"), "{said}");
+
+    let second: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("second.json")).expect("saved"))
+            .expect("a snapshot");
+    assert!(second.next_item > item, "{} after {item}", second.next_item);
+    assert!(
+        second.next_permission > permission,
+        "{} after {permission}",
+        second.next_permission
+    );
+    assert!(
+        second.used_calls.iter().any(|call| call.0 == "lost"),
+        "{:?}",
+        second.used_calls
+    );
+    let resumed = std::fs::read_to_string(dir.join("second.jsonl")).expect("saved");
+    let begun: nachalnik::Record =
+        serde_json::from_str(resumed.lines().next().expect("a record")).expect("a record");
+    assert!(
+        begun.seq > seq + 3,
+        "the resumed log begins at {}",
+        begun.seq
+    );
+}
+
 /// `/save` and `/load` agree on an argument that is only a suffix, and `/load` says when it was
 /// given a directory.
 ///
