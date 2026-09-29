@@ -76,8 +76,9 @@ what to delete.
 For most rows the first is everything and the second is blank. The rows where they differ are the
 ones worth finding: an elided tool result holds all it ever held and spends only the marker that
 replaced it, an excluded item spends nothing at all, and an assistant turn sends what it said while
-holding what it thought. The `sending` column adds up to the figure on the status line, and the
-`held` column to the `held back` beside it. An excluded row says why it is out in the projector's
+holding what it thought. The `sending` column adds up to the figure on the status line less the
+tool definitions, which have no row (`/budget` gives the two apart), and the `held` column to the
+`held back` beside it. An excluded row says why it is out in the projector's
 words, and an elided one gives the note it was elided with. Nothing disappeared: things changed
 state, and the state is on screen.
 
