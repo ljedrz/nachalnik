@@ -823,7 +823,7 @@ impl Changes {
                 // note: the journal is this process's and a snapshot does not carry it, so after
                 // a resume the model's own earlier changes are not in it either - and without
                 // this the answer reads as though they had been the person's
-                if super::resumed(kernel) {
+                if super::reads::resumed(kernel) {
                     said.push_str(
                         "This session was resumed from a snapshot, and the changes this tool made \
                          before that were not carried over; `restore` puts an item back by name.\n",
