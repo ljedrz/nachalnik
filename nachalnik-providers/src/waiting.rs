@@ -225,7 +225,7 @@ impl Unsent {
 /// URL without a base`, is further down the chain. The kernel records an error as its `Display`,
 /// so a cause left in the chain is a cause nobody is shown. A layer that already repeats the one
 /// under it is not repeated again.
-fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
+pub(crate) fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
     let mut said = e.to_string();
     let mut cause = e.source();
     while let Some(under) = cause {
