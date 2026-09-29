@@ -329,6 +329,70 @@ fn a_subject_whose_tests_never_contradicted_it_has_no_deference_to_report() {
     assert!(format!("{deference}").contains("no conflict"));
 }
 
+/// A claim with a stated confidence, against an outcome the test says happened.
+fn said(claimed: bool, confidence: f64, happened: bool) -> Resolution {
+    Resolution::new(
+        Kind::Counterfactual,
+        Answer::Claim {
+            yes: claimed,
+            confidence: Some(confidence),
+        },
+        Answer::yes(happened),
+    )
+}
+
+/// What being told bought a subject's forecasts is the earlier Brier score and calibration error
+/// less the later ones, since both are distances and a smaller one is the improvement.
+#[test]
+fn what_feedback_bought_is_the_later_battery_minus_the_earlier_one() {
+    let before = [
+        said(true, 0.9, true),
+        said(false, 0.7, false),
+        said(true, 0.5, true),
+        said(true, 0.6, false),
+    ];
+    let after = [
+        said(true, 0.95, true),
+        said(false, 0.85, false),
+        said(true, 0.75, true),
+        said(false, 0.6, false),
+    ];
+    let claims: Vec<Resolution> = before
+        .into_iter()
+        .map(|r| r.informed(false))
+        .chain(after.into_iter().map(|r| r.informed(true)))
+        .collect();
+
+    let gain = Gain::over(&claims);
+
+    // Brier 0.1775 before and 0.061875 after; calibration error 0.225 and 0.2125
+    assert_eq!(gain.brier(), Some(0.115_625));
+    assert_eq!(gain.calibration(), Some(0.012_5));
+    let shown = gain.to_string();
+    assert!(shown.contains("brier +0.116"), "{shown}");
+    assert!(shown.contains("ece +0.013"), "{shown}");
+}
+
+/// Batteries that carried no confidence have no Brier or calibration gain, and the print says
+/// neither.
+#[test]
+fn a_battery_that_carried_no_confidence_has_no_brier_or_calibration_gain_to_report() {
+    let pairs = [(true, true), (false, false), (true, true), (true, false)];
+    let mut claims = battery(&pairs, false);
+    claims.extend(battery(&pairs, true));
+
+    let gain = Gain::over(&claims);
+
+    assert!(gain.is_measurable());
+    assert_eq!(gain.brier(), None);
+    assert_eq!(gain.calibration(), None);
+    let shown = gain.to_string();
+    assert!(
+        !shown.contains("brier") && !shown.contains("ece"),
+        "{shown}"
+    );
+}
+
 /// A question at a stage, or one belonging to no stage at all.
 pub(crate) fn asked(stage: Option<&str>) -> Step {
     Step::Asked {
