@@ -14,7 +14,7 @@ is not a terminal, and it says so rather than deciding quietly.
 
 ```console
 $ printf 'what is 2+2? answer with just the number\n/budget\n' \
-    | kamchatka --headless -m mercury-2 > session.jsonl
+    | kamchatka --headless -m qwen/qwen3-coder > session.jsonl
 ```
 
 **stdout is the session log**, one JSON record per line — the same bytes `/save` writes, so
@@ -109,7 +109,7 @@ where there is one to draw on, so a session started at a desk is the same sessio
 — keys and clients are two ways into one `App`, and the one loop that owns it answers both.
 
 ```console
-$ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m mercury-2
+$ kamchatka --serve unix:/run/user/1000/kamchatka.sock -m qwen/qwen3-coder
 ```
 
 ```console
@@ -144,7 +144,7 @@ So reaching a session from another machine is a tunnel: SSH already has the key 
 session gets an authenticated, encrypted transport without this program growing either.
 
 ```console
-host$  kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2
+host$  kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder
 other$ ssh -N -L 7878:127.0.0.1:7878 host &
 other$ kamchatka --connect tcp:127.0.0.1:7878
 ```
@@ -181,7 +181,7 @@ than with a snapshot.
 permission question, read back the item the answer was recorded as:
 
 ```console
-$ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
+$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
 $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 ```
 
@@ -193,7 +193,7 @@ one client that cannot reach it on its own: a browser has no TCP, so something h
 HTTP in front. Three routes, no framework, no build step, and one HTML file.
 
 ```console
-$ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2 &
+$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
 $ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
 ```
 
@@ -497,7 +497,7 @@ let wired = kamchatka::wiring::Setup {
     spend: Some(50_000),
     ..Default::default()
 }
-.wire(kamchatka::endpoint::connect(Some("mercury-2")).await?)?;
+.wire(kamchatka::endpoint::connect(Some("qwen/qwen3-coder")).await?)?;
 ```
 
 Two of those steps are not guessable and are the reason this exists rather than a page of
@@ -530,7 +530,7 @@ parser for that in the tree already:
 
 ```json
 {
-  "model": "mercury-2.5",
+  "model": "qwen/qwen3-coder",
   "system": "you are working in a Rust workspace; run `cargo test` before saying anything is done",
   "mcp": ["files=npx -y @modelcontextprotocol/server-filesystem /srv"],
   "sandbox-read": ["~/.rustup", "~/.cargo"],

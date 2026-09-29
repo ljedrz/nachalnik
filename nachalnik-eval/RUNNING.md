@@ -42,7 +42,7 @@ impl Experiment for Mine {
         let (said, claim) = subject.probe(&probe).await?;
         trial.asked(&probe, &said, &claim);
 
-        let ablation = Ablation::new(question).replicates(2);
+        let ablation = Ablation::new(probe).replicates(2);
         let control = ablation.observe(&origin, Intervention::Nothing).await?;
         let treated = ablation.observe(&origin, Intervention::without([id])).await?;
         let change = treated.against(&control);
