@@ -1645,9 +1645,7 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
 /// flags, the model among them.
 #[test]
 fn a_restart_goes_back_to_the_model_the_flags_named() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-reflag-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("a directory to record into");
+    let dir = common::scratch("reflag");
 
     let mut child = common::command()
         .args(["--headless", "-m", "flagged-model"])
@@ -1669,7 +1667,6 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
 
     let out = child.wait_with_output().expect("it ran");
     let said = String::from_utf8_lossy(&out.stderr).into_owned();
-    let _ = std::fs::remove_dir_all(&dir);
 
     assert!(out.status.success(), "{said}");
     let (_, after) = said
@@ -1690,9 +1687,7 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
 /// pointed at one of its own leaves exactly the files this counts and nothing else's turn up in it.
 #[test]
 fn restart_writes_the_session_out_and_starts_another() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-restart-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("a directory to record into");
+    let dir = common::scratch("restart");
 
     let mut child = common::command()
         // note: no `-m`, so a message is put in the context and nothing is sent. What this is
@@ -1787,8 +1782,6 @@ fn restart_writes_the_session_out_and_starts_another() {
         !second.contains("before the restart"),
         "the fresh session carried the old one's conversation into it"
     );
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A record directory that is not a real one of the owner's is refused, and the refusal reads.
@@ -1800,8 +1793,7 @@ fn restart_writes_the_session_out_and_starts_another() {
 /// this is told.
 #[test]
 fn a_record_directory_that_is_a_link_is_refused_in_words() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-linked-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
+    let dir = common::scratch("linked");
     let elsewhere = dir.join("elsewhere");
     std::fs::create_dir_all(&elsewhere).expect("a directory to point at");
     std::os::unix::fs::symlink(&elsewhere, dir.join("kamchatka")).expect("a link");
@@ -1855,8 +1847,6 @@ fn a_record_directory_that_is_a_link_is_refused_in_words() {
         before,
         "the directory behind the link was made private"
     );
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A running command that reaches for the network is answered by `--on-ask`, while the turn it is
