@@ -31,7 +31,10 @@ fn an_exclusion_is_a_state_change_and_nothing_is_destroyed() {
     let applied = Intervention::without([annex]).apply(&mut snapshot);
 
     assert_eq!(applied.touched, vec![annex]);
+    // something moved, and it was pointed at something that was there
+    assert!(!applied.is_empty());
     assert!(applied.missing.is_empty());
+    assert!(applied.is_complete());
     assert!(applied.unpinned.is_empty());
     // still there, still itself, still nameable by the number the session knows it by
     assert_eq!(snapshot.items.len(), before);
@@ -191,7 +194,7 @@ fn only_keeps_what_it_names() {
     let (kernel, ids) = planted();
     let mut snapshot = kernel.snapshot();
 
-    Intervention::only([ids[0], ids[1]]).apply(&mut snapshot);
+    let applied = Intervention::only([ids[0], ids[1]]).apply(&mut snapshot);
 
     let projected: Vec<_> = snapshot
         .items
@@ -200,6 +203,41 @@ fn only_keeps_what_it_names() {
         .map(|item| item.id)
         .collect();
     assert_eq!(projected, vec![ids[0], ids[1]]);
+    // both named items were in the copy, so neither is reported missing
+    assert!(applied.missing.is_empty(), "{:?}", applied.missing);
+}
+
+/// `only` over a copy that holds just what it names excludes nothing and misses nothing.
+#[test]
+fn only_keeps_a_lone_item_and_reports_nothing_missing() {
+    let kernel = Kernel::new(Config::default());
+    let only_item = kernel.push(ContextItem::memory("notes/one", "the only note"));
+    let mut snapshot = kernel.snapshot();
+
+    let applied = Intervention::only([only_item]).apply(&mut snapshot);
+
+    assert!(applied.missing.is_empty(), "{:?}", applied.missing);
+    assert!(applied.is_complete());
+}
+
+/// A revision reports the item it moved, and names it as unpinned only when it was pinned.
+///
+/// note: `unpinned` records a pin being moved anyway; an ordinary item listed there would be a
+/// claim about a pin nobody made.
+#[test]
+fn a_revision_reports_an_item_it_moved_and_names_the_pinned_one() {
+    let (kernel, ids) = planted();
+    let mut snapshot = kernel.snapshot();
+    let pinned = snapshot.items[0].id;
+
+    let revised = Intervention::revised(ids[3], "the annex was never built").apply(&mut snapshot);
+    assert_eq!(revised.touched, vec![ids[3]]);
+    assert!(revised.unpinned.is_empty(), "{:?}", revised.unpinned);
+
+    let over_pin =
+        Intervention::revised(pinned, "the brief is something else").apply(&mut snapshot);
+    assert_eq!(over_pin.touched, vec![pinned]);
+    assert_eq!(over_pin.unpinned, vec![pinned]);
 }
 
 #[test]
