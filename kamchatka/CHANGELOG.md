@@ -46,6 +46,10 @@ minor bump may break you.
 
 ### changed
 
+- **The chat tab reads a tool result only as far as the lines it shows.** Deciding whether to mark
+  a result as cut short counted every line of it, on every frame, for every result in the
+  conversation. It now stops one line past the six it draws.
+
 - **`shell` says where every call starts.** Its description now names the working directory and
   says that each call starts there afresh, so a `cd` lasts only for the command it is in. Before,
   it said only "in the working directory". A model that could not see where it was, or was trained
