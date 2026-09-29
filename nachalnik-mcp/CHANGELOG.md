@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A resource with no text is named by the type it was read with.** `Server::resources` gave
+  the media type from the server's listing, so a resource listed without one and read as a
+  picture was "no media type given", where a part beside some text already said what the part
+  said. The listing's type is now used only where no part gave one.
+
 ## [0.7.1] - 2026-09-24
 
 ### fixed

@@ -249,35 +249,31 @@ impl Server {
 
             // every part, text or a marker for what was there, as a tool result's blocks are: a
             // blob beside some text was dropped without a word where a blob on its own was named
-            let parts: Vec<(bool, String)> = read
-                .contents
-                .iter()
-                .map(|content| match text_of(content) {
-                    Ok(text) => (true, text.to_owned()),
-                    Err(media) => (
-                        false,
-                        format!(
+            let parts: Vec<_> = read.contents.iter().map(text_of).collect();
+
+            // a blob cannot go into a text context; saying what was there beats a gap in the list.
+            // The type is the one the part was read with, as it is for a part beside some text,
+            // and the listing's only where no part gave one
+            let content = match parts.iter().any(|part| part.is_ok()) {
+                true => parts
+                    .iter()
+                    .map(|part| match part {
+                        Ok(text) => (*text).to_owned(),
+                        Err(media) => format!(
                             "[a part with no text ({}), not carried into the context]",
                             media.unwrap_or("no media type given")
                         ),
-                    ),
-                })
-                .collect();
-            let text: Vec<String> = match parts.iter().any(|(text, _)| *text) {
-                true => parts.into_iter().map(|(_, part)| part).collect(),
-                false => Vec::new(),
-            };
-
-            // a blob cannot go into a text context; saying what was there beats a gap in the list
-            let content = match text.is_empty() {
-                true => format!(
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                false => format!(
                     "[a resource with no text ({}), not carried into the context]",
-                    resource
-                        .mime_type
-                        .as_deref()
+                    parts
+                        .iter()
+                        .find_map(|part| part.err().flatten())
+                        .or(resource.mime_type.as_deref())
                         .unwrap_or("no media type given")
                 ),
-                false => text.join("\n"),
             };
 
             items.push(
