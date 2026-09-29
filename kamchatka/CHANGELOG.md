@@ -219,6 +219,9 @@ minor bump may break you.
   resumed session the summary and a `kinds` answer counted only what had happened since the
   resume, and a model asked how many tool calls there had been took that for the whole session.
 
+- **`/spend 1` says `1 token`.** The two sentences that answer a new ceiling wrote its figure
+  beside `tokens` whatever it was.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

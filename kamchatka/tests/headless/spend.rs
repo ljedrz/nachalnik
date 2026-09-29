@@ -358,6 +358,13 @@ async fn the_ceiling_can_be_raised_and_taken_away() {
         "{:?}",
         reply.said
     );
+    // a count and the thing counted agree, which is the smallest number anybody sets it to
+    let reply = app.submit("/spend 1").await;
+    assert!(
+        reply.said[0].text.contains("the ceiling is 1 token and"),
+        "{:?}",
+        reply.said
+    );
 }
 
 /// The total is kept whether or not anything is watching it, so a ceiling set later means what it
