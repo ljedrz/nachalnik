@@ -516,6 +516,28 @@ mod tests {
         assert!(!scored(Answer::Choice("records/rail".to_owned()), None).measured);
     }
 
+    /// The ranking on the record is every note's divergence, largest first.
+    ///
+    /// note: it is in the report rather than in a score, because somebody who would rather score
+    /// attribution another way can do it from this line instead of paying for the run again. That
+    /// only works if it names every note and orders them by what the ablations measured.
+    #[test]
+    fn the_ranking_is_every_note_influences_most_first() {
+        let measured = [
+            ("records/office".to_owned(), ContextId(1), change(0.25, 0.0)),
+            ("records/rail".to_owned(), ContextId(2), change(0.5, 0.0)),
+            (
+                "records/capacity".to_owned(),
+                ContextId(3),
+                change(0.0, 0.0),
+            ),
+        ];
+        assert_eq!(
+            ranking(&measured),
+            "records/rail 0.50, records/office 0.25, records/capacity 0.00"
+        );
+    }
+
     #[test]
     fn a_change_inside_the_noise_does_not_lead() {
         let noisy = [
