@@ -269,8 +269,9 @@ impl Kernel {
 
     /// Projects the context and reports what the projection costs.
     ///
-    /// note: Both [`Kernel::budget`] and the request builder go through here, so that the number
-    /// a client is shown is the number that is about to be sent.
+    /// note: [`Kernel::budget`] goes through here, and the request builder projects the same way
+    /// under the locks it holds together and counts with the same [`projection_cost`], so that the
+    /// number a client is shown is the number that is about to be sent.
     ///
     /// note: counted over the messages that came out, not over the items that went in. They are
     /// not the same figure: a reference is labelled on its way out, and an elided item is a marker
@@ -382,8 +383,8 @@ impl Kernel {
 
 /// Counts what a projection costs, which is what a request carrying it would cost.
 ///
-/// note: the one definition of "the projected total", so that [`Kernel::projected_with`] and
-/// [`Kernel::apply_compaction`] cannot disagree about it. It is counted over the messages that
+/// note: the one definition of "the projected total", so that [`Kernel::projected_with`], the
+/// request builder and [`Kernel::apply_compaction`] cannot disagree about it. It is counted over the messages that
 /// came out rather than the items that went in, for the reason on [`Kernel::projected_with`].
 ///
 /// note: the same walk answers both figures. An abstention counted over the *items* would report a
