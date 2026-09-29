@@ -425,17 +425,20 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
     // and the two the same file would carry with the *default* in them are not among the
     // refusals: `--print-config` writes every key, so the file this program hands out to be
     // edited says `on-ask: deny` and `deadline: null`, and refusing every `--serve` over it
-    // would break the one the documentation tells a reader to write
+    // would break the one the documentation tells a reader to write. Spelled as a person might
+    // write it, since the value is read without regard to case
     let settings = dir.join("defaults.json");
     std::fs::write(
         &settings,
-        r#"{ "on-ask": "deny", "deadline": null, "spend": 100000 }"#,
+        r#"{ "on-ask": "Deny", "deadline": null, "spend": 100000 }"#,
     )
     .expect("a settings file");
     let socket = dir.join("defaults.sock");
     let mut host = tokio::process::Command::from(crate::common::command())
         .args(["--no-record", "-m", "nothing", "--serve"])
         .arg(format!("unix:{}", socket.display()))
+        .arg("--config-file")
+        .arg(&settings)
         .env("KAMCHATKA_BASE_URL", CLOSED)
         .env("KAMCHATKA_API_KEY", "not-a-key")
         .stdout(std::process::Stdio::piped())
