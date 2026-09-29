@@ -1227,6 +1227,34 @@ async fn a_record_kept_as_it_goes_holds_the_whole_log() {
     );
 }
 
+/// A session at rest writes its snapshot again when something was logged since, and not otherwise.
+///
+/// note: the snapshot is replaced by a rename, so a file that was written again is a different
+/// file. What this stands for is a person's one command announcing many items - each
+/// announcement asks for a snapshot, and every one after the first would be the same file
+/// rendered, synced and renamed again.
+#[tokio::test]
+async fn a_snapshot_is_written_again_only_when_the_log_has_moved() {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let dir = common::scratch("resting");
+    let Wired { app, .. } = capped(vec![], None);
+    let recorder = kamchatka::wiring::Recorder::start_under(&app, &dir).expect("a record");
+    let file = || std::fs::metadata(recorder.state()).expect("written").ino();
+    let first = file();
+
+    recorder.checkpoint(&app.kernel).expect("kept");
+    assert_eq!(file(), first, "nothing was logged, so nothing was written");
+
+    app.kernel.push(ContextItem::user("a"));
+    recorder.checkpoint(&app.kernel).expect("kept");
+    assert_ne!(
+        file(),
+        first,
+        "an item was added, and the snapshot shows it"
+    );
+}
+
 /// A run with no keys to press is handed the commands, and nothing about keys.
 ///
 /// note: this used to assert the opposite - that a pipe got every page - on the grounds that a
