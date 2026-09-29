@@ -138,7 +138,8 @@ because the screen is not the program.
 **`main.rs` is a choice of loop, and that is the shape to keep it in.** Everything it used to
 assemble is `wiring::Setup`, because it was assembled twice - here and in `examples/recorded.rs` -
 and an embedder would have written it a third time out of reading `main.rs`. Its callers now are
-the program, that example, and the suites that drive a session with no screen. If something else
+the program, that example, `examples/phone.rs`, and the suites that drive a session with no
+screen. If something else
 needs setting up, it is a field on `Setup` rather than a line in `main`.
 
 **A guard on a session belongs to the session, not to the loop driving it.** The spend ceiling is
