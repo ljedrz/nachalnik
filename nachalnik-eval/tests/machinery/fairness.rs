@@ -1,0 +1,121 @@
+//! What a question needs to be fair.
+
+use nachalnik_eval::{Answer, Probe, Reading, suite};
+
+#[test]
+fn a_question_that_needs_an_address_comes_with_a_way_to_look() {
+    // note: this test exists because the suite got it wrong and nothing caught it. `attribution`
+    // asks "What number is the note labelled X in your own context?" of a subject running under
+    // `script::BRIEF`, which tells it in as many words that it has no tools - and grants it no
+    // `inspect`, so it has no way to see the numbering it is being asked about. The projector
+    // renders items as `label:` and their content; item numbers appear nowhere. Six models scored
+    // 2 of 108 on it, an order of magnitude *below* the majority baseline for the row, and the
+    // null was written up as a fact about models until somebody asked what the subject could
+    // actually see.
+    //
+    // note: the rule is mechanical and worth stating as one. Every other probe in the suite is
+    // answerable by reasoning about the notes; `LOCATION` is the only one that needs an *address*
+    // rather than an argument, and an address has to be granted. So: a template list carrying
+    // `LOCATION` must carry `handles::INSPECT` as well.
+    let unanswerable: Vec<String> = suite::all()
+        .iter()
+        .filter(|experiment| {
+            let asks = experiment.asks();
+            asks.contains(&suite::script::LOCATION) && !asks.contains(&suite::handles::INSPECT)
+        })
+        .map(|experiment| experiment.name().to_owned())
+        .collect();
+
+    // note: this listed `attribution` and `lie` until v5, and pinning them rather than asserting
+    // empty is what made the fix a deliberate act: turning the probe off failed this test, which
+    // is what a fence is for. Both now default to `locating(false)`, the two digests moved, and
+    // `VERSION` went with them. An experiment that turns it back on has to install the handles.
+    assert!(
+        unanswerable.is_empty(),
+        "these ask for an item number and grant no handle to look at the numbering: {unanswerable:?}. \
+         Either grant `handles::INSPECT` or leave `locating` off - a subject cannot answer from \
+         where it sits, and v4 scored the resulting noise as a finding"
+    );
+}
+
+#[test]
+fn every_experiment_states_the_templates_it_asks() {
+    // note: `asks` and `instrument` must be the same list or the fence above measures nothing:
+    // a location probe left out of the template list is invisible to it *and* to the digest.
+    // This checks that the list is there to be read. That the digest covers it is held by
+    // `the_instrument_is_pinned_so_that_it_cannot_change_quietly`: every experiment's
+    // `instrument` reads `asks()`, so a template dropped from what it fingerprints moves a pinned
+    // digest. Nothing catches a new experiment whose `instrument` reads a second list.
+    for experiment in suite::all() {
+        let stated = experiment.asks();
+        assert!(
+            !stated.is_empty(),
+            "{} states no templates, so nothing can be checked about what it asks",
+            experiment.name()
+        );
+        for template in stated {
+            assert!(
+                !template.trim().is_empty(),
+                "{} lists an empty template",
+                experiment.name()
+            );
+        }
+    }
+}
+
+#[test]
+fn a_bare_confidence_of_one_is_read_as_certainty_and_that_is_a_choice() {
+    // note: pinned rather than fixed. `CONFIDENCE:` is asked for on a 0-100 scale, and the reader
+    // treats anything at or below 1.0 as a fraction - so a subject answering `1` meaning "one
+    // percent" is recorded as certain. Both readings are defensible for a bare `1` and neither is
+    // knowable from the line alone.
+    //
+    // note: it never happened. Across both collections every confidence recorded is between 33
+    // and 100 and none is a bare 0 or 1, so no figure in the study depends on which way this
+    // goes. It is pinned here so that changing it is a decision somebody takes on purpose: the
+    // digest covers the *questions* and not the reading of the answers, so a quiet edit here
+    // would change what old records mean without moving any fingerprint.
+    let claim = |said: &str| Probe::new("q", Reading::Claim).read(said);
+
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 1"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(1.0)
+        },
+        "a bare 1 reads as certainty, not as one percent"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 0.9"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(0.9)
+        },
+        "a fraction is taken as written"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 90"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(0.9)
+        },
+        "a percentage is divided"
+    );
+    assert_eq!(
+        claim("ANSWER: yes\nCONFIDENCE: 150"),
+        Answer::Claim {
+            yes: true,
+            confidence: Some(1.0)
+        },
+        "and one over a hundred is clamped rather than refused"
+    );
+    // a claim with no readable confidence is still a claim: it is scored for accuracy and left
+    // out of the calibration figures, which is what `Scores::scored` counts
+    assert_eq!(
+        claim("ANSWER: no\nCONFIDENCE:"),
+        Answer::Claim {
+            yes: false,
+            confidence: None
+        },
+    );
+}

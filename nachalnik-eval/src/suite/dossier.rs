@@ -29,7 +29,7 @@
 //! note: **two** and not one, because one is too few. With a single herring each, reading the
 //! figures alone scores better against the truth over the whole set than the pilot subjects
 //! themselves did, and a shortcut that outscores the subject makes "the subject did better than
-//! the shortcut" unmeasurable. `tests/machinery.rs` holds the shortcut below the subjects' 0.76
+//! the shortcut" unmeasurable. `tests/machinery/` holds the shortcut below the subjects' 0.76
 //! rather than trusting it.
 //!
 //! note: and they are placed at a **different index in each dossier**, rather than appended. Red

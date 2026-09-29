@@ -73,7 +73,7 @@ impl Attribution {
     /// note: kept rather than deleted, because the question becomes a fair one the moment the
     /// subject can see the numbering - and finding out whether a model can locate an item when it
     /// is allowed to look is worth an experiment. Anything turning this on should install
-    /// [`handles`](crate::suite::handles) as well, which is the rule `tests/machinery.rs` holds the
+    /// [`handles`](crate::suite::handles) as well, which is the rule `tests/machinery/` holds the
     /// suite to.
     ///
     /// note: when on, it runs *before* the counterfactual battery, so every counterfactual claim

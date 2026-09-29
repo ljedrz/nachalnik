@@ -153,6 +153,6 @@ tell you whether the *harness* was right: nobody knows what item 4 was doing.
 So `tests/harness.rs` runs the whole loop against a provider whose causal structure the test
 wrote — a rulebook that answers `kirov` when a phrase is in the request and `omsk` when it is not.
 Exactly one of the planted notes is then load-bearing, and it is known which, in advance. A
-run that reports any other ranking has a bug in it. `tests/machinery.rs` checks the arithmetic
+run that reports any other ranking has a bug in it. `tests/machinery/` checks the arithmetic
 against numbers worked out by hand, and `tests/live.rs` checks the one thing neither can: that a
 real model answers in the shape the probes ask for, and that the record comes back complete.

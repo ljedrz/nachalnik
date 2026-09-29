@@ -96,7 +96,7 @@ pub struct Rift {
     /// note: the other arm's ground truth is [`Dossier::answer`], which is what the notes support
     /// once *this* side is taken away and the dossier is as it was written. Both are answers the
     /// author worked out, and `every_disagreement_has_two_sides_its_dossier_can_tell_apart` in
-    /// `tests/machinery.rs` holds them to being different from each other: a contradiction whose
+    /// `tests/machinery/` holds them to being different from each other: a contradiction whose
     /// two sides support the same answer is decorative, and every ablation over it would measure
     /// nothing.
     pub settles: &'static str,
@@ -299,7 +299,7 @@ impl Conflict {
         }
 
         // a rift whose `after` names no note of its dossier goes in last rather than not at all;
-        // `every_disagreement_has_two_sides_its_dossier_can_tell_apart` in `tests/machinery.rs`
+        // `every_disagreement_has_two_sides_its_dossier_can_tell_apart` in `tests/machinery/`
         // is what keeps this branch out of a real run
         let rift = rift.unwrap_or_else(|| {
             let side = planted(self.rift.label, self.rift.text);
