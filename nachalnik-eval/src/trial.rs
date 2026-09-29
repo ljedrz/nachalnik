@@ -363,7 +363,8 @@ pub enum Step {
     /// note: what [`Outcome::paired`](crate::Outcome::paired) pairs, and all it pairs. A stage
     /// pair is a paired contrast only when it is one subject answering one claim twice.
     /// `conflict`'s three stages are the subject's own unprompted claim and two sets of copies, one
-    /// of them with the opposite truth, and every pair of them was reported with a McNemar test.
+    /// of them with the opposite truth, so they are not a ladder: pairing every stage an experiment
+    /// had, as this once did, gave each of those pairs a McNemar test it had no business having.
     /// Declared in the record rather than on [`Experiment`](crate::Experiment), so that whoever
     /// runs the experiment, and whoever re-reads what it saved, pairs what it declared.
     Ladder {
