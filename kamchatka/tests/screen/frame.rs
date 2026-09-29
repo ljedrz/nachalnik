@@ -651,3 +651,28 @@ async fn the_first_line_of_a_session_names_keys_that_do_what_it_says() {
         );
     }
 }
+
+/// A panel with room for all it says shows all of it, on a terminal narrower than the panel.
+///
+/// note: the box was sized from the body wrapped at the widest a panel is, and drawn at the width
+/// the terminal left it - so on an eighty-column window `/seams` came up in a box three lines
+/// short of its thirteen, scrolled, with thirty rows of screen to spare.
+#[tokio::test]
+async fn a_panel_that_fits_is_not_scrolled_on_a_narrow_terminal() {
+    for command in ["/seams", "/budget"] {
+        let mut harness = Harness::new([]);
+        harness.send(command).await;
+        let screen = harness.sized(80, 40);
+
+        let footer = screen
+            .lines()
+            .find(|line| line.contains("any key closes"))
+            .unwrap_or_else(|| panic!("{command} opened a panel: {screen}"));
+        let (shown, of) = footer
+            .split_once('–')
+            .and_then(|(_, rest)| rest.split_once(" of "))
+            .map(|(shown, rest)| (shown.trim().to_owned(), rest.split_whitespace().next()))
+            .unwrap_or_else(|| panic!("the footer counts its lines: {footer}"));
+        assert_eq!(Some(shown.as_str()), of, "{command}: {screen}");
+    }
+}

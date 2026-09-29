@@ -125,6 +125,11 @@ minor bump may break you.
   was refused, which the answer to a write into a missing directory already did not. Both read the
   same stance now, and say that `shell` is refused instead.
 
+- **A panel that fits is not scrolled on a terminal narrower than it.** The box a panel opens in
+  was sized from its text wrapped at the widest a panel is, and the text was drawn at the width
+  the terminal left, so on an eighty-column window `/seams` and `/help` came up short of their
+  own lines and scrolled, with rows to spare. The box is measured at the width it is drawn at.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

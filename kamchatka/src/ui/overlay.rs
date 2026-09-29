@@ -569,8 +569,12 @@ fn panel(
 
     // no taller than it has anything to say: `/budget` is a handful of lines, and a box that took
     // nine tenths of the screen to show them would be hiding the conversation for no reason
+    //
+    // note: measured at the width the box will have, which is less than `columns` on a narrow
+    // terminal - the borders and the padding take four of it, as `inner` below does
+    let width = centred(frame.area(), columns, 0).width;
     let wanted =
-        wrapped(&showing.body, columns.saturating_sub(4) as usize, "").len() as u16 + 2 + strip;
+        wrapped(&showing.body, width.saturating_sub(4) as usize, "").len() as u16 + 2 + strip;
     let area = centred(
         frame.area(),
         columns,
