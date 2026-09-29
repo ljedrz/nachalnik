@@ -141,6 +141,11 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         ),
         "a line sent into a running turn was not queued"
     );
+    // a command is not a line that waits, and replaces nothing
+    two.send(Command::Submit {
+        line: "/spend".to_owned(),
+    })
+    .await;
     two.send(Command::Submit {
         line: "no, mine".to_owned(),
     })
@@ -153,6 +158,28 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         unreachable!("just matched")
     };
     assert!(text.contains("`mine`"), "it did not say which line: {text}");
+
+    // and said once for each line that went, which the next replacement is the end of
+    one.send(Command::Submit {
+        line: "mine again".to_owned(),
+    })
+    .await;
+    let heard = [
+        heard,
+        two.until(
+            |message| matches!(message, Message::Said { text, .. } if text.contains("`no, mine`")),
+        )
+        .await,
+    ]
+    .concat();
+    let replaced: Vec<&String> = heard
+        .iter()
+        .filter_map(|message| match message {
+            Message::Said { text, .. } if text.contains("replaced") => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(replaced.len(), 2, "{replaced:#?}");
 
     two.send(Command::Submit {
         line: "/quit".to_owned(),

@@ -55,6 +55,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A served session says a line was replaced only when one was.** With a line waiting for a
+  turn to end, any client's command, or a line said into a session that had gone idle, was
+  announced to every client as having replaced the waiting one, which was still there. The
+  notice now comes only when the line took the waiting one's place.
+
 - **`shell` keeps the last line of a command's output when it has no newline and came late.** A
   line the command had started, then gone quiet on for longer than the tool's read waits, was
   thrown away when the output ended, and nothing said bytes were missing. It is now kept, as a

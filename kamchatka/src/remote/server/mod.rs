@@ -22,7 +22,7 @@ use tokio::{
 };
 
 use crate::{
-    app::{App, Outcome, Overlay, Speaker, text},
+    app::{App, Did, Outcome, Overlay, Speaker, text},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
         Unjudged,
@@ -931,7 +931,9 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                 app.say(Speaker::Note, rows.join("\n"));
                 app.take_proposal(true).await;
             }
-            if let Some(lost) = replacing {
+            // only a line that went into the slot took anything out of it: a command, or a line
+            // said straight into an idle session, leaves whatever was waiting where it was
+            if let Some(lost) = replacing.filter(|_| matches!(reply.did, Did::Queued)) {
                 app.say(
                     Speaker::Note,
                     format!(
