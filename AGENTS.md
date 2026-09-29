@@ -79,7 +79,7 @@ Read a request for a capability with that split in mind before deciding where it
 
 `nachalnik/src`: `kernel/` is the state machine and every public operation (`mod.rs`, the
 operations on the context in `context.rs`, and `request.rs` and `calls.rs` as private halves of
-the machine), and beside it one file per seam or per thing the kernel keeps - `context.rs`,
+the machine), and beside it one file per seam or per thing the kernel keeps - `context/`,
 `model/`, `projection.rs`, `tool.rs`, `permissions.rs`, `tokens.rs`, `compaction.rs`,
 `event.rs`, `session.rs`. `test.rs` (feature `test`) holds the scripted provider, the fake tools
 and the table policy: use those rather than writing another mock.
