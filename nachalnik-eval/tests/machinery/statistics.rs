@@ -59,8 +59,27 @@ fn a_paired_contrast_is_unimpressed_by_improvements_that_come_with_regressions()
     let paired = Paired::over(&claims, "reported", "retested");
 
     assert_eq!((paired.gained, paired.lost), (3, 1));
+    // the regressions come off the gains, not on: (3 - 1) / 4
+    assert_eq!(paired.difference, 0.5);
     // P(X >= 3), X ~ Bin(4, 1/2) = (4 + 1) / 16
     assert_eq!(paired.p_value, Some(0.312_5));
+}
+
+/// A contrast with nothing paired has a difference of zero, not a `NaN`.
+///
+/// note: a `NaN` is the one figure a record cannot be read back with.
+#[test]
+fn a_paired_contrast_that_nothing_came_of_reports_no_difference_rather_than_nan() {
+    let claims = vec![at("reported", "depot", "a", true)];
+
+    let paired = Paired::over(&claims, "reported", "retested");
+
+    assert_eq!(paired.n, 0);
+    assert!(!paired.is_measurable());
+    assert!(paired.p_value.is_none());
+    assert_eq!(paired.difference, 0.0);
+    assert!(paired.difference.is_finite());
+    assert!(format!("{paired}").contains("nothing paired"));
 }
 
 #[test]
