@@ -304,3 +304,103 @@ async fn exclude_says_what_it_refused_and_revise_needs_a_name_that_is_here() {
         "{acts:?}"
     );
 }
+
+/// `amend`'s two refusals that are not about the turn a call is made from, which the tool
+/// description promises by name.
+#[tokio::test]
+async fn amend_refuses_a_system_instruction_and_a_pinned_item() {
+    use nachalnik::{OutputSink, Tool, ToolCall};
+    use nachalnik_eval::{Act, Journal, suite::handles::Amend};
+    use std::sync::Arc;
+
+    let kernel = Arc::new(Kernel::new(Config::default()));
+    let brief = kernel.push(ContextItem::system("The brief."));
+    let note = kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+    kernel.set_state([note], nachalnik::ContextState::Pinned, None);
+    let movable = kernel.push(ContextItem::memory("records/annex", "a note"));
+
+    let exclude = |ids: &[ContextId]| {
+        ToolCall::new(
+            "c1",
+            "amend",
+            serde_json::json!({
+                "action": "exclude",
+                "ids": ids.iter().map(|id| id.0.to_string()).collect::<Vec<_>>(),
+                "reason": "shorten it",
+            }),
+        )
+    };
+    let journal = Journal::default();
+    let amend = Amend::new(&kernel, journal.clone());
+
+    // the pinned item beside an ordinary one: the call does what it can and says what it
+    // would not do, which is one output and not an error
+    let out = amend
+        .invoke(&exclude(&[note, movable]), OutputSink::disconnected())
+        .await
+        .expect("a tool result");
+    assert!(!out.is_error);
+    let said = out.content.to_text().into_owned();
+    assert!(said.contains("that item is pinned"), "{said}");
+    assert!(
+        said.contains("1 item(s) are out"),
+        "the one ordinary item beside the refusal is still excluded: {said}"
+    );
+
+    // and the brief on its own is nothing but a refusal
+    let out = amend
+        .invoke(&exclude(&[brief]), OutputSink::disconnected())
+        .await
+        .expect("a tool result");
+    assert!(out.is_error);
+    assert!(
+        out.content
+            .to_text()
+            .contains("a system instruction is not yours to move"),
+        "{}",
+        out.content.to_text()
+    );
+
+    // the refused ones are where they were, and the ordinary one is not
+    assert_eq!(
+        kernel.item(brief).expect("the brief").state,
+        nachalnik::ContextState::Active
+    );
+    assert_eq!(
+        kernel.item(note).expect("the note").state,
+        nachalnik::ContextState::Pinned
+    );
+    assert_eq!(
+        kernel.item(movable).expect("the annex").state,
+        nachalnik::ContextState::Excluded
+    );
+
+    // and each refusal is on the record with its own reason
+    let acts = journal.lock();
+    let said = |id: ContextId| format!("exclude {id}");
+    let refused: Vec<(String, &str)> = acts
+        .iter()
+        .filter_map(|act| match act {
+            Act::Refused { what, why } => Some((what.clone(), why.as_str())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        refused,
+        vec![
+            (said(note), "that item is pinned"),
+            (said(brief), "a system instruction is not yours to move"),
+        ]
+    );
+    assert!(
+        matches!(
+            acts.as_slice(),
+            [
+                Act::Refused { .. },
+                Act::Excluded { .. },
+                Act::Refused { .. }
+            ]
+        ),
+        "{acts:?}"
+    );
+}
