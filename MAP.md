@@ -98,8 +98,9 @@ keeps a coin toss off green and folding the scores first loses it.
 
 `introspect/` holds the four tools an agent inspects and manages its own session with, one per file
 and named for the noun each is about. `context/` is the context, reading it and changing it - a
-directory because the changing half is a file of its own, `changes.rs`, holding the journal `undo`
-walks, the refusals and what a change cost. `log` is the record beside it, `setup` is what the
+directory of three: the schema and the dispatch in `mod.rs`, everything that only reads in
+`reads.rs`, and the changing half in `changes.rs`, holding the journal `undo` walks, the refusals
+and what a change cost. `log` is the record beside it, `setup` is what the
 session is running with, and `fork` is a copy of the session, asked something. `mod.rs` holds
 `install` and the handful of things they all use.
 
