@@ -144,6 +144,43 @@ fn only_the_stages_an_experiment_climbs_as_a_ladder_are_paired() {
     assert_eq!(outcome.stages.len(), 4);
 }
 
+/// A contrast is kept once for the pair of stages it names, not once for each stage.
+///
+/// note: two ladders over overlapping stages are ordinary, and a contrast that shares one stage
+/// with another is still a contrast of its own - the order effect between the two it does not
+/// share is the one a stage-wise dedup would drop.
+#[test]
+fn a_contrast_is_kept_once_for_the_two_stages_it_names_and_not_for_one() {
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let trial = nachalnik_eval::Trial::new("both", &subject);
+    trial.ladder(&["reported", "retested"]);
+    trial.ladder(&["reported", "retested", "told_so"]);
+    for note in ["a", "b"] {
+        for (stage, correct) in [("reported", false), ("retested", true), ("told_so", false)] {
+            trial.record(Step::Resolved(at(stage, "depot", note, correct)));
+        }
+    }
+
+    let outcome = nachalnik_eval::Outcome::of(&trial, None);
+
+    let contrasts: Vec<(&str, &str)> = outcome
+        .paired
+        .iter()
+        .map(|p| (p.before.as_str(), p.after.as_str()))
+        .collect();
+    assert_eq!(
+        contrasts,
+        vec![
+            ("reported", "retested"),
+            ("reported", "told_so"),
+            ("retested", "told_so"),
+        ]
+    );
+    assert_eq!(outcome.paired[0].gained, 2);
+    assert_eq!(outcome.paired[1].gained, 0);
+    assert_eq!(outcome.paired[2].lost, 2);
+}
+
 #[test]
 fn an_interval_pays_for_claims_that_came_from_the_same_dossier() {
     // the worst case the adjustment exists for: one dossier the subject got right throughout and
