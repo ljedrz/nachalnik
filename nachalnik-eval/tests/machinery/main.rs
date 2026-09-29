@@ -6,6 +6,7 @@
 //! whatever it happened to print the first time.
 
 mod fairness;
+mod groupings;
 mod handles;
 mod instruments;
 mod intervals;
