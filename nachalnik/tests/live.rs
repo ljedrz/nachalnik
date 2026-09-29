@@ -86,8 +86,8 @@ async fn serialize() -> tokio::sync::MutexGuard<'static, ()> {
 
 // ------------------------------------------------------------------------------- the provider
 
-// note: `nachalnik-utils::OpenAiCompatible`, which is a workspace member that is never published
-// and exists for exactly this: the provider these tests talk through, and the one the examples
+// note: `nachalnik_utils::provider`, from a workspace member that is never published and exists
+// for exactly this: the provider these tests talk through, and the one the examples
 // talk through, used to be two five-hundred-line copies of each other that had to be fixed twice.
 // It records every request it sends, which is what most of the assertions below are about.
 
