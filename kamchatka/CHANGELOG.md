@@ -13,8 +13,8 @@ minor bump may break you.
   directory may set `mcp`, `no-sandbox`, `allow`, `allow-server`, `on-ask` and the sandbox lists,
   and it was applied as if typed, so running `kamchatka` inside a repository somebody else wrote
   started their servers and applied their permissions. It is now asked about on standard error
-  before anything else, the question naming which of those keys it sets, and anything but `y`
-  runs without it. A run with no terminal on standard input and standard error is refused, and
+  before anything else, the question naming which of those keys it sets, and anything but `y` or
+  `yes` runs without it. A run with no terminal on standard input and standard error is refused, and
   `--config-file kamchatka.json` reads the file as before. A file this program would refuse is
   refused for what is wrong with it before it is asked about. The file under the config directory
   is read without asking.
