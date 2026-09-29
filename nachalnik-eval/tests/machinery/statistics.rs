@@ -671,3 +671,123 @@ fn one_remove_of_self_reference_is_not_two() {
     assert_eq!(Depths::default().0.len(), 0);
     assert!(!Depths::default().is_recursive());
 }
+
+/// Every change a subject makes to its own context is counted, not once for all of them.
+#[test]
+fn a_change_to_its_own_context_is_counted_once_per_change() {
+    let steps = vec![
+        Step::Granted {
+            tools: vec!["amend".to_owned()],
+            budget: 4,
+        },
+        asked(Some("retested")),
+        Step::Acted(Act::Excluded {
+            ids: vec![ContextId(2)],
+            reason: "not about the note".to_owned(),
+        }),
+        Step::Acted(Act::Revised {
+            id: ContextId(3),
+            was: "wrong".to_owned(),
+            now: "right".to_owned(),
+            reason: "wrong".to_owned(),
+        }),
+        asked(Some("retested")),
+        Step::Acted(Act::Excluded {
+            ids: vec![ContextId(4)],
+            reason: "not about the note".to_owned(),
+        }),
+    ];
+
+    let reached = Reached::over(&steps);
+
+    assert_eq!(reached.edits, 3);
+}
+
+/// A record with no handles ever in reach offered nothing, and measures nothing.
+#[test]
+fn a_record_with_no_handles_in_reach_is_not_a_measurement() {
+    let steps = vec![
+        asked(Some("reported")),
+        Step::Acted(Act::Looked { items: 7 }),
+    ];
+
+    let reached = Reached::over(&steps);
+
+    assert_eq!(reached.offered, 0);
+    assert_eq!(reached.rate, None);
+    assert_eq!(reached.interval, None);
+    assert!(!reached.is_measurable());
+}
+
+/// A measured record prints the share of questions instrumented and what the handles were used
+/// for.
+#[test]
+fn a_measured_record_says_what_the_handles_were_worth() {
+    let steps = vec![
+        Step::Granted {
+            tools: vec!["inspect".to_owned(), "amend".to_owned()],
+            budget: 9,
+        },
+        asked(Some("retested")),
+        Step::Acted(Act::Looked { items: 7 }),
+        asked(Some("retested")),
+        Step::Acted(Act::Tested {
+            without: vec![ContextId(2)],
+            before: None,
+            after: None,
+            moved: Some(true),
+            spend: Spend::default(),
+            failed: None,
+        }),
+        Step::Acted(Act::Excluded {
+            ids: vec![ContextId(3)],
+            reason: "not about the note".to_owned(),
+        }),
+        Step::Acted(Act::Excluded {
+            ids: vec![ContextId(4)],
+            reason: "not about the note".to_owned(),
+        }),
+    ];
+
+    let reached = Reached::over(&steps);
+
+    assert_eq!(
+        reached.to_string(),
+        "instrumented 2/2 question(s) (100%), 95% CI 34-100; 1 look(s), 1 test(s), 2 edit(s)"
+    );
+}
+
+/// A refusal is in the print only when there was one.
+#[test]
+fn a_refusal_is_printed_only_when_there_was_one() {
+    let refused = vec![
+        Step::Granted {
+            tools: vec!["amend".to_owned()],
+            budget: 4,
+        },
+        asked(Some("retested")),
+        asked(Some("retested")),
+        Step::Acted(Act::Refused {
+            what: "amend".to_owned(),
+            why: "not granted".to_owned(),
+        }),
+    ];
+
+    let reached = Reached::over(&refused);
+    assert!(
+        reached.to_string().ends_with(", 1 refused"),
+        "a refusal is in the report: {}",
+        reached
+    );
+
+    let granted = vec![
+        Step::Granted {
+            tools: vec!["amend".to_owned()],
+            budget: 4,
+        },
+        asked(Some("retested")),
+    ];
+
+    let clean = Reached::over(&granted);
+    assert!(!clean.to_string().contains("refused"));
+}
