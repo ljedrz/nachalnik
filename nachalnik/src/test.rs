@@ -24,6 +24,10 @@ use crate::{
 
 /// A [`Provider`] that answers with a prepared list of responses, and remembers what it was
 /// asked.
+///
+/// note: what it streams is the whole of a response's content, as text, in one delta - never
+/// reasoning, never a call's arguments, however the response is shaped. A test about what a
+/// stream looks like needs a provider of its own.
 pub struct ScriptedProvider {
     info: ModelInfo,
     script: Mutex<VecDeque<ModelResponse>>,
