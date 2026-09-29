@@ -240,12 +240,12 @@ runtime's own concerns: `subject.rs` (a `Kernel` plus "ask, and wait for the tur
 `probe.rs` (a question whose answer shape is declared, so a reading can parse it without a judge
 model), `intervene.rs` and `fork.rs` (a frozen `Snapshot`, a `ContextState` moved on a copy of it,
 and the copy run once with no tools), `trial.rs` (an append-only record, the way `Session` is, plus
-`Act` - what a subject *did*), `score.rs` (the arithmetic, computed *from* the record),
-`experiment.rs` (`Experiment`, a runner, and `Instrument`), `abreast.rs` (independent work run
-at once under a ceiling, written here rather than taken from `futures-util` so that nothing enters
-the tree the runtime did not already need), `error.rs` (what can stop a measurement, as against what
-a measurement finds), and `suite/` (the nine experiments, the six dossiers in `dossier.rs`,
-`script.rs`, and `handles.rs`).
+`Act` - what a subject *did*), `score/` (the arithmetic, computed *from* the record, and in
+`reports.rs` the reports read out of it), `experiment.rs` (`Experiment`, a runner, and
+`Instrument`), `abreast.rs` (independent work run at once under a ceiling, written here rather than
+taken from `futures-util` so that nothing enters the tree the runtime did not already need),
+`error.rs` (what can stop a measurement, as against what a measurement finds), and `suite/` (the
+nine experiments, the six dossiers in `dossier.rs`, `script.rs`, and `handles.rs`).
 
 **What the crate is for is a ladder, and it is easy to miss the top of it.** `attribution`,
 `recursion`, `lie`, `conflict`, `privilege` and `feedback` measure introspection *by report* - ask
