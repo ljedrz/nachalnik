@@ -17,6 +17,7 @@
 use std::{
     ffi::OsStr,
     io,
+    ops::ControlFlow,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -265,6 +266,101 @@ fn walk(root: &Path) -> ignore::Walk {
         .filter_entry(|entry| entry.file_name() != OsStr::new(".git"))
         .sort_by_file_path(Path::cmp)
         .build()
+}
+
+/// A file a walk came to that nothing bars: the name it is known by, relative to the working
+/// directory, and the path to open it at, which for a link is where it resolved to.
+struct Seen {
+    path: String,
+    opening: PathBuf,
+}
+
+/// Walks `root` the way `grep` and `glob` both walk it, handing `each` every file nothing bars and
+/// counting in a [`Skipped`] everything it passed over; whether it stopped because somebody
+/// interrupted it, and the count.
+///
+/// note: one walk for the two tools, because what a walk passes over and why is the boundary a
+/// search is held to, and a copy of it per tool was two answers to what a search may open. What
+/// differs is what each does with a file, which is `each`'s - including the counts only a search
+/// can make, a file that would not open or turned out to be binary, which is why it is handed the
+/// count as well.
+fn walked(
+    root: &Path,
+    reach: &Reach,
+    workdir: &Path,
+    barred: &[(String, Verdict)],
+    sink: &OutputSink,
+    mut each: impl FnMut(Seen, &mut Skipped) -> ControlFlow<()>,
+) -> (bool, Skipped) {
+    let mut skipped = Skipped::default();
+    for entry in walk(root) {
+        if sink.is_interrupted() {
+            return (true, skipped);
+        }
+        let Ok(entry) = entry else {
+            skipped.unreadable += 1;
+            continue;
+        };
+        let Some(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_dir() {
+            // a directory is what the walk descends into, not a path it passed over
+            continue;
+        }
+        // a pipe or a device is not a file to search or list, and opening a pipe waits for a
+        // writer - so it is left out, and counted, since a walk that passed one over and said
+        // nothing has accounted for a path whose file is not there
+        if !kind.is_file() && !kind.is_symlink() {
+            skipped.elsewhere += 1;
+            continue;
+        }
+        // opened by the name it was checked under: a link by what it resolved to, since an open
+        // that stays beneath the root refuses a link however it was made
+        let mut leads = None;
+        if kind.is_symlink() {
+            match followed(reach, entry.path()) {
+                Link::Read(resolved) => leads = Some(resolved),
+                // a link to something that is not a file, so nothing to search or list
+                Link::Skip => {
+                    skipped.elsewhere += 1;
+                    continue;
+                }
+                Link::Refuse => {
+                    skipped.links += 1;
+                    continue;
+                }
+            }
+        }
+
+        let path = relative(entry.path(), workdir);
+        // the file the *call* named is one the policy has already been asked about; only what the
+        // walk found under it is barred here. See `Looking::barred`, and `led_past` for a link
+        match barring(
+            barred,
+            &path,
+            entry.path() != root,
+            leads.as_deref(),
+            workdir,
+        ) {
+            Some(Verdict::Deny) => {
+                skipped.refused += 1;
+                continue;
+            }
+            Some(_) => {
+                skipped.asked += 1;
+                continue;
+            }
+            None => {}
+        }
+
+        let opening = leads.unwrap_or_else(|| entry.path().to_path_buf());
+        if each(Seen { path, opening }, &mut skipped).is_break() {
+            break;
+        }
+    }
+
+    (false, skipped)
 }
 
 /// What one symbolic link is: something to read, something to leave alone, or something to count.
@@ -519,128 +615,69 @@ impl Grep {
                 stopped: false,
             };
 
-            for entry in walk(&root) {
-                if sink.is_interrupted() {
-                    found.stopped = true;
-                    break;
-                }
-                let entry = match entry {
-                    Ok(entry) => entry,
-                    Err(_) => {
-                        found.skipped.unreadable += 1;
-                        continue;
+            let (stopped, skipped) =
+                walked(&root, &reach, &workdir, &barred, &sink, |seen, skipped| {
+                    let Seen { path, opening } = seen;
+                    if only.as_ref().is_some_and(|only| !only.is_match(&path)) {
+                        return ControlFlow::Continue(());
                     }
-                };
-                let Some(kind) = entry.file_type() else {
-                    continue;
-                };
-                if kind.is_dir() {
-                    // a directory is what the walk descends into, not a path it passed over
-                    continue;
-                }
-                // a pipe or a device is not a file to search, and opening a pipe waits for a
-                // writer - so it is left out, and counted, since a walk that passed one over and
-                // said nothing has accounted for a path whose file is not there
-                if !kind.is_file() && !kind.is_symlink() {
-                    found.skipped.elsewhere += 1;
-                    continue;
-                }
-                // opened by the name it was checked under: a link by what it resolved to, since an
-                // open that stays beneath the root refuses a link however it was made
-                let opening = match kind.is_symlink() {
-                    true => match followed(&reach, entry.path()) {
-                        Link::Read(resolved) => resolved,
-                        // a link to something that is not a file, so nothing to search and
-                        // nothing to open either
-                        Link::Skip => {
-                            found.skipped.elsewhere += 1;
-                            continue;
-                        }
-                        Link::Refuse => {
-                            found.skipped.links += 1;
-                            continue;
-                        }
-                    },
-                    false => entry.path().to_path_buf(),
-                };
 
-                let path = relative(entry.path(), &workdir);
-                // the file the *call* named is one the policy has already been asked about; only
-                // what the walk found under it is barred here. See `Looking::barred`. A link is
-                // barred for where it leads as well. See `led_past`
-                match barring(
-                    &barred,
-                    &path,
-                    entry.path() != root.as_path(),
-                    Some(&opening),
-                    &workdir,
-                ) {
-                    Some(Verdict::Deny) => {
-                        found.skipped.refused += 1;
-                        continue;
+                    let mut lines = Lines {
+                        named: path,
+                        room: (!files_only).then(|| MATCHES - found.matches),
+                        ..Lines::default()
+                    };
+                    let searched = reach
+                        .open(&opening, Access::Reading)
+                        .and_then(|file| searcher.search_file(&matcher, &file, &mut lines));
+                    if searched.is_err() {
+                        skipped.unreadable += 1;
+                        return ControlFlow::Continue(());
                     }
-                    Some(_) => {
-                        found.skipped.asked += 1;
-                        continue;
+                    if lines.binary {
+                        skipped.binary += 1;
+                        return ControlFlow::Continue(());
                     }
-                    None => {}
-                }
-                if only.as_ref().is_some_and(|only| !only.is_match(&path)) {
-                    continue;
-                }
+                    // counted here rather than before the search, so that the two numbers in the
+                    // answer add up: a file that would not open or turned out to be binary is one of
+                    // the skipped, and not also one of the files read through
+                    found.searched += 1;
+                    if lines.matched == 0 {
+                        return ControlFlow::Continue(());
+                    }
 
-                let mut lines = Lines {
-                    named: path,
-                    room: (!files_only).then(|| MATCHES - found.matches),
-                    ..Lines::default()
-                };
-                let searched = reach
-                    .open(&opening, Access::Reading)
-                    .and_then(|file| searcher.search_file(&matcher, &file, &mut lines));
-                if searched.is_err() {
-                    found.skipped.unreadable += 1;
-                    continue;
-                }
-                if lines.binary {
-                    found.skipped.binary += 1;
-                    continue;
-                }
-                // counted here rather than before the search, so that the two numbers in the
-                // answer add up: a file that would not open or turned out to be binary is one of
-                // the skipped, and not also one of the files read through
-                found.searched += 1;
-                if lines.matched == 0 {
-                    continue;
-                }
-
-                // every line reaches the screen as it is found, the way a command's output does:
-                // a search of a large tree is then visible while it runs rather than at the end
-                match files_only {
-                    true => sink.push(format!("{}: {}\n", lines.named, lines.matched)),
-                    false => {
-                        for line in &lines.kept {
-                            sink.push(format!("{line}\n"));
+                    // every line reaches the screen as it is found, the way a command's output does:
+                    // a search of a large tree is then visible while it runs rather than at the end
+                    match files_only {
+                        true => sink.push(format!("{}: {}\n", lines.named, lines.matched)),
+                        false => {
+                            for line in &lines.kept {
+                                sink.push(format!("{line}\n"));
+                            }
                         }
                     }
-                }
-                found.matches += lines.matched;
-                found.files += 1;
-                found.by_file.push((lines.named, lines.matched));
-                if !files_only {
-                    found.lines.extend(lines.kept);
-                }
+                    found.matches += lines.matched;
+                    found.files += 1;
+                    found.by_file.push((lines.named, lines.matched));
+                    if !files_only {
+                        found.lines.extend(lines.kept);
+                    }
 
-                // the cap is on whichever thing the answer is made of: lines of one file after
-                // another, or one line per file
-                let full = match files_only {
-                    true => found.files >= PATHS,
-                    false => found.matches >= MATCHES,
-                };
-                if full {
-                    found.full = true;
-                    break;
-                }
-            }
+                    // the cap is on whichever thing the answer is made of: lines of one file after
+                    // another, or one line per file
+                    let full = match files_only {
+                        true => found.files >= PATHS,
+                        false => found.matches >= MATCHES,
+                    };
+                    if full {
+                        found.full = true;
+                        return ControlFlow::Break(());
+                    }
+
+                    ControlFlow::Continue(())
+                });
+            found.stopped = stopped;
+            found.skipped = skipped;
 
             // note: by how much each file matched rather than by path, which is the one place
             // here that does not answer in walk order. The question `files_only` is asked is
@@ -825,70 +862,11 @@ impl Glob {
         let (paths, more, skipped, stopped) = tokio::task::spawn_blocking(move || {
             let mut paths: Vec<String> = Vec::new();
             let mut more = false;
-            let mut skipped = Skipped::default();
-            let mut stopped = false;
 
-            for entry in walk(&root) {
-                if sink.is_interrupted() {
-                    stopped = true;
-                    break;
-                }
-                let Ok(entry) = entry else {
-                    skipped.unreadable += 1;
-                    continue;
-                };
-                let Some(kind) = entry.file_type() else {
-                    continue;
-                };
-                if kind.is_dir() {
-                    continue;
-                }
-                // a path that is not a file is not something to list, and a link to one is
-                // `followed`'s to decide; both are counted, since the description says the walk
-                // counts everything it passed over
-                if !kind.is_file() && !kind.is_symlink() {
-                    skipped.elsewhere += 1;
-                    continue;
-                }
-                let mut leads = None;
-                if kind.is_symlink() {
-                    match followed(&reach, entry.path()) {
-                        Link::Read(resolved) => leads = Some(resolved),
-                        // a link to something that is not a file, so nothing to list
-                        Link::Skip => {
-                            skipped.elsewhere += 1;
-                            continue;
-                        }
-                        Link::Refuse => {
-                            skipped.links += 1;
-                            continue;
-                        }
-                    }
-                }
-
-                let path = relative(entry.path(), &workdir);
-                // the file the *call* named is one the policy has already been asked about; only
-                // what the walk found under it is barred here. See `Looking::barred`, and
-                // `led_past` for a link
-                match barring(
-                    &barred,
-                    &path,
-                    entry.path() != root.as_path(),
-                    leads.as_deref(),
-                    &workdir,
-                ) {
-                    Some(Verdict::Deny) => {
-                        skipped.refused += 1;
-                        continue;
-                    }
-                    Some(_) => {
-                        skipped.asked += 1;
-                        continue;
-                    }
-                    None => {}
-                }
+            let (stopped, skipped) = walked(&root, &reach, &workdir, &barred, &sink, |seen, _| {
+                let path = seen.path;
                 if !matching.is_match(&path) {
-                    continue;
+                    return ControlFlow::Continue(());
                 }
 
                 // note: one past the cap and no further. Walking the rest of the tree was what
@@ -896,11 +874,13 @@ impl Glob {
                 // does with "there are more" is the same whatever the number, which is narrow it
                 if paths.len() == PATHS {
                     more = true;
-                    break;
+                    return ControlFlow::Break(());
                 }
                 sink.push(format!("{path}\n"));
                 paths.push(path);
-            }
+
+                ControlFlow::Continue(())
+            });
 
             (paths, more, skipped, stopped)
         })
