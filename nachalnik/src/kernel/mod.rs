@@ -249,6 +249,10 @@ impl Drop for Restore<'_> {
 /// Nothing takes one while holding one after it, which is what keeps two readers and a writer from
 /// waiting on each other. Each setter holds only its own lock and then `session`, to announce; a
 /// reader holding a component's lock across the sequence it reads is what makes the two agree.
+///
+/// note: so a figure the context keeps is counted with `counter` held across `context`, and not
+/// with a clone taken first. [`Kernel::set_counter`] recounts after it swaps, and an item measured
+/// with the clone of a counter swapped out in between would keep that counter's figure for good.
 struct InnerKernel {
     config: Config,
     machine: Mutex<Machine>,
@@ -938,7 +942,8 @@ impl Kernel {
     /// no recount - judged by what the counter reports afterwards rather than by what it was
     /// handed, because a counter may apply less than it is offered.
     pub fn recalibrate(&self, calibration: Calibration) -> Option<Calibration> {
-        let counter = self.counter();
+        let held = self.0.counter.read();
+        let counter = &**held;
         // the correction and the recount it causes under one lock, as a change and its
         // announcement are: applied first and recounted after, a snapshot in between held the
         // new scale beside figures counted on the old one
@@ -949,7 +954,7 @@ impl Kernel {
         // `Calibrating` does - so offering it a scale it refuses is not a change to recount for,
         // and a scale it takes in part is a recount against the part it took
         if counter.calibration() != Some(previous) {
-            self.recount_in(&mut context, &*counter);
+            self.recount_in(&mut context, counter);
         }
 
         Some(previous)
@@ -1296,7 +1301,8 @@ impl Kernel {
     /// Adds an item as part of a batch that is one operation for [`Kernel::undo`]: the first of
     /// them takes the checkpoint, and every later one folds whatever was checkpointed since into it.
     fn add_in(&self, item: ContextItem, batch: &mut Batch) -> ContextId {
-        let counter = self.counter();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let mut context = self.0.context.write();
         match batch.0 {
             None => {
@@ -1306,7 +1312,7 @@ impl Kernel {
             Some(taken) => context.fold_since(taken),
         }
 
-        self.added(&mut context, item, &*counter)
+        self.added(&mut context, item, counter)
     }
 
     /// Adds an item to a context the caller holds the lock on, and announces it under that lock.

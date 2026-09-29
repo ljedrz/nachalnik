@@ -24,11 +24,12 @@ use super::{
 impl Kernel {
     /// Adds an item to the context, returning its identifier.
     pub fn push(&self, item: ContextItem) -> ContextId {
-        let counter = self.counter();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let mut context = self.0.context.write();
         context.checkpoint();
 
-        self.added(&mut context, item, &*counter)
+        self.added(&mut context, item, counter)
     }
 
     /// Adds several items as one undoable operation, returning their identifiers.
@@ -46,7 +47,8 @@ impl Kernel {
             return Vec::new();
         }
 
-        let counter = self.counter();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let mut context = self.0.context.write();
         context.checkpoint();
 
@@ -66,14 +68,15 @@ impl Kernel {
     pub fn supersede(&self, old: ContextId, item: ContextItem) -> Result<ContextId> {
         // one lock for the check and both changes, so that an `undo` on another thread cannot take
         // `old` away in between and leave this answering `Ok` having superseded nothing
-        let counter = self.counter();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let mut context = self.0.context.write();
         if context.item(old).is_none() {
             return Err(Error::UnknownItem(old));
         }
         context.checkpoint();
 
-        let new = self.added(&mut context, item, &*counter);
+        let new = self.added(&mut context, item, counter);
         let note = Some(format!("replaced by item {new}"));
         if let Some(from) = context.set_state(old, ContextState::Superseded, note.clone()) {
             self.emit(Event::ContextChanged {
@@ -203,8 +206,9 @@ impl Kernel {
     /// an undo that puts back a state identical to the one it was asked from, and the operation
     /// somebody actually wanted reverted would need a second one.
     pub fn replace(&self, id: ContextId, content: impl Into<Content>) -> Result<()> {
-        let counter = self.counter();
         let content = content.into();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let mut context = self.0.context.write();
         // an operation that is about to fail does not get a checkpoint
         let Some(item) = context.item(id) else {
@@ -215,7 +219,7 @@ impl Kernel {
         }
         context.checkpoint();
 
-        match context.replace(id, content, &*counter) {
+        match context.replace(id, content, counter) {
             Some((was, tokens_before, tokens_after)) => {
                 self.emit(Event::ContextReplaced {
                     id,
@@ -314,8 +318,9 @@ impl Kernel {
 
     /// Recounts every item's tokens with the active [`TokenCounter`].
     pub fn recount(&self) {
-        let counter = self.counter();
-        self.recount_in(&mut self.0.context.write(), &*counter);
+        let held = self.0.counter.read();
+        let counter = &**held;
+        self.recount_in(&mut self.0.context.write(), counter);
     }
 
     /// [`Kernel::recount`], for a caller already holding the context lock.
@@ -405,10 +410,11 @@ impl Kernel {
     ///
     /// [`Compactor`]: crate::Compactor
     pub fn apply_compaction(&self, plan: CompactionPlan) -> CompactionReport {
-        let counter = self.counter();
         // both taken before the context lock, because that is the lock order and neither of these
         // may be reached for once it is held
         let projector = self.projector();
+        let held = self.0.counter.read();
+        let counter = &**held;
         let CompactionPlan {
             remove,
             elide,
@@ -434,7 +440,7 @@ impl Kernel {
             // walk over the items that moves `Content` by pointer, and it happens once a request
             // at most
             let before = projector.project(context.items());
-            let tokens_before = projection_cost(&before, &*counter).tokens;
+            let tokens_before = projection_cost(&before, counter).tokens;
             // what a pass may take is what the request is carrying, and the projection is the
             // only thing that knows. An item the projector repaired away - a second result for a
             // call that already has one - is `Active`, holds everything it holds, and is
@@ -553,7 +559,7 @@ impl Kernel {
             }
 
             if let Some(item) = summary.filter(|_| moved) {
-                let id = context.add(item, &*counter);
+                let id = context.add(item, counter);
                 let item = context.item(id).expect("the item was just added");
                 announcements.push(addition(item));
                 announcements.extend(arriving(item));
@@ -575,7 +581,7 @@ impl Kernel {
                 // lock - and it is the pass a compactor with nothing left to take answers with
                 // before every request
                 tokens_after: match moved {
-                    true => projection_cost(&projector.project(context.items()), &*counter).tokens,
+                    true => projection_cost(&projector.project(context.items()), counter).tokens,
                     false => tokens_before,
                 },
             };
