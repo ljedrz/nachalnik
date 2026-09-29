@@ -214,6 +214,11 @@ minor bump may break you.
   other than a number, and `/request` with nothing left to send each ended on a key of the context
   tab. They now name `/restore` or `/pin` instead, which do the same, or leave the key out.
 
+- **`log` says a resumed log begins at the resume in its summary, and in whatever it found.** It
+  said so only where `since` reached below the first record or a filter found nothing, so in a
+  resumed session the summary and a `kinds` answer counted only what had happened since the
+  resume, and a model asked how many tool calls there had been took that for the whole session.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking

@@ -418,6 +418,9 @@ impl Query {
                 " if you take them all. Nothing here is in your context until you ask for it.\n",
             );
             out.push_str(&histogram(read));
+            // and where the count above is not the whole session, which a total otherwise claims
+            // to be: the first thing a resumed session asks its log about is what came before
+            out.push_str(&apart(earlier(read)));
             out.push_str(&format!(
                 "\n`take`, `ids`, `since` or `kinds` asks for the records themselves; the last \
                  sequence number is {}.\n",
@@ -506,15 +509,18 @@ impl Query {
         // `since` below the oldest record held, which is the whole of what a resumed session is:
         // the filter asks for records this log has never had, and without this it says so as
         // silence between the count and the records, which reads as there being none
-        if let Some(since) = self.since
-            && read.skipped(since)
-        {
-            out.push_str(&format!(
-                "\nNothing numbered {} to {} is here, so `since: {since}` skipped them.\n",
-                since + 1,
-                read.first_seq - 1,
-            ));
-            out.push_str(&earlier(read));
+        match self.since {
+            Some(since) if read.skipped(since) => {
+                out.push_str(&format!(
+                    "\nNothing numbered {} to {} is here, so `since: {since}` skipped them.\n",
+                    since + 1,
+                    read.first_seq - 1,
+                ));
+                out.push_str(&earlier(read));
+            }
+            // and every other answer that matched, for the reason the summary gives: `kinds`
+            // over a resumed log counts only what happened since the resume
+            _ => out.push_str(&apart(earlier(read))),
         }
         out.push_str(&self.inherited(kernel, read));
         out.push('\n');
@@ -588,6 +594,14 @@ fn earlier(read: &Read) -> String {
             "This log starts at record {}, so earlier ones were drained and may have said.",
             read.first_seq
         ),
+    }
+}
+
+/// A sentence on a line of its own, or nothing where there is no sentence.
+fn apart(sentence: String) -> String {
+    match sentence.is_empty() {
+        true => sentence,
+        false => format!("\n{sentence}\n"),
     }
 }
 

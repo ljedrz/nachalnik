@@ -812,6 +812,44 @@ async fn a_resumed_log_says_it_was_resumed_rather_than_drained_where_it_matters(
     );
 }
 
+/// And so do the answers that found something, because a count of them reads as the whole session.
+///
+/// note: found live. A resumed session asked how many tool calls there had been, read the summary
+/// and a `kinds` filter, and was told neither that the log begins at the resume - both counted
+/// only what had happened since - so it had nothing to say but a guess.
+#[tokio::test]
+async fn a_resumed_log_says_so_in_its_summary_and_in_what_it_found() {
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::memory("scratch", "a note from before"));
+    let kernel = Kernel::resume(Config::default(), first.snapshot());
+    let resumed = kernel.history()[0].seq;
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![
+        call("c1", "log", json!({ "action": "read" })),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["session.resumed"] }),
+        ),
+    ]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(
+        &Subject::Capability(kamchatka::tools::domains::log("read")),
+        Verdict::Allow,
+    );
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    kernel.push(ContextItem::user("how many tool calls have there been?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    for answer in answers_from(&kernel, &["log"]) {
+        assert!(
+            answer.contains(&format!("begins at record {resumed}")),
+            "{answer}"
+        );
+    }
+}
+
 /// The two causes stay two, and the drained one still says it.
 ///
 /// note: the other half of the test above, because a fix that made every log starting above 1 say
