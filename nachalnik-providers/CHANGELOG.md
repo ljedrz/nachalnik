@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A switch to Google's compatible endpoint asks for its native listing once.** Where the
+  conventional listing says nothing, the context limit and the names both fall back to the native
+  one a path up, and each fetched it for itself, so every `set_model` and `set_endpoint` there
+  sent the same request twice. It is read once per switch now.
+
 ## [0.6.2] - 2026-09-28
 
 ### fixed
