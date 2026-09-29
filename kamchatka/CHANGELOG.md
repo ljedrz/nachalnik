@@ -46,6 +46,10 @@ minor bump may break you.
 
 ### changed
 
+- **A call whose `action` is `true` or `false` is refused in the words every refusal uses.** It
+  said the `action` was "a truth value", where every other refusal naming a value's kind says
+  `` `true` or `false` ``.
+
 - **`setup` says a long tool result is truncated, as everything else does.** Its sentence about the
   output limit said the result "is cut", where the marker in the result, the archived copy's note
   and `/help` all say truncated.

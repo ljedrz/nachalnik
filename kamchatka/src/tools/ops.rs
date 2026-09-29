@@ -504,17 +504,13 @@ fn held(given: &Value, args: Option<&Value>) -> String {
     // written in some other syntax arrives as - is said to be what it is: "holds `action` and no
     // `action`" is the one reading of it that cannot be acted on
     let what = match args.and_then(|args| args.get("action")) {
-        Some(Value::Object(_)) => "an object",
-        Some(Value::Array(_)) => "a list",
-        Some(Value::Number(_)) => "a number",
-        Some(Value::Bool(_)) => "a truth value",
-        Some(Value::Null) => "null",
         Some(Value::String(_)) | None => {
             return match keys.is_empty() {
                 true => String::new(),
                 false => format!(" - {place} {} and no `action`", keys.join(", ")),
             };
         }
+        Some(other) => super::what(other),
     };
     format!(" - its `action` is {what} rather than the name of one")
 }
@@ -815,6 +811,16 @@ mod tests {
         )
         .expect("nor does a list of them");
         assert!(said.contains("its `action` is a list"), "{said}");
+        // in the words every other refusal names a value's kind in
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": true } })))
+            .expect("nor does a yes");
+        assert!(
+            said.contains(&format!(
+                "its `action` is {}",
+                super::super::what(&json!(true))
+            )),
+            "{said}"
+        );
 
         let said = unnamed_operation(
             &spec,
