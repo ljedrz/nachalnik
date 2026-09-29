@@ -19,8 +19,8 @@
 //! decided, so without this a model could read the verdict and never the law.
 
 use nachalnik::{
-    BoxError, Capability, Kernel, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, Verdict,
-    async_trait,
+    BoxError, Capability, ContextId, Event, Kernel, OutputSink, Tool, ToolCall, ToolOutput,
+    ToolSpec, Verdict, async_trait,
 };
 use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
@@ -188,8 +188,63 @@ fn model(kernel: &Kernel) -> String {
                  session.\n"
             .to_owned(),
     });
+    // note: and a switch inside the session, which is the same blindness with nothing to announce
+    // it. After `/model`, the turns the other model wrote read in the first person like the rest,
+    // and a model told the conversation started here took every one of them for its own
+    if let Some(info) = kernel.model_info() {
+        for (model, items) in written_by_others(kernel, &info.model) {
+            out.push_str(&format!(
+                "not every turn here that reads as yours is: `{model}` wrote {}, before the \
+                 model was switched.\n",
+                match items.as_slice() {
+                    [one] => format!("item {one}"),
+                    many => format!(
+                        "items {}",
+                        many.iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                }
+            ));
+        }
+    }
 
     out
+}
+
+/// The answers still in the context that a model other than `current` wrote, by model.
+///
+/// note: read off the record, which names the model each request went to and the item its answer
+/// became - and taken out of it before the context is asked which items are still there, so that
+/// no lock is held across the two.
+fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<ContextId>> {
+    let answered: Vec<(String, ContextId)> = kernel.with_history(|session| {
+        let mut asked = None;
+        let mut answered = Vec::new();
+        for record in session.records() {
+            match &record.event {
+                Event::ModelRequested { model, .. } => asked = Some(model.model.clone()),
+                Event::ModelFinished { item, .. } => {
+                    if let Some(model) = asked.take() {
+                        answered.push((model, *item));
+                    }
+                }
+                Event::ModelFailed { .. } => asked = None,
+                _ => {}
+            }
+        }
+        answered
+    });
+
+    let mut by = BTreeMap::<String, Vec<ContextId>>::new();
+    for (model, item) in answered {
+        if model != current && kernel.item(item).is_some() {
+            by.entry(model).or_default().push(item);
+        }
+    }
+
+    by
 }
 
 /// Every tool on offer, what it declares, and how much of any one answer you are shown.
