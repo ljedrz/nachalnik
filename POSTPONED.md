@@ -415,6 +415,16 @@ Referenced from [AGENTS.md](AGENTS.md).
   who is better served by a quick failure than a long wait. Whether a 502 or 503 is worth one more
   try is the decision.
 
+- **A stop while the advisor rates a command waits for the rating.** `Advised::evaluate` asks
+  `jev` inside the permission policy, which the kernel awaits while preparing the calls and which
+  does not read the interrupt, and `Jev::send` makes up to four attempts of `PATIENCE` each with a
+  plain sleep between them. A `ctrl+c` then does nothing visible for as long as the service takes
+  to answer or time out - two minutes at worst - and is honoured once the ask returns, before any
+  call runs; the question still comes. Stopping sooner needs a way to cancel on `SystemOne::ask`,
+  which is published API in `nachalnik-providers`, or the policy racing the kernel's interrupt
+  through a weak handle the way the introspection tools reach it. Whether two minutes is worth
+  either is the decision.
+
 - **A stream silent before its headers is sent again.** A streamed request that has heard nothing
   for `PATIENCE` is retried up to `RETRIES` times, on the reading that a server which took the
   connection and went quiet is busy - and it is for a whole answer, whose headers come with its last
