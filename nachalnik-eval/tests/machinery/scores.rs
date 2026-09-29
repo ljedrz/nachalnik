@@ -163,6 +163,21 @@ fn a_claim_cut_off_before_it_answered_is_counted_beside_the_untested_ones() {
     assert!(!rendered.contains("never answered"), "{rendered}");
 }
 
+/// A confidence gap says which way it runs: over for a subject sure and wrong, under for one
+/// unsure and right.
+#[test]
+fn a_confidence_gap_says_which_way_it_runs() {
+    let surer = Scores::over(&[resolution(false, 0.9)]);
+    assert_eq!(surer.overconfidence, Some(0.9));
+    let said = surer.to_string();
+    assert!(said.contains(", over by 90 points"), "{said}");
+
+    let less_sure = Scores::over(&[resolution(true, 0.1)]);
+    assert_eq!(less_sure.overconfidence, Some(-0.9));
+    let said = less_sure.to_string();
+    assert!(said.contains(", under by 90 points"), "{said}");
+}
+
 #[test]
 fn nothing_measured_says_so_rather_than_scoring_zero() {
     let scores = Scores::over(&[]);
