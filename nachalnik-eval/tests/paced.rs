@@ -19,10 +19,10 @@ use std::{
 };
 
 use nachalnik::{
-    BoxError, Config, Content, DeltaSink, Kernel, ModelInfo, ModelRequest, ModelResponse, Provider,
-    StopReason, Usage, async_trait,
+    BoxError, Config, Content, DeltaSink, Kernel, Message, ModelInfo, ModelRequest, ModelResponse,
+    Params, Provider, Role, StopReason, Usage, async_trait,
 };
-use nachalnik_eval::{Pace, Subject, evaluate, evaluate_with, suite};
+use nachalnik_eval::{Governor, Pace, Paced, Permits, Subject, evaluate, evaluate_with, suite};
 
 /// A provider that answers nothing in particular and remembers how many were in flight at once.
 struct Counting {
@@ -228,6 +228,76 @@ async fn the_window_is_shared_rather_than_one_each() {
     );
 }
 
+// ---------------------------------------------------------------------------------- the knobs
+
+/// A ceiling with no rate on it says so, and a rate with a zero allowance is no rate.
+#[test]
+fn a_pace_says_what_it_was_told() {
+    let plain = Pace::at_once(3);
+    assert_eq!(plain.width(), 3);
+    assert_eq!(plain.rate(), None, "a ceiling alone is not a rate");
+
+    // sixty seconds is what `per_minute` means, and it is the whole of what it adds to `per`
+    let per_minute = Pace::at_once(3).per_minute(20);
+    assert_eq!(per_minute.rate(), Some((20, Duration::from_secs(60))));
+
+    // zero is a limit on nothing, which is the same as no limit at all
+    assert_eq!(Pace::at_once(3).per(0, Duration::from_secs(5)).rate(), None);
+}
+
+// ------------------------------------------------------------------------------- the spacing
+
+/// A lull does not buy back room the window has not given back.
+///
+/// note: a run is a uniform queue of work, so the oldest request ages out of the window at the
+/// moment the spacing is satisfied and the two limits cannot be told apart. Traffic that stops is
+/// what separates them: after a lull the spacing is met long before the window empties. The
+/// allowance does not divide the window, or the two would coincide there too.
+#[tokio::test(start_paused = true)]
+async fn a_lull_does_not_buy_back_room_the_window_has_not_given_back() {
+    let window = Duration::from_secs(600);
+    let allowed = 7;
+    let lull = window / allowed as u32;
+
+    let inner = Arc::new(Spaced {
+        at: std::sync::Mutex::new(Vec::new()),
+    });
+    let paced = Governor::new(Pace::at_once(8).per(allowed, window)).over(inner.clone());
+    for _ in 0..allowed {
+        paced
+            .respond(plain_request(), DeltaSink::disconnected())
+            .await
+            .expect("the wrapped provider answered");
+    }
+    tokio::time::sleep(lull).await;
+    paced
+        .respond(plain_request(), DeltaSink::disconnected())
+        .await
+        .expect("the wrapped provider answered");
+
+    // the one after the allowance waits for the first to leave the window, and no longer
+    let at = inner.at.lock().unwrap().clone();
+    let span = at[allowed].duration_since(at[0]);
+    assert!(
+        span >= window,
+        "{span:?} after the first: a lull is not room"
+    );
+    assert!(
+        span < window + lull,
+        "{span:?} after the first: the window had emptied"
+    );
+}
+
+/// A request with nothing in it, for the tests that are about when it goes rather than what it
+/// says.
+fn plain_request() -> ModelRequest {
+    ModelRequest {
+        messages: vec![Message::new(Role::User, "when may the next one go?")],
+        tools: Vec::new(),
+        params: Params::new(),
+    }
+}
+
 /// Records when each request was admitted, so the *shape* of the traffic can be asserted on and
 /// not just its total.
 struct Spaced {
@@ -294,4 +364,18 @@ async fn a_rate_is_a_pace_rather_than_a_quota_spent_at_once() {
         "two requests went {tightest:?} apart, under the {spacing:?} a rate of {allowed} per \
          {window:?} spaces them by"
     );
+}
+
+// --------------------------------------------------------------------------------- the wrapper
+
+/// A wrapped provider prints how much of its ceiling is left.
+#[tokio::test]
+async fn a_wrapped_provider_says_how_much_of_its_ceiling_is_left() {
+    let permits = Arc::new(Permits::new(2));
+    let provider = Paced::new(Arc::new(Counting::new()), permits.clone());
+    assert!(format!("{provider:?}").contains("free: 2"), "{provider:?}");
+
+    let held = permits.acquire().await;
+    assert!(format!("{provider:?}").contains("free: 1"), "{provider:?}");
+    drop(held);
 }
