@@ -382,7 +382,7 @@ A parameter named after something the request is built from — `messages`, `too
 `contents` or `systemInstruction` under `--gemini` — is refused. Those are the context's, the
 tools' and the session's, and neither dialect lets a parameter replace them.
 
-## 📏 the number in the status line is a guess, and says which kind
+## 📏 the number in the status line is an estimate, and says which kind
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
 it is written `~2,460` for that reason. The percentage beside it names the total it is a

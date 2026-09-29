@@ -1,5 +1,5 @@
-//! A terminal agent for Linux, built on [`nachalnik`], and a demonstration of what that runtime is
-//! for.
+//! A terminal agent for Linux, built on [`nachalnik`]: the context, the budget and every decision
+//! on screen, and a shell the kernel confines.
 //!
 //! Four tabs, each of which gets the whole window, because each of them is a whole view.
 //! **chat** is the conversation, and every other agent in the terminal has one. **context** is
@@ -51,9 +51,9 @@
 //! elided and excluded like any other turn, and sent back the same way. Both dialects answer one
 //! trait ([`nachalnik_providers::Endpoint`]), so nothing above them knows which one it got.
 //!
-//! Everything in here is user code: the tools, the policy, the compactor and the rendering, and
-//! the providers next door in [`nachalnik_providers`]. The kernel supplies the state machine, the
-//! context and the paper trail.
+//! Everything in here is code above the runtime: the tools, the policy, the compactor, the
+//! confinement and the rendering, and the providers next door in [`nachalnik_providers`]. The
+//! kernel supplies the state machine, the context and the paper trail.
 //!
 //! It is a library because the screen has to be testable, and because the screen is not the
 //! program. `ui::draw` against a `TestBackend` is how the tests check that an excluded item really

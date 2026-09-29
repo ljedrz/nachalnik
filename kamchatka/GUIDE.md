@@ -415,9 +415,10 @@ advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>.
 
 The line along the bottom opens with the shell, because it is the one thing on this tab that is not
 negotiable. A registered `shell` that is not refused can read, write and reach the network whatever
-the other rows say — so `shell: confined` (or `shell: a command can do any of these`) is what makes
-the rest of the table mean anything. After it comes `network gated` or `network not gated`: whether
-a command is asked about when it opens a socket, or read off its name before it runs.
+the other rows say — so `shell: confined` (or `partly confined`, or `a command can do any of these`)
+is what makes the rest of the table mean anything. After it comes `network gated` or `network not
+gated`: whether a command is asked about when it opens a socket, or read off its name before it
+runs.
 
 Four kinds of row, and the first two are one thing at two depths. A **domain** is what a tool acts
 in — `fs`, `exec`, `context` — and answering for one answers for everything done in it, which is

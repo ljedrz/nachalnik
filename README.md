@@ -83,7 +83,7 @@ describes, which is what an append-only log of typed events is for.
 | crate | what it is |
 | --- | --- |
 | **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. |
-| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, and the demonstration that the seams hold up under one. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only; 0.15.1 is the last version that builds elsewhere. |
+| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only; 0.15.1 is the last version that builds elsewhere. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
 | **[`nachalnik-providers`](nachalnik-providers)** | the two dialects — OpenAI chat-completions and Google's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
@@ -164,12 +164,13 @@ stays current.
 
 ---
 
-### 🚧 status
+### 📌 status
 
-Early, but complete for what the runtime claims to cover: the state machine, the context model,
-permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
-planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
-Those belong on top of it, and that is what the rest of the workspace is for.
+Complete for what the runtime claims to cover — the state machine, the context model, permissions,
+the event stream, sessions, and projection — with every invariant it states held by a test.
+Deliberately **not** included, and not planned for the core: MCP, subagents, an editor protocol, a
+daemon, a CLI, or a prompt library. Those belong on top of it, and that is what the rest of the
+workspace is for.
 
 The crates follow [semver](https://semver.org/), and API breakage is to be expected before `1.0`.
 

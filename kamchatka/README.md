@@ -6,10 +6,10 @@
 
 **A terminal agent for Linux that gives you full control of the context.**
 
-Built on [`nachalnik`][nachalnik], and built to demonstrate it. Everything in here is
-ordinary user code — the tools, the permission policy, the compactor, the drawing, and the two
+Built on [`nachalnik`][nachalnik], and everything that makes it an agent is its own: the tools, the
+permission policy, the compactor, the confinement, the served sessions, the drawing, and the two
 providers next door in [`nachalnik-providers`][providers]. The runtime supplies the state machine,
-the context and the paper trail.
+the context and the paper trail, and none of this needed a change to it.
 
 It builds for Linux, on x86_64 and aarch64, and nothing else: its shell is worth handing a model
 because Landlock confines it and a seccomp filter holds every attempt it makes to reach the network
@@ -140,8 +140,8 @@ Where the model answers with a call — a `shell` running `wc -l`, say — the s
 `ready` and says which calls were decided and that none of them has run. The command is decided,
 permitted, and not running. From here you can read it, prune the context
 it would have run against, drop it, or `/step` again to run it. A whole turn walks through this
-state without ever drawing it, which is why every other agent's "approve this command?" is the
-only checkpoint it has. Here the checkpoint is the state machine's own.
+state without ever drawing it, so an "approve this command?" prompt is a checkpoint put in front of
+the loop; here the checkpoint is a state the loop itself stands in.
 
 `/step` again for each transition — the tool runs, then the next request goes — or `/continue` for
 the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
