@@ -53,11 +53,11 @@ them, with no kernel built, and what does not add up said rather than repaired.
 
 `headless.rs` is the other loop: a line of stdin where the terminal has a key, the session log on
 stdout and what a person reads on stderr. `remote/` is the *third* loop, and a client for it:
-`protocol.rs` is the wire, `server/` is a session with a socket in front of it - one client's side
-of the conversation in `connection.rs` - and `client.rs` is `--connect`. `server::Serving` is the
-half of that loop which is not a loop - the voice, the questions and the bookkeeping - because the
-drawn loop in `main.rs` can serve as well, and a session driven from a desk and a phone at once is
-one `App` with two things selecting on it.
+`protocol/` is the wire, framed in `frames.rs`, `server/` is a session with a socket in front of it
+(one client's side of the conversation in `connection.rs`) and `client.rs` is `--connect`.
+`server::Serving` is the half of that loop which is not a loop - the voice, the questions and the
+bookkeeping - because the drawn loop in `main.rs` can serve as well, and a session driven from a
+desk and a phone at once is one `App` with two things selecting on it.
 
 `help.rs` is the key listing and the selector listing: `/help` and `/exclude` print them, and the
 `context` tool hands the selector listing to a model. `config.rs` is `Settings`: the JSON
