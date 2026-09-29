@@ -14,7 +14,7 @@ use kamchatka::{
     tools::{Limits, Subject},
 };
 use nachalnik::{
-    Capability, Config, ContextItem, Domain, ModelResponse, Verdict,
+    Capability, ContextItem, Domain, ModelResponse, Verdict,
     test::{ConstTool, call},
 };
 use ratatui::style::Color;
@@ -147,13 +147,10 @@ async fn saying_always_stops_the_question_being_asked_again() {
 
 #[tokio::test]
 async fn dropping_the_pending_calls_tells_the_model_rather_than_losing_them() {
-    let mut harness = Harness::configured(
-        [ModelResponse::tool_calls(vec![
-            call("c1", "danger", json!({})),
-            call("c2", "danger", json!({})),
-        ])],
-        Config::default(),
-    );
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![
+        call("c1", "danger", json!({})),
+        call("c2", "danger", json!({})),
+    ])]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
@@ -834,15 +831,12 @@ async fn pick(harness: &mut Harness, subject: &Subject) {
 
 #[tokio::test]
 async fn changing_a_permission_changes_what_happens_next() {
-    let mut harness = Harness::configured(
-        [
-            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
-            ModelResponse::text("as you wish"),
-            ModelResponse::tool_calls(vec![call("c2", "rm", json!({}))]),
-            ModelResponse::text("done"),
-        ],
-        Config::default(),
-    );
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+        ModelResponse::text("as you wish"),
+        ModelResponse::tool_calls(vec![call("c2", "rm", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
@@ -895,13 +889,10 @@ async fn changing_a_permission_changes_what_happens_next() {
 
 #[tokio::test]
 async fn a_capability_can_be_refused_outright_rather_than_asked_about() {
-    let mut harness = Harness::configured(
-        [
-            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
-            ModelResponse::text("fine, I will not"),
-        ],
-        Config::default(),
-    );
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+        ModelResponse::text("fine, I will not"),
+    ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
@@ -974,14 +965,11 @@ async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
 
 #[tokio::test]
 async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
-    let mut harness = Harness::configured(
-        [ModelResponse::tool_calls(vec![call(
-            "c1",
-            "danger",
-            json!({}),
-        )])],
-        Config::default(),
-    );
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "danger",
+        json!({}),
+    )])]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
@@ -1010,13 +998,10 @@ async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
 
 #[tokio::test]
 async fn dropping_the_calls_hands_the_turn_back_to_the_model() {
-    let mut harness = Harness::configured(
-        [
-            ModelResponse::tool_calls(vec![call("c1", "danger", json!({}))]),
-            ModelResponse::text("all right, something else then"),
-        ],
-        Config::default(),
-    );
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "danger", json!({}))]),
+        ModelResponse::text("all right, something else then"),
+    ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("danger", "ran").with_capabilities([Capability::exec("run")]),
     ));
@@ -1627,14 +1612,11 @@ async fn a_call_refused_once_at_the_prompt_says_so_rather_than_naming_a_rule() {
 /// already know what item 2 was, from a screen they could no longer see.
 #[tokio::test]
 async fn the_question_about_a_change_says_which_items_it_would_change() {
-    let mut harness = Harness::configured(
-        [ModelResponse::tool_calls(vec![call(
-            "c1",
-            "context",
-            json!({ "action": "elide", "ids": [2], "reason": "it has served its purpose" }),
-        )])],
-        Config::default(),
-    );
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "elide", "ids": [2], "reason": "it has served its purpose" }),
+    )])]);
     let _offered = kamchatka::introspect::install(
         &harness.app.kernel,
         harness.app.policy.clone(),
@@ -1672,18 +1654,15 @@ async fn the_question_about_a_change_says_which_items_it_would_change() {
 /// A selector is the argument most worth expanding, because nobody can count it off the screen.
 #[tokio::test]
 async fn the_question_expands_a_selector_into_the_items_it_matches() {
-    let mut harness = Harness::configured(
-        [ModelResponse::tool_calls(vec![call(
-            "c1",
-            "context",
-            json!({
-                "action": "elide",
-                "select": "all:files",
-                "reason": "the reads are done with",
-            }),
-        )])],
-        Config::default(),
-    );
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "context",
+        json!({
+            "action": "elide",
+            "select": "all:files",
+            "reason": "the reads are done with",
+        }),
+    )])]);
     let _offered = kamchatka::introspect::install(
         &harness.app.kernel,
         harness.app.policy.clone(),
@@ -1898,13 +1877,10 @@ async fn a_network_grant_for_one_call_is_in_the_record() {
 /// and wrote the standing rule that answers every one like it, and `ctrl+y` allowed it once.
 #[tokio::test]
 async fn a_chord_at_a_question_is_not_the_letter_it_carries() {
-    let mut harness = Harness::configured(
-        [
-            ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
-            ModelResponse::text("as you wish"),
-        ],
-        Config::default(),
-    );
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))]),
+        ModelResponse::text("as you wish"),
+    ]);
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
     ));
