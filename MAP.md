@@ -14,7 +14,8 @@ from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 | `kernel/request.rs` | private: building a request, sending it, and repairing the call identifiers it came back with. |
 | `kernel/calls.rs` | private: asking the policy about a model's tool calls, running them, recording what they produced. |
 | `context.rs` | `Context`, `ContextItem`, `ContextId`, `ContextKind`, `ContextState`, undo/redo. |
-| `model.rs` | `Provider`, `Content`, `Blob`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `TooLong`/`Overrun`, `Params`. |
+| `model/mod.rs` | `Provider`, `Message`, `ModelRequest`/`Response`, `ToolCall`, `Usage`, `TooLong`/`Overrun`, `Params`. |
+| `model/content.rs` | `Content`, `Blob`, `Part`, `Block` - what a message is made of. |
 | `projection.rs` | `Projector`, `LinearProjector`, `Projection`, `Skipped` - context to wire messages. |
 | `tool.rs` | `Tool`, `ToolSpec`, `ToolOutput`. |
 | `permissions.rs` | `PermissionPolicy`, `Capability`, `Verdict`, `Grant`, `AskAlways`. |
