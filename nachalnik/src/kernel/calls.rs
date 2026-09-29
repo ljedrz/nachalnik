@@ -12,7 +12,7 @@ use std::{
 };
 
 use crate::{
-    context::{ContextId, ContextItem, ContextState},
+    context::{ContextId, ContextItem, ContextState, WHOLE_OUTPUT},
     error::Result,
     event::{Event, OutputSink},
     model::ToolCall,
@@ -284,8 +284,7 @@ impl Kernel {
             // true the moment somebody activates it. The `because` is the half that does not:
             // this item is the whole of an output that was shortened, whatever state it ends up in
             item.note = Some("the whole output; the model was shown a truncated copy".to_owned());
-            item.included_because =
-                Some("the whole of a tool output an output limit shortened".to_owned());
+            item.included_because = Some(WHOLE_OUTPUT.to_owned());
 
             // the pair is one thing that happened, so it goes into the batch first
             self.add_in(item, batch)

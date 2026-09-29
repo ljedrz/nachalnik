@@ -801,6 +801,61 @@ async fn a_result_that_pairs_with_no_call_is_named_and_an_unanswered_call_is_not
     );
 }
 
+/// The whole of a shortened output is the kernel's own second answer to its call, and a snapshot
+/// holding one has nothing wrong with it - in whatever state the pair is left.
+///
+/// note: `/load` archives everything that was in the context, the shown copy with the rest, which
+/// is the shape that first surfaced this. A second answer that is not the kernel's is still named.
+#[tokio::test]
+async fn the_whole_of_a_shortened_output_is_not_a_second_answer() {
+    let (kernel, _) = permissive([
+        ModelResponse {
+            content: Some("reading".into()),
+            reasoning: None,
+            tool_calls: vec![call("c1", "big", json!({}))],
+            stop: StopReason::ToolUse,
+            usage: None,
+            raw: None,
+        },
+        ModelResponse::text("done"),
+    ]);
+    kernel.add_tool(Arc::new(
+        ConstTool::new("big", "x".repeat(1_000)).with_output_limit(100),
+    ));
+    kernel.push(ContextItem::user("read it"));
+    kernel.turn().await.unwrap();
+
+    let snapshot = kernel.snapshot();
+    let results: Vec<_> = snapshot
+        .items
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .collect();
+    assert_eq!(results.len(), 2, "the whole and the shortened copy");
+    assert!(snapshot.problems().is_empty(), "{:?}", snapshot.problems());
+
+    let ids: Vec<_> = results.iter().map(|item| item.id).collect();
+    kernel.set_state(ids, ContextState::Archived, None);
+    let archived = kernel.snapshot();
+    assert!(archived.problems().is_empty(), "{:?}", archived.problems());
+
+    let mut twice = snapshot.clone();
+    let shown = twice
+        .items
+        .iter()
+        .rposition(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .unwrap();
+    let mut again = twice.items[shown].clone();
+    again.id = nachalnik::ContextId(twice.next_item);
+    twice.next_item += 1;
+    twice.items.push(again);
+    let problems = twice.problems();
+    assert!(
+        problems.iter().any(|it| it.contains("a second time")),
+        "{problems:?}"
+    );
+}
+
 /// A snapshot says the format it is written in, and one from a later format is named.
 #[test]
 fn a_snapshot_from_a_later_format_is_named() {

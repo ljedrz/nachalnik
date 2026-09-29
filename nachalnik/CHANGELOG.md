@@ -20,9 +20,10 @@ minor bump may break you.
   failing the whole log. A known tag that is missing fields is still an error, because that log is
   wrong rather than newer. The kernel never emits it.
 - **`Snapshot::problems` names a call and a result that do not pair**: a result answering a call
-  that no earlier item makes, and a second result for the same call. The kernel records neither.
-  A call with no result is not named, because a snapshot taken while the call ran holds one. It
-  also names a snapshot written in a later format.
+  that no earlier item makes, and a second result for the same call. The kernel records neither,
+  except the whole of an output an output limit shortened, which it keeps beside the copy it shows
+  and which is not named. A call with no result is not named, because a snapshot taken while the
+  call ran holds one. It also names a snapshot written in a later format.
 - **`tests/records/` holds one fixture of every event and one snapshot, per format.** The tests
   there check that every past format still reads, that the current fixtures are exactly what this
   version writes, and that every event has a fixture. Those files are the schema someone other
