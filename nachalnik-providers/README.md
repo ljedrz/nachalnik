@@ -32,8 +32,9 @@ lines, written once.
 
 Both answer `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
 program around it asks: where the requests are going, which model is being asked, what this
-endpoint serves, and what the last retry was about. So one `Arc<dyn Endpoint>` holds either, and
-nothing above it finds out which it got.
+endpoint serves, and what the last retry was about. `Dialect` is the two together, so one
+`Arc<dyn Dialect>` holds either, for the kernel and the program alike, and nothing above it finds
+out which it got.
 
 The second dialect is the one worth having for its own sake. Gemini answers with the parts of a
 turn *in the order they were produced* — a thought, a sentence, a call, more thinking — and an

@@ -235,7 +235,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 
   So it wants abridging rather than naming, and that is the decision. A tool result already reaches
   a projection as its first lines, and a file or a note as one line naming it, but a message is
-  `Line::text` whole, and clipping one changes what every client is handed - the browser, the
+  a `Line`'s `text` whole, and clipping one changes what every client is handed - the browser, the
   gateway and `--connect` alike. `Message::Item` is already *the whole of what one
   context item says*, fetched on demand, so there is somewhere for the rest to live and the shape
   of the answer is not in doubt. What is in doubt is the number: a cap per line has to leave an
