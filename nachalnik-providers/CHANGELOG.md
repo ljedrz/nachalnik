@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal quoting a page keeps words that the markup reading used to drop.** A tag whose
+  name only started with `style` or `script`, such as `<stylesheet-error>`, had everything up to
+  a matching close skipped as if it were a stylesheet, and a `<` that was not a tag, as in
+  `retry in <60s`, took the rest of the body with it. Both now leave the words where they are.
+
 - **A streamed summary of the thinking is kept when its words were already said.** A summary was
   passed over when its text appeared anywhere in the reasoning held so far, so one repeating a
   phrase of the streamed thinking, or of a longer summary before it, was dropped from the turn. A
