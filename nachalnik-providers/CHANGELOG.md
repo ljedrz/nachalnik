@@ -7,6 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **An OpenRouter `:batch` model is asked through the Batch API.** Chat completions refuses one
+  with a 404, so `OpenAiCompatible` sends a request for one to `/batches` as a batch of one
+  instead, looks at it with a wait that doubles from two seconds to half a minute, and answers
+  with the result it holds, carrying the batch's usage where the result has none. A busy server
+  is waited out on every request, and an interrupt stops the waiting and not the batch, which
+  cannot be cancelled and is billed if it completes. `render` returns the batch's body, so a
+  preview is still what goes out. On any other host a `:batch` suffix is part of a model's name.
+
 ### fixed
 
 - **A token count from a listing no longer wraps on a 32-bit target.** A context window or output
