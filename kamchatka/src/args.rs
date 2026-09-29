@@ -428,7 +428,9 @@ impl Args {
             // `--print-config` writes every key, so the file this program hands out to be edited
             // carries `on-ask: deny` - which is the default, changes nothing, and refusing every
             // `--serve` over it would break the very file the documentation tells a reader to
-            // write. A file saying `allow` is somebody's decision, and that is refused
+            // write. A file saying `allow` is somebody's decision, and that is refused. Compared
+            // as the value is parsed, without regard to case, or `Deny` would be read as the
+            // default and refused as something else
             let unserved = [
                 ("deadline", settings.deadline.is_some()),
                 (
@@ -436,7 +438,7 @@ impl Args {
                     settings
                         .on_ask
                         .as_deref()
-                        .is_some_and(|asked| asked != "deny"),
+                        .is_some_and(|asked| !asked.eq_ignore_ascii_case("deny")),
                 ),
             ]
             .into_iter()

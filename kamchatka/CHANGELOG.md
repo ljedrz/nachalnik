@@ -55,6 +55,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--serve` beside a settings file saying `on-ask: Deny` serves.** The value is read without
+  regard to case, and the check that lets the default through beside `--serve` compared it
+  exactly, so `Deny` was refused as if it said `allow`.
+
 - **A served session says a line was replaced only when one was.** With a line waiting for a
   turn to end, any client's command, or a line said into a session that had gone idle, was
   announced to every client as having replaced the waiting one, which was still there. The
