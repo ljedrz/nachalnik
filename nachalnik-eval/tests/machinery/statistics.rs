@@ -227,6 +227,42 @@ fn dossiers_that_behave_alike_are_charged_nothing_for_being_dossiers() {
     assert_eq!(scores.clustered, scores.interval);
 }
 
+/// The spread between dossiers is corrected by `c / (c - 1)` for `c` dossiers.
+///
+/// note: three of them, because at two the correction is two and a factor that is always two
+/// cannot be told from one written as a constant.
+#[test]
+fn the_between_dossier_spread_is_corrected_for_the_number_of_dossiers() {
+    let mut claims = Vec::new();
+    for (material, right) in [("depot", 3), ("orchard", 1), ("kiln", 0)] {
+        for (index, note) in ["a", "b", "c"].into_iter().enumerate() {
+            let correct = index < right;
+            claims.push(
+                Resolution::new(
+                    Kind::Counterfactual,
+                    Answer::yes(true),
+                    Answer::yes(correct),
+                )
+                .at_stage("reported")
+                .on_material(material)
+                .about_note(note),
+            );
+        }
+    }
+    let scores = Scores::over(&claims);
+
+    assert_eq!((scores.n, scores.correct, scores.clusters), (9, 4, 3));
+    // four of nine is `4/9`, so the dossiers sit 5/3, -1/3 and -4/3 from it: the sum of squares
+    // is 42/9. The estimator divides that by `3 / 2` and by nine squared, and compares it with
+    // the binomial `(4/9)(5/9) / 9` = 20/729: (1.5 * 42/9 / 81) / (20/729) = 63/20
+    assert_eq!(scores.design, Some(3.15));
+    // nine claims on an effective sample of 9 / 3.15 = 20/7, against the nine of the naive one
+    let paid = scores.clustered.expect("three materials can be adjusted");
+    let naive = scores.interval.expect("nine claims have an interval");
+    assert_eq!((naive.low, naive.high), (0.188_779, 0.733_349));
+    assert_eq!((paid.low, paid.high), (0.098_663, 0.853_945));
+}
+
 #[test]
 fn claims_that_do_not_say_where_they_came_from_are_not_adjusted() {
     let claims = vec![
