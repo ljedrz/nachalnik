@@ -202,7 +202,8 @@ impl<'a> Headless<'a> {
         let mut cleared = app.cleared();
         // what wakes the loop for a running command's question, which is no event of the kernel's
         let mut reaching = app.policy.reaching().subscribe();
-        // whether it has said that messages are being passed over for want of a ceiling to spend
+        // whether it has said that messages are being passed over, for want of a ceiling to spend
+        // or of room in a request
         let mut passing = false;
 
         // note: an async block rather than the loop alone, so that every way out of it - a
@@ -233,8 +234,8 @@ impl<'a> Headless<'a> {
                 }
                 self.flush(app, &mut written)?;
                 self.echo(app, &mut said, &mut cleared)?;
-                // a stop the ceiling made is said once, and a later one is a new stop
-                if !app.overspent() {
+                // a stop is said once, and a later one is a new stop
+                if !app.overspent() && !app.oversized() {
                     passing = false;
                 }
                 // a session that is not going to be given anything else to do, and is not doing
@@ -265,13 +266,28 @@ impl<'a> Headless<'a> {
                         // but only once it is in the context, where it would go out unasked with
                         // whatever turn the script paid for next - so it is passed over here, and said
                         // to be once rather than a refusal a line for the rest of a script
-                        Ok(Some((line, _))) if app.overspent() && !line.trim().starts_with('/') => {
+                        //
+                        // note: and a session whose last turn was refused for a request longer than
+                        // the model takes, while the next one would be too, for the same reason: a
+                        // message cannot go out, and kept in the context it makes the request it
+                        // could not get into longer still. The way back is a command here as well -
+                        // `/exclude`, `/limit` - so those are still read
+                        Ok(Some((line, _)))
+                            if (app.overspent() || app.oversized())
+                                && !line.trim().starts_with('/') =>
+                        {
                             if !std::mem::replace(&mut passing, true) {
                                 app.say(
                                     Speaker::Note,
-                                    "the ceiling is reached, so the messages after this point are \
-                                     passed over unsent; commands are still read, and `/spend N` \
-                                     raises it",
+                                    match app.overspent() {
+                                        true => "the ceiling is reached, so the messages after \
+                                                 this point are passed over unsent; commands are \
+                                                 still read, and `/spend N` raises it",
+                                        false => "the next request is still longer than the model \
+                                                  takes, so the messages after this point are \
+                                                  passed over unsent; commands are still read, \
+                                                  and `/budget` says how much has to go",
+                                    },
                                 );
                             }
                         }

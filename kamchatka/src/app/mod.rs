@@ -656,6 +656,9 @@ pub struct App {
     charged: u64,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
+    /// Whether the last turn was refused for a request longer than the model takes, until another
+    /// one starts.
+    oversized: bool,
     /// Whether it has already said that the endpoint reports no figures to add up.
     ///
     /// note: a property of the endpoint rather than news about a turn, like `thought_unseen` above
@@ -786,6 +789,7 @@ impl App {
             spent: 0,
             charged,
             overspent: false,
+            oversized: false,
             unreported: false,
             saved_into: BTreeMap::new(),
         }
@@ -823,6 +827,7 @@ impl App {
         // session before the question, and a resume from one would lose the question
         self.keep_record();
         self.busy = true;
+        self.oversized = false;
         self.since = Instant::now();
         self.stepping = stepping;
         self.interrupting = false;
@@ -1490,6 +1495,20 @@ impl App {
     /// for the caller that would rather stop reading than be told `no` once a line.
     pub fn overspent(&self) -> bool {
         self.overspent
+    }
+
+    /// Whether the last turn was refused for a request longer than the model takes, and the next
+    /// one would be too.
+    ///
+    /// note: both halves. The refusal alone stays true after `/exclude` or `/limit` has made room,
+    /// and the size alone is true before the compactor has had its go - which runs before every
+    /// request and may bring it under. A refusal that still stands is the one a message cannot get
+    /// past.
+    pub fn oversized(&self) -> bool {
+        self.oversized && {
+            let budget = self.kernel.budget();
+            budget.limit.is_some_and(|limit| budget.used() > limit)
+        }
     }
 
     /// Whether a turn is being asked for after the session has spent what it was given, and says
