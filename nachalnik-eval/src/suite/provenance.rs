@@ -51,7 +51,7 @@ pub struct Errand {
     ///
     /// note: a field rather than a sentence in a doc comment, because it is the one property of
     /// this material that the experiment cannot do without and
-    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery.rs` is what holds a new
+    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery/` is what holds a new
     /// errand to it. An answer that could have been given without the result is an answer whose
     /// support nothing was measuring.
     pub quotes: &'static str,
@@ -61,7 +61,7 @@ impl Errand {
     /// What it was called with; an empty object where the material does not parse.
     ///
     /// note: no panic on a malformed constant, and no silent default either -
-    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery.rs` parses every constant,
+    /// `an_errand_answers_out_of_its_own_result` in `tests/machinery/` parses every constant,
     /// which is what makes the fallback unreachable and is where a claim about a static wants to
     /// be tested.
     pub fn args(&self) -> serde_json::Value {

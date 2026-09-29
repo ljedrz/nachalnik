@@ -155,7 +155,7 @@ pub trait Experiment: Send + Sync {
     /// template missing from here is missing from the digest, and the digest tests would catch
     /// it. Declared separately because a question's *text* decides what a subject needs in order
     /// to answer it, and that is checkable before a run rather than after - see
-    /// `a_question_that_needs_an_address_comes_with_a_way_to_look` in `tests/machinery.rs`.
+    /// `a_question_that_needs_an_address_comes_with_a_way_to_look` in `tests/machinery/`.
     fn asks(&self) -> &'static [&'static str] {
         &[]
     }

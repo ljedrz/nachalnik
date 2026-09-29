@@ -283,7 +283,7 @@ in which the subject already answered, every claim is elicited before any copy i
 baseline beside it.
 
 `Instrument` is the part to be careful with. Every `Outcome` carries a stated version and an
-FNV-1a digest over every sentence the experiment says, and `tests/machinery.rs` pins all nine. If
+FNV-1a digest over every sentence the experiment says, and `tests/machinery/` pins all nine. If
 that test fails, a question changed and every run recorded before the change measured something
 else. Adding a template nothing existing reads is safe and leaves the other digests alone; editing
 one is not.
