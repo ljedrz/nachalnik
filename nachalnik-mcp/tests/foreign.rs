@@ -285,14 +285,22 @@ async fn a_server_that_dies_before_the_handshake_says_why() {
              echo 'ModuleNotFoundError: no module named mcp' >&2; exit 1",
     );
 
-    let refused = match Server::spawn("broken", command).await {
+    let e = match Server::spawn("broken", command).await {
         Ok(_) => panic!("nothing answered the handshake"),
-        Err(e) => e.to_string(),
+        Err(e) => e,
     };
+    let refused = e.to_string();
 
     // the reason is rarely one line, and the line that names it is rarely the first
     assert!(refused.contains("Traceback"), "{refused}");
     assert!(refused.contains("no module named mcp"), "{refused}");
+    // and it rides beside the failure rather than in its place: the handshake's own error is
+    // still under it, for a caller that walks the chain
+    let said = std::error::Error::source(&e).expect("what it said");
+    assert!(
+        said.source().is_some(),
+        "the handshake's failure is under it"
+    );
 }
 
 /// What a server writes to standard error without ending a line is kept to a line's worth.

@@ -123,7 +123,10 @@ impl Server {
                     .unwrap_or_default();
                 Err(Error::Connect(match tail.is_empty() {
                     true => e,
-                    false => format!("{e}; it said:\n{}", tail.join("\n")).into(),
+                    false => Box::new(Said {
+                        under: e,
+                        tail: tail.join("\n"),
+                    }),
                 }))
             }
             Err(e) => Err(e),
@@ -346,6 +349,31 @@ const LAST_WORDS: std::time::Duration = std::time::Duration::from_millis(500);
 /// How much of one line of a server's standard error is kept.
 #[cfg(feature = "child-process")]
 const LINE: usize = 1024;
+
+/// A failed handshake with what the server said on its way out.
+///
+/// note: a type rather than the two joined into a string, so that the failure underneath is still
+/// [`Error::source`](std::error::Error::source) - the promise [`Error`] makes of both its kinds.
+#[cfg(feature = "child-process")]
+#[derive(Debug)]
+struct Said {
+    under: Box<dyn std::error::Error + Send + Sync>,
+    tail: String,
+}
+
+#[cfg(feature = "child-process")]
+impl std::fmt::Display for Said {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}; it said:\n{}", self.under, self.tail)
+    }
+}
+
+#[cfg(feature = "child-process")]
+impl std::error::Error for Said {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&*self.under)
+    }
+}
 
 /// Reads a spawned server's standard error to its end, keeping the start of each of the last
 /// [`KEPT`] lines.

@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A server that fails the handshake and says why keeps the failure underneath.** What it wrote
+  to standard error was joined to the handshake's error as one string, so `Error::source` reached
+  a string with nothing under it, where both kinds of `Error` promise the failure underneath. The
+  message reads as before, and the handshake's own error is its source.
+
 - **A resource with no text is named by the type it was read with.** `Server::resources` gave
   the media type from the server's listing, so a resource listed without one and read as a
   picture was "no media type given", where a part beside some text already said what the part
