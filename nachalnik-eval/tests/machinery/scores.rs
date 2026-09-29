@@ -28,6 +28,22 @@ fn accuracy_is_reported_beside_what_guessing_would_score() {
     assert_eq!(scores.accuracy, 0.75);
     assert_eq!(scores.majority, 0.75);
     assert_eq!(scores.skill, Some(0.0));
+
+    // and where there *was* room above the baseline, the room is the whole of the denominator:
+    // two of the four outcomes were `yes` and two `no`, so always saying yes scores 0.5, and
+    // three of four is half of what was left to take
+    let claims = vec![
+        resolution(true, 0.9),
+        Resolution::new(Kind::Counterfactual, Answer::yes(false), Answer::yes(false)),
+        resolution(true, 0.9),
+        // said yes where the answer was no: the one it got wrong, and the reason the majority
+        // answer is a no
+        Resolution::new(Kind::Counterfactual, Answer::yes(true), Answer::yes(false)),
+    ];
+    let scores = Scores::over(&claims);
+
+    assert_eq!((scores.accuracy, scores.majority), (0.75, 0.5));
+    assert_eq!(scores.skill, Some(0.5));
 }
 
 #[test]
@@ -54,6 +70,29 @@ fn the_brier_score_and_the_bins_are_the_hand_computed_ones() {
     assert_eq!(occupied.len(), 1);
     assert_eq!(occupied[0].n, 4);
     assert_eq!(occupied[0].accuracy, 0.5);
+}
+
+/// Every confidence falls in exactly one band: an edge opens the band above it, and certainty is
+/// in the top one.
+#[test]
+fn a_band_ends_where_the_next_one_begins_and_the_top_band_is_closed() {
+    let claims = vec![
+        resolution(true, 0.4),
+        resolution(true, 0.9),
+        resolution(true, 1.0),
+    ];
+    let scores = Scores::over(&claims);
+
+    let occupancy: Vec<_> = scores
+        .bins
+        .iter()
+        .enumerate()
+        .filter(|(_, bin)| bin.n > 0)
+        .map(|(index, bin)| (index, bin.n))
+        .collect();
+    assert_eq!(occupancy, vec![(2, 1), (4, 2)]);
+    let in_bands: usize = scores.bins.iter().map(|bin| bin.n).sum();
+    assert_eq!(in_bands, scores.scored);
 }
 
 #[test]
