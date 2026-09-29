@@ -343,6 +343,7 @@ async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
         );
     }
     std::os::unix::fs::symlink(dir.join("pipe"), dir.join("to-pipe")).expect("a link to it");
+    std::os::unix::fs::symlink(dir.join("src"), dir.join("to-src")).expect("a link to a directory");
 
     for (action, args) in [
         ("grep", json!({ "pattern": "Kernel" })),
@@ -350,7 +351,8 @@ async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
     ] {
         let said = ask(&dir, action, args.clone()).await;
         // the two pipes and the link to one; a directory is what the walk descends into, and
-        // is not a path it passed over
+        // is not a path it passed over, and neither is a link to one, whose files the walk
+        // reaches by their own names
         assert!(
             said.contains("skipped: 3 path(s) that are not files"),
             "{action} {args}: {said}"
