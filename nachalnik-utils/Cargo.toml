@@ -4,7 +4,7 @@ version = "0.0.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-# Never published. It exists so that `nachalnik`'s examples and the two live suites read the
+# Never published. It exists so that `nachalnik`'s examples and the live suites read the
 # environment the same way; it is not API, it makes no promises, and the version stays 0.0.0 so
 # that nothing can come to depend on it by accident.
 publish = false
