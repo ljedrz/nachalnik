@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **An advisor that could not be reached says why.** A question `system1` could not send failed
+  with the transport's own line, which names the URL and nothing else, so a refused connection
+  or a name that did not resolve read as `error sending request for url (...)`. It now carries the
+  causes under that line, as a turn in either dialect already does.
+
 - **`Endpoint::host` stops at a query or a fragment, not only at a path.** A base URL with no path
   and a query, such as `https://example.com?key=...`, came back with the whole query, so a key
   passed that way was drawn wherever the host is shown, and the host read as another one where it

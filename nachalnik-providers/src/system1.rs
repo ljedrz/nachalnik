@@ -752,7 +752,9 @@ impl Jev {
                     waited *= 2;
                     continue;
                 }
-                Err(e) => return Err(e.into()),
+                // with its causes, for the reason `waiting::with_causes` gives: the error's own
+                // line names the URL, and the part somebody can act on is under it
+                Err(e) => return Err(crate::waiting::with_causes(&e).into()),
             };
 
             let status = response.status();
@@ -1338,6 +1340,22 @@ mod tests {
         ] {
             assert!(said.contains(part), "{said} should say {part}");
         }
+    }
+
+    /// A question that could not be sent says why, and not only where it was going.
+    #[tokio::test]
+    async fn a_question_nobody_could_take_says_why() {
+        install_crypto();
+        let jev = Jev::new("jev-latest", "http://127.0.0.1:1", "k");
+        let asked = vec![("q".to_owned(), Question::noul("Is this fine?"))];
+
+        let said = jev
+            .ask(json!({"tool": "shell"}), asked)
+            .await
+            .expect_err("nothing listens there")
+            .to_string();
+
+        assert!(said.to_lowercase().contains("refused"), "{said}");
     }
 
     /// A model named through [`Endpoint::set_model`] is the one asked from then on.
