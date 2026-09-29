@@ -124,6 +124,8 @@ impl ServerHandler for Bench {
             Resource::new("file:///notes.md", "notes"),
             logo,
             Resource::new("file:///poster.md", "poster"),
+            // listed with no media type, and read with one
+            Resource::new("file:///badge.png", "badge"),
         ]))
     }
 
@@ -145,7 +147,7 @@ impl ServerHandler for Bench {
             .into());
         }
         let contents = match request.uri.ends_with(".png") {
-            true => ResourceContents::blob("iVBORw0KGgo=", request.uri),
+            true => ResourceContents::blob("iVBORw0KGgo=", request.uri).with_mime_type("image/png"),
             false => ResourceContents::text("remember the milk", request.uri),
         };
 
@@ -561,7 +563,7 @@ async fn resources_arrive_as_items_to_push_or_not() {
 
     let items = server.resources().await.unwrap();
 
-    assert_eq!(items.len(), 3);
+    assert_eq!(items.len(), 4);
     assert_eq!(items[0].label, "file:///notes.md");
     assert_eq!(items[0].source, "mcp");
     assert_eq!(items[0].content.to_text(), "remember the milk");
@@ -583,6 +585,12 @@ async fn resources_arrive_as_items_to_push_or_not() {
     assert_eq!(
         items[2].content.to_text(),
         "a caption\n[a part with no text (image/png), not carried into the context]"
+    );
+
+    // and a blob is named by the type it was read with, when the listing gave none
+    assert_eq!(
+        items[3].content.to_text(),
+        "[a resource with no text (image/png), not carried into the context]"
     );
 
     // and nothing was pushed anywhere: a server offering documents is not an argument
