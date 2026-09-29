@@ -55,6 +55,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A call whose arguments were not JSON is refused as that.** Where the permission policy
+  refused it, having no operation to judge it by, the refusal said the call "names no operation",
+  and a model whose arguments had stopped at `{"call":` read that as being about something else and
+  sent the same call again. The refusal now says the arguments were not JSON, shows what arrived,
+  and asks for the call again as one JSON object.
+
 - **A link to a directory is not counted by `grep` or `glob`.** A walk leaves one alone, since it
   reaches the files under it by their own names, and it was counted among the `path(s) that are
   not files` as if something had been withheld. A link to a pipe or a device still is.

@@ -445,8 +445,23 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         return None;
     }
 
+    // note: arguments that never parsed are said to be that, with what arrived. A policy that
+    // refuses the widened call is answered before the tool is handed it, so the tool's own sentence
+    // about them is never read, and "names no operation" beside `{"call":` - which does not look
+    // like a call naming nothing to whoever wrote it - was sent again unchanged, over and over
+    if let Some(written) = request.args.get(UNPARSED).and_then(Value::as_str) {
+        return Some(format!(
+            "the arguments were not JSON - what arrived was `{}` - so no operation could be read \
+             from them, and the call is judged against all {} `{}` has; send it again as one JSON \
+             object",
+            around(written, written.len(), SHOWN),
+            ops.len(),
+            spec.id
+        ));
+    }
+
     // the same reading the tool will do, so that a call this cannot place is one the tool could
-    // not place either. Arguments that never parsed are their own answer and are given it there
+    // not place either
     let args = inner(&request.args).ok();
     let named = args
         .as_ref()
@@ -806,7 +821,11 @@ mod tests {
             &asking(json!({ UNPARSED: "{\"call\": {\"action\"" })),
         )
         .expect("arguments that never parsed name nothing either");
-        assert!(said.contains("names no operation"), "{said}");
+        assert!(said.contains("not JSON"), "{said}");
+        assert!(
+            said.contains("`{\"call\": {\"action\"`"),
+            "and it says what arrived, which is the thing to fix: {said}"
+        );
 
         let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
             .expect("`fly` is not one of these");
