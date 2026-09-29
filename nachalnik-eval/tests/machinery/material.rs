@@ -2,8 +2,8 @@
 
 use nachalnik::{Config, ContextId, Kernel, ModelInfo};
 use nachalnik_eval::{
-    Answer, Cohort, Error, ErrorKind, Failure, Kind, Report, Resolution, Scores, Step, Subject,
-    Surface, per_model, suite,
+    Answer, Cohort, Error, ErrorKind, Experiment, Failure, Kind, Report, Resolution, Scores, Step,
+    Subject, Surface, per_model, suite,
     suite::dossier::{ALL as ALL_DOSSIERS, Expected, MILL},
     suite::{PLANTED, RIFTS},
 };
@@ -738,6 +738,43 @@ fn every_planted_falsehood_fits_the_dossier_it_was_written_for() {
              records rather than believed"
         );
     }
+}
+
+/// A disagreement is filed under the dossier it was put on, not the one the experiment started
+/// with.
+///
+/// note: both halves of the call, and separately, because a `Conflict` pointed at another
+/// dossier is a different experiment in every way a report can see - the notes planted, the
+/// question asked, the answer its copies are scored against, and the pair of names on the
+/// fingerprint that says which run the numbers came from.
+#[test]
+fn a_disagreement_is_named_for_the_dossier_it_was_given() {
+    let on = |dossier: &'static suite::Dossier, rift: &'static suite::Rift| {
+        suite::Conflict::new().on(dossier, rift).instrument()
+    };
+
+    let depot = on(&suite::DEPOT, &suite::ANNEX);
+    let orchard = on(&suite::ORCHARD, &suite::CREW);
+
+    assert_eq!(
+        depot.material,
+        vec!["depot".to_owned(), "omsk-return".to_owned()]
+    );
+    assert_eq!(
+        orchard.material,
+        vec!["orchard".to_owned(), "sosva-return".to_owned()]
+    );
+    assert_ne!(depot.digest, orchard.digest, "one run under two names");
+
+    // and the two arguments are not one: the same return read against a dossier it was not
+    // written for is a run a reader can tell from either
+    let mixed = on(&suite::ORCHARD, &suite::ANNEX);
+    assert_eq!(
+        mixed.material,
+        vec!["orchard".to_owned(), "omsk-return".to_owned()]
+    );
+    assert_ne!(mixed.digest, depot.digest);
+    assert_ne!(mixed.digest, orchard.digest);
 }
 
 #[test]

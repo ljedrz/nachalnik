@@ -22,6 +22,10 @@ use std::borrow::Cow;
 use serde_json::Value;
 
 /// One rule: what has to be true of a request, and what to answer when it is.
+///
+/// note: `Clone` so that a test can put a rule of its own in front of [`DEPOT_RULES`] and get the
+/// rest of the fixture behind it, rather than writing the whole book out again beside it.
+#[derive(Clone)]
 pub struct Rule {
     /// Substrings that must all appear in the last user message.
     pub asked: &'static [&'static str],
@@ -39,6 +43,10 @@ pub struct Rule {
 /// matters - the handles a subject is *given*. A model that never calls a tool is a model the
 /// instrumentation ladder cannot be checked against, and checking it against a real one costs
 /// money and settles nothing, because nobody knows what a real one was going to do.
+///
+/// note: `Clone` beside [`Rule`]'s, so that a test can put a rule of its own in front of
+/// [`DEPOT_RULES`] and have the rest of the fixture behind it.
+#[derive(Clone)]
 pub enum Say {
     /// These words, verbatim.
     Text(&'static str),
@@ -375,6 +383,26 @@ pub static DEPOT_RULES: &[Rule] = &[
 
 /// The rulebook's answer to anything it has no rule for.
 pub const FALLBACK: &str = "ANSWER: no\nCONFIDENCE: 60";
+
+/// A rulebook over the depot with the live session's own solve pinned to `answer`.
+///
+/// note: the copies still answer the question out of the notes as [`DEPOT_RULES`] has them - the
+/// rule says the request is not a copy's, which is the one thing that tells the two apart - so
+/// the control and the two ablated arms are the same runs in every case, and the only thing held
+/// is the answer the record is asked to file under a side of the disagreement.
+pub fn depot_answering(answer: &'static str) -> &'static [Rule] {
+    let mut rules = vec![Rule {
+        asked: &["runs out of pallet space first", "one of: kirov"],
+        carrying: &[],
+        without: &["You are a copy of this session"],
+        then: Say::Text(answer),
+    }];
+    rules.extend(DEPOT_RULES.iter().cloned());
+
+    // a rulebook lives as long as the test that made it, and a fixture that leaks one per test
+    // is simpler than one that caches by answer
+    Box::leak(rules.into_boxed_slice())
+}
 
 /// The note label a counterfactual question is about, where it names one.
 ///
