@@ -35,7 +35,7 @@ export KAMCHATKA_TEST_MODEL=<model>       # for kamchatka's live suite
 EOF
 )
 source $SWEEPS/key.env
-python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, quality.json, docs.json and compact.json
+python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, quality.json, docs.json, compact.json, maintain.json
 cargo build --release -p kamchatka        # sweeps run the release binary; rebuild before a batch
 ```
 
@@ -52,7 +52,10 @@ cargo build --release -p kamchatka        # sweeps run the release binary; rebui
 
 Scopes are in `scopes/`: `audit/` (correctness against INVARIANTS.md), `quality/` (performance and
 code quality), `tests/` (test code only), `docs/` (prose against the code it describes), `compact/`
-(what can go or be merged with nothing lost; run as `launch.sh compact c ...`). Each is
+(what can go or be merged with nothing lost; run as `launch.sh compact c ...`), `maintain/` (what
+makes the code or the prose harder to change than it needs to be - a file too large to read at
+once, logic patched over time, duplication that has drifted; run as `launch.sh maintain m ...`,
+and verify a proposed split by checking that the moved lines are the same lines). Each is
 one module or one concern, names its files and lists concrete failure classes - narrow scopes are
 what made the findings real.
 

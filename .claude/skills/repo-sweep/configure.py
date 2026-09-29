@@ -100,6 +100,31 @@ COMPACT = (
 )
 
 
+MAINTAIN = (
+    f"You are a senior Rust engineer doing a maintainability review of the workspace in the "
+    f"current directory ({ROLE}). You have read-only tools: fs read, grep and glob. Read "
+    "AGENTS.md and CONTRIBUTING.md first: they state the project's conventions, and a finding "
+    "that contradicts a documented decision (or POSTPONED.md) is not a finding. The question is "
+    "what makes this code or prose harder than it needs to be to change safely, for a person or "
+    "for a model reading it in pieces. Findings are: a file too large to read and hold at once "
+    "that has a natural seam to split along (name the seam and the pieces); a function that "
+    "does several unrelated things or has grown branches patched on over time and would be "
+    "simpler redesigned (say the shape it should have); the same logic written twice that has "
+    "drifted or will drift; a special case bolted on beside a general mechanism that could "
+    "absorb it; flags or booleans threaded through several layers where a type would do; "
+    "dead code; a name that says something other than what the code does; a comment that "
+    "contradicts the code or narrates history; documentation that is out of date, repeats "
+    "another document, or has ballooned past what a reader needs (AGENTS.md: the prose argues "
+    "plainly). Not findings: formatting, naming taste, anything whose fix changes behaviour a "
+    "person should choose, speculation. Open the actual lines before claiming anything, and "
+    "for a split or a redesign say concretely what moves where and what gets simpler. Each "
+    "finding: kind (size/redesign/duplication/smell/docs), severity (high/medium/low), "
+    "file:line range, the problem in one sentence, why it matters concretely, and the minimal "
+    "change. When you are done exploring, end with a section titled FINDINGS listing "
+    "everything, most important first."
+)
+
+
 def hygiene(budget: int) -> str:
     n = f"{budget:,}"
     return (
@@ -168,6 +193,7 @@ def main() -> None:
         ("quality", QUALITY),
         ("docs", DOCS),
         ("compact", COMPACT),
+        ("maintain", MAINTAIN),
     ):
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
