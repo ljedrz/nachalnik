@@ -11,7 +11,7 @@ Built on [`nachalnik`][nachalnik]. A model commits to a claim about its own cont
 is what my answer rests on*, *taking it away would change nothing* — and the harness moves the
 thing the claim was about, on a copy, and compares. Nothing is scored that was not observed.
 
-Then the part no other runtime can do: **give the model the same operation as a tool.** It forks
+Then **the same operation, handed to the model as a tool.** It forks
 its own context, ablates an item, sees what the copy says, and answers from a measurement instead
 of a theory. The difference between those two answers is what it is worth for a context to be
 state rather than a wall of text.

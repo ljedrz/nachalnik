@@ -172,9 +172,9 @@ unicode-segmentation = { version = "1.13", optional = true }
 unicode-width = { version = "0.2", optional = true }
 
 # the sandbox the `shell` tool runs under. Landlock is a Linux LSM a process applies to *itself* -
-# no privileges, no setuid helper, no container - which is what makes it small enough to belong in
-# a demonstration and strong enough that `network: deny` is refused by the kernel rather than by a
-# policy reading the word `curl`.
+# no privileges, no setuid helper, no container - which is what makes it light enough to ship in the
+# binary and strong enough that `network: deny` is refused by the kernel rather than by a policy
+# reading the word `curl`.
 #
 # note: under a target table although this crate builds for Linux and nothing else. Without one,
 # a build for any other target fails inside these crates before it reaches the `compile_error!` in

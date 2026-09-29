@@ -62,7 +62,8 @@
 //! - A policy that reads a command's text is a heuristic: it can make a refusal real for what was
 //!   written, not for a program that reaches the network some other way. Confinement that *can*
 //!   stop that belongs where the process is spawned - `kamchatka` puts its `shell` tool under
-//!   Landlock, which turns `network: deny` into a refused TCP `connect` syscall.
+//!   Landlock and a seccomp filter that holds every attempt to reach the network, so `network:
+//!   deny` is a refusal from the kernel rather than a rule about what a command was called.
 //! - Anything in the context is something the model reads, and it can carry instructions. What
 //!   this runtime offers against that is the policy - which nothing in a model's output reaches
 //!   except as a tool name and arguments - and a context you can see before the request goes.

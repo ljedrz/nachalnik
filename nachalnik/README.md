@@ -205,8 +205,9 @@ it goes missing.
 side effect in a session happens inside a `Tool` you wrote and registered. So there is nothing here
 to contain, and there will be no sandbox in this crate — containment belongs where the process is
 actually spawned, which is your tool or the program around it. ([`kamchatka`][kamchatka] is the one
-in this workspace that runs the commands a model asks for, so it is the one that confines them,
-with Landlock.)
+in this workspace that runs the commands a model asks for, so it is the one that confines them:
+Landlock for the filesystem, and a seccomp filter that holds every attempt to reach the network
+until somebody answers it.)
 
 What the runtime enforces is one thing: a call the `PermissionPolicy` refused is never handed to
 `Tool::invoke`, and the refusal is recorded as an event and as a tool result the model is told
@@ -342,7 +343,7 @@ being told what a real request cost.
 
 | crate | what it is |
 | --- | --- |
-| **[`kamchatka`][kamchatka]** | a terminal agent built on this — the thing you actually run, and the demonstration that the seams hold up under one. |
+| **[`kamchatka`][kamchatka]** | a terminal agent built on this, for Linux — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. |
 | **[`nachalnik-mcp`][nachalnik-mcp]** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection: the model commits to a claim about its own context, the harness moves the thing the claim was about on a forked copy, and the two are compared. |
 | **[`nachalnik-providers`][nachalnik-providers]** | the two dialects this workspace talks — OpenAI chat-completions and Google's `generateContent` — as `Provider`s, streamed, retried and interruptible. |
@@ -352,12 +353,12 @@ are real ones. See the [workspace readme][workspace].
 
 ---
 
-### 🚧 status
+### 📌 status
 
-Early, but complete for what it claims to cover: the state machine, the context model,
-permissions, the event stream, sessions, and projection. Deliberately **not** included, and not
-planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI, or a prompt library.
-Those belong on top of it, and that is what the rest of the workspace is for.
+Complete for what it claims to cover — the state machine, the context model, permissions, the event
+stream, sessions, and projection — with every invariant it states held by a test. Deliberately
+**not** included, and not planned for the core: MCP, subagents, an editor protocol, a daemon, a CLI,
+or a prompt library. Those belong on top of it, and that is what the rest of the workspace is for.
 
 The crate follows [semver](https://semver.org/), and API breakage is to be expected before `1.0`.
 
