@@ -2,8 +2,8 @@
 
 use nachalnik::{Config, ContextId, Kernel, StopReason};
 use nachalnik_eval::{
-    Act, Answer, Deference, Faced, Gain, Kind, Paired, Reached, Reading, Resolution, Scores, Spend,
-    Step, Subject,
+    Act, Answer, Deference, Depths, Faced, Gain, Kind, Paired, Reached, Reading, Resolution,
+    Scores, Spend, Step, Subject,
 };
 
 /// A comparison about one note of one dossier, at one stage.
@@ -585,4 +585,31 @@ fn a_battery_with_nothing_to_be_right_about_has_an_accuracy_and_no_skill() {
     assert_eq!(gain.before.majority, 1.0);
     assert_eq!(gain.accuracy(), 0.5);
     assert_eq!(gain.skill(), None);
+}
+
+/// A gain with nothing measured on one side of being told says there is no comparison.
+#[test]
+fn a_gain_nothing_was_measured_on_one_side_of_says_so() {
+    let claims = vec![
+        said(true, 0.9, true).informed(false),
+        said(true, 0.9, false).informed(false),
+    ];
+
+    let gain = Gain::over(&claims);
+
+    assert!(!gain.is_measurable());
+    assert!(gain.to_string().starts_with("no comparison: before "));
+}
+
+/// A curve of one depth, or of none, is not a recursive one.
+#[test]
+fn one_remove_of_self_reference_is_not_two() {
+    let claims = vec![at("reported", "depot", "a", true).at_depth(1)];
+
+    let depths = Depths::over(&claims);
+
+    assert_eq!(depths.0.len(), 1);
+    assert!(!depths.is_recursive());
+    assert_eq!(Depths::default().0.len(), 0);
+    assert!(!Depths::default().is_recursive());
 }
