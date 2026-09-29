@@ -713,6 +713,55 @@ mod tests {
         assert_eq!(inspect.remaining(), 1);
     }
 
+    /// A test spent is a test counted, in what the subject is told as well as in what the handle
+    /// says.
+    ///
+    /// note: the figure is in the output of every test, so a budget that always read `1` would
+    /// tell a subject with tests to spare that it has one left, and the next call would be made
+    /// when the handle was empty.
+    #[tokio::test]
+    async fn a_test_spent_is_one_the_subject_is_told_about() {
+        let kernel = Kernel::new(nachalnik::Config::default());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::text("kirov"),
+            ModelResponse::text("omsk"),
+        ])));
+        kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+        let origin = Arc::new(Origin::of(&Subject::new(kernel.clone())).expect("a provider"));
+        let anchor = Arc::new(kernel);
+        let inspect = Inspect::new(
+            &anchor,
+            origin,
+            Probe::new(
+                "which?",
+                Reading::Choice(vec!["kirov".to_owned(), "omsk".to_owned()]),
+            ),
+            [],
+            3,
+            Journal::default(),
+        );
+        assert_eq!(inspect.remaining(), 3);
+
+        let out = inspect
+            .invoke(
+                &call(
+                    "1",
+                    "inspect",
+                    json!({ "action": "test", "without": ["records/capacity"] }),
+                ),
+                OutputSink::disconnected(),
+            )
+            .await
+            .expect("two copies ran");
+        assert!(!out.is_error, "{}", out.content.to_text());
+        assert_eq!(inspect.remaining(), 2);
+        assert!(
+            out.content.to_text().contains("2 test(s) left"),
+            "{}",
+            out.content.to_text()
+        );
+    }
+
     /// An item named by its number as a JSON number is the item with that number.
     ///
     /// note: `look` shows numbers and the schema says an item may be named by one, so a model will
