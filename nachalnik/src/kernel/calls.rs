@@ -312,9 +312,10 @@ impl Kernel {
     ///
     /// note: the tool's id and not the capability's domain. For every multi-operation tool in this
     /// workspace the two are the same word, and the label comes out as the subject exactly. Where
-    /// they differ the tool's name is the one worth keeping: a tool called `shell` acting in
-    /// `exec` would be labelled `exec:run`, and every tool from an MCP server declares `mcp:call`,
-    /// so a context full of them would say `mcp:call` on every row and name none of them.
+    /// they differ the tool's name is the one worth keeping: labelled by its domain, a tool called
+    /// `shell` acting in `exec` would be `exec:run`, and every tool from an MCP server declares
+    /// `mcp:call`, so a context full of them would say `mcp:call` on every row and name none of
+    /// them.
     ///
     /// note: `None` for a tool that declares one operation, and for a call that named none of the
     /// ones it declares. A tool that does one thing is described by its own name, and appending the

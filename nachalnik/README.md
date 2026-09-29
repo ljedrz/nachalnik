@@ -283,7 +283,7 @@ Two that talk to a model:
   panelist states its position through a tool — so the ending is arithmetic rather than a vibe.
 
 ```console
-$ cargo run --example compare_models -- -m gemini-3.5-flash-lite -m gemini-3.5-flash \
+$ cargo run --example compare_models -- -m google/gemini-3.5-flash-lite -m google/gemini-3.5-flash \
     -s "answer in at most 40 words" "the biggest downside of Rust's orphan rule?"
 ```
 
