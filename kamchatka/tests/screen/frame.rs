@@ -676,3 +676,13 @@ async fn a_panel_that_fits_is_not_scrolled_on_a_narrow_terminal() {
         assert_eq!(Some(shown.as_str()), of, "{command}: {screen}");
     }
 }
+
+/// A panel opens on a window taller than a `u16` of rows times the share a panel may take.
+#[tokio::test]
+async fn a_panel_opens_on_a_very_tall_window() {
+    let mut harness = Harness::new([]);
+    harness.send("/seams").await;
+
+    let screen = harness.sized(80, 800);
+    assert!(screen.contains("any key closes"), "{screen}");
+}
