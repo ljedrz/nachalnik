@@ -235,8 +235,8 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
 - A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
   or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
   one failing test binary does not stop the suite.
-- A whole-workspace copy is about 3 GB. Put the copies on `/home` (`mutants.sh` does), not in a
-  temporary directory with a quota.
+- A whole-workspace copy is about 3 GB. Put the copies in the repository's `target/agents`
+  (`mutants.sh` does), not in a temporary directory with a quota.
 - **A mutant can spawn without end** and fill the user's process limit, and then this session
   cannot fork and dies. `systemd-run` is out of reach in the confinement, so `mutants.sh` caps the
   run with `ulimit -u`. A runaway then starves the rest of its own run instead, whose builds fail

@@ -4,7 +4,7 @@
 #   sweep.sh KIND NAME SCOPEFILE      KIND is audit, quality, tests, docs, compact or maintain
 #
 # Writes $SWEEPS/NAME.jsonl (the stream records) and $SWEEPS/NAME.err (the prose, ending in a line
-# `exit N`). Needs configure.py to have written $SWEEPS/audit.json, quality.json and docs.json, the
+# `exit N`). Needs configure.py to have written $SWEEPS/{audit,quality,docs,compact,maintain}.json, the
 # key in the environment (source $SWEEPS/key.env), and a release build of kamchatka. Model
 # parameters go in $SWEEPS/params.txt, one `KEY JSON` per line, sent as `/params` first.
 set -u

@@ -5,7 +5,7 @@
 #
 # The worktree is $SWEEPS/fr/wt-NAME, made from HEAD and removed afterwards; the session's
 # snapshot lands under $SWEEPS/fr/tmp/kamchatka, and the prose in $SWEEPS/fr/NAME.err ends in
-# `exit N`. Needs $SWEEPS/fr.json (friction_config.py writes it), the key in the environment and a
+# `exit N`. Needs $SWEEPS/fr.json (the snippet in SKILL.md writes it), the key in the environment and a
 # release build.
 set -u
 SWEEPS=${SWEEPS:-${TMPDIR:-/tmp}/sweeps}
