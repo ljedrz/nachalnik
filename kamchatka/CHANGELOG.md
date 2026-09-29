@@ -46,6 +46,11 @@ minor bump may break you.
 
 ### changed
 
+- **A list of items put inside an `item` is refused as that.** Some models write a list as an
+  object of one `item` key, as markup has it - `ids: {"item": ["4", "5"]}` - and `context` refused
+  it as not a list, or `select` as not a selector, without saying where the list had gone. Both
+  now name the wrapper and show the call as it should be, `ids: [4, 5]`.
+
 - **An `edit` with nothing to replace says how to add text.** A call with a `new` and no `old`
   was told only that `old` is required, and an empty `old` to give the text to replace. Both now
   say that `edit` replaces `old` with `new`, so adding text means putting a line it goes next to in
