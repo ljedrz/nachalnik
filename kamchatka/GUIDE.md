@@ -759,8 +759,8 @@ because an agent that cannot see the difference cannot tell a context it could s
 cannot.
 
 `search` is the one that reaches the archive. An archived item is kept in full and never sent, and
-reading one back copies it into the context, so without `search` a session that had put eleven
-megabytes away could not look at any of it without undoing the saving it had just made. That would
+reading one back copies it into the context, so without `search` a session that had put its largest
+outputs away could not look at any of them without undoing the saving it had just made. That would
 make the archive write-only from the agent's side, which is not what *nothing is destroyed* is
 supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
 item. A search answers with how many lines say the text, what taking them all would cost, and which
@@ -792,7 +792,7 @@ schema has to go out in has the keyword — so it is said in each argument's des
 where the call is read.
 
 `look` takes the same `select`, and that is the only way to resolve a selector without using it on
-something. It lists the items the class comes to, their cost against the request's, and which of
+something. It lists the items the class comes to, their cost against the context's, and which of
 them a move would refuse — the person's pins, a system instruction, the turn the model is speaking
 in — read off the same function the move consults, so a preview and the move it previews cannot
 disagree.

@@ -296,9 +296,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         ceiling it stops at; 0 takes the ceiling away
     /seams              what is plugged into each of the runtime's six parts
     /tools              what the model is offered, and what is turned off
-    /tools toggle ID    stop offering one of them, or offer it again. The one
-                        that reads this session's context and the one that
-                        changes it are tools like any other
+    /tools toggle ID    stop offering one of them, or offer it again.
+                        `context`, which reads and changes this session's
+                        context, is a tool like any other
     /limit              how much of a call's output the model is shown, by
                         subject, numbered, and the number is one the next
                         line takes
