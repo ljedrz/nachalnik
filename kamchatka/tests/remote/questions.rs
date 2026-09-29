@@ -66,7 +66,7 @@ async fn a_question_is_answered_from_a_client() {
 /// this cannot reach it: the outcome travels from the turn's own task to the loop, and a client's
 /// answer has a socket round trip to make first, so the outcome wins every time. Measured, by
 /// applying decisions on sight instead of guarding them: nothing here failed. The window is driven
-/// by hand in `headless.rs`, under
+/// by hand in `tests/headless/main.rs`, under
 /// `a_question_answered_inside_the_window_still_carries_the_turn_on`, and the guard lives in
 /// `App::on_outcome` where all three loops come through rather than in this one.
 ///

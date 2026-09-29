@@ -56,9 +56,9 @@ def result_for(method, params):
         return {"tools": TOOLS}
     if method == "tools/call":
         args = params.get("arguments") or {}
-        # a tool that will not stop, for the test about what a second `ctrl+c` is for. Nothing else
-        # in that workspace refuses to stop: a provider watches the interrupt while it waits, and a
-        # `shell` command is killed outright
+        # a tool that will not stop, for the test that a first `ctrl+c` stops a call anyway.
+        # Nothing else in that workspace refuses to stop: a provider watches the interrupt while it
+        # waits, and a `shell` command is killed outright
         if params.get("name") == "hang":
             time.sleep(600)
         if params.get("name") == "add":
