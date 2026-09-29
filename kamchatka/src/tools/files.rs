@@ -449,7 +449,7 @@ impl Write {
         _output: OutputSink,
     ) -> Result<ToolOutput, BoxError> {
         let (named, content) = (arg(args, "path")?, arg(args, "content")?);
-        if let Some(refusal) = dir(named, "written") {
+        if let Some(refusal) = dir(named, "written", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
         let path = match self.0.allows_under(named, Access::Writing, &self.1) {
@@ -479,20 +479,19 @@ impl Write {
 }
 
 /// Why a write found nowhere to put its file, naming the first directory on the way that is not
-/// there, or `None` where they all are.///
+/// there, or `None` where they all are.
+///
 /// note: the system says `No such file or directory` about the file, which is the one part of the
 /// path a write was never going to find, and nothing in it says `fs` makes no directories. What to
 /// do next depends on whether `shell` may run, since that is what makes one.
 fn unmade(path: &Path, policy: &Careful) -> Option<String> {
     let dir = path.parent()?;
     let missing = dir.ancestors().take_while(|it| !it.exists()).last()?;
-    let next = match policy.stance(&Subject::Capability(Capability::exec("run"))) {
-        Verdict::Deny => {
-            "`shell`, which makes directories, is refused in this session, so write it in a \
+    let next = match makes_directories(policy) {
+        false => "`shell`, which makes directories, is refused in this session, so write it in a \
              directory that is there, or say which one you need made."
-                .to_owned()
-        }
-        _ => format!(
+            .to_owned(),
+        true => format!(
             "Make it with `shell` - `mkdir -p {}` - and write again.",
             dir.display()
         ),
@@ -518,17 +517,27 @@ fn unmade(path: &Path, policy: &Careful) -> Option<String> {
 /// note: on a relative path, and only there. An absolute one names a directory that is there,
 /// which the open refuses by name; a name that is not a file - `.`, `..` - is one nobody ends a
 /// path with a separator after.
-fn dir(named: &str, doing: &str) -> Option<String> {
+///
+/// note: the directory is offered to `shell` only where `shell` may run, as [`unmade`] offers it.
+fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
     let without = named.trim_end_matches('/');
     if without.is_empty() || !named.ends_with('/') || std::path::Path::new(without).is_absolute() {
         return None;
     }
+    let or = match makes_directories(policy) {
+        true => format!(" - or make the directory with `shell` - `mkdir -p {named}`."),
+        false => "; `shell`, which makes directories, is refused in this session.".to_owned(),
+    };
 
     Some(format!(
         "`{named}` ends in a separator, so it is a directory, and a directory is not something to \
-         be {doing}. Say the file you mean - `{without}` - or make the directory with `shell` - \
-         `mkdir -p {named}`."
+         be {doing}. Say the file you mean - `{without}`{or}"
     ))
+}
+
+/// Whether a refusal may send the model to `shell` to make a directory `fs` will not.
+fn makes_directories(policy: &Careful) -> bool {
+    policy.stance(&Subject::Capability(Capability::exec("run"))) != Verdict::Deny
 }
 
 pub(super) struct Edit(
@@ -545,7 +554,7 @@ impl Edit {
     ) -> Result<ToolOutput, BoxError> {
         let (old, new) = (arg(args, "old")?, arg(args, "new")?);
         let named = arg(args, "path")?;
-        if let Some(refusal) = dir(named, "changed") {
+        if let Some(refusal) = dir(named, "changed", &self.1) {
             return Ok(ToolOutput::error(refusal));
         }
         let path = match self.0.allows_under(named, Access::Writing, &self.1) {
