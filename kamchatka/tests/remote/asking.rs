@@ -101,8 +101,8 @@ async fn a_command_answers_the_client_that_ran_it() {
 /// note: the contract every client has to honour, and the one that bit the browser first. A
 /// fragment is unnumbered and best-effort; the records are read out of the log and never dropped.
 /// So a connection that has fallen behind is caught up on *records* first - see the note in
-/// `server.rs` on why that order and not the other - and the fragments it was holding arrive after
-/// the `model.finished` they belong to, carrying it as `after`.
+/// `server/connection.rs` on why that order and not the other - and the fragments it was holding
+/// arrive after the `model.finished` they belong to, carrying it as `after`.
 ///
 /// note: what a client must do about it is drop them, because the item named by that record is now
 /// the authority on what was said. `kamchatka`'s terminal does it under the name
