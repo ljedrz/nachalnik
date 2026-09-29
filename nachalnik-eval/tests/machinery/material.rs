@@ -290,7 +290,7 @@ fn a_run_that_measured_nothing_never_displaces_one_that_did() {
     // and among reports that *did* measure, the newest still wins - the rule adds a precondition
     // to recency, it does not replace it
     let newer_good = report_of("x-ai/grok-4.6", 2_000, true);
-    let picked = per_model([(good, "old"), (newer_good, "newer")]);
+    let picked = per_model([(good.clone(), "old"), (newer_good.clone(), "newer")]);
     assert_eq!(picked[0].2, "newer");
 
     // one row per model, not one per report
@@ -300,6 +300,21 @@ fn a_run_that_measured_nothing_never_displaces_one_that_did() {
         (report_of("b/two", 1, true), "z"),
     ]);
     assert_eq!(two.len(), 2);
+
+    // recency is `at` and not the order the sweep handed the reports over in, so the newer of
+    // two measured runs stands whichever way round they arrive. Read as "the last one wins", the
+    // older run would be the one every cell was collected from
+    let picked = per_model([(newer_good, "newer"), (good, "old")]);
+    assert_eq!(picked[0].2, "newer");
+
+    // and two runs stamped alike are the one case `at` cannot separate, where the order the
+    // caller read them in is all there is: the first is kept
+    let picked = per_model([
+        (report_of("a/one", 5, true), "first"),
+        (report_of("a/one", 5, true), "second"),
+    ]);
+    assert_eq!(picked.len(), 1);
+    assert_eq!(picked[0].2, "first");
 }
 
 /// An outcome with one precondition met and one not, and a claim to read beside them.
