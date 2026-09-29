@@ -34,10 +34,12 @@ use crate::{
 /// [`Record::format`] carry.
 ///
 /// note: a number that moves when something already written would be read differently, and not
-/// when something is added: a new event, a new field with a `serde(default)` and a new state all
-/// leave it where it is, because a reader of this format reads them already - an event it does not
-/// know as [`Event::Unknown`], a field it does not know not at all. `0` is what a record or a
-/// snapshot written before formats were numbered reads as.
+/// when something is added: a new event and a new field with a `serde(default)` leave it where it
+/// is, because a reader of this format reads them already - an event it does not know as
+/// [`Event::Unknown`], a field it does not know not at all. A new
+/// [`ContextState`](crate::ContextState) is not one of those: it has no catch-all, so a reader that
+/// does not know it cannot read an item in it or a change to it, and adding one moves the number.
+/// `0` is what a record or a snapshot written before formats were numbered reads as.
 pub const FORMAT: u32 = 1;
 
 /// A single entry in a session's history.
