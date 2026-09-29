@@ -55,6 +55,13 @@ minor bump may break you.
 
 ### fixed
 
+- **Headless passes a message over when the request it would go in is too long to send.** Once a
+  turn was refused for a request longer than the model takes, every message a script sent after it
+  still went into the context, making the request longer each time, and all of them went out
+  together once something made room. While the refusal stands and the next request would be
+  refused too, messages are now passed over unsent and said to be once, as they are past a
+  `--spend` ceiling; commands are still read.
+
 - **`-r` numbers nothing again that the log past the snapshot numbered.** A run killed in the
   middle of a turn leaves its snapshot from when the turn began and its log running past it, and a
   session carried on from that snapshot numbered records, items, calls and permissions again from

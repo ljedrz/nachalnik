@@ -1001,6 +1001,54 @@ async fn a_ceiling_ends_the_run_once_the_bill_passes_it() {
     );
 }
 
+/// A session refused for a request longer than the model takes passes the next messages over
+/// until something makes room, and then sends again.
+///
+/// note: a message refused there still went into the context, where it made the request it could
+/// not get into longer, and every one a script sent after it went out together once there was
+/// room. The ceiling above passes messages over for the same reason.
+#[tokio::test]
+async fn a_message_that_cannot_fit_is_passed_over_until_there_is_room() {
+    let run = run(
+        "first\nsecond\nthird\n/exclude file:big.rs\nfourth\n",
+        vec![],
+        |app| {
+            app.kernel.set_provider(Arc::new(
+                ScriptedProvider::new(vec![ModelResponse::text("there is room now")]).with_info(
+                    ModelInfo {
+                        context_limit: Some(400),
+                        ..ModelInfo::new("scripted", "scripted")
+                    },
+                ),
+            ));
+            app.kernel
+                .push(ContextItem::file("big.rs", "x".repeat(4_000)).pinned());
+        },
+    )
+    .await;
+
+    let asked: Vec<String> = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        asked,
+        ["first", "fourth"],
+        "only the refused one and the one after the room was made"
+    );
+    assert_eq!(
+        run.prose.matches("passed over unsent").count(),
+        1,
+        "{}",
+        run.prose
+    );
+    assert!(run.prose.contains("there is room now"), "{}", run.prose);
+}
+
 /// The way back the stop names is a line, and a script that sends it is heard.
 ///
 /// note: the loop stopped reading at the ceiling, so the `/spend 0` the stop recommends - and

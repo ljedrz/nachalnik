@@ -478,6 +478,11 @@ the operator typed.
 `/compact` is also the way out of a session too big to send. The tool that prunes a context is the
 *model's* — `context` — and reaching it costs a request, which is the thing that is failing.
 
+Down a pipe, once a turn has been refused for this and while the next request would be too, the
+messages after it are passed over unsent, as they are past a `--spend` ceiling: kept, each would
+make the request it could not get into longer, and they would all go out together once there was
+room. Commands are still read, so an `/exclude` or a `/limit` in the script is the way on.
+
 ## 🧩 embedding it
 
 The program is a library with a loop on top, and both halves are yours. `wiring::Setup` assembles
