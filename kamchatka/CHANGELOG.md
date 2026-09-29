@@ -237,6 +237,10 @@ minor bump may break you.
   when it writes a selector that does not parse, and it now ends on its own `undo` instead of on a
   person's command and key.
 
+- **`/params KEY` with no value is refused.** It was read as `/params` and printed what was set,
+  as though it had done something. It now says the key needs a JSON value, that `null` takes it
+  away, and that `/params` alone lists them.
+
 - **`/spend 1` says `1 token`.** The two sentences that answer a new ceiling wrote its figure
   beside `tokens` whatever it was.
 

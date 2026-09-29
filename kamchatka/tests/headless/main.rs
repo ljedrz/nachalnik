@@ -1360,6 +1360,31 @@ async fn a_command_with_no_keys_names_no_key() {
     );
 }
 
+/// A parameter named without a value is refused, rather than answered with the list.
+///
+/// note: found live. `/params temperature` was read as `/params`, so it printed what was set as
+/// though it had done something, which reads as the parameter having been set or taken away.
+#[tokio::test]
+async fn a_parameter_named_without_a_value_is_refused() {
+    let run = run(
+        "/params temperature 0.2\n/params temperature\n",
+        vec![],
+        |_| {},
+    )
+    .await;
+
+    assert!(
+        run.prose
+            .contains("`/params temperature` needs a JSON value"),
+        "{}",
+        run.prose
+    );
+    assert_eq!(
+        run.app.kernel.params().get("temperature"),
+        Some(&json!(0.2))
+    );
+}
+
 /// `/compact` down a pipe is taken rather than left waiting for a key that is never coming.
 ///
 /// note: the opposite of what `--on-ask` does with a tool's question, and they are different

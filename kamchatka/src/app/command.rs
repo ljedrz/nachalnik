@@ -546,6 +546,20 @@ impl App {
                 }));
             }
             "params" => {
+                // a key alone is half a command, and taken as `/params` it listed the parameters
+                // as if it had done something - which reads as the key having been set, or taken
+                // away, depending on what was meant
+                let named = rest.trim();
+                if !named.is_empty() && !named.contains(char::is_whitespace) {
+                    self.say(
+                        Speaker::Error,
+                        format!(
+                            "`/params {named}` needs a JSON value after it; `/params {named} \
+                             null` takes it away, and `/params` on its own lists them"
+                        ),
+                    );
+                    return;
+                }
                 if let Some((key, value)) = rest.split_once(' ') {
                     let key = key.trim();
                     let value = match serde_json::from_str(value.trim()) {
