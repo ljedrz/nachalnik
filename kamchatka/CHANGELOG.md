@@ -231,6 +231,12 @@ minor bump may break you.
   here, and the model took the other model's turns for its own. It now names each other model
   and the items it wrote that are still in the context.
 
+- **The selector list ends on the way back its reader has.** `/exclude`, `/pin` or `/restore`
+  with nothing after it lists the selectors and closed on `/undo` "or one `u` on the context tab",
+  down a pipe too; it now names the key only where there are keys. The model is sent the same list
+  when it writes a selector that does not parse, and it now ends on its own `undo` instead of on a
+  person's command and key.
+
 - **`/spend 1` says `1 token`.** The two sentences that answer a new ceiling wrote its figure
   beside `tokens` whatever it was.
 

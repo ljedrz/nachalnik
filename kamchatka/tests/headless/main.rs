@@ -1333,19 +1333,21 @@ async fn help_with_no_keys_is_the_commands() {
 
 /// And what a command answers names the command for what a key would do, rather than the key.
 ///
-/// note: `/limit`, `/note`, `/copy` and `/request` each ended on a key of the context tab - the
-/// way back to an archived copy, a pin, a row to copy, an item to put back - down a pipe that has
-/// neither the tab nor the key. `/restore` and `/pin` are the same acts.
+/// note: `/limit`, `/note`, `/copy`, `/request` and a bare `/exclude` each ended on a key of the
+/// context tab - the way back to an archived copy, a pin, a row to copy, an item to put back, a
+/// change to undo - down a pipe that has neither the tab nor the key. `/restore`, `/pin` and
+/// `/undo` are the same acts.
 #[tokio::test]
 async fn a_command_with_no_keys_names_no_key() {
     let run = run(
-        "hello\n/limit\n/note\n/copy x\n/exclude all\n/request\n",
+        "hello\n/limit\n/note\n/copy x\n/exclude\n/exclude all\n/request\n",
         vec![ModelResponse::text("hi")],
         |_| {},
     )
     .await;
 
     assert!(!run.prose.contains("context tab"), "{}", run.prose);
+    assert!(run.prose.contains("`/undo` away"), "{}", run.prose);
     assert!(
         run.prose.contains("`/restore` with its number"),
         "{}",

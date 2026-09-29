@@ -331,6 +331,10 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
 /// note: Kept beside the help rather than derived from the crate, because `Selector` is a parser
 /// and a parser cannot tell you what it would have accepted. It lists the forms the type's own
 /// documentation does, and the tests check that a few of these really do parse.
+///
+/// note: the forms and nothing else. How a change is taken back is said by whoever shows this,
+/// since `/exclude` at a terminal, `/exclude` down a pipe and the model's own `context` each have
+/// a different way back.
 pub(crate) const SELECTORS: &str = "  17                      the item with that number
   all                     every item, whatever state it is in
 
@@ -349,7 +353,4 @@ pub(crate) const SELECTORS: &str = "  17                      the item with that
   tool:fs:latest          the most recent one; also: tool:fs:first
   tool_result:1842        the item numbered 1842, the same as `1842`
   label:cargo test        every item with exactly that label
-  src/parser.rs           anything else is taken as a label
-
-  What it matched is reported before anything is sent, and every change is one
-  `/undo` - or one `u` on the context tab - away from being undone.";
+  src/parser.rs           anything else is taken as a label";
