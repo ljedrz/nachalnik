@@ -1492,3 +1492,82 @@ async fn every_condition_gets_the_copies_it_was_asked_for() {
     );
     assert!(copies.iter().all(|copies| *copies == 3), "{copies:?}");
 }
+
+/// A model that answers every question it can, and says nothing once the planted side is out of
+/// the copy.
+///
+/// note: it is the rulebook the other tests use with the question's rules replaced rather than a
+/// new fixture, because the check is read off one question asked two ways: with the planted return
+/// out and with the disputed note out. Only the first of those is answered badly here - a fixture
+/// that lost the ability to answer whenever either side went would make both arms unreadable, and
+/// then the two guards on the check would not be separable.
+static SILENT_ON_A_SIDED_CONTEXT: &[Rule] = &[
+    // both sides in front of it, which is the control: it answers the side the disputed note is on
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &["handed over in March", "did not go ahead"],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+    // the disputed note gone and the planted return left: the notes support one answer still, and
+    // it picks that one rather than going quiet
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &["did not go ahead"],
+        without: &["handed over in March"],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    // the planted return gone. Nothing here contradicts anything, and the fixture declines rather
+    // than answering: the question is put as one of `kirov | omsk | tara`, and an answer with no
+    // `ANSWER:` tag on it reads as no answer at all, which is the case the check is about
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &["did not go ahead"],
+        then: Say::Text("Nothing left contradicts anything, and I will not guess a depot."),
+    },
+];
+
+/// A copy that answered nothing is not one side of a disagreement.
+///
+/// note: `None` differs from any answer, so without the guard a run with one silent arm would
+/// report two sides pulling the copies apart where a copy only declined to answer.
+#[tokio::test]
+async fn a_copy_that_answered_nothing_is_not_a_side_of_the_disagreement() {
+    let model = Arc::new(Rulebook::new(SILENT_ON_A_SIDED_CONTEXT, FALLBACK));
+    let subject = subject("subject", model);
+    let experiment = Conflict::new().replicates(1);
+    let trial = Trial::new(experiment.name(), &subject);
+    experiment
+        .run(&subject, &trial)
+        .await
+        .expect("a copy that would not answer does not stop the run");
+
+    // the control copies agreed, so what stopped the run was the arm and not the fixture
+    let check = trial
+        .checks()
+        .into_iter()
+        .find(|check| check.what == "the two sides pull the copies apart")
+        .expect("the experiment checks that the two sides pull the copies apart");
+    assert!(
+        !check.held,
+        "a run with one unreadable arm still called the two sides apart: {}",
+        check.detail
+    );
+    // exactly one of the two arms went silent, which is the case the check is about: with both
+    // silent the comparison still succeeds, so a fixture that took both out with it would not say
+    // which of the two `is_some()` guards the run needed
+    assert!(
+        check.detail.contains("nothing readable") && check.detail.contains("`omsk`"),
+        "the detail should name one answered side and one silent one: {}",
+        check.detail
+    );
+    assert!(
+        trial
+            .checks()
+            .iter()
+            .all(|check| check.held || check.what == "the two sides pull the copies apart"),
+        "a silent copy is only wrong here and nowhere else: {:?}",
+        trial.checks()
+    );
+}
