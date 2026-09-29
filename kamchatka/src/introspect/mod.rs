@@ -303,7 +303,8 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
             ids: selector.matches(items),
         }),
         Err(e) => Err(format!(
-            "`{input}` is not a selector: {e}\n\n{}",
+            "`{input}` is not a selector: {e}\n\n{}\n\n`undo` takes back any change one of \
+             these made.",
             crate::help::SELECTORS
         )),
     }

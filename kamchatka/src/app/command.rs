@@ -988,7 +988,15 @@ impl App {
         if input.is_empty() {
             self.preview(
                 format!("/{command} takes any of these"),
-                crate::help::SELECTORS,
+                format!(
+                    "{}\n\n  What it matched is reported before anything is sent, and every change \
+                     is one\n  `/undo`{} away from being undone.",
+                    crate::help::SELECTORS,
+                    match self.keys {
+                        true => " - or one `u` on the context tab -",
+                        false => "",
+                    }
+                ),
             );
             return;
         }

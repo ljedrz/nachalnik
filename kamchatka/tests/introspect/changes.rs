@@ -1337,6 +1337,9 @@ async fn a_class_of_items_can_be_pruned_without_naming_each_one() {
     assert!(answers[1].contains("is not a selector"), "{answers:?}");
     assert!(answers[1].contains("tool:fs:latest"), "{answers:?}");
     assert!(answers[1].contains("state:excluded"), "{answers:?}");
+    // and the way back it names is the model's own, not a person's command or key
+    assert!(answers[1].contains("`undo` takes back"), "{answers:?}");
+    assert!(!answers[1].contains("context tab"), "{answers:?}");
 }
 
 /// A call that says which items twice is refused, rather than half of it being done.
