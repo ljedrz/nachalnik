@@ -55,6 +55,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` keeps the last line of a command's output when it has no newline and came late.** A
+  line the command had started, then gone quiet on for longer than the tool's read waits, was
+  thrown away when the output ended, and nothing said bytes were missing. It is now kept, as a
+  last line without a newline is when it comes all at once.
+
 - **Headless passes a message over when the request it would go in is too long to send.** Once a
   turn was refused for a request longer than the model takes, every message a script sent after it
   still went into the context, making the request longer each time, and all of them went out

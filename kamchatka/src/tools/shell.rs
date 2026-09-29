@@ -553,7 +553,11 @@ impl Tool for Shell {
             let room = (KEPT + 1).saturating_sub(line.len()) as u64;
             let mut bounded = (&mut stdout).take(room);
             match tokio::time::timeout(HEARTBEAT, bounded.read_until(b'\n', &mut line)).await {
-                Ok(Ok(0)) => break,
+                // a line a timed-out read left in `line` is only ever finished here, by the end
+                Ok(Ok(0)) => {
+                    keep(&line, &mut collected, &output, &mut full, &mut dropped);
+                    break;
+                }
                 Ok(Ok(_)) => {
                     keep(&line, &mut collected, &output, &mut full, &mut dropped);
                     line.clear();
@@ -1204,6 +1208,19 @@ mod tests {
         assert!(said.starts_with("exit: 0"), "{said}");
         assert!(said.contains("started\nno newline"), "{said}");
         assert!(said.contains("standard output is still open"), "{said}");
+    }
+
+    /// The last line of the output is kept when it has no newline and the command was quiet
+    /// before it ended.
+    ///
+    /// note: a read that times out holds what it had for the next one, and the next one meets
+    /// the end of the output with nothing of its own to return.
+    #[tokio::test]
+    async fn an_unfinished_last_line_is_kept_after_a_quiet_moment() {
+        let said = ran("printf 'first\\nno newline'; sleep 0.5").await;
+
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("first\nno newline"), "{said}");
     }
 
     /// What a command reported is what its first line says, for every shape the tool writes.
