@@ -573,13 +573,14 @@ fn panel(
     // note: measured at the width the box will have, which is less than `columns` on a narrow
     // terminal - the borders and the padding take four of it, as `inner` below does
     let width = centred(frame.area(), columns, 0).width;
-    let wanted =
-        wrapped(&showing.body, width.saturating_sub(4) as usize, "").len() as u16 + 2 + strip;
-    let area = centred(
-        frame.area(),
-        columns,
-        wanted.min(frame.area().height * percent / 100),
-    );
+    let lines = wrapped(&showing.body, width.saturating_sub(4) as usize, "").len();
+    let wanted = u16::try_from(lines)
+        .unwrap_or(u16::MAX)
+        .saturating_add(2 + strip);
+    // in a wider type, because a window seven hundred rows tall is a `u16` times ninety that does
+    // not fit in one
+    let most = (u32::from(frame.area().height) * u32::from(percent) / 100) as u16;
+    let area = centred(frame.area(), columns, wanted.min(most));
     frame.render_widget(Clear, area);
 
     let block = Block::bordered()

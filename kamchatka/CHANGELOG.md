@@ -130,6 +130,11 @@ minor bump may break you.
   the terminal left, so on an eighty-column window `/seams` and `/help` came up short of their
   own lines and scrolled, with rows to spare. The box is measured at the width it is drawn at.
 
+- **A panel opens at its size on a window more than seven hundred rows tall.** The share of the
+  window a panel may take was worked out in a type that overflows there, so the box came out four
+  rows high - and a debug build panicked - and a body of more than sixty-five thousand rows was
+  sized as if it had a handful.
+
 ## [0.16.0] - 2026-09-28
 
 ### breaking
