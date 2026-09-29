@@ -439,15 +439,15 @@ Referenced from [AGENTS.md](AGENTS.md).
   It is kept now, as a stall or a cut-off is, stopped as `cut off` with the server's sentence as
   the notice; reverting that one commit in `nachalnik-providers` is the other choice.
 
-- **The fuzzing and soak harnesses are not in the repository.** What drove `kamchatka` headless
-  and served with a live model, mined the records for errors and checked them, and what soaked
-  `nachalnik-providers` against OpenRouter through a fault-injecting proxy, all live outside it.
-  Committed, a campaign could be run again after a change rather than rebuilt; the cost is a
-  key and hours of wall-clock time, and where they go is the decision. Python is not new here -
-  `kamchatka/contrib/`, two test servers and the `repo-sweep` skill under `.claude/skills/` are
-  Python, and that skill already drives `kamchatka --headless` against a live model and mines the
-  records - but `scripts/` is shell, and a campaign that finds errors rather than reviews code is
-  a different thing from the skill.
+- **The fuzzing harness and the provider soak are not in the repository.** What drove
+  `kamchatka` headless and served with a live model and mined the records for errors, and what
+  soaked `nachalnik-providers` against OpenRouter through a fault-injecting proxy, live outside
+  it. The soak of `kamchatka` itself is in: `.claude/skills/soak/` carries one session across
+  resumes, kills and a context wall and checks the chain of records it leaves. Committed, the
+  other two could be run again after a change rather than rebuilt; the cost is a key and hours of
+  wall-clock time, and where they go is the decision. Python is not new here - `kamchatka/contrib/`,
+  two test servers and both skills are Python - but `scripts/` is shell, and a campaign that finds
+  errors rather than reviews code is a different thing from the sweep.
 
 - **A command's background process outlives the session.** `sleep 300 &` in a `shell` call is in
   the command's own session, so it survives the call and the program's exit, reparented to init.
