@@ -240,6 +240,60 @@ fn the_endpoint_is_what_a_subject_reports_and_not_what_its_test_told_it() {
     assert_eq!(report.surface(), surface);
 }
 
+/// A second session's claims made before its handles arrive are reports, not answers from a
+/// grant the first session held.
+///
+/// note: a claim made with a test in reach is the tool's answer, and the endpoint leaves it out as
+/// `Reached` does; a grant carried across sessions would leave out the second's reports too.
+#[test]
+fn the_endpoint_reads_a_second_session_as_one_without_handles() {
+    let inert = |label: &str, claimed: bool, stage: Option<&str>| {
+        let claim = Resolution::new(
+            Kind::Counterfactual,
+            Answer::yes(claimed),
+            Answer::yes(false),
+        )
+        .on_material("depot")
+        .about_note(label);
+        Step::Resolved(match stage {
+            Some(stage) => claim.at_stage(stage),
+            None => claim,
+        })
+    };
+    let pass = || {
+        vec![
+            Step::Briefed { items: Vec::new() },
+            // asked with nothing to reach for: reports, one of each half
+            inert("records/capacity", true, Some("carrying")),
+            inert("records/office", true, Some("carrying")),
+            asked(Some("carrying")),
+            Step::Granted {
+                tools: vec!["inspect".to_owned()],
+                budget: 4,
+            },
+            asked(Some("retested")),
+            // asked with a test in reach: the tool's answer
+            inert("records/rail", true, Some("retested")),
+        ]
+    };
+    let steps: Vec<Step> = pass().into_iter().chain(pass()).collect();
+
+    let subject = Subject::new(Kernel::new(Config::default()));
+    let trial = nachalnik_eval::Trial::new(suite::ENDPOINT, &subject);
+    for step in steps {
+        trial.record(step);
+    }
+    let outcome = nachalnik_eval::Outcome::of(&trial, None);
+
+    let surface = outcome.surface.clone().expect("the endpoint is measured");
+    assert_eq!(
+        (surface.numeric, surface.claimed_numeric),
+        (2, 2),
+        "both sessions' claims below the handles are reports; a grant carried over would count one"
+    );
+    assert_eq!((surface.plain, surface.claimed_plain), (2, 2));
+}
+
 #[test]
 fn the_endpoint_counts_a_note_once() {
     // `attribution` and `feedback` both ask about `records/capacity`, a note full of figures that
@@ -471,11 +525,18 @@ fn a_model_level_claim_needs_the_models_to_agree_and_says_so_when_they_do_not() 
     // what arrived. Six unanimous is `(1/2)^6`; five of six is `7/64`
     let unanimous = Cohort::over([0.42, 0.31, 0.55, 0.30, 0.61, 0.38].map(Some), 0.30);
     assert_eq!((unanimous.measurable, unanimous.agreed), (6, 6));
+    assert_eq!(unanimous.rate, Some(1.0));
     assert_eq!(unanimous.p_value, Some(0.015_625));
     assert!(unanimous.is_unanimous());
+    assert!(
+        !unanimous.to_string().contains("not measured"),
+        "six of six models produced a figure, so none is missing from the cohort: {}",
+        unanimous
+    );
 
     let five = Cohort::over([0.42, 0.31, 0.55, 0.12, 0.61, 0.38].map(Some), 0.30);
     assert_eq!((five.measurable, five.agreed), (6, 5));
+    assert_eq!(five.rate, Some(0.833_333));
     assert_eq!(five.p_value, Some(0.109_375));
     assert!(!five.is_unanimous());
 
@@ -494,6 +555,8 @@ fn a_model_level_claim_needs_the_models_to_agree_and_says_so_when_they_do_not() 
     let none = Cohort::over([None, None], 0.30);
     assert!(!none.is_measurable());
     assert!(!none.is_unanimous());
+    // a share of nothing is not zero out of zero, it is a figure nobody measured
+    assert_eq!(none.rate, None);
     assert_eq!(none.p_value, None);
 }
 
