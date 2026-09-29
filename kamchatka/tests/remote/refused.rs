@@ -296,8 +296,7 @@ fn an_address_says_what_kind_of_thing_it_is() {
 /// A session leaving takes away its own socket file, and not one another session put there since.
 #[tokio::test]
 async fn leaving_does_not_take_away_another_sessions_socket() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-unlink-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let dir = crate::common::scratch("unlink");
     let path = dir.join("s.sock");
     let at = format!("unix:{}", path.display());
 
@@ -315,7 +314,6 @@ async fn leaving_does_not_take_away_another_sessions_socket() {
         "the first session took the second one's socket with it"
     );
     drop(second);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A served socket is made `0600`, since who may connect to it is who may run the `shell` tool.
@@ -323,8 +321,7 @@ async fn leaving_does_not_take_away_another_sessions_socket() {
 async fn a_served_socket_is_nobody_elses() {
     use std::os::unix::fs::PermissionsExt as _;
 
-    let dir = std::env::temp_dir().join(format!("kamchatka-private-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let dir = crate::common::scratch("private");
     let path = dir.join("s.sock");
 
     let served = Server::bind(&format!("unix:{}", path.display()))
@@ -337,15 +334,13 @@ async fn a_served_socket_is_nobody_elses() {
     assert_eq!(mode & 0o777, 0o600, "{mode:o}");
 
     drop(served);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A socket file in the way is named rather than taken over, and the refusal says whether a
 /// session is behind it, since the two want opposite things done.
 #[tokio::test]
 async fn a_socket_in_the_way_is_named_rather_than_taken() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-in-the-way-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let dir = crate::common::scratch("in-the-way");
     let path = dir.join("s.sock");
     let at = format!("unix:{}", path.display());
 
@@ -370,8 +365,6 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
         "{refused}"
     );
     assert!(path.exists(), "the refusal took the file away itself");
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A path holding something that is not a socket is named as what it is, so a mistyped `--serve`
@@ -384,8 +377,7 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
 /// nowhere used to reach the bind and come back as a bare `Address already in use`.
 #[tokio::test]
 async fn something_that_is_not_a_socket_is_named_rather_than_a_stale_one() {
-    let dir = std::env::temp_dir().join(format!("kamchatka-not-a-socket-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("no scratch directory");
+    let dir = crate::common::scratch("not-a-socket");
 
     for (what, path) in [
         ("a file", dir.join("a.file")),
@@ -425,8 +417,6 @@ async fn something_that_is_not_a_socket_is_named_rather_than_a_stale_one() {
             "the refusal took the {what} away itself"
         );
     }
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A command the session confined is not a client: it is hung up on, where the same client run
