@@ -169,6 +169,20 @@ pub struct Client<'a> {
     /// it goes is a drop of its own. Without this, short outages over a day add up to the minute,
     /// and the next one gives up without a single attempt, saying the session has not answered.
     reached: bool,
+    /// Whether a line is read only once the session is ready for it.
+    ///
+    /// note: what makes this a drop-in for `--headless` down a pipe, which reads the next line
+    /// only once the turn before it is over. Read the moment they arrive, a script's lines all go
+    /// at once: a `/note` after a question is refused for a turn still running, a second message
+    /// replaces the first one waiting, and a `/quit` stops the turn the script was asking for.
+    /// Somebody at a terminal types while a turn runs on purpose, so it is set for a pipe alone.
+    paced: bool,
+    /// A line read while a question waited that does not answer it, sent once the turn is over.
+    ///
+    /// note: what `--headless` does with the same script. A question nobody at a pipe answers is
+    /// answered with `--on-ask`, and the line after it is read once the turn it paused is over -
+    /// sent at once, it met a turn still running and was refused, and the lines after it went too.
+    held: Option<String>,
     /// Whether a write to this connection has failed.
     ///
     /// note: what keeps a refused write from ending the connection by itself. A session that
@@ -217,7 +231,16 @@ impl<'a> Client<'a> {
             failed: false,
             reached: false,
             unwritable: false,
+            paced: false,
+            held: None,
         }
+    }
+
+    /// Reads a line only once the session has answered the last one and no turn is running, as
+    /// `--headless` does, or where a question waits for one to answer it.
+    pub fn waits_for_turns(mut self) -> Self {
+        self.paced = true;
+        self
     }
 
     /// Attaches, drives the session from lines, and comes back when there is nothing left of
@@ -385,7 +408,7 @@ impl<'a> Client<'a> {
                 // note: the branch is switched off once the input has closed, rather than reading
                 // the end of it for ever. A `select!` arm over a reader at EOF is ready every time
                 // round the loop, and this one would have spun on it
-                line = typed.next_line(), if !self.detaching => match line {
+                line = typed.next_line(), if !self.detaching && self.held.is_none() && self.ready() => match line {
                     // note: what `--headless` does with a blank line and with spaces round one,
                     // for its reason: a blank line sent is a request for nothing, and `  /help`
                     // would be a message here and a command there
@@ -394,7 +417,7 @@ impl<'a> Client<'a> {
                         if mangled {
                             let _ = self.tell(&crate::headless::not_text(&line));
                         }
-                        match self.typed(&mut write, line.trim()).await {
+                        match self.line(&mut write, line.trim()).await {
                             Ok(()) => None,
                             Err(_) => Some(Left::Dropped),
                         }
@@ -990,7 +1013,40 @@ impl<'a> Client<'a> {
     /// longer come from anywhere. What ends the wait is [`Client::settle`]; this is only
     /// the half that stops it being called rest.
     fn resting(&self) -> bool {
+        self.idle() && self.held.is_none()
+    }
+
+    /// Whether the session has caught up with this client and asks it nothing, with no turn
+    /// running.
+    fn idle(&self) -> bool {
         !self.busy && self.outstanding == 0 && self.asking.is_empty() && self.reaching.is_empty()
+    }
+
+    /// Takes one line of input: sent, or held where a question waits and the line does not
+    /// answer it; see [`Client::held`].
+    async fn line<W: AsyncWrite + Unpin>(
+        &mut self,
+        write: &mut W,
+        line: &str,
+    ) -> Result<(), String> {
+        let asked = !self.asking.is_empty() || !self.reaching.is_empty();
+        if self.paced && asked && !matches!(line, "y" | "n" | "a") {
+            self.held = Some(line.to_owned());
+            return self.answer_for_nobody(write).await;
+        }
+
+        self.typed(write, line).await
+    }
+
+    /// Whether the next line may be read; see [`Client::paced`].
+    ///
+    /// note: a question waiting opens it while a turn runs, because the network gate asks while a
+    /// command is still running and the line that answers it is the next one in the script.
+    fn ready(&self) -> bool {
+        !self.paced
+            || (!self.busy && self.outstanding == 0)
+            || !self.asking.is_empty()
+            || !self.reaching.is_empty()
     }
 
     /// Sends what the last message heard calls for: a fetch of every turn that was not streamed,
@@ -1015,6 +1071,11 @@ impl<'a> Client<'a> {
         // somebody at it asks for nothing, so this costs a comparison a turn
         if self.detaching {
             self.catch_up(write).await?;
+        }
+        if self.idle()
+            && let Some(line) = self.held.take()
+        {
+            self.typed(write, &line).await?;
         }
 
         self.settle(write).await
@@ -1076,6 +1137,14 @@ impl<'a> Client<'a> {
             return Ok(());
         }
 
+        self.answer_for_nobody(write).await
+    }
+
+    /// Answers every question waiting with `--on-ask`, and says so.
+    async fn answer_for_nobody<W: AsyncWrite + Unpin>(
+        &mut self,
+        write: &mut W,
+    ) -> Result<(), String> {
         while let Some(request) = self.asking.pop_front() {
             self.prose.fresh_line()?;
             self.tell(&format!(

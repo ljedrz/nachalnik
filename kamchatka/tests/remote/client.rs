@@ -34,8 +34,9 @@ async fn the_client_writes_the_records_and_the_prose() {
 
     // note: `/quit` is not typed until a second connection has watched the turn end, rather than
     // handed in behind the message on one slice of bytes. A command runs the moment it arrives - at
-    // a prompt, down a pipe, and here - so a `/quit` queued behind a question ends the session while
-    // the answer to it is still being written, and the test would be asserting about a race
+    // a prompt, and here, where the client is not told to wait for turns as it is down a pipe - so
+    // a `/quit` queued behind a question ends the session while the answer to it is still being
+    // written, and the test would be asserting about a race
     let (mut watch, _) = Peer::attached(&session.at).await;
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
@@ -230,6 +231,48 @@ async fn two_answers_do_not_run_into_each_other() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// Down a pipe, a line waits for the turn before it, as it does under `--headless`.
+///
+/// note: found live. Every line of a script went the moment it was read, so a `/note` after a
+/// question was refused for a turn still running, and the `/quit` at the end stopped the turn the
+/// script had asked for before the model had said a word.
+#[tokio::test]
+async fn a_client_down_a_pipe_waits_for_the_turn_before_its_next_line() {
+    let session = served(Vec::new(), |app| {
+        app.kernel.set_provider(Arc::new(Trickle {
+            words: ["every ", "word ", "of ", "it"].map(str::to_owned).to_vec(),
+        }));
+    })
+    .await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .waits_for_turns()
+            .run(
+                &session.at,
+                "ask something\n/note after the answer\n/quit\n".as_bytes(),
+            ),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(prose.contains("every word of it"), "{prose}");
+    assert!(!prose.contains("not while a turn"), "{prose}");
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("after the answer")),
+        "the note never went in"
+    );
 }
 
 /// A session that is replaced under a client is said to have ended, whichever door the client left
@@ -1334,6 +1377,54 @@ async fn two_answers_typed_together_answer_two_questions() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// And a line that does not answer a waiting question lets `--on-ask` answer it, and waits.
+///
+/// note: found live, the moment the pacing above was in. A question opens the input so that a
+/// script's `y` can answer it, and the line read was a `/note`: sent into a paused turn it was
+/// refused, and every line after it went too, `/quit` among them, so the session ended with the
+/// question unanswered. `--headless` answers with `--on-ask` and reads on once the turn is over.
+#[tokio::test]
+async fn a_line_that_is_not_an_answer_waits_for_the_question_to_be_answered() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("went on without it"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .waits_for_turns()
+            .run(
+                &session.at,
+                "go\n/note after the question\n/quit\n".as_bytes(),
+            ),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(prose.contains("so it is answered `deny`"), "{prose}");
+    assert!(prose.contains("went on without it"), "{prose}");
+    assert!(!prose.contains("not while a turn"), "{prose}");
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("after the question")),
+        "the note never went in"
+    );
 }
 
 /// A connection that goes is not a session that said something unreadable.
