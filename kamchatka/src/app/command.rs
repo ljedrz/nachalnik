@@ -15,7 +15,8 @@ use crate::{app::text::thousands, tools::Limits};
 use super::{
     App, Did, Proposed, Reply, Speaker, Tab,
     text::{
-        NOTHING_DECIDED, nothing_to_send, one_line, plural, pretty, request_preview, verdict_word,
+        MID_TURN, NOTHING_DECIDED, nothing_to_send, one_line, plural, pretty, request_preview,
+        verdict_word,
     },
 };
 
@@ -869,10 +870,7 @@ impl App {
             return;
         }
         if self.busy || !self.kernel.pending_permissions().is_empty() {
-            self.say(
-                Speaker::Error,
-                "not while a turn is running or a call is waiting to be answered",
-            );
+            self.say(Speaker::Error, MID_TURN);
             return;
         }
 
@@ -964,10 +962,7 @@ impl App {
         // the same refusal `/attach` gives, for the same reason: an item pushed mid-turn changes
         // the request the model is already answering
         if self.busy || !self.kernel.pending_permissions().is_empty() {
-            self.say(
-                Speaker::Error,
-                "not while a turn is running or a call is waiting to be answered",
-            );
+            self.say(Speaker::Error, MID_TURN);
             return;
         }
 

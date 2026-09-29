@@ -721,6 +721,9 @@ pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
     }
 }
 
+/// What a command that changes the context says when a turn is running or waiting on an answer.
+pub(super) const MID_TURN: &str = "not while a turn is running or a call is waiting to be answered";
+
 /// What the policy's tab says where there is nothing to list, which is what `/policy` prints then.
 ///
 /// note: here rather than in the pane that draws it, because `/policy` is answered in a build with
