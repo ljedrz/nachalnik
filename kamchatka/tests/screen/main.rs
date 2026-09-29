@@ -17,6 +17,8 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+#[cfg(feature = "shell-advisor")]
+mod advisor;
 mod attach;
 mod chat;
 mod compaction;
