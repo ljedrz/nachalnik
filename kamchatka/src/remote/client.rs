@@ -59,9 +59,7 @@ pub struct Client<'a> {
     /// The record stream, one JSON object per line: the same bytes `/save` writes.
     records: &'a mut dyn Write,
     /// What a person reads: the model's own words, and what the session had to say about the run.
-    prose: crate::headless::Printable<&'a mut dyn Write>,
-    /// Whether the prose is part-way through a line somebody else would finish.
-    mid_line: bool,
+    prose: crate::headless::Prose<&'a mut dyn Write>,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
     /// The recorded turns whose words were not streamed, to be fetched with an `inspect`.
@@ -198,8 +196,7 @@ impl<'a> Client<'a> {
         Self {
             on_ask,
             records,
-            prose: crate::headless::Printable(prose),
-            mid_line: false,
+            prose: crate::headless::Prose::new(prose),
             streamed: false,
             unstreamed: VecDeque::new(),
             fetching: false,
@@ -263,7 +260,7 @@ impl<'a> Client<'a> {
                     if self.reached {
                         (waited, wait) = (Duration::ZERO, FIRST_WAIT);
                     }
-                    self.fresh_line()?;
+                    self.prose.fresh_line()?;
                     self.tell(&format!(
                         "the connection went; attaching again from record {} in {:.1}s",
                         self.last,
@@ -443,7 +440,7 @@ impl<'a> Client<'a> {
                     false => match self.say_to(&mut write, Command::Interrupt).await {
                         Ok(()) => {
                             stopping = true;
-                            let _ = self.fresh_line();
+                            let _ = self.prose.fresh_line();
                             let _ = self.tell(
                                 "asked it to stop; what has arrived is kept, and again detaches",
                             );
@@ -454,7 +451,7 @@ impl<'a> Client<'a> {
                 }
             };
             if let Some(left) = ended {
-                let _ = self.fresh_line();
+                let _ = self.prose.fresh_line();
                 // note: said wherever this client leaves rather than on the branch that happened
                 // to notice. A `/restart` ends a session the way a `/quit` does, and a client
                 // whose input had already closed detaches the moment the session is quiet - so the
@@ -499,7 +496,7 @@ impl<'a> Client<'a> {
                 // client will never be sent this record, so a catch-up stopping short of it would
                 // ask for it again for the rest of the session and be named every time
                 self.written = seq;
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 self.tell(&format!(
                     "record {seq} is {bytes} bytes, too long to send; it is in the session's log, \
                      and `inspect` fetches what it is about"
@@ -521,7 +518,7 @@ impl<'a> Client<'a> {
                 Ok(())
             }
             Message::Said { speaker, text } => {
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 match speaker {
                     Speaker::Error => self.tell(&format!("error: {text}")),
                     _ => self.tell(&text),
@@ -533,7 +530,7 @@ impl<'a> Client<'a> {
                 let Some(page) = page else {
                     return Ok(());
                 };
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 writeln!(self.prose, "--- {} ---", page.title).map_err(|e| e.to_string())?;
                 // note: every page rather than the one it opened at, for the reason `--headless`
                 // gives: a screen turns them with the arrow keys and there is no key to press down
@@ -559,12 +556,12 @@ impl<'a> Client<'a> {
                 body, raw: true, ..
             } => {
                 self.answered();
-                self.fresh_line()?;
-                self.write_answer(&body)
+                self.prose.fresh_line()?;
+                self.prose.write_answer(&body)
             }
             Message::Item { id, body, .. } => {
                 self.answered();
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 writeln!(self.prose, "--- item {id} ---\n{body}").map_err(|e| e.to_string())?;
                 self.prose.flush().map_err(|e| e.to_string())
             }
@@ -583,7 +580,7 @@ impl<'a> Client<'a> {
                 if self.model.as_ref() == Some(&model) {
                     return Ok(());
                 }
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 self.tell(&match &model {
                     Some(model) => format!("the model is {model}"),
                     None => "there is no model".to_owned(),
@@ -604,7 +601,7 @@ impl<'a> Client<'a> {
                 }
             }
             Message::Missed { frames } => {
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 // note: no promise about the records, and the wording used to make one that was
                 // false twice over. The records name what happened and do not copy it - an
                 // answer is a turn by its identifier - and what went past here can be the
@@ -639,7 +636,7 @@ impl<'a> Client<'a> {
                 // retried it would spend a minute on it and leave saying the session had not
                 // answered, when it answered at once with the sentence below
                 if about == "version" {
-                    self.fresh_line()?;
+                    self.prose.fresh_line()?;
 
                     return Err(format!("{about}: {error}"));
                 }
@@ -649,7 +646,7 @@ impl<'a> Client<'a> {
                 // session that is answering perfectly well. What a client *can* do is read the
                 // records, and the sentence says so
                 if about == "projection" {
-                    self.fresh_line()?;
+                    self.prose.fresh_line()?;
 
                     return Err(format!("{about}: {error}"));
                 }
@@ -660,7 +657,7 @@ impl<'a> Client<'a> {
                     && !self.over
                     && let Some(followed) = self.session.take()
                 {
-                    self.fresh_line()?;
+                    self.prose.fresh_line()?;
 
                     return Err(format!(
                         "the session at this address is not `{followed}`, which this client was \
@@ -668,7 +665,7 @@ impl<'a> Client<'a> {
                          attach to the one there now"
                     ));
                 }
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 self.tell(&format!("{about}: {error}"))
             }
         }
@@ -739,7 +736,7 @@ impl<'a> Client<'a> {
             }
             self.streamed = true;
 
-            return self.write_answer(text);
+            return self.prose.write_answer(text);
         }
 
         match event {
@@ -747,7 +744,7 @@ impl<'a> Client<'a> {
             // ended mid-sentence, and the first fragment of this one was written straight after it
             Event::ModelRequested { .. } => {
                 (self.streamed, self.fetching) = (false, false);
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
             }
             Event::ModelFinished { item, .. } => {
                 self.failed = false;
@@ -757,7 +754,7 @@ impl<'a> Client<'a> {
                 }
             }
             Event::ToolRequested { tool, args, .. } => {
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 writeln!(self.prose, "⟩ {tool}({})", one_line(&args.to_string()))
                     .map_err(|e| e.to_string())?;
             }
@@ -767,7 +764,7 @@ impl<'a> Client<'a> {
                 tokens,
                 ..
             } => {
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 writeln!(
                     self.prose,
                     "· {tool}: {}{}",
@@ -793,14 +790,14 @@ impl<'a> Client<'a> {
             } => {
                 self.asking.retain(|waiting| waiting.id != *id);
                 self.answering.retain(|waiting| waiting.id != *id);
-                self.fresh_line()?;
+                self.prose.fresh_line()?;
                 self.tell(&format!("{tool}: {grant}"))?;
             }
             Event::SessionFinished => self.over = true,
             Event::ModelFailed { .. } | Event::StepFailed { .. } => self.failed = true,
             event => {
                 if let Some(line) = crate::app::text::went_in(event) {
-                    self.fresh_line()?;
+                    self.prose.fresh_line()?;
                     self.tell(&line)?;
                 }
             }
@@ -816,7 +813,7 @@ impl<'a> Client<'a> {
             self.asking.push_front(request.clone());
         }
         if !lost.is_empty() {
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
         }
         for request in &lost {
             self.question(request)?;
@@ -840,7 +837,7 @@ impl<'a> Client<'a> {
             .collect();
         for reached in fresh {
             self.told.insert(reached.id);
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             writeln!(
                 self.prose,
                 "? `{}` is running and has reached for the network\n  it waits for an answer, \
@@ -1080,7 +1077,7 @@ impl<'a> Client<'a> {
         }
 
         while let Some(request) = self.asking.pop_front() {
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             self.tell(&format!(
                 "nobody is here to answer for `{}`, so it is answered `{}`",
                 request.tool, self.on_ask
@@ -1101,7 +1098,7 @@ impl<'a> Client<'a> {
             .await?;
         }
         while let Some(reached) = self.reaching.pop_front() {
-            self.fresh_line()?;
+            self.prose.fresh_line()?;
             self.tell(&format!(
                 "nobody is here to answer whether `{}` may reach the network, so it is answered \
                  `{}`",
@@ -1122,27 +1119,6 @@ impl<'a> Client<'a> {
         }
 
         Ok(())
-    }
-
-    /// Ends whatever half-written line the model left, so a whole one can follow it.
-    fn fresh_line(&mut self) -> Result<(), String> {
-        if std::mem::take(&mut self.mid_line) {
-            writeln!(self.prose).map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
-    }
-
-    /// Writes some of the model's answer, which is not a whole line and ends none.
-    fn write_answer(&mut self, text: &str) -> Result<(), String> {
-        if text.is_empty() {
-            return Ok(());
-        }
-        self.mid_line = !text.ends_with('\n');
-
-        write!(self.prose, "{text}")
-            .and_then(|()| self.prose.flush())
-            .map_err(|e| e.to_string())
     }
 
     /// Says something in the client's own voice.
