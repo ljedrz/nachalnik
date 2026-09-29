@@ -106,9 +106,9 @@ and what a change cost. `log` is the record beside it, `setup` is what the
 session is running with, and `fork` is a copy of the session, asked something. `mod.rs` holds
 `install` and the handful of things they all use.
 
-`sandbox.rs` is the Landlock ruleset the `shell` tool is re-executed under, `Reach` for what the
-in-process tools will open, and `Confinement` for every way the first of those can fail to be
-there - see [SECURITY.md](SECURITY.md) before changing any of it. `gate.rs` is the seccomp filter
+`sandbox/` is the Landlock ruleset the `shell` tool is re-executed under, `Reach` in `reach.rs`
+for what the in-process tools will open, and `Confinement` for every way the first of those can
+fail to be there - see [SECURITY.md](SECURITY.md) before changing any of it. `gate.rs` is the seccomp filter
 the same child installs after the ruleset, which holds every internet socket a command opens until
 the process that spawned it answers - the one module in the workspace that writes `unsafe`, and
 Linux on x86_64 and aarch64 only. `attach.rs` is one file into the
