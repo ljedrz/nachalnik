@@ -495,6 +495,10 @@ impl Change {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use nachalnik::{ModelResponse, ToolCall, test::ScriptedProvider};
+
     use super::*;
 
     fn saying(answers: Vec<Answer>) -> Observation {
@@ -507,6 +511,25 @@ mod tests {
             answers,
             spend: Spend::default(),
         }
+    }
+
+    /// What an ablation was blinded to is on the record, for the caller to read back.
+    ///
+    /// note: it is the only part of a built ablation a caller can see, and the part a caller
+    /// needs to say what was held constant - a report that quoted an arm without saying the
+    /// exchange the copies could not read would be quoting half the design.
+    #[test]
+    fn an_ablation_says_what_every_copy_is_made_without() {
+        let probe = Probe::choice("which depot runs out first?", ["kirov", "omsk"]);
+
+        let blinded = Ablation::new(probe.clone()).blind_to([ContextId(3), ContextId(7)]);
+        assert_eq!(blinded.blind(), [ContextId(3), ContextId(7)]);
+        // and a builder call replaces what came before rather than adding to it
+        let fewer = blinded.blind_to([ContextId(9)]);
+        assert_eq!(fewer.blind(), [ContextId(9)]);
+
+        // nothing blinded is nothing to read
+        assert!(Ablation::new(probe).blind().is_empty());
     }
 
     /// A copy that gave no answer did not give a different one.
@@ -527,6 +550,77 @@ mod tests {
         let half =
             saying(vec![Answer::Choice("omsk".to_owned()), Answer::Unreadable]).against(&control);
         assert_eq!(half.divergence, 0.5);
+    }
+
+    /// A subject whose copy is taken from, with a session name a copy can be told apart by.
+    fn subject() -> Subject {
+        let kernel = Kernel::new(Config {
+            session_name: Some("depot".to_owned()),
+            ..Config::default()
+        });
+        kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+        Subject::new(kernel)
+    }
+
+    /// A copy spends one request and is thrown away, whatever the model asked for in reply.
+    ///
+    /// note: the budget is what stops a copy spending a whole run on tool calls it cannot make.
+    /// A copy is given no tools, and a model told it has none still asks for one; the kernel
+    /// answers such a call with an error result and the loop goes on. Left on the default budget
+    /// of eight, one copy of one condition costs eight requests to say nothing at all - and the
+    /// cost is charged to the run, not to the copy that incurred it.
+    #[tokio::test]
+    async fn a_copy_spends_one_request_however_much_the_model_asks_to_run_something() {
+        let model = Arc::new(ScriptedProvider::new(
+            std::iter::repeat_with(|| {
+                ModelResponse::tool_calls(vec![ToolCall::new(
+                    "call",
+                    "shell",
+                    serde_json::json!({"cmd": "cat notes"}),
+                )])
+            })
+            .take(16)
+            .chain(std::iter::once(ModelResponse::text("ANSWER: kirov"))),
+        ));
+        let subject = subject();
+        subject.kernel().set_provider(model.clone());
+        let origin = Origin::of(&subject).expect("a provider");
+
+        let observed = Ablation::new(Probe::choice(
+            "which depot runs out of pallet space first?",
+            ["kirov", "omsk"],
+        ))
+        .observe(&origin, Intervention::Nothing)
+        .await
+        .expect("a copy that spent its request");
+
+        assert_eq!(
+            observed.answers,
+            vec![Answer::Unreadable],
+            "the copy's one request went to a tool it has no way to run, so it said nothing"
+        );
+        assert_eq!(observed.spend.requests, 1, "a copy was let ask again");
+        assert_eq!(model.requests().len(), 1, "the model was asked once");
+    }
+
+    /// A condition that ran no copies is not measured as having moved, however clear the control
+    /// was.
+    ///
+    /// note: with no copies there is no fraction to take, and a `NaN` in its place would clear
+    /// the noise against every control, since every comparison with one is false.
+    #[test]
+    fn a_condition_that_ran_no_copies_measured_nothing() {
+        let control = saying(vec![Answer::Choice("kirov".to_owned()); 2]);
+
+        let none = saying(Vec::new()).against(&control);
+        assert_eq!(none.divergence, 0.0);
+        assert!(!none.clears_the_noise());
+        assert_eq!(none.shown(), None);
+        assert_eq!(none.as_answer(), Answer::Unreadable);
+
+        // and copies that were all cut off gave no answer either
+        let cut = saying(vec![Answer::Cut, Answer::Cut]).against(&control);
+        assert_eq!(cut.divergence, 0.0);
     }
 
     /// Copies split evenly agree as often as each answer was given, rather than not at all.
