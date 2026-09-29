@@ -42,6 +42,12 @@ minor bump may break you.
 
 ### fixed
 
+- **An item added while the counter is swapped is counted by the counter that stays.** Adding,
+  replacing, recounting and compacting took a copy of the counter before the context lock, so
+  a `set_counter` landing in between left the item measured by the counter it replaced, and the
+  recount that followed the swap had already run. Each now holds the counter across the
+  context, as a snapshot already did.
+
 - **A refusal is explained by the policy that made it.** A call refused by the policy is decided
   when the turn is answered and refused when it is executed, and `PermissionPolicy::why` was asked
   of whichever policy was installed at the second moment. A `set_policy` while the calls waited in
