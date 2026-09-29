@@ -914,6 +914,7 @@ async fn a_report_is_dated_when_the_run_started() {
         ))
     };
 
+    let before = millis();
     let report = evaluate(all(), make).await;
     let raised = first
         .lock()
@@ -921,6 +922,8 @@ async fn a_report_is_dated_when_the_run_started() {
         .take()
         .expect("a subject was asked for");
     assert!(report.at <= raised, "{} after {raised}", report.at);
+    // and on the wall clock, since that is what `per_model` ranks runs of one model by
+    assert!(before <= report.at, "{} before {before}", report.at);
 
     let report =
         nachalnik_eval::evaluate_with(all(), make, nachalnik_eval::Pace::at_once(4), |_| {}).await;
