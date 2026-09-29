@@ -45,7 +45,7 @@ mod keys;
 pub(crate) mod text;
 pub mod when;
 
-pub(crate) use session::beside;
+pub(crate) use session::{beside, without_suffix};
 
 use text::{moved, one_line, panicked, plural, thousands, trace_line};
 // only the key that prints a request without a command: `/request` imports its own

@@ -24,17 +24,7 @@ use serde_json::Value;
 ///
 /// note: the spellings `/load` takes, so a path that loads is a path that checks.
 pub fn pair(path: &str) -> (PathBuf, PathBuf) {
-    let mut stem = path;
-    for suffix in [".jsonl", ".json"] {
-        if let Some(at) = path.len().checked_sub(suffix.len())
-            && path
-                .get(at..)
-                .is_some_and(|end| end.eq_ignore_ascii_case(suffix))
-        {
-            stem = &path[..at];
-            break;
-        }
-    }
+    let stem = crate::app::without_suffix(path);
 
     (
         PathBuf::from(format!("{stem}.jsonl")),

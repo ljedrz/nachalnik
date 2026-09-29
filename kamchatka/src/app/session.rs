@@ -487,8 +487,8 @@ fn stem(path: &str) -> &str {
 
 /// A session's path with the extension taken off, whichever of the two it was spelled with.
 ///
-/// note: shared by `/save` and `/load` because a pair of commands that accept different spellings
-/// is a pair that does not round-trip. A session is two files - the snapshot and the log - so
+/// note: shared by `/save`, `/load` and `--check` because commands that accept different
+/// spellings do not round-trip. A session is two files - the snapshot and the log - so
 /// `/save notes.jsonl` writes `notes.json` beside `notes.jsonl`, and `/load` taking that same
 /// argument at its word would go looking for `notes.jsonl.json`.
 ///
@@ -496,7 +496,7 @@ fn stem(path: &str) -> &str {
 /// extension - and the stem is left exactly as it was typed, because that half really does name a
 /// different file. What it buys is a suffix typed in capitals still being read as the suffix
 /// `/save` wrote.
-fn without_suffix(path: &str) -> &str {
+pub(crate) fn without_suffix(path: &str) -> &str {
     for suffix in [".jsonl", ".json"] {
         let Some(at) = path.len().checked_sub(suffix.len()) else {
             continue;
