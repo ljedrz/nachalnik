@@ -46,6 +46,10 @@ minor bump may break you.
 
 ### changed
 
+- **`setup` says a long tool result is truncated, as everything else does.** Its sentence about the
+  output limit said the result "is cut", where the marker in the result, the archived copy's note
+  and `/help` all say truncated.
+
 - **The chat tab reads a tool result only as far as the lines it shows.** Deciding whether to mark
   a result as cut short counted every line of it, on every frame, for every result in the
   conversation. It now stops one line past the six it draws.
