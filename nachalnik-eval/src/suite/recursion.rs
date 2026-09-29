@@ -9,9 +9,9 @@ use crate::{
     probe::{Answer, Probe},
     subject::Subject,
     suite::{
-        copies_agree,
+        controlled, copies_agree,
         dossier::{DEPOT, Dossier, Expected, id_of},
-        excluding, instrument, note_drift, script,
+        excluding, instrument, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -130,12 +130,8 @@ impl Experiment for Recursion {
             pivots.push(quiet.label);
         }
 
-        let ablation = Ablation::new(question)
-            .replicates(self.replicates)
-            .blind_to(blind);
-        let control = ablation.observe(&origin, Intervention::Nothing).await?;
-        note_drift(trial, &answer, &control);
-        trial.measured(control.clone(), None);
+        let (ablation, control) =
+            controlled(trial, &origin, question, self.replicates, blind, &answer).await?;
         copies_agree(trial, &control, "the control copies");
 
         // ---------------------------------------------------------------------------- predict

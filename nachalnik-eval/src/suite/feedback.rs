@@ -6,14 +6,14 @@ use crate::{
     async_trait,
     error::Result,
     experiment::{Experiment, Instrument},
-    fork::{Ablation, Origin},
+    fork::Origin,
     intervene::Intervention,
     probe::Answer,
     subject::Subject,
     suite::{
-        copies_agree,
+        controlled, copies_agree,
         dossier::{DEPOT, Dossier, ORCHARD, id_of},
-        excluding, instrument, note_drift, script,
+        excluding, instrument, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -115,12 +115,15 @@ impl Feedback {
             claims.push((claim, asked));
         }
 
-        let ablation = Ablation::new(question)
-            .replicates(self.replicates)
-            .blind_to([said_solve.asked, said_solve.item]);
-        let control = ablation.observe(&origin, Intervention::Nothing).await?;
-        note_drift(trial, &answer, &control);
-        trial.measured(control.clone(), None);
+        let (ablation, control) = controlled(
+            trial,
+            &origin,
+            question,
+            self.replicates,
+            [said_solve.asked, said_solve.item],
+            &answer,
+        )
+        .await?;
 
         copies_agree(
             trial,

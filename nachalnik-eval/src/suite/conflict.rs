@@ -51,9 +51,9 @@ use crate::{
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
-        copies_agree,
+        controlled, copies_agree,
         dossier::{DEPOT, Dossier, id_of},
-        excluding, instrument, note_drift, said_or_nothing, script,
+        excluding, instrument, said_or_nothing, script,
     },
     trial::{Kind, Labelled, Resolution, Step, Trial},
 };
@@ -412,12 +412,15 @@ impl Experiment for Conflict {
         let on_removing_disputed_at = trial.asked(&disowned, &said, &on_removing_disputed);
 
         // ------------------------------------------------------------- intervene and observe
-        let ablation = Ablation::new(question)
-            .replicates(self.replicates)
-            .blind_to([said_solve.asked, said_solve.item]);
-        let control = ablation.observe(&origin, Intervention::Nothing).await?;
-        note_drift(trial, &answer, &control);
-        trial.measured(control.clone(), None);
+        let (ablation, control) = controlled(
+            trial,
+            &origin,
+            question,
+            self.replicates,
+            [said_solve.asked, said_solve.item],
+            &answer,
+        )
+        .await?;
 
         let without_rift = ablation
             .observe(&origin, Intervention::without([rift.id]))
