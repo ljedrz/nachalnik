@@ -138,6 +138,31 @@ fn a_claim_that_did_not_commit_is_wrong_rather_than_untested() {
     assert_eq!(scores.scored, 0);
 }
 
+/// A claim cut off before it answered is counted as never answered, beside the untested ones,
+/// and a set with neither says neither.
+#[test]
+fn a_claim_cut_off_before_it_answered_is_counted_beside_the_untested_ones() {
+    let claims = vec![
+        resolution(true, 0.9),
+        // the turn was cut off before the subject said anything, so the claim was never put to
+        // the test and is not among the untested outcomes either
+        Resolution::new(Kind::Counterfactual, Answer::Cut, Answer::yes(false)),
+        // the copies said nothing usable, so this one was made and never tested
+        Resolution::new(Kind::Counterfactual, Answer::yes(true), Answer::Unreadable),
+    ];
+    let scores = Scores::over(&claims);
+
+    assert_eq!((scores.n, scores.correct, scores.unmeasured), (1, 1, 2));
+    assert_eq!(scores.cut, 1);
+    assert!(scores.to_string().contains("1 never answered"), "{scores}");
+    assert!(scores.to_string().contains("2 untested"), "{scores}");
+
+    let answered = Scores::over(&[resolution(true, 0.9), resolution(false, 0.9)]);
+    let rendered = answered.to_string();
+    assert!(!rendered.contains("untested"), "{rendered}");
+    assert!(!rendered.contains("never answered"), "{rendered}");
+}
+
 #[test]
 fn nothing_measured_says_so_rather_than_scoring_zero() {
     let scores = Scores::over(&[]);
