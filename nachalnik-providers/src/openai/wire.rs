@@ -47,7 +47,9 @@ struct PartialCall {
 /// turn, each a summary of the reasoning done since the last, so they are appended rather than
 /// replaced: the same endpoint's *non*-streamed field is those same summaries joined.
 ///
-/// note: a summary already held is not appended again. The status is not read for anything: a
+/// note: a summary already held is not appended again, and held means among the summaries: the
+/// thinking streamed beside them may say the same words, and a shorter summary may be part of a
+/// longer one, and neither is the same summary arriving twice. The status is not read for anything: a
 /// summary with words in it has arrived whichever word is beside it, and `unavailable` and
 /// `skipped` both carry no content, so the content alone decides. What it must not do is put the
 /// word `unavailable` on the screen as if the model had thought it.
@@ -57,14 +59,15 @@ struct PartialCall {
 /// is streamed. Without the wait, `mercury-2` ends the stream before any summary exists. A client
 /// that sets the first and not the second has asked for thinking that cannot then be sent to it,
 /// and this has nothing to read.
-fn summarised(chunk: &Value, reasoning: &mut String, deltas: &DeltaSink) {
+fn summarised(chunk: &Value, reasoning: &mut String, held: &mut Vec<String>, deltas: &DeltaSink) {
     let Some(summary) = chunk["reasoning_summary"]["content"]
         .as_str()
         .map(str::trim)
-        .filter(|summary| !summary.is_empty() && !reasoning.contains(*summary))
+        .filter(|summary| !summary.is_empty() && !held.iter().any(|it| it == summary))
     else {
         return;
     };
+    held.push(summary.to_owned());
 
     // a blank line between two of them, because they are separate summaries rather than one text
     // arriving in pieces - and the screen is told the same thing the turn is, or a run that was
@@ -260,6 +263,8 @@ struct Streamed {
     text: String,
     /// What it thought, where the server sent that in a slot of its own.
     reasoning: String,
+    /// The summaries of the thinking appended to `reasoning` so far.
+    summaries: Vec<String>,
     /// The calls, each gathered out of the fragments that carry it.
     gathering: Gathering,
     /// Why the turn ended, once something has said.
@@ -303,7 +308,7 @@ impl Events for Streamed {
             deltas.reasoning(fragment);
             self.reasoning.push_str(fragment);
         }
-        summarised(chunk, &mut self.reasoning, deltas);
+        summarised(chunk, &mut self.reasoning, &mut self.summaries, deltas);
 
         for requested in delta["tool_calls"].as_array().into_iter().flatten() {
             self.gathering.fold(requested, deltas);
@@ -972,6 +977,21 @@ mod tests {
         streamed.event(&summary, &deltas);
         streamed.event(&summary, &deltas);
         assert_eq!(streamed.reasoning, "working out the budget");
+    }
+
+    /// A summary is kept when the thinking streamed before it, or an earlier summary, already
+    /// holds its words.
+    #[test]
+    fn a_summary_that_repeats_some_words_is_still_kept() {
+        let mut streamed = Streamed::default();
+        let deltas = DeltaSink::disconnected();
+        let thought = json!({ "choices": [{ "delta": { "reasoning": "first read the file" } }] });
+        let summary = json!({ "choices": [{ "delta": {} }],
+            "reasoning_summary": { "content": "read the file", "status": "complete" } });
+
+        streamed.event(&thought, &deltas);
+        streamed.event(&summary, &deltas);
+        assert_eq!(streamed.reasoning, "first read the file\n\nread the file");
     }
 
     /// A whole answer whose thinking is reported only as a summary on the body keeps it as its
