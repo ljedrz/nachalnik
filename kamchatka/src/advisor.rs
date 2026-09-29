@@ -359,7 +359,7 @@ impl Local {
         })
     }
 
-    /// What was run, which is what the setup tab and the status line name.
+    /// What was run, which is what [`SystemOne::named`] answers with for a local advisor.
     pub fn command(&self) -> &str {
         &self.command
     }
