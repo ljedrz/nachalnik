@@ -126,7 +126,7 @@ it; it never ends anybody's session on the way out, and `/quit` is how you say y
 stderr — so it is a drop-in for it in a script. It answers a permission question with the same
 three letters the panel takes, `y`, `n` and `a`; `ctrl+c` stops the turn and a second one detaches;
 and `?4` prints what item 4 actually holds, which is the one thing a stream of records can never
-say, because [the log names things rather than copying them](#-embedding-it). A running command
+say, because [the log names things rather than copying them](#-a-session-on-disk). A running command
 that [reaches for the network](#-the-network-when-a-command-tries) is answered with the same three
 letters, once the kernel's own questions are.
 

@@ -82,8 +82,8 @@ fn ops() -> Vec<Op> {
                 "only these kinds, as `context.added` or `permission.decided`; the summary lists \
                  the ones this session has",
             ),
-            // note: the same word `context: look` uses for the same trade, because it is the same
-            // trade. Without it a replacement is shown as its first line; with it the whole of
+            // note: the same word `context`'s `look` uses for the same trade, because it is the
+            // same trade. Without it a replacement is shown as its first line; with it the whole of
             // what the item said arrives in your context and costs what it costs
             Arg::truth(
                 "whole",
