@@ -6,14 +6,14 @@ use crate::{
     async_trait,
     error::Result,
     experiment::{Experiment, Instrument},
-    fork::{Ablation, Change, Origin},
+    fork::{Change, Origin},
     intervene::Intervention,
     probe::{Answer, Probe, Reading},
     subject::Subject,
     suite::{
-        copies_agree,
+        controlled, copies_agree,
         dossier::{self, Dossier, Expected, id_of},
-        excluding, instrument, note_drift, script,
+        excluding, instrument, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -205,14 +205,15 @@ impl Attribution {
         }
 
         // ------------------------------------------------------------- intervene and observe
-        // neither arm may read the answer the session already gave, or "it did not change" is a
-        // copy agreeing with itself
-        let ablation = Ablation::new(question)
-            .replicates(self.replicates)
-            .blind_to([said_solve.asked, said_solve.item]);
-        let control = ablation.observe(&origin, Intervention::Nothing).await?;
-        note_drift(trial, &answer, &control);
-        trial.measured(control.clone(), None);
+        let (ablation, control) = controlled(
+            trial,
+            &origin,
+            question,
+            self.replicates,
+            [said_solve.asked, said_solve.item],
+            &answer,
+        )
+        .await?;
 
         // note: the one loop in this battery that is not a conversation. Every copy here is made
         // from `origin`, which was frozen before any claim was made, so no ablation can see

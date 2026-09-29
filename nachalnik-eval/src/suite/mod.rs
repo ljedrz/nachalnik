@@ -24,9 +24,13 @@
 
 use std::sync::Arc;
 
+use nachalnik::ContextId;
+
 use crate::{
+    error::Result,
     experiment::{Experiment, Instrument},
-    fork::Observation,
+    fork::{Ablation, Observation, Origin},
+    intervene::Intervention,
     probe::{Answer, Probe},
     trial::Trial,
 };
@@ -133,6 +137,32 @@ pub(crate) fn note_drift(trial: &Trial, live: &Answer, control: &Observation) {
     }
 }
 
+/// The copies an experiment measures with, and the control they are measured against: `question`
+/// put to `replicates` copies of `origin` with nothing changed, recorded beside how the session
+/// itself answered.
+///
+/// note: `blind` is an argument rather than a builder call an experiment remembers to make,
+/// because a copy that can read the answer the session already gave, a few items above the
+/// question it is asked again, is a copy agreeing with itself - see `Ablation::blind_to` - and
+/// "it did not change" then measures nothing. It is the one step no experiment can leave out.
+pub(crate) async fn controlled(
+    trial: &Trial,
+    origin: &Origin,
+    question: Probe,
+    replicates: usize,
+    blind: impl IntoIterator<Item = ContextId>,
+    live: &Answer,
+) -> Result<(Ablation, Observation)> {
+    let ablation = Ablation::new(question)
+        .replicates(replicates)
+        .blind_to(blind);
+    let control = ablation.observe(origin, Intervention::Nothing).await?;
+    note_drift(trial, live, &control);
+    trial.measured(control.clone(), None);
+
+    Ok((ablation, control))
+}
+
 /// Checks that the control copies all gave the same answer, `copies` naming them in the record.
 pub(crate) fn copies_agree(trial: &Trial, control: &Observation, copies: &str) {
     trial.check(
@@ -177,7 +207,7 @@ pub fn all() -> Vec<Arc<dyn Experiment>> {
 /// times.
 ///
 /// note: two numbers, because they buy different things and only one of them is cheap. A
-/// *replicate* is another copy of an [`Ablation`](crate::Ablation) - the harness re-running its
+/// *replicate* is another copy of an [`Ablation`] - the harness re-running its
 /// own measurement to put a noise floor under it - and one is enough where measured instability
 /// across copies is zero. A *ladder* is another pass over the same dossier by a fresh subject,
 /// which is the only way [`Repair`] gets more than one observation per rung, and the [`AGAIN`]
