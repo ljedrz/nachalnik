@@ -712,6 +712,11 @@ naming that service's model with the second as well. TypeSafe resolves `jev-late
 version is current; OpenRouter serves versions under their own names, which is why the identifier
 this program sends there names one.
 
+A borrowed key is only ever sent to OpenRouter. With `KAMCHATKA_SYSTEM1_BASE_URL` pointing anywhere
+else - a local `laya-serve`, a proxy of your own - the advisor needs a dedicated key, and the
+session stops before it begins saying so rather than hand that address the conversation's
+OpenRouter key. Where the service there checks no key, any value will do.
+
 Those two are also the whole of what a *third* service takes. The variables say `SYSTEM1` rather
 than naming a company because the three question types are the category's — a claim to weigh, a
 closed set, an ordered rubric — and an address this program does not recognise is read as keeping
