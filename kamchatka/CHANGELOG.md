@@ -72,6 +72,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`-r` carries on with the model the session was talking to.** A snapshot holds the
+  conversation and not the model, so a resume with no `-m` started a session with none, and a
+  headless one given a message sent nothing and exited `0`. The model is read from the record
+  beside the snapshot - the last one it switched to or asked - unless `-m`, `KAMCHATKA_MODEL` or a
+  settings file names another.
 - **`/compact` names the compactor as somebody reads it.** Its sentences said
   `kamchatka::tools::tool_trimmer::ToolTrimmer has nothing to do`; they say `ToolTrimmer` now.
   `/seams`, a table where the full path is the useful form, keeps it.

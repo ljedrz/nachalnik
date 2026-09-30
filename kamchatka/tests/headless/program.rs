@@ -2057,3 +2057,54 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
     });
     assert!(told, "the model was not told it was refused");
 }
+
+/// `-r` carries on with the model the session was talking to, which is in its record and not in
+/// its snapshot.
+///
+/// note: a snapshot holds the conversation and not the model, so a resume with no `-m` started a
+/// session with none. The run's parting line said `kamchatka -r …` carries on from it, and a
+/// headless resume given a message then said nothing is sent until there is a model, sent
+/// nothing, and exited `0`. Found against a live model, resuming a saved session.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_resume_carries_on_with_the_model_its_record_names() {
+    let dir = common::scratch("resume-model");
+    let base = common::endpoint(vec![common::answer("hello"), common::answer("hello again")]).await;
+    let run = |args: &[&str]| {
+        common::command()
+            .args(["--headless", "--deadline", "20"])
+            .args(args)
+            .current_dir(&dir)
+            .env("TMPDIR", &dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .env_remove("KAMCHATKA_MODEL")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built")
+    };
+
+    let out = run(&["-m", "nothing", "go"]);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    let state = said
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("`kamchatka -r ")?
+                .strip_suffix("` carries on from it")
+        })
+        .unwrap_or_else(|| panic!("the parting line says how to carry on: {said}"))
+        .to_owned();
+
+    let out = run(&["-r", &state, "again"]);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(!said.contains("no model yet"), "{said}");
+    assert!(said.contains("hello again"), "the message was sent: {said}");
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    let records = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        records.contains(
+            r#""event":"model.requested","model":{"provider":"openai-compatible","model":"nothing""#
+        ),
+        "to the model it was talking to before: {records}"
+    );
+}

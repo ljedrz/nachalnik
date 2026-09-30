@@ -507,6 +507,17 @@ impl Args {
             }
         }
 
+        // note: last of all, so that `-m`, `KAMCHATKA_MODEL` and a settings file's `model` each
+        // still win: the record is what a session was talking to, and any of those is somebody
+        // saying what this one should. A snapshot holds the conversation and not the model, so a
+        // `-r` without this started a session with none - and a headless one given a message sent
+        // nothing and said so to nobody who was looking
+        if args.model.is_none()
+            && let Some(path) = &args.resume
+        {
+            args.model = last_model(std::path::Path::new(path));
+        }
+
         Ok(Given {
             args,
             matches,
@@ -798,6 +809,29 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
     }
     snapshot.used_calls.sort();
     snapshot.used_calls.dedup();
+}
+
+/// The model the record beside a snapshot says the session was last talking to.
+///
+/// note: the last `model.changed` or `model.requested` in it, whichever came later, so that a
+/// `/model` switch the session made is the one it carries on with - and a log running past the
+/// snapshot, as one a killed run leaves does, is read to its end like everything else here. A
+/// switch to no model is `None`, and so is a record that is missing or names none.
+fn last_model(path: &std::path::Path) -> Option<String> {
+    use nachalnik::{Event, Record};
+
+    let log = std::fs::read_to_string(path.with_extension("jsonl")).ok()?;
+
+    log.lines()
+        .filter_map(|line| serde_json::from_str::<Record>(line).ok())
+        .filter_map(|record| match record.event {
+            Event::ModelChanged { to, .. } => Some(to.map(|info| info.model)),
+            Event::ModelRequested { model, .. } => Some(Some(model.model)),
+            _ => None,
+        })
+        .next_back()
+        .flatten()
+        .filter(|model| !model.is_empty())
 }
 
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
