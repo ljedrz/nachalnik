@@ -88,10 +88,11 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         // that says whether the pass was the system working or the limit being wrong. It is a
         // field of the event, not a gloss on one
         Event::Compacted { report } => format!(
-            "{}, {} → {} tokens{}",
+            "{}, {} → {} tokens{}{}",
             moved(report),
             report.tokens_before,
             report.tokens_after,
+            unpriced(report),
             match report.reason.is_empty() {
                 true => String::new(),
                 false => format!(": {}", one_line(&report.reason)),
@@ -299,6 +300,19 @@ pub(super) fn moved(report: &nachalnik::CompactionReport) -> String {
         (0, elided) => format!("{elided} elided"),
         (removed, 0) => format!("{removed} out"),
         (removed, elided) => format!("{removed} out, {elided} elided"),
+    }
+}
+
+/// What of a compaction pass's two totals nobody priced, as a clause to go after them; nothing
+/// where the counter priced it all.
+///
+/// note: said beside the figures, because without it `8863 → 725 tokens` over a pass that elided
+/// a screenshot reads as a request that shrank by the difference, when the one before it was
+/// larger than its figure by an amount nobody knows.
+pub(super) fn unpriced(report: &nachalnik::CompactionReport) -> String {
+    match (report.uncounted_before, report.uncounted_after) {
+        (0, 0) => String::new(),
+        (before, after) => format!(", {before} → {after} piece(s) unpriced"),
     }
 }
 

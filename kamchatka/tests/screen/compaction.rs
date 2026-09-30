@@ -746,7 +746,7 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
 async fn a_blob_goes_even_when_the_count_says_there_is_room() {
     use nachalnik::{Budget, Compactor, Content};
 
-    let harness = Harness::new([]);
+    let mut harness = Harness::new([]);
     let kernel = &harness.app.kernel;
 
     let shot = call("c1", "screenshot", json!({}));
@@ -801,6 +801,15 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
     kernel.apply_compaction(plan);
     assert_eq!(budget().uncounted, 0);
     assert!(!trim.should_compact(&budget()));
+
+    // and the line announcing the pass says what its two totals could not price, since without
+    // it they read as a request that shrank by the difference
+    harness.drain();
+    let screen = harness.flat();
+    assert!(
+        screen.contains("1 → 0 piece(s) unpriced"),
+        "the announcement reads as though everything was priced: {screen}"
+    );
 }
 
 /// A picture the pass may not touch does not turn into a plan. `should_compact` now answers yes

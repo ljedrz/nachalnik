@@ -22,6 +22,9 @@ minor bump may break you.
 
 ### changed
 
+- **A compaction pass says what it could not price.** The line announcing one, and its row on
+  the trace tab, add `1 → 0 piece(s) unpriced` beside the token totals wherever something in the
+  request had no figure.
 - **`border` is `border-color`, and it has a colour of its own.** Left out it is `#1A936F`, and
   the shipped file says so; `null` is the terminal's own foreground colour. It was the terminal's
   yellow either way, so leaving the key out and saying `null` could not be told apart.
