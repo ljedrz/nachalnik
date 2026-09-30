@@ -75,6 +75,13 @@ pub struct Server {
     /// Why [`Server::run`] stopped before somebody said `/quit`, if a signal was the reason; see
     /// [`Server::stopped`].
     stopped: Option<crate::headless::Stop>,
+    /// `SIGTERM` and `SIGHUP`, subscribed before the socket exists; see [`Server::terminated`].
+    ///
+    /// note: behind a lock for the reason `resting` is. Made in [`Server::bind`] rather than in
+    /// [`Server::run`], because the socket appearing is what says a session is there to be
+    /// reached, and a signal sent between the two ended the process where it stood - status
+    /// `SIGTERM` rather than `143`, and a socket file left for every later `--serve` to refuse.
+    terminations: tokio::sync::Mutex<crate::stopping::Terminated>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -143,9 +150,11 @@ impl Server {
     /// anywhere else hands the `shell` tool to whoever finds the port, so it is refused here
     /// rather than written down as something not to do.
     pub async fn bind(address: &str) -> Result<Self, String> {
+        let terminations = crate::stopping::Terminated::new()
+            .map_err(|e| format!("could not listen for a request to end: {e}"))?;
         match protocol::address(address)? {
-            Address::Unix(path) => Self::unix(path).await,
-            Address::Tcp(host) => Self::tcp(host).await,
+            Address::Unix(path) => Self::unix(path, terminations).await,
+            Address::Tcp(host) => Self::tcp(host, terminations).await,
         }
     }
 
@@ -166,7 +175,7 @@ impl Server {
     /// mistyped `--serve` says the path of a file somebody cares about, and the two sentences above
     /// would name a regular file a socket left by a killed session and tell whoever read it to
     /// remove it - so what is actually there is said instead, and only a socket is offered as one.
-    async fn unix(path: &str) -> Result<Self, String> {
+    async fn unix(path: &str, terminations: crate::stopping::Terminated) -> Result<Self, String> {
         use std::os::unix::fs::{FileTypeExt as _, MetadataExt as _, PermissionsExt as _};
 
         let path = std::path::PathBuf::from(path);
@@ -244,11 +253,12 @@ impl Server {
             closed: None,
             resting: std::sync::Mutex::new(None),
             stopped: None,
+            terminations: tokio::sync::Mutex::new(terminations),
         })
     }
 
     /// A port, and only ever a loopback one.
-    async fn tcp(host: &str) -> Result<Self, String> {
+    async fn tcp(host: &str, terminations: crate::stopping::Terminated) -> Result<Self, String> {
         let address = tokio::net::lookup_host(host)
             .await
             .map_err(|e| format!("`{host}` is nowhere: {e}"))?
@@ -281,6 +291,7 @@ impl Server {
             closed: Some(port),
             resting: std::sync::Mutex::new(None),
             stopped: None,
+            terminations: tokio::sync::Mutex::new(terminations),
         })
     }
 
@@ -382,6 +393,16 @@ impl Server {
         self.stopped
     }
 
+    /// Waits for the next `SIGTERM` or `SIGHUP`, from the moment this was bound; cancel-safe, as
+    /// [`crate::stopping::Terminated::which_arrived`] is.
+    ///
+    /// note: for a loop that serves this session with a screen as well, which has to read these
+    /// rather than subscribe again: a signal that arrives before a subscription is made reaches
+    /// only the ones already made, so a loop of its own would wait for it for ever.
+    pub async fn terminated(&self) -> crate::stopping::Ending {
+        self.terminations.lock().await.which_arrived().await
+    }
+
     /// Serves the session until somebody says to stop, and returns when nothing is left in flight.
     ///
     /// note: it does **not** stop when the last client leaves, and that is the invariant the
@@ -409,8 +430,6 @@ impl Server {
         // one that means leave; see `crate::stopping`
         let mut presses = crate::stopping::Stopping::new()
             .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
-        let mut terminations = crate::stopping::Terminated::new()
-            .map_err(|e| format!("could not listen for a request to end: {e}"))?;
 
         // set by whichever branch found a reason to stop, rather than each of them breaking where
         // it stands: one of them is nested inside a second `select!`, and a `break` there ends the
@@ -475,7 +494,7 @@ impl Server {
                     leaving |= apply_press(app, &mut stopping);
                 }
                 // taken as `/quit`: the turn is stopped and waited for above
-                ending = terminations.which_arrived() => {
+                ending = self.terminated() => {
                     app.quit = true;
                     self.stopped.get_or_insert(match ending {
                         crate::stopping::Ending::HungUp => crate::headless::Stop::HungUp,

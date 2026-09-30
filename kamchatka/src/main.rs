@@ -955,7 +955,15 @@ async fn run(
                     }
                 }
             }
-            () = terminations.arrived() => app.quit = true,
+            // a served session's own, which was subscribed before its socket existed
+            _ = async {
+                match &server {
+                    Some(server) => {
+                        server.terminated().await;
+                    }
+                    None => terminations.arrived().await,
+                }
+            } => app.quit = true,
             _ = ticks.tick() => {
                 // note: on the tick as well as on an event, because a provider and an advisor
                 // have things to say when nothing is happening - a retry's wait, a local advisor
