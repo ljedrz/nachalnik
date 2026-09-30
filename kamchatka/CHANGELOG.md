@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- **The advisor's tokens are counted against `--spend`.** The advisor is asked from inside the
+  permission policy, which writes no event, so the ceiling added up the model's responses and
+  dropped what every rating cost - and an advisor borrowing the session's key spends out of the
+  same account. What its answers report is now charged as it arrives, whichever key paid, and
+  `/spend` says how much of the total was the advisor's. `Advised::spent` and
+  `App::spent_on_advice` are new.
+
 ### security
 
 - **A borrowed key is sent only to OpenRouter.** `--advise` with no `KAMCHATKA_SYSTEM1_API_KEY`

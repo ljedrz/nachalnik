@@ -434,7 +434,9 @@ as one that is complete.
 `/budget` is about the next request; `/spend` is about the session. It adds up what the provider
 charged for every response — measured, never estimated — and says it against the ceiling, if one
 was set with `--spend` or with `/spend N`. The session stops at that ceiling, which is what it is
-for; see [the guards on a run nobody is watching](#-the-same-program-without-a-screen).
+for; see [the guards on a run nobody is watching](#-the-same-program-without-a-screen). What the
+`--advise` advisor reports its answers cost is counted too, whichever key pays for it, and `/spend`
+says how much of the total was the advisor's.
 
 The compactor shortens the oldest tool results to a marker once the context passes `--compact`
 (0.8 by default) of the limit. It does not summarize them — it never read them — and it touches

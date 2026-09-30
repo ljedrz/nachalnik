@@ -24,7 +24,13 @@
 //! both as data: a tool call that *says* it has been approved is a string in `args` like any
 //! other.
 
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use nachalnik::{
     Capability, PermissionPolicy, PermissionRequest, ToolCallId, Verdict, async_trait,
@@ -358,6 +364,8 @@ pub struct Advised {
     /// Where it put each command it was asked to rate, or why it could not, for the question to
     /// draw.
     readings: Mutex<VecDeque<(ToolCallId, Result<Rated, String>)>>,
+    /// What the engine has reported its answers cost, added up: see [`Advised::spent`].
+    spent: AtomicU64,
 }
 
 impl Advised {
@@ -367,7 +375,19 @@ impl Advised {
             careful,
             jev,
             readings: Mutex::new(VecDeque::new()),
+            spent: AtomicU64::new(0),
         }
+    }
+
+    /// The tokens the engine has reported its answers cost, over the life of this policy.
+    ///
+    /// note: kept here because nothing else sees them. The advisor is asked from inside the
+    /// permission policy, which writes no event, so a `--spend` that added up `model.finished`
+    /// alone was a ceiling on the model and none on the advisor - and one borrowing the session's
+    /// key spends out of the same account. `App` charges what this has grown by since it last
+    /// looked. A local engine that reports nothing adds nothing, which is what it costs.
+    pub fn spent(&self) -> u64 {
+        self.spent.load(Ordering::Relaxed)
     }
 
     /// Whatever the engine last wanted to say for itself, if anything.
@@ -466,6 +486,13 @@ impl Advised {
             .ask(state(request), questions)
             .await
             .map_err(|e| cut(&e.to_string()))?;
+        if let Some(usage) = &answers.usage {
+            let tokens = usage
+                .input_tokens
+                .unwrap_or(0)
+                .saturating_add(usage.output_tokens.unwrap_or(0));
+            self.spent.fetch_add(tokens, Ordering::Relaxed);
+        }
 
         // note: the score and the confidence together or not at all. A score with no confidence
         // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
@@ -919,6 +946,46 @@ mod tests {
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
         assert!(advised.rating(&request.call).is_none());
         assert!(advised.why_unrated(&request.call).is_some());
+    }
+
+    /// What an answer reports it cost is added up, for the ceiling to charge.
+    ///
+    /// note: an answer that could not be read as a rating still cost what it cost, so the half
+    /// answer is the case here: the figure is counted whether or not a colour came of it.
+    #[tokio::test]
+    async fn what_an_answer_cost_is_added_up() {
+        struct Billed;
+
+        #[async_trait]
+        impl SystemOne for Billed {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                Ok(nachalnik_providers::system1::Answers::read(json!({
+                    "model": "billed",
+                    "answers": { RATING: { "type": "score", "score": 0.1 } },
+                    "usage": { "input_tokens": 300, "output_tokens": 20 },
+                })))
+            }
+
+            fn named(&self) -> String {
+                "billed".to_owned()
+            }
+        }
+
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(Billed));
+        assert_eq!(advised.spent(), 0);
+        let request = asking("shell", Capability::exec("run"));
+        advised.evaluate(&request).await;
+        advised.evaluate(&request).await;
+        assert_eq!(advised.spent(), 640, "both answers, input and output");
+
+        // and an engine that could not be reached cost nothing
+        let unreached = Advised::new(Arc::new(Careful::new()), unreachable());
+        unreached.evaluate(&request).await;
+        assert_eq!(unreached.spent(), 0);
     }
 
     /// A command of eight stages costs the round trip a command of one costs.

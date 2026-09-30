@@ -100,6 +100,41 @@ impl App {
         for (usage, stop) in responses {
             self.charge(usage, &stop);
         }
+        self.charge_advice();
+    }
+
+    /// Charges what the advisor has reported spending since the last look.
+    ///
+    /// note: here, on every event, for the reason the responses are: an advisor is asked while a
+    /// call waits for its permission, and the question it was asked about is an event, so what
+    /// it cost is charged before that call can run - and before the next request goes out.
+    ///
+    /// note: counted whichever key paid for it. Borrowed, it is the session's own account; with a
+    /// key of its own it is a second bill, and still tokens this session spent. `/spend` says how
+    /// much of the figure was the advisor's, so neither reading is hidden inside the other.
+    #[cfg(feature = "shell-advisor")]
+    fn charge_advice(&mut self) {
+        let Some(now) = self.advisor.as_ref().map(|advised| advised.spent()) else {
+            return;
+        };
+        // an `App` keeps one advisor for its life - `/restart` builds both again - so the figure
+        // only grows
+        let new = now.saturating_sub(self.advised);
+        self.advised = now;
+        if new > 0 {
+            self.count(new);
+        }
+    }
+
+    #[cfg(not(feature = "shell-advisor"))]
+    fn charge_advice(&mut self) {}
+
+    /// How many of the tokens spent were the advisor's.
+    pub fn spent_on_advice(&self) -> u64 {
+        #[cfg(feature = "shell-advisor")]
+        return self.advised;
+        #[cfg(not(feature = "shell-advisor"))]
+        0
     }
 
     /// Adds what a provider charged to what this session has spent, and stops the turn once that
