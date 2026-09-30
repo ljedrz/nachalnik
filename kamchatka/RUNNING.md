@@ -487,6 +487,12 @@ question, so the context tab is a keystroke away while it stands and <kbd>p</kbd
 answer to "not that one". Saying yes works the pass out again, so a pin made while reading the
 list is honoured rather than refused after the fact.
 
+The compactor keeps to tool results, so a conversation that is its own bulk — long messages, long
+answers — is one it can do nothing about. When the context is past `--compact` and there is
+nothing left it may take, the session says the context is full, once, while there is still room
+under the limit: what is left is for you to `/exclude`, or for the model to exclude through its
+`context` tool. It says so again when there is room.
+
 Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
 trip for an endpoint to say what the corner already says, and it prints how much of it has to go.
 The context tab says the same figure while you are deciding which rows answer for it. What it does
