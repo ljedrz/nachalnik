@@ -15,6 +15,10 @@ minor bump may break you.
   may be taken automatically - with room still under the limit - and what is left is for the
   person to `/exclude` or the model to exclude through `context`; and says so again when there is
   room. `ToolTrimmer::wants_room` is its threshold alone, so an unpriced pin does not read as full.
+- **The model is told the context is full, where it can act on it.** A note naming the `context`
+  tool goes into the context before the next request - inside the turn that filled it - so a
+  headless run can make its own room rather than run into the limit. Without the `context` tool
+  the note asks the model to tell the person instead; it is excluded again when there is room.
 
 ### changed
 

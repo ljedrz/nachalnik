@@ -491,7 +491,10 @@ The compactor keeps to tool results, so a conversation that is its own bulk — 
 answers — is one it can do nothing about. When the context is past `--compact` and there is
 nothing left it may take, the session says the context is full, once, while there is still room
 under the limit: what is left is for you to `/exclude`, or for the model to exclude through its
-`context` tool. It says so again when there is room.
+`context` tool. The model is told too, by a note put into the context before its next request —
+inside the turn that filled it, so a run nobody is watching can make its own room rather than run
+into the limit. Without the `context` tool, the note asks the model to tell you instead. It says
+so again when there is room, and the note is excluded.
 
 Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
 trip for an endpoint to say what the corner already says, and it prints how much of it has to go.
