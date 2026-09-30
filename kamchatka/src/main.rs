@@ -584,7 +584,7 @@ async fn session() -> Result<Option<headless::Stop>> {
                 true => server
                     .run(&mut app, &mut events, &mut finished)
                     .await
-                    .map(|()| None)
+                    .map(|()| server.stopped())
                     .map_err(|e| anyhow::anyhow!("{e}")),
             },
             None => match headless {

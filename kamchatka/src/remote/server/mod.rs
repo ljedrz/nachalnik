@@ -72,6 +72,9 @@ pub struct Server {
     /// note: behind a lock because [`Server::arrived`] takes `&self`, for the `select!` it is a
     /// branch of - and a future holding a `Cell` would not be `Send`.
     resting: std::sync::Mutex<Option<tokio::time::Instant>>,
+    /// Why [`Server::run`] stopped before somebody said `/quit`, if a signal was the reason; see
+    /// [`Server::stopped`].
+    stopped: Option<crate::headless::Stop>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -240,6 +243,7 @@ impl Server {
             unlink: Some((path, made.0, made.1)),
             closed: None,
             resting: std::sync::Mutex::new(None),
+            stopped: None,
         })
     }
 
@@ -276,6 +280,7 @@ impl Server {
             unlink: None,
             closed: Some(port),
             resting: std::sync::Mutex::new(None),
+            stopped: None,
         })
     }
 
@@ -367,6 +372,16 @@ impl Server {
         }
     }
 
+    /// Why the last [`Server::run`] stopped, where a signal rather than somebody's `/quit` was the
+    /// reason: `ctrl+c`, `SIGHUP` or `SIGTERM`, the first of them that arrived.
+    ///
+    /// note: what the program's exit status is made of, as [`crate::headless::Headless::stopped`]
+    /// is for a headless run. A served session ended by `SIGTERM` left with `0`, which a script or
+    /// a service manager reads as a session that finished rather than one that was stopped.
+    pub fn stopped(&self) -> Option<crate::headless::Stop> {
+        self.stopped
+    }
+
     /// Serves the session until somebody says to stop, and returns when nothing is left in flight.
     ///
     /// note: it does **not** stop when the last client leaves, and that is the invariant the
@@ -455,9 +470,18 @@ impl Server {
                     }
                 },
                 event = events.recv() => leaving |= !apply_event(app, event),
-                () = presses.pressed() => leaving |= apply_press(app, &mut stopping),
+                () = presses.pressed() => {
+                    self.stopped.get_or_insert(crate::headless::Stop::Interrupted);
+                    leaving |= apply_press(app, &mut stopping);
+                }
                 // taken as `/quit`: the turn is stopped and waited for above
-                () = terminations.arrived() => app.quit = true,
+                ending = terminations.which_arrived() => {
+                    app.quit = true;
+                    self.stopped.get_or_insert(match ending {
+                        crate::stopping::Ending::HungUp => crate::headless::Stop::HungUp,
+                        _ => crate::headless::Stop::Terminated,
+                    });
+                }
                 Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
                 Ok(()) = reaching.changed() => {}
                 // note: while a turn runs, for the reason `headless.rs` gives

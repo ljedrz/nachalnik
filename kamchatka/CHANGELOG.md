@@ -72,6 +72,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A served session a signal ended says so in its status.** `SIGTERM`, `SIGHUP` and `ctrl+c`
+  ended a `--serve` session with no screen as a `/quit` does, and it left with `0`; it leaves
+  with `143`, `129` and `130` now, as a headless run does. `remote::Server::stopped` is new.
 - **`fs read` says how many lines a file has up to 64 MiB.** The count was bounded by what a tool
   keeps, 8 MiB, so a larger log said which lines it showed and not how many it had, and a model
   asked for its last line paged forward 32 KB a request. `tools::COUNTED` is the bound now.

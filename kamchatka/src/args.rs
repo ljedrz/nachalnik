@@ -67,7 +67,7 @@ Environment:
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}
 
 Exit status of a headless run: 0 done, 1 failed, 3 --spend reached, 4 paused at --requests,
-124 --deadline passed, 129/130/143 SIGHUP, ctrl+c or SIGTERM"
+124 --deadline passed, 129/130/143 SIGHUP, ctrl+c or SIGTERM - the last three for a served one too"
     )
 }
 
