@@ -75,6 +75,9 @@ minor bump may break you.
 
 ### fixed
 
+- **An MCP server busy with a call goes when the session does.** A run ended by `ctrl+c`, a
+  signal or `--deadline` while a server was still answering left that server running, orphaned,
+  until its call returned. It is killed with the session now, by `nachalnik-mcp`.
 - **`--connect` prints a call whole, as `--headless` does.** It cut the arguments to one line of
   96 characters, so a file write read as the first line of the file, in a client that says it
   writes what `--headless` writes.
