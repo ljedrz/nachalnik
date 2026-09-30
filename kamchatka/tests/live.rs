@@ -1102,6 +1102,7 @@ async fn agent(
             // start a confined child would report that as every one of these failing
             confiner: None,
             limits: limits.clone(),
+            stragglers: Default::default(),
         },
         reach,
         limits.clone(),

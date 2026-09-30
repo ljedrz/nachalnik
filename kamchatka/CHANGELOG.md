@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### changed
 
+- **What a command left running is stopped when the session ends.** A job a `shell` command put in
+  the background stays in the command's process group, so it survived the call and the program,
+  reparented to init with nothing left to answer its network questions or record what it did.
+  Every such group still running when the session ends - at exit and at `/restart` - is now sent
+  `SIGTERM`, then `SIGKILL` two seconds later, and each is named. `--leave-running` leaves them and
+  names them. **Breaking** for the library: `Shell` gains `stragglers` and `Setup` gains
+  `leave_running`; `tools::Stragglers`, `App::stragglers` and `wiring::stragglers_at_end` are new.
+
 - **`app::when::read_off` answers a `When`, not an `Option` of one.** There was never a `None`: a
   zone that cannot be read is UTC, said as UTC. **Breaking** for the library.
 - **A command that does something to the session has one name.** `/prune` and `/keep` are gone

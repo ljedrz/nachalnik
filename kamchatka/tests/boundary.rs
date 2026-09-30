@@ -291,6 +291,7 @@ async fn a_refusal_under_a_refused_write_says_read_only() {
             policy: policy.clone(),
             confiner: None,
             limits: Limits::default(),
+            stragglers: Default::default(),
         },
         Reach {
             workdir: dir.clone(),
@@ -354,6 +355,7 @@ async fn a_system_file_is_refused_by_fs_as_one_shell_reads() {
                 policy,
                 confiner: None,
                 limits: Limits::default(),
+                stragglers: Default::default(),
             },
             Reach {
                 workdir: dir.clone(),
@@ -482,6 +484,7 @@ fn a_leading_tilde_is_refused_in_words_rather_than_expanded() {
             policy: Arc::new(Careful::new()),
             confiner: None,
             limits: Limits::default(),
+            stragglers: Default::default(),
         },
         reach,
         Limits::default(),

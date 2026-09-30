@@ -410,6 +410,9 @@ pub struct App {
     /// Why the sandbox did not take, where it was asked for and did not and something said why;
     /// see [`crate::sandbox::Probed::why`].
     pub unconfined_because: Option<String>,
+    /// What the shell's commands left running, for whoever ends the session to stop or name; see
+    /// [`crate::tools::Stragglers`].
+    pub stragglers: crate::tools::Stragglers,
     /// What the provider charged for the last request, and what was in it. See [`Anchor`].
     pub anchor: Option<Anchor>,
     /// The items the request now in flight was built from, until there is a figure to pair
@@ -749,6 +752,7 @@ impl App {
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Off,
             unconfined_because: None,
+            stragglers: crate::tools::Stragglers::default(),
             anchor: None,
             pending: Anchor::default(),
             failed: None,

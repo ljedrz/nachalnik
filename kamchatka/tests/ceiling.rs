@@ -49,6 +49,7 @@ async fn a_line_that_never_ends_is_not_held_past_the_ceiling() {
         policy: Arc::new(Careful::new()),
         confiner: None,
         limits: Limits::default(),
+        stragglers: Default::default(),
     };
     let args = json!({ "call": { "action": "run", "cmd": "head -c 2000000000 /dev/zero" } });
 
@@ -82,6 +83,7 @@ async fn output_that_is_not_text_is_held_to_the_ceiling_as_it_is_kept() {
         policy: Arc::new(Careful::new()),
         confiner: None,
         limits: Limits::default(),
+        stragglers: Default::default(),
     };
     let bytes = format!("head -c {} /dev/zero | tr '\\0' '\\377'", KEPT - 1024);
 

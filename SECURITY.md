@@ -112,6 +112,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   to the user; a PID namespace per command, which needs a user namespace; or making this process
   the subreaper of what is orphaned and reaping it, alongside the runtime reaping its own children
   by pid. Each fails somewhere this program runs, so a stop is the group, and says so.
+  A call that *ends* leaves its group alone, so a job it put in the background - `sleep 300 &`, a
+  server - runs on while the session lasts; when the session ends, every such group still running
+  is sent `SIGTERM`, then `SIGKILL`, and named. `--leave-running` leaves them, and names them too.
+  The same holds as above for a process that left its group: it is not on the list.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
   the process behind it act for it, and that process is not in the domain: `systemd-run --user`
   over the session bus read and wrote a home directory the same command was refused directly, and

@@ -1293,6 +1293,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
             policy: harness.app.policy.clone(),
             confiner: None,
             limits: limits.clone(),
+            stragglers: Default::default(),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
