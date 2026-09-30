@@ -928,8 +928,10 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
     )])
     .await;
 
+    // an argument the server ignores, so that this run's server is the one looked for below
+    let marker = format!("first-press-{}", std::process::id());
     let server = format!(
-        "py=python3 {}",
+        "py=python3 {} {marker}",
         concat!(env!("CARGO_MANIFEST_DIR"), "/tests/mcp_server.py")
     );
     let mut child = common::command()
@@ -955,6 +957,24 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
         pressed.elapsed() < std::time::Duration::from_secs(5),
         "the first press waited for the server anyway: {:?}",
         pressed.elapsed()
+    );
+
+    // note: and the server went with it. It is still asleep in the call, so it never reads the
+    // end of its input, and the kill `rmcp` sends on drop is a task the runtime was let go of
+    // before it ran - so every run of this left a Python process behind for ten minutes
+    let running = || {
+        std::fs::read_dir("/proc")
+            .expect("a /proc")
+            .filter_map(|entry| std::fs::read(entry.ok()?.path().join("cmdline")).ok())
+            .any(|cmdline| String::from_utf8_lossy(&cmdline).contains(&marker))
+    };
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while running() && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        !running(),
+        "the MCP server outlived the session that started it"
     );
 }
 
