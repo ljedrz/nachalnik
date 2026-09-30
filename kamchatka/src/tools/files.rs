@@ -164,6 +164,15 @@ impl Span {
     }
 }
 
+/// The largest file `read` counts the lines of to the end, in bytes, to say how many it has.
+///
+/// note: its own bound rather than [`KEPT`], because counting keeps nothing: it is a pass over the
+/// bytes, and what `KEPT` bounds is what this program holds. Bounded by `KEPT`, a 9 MB log said
+/// which lines it was showing and not how many there were, so a model asked for its last line
+/// could only page forward 32 KB a request until the turn's budget ran out; told `of 120000`, it
+/// reads `from: 120000`. Past this a pass is long enough to be worth not taking unasked.
+pub const COUNTED: u64 = 64 * 1024 * 1024;
+
 /// Room kept under the output limit for the line saying which lines these are.
 const HEADER: usize = 256;
 
@@ -177,8 +186,8 @@ const HEADER: usize = 256;
 /// to read. Cut here, the answer names the next line, and `from` reads on from it inside `fs:read`.
 ///
 /// note: line by line, keeping only what is shown, so a file of any size can be read a part at a
-/// time; what [`KEPT`] bounds is the counting. A file larger than that is not read to its end to
-/// say how many lines it has, and the answer says that more follow instead of how many.
+/// time; what [`COUNTED`] bounds is the counting. A file larger than that is not read to its end
+/// to say how many lines it has, and the answer says that more follow instead of how many.
 ///
 /// note: the whole file with nothing added where it fits and nothing narrower was asked for, which
 /// is the answer `read` has always given: a line of bookkeeping on every small file is a toll on
@@ -192,7 +201,7 @@ fn read(
     let file = reach.open(path, Access::Reading)?;
     // a size is what a file says about itself, and `/proc` says nothing - so this decides only
     // whether to count to the end, and a file claiming less than it holds is counted anyway
-    let countable = file.metadata().is_ok_and(|meta| meta.len() <= KEPT as u64);
+    let countable = file.metadata().is_ok_and(|meta| meta.len() <= COUNTED);
     let mut reader = std::io::BufReader::new(file);
     let room = budget.saturating_sub(HEADER);
 

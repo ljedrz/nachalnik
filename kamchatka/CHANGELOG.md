@@ -72,6 +72,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs read` says how many lines a file has up to 64 MiB.** The count was bounded by what a tool
+  keeps, 8 MiB, so a larger log said which lines it showed and not how many it had, and a model
+  asked for its last line paged forward 32 KB a request. `tools::COUNTED` is the bound now.
 - **`-r` carries on with the model the session was talking to.** A snapshot holds the
   conversation and not the model, so a resume with no `-m` started a session with none, and a
   headless one given a message sent nothing and exited `0`. The model is read from the record
