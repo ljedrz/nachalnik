@@ -857,6 +857,10 @@ impl App {
         self.stepping = stepping;
         self.interrupting = false;
         self.paused = false;
+        #[cfg(feature = "shell-advisor")]
+        if let Some(advised) = &self.advisor {
+            advised.resume();
+        }
         self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         let turn = tokio::spawn(async move {
@@ -1304,6 +1308,11 @@ impl App {
         }
         self.interrupting = true;
         self.kernel.interrupt();
+        // and whatever the advisor is being asked for that turn, which the kernel cannot reach
+        #[cfg(feature = "shell-advisor")]
+        if let Some(advised) = &self.advisor {
+            advised.stop();
+        }
     }
 
     /// Whether the turn is resting in [`State::Ready`]: calls decided, and none of them run.

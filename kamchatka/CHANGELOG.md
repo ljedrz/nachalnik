@@ -36,6 +36,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A stop does not wait for the advisor.** The advisor is asked inside the permission policy,
+  which the kernel awaits and which does not read the interrupt, so a `ctrl+c` while a command was
+  being rated did nothing visible until the rating came back - four tries of thirty seconds
+  against a busy service. A stop now gives up on the rating at once, and the question says the
+  turn was stopped, so the advisor was not waited for. The verdict is the standing rules' either
+  way. `Advised::stop` and `Advised::resume` are new.
 - **A sandbox that did not take says why.** `Confinement::Unavailable` covers a kernel with no
   Landlock and a ruleset call that failed, and the second's error was dropped, so the permissions
   tab and the confined child both said the sandbox did not take and neither said why. The reason
