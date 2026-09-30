@@ -496,6 +496,12 @@ inside the turn that filled it, so a run nobody is watching can make its own roo
 into the limit. Without the `context` tool, the note asks the model to tell you instead. It says
 so again when there is room, and the note is excluded.
 
+In a headless run that making of room is a question like any other: every `context` call is
+asked about, `look` included, and `--on-ask deny` refuses them all, so the model reads the note
+and can do nothing about it. `--allow context` is what lets it — or
+`--allow context:look,context:exclude,context:elide`, for a run that should free room and change
+nothing else.
+
 Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
 trip for an endpoint to say what the corner already says, and it prints how much of it has to go.
 The context tab says the same figure while you are deciding which rows answer for it. What it does
