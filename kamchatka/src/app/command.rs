@@ -16,7 +16,7 @@ use super::{
     App, Did, Proposed, Reply, Speaker, Tab,
     text::{
         MID_TURN, NOTHING_DECIDED, nothing_to_send, one_line, plural, pretty, request_preview,
-        verdict_word,
+        short, verdict_word,
     },
 };
 
@@ -1383,13 +1383,13 @@ impl App {
                 Some(target) if budget.used() <= target => format!(
                     "{} has nothing to do: the next request is ~{} tokens, under the ~{} it \
                      takes the context to",
-                    compactor.name(),
+                    short(compactor.name()),
                     thousands(budget.used()),
                     thousands(target),
                 ),
                 _ => format!(
                     "{} found nothing it may take: the next request is ~{} tokens{}",
-                    compactor.name(),
+                    short(compactor.name()),
                     thousands(budget.used()),
                     match budget.limit {
                         Some(limit) => format!(" of {}", thousands(limit)),
@@ -1452,7 +1452,7 @@ impl App {
             Speaker::Note,
             format!(
                 "{} would take {count} item(s) holding {} tokens",
-                compactor.name(),
+                short(compactor.name()),
                 thousands(holding),
             ),
         );

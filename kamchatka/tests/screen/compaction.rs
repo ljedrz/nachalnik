@@ -1134,6 +1134,9 @@ async fn compact_under_the_target_says_the_context_is_under_it() {
         screen.contains("has nothing to do") && screen.contains("under the"),
         "{screen}"
     );
+    // and it is named as somebody reads it, not by its module path in the middle of a sentence
+    assert!(screen.contains("ToolTrimmer has nothing to do"), "{screen}");
+    assert!(!screen.contains("tools::tool_trimmer"), "{screen}");
     assert!(
         !screen.contains("found nothing it may take"),
         "nothing is ineligible here; the context is simply not full enough: {screen}"
