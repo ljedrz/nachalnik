@@ -109,6 +109,46 @@ async fn a_session_is_saved_to_a_path_and_comes_back_from_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A saved session is its owner's to read, whatever the umask and whatever was there before.
+///
+/// note: the save is written beside the target and renamed over it, so the mode is the new file's
+/// and not the one somebody had set - a file made private with `chmod 600` came back `0644` after
+/// the next `/save` over it, holding the whole conversation.
+#[tokio::test]
+async fn a_save_is_readable_by_its_owner_alone() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = common::scratch("save-private");
+    let stem = dir.join("private");
+    let (log, state) = (dir.join("private.jsonl"), dir.join("private.json"));
+    // made private by hand, which is what the save used to undo
+    for path in [&log, &state] {
+        std::fs::write(path, "").unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
+    let mut harness = Harness::new([ModelResponse::text("noted")]);
+    harness.send("the key is 4817").await;
+    harness.settle().await;
+    harness.send(&format!("/save {}", stem.display())).await;
+    // and a name nobody made first, which gets the same
+    harness
+        .send(&format!("/save {}", dir.join("fresh").display()))
+        .await;
+
+    for path in [
+        &log,
+        &state,
+        &dir.join("fresh.jsonl"),
+        &dir.join("fresh.json"),
+    ] {
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{} is {mode:o}", path.display());
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The two files of a save describe one moment, and a save that cannot finish leaves the one
 /// before it as it was.
 ///

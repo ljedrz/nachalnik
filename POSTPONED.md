@@ -295,11 +295,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
   says what a screen holds.
 
-- **`/save` writes with the umask.** A snapshot saved over a file somebody had made private comes
-  back readable by whoever the umask allows, where the record the session writes itself is kept in a
-  directory only its owner can open. What waits is the rule: whether a save takes the target's
-  existing mode, the record's mode, or the umask a person chose for their shell.
-
 - **Which checks the record directory's privacy makes.** It checks that the path is a directory
   and not a link, and its mode bits, and not who owns it - which matters only to a process that can
   read past the bits anyway, root or one holding `CAP_DAC_OVERRIDE`. `std` reads a directory's owner

@@ -364,8 +364,14 @@ impl App {
 }
 
 /// Writes `bytes` to a new file beside `path`, flushed to disk, for a rename to put in its place.
+///
+/// note: `0600`, and not whatever the umask allows. A session is the whole conversation - every
+/// tool result and whatever was pasted at the desk - and the rename puts this file's mode in place
+/// of the target's, so under an ordinary umask a save over a file somebody had made private came
+/// back readable by everyone. The record the session writes on its own goes through here too, into
+/// a directory only its owner can open; this is the same rule for a path somebody named.
 pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
-    use std::io::Write as _;
+    use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
 
     static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     // `create_new`, which follows no link, because `/save` names a path anywhere - a shared
@@ -379,6 +385,7 @@ pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::Pat
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
+            .mode(0o600)
             .open(&at)
         {
             Ok(file) => break (at, file),
