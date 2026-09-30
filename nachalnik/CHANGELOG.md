@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### added
 
+- **A compaction report says what of the request it could not price.**
+  `CompactionReport::uncounted_before` and `uncounted_after` are the other half of the two token
+  totals, as `Budget::uncounted` is of the budget's, so a pass that elides a picture no longer
+  reads as a request that shrank by exactly the difference. Both are `serde(default)`, so a report
+  recorded before them reads back as having priced everything.
 - **The kernel says when the context is full.** `Event::ContextFull` (`context.full`) is broadcast
   as a compactor that still wants room finds nothing more to take, and again as it stops wanting
   it. Measured by the kernel, not claimed by the compactor. `Compactor::wants_room`, which

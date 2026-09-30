@@ -159,6 +159,18 @@ pub struct CompactionReport {
     pub tokens_before: usize,
     /// The projected token total after: what a request made now would cost, markers included.
     pub tokens_after: usize,
+    /// How many pieces of the request before the pass the counter would not put a number on,
+    /// so that `tokens_before` can be read as the floor it is.
+    ///
+    /// note: the other half of [`Budget`]'s pair, because a pass that elides a picture the
+    /// counter could not price makes the two totals look like a request that shrank by exactly
+    /// what they differ by, when what it was is unknown. `serde(default)`, so a report recorded
+    /// before these existed reads back as having priced everything, which is what it claimed.
+    #[serde(default)]
+    pub uncounted_before: usize,
+    /// The same, for the request after the pass.
+    #[serde(default)]
+    pub uncounted_after: usize,
 }
 
 /// Optional, and optionally automatic, context management.
