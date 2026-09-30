@@ -1402,6 +1402,25 @@ async fn the_request_ceiling_stops_the_program_itself() {
     // is the one place a script can tell the two apart
     assert_eq!(code, Some(4), "{said}");
 
+    // a call somebody is asked about is no way round it: answered by `--on-ask`, the turn carried
+    // on with a budget of its own, made its second request and exited `0` - which is what a live
+    // model reading two files one call at a time did under `--requests 1`
+    let asking = format!(
+        "data: {}",
+        json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+            "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+            "function": {"name": "fs", "arguments": "{\"call\": {\"action\": \"read\", \"path\": \"a.txt\"}}"}}]},
+            "finish_reason": "tool_calls"}]})
+    );
+    let (code, said) = run("1", vec![asking, common::answer("asked again")], "").await;
+    assert!(
+        said.contains("fs: deny"),
+        "the call was asked about: {said}"
+    );
+    assert!(said.contains("paused after 1 request;"), "{said}");
+    assert!(!said.contains("asked again"), "{said}");
+    assert_eq!(code, Some(4), "{said}");
+
     // a pause that is carried on from is not where the run stopped: the status is the last turn's
     let (code, said) = run(
         "1",

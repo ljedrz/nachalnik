@@ -11,7 +11,7 @@ use std::{
     fmt,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering::SeqCst},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering::SeqCst},
     },
 };
 
@@ -277,6 +277,8 @@ struct InnerKernel {
     interrupted: AtomicBool,
     /// Whether the compactor last wanted room it could not make; see [`Event::ContextFull`].
     full: AtomicBool,
+    /// How many requests the turn in progress has sent; see [`Kernel::turn`].
+    turn_requests: AtomicUsize,
     /// What is put into the context as it becomes full; see [`Kernel::set_full_notice`].
     full_notice: RwLock<Option<ContextItem>>,
 }
@@ -569,6 +571,7 @@ impl Kernel {
             seen_calls: Mutex::new(HashSet::new()),
             interrupted: AtomicBool::new(false),
             full: AtomicBool::new(false),
+            turn_requests: AtomicUsize::new(0),
             full_notice: RwLock::new(None),
             config,
         };
@@ -1239,10 +1242,20 @@ impl Kernel {
     ///
     /// note: [`State::Finished`] means the model answered, [`State::Deciding`] means it is your
     /// move, and [`State::Idle`] means the request budget ran out mid-loop - calling `turn`
-    /// again picks up exactly where it left off. An interrupt stops it too, in whatever resting
+    /// again picks up exactly where it left off.
+    ///
+    /// note: the budget is the turn's, not the call's. A `turn` that stops in `Deciding` has not
+    /// ended the turn, it has handed a question over, and the `turn` called once it is answered -
+    /// from `Deciding` or `Ready` - carries on counting from where the last one left off. Counted
+    /// per call, every answered question was a fresh budget, so a turn whose calls were all asked
+    /// about ran as many requests as it liked under any limit. A `turn` called from anywhere else
+    /// is a new turn, or somebody carrying on past a budget that ran out, and starts from nothing. An interrupt stops it too, in whatever resting
     /// state the loop had reached: [`State::Ready`] or [`State::Idle`] as often as not.
     pub async fn turn(&self) -> Result<State> {
-        let mut requests = 0;
+        let mut requests = match self.state() {
+            State::Deciding { .. } | State::Ready { .. } => self.0.turn_requests.load(SeqCst),
+            _ => 0,
+        };
 
         loop {
             // note: this loop does not read the interrupt flag itself. If it did, and the step it
@@ -1262,6 +1275,7 @@ impl Kernel {
                     return Ok(self.state());
                 }
                 requests += 1;
+                self.0.turn_requests.store(requests, SeqCst);
             }
 
             // an interrupt the step acknowledged is one this loop must not step past: it was

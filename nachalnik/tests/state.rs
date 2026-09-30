@@ -406,6 +406,45 @@ async fn the_request_budget_ends_a_turn_without_losing_the_thread() {
     ));
 }
 
+/// An answered question does not give a turn a fresh request budget.
+///
+/// note: `turn` counted the requests it sent itself, so the `turn` called once a question was
+/// answered started from nothing - and a turn whose every call was asked about ran as many
+/// requests as it liked under any limit. Headless `--requests 1 --on-ask deny` made three and
+/// exited as though it had finished. The budget is the turn's now, and a turn carried on past a
+/// budget that ran out is somebody's decision, so that one does start again.
+#[tokio::test]
+async fn an_answered_question_does_not_refill_the_request_budget() {
+    let kernel = Kernel::new(Config {
+        max_requests_per_turn: Some(1),
+        ..Default::default()
+    });
+    let provider = Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "echo", json!({}))]),
+        ModelResponse::text("done"),
+    ]));
+    kernel.set_provider(provider.clone());
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "hi")));
+    kernel.push(ContextItem::user("go"));
+
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Deciding { .. }
+    ));
+    let asked = kernel.pending_permissions();
+    kernel.decide(asked[0].id, Grant::Deny).unwrap();
+
+    // the call is answered and run, and the one request the turn had is spent
+    assert_eq!(kernel.turn().await.unwrap(), State::Idle);
+    assert_eq!(provider.remaining(), 1, "a second request went out");
+
+    // and carrying on past it is a budget of its own
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+}
+
 #[tokio::test]
 async fn the_context_can_be_rewritten_between_two_steps() {
     let (kernel, provider) = permissive([

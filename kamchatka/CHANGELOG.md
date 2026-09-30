@@ -72,6 +72,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--requests` holds a turn whose calls are asked about.** Every question answered, by
+  `--on-ask` or at the keys, gave the turn a fresh budget, so `--requests 1` beside a model reading
+  two files one call at a time made three requests and exited `0` rather than pausing with `4`.
+
 - **A value typed on the command line is not blamed on the settings file.** The refusals that come
   after the merge - a device, a path rule, a tool, a session name - named the file whenever `tools`
   had not been typed, and `tools` only ever comes from a file, so `--sandbox-device /home` beside a

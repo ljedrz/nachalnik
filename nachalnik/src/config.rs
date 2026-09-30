@@ -35,8 +35,11 @@ pub struct Config {
     pub record_progress: bool,
     /// How many context snapshots are retained for [`Kernel::undo`]; `0` disables undo.
     pub context_undo_depth: usize,
-    /// The maximum number of requests a single [`Kernel::turn`] may send before it hands
-    /// control back; `None` means it keeps going until the model stops asking for tools.
+    /// The maximum number of requests a turn may send before it hands control back; `None` means
+    /// it keeps going until the model stops asking for tools.
+    ///
+    /// note: a turn, and not a call to [`Kernel::turn`]: the call that carries on after a question
+    /// is answered carries on counting too. See the note on [`Kernel::turn`].
     ///
     /// note: This is a stop, not a policy: reaching it just ends the turn, and calling
     /// [`Kernel::turn`] again resumes exactly where it left off.
