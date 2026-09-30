@@ -14,6 +14,11 @@ minor bump may break you.
   `KAMCHATKA_SYSTEM1_BASE_URL` pointed - so an advisor pointed at a local `laya-serve` was handed
   an OpenRouter credential. An advisor address that is not OpenRouter's now needs a dedicated key,
   and the session is refused before it begins, naming the address.
+- **A saved session is `0600`.** `/save` writes beside the target and renames over it, so a file
+  somebody had made private came back with whatever the umask allowed - under an ordinary one,
+  readable by everyone on the machine - holding the whole conversation. Both files of a save, and
+  the record written at the end of a run, are now created readable and writable by their owner
+  alone.
 
 ## [0.16.1] - 2026-09-29
 
