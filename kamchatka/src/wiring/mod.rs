@@ -381,6 +381,32 @@ impl Flagged {
     }
 }
 
+/// Why [`Setup::check`] refused a setup, and which setting said what it refused.
+///
+/// note: the setting as a settings file spells its key - `sandbox-device`, `allow-server` - since
+/// that is the one spelling every setting has, and a flag has it too with `--` in front. It is
+/// `None` for a refusal no setting said, like a working directory that cannot be found.
+///
+/// note: it exists for the caller holding a settings file, which names the file beside a value the
+/// file said and says nothing about one somebody typed. Without it that caller had one string and
+/// no way to tell, and named the file for a `--sandbox-device` typed on the command line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Refused {
+    /// The setting whose value is refused, by its key in a settings file.
+    pub setting: Option<&'static str>,
+    /// What is wrong with it, as a sentence for a person.
+    pub said: String,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.said)
+    }
+}
+
+impl std::error::Error for Refused {}
+
 impl Setup {
     /// What can be said about a setup before anything is reached: a path rule nothing can match,
     /// a tool nobody offers.
@@ -389,25 +415,40 @@ impl Setup {
     /// arguments are wrong before it builds a provider. `main` connects to an endpoint and asks it
     /// what the model holds, which is a round trip and an API key - neither of them anybody's idea
     /// of how to be told that a settings file names `contxt`.
-    pub fn check(&self) -> Result<(), String> {
-        for subject in self.allow.iter().chain(self.deny.iter()) {
-            // a path rule that cannot match stops the session rather than being drawn on the
-            // permissions tab like any other: a `--deny` that refuses nothing is worse than no
-            // rule, because it reads as given
-            if let tools::Subject::Path(pattern) = subject
-                && let Some(objection) = tools::objection_to(pattern)
-            {
-                return Err(objection);
+    ///
+    /// note: what is refused says which setting said it, so that a caller holding a settings file
+    /// can name the file where the file is what said it - and only there. See [`Refused`].
+    pub fn check(&self) -> Result<(), Refused> {
+        let refused = |setting: &'static str, said: String| Refused {
+            setting: Some(setting),
+            said,
+        };
+        for (list, subjects) in [("allow", &self.allow), ("deny", &self.deny)] {
+            for subject in subjects {
+                // a path rule that cannot match stops the session rather than being drawn on the
+                // permissions tab like any other: a `--deny` that refuses nothing is worse than no
+                // rule, because it reads as given
+                if let tools::Subject::Path(pattern) = subject
+                    && let Some(objection) = tools::objection_to(pattern)
+                {
+                    return Err(refused(list, objection));
+                }
             }
         }
 
-        if let Some(objection) = self
-            .allow
-            .iter()
-            .chain(self.deny.iter())
-            .find_map(unreached)
-        {
-            return Err(objection);
+        for (list, subjects) in [("allow", &self.allow), ("deny", &self.deny)] {
+            for subject in subjects {
+                if let Some(objection) = unreached(subject) {
+                    // a server's rule came in as `allow-server` or `deny-server`, which is where it
+                    // was written; every other one is the list's own
+                    let setting = match (subject, list) {
+                        (tools::Subject::Server(_), "allow") => "allow-server",
+                        (tools::Subject::Server(_), _) => "deny-server",
+                        _ => list,
+                    };
+                    return Err(refused(setting, objection));
+                }
+            }
         }
 
         // note: a name that is not a tool stops the session rather than being skipped, for the
@@ -417,9 +458,12 @@ impl Setup {
         if let Some(wanted) = &self.tools {
             let offered: Vec<String> = offered().into_iter().map(|it| it.id).collect();
             if let Some(unknown) = wanted.iter().find(|it| !offered.contains(it)) {
-                return Err(format!(
-                    "`{unknown}` is not one of this program's tools; they are {}",
-                    offered.join(", ")
+                return Err(refused(
+                    "tools",
+                    format!(
+                        "`{unknown}` is not one of this program's tools; they are {}",
+                        offered.join(", ")
+                    ),
                 ));
             }
         }
@@ -434,9 +478,12 @@ impl Setup {
         if let Some(name) = name
             && std::path::Path::new(name).file_name() != Some(std::ffi::OsStr::new(name))
         {
-            return Err(format!(
-                "`{name}` is not a session name a file can be written under; a session is named \
-                 by one file name, with no directory in it"
+            return Err(refused(
+                "session",
+                format!(
+                    "`{name}` is not a session name a file can be written under; a session is \
+                     named by one file name, with no directory in it"
+                ),
             ));
         }
 
@@ -447,8 +494,10 @@ impl Setup {
         // note: resolved through its parent where it is not there yet, since it can be made
         // afterwards and is then just as writable - by the tools themselves, among others
         if self.confine {
-            let workdir = std::env::current_dir()
-                .map_err(|e| format!("could not find the working directory: {e}"))?;
+            let workdir = std::env::current_dir().map_err(|e| Refused {
+                setting: None,
+                said: format!("could not find the working directory: {e}"),
+            })?;
             let writable: Vec<_> = std::iter::once(&workdir)
                 .chain(self.reachable.iter())
                 .filter_map(|path| sandbox::resolve(&workdir.join(path)))
@@ -457,10 +506,13 @@ impl Setup {
                 sandbox::resolve(&workdir.join(path))
                     .is_some_and(|path| writable.iter().any(|root| path.starts_with(root)))
             }) {
-                return Err(format!(
-                    "{}: `--sandbox-read` cannot make a path read-only inside one the tools may \
-                     already write in",
-                    nested.display()
+                return Err(refused(
+                    "sandbox-read",
+                    format!(
+                        "{}: `--sandbox-read` cannot make a path read-only inside one the tools \
+                         may already write in",
+                        nested.display()
+                    ),
                 ));
             }
         }
@@ -479,10 +531,13 @@ impl Setup {
             .iter()
             .find(|device| sandbox::device(device).is_none())
         {
-            return Err(format!(
-                "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
-                 `--sandbox-allow`",
-                stray.display()
+            return Err(refused(
+                "sandbox-device",
+                format!(
+                    "{}: `--sandbox-device` names a device under `/dev`; a path anywhere else is \
+                     `--sandbox-allow`",
+                    stray.display()
+                ),
             ));
         }
 
@@ -493,7 +548,7 @@ impl Setup {
     pub fn wire(self, provider: Arc<dyn Dialect>) -> Result<Wired, String> {
         // before anything is built, so that an embedder gets the same refusal `main` gets before
         // it reaches an endpoint at all
-        self.check()?;
+        self.check().map_err(|refused| refused.to_string())?;
 
         let config = Config {
             session_name: self.session_name,

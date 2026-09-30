@@ -47,6 +47,14 @@ minor bump may break you.
 
 ### fixed
 
+- **A value typed on the command line is not blamed on the settings file.** The refusals that come
+  after the merge - a device, a path rule, a tool, a session name - named the file whenever `tools`
+  had not been typed, and `tools` only ever comes from a file, so `--sandbox-device /home` beside a
+  file that said nothing about devices was refused as `kamchatka.json: /home: ...`. `Setup::check`
+  now says which setting it refused, and the file is named only where it carried that setting and
+  the command line did not overrule it. **Breaking** for the library: `Setup::check` answers a
+  `wiring::Refused`, and `Filed` gains `carried`.
+
 - **A stop does not wait for the advisor.** The advisor is asked inside the permission policy,
   which the kernel awaits and which does not read the interrupt, so a `ctrl+c` while a command was
   being rated did nothing visible until the rating came back - four tries of thirty seconds
