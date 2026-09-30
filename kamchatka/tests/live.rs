@@ -205,9 +205,21 @@ async fn send(
     // into it on purpose - the message would land between a call and its result. Waiting on an
     // outcome that cannot come reports the model as slow ninety seconds later, which is a
     // description of neither the cause nor the fix
+    // note: and which tool asked for what, because the model chose the call and the test did not
+    // - the fix is to allow that capability or to find out why the model reached for it, and
+    // neither can be done from a message that names neither
     assert!(
         !matches!(app.kernel.state(), State::Deciding { .. }),
-        "a permission prompt is open, so {line:?} would go nowhere: allow what the tool needs"
+        "a permission prompt is open, so {line:?} would go nowhere: allow what the tool needs - {}",
+        app.kernel
+            .pending_permissions()
+            .iter()
+            .map(|asked| format!(
+                "{} {} needing {:?}",
+                asked.tool, asked.args, asked.capabilities
+            ))
+            .collect::<Vec<_>>()
+            .join("; ")
     );
 
     // subscribed before the turn starts and drained after it, which is what `main` does with
