@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A stream silent before its headers is asked for once.** A streamed request the server took
+  and said nothing to for `PATIENCE` was sent again, up to four times, on the reading that a
+  stream's headers come before its first token. An endpoint that holds them until the first
+  token - ollama while it loads a model - was then asked, and billed, four times. It now follows
+  the whole answer's rule: only a request that never made its connection is sent again, and one
+  that was taken and went quiet is given up on after one try's wait.
+
 ## [0.6.3] - 2026-09-29
 
 ### fixed

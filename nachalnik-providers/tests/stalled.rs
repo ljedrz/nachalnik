@@ -394,15 +394,15 @@ async fn a_stop_pressed_during_a_backoff_is_not_sent_again() {
     );
 }
 
-/// A stream nobody answers is sent again, as a busy server's is, and given up on once it has been
-/// sent four times - which is what the error says, rather than one try's wait.
+/// A stream nobody answers is asked for once, and given up on after one try's wait.
 ///
-/// note: unlike a whole answer, a stream's headers come before its first token, so a stream with
-/// no headers yet is one the server has not started on. On a paused clock, since each try waits
-/// out `PATIENCE`.
+/// note: it was sent again, on the reading that a stream's headers come before its first token and
+/// so a stream with none is one the server has not started on. An endpoint that holds them until
+/// the first token - ollama loading a model - had then been asked, and billed, four times. On a
+/// paused clock, since the try waits out `PATIENCE`.
 #[cfg(feature = "openai")]
 #[tokio::test(start_paused = true)]
-async fn a_stream_nobody_answers_is_sent_again_and_then_given_up_on() {
+async fn a_stream_nobody_answers_is_asked_for_once() {
     let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(Arc::new(nachalnik_providers::OpenAiCompatible::new(
@@ -418,8 +418,9 @@ async fn a_stream_nobody_answers_is_sent_again_and_then_given_up_on() {
     let said = failed
         .expect_err("an answer that never came is a failure")
         .to_string();
-    assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 4);
-    assert!(said.contains("4 times"), "{said}");
+    assert_eq!(requests.load(std::sync::atomic::Ordering::SeqCst), 1);
+    // and the error is one try's wait, not a count of tries there were none of
+    assert!(said.contains("never answered; giving up after"), "{said}");
 }
 
 /// Takes every request, counts it, and never answers any.

@@ -417,14 +417,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   to carry the figure back to `App` through `Advised`, and a sentence saying which of the two a
   ceiling holds. Whether a limit on the model is also a limit on the advisor is the decision.
 
-- **A stream silent before its headers is sent again.** A streamed request that has heard nothing
-  for `PATIENCE` is retried up to `RETRIES` times, on the reading that a server which took the
-  connection and went quiet is busy - and it is for a whole answer, whose headers come with its last
-  token, that `may_have_been_heard` says otherwise. An endpoint that holds a stream's headers until
-  its first token, as ollama does while it loads a model, can be asked, and billed, more than once.
-  The choices are to keep it, to resend only a request that never connected, or to send an
-  idempotency key where an endpoint takes one.
-
 - **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
   constructor, so it stays unless a minor release wants the surface smaller.
 
