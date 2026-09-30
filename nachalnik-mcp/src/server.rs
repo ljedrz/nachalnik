@@ -98,8 +98,17 @@ impl Server {
     /// on the terminal, a drawn screen included, and no caller can stop it. What it says is kept,
     /// a few lines of it, for the one moment it is worth reading: a handshake that failed, where
     /// it is the reason.
+    ///
+    /// note: and killed when it is dropped, whatever the `Command` says. `rmcp` kills a child it
+    /// drops from a task it spawns, and a runtime shutting down need not run that task - so a
+    /// server still busy with a call, which never reads the end of its input, outlived the program
+    /// that started it. Killed in the drop itself, it goes with the handle.
     #[cfg(feature = "child-process")]
-    pub async fn spawn(name: impl Into<String>, command: tokio::process::Command) -> Result<Self> {
+    pub async fn spawn(
+        name: impl Into<String>,
+        mut command: tokio::process::Command,
+    ) -> Result<Self> {
+        command.kill_on_drop(true);
         let (transport, stderr) = rmcp::transport::TokioChildProcess::builder(command)
             .stderr(std::process::Stdio::piped())
             .spawn()
