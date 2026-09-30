@@ -30,6 +30,51 @@ use tokio::{
 
 use crate::app::{App, NOTICES, Outcome, Overlay, Speaker, text::plural};
 
+/// Why a headless run stopped before it had worked through its input, for its exit status.
+///
+/// note: a run cut short used to leave with the status of one that finished, so a script could
+/// not tell a session that did its work from one a deadline, a ceiling or a signal ended - the
+/// line saying which was on standard error and nowhere a script looks. A failed turn is not one of
+/// these: it is the error [`Headless::run`] returns, and the program's `1`.
+///
+/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Stop {
+    /// `--deadline` ran out.
+    Deadline,
+    /// The spend ceiling was reached.
+    Spent,
+    /// The last turn stopped at `--requests`, with the model not done.
+    Paused,
+    /// `ctrl+c`.
+    Interrupted,
+    /// `SIGTERM`.
+    Terminated,
+    /// `SIGHUP`: the terminal went away.
+    HungUp,
+}
+
+impl Stop {
+    /// The exit status a run that stopped this way leaves with.
+    ///
+    /// note: the conventions a script already knows where there is one - `timeout(1)`'s `124`
+    /// for a deadline, and `128` plus the signal for the three a signal ends - `130` for `ctrl+c`,
+    /// `143` for `SIGTERM` and `129` for `SIGHUP` -
+    /// and small numbers that nothing else here uses for the two that are this program's own.
+    /// `1` is a failed turn and `2` is an argument clap refused.
+    pub fn code(self) -> u8 {
+        match self {
+            Self::Spent => 3,
+            Self::Paused => 4,
+            Self::Deadline => 124,
+            Self::Interrupted => 130,
+            Self::Terminated => 143,
+            Self::HungUp => 129,
+        }
+    }
+}
+
 /// A session driven by lines rather than by keys.
 pub struct Headless<'a> {
     /// What a question nobody is there to answer is answered with.
@@ -44,6 +89,8 @@ pub struct Headless<'a> {
     ctrl_c: bool,
     /// Whether `SIGTERM` and `SIGHUP` end the session rather than the process.
     terminated: bool,
+    /// Why the last run stopped short, if it did; see [`Headless::stopped`].
+    stopped: Option<Stop>,
     /// Whether any of the answer being written has been printed as it arrived.
     streamed: bool,
     /// Fragments of the answer that went by too fast to print, counted until the answer they
@@ -75,6 +122,7 @@ impl<'a> Headless<'a> {
             deadline: None,
             ctrl_c: false,
             terminated: false,
+            stopped: None,
             streamed: false,
             missed: 0,
             answering: false,
@@ -123,12 +171,21 @@ impl<'a> Headless<'a> {
         self
     }
 
+    /// Why the last [`Headless::run`] stopped before it had worked through its input, or `None`
+    /// where it did - which is what the program's exit status is made of.
+    pub fn stopped(&self) -> Option<Stop> {
+        self.stopped
+    }
+
     /// Reads lines, drives the kernel, and returns when there is nothing left of either.
     ///
     /// note: it ends when the input is closed *and* nothing is in flight, rather than at the end
     /// of the first turn. A single question piped in is then the same code path as a session held
     /// open by a script that sends another line when it has read the answer to the last, and the
     /// difference between them is where the pipe came from.
+    ///
+    /// note: `Ok` for a run cut short as well as for one that finished, since neither is an
+    /// error; [`Headless::stopped`] says which, once this has returned.
     pub async fn run(
         &mut self,
         app: &mut App,
@@ -140,6 +197,7 @@ impl<'a> Headless<'a> {
         // being told by whoever built it - which means an embedder that drives `Headless` gets the
         // same `/help` the program does. See `App::keys`
         app.keys = false;
+        self.stopped = None;
 
         let mut lines = Typed::new(input);
         let mut reading = true;
@@ -390,6 +448,7 @@ impl<'a> Headless<'a> {
                         // every time round the loop for ever
                         ends = None;
                         reading = false;
+                        self.stopped.get_or_insert(Stop::Deadline);
                         app.interrupt();
                         self.prose.fresh_line()?;
                         writeln!(self.prose, "· out of time; stopping")
@@ -415,6 +474,7 @@ impl<'a> Headless<'a> {
                             false => {
                                 stopping = true;
                                 reading = false;
+                                self.stopped.get_or_insert(Stop::Interrupted);
                                 app.interrupt();
                                 self.prose.fresh_line()?;
                                 writeln!(
@@ -441,14 +501,19 @@ impl<'a> Headless<'a> {
                     // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
                     // arrives rather than at the parting line, because a run a signal ended is over at
                     // this point: a caller reading the tail of this stream has to be able to tell it
-                    // from one that finished its own work, and an exit code of `0` says neither
-                    () = async {
+                    // from one that finished its own work - and a script reads the status, `128`
+                    // and the signal; see `Stop`
+                    ending = async {
                         match terminations.as_mut() {
-                            Some(terminations) => terminations.arrived().await,
+                            Some(terminations) => terminations.which_arrived().await,
                             None => std::future::pending().await,
                         }
                     } => {
                         app.quit = true;
+                        self.stopped.get_or_insert(match ending {
+                            crate::stopping::Ending::HungUp => Stop::HungUp,
+                            _ => Stop::Terminated,
+                        });
                         self.prose.fresh_line()?;
                         writeln!(self.prose, "· ended by a termination signal; leaving")
                             .map_err(|e| e.to_string())?;
@@ -494,6 +559,17 @@ impl<'a> Headless<'a> {
         flushed?;
         ended?;
         self.echo(app, &mut said, &mut cleared)?;
+
+        // note: the first cause wins, since it is the one that cut the run short - a deadline that
+        // interrupts the turn which would have crossed the ceiling ended the run by the clock. The
+        // two read off the session at the end are the ones with no moment of their own here
+        if self.stopped.is_none() {
+            self.stopped = match (app.overspent(), app.paused()) {
+                (true, _) => Some(Stop::Spent),
+                (false, true) => Some(Stop::Paused),
+                (false, false) => None,
+            };
+        }
 
         // note: the reason is not repeated here. It has been on the prose since the moment it
         // happened, and what the caller wants from this is the exit code. A piped run whose model

@@ -459,11 +459,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   turns back without it. Nothing tested here needed it; a model that does, and a live test that
   shows the difference, would say whether it belongs in the dialect.
 
-- **A headless run cut short exits `0`.** `--deadline`, the spend ceiling, a requests pause at the
-  end of the input and a termination signal all leave with the status a finished run has, and now
-  say which it was on the way out. A distinct status per cause would let a script tell them apart,
-  and is a change to what every existing script sees.
-
 - **A turn paused by `--requests` is not in the record as a pause.** The kernel returns at the
   request budget with the machine `Idle`, and the records of that turn read exactly as those of a
   turn the model ended in as many requests, so a log read afterwards cannot tell them apart. A

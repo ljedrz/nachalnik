@@ -64,9 +64,29 @@ impl Terminated {
 
     /// Waits for the next one; cancel-safe, as [`Stopping::pressed`] is.
     pub async fn arrived(&mut self) {
+        self.which_arrived().await;
+    }
+
+    /// The same, saying which of the two it was.
+    ///
+    /// note: for the exit status, which is `128` plus the signal by convention - so a hangup and a
+    /// `SIGTERM` leave with different ones, although both end the session the same way.
+    pub async fn which_arrived(&mut self) -> Ending {
         tokio::select! {
-            _ = self.terminate.recv() => {}
-            _ = self.hangup.recv() => {}
+            _ = self.terminate.recv() => Ending::Terminated,
+            _ = self.hangup.recv() => Ending::HungUp,
         }
     }
+}
+
+/// Which request to end arrived; see [`Terminated::which_arrived`].
+///
+/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Ending {
+    /// `SIGTERM`.
+    Terminated,
+    /// `SIGHUP`.
+    HungUp,
 }

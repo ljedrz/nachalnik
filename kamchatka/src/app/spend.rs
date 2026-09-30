@@ -181,6 +181,16 @@ impl App {
         self.overspent
     }
 
+    /// Whether the last turn stopped at `--requests` with the model not done, waiting for
+    /// `/continue`.
+    ///
+    /// note: the last turn's, and cleared by the next one: a pause somebody carried on from is not
+    /// where the session stopped. What a headless run reads for its exit status - the records of a
+    /// paused turn read exactly as those of one the model ended in as many requests.
+    pub fn paused(&self) -> bool {
+        self.paused
+    }
+
     /// Whether the last turn was refused for a request longer than the model takes, and the next
     /// one would be too.
     ///
