@@ -114,14 +114,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   reading before anything is sent to a model - the same argument `/request` is there for. A flag
   that does both is a convenience on top of it, not the primitive.
 
-- **Reading a picture back out of a blob, anywhere.** `kamchatka` can now send one and still
-  draws none, and that split is deliberate rather than unfinished: a terminal cell is not a
-  pixel. It looks like a gap: an attached image is the one item in the context whose *content*
-  nobody at this end can inspect. The context tab names it, `enter` on it names it, and the
-  person's own knowledge of the file is the only account of what was sent. A client that renders
-  is a different client, and the runtime already supports it; see `Blob::meta` and
-  `pricing_a_picture.rs` for the half that is not rendering.
-
 - **`kamchatka` anywhere but Linux.** It builds for Linux on x86_64 and aarch64 and `lib.rs`
   refuses every other target, because what makes its shell worth handing a model - Landlock,
   `openat2` beneath a directory, and the network gate's seccomp filter - is Linux's, and off Linux
@@ -307,12 +299,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
   denies is the other reading, at the cost of the two rules no longer being held alike.
 
-- **`n` above 1.** The core refuses no parameter, so a request asking for several choices gets the
-  first and loses the rest - or, streamed through the OpenAI dialect, which reads every chunk as the
-  first choice, the choices merged into one. Parameters are the caller's to set and the runtime
-  carries them verbatim, which is rule one, so this is written down rather than fixed: a caller that
-  asks for alternatives gets what the provider does with them.
-
 - **A `/endpoint` that keeps the model name is in no record.** The kernel announces a switch by
   comparing the `ModelInfo` a provider reports, and a `ModelInfo` carries no address, so
   `/endpoint URL` with no model leaves the record saying the session never moved; only the line the
@@ -357,9 +343,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
-- **Two small differences between the loops.**
-  - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
-  - `--headless` prints a `ToolRequested`'s arguments in full, and `--connect` through `one_line`.
+- **Two calls' streamed output on one line.** With `--parallel`, the output two running calls
+  stream interleaves on one line of the transcript.
 
 - **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
   target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
@@ -378,29 +363,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   that works through the OpenAI dialect can fail a request through Google's. Checking needs a Google
   key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
 
-- **`structuredContent` and the blocks beside it.** A result that carries structured content is
-  taken from it, and every block beside it is dropped, text and otherwise, unnamed. The spec says
-  `content` normally repeats it, and it is documented, so what is lost is only a block the
-  structured half does not cover.
-
-- **`Installed::remove_from` removes by identifier.** A tool installed since under one of the same
-  identifiers is the one that goes, which the doc says. Removing only the very tool that was added
-  needs `Arc` identity and `ptr_eq`, and the check and the removal would not be one step.
-
 - **What `system1` does with a busy service.** Its retries ignore `Retry-After`, do not ask
   `out_of_quota` about a 429, and retry only 429 and 529 - the two statuses the service documents -
   where the dialects retry every 5xx. That fits a client answering a person at a permission prompt,
   who is better served by a quick failure than a long wait. Whether a 502 or 503 is worth one more
   try is the decision.
-
-- **`Permits::unlimited()` has no caller.** It is published and coherent beside the bounded
-  constructor, so it stays unless a minor release wants the surface smaller.
-
-- **The examples' own copies, and one arm nothing reaches.** `compaction` and `transparency` keep
-  their own `thousands` and line wrapper rather than using `examples/common`, because
-  `transparency` says everything it shows is in its one file. `panel` handles `State::Deciding`,
-  which its one tool, asking for nothing, can never reach; the arm is a defensive branch or dead
-  code, with the unreachable `Deny` beside it.
 
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
@@ -444,10 +411,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   refused as though somebody had been asked, and the model is told a different approach may be
   allowed, though the rule will refuse it for the rest of the session. Saying which subject was
   asked about means letting a policy name it in `PermissionPolicy::why`, a `nachalnik` change.
-
-- **A person's re-pin of the model's pin.** When the person pins an item the model had pinned, the
-  pin stays the model's and the model can take it back, while `look` says whose it is. Whether the
-  person's pin should take ownership is what `/pin` means, and is left as it is.
 
 - **A compressed answer is refused, not read.** An endpoint that compresses its body despite not
   being asked gets a sentence naming the encoding. Reading it means reqwest's `gzip` feature, one
