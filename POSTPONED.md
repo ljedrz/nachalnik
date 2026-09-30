@@ -327,9 +327,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   several states takes one kernel checkpoint for each state and note it puts items back into,
   because `set_state` moves items into one state at a time and the kernel has no operation that
   moves several at once - so walking back one change of the model's can cost the person several
-  undos. And its journal takes no operation lock under
-  `--parallel`, so two `context` calls running together can record and walk back in either order.
-  The first needs a multi-state operation in the core; the second is a lock around each call.
+  undos. What would unblock it is an operation in the core that moves items into several states
+  at once.
 
 - **The model's undo history after a resume.** What `context`'s `undo` walks is kept by the process
   and not in the snapshot, so a resumed session has nothing of the model's to walk back, and a

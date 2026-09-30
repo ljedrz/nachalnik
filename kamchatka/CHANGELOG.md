@@ -72,6 +72,10 @@ minor bump may break you.
 
 ### fixed
 
+- **Two `context` changes asked for together are made one at a time.** Under `--parallel` they
+  ran on two threads, and an operation is a change and then the journal entry `undo` walks, so an
+  `undo` could run between another call's two halves and the entry come out describing somebody
+  else's change.
 - **A served session a signal ended says so in its status.** `SIGTERM`, `SIGHUP` and `ctrl+c`
   ended a `--serve` session with no screen as a `/quit` does, and it left with `0`; it leaves
   with `143`, `129` and `130` now, as a headless run does. `remote::Server::stopped` is new.
