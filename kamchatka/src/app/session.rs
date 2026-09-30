@@ -315,6 +315,23 @@ impl App {
         let directory =
             stem.ends_with(std::path::MAIN_SEPARATOR) || std::path::Path::new(stem).is_dir();
         let into: std::path::PathBuf = std::path::Path::new(stem).components().collect();
+        // note: the directory it goes in is named where it is not there, rather than left to the
+        // write, whose error names the file - `could not write notes/today.jsonl: No such file or
+        // directory` reads as a problem with a file nobody expected to exist yet. Not made: making
+        // directories is a change to what `/save` can do, the question `fs write` also waits on
+        let within = match directory {
+            true => into.as_path(),
+            false => into.parent().unwrap_or(std::path::Path::new("")),
+        };
+        if !within.as_os_str().is_empty() && !within.is_dir() {
+            return self.say(
+                Speaker::Error,
+                format!(
+                    "there is no directory {} to save into; make it first",
+                    within.display()
+                ),
+            );
+        }
         let (log, state, claimed) = match (directory, self.saved_into.get(&into)) {
             (false, _) => (format!("{stem}.jsonl"), format!("{stem}.json"), false),
             (true, Some((log, state))) => (log.clone(), state.clone(), false),
