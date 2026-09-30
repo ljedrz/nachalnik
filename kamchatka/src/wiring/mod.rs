@@ -208,6 +208,41 @@ pub struct Wired {
     pub finished: mpsc::UnboundedReceiver<Outcome>,
 }
 
+/// What the model is told as the context becomes full: that the compactor has nothing more it may
+/// take, and what it can do about the rest.
+///
+/// note: `ToolTrimmer` keeps its promise and takes tool results alone, so once they are gone what
+/// is left is the conversation's own, and only the model or the person can say what of it may go.
+/// The kernel places this once per fill, between a turn's results and its next request, so a
+/// tool loop that fills the context hears it inside the same turn - see
+/// `nachalnik::Kernel::set_full_notice`.
+///
+/// note: which of two sentences is decided by whether the `context` tool is offered as the session
+/// starts. A notice sending the model to a tool it does not have is a notice it cannot act on; the
+/// other one asks it to say so, which is the one thing left that it can do. A `/tools toggle`
+/// later does not change it.
+fn full_notice(context_tool: bool) -> ContextItem {
+    let said = match context_tool {
+        true => {
+            "The context is full: every tool result the compactor may take has been elided, and \
+             what is left is the conversation itself. Before going on, use the `context` tool to \
+             `exclude` or `elide` what you no longer need - earlier turns included - and say why."
+        }
+        false => {
+            "The context is full: every tool result the compactor may take has been elided, and \
+             what is left is the conversation itself. Say so to the person you are working with, \
+             who can exclude what is no longer needed, before going on."
+        }
+    };
+
+    ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "kamchatka",
+        "context full",
+        said,
+    )
+}
+
 /// Everything this program's own tools declare, for the names `Setup::check` holds `tools` to and
 /// the rules checked against what the tools do.
 ///
@@ -636,6 +671,11 @@ impl Setup {
         let compact_target = trim.as_ref().map(|trim| trim.target);
         if let Some(trim) = trim {
             kernel.set_compactor(Some(Arc::new(trim)));
+            let context_tool = self
+                .tools
+                .as_ref()
+                .is_none_or(|tools| tools.iter().any(|it| it == "context"));
+            kernel.set_full_notice(Some(full_notice(context_tool)));
         }
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them

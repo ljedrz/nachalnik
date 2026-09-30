@@ -1591,3 +1591,53 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
     assert!(!ok, "{out}");
     assert!(out.contains("Error: kamchatka.json: /home"), "{out}");
 }
+
+/// A session wired with a compactor gives the kernel a notice for the model, naming the `context`
+/// tool where the session offers it and asking the model to tell the person where it does not.
+///
+/// note: the words are this program's, because what the model can do about a full context is a
+/// fact about the tools it was given - and a notice sending it to a tool it does not have is a
+/// notice nobody can act on. With no compactor there is nobody to find the context full.
+#[tokio::test]
+async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
+    use std::sync::Arc;
+
+    use kamchatka::wiring::Setup;
+    use nachalnik_providers::OpenAiCompatible;
+
+    let notice = |setup: Setup| {
+        setup
+            .wire(Arc::new(OpenAiCompatible::new(
+                "scripted",
+                "http://127.0.0.1:1",
+                "",
+            )))
+            .expect("the wiring failed")
+            .app
+            .kernel
+            .full_notice()
+            .map(|item| item.content.to_string())
+    };
+
+    let all = notice(Setup::default()).expect("a notice with the compactor");
+    assert!(all.contains("use the `context` tool"), "{all}");
+
+    let without = notice(Setup {
+        tools: Some(vec!["fs".to_owned()]),
+        ..Setup::default()
+    })
+    .expect("a notice with the compactor");
+    assert!(!without.contains("`context`"), "{without}");
+    assert!(
+        without.contains("the person you are working with"),
+        "{without}"
+    );
+
+    assert_eq!(
+        notice(Setup {
+            compact: None,
+            ..Setup::default()
+        }),
+        None
+    );
+}

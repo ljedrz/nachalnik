@@ -69,11 +69,13 @@ What each is for:
 - **b** is cut by SIGTERM, which is a leaving: the turn is stopped and waited for, and the snapshot
   is current.
 - **c** starts by asking the model to free room. At 40000 the context reaches the limit in c or
-  before it - a run can get there in a: `ToolTrimmer` takes only tool results, and the model's own turns
-  are what fills a long session. That is POSTPONED's *a context the model's own turns have filled*,
-  and the soak's evidence for it rather than a finding. Past the limit, headless passes each
-  message over unsent and says so once, so a segment that reaches it ends having done little, and
-  its signal rarely fires.
+  before it - a run can get there in a: `ToolTrimmer` takes only tool results, and the model's own
+  turns are what fills a long session. Once nothing is left for it to take, the kernel puts a note
+  into the context telling the model it is full and to `exclude` or `elide` through `context`; a
+  model that acts on it keeps the run going, and one that does not reaches the limit - which is
+  the soak's evidence of which of the two it was, rather than a finding. Past the limit, headless
+  passes each message over unsent and says so once, so a segment that reaches it ends having done
+  little, and its signal rarely fires.
 - **d** is the person raising the limit and sending the work again, and is cut by SIGKILL: the
   snapshot is from the start of the turn and the log runs past it. It needs the room to run fifteen
   calls, which is why it carries real tasks rather than asking about the messages that were passed

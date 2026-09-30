@@ -402,32 +402,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   which its one tool, asking for nothing, can never reach; the arm is a defensive branch or dead
   code, with the unreachable `Deny` beside it.
 
-- **A context the model's own turns have filled.** `ToolTrimmer` takes only tool results, so at a
-  small limit a session can reach a point where nothing is left for it to take: what remains is the
-  model's turns and the tool schemas every request carries, and the kernel refuses to send a
-  request over the limit. The refusal says so - how much compaction could free, and that the rest
-  is the model's own turns to exclude by hand - but a headless run has nobody to exclude them, and
-  ends there. A session that only talks gets there first.
-
-  **Decided: the promise stays.** `ToolTrimmer` takes tool results and nothing else - the name was
-  `Trim` until it was made to say so - and eliding the model's oldest turns as a last resort is
-  ruled out. What is wanted instead is the person or the model compacting by hand once the context
-  is full, which means telling the model while there is still room for the request that tells it:
-  past the compaction threshold with nothing left to trim, the target's twenty points are that room.
-
-  **What is left is telling the model**, so that a headless run can compact itself rather than
-  run into the refusal. The shape settled on: the caller hands the kernel an item to place when
-  the context becomes full - `kamchatka`'s naming its `context` tool, since the kernel ships no
-  words the model reads - and the kernel places it once, at the point compaction runs, between a
-  turn's results and its next request, and excludes it again when there is room. Not a field on
-  `CompactionPlan`, which is built from literals, and not a note from `App` at the start of a
-  turn, which is too late for a tool loop that fills the context inside one.
-
-  Worth knowing for whoever picks it up: `ToolTrimmer::should_compact` also answers yes for
-  anything it cannot price, which `wants_room` leaves out. What an unpriced item should do to a
-  budget that says it is full is not settled; it matters little to a program that is mostly about
-  code.
-
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
   soaked `nachalnik-providers` against OpenRouter through a fault-injecting proxy, live outside
