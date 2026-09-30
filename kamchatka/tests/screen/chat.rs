@@ -638,7 +638,7 @@ async fn ctrl_l_clears_what_the_program_said_and_keeps_what_was_said_to_it() {
     harness.send("what does the kernel do?").await;
     harness.settle().await;
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
-    harness.send("/prune files").await;
+    harness.send("/exclude files").await;
 
     let screen = harness.screen();
     assert!(screen.contains("1 item(s) are now excluded"), "{screen}");

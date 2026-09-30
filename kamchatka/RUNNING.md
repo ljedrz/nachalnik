@@ -93,7 +93,7 @@ reading the run as bounded.
 the moment the program starts, so an endpoint that never answers and an MCP server that never
 finishes its handshake are held to it too, and a `/restart` does not start it again. What it cannot
 cut short is a command of your own that is waiting on the endpoint: `/models` fetches a list, and
-`/model` and `/provider` finish their switch before the next line is read, so a deadline that
+`/model` and `/endpoint` finish their switch before the next line is read, so a deadline that
 falls during one of those is served when it returns.
 
 A run that one of these cut short says which on stderr as it happens, and leaves with a status of
@@ -322,7 +322,7 @@ Signatures are the other half. Gemini signs the parts of a turn and answers
 it signs text parts as well as calls, which a message with three slots has nowhere to keep. Here
 each part's own fields ride back out on the block they arrived on, unread.
 
-Both providers answer one trait, `Dialect`, so `/model`, `/models`, `/provider` and the status
+Both providers answer one trait, `Dialect`, so `/model`, `/models`, `/endpoint` and the status
 line work the same against either and nothing above them knows which wire format it got.
 
 ```console
@@ -335,7 +335,7 @@ $ kamchatka --gemini "what does src/kernel.rs do?"
 `/model` says which model this is talking to, where that is, in what dialect, and how much context
 it has.
 
-`/model ID` switches the model and `/provider URL [ID]` switches the address — and the model with
+`/model ID` switches the model and `/endpoint URL [ID]` switches the address — and the model with
 it, because a model belongs to the address that serves it. Switching one and keeping the other is
 how a session ends up asking the ollama on this machine for `gemini-3.6-flash`; given no model the
 old name is kept and the new endpoint is asked whether it has one by that name, which is a notice
@@ -374,13 +374,13 @@ reader written against those does not need this program.
 
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
-`gemini-3.5-flash` at another, and after a `/provider` there is no other way to find out which
+`gemini-3.5-flash` at another, and after an `/endpoint` there is no other way to find out which
 without guessing. It asks the endpoint, marks the one you are on with `▸` where it stands in the
 endpoint's own order, and takes a filter because a list of everything an endpoint serves is not an
 answer; a filtered list says how many of how many matched.
 
 The key is *not* switched with the address. It is read from the environment once, at startup, and a
-key typed at a prompt would be a key in the transcript — so `/provider` is for the addresses that
+key typed at a prompt would be a key in the transcript — so `/endpoint` is for the addresses that
 need no key or take the same one: a local model, a proxy, another base URL on the same account.
 
 What is not switched either way is the context. The same items go to whatever answers next, which

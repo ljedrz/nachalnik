@@ -302,12 +302,12 @@ async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
 
     // where they are going, before anything is switched. A model name means a different model at a
     // different address, so a comparison that cannot see the address is a comparison of names
-    harness.send("/provider").await;
+    harness.send("/endpoint").await;
     let screen = harness.screen();
     assert!(screen.contains("http://127.0.0.1:1"), "{screen}");
 
     harness
-        .send("/provider http://127.0.0.1:2/v1 a-model-served-there")
+        .send("/endpoint http://127.0.0.1:2/v1 a-model-served-there")
         .await;
     // the probe it starts is a round trip to a port with nothing on it; the address itself changes
     // here, and that is what the next request would use
@@ -334,7 +334,7 @@ async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
 
 /// The status line pairs the model with where it is being served from, without being asked for it.
 ///
-/// note: `/model`, `/provider` and `/seams` have always named the address, but only when asked,
+/// note: `/model`, `/endpoint` and `/seams` have always named the address, but only when asked,
 /// so a session pointed at a local ollama drew exactly like one talking to OpenRouter - and the
 /// reason for naming the address at all is that those are two different models.
 #[tokio::test]
@@ -1234,9 +1234,9 @@ async fn a_change_of_model_drops_the_correction_too() {
 
 /// The line after a switch is read by the session the switch produced, not the one it replaced.
 ///
-/// note: `/model` and `/provider` hand the switch to a task, because finding out what the new
+/// note: `/model` and `/endpoint` hand the switch to a task, because finding out what the new
 /// model holds and whether the new address serves it is two round trips and a screen should not
-/// stop for them. Nothing was waiting for that task, so `/provider URL ID` followed by `/model`
+/// stop for them. Nothing was waiting for that task, so `/endpoint URL ID` followed by `/model`
 /// answered with the old model - watched live, twice, against two different endpoints - and a
 /// *message* on the next line could be asked of whichever of the two won the race. At a keyboard
 /// it is a race that usually resolves in the gap before somebody types; down a pipe there is no

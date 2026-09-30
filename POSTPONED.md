@@ -38,15 +38,15 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
   `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
   *inside* the branch that read it - so while `/models` fetches a list, `/compact` works out a
-  pass, or the line after a `/model` or `/provider` waits in `App::submit` for the switch to
+  pass, or the line after a `/model` or `/endpoint` waits in `App::submit` for the switch to
   settle, neither branch can be reached. A deadline falling in that window is
   served when the command returns. The model's own turns are interruptible, which is where a run
   spends its time, so the hole is narrow.
 
   What would unblock it is somewhere for a command to run that the loop can outlive. `App::submit`
   takes `&mut App`, so the obvious move - a `timeout_at` around it - would drop the future
-  mid-command and leave a `/provider` half applied, which is a worse thing to leave a session than
-  a late deadline. `/model` and `/provider` already run their switch as a task, `App::settling`,
+  mid-command and leave an `/endpoint` half applied, which is a worse thing to leave a session than
+  a late deadline. `/model` and `/endpoint` already run their switch as a task, `App::settling`,
   and that is half of the shape: the other half is that the wait for it, and for a command that is
   itself a request, has to be something the driver's `select!` can race against the deadline rather
   than an `await` at the top of `App::submit`. On the way out `App::wait_for_turn` already waits
@@ -202,7 +202,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A client command that awaits the endpoint holds the whole session loop.** `remote::server`'s
   loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
-  list, `/compact` works a pass out and then takes it, and a `/model` or `/provider` switch still
+  list, `/compact` works a pass out and then takes it, and a `/model` or `/endpoint` switch still
   in flight is awaited before the next line is read at all. While any of those is
   awaited the loop answers no other client, and one client typing `/models` at an endpoint that
   has gone quiet stalls everybody attached.
@@ -216,7 +216,7 @@ Referenced from [AGENTS.md](AGENTS.md).
   another's command is in flight would need two of the one thing there is one of. The fix is the
   same one the headless deadline above wants - somewhere for a command to run that the loop can
   outlive - and it is rejected here for the same reason: a future dropped mid-command leaves a
-  `/provider` half applied. The shape that would work is `App::submit` splitting into what needs
+  `/endpoint` half applied. The shape that would work is `App::submit` splitting into what needs
   the session and what only needs an `Arc`, and the question to settle first is what an interrupt
   means for the half that is already in flight.
 
@@ -313,10 +313,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   carries them verbatim, which is rule one, so this is written down rather than fixed: a caller that
   asks for alternatives gets what the provider does with them.
 
-- **A `/provider` that keeps the model name is in no record.** The kernel announces a switch by
+- **A `/endpoint` that keeps the model name is in no record.** The kernel announces a switch by
   comparing the `ModelInfo` a provider reports, and a `ModelInfo` carries no address, so
-  `/provider URL` with no model leaves the record saying the session never moved; only the line the
-  command printed says otherwise. `/provider URL MODEL` is recorded, because the name changes.
+  `/endpoint URL` with no model leaves the record saying the session never moved; only the line the
+  command printed says otherwise. `/endpoint URL MODEL` is recorded, because the name changes.
 
   It waits because every fix costs something. An `endpoint` field on `ModelInfo` is the honest one
   and a break, since the struct is not `#[non_exhaustive]`; a field on `Event::ModelChanged` is a

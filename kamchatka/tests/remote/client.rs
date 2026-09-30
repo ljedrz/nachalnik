@@ -996,7 +996,7 @@ async fn the_program_has_one_voice_and_every_client_hears_it() {
 
 /// A model change reaches every client, because nothing else would tell them.
 ///
-/// note: `/model` and `/provider` finish inside the `Dialect` the kernel already holds, and before
+/// note: `/model` and `/endpoint` finish inside the `Dialect` the kernel already holds, and before
 /// this a client went on naming the model before it until something made it ask for a fresh
 /// projection. A browser's header is where that showed, and a second client would never have
 /// found out at all.

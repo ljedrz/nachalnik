@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### changed
 
+- **A command that does something to the session has one name.** `/prune` and `/keep` are gone
+  in favour of `/exclude` and `/pin`, `/policy` in favour of `/permissions`, which is the tab it
+  opens, and `/provider` in favour of `/endpoint`, which is what it switches. The old names are
+  refused as any unknown command is. `/quit` (`/exit`, `/q`) and `/help` (`/?`) keep their other
+  spellings, since they do nothing to the session.
+
 - **A headless run cut short leaves with a status of its own.** `--deadline`, the spend ceiling, a
   turn paused at `--requests` and a signal all left with the `0` a finished run has, so a script
   could not tell them apart from a session that did its work. Now: `3` for the ceiling, `4` for a

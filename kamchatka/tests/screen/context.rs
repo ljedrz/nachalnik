@@ -141,7 +141,7 @@ async fn an_item_that_is_not_going_into_the_request_says_why_where_it_is_listed(
     let mut harness = Harness::new([]);
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
 
-    harness.send("/prune files").await;
+    harness.send("/exclude files").await;
     harness.tab(Tab::Context);
 
     // "why is that out?" is a question about the thing you are looking at, so it is answered
@@ -159,7 +159,7 @@ async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
     harness.app.kernel.push(ContextItem::file("b.rs", "two"));
 
-    harness.send("/prune files").await;
+    harness.send("/exclude files").await;
 
     assert!(harness.screen().contains("2 item(s) are now excluded"));
     assert!(
@@ -330,7 +330,7 @@ async fn a_selector_with_nothing_to_select_teaches_the_language() {
     let mut harness = Harness::new([]);
     harness.app.kernel.push(ContextItem::user("hello"));
 
-    harness.send("/prune").await;
+    harness.send("/exclude").await;
 
     // an error saying the empty string is not a selector is true and useless; this is where
     // somebody goes looking for the grammar
@@ -358,7 +358,7 @@ async fn an_item_can_be_reached_by_the_number_it_is_shown_under() {
     harness.tab(Tab::Context);
     harness.press(KeyCode::Home).await;
 
-    // the number in the first column is the one every note names and `/prune` takes, so it is
+    // the number in the first column is the one every note names and `/exclude` takes, so it is
     // the one that should get you there
     harness.press(KeyCode::Char('9')).await;
     harness.press(KeyCode::Char('G')).await;

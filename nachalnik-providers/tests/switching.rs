@@ -184,7 +184,7 @@ async fn an_address_that_lists_no_parameters_does_not_inherit_the_last_ones() {
 /// A switch reads the listing once, for the limit and the names both.
 ///
 /// note: the probe and the check for the model each fetched it, so every `/model` and every
-/// `/provider` paid for the same listing twice - on OpenRouter, every model it serves.
+/// `/endpoint` paid for the same listing twice - on OpenRouter, every model it serves.
 #[cfg(feature = "openai")]
 #[tokio::test]
 async fn a_switch_reads_the_listing_once() {

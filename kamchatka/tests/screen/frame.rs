@@ -20,7 +20,7 @@ use crate::harness::Harness;
 async fn a_slash_is_a_command_and_everything_else_is_a_message() {
     let mut harness = Harness::new([]);
 
-    harness.send("/policy").await;
+    harness.send("/permissions").await;
     assert!(
         harness.app.kernel.items().is_empty(),
         "a command is not something the model is told about"
@@ -208,11 +208,11 @@ async fn the_help_lists_the_keys_that_exist() {
     for _ in 0..ui::SECTIONS.len() {
         harness.press(KeyCode::Right).await;
         rest = harness.sized(110, 40);
-        if rest.contains("/prune") {
+        if rest.contains("/exclude") {
             break;
         }
     }
-    assert!(rest.contains("/prune"), "{rest}");
+    assert!(rest.contains("/exclude"), "{rest}");
 
     // and the whole of it is still in `everything`, which is what a run with no keys to press
     // reads. A page nobody can turn to is a page that is missing from that reading
@@ -368,7 +368,7 @@ async fn an_abandoned_edit_does_not_swallow_the_next_message() {
 async fn a_tab_with_no_prompt_on_it_takes_the_keys() {
     let mut harness = Harness::new([]);
 
-    harness.send("/policy").await;
+    harness.send("/permissions").await;
     assert_eq!(harness.app.tab, Tab::Permissions);
     assert_eq!(harness.app.focus, Focus::Body);
     assert!(!harness.app.prompted(), "and there is nowhere to type");
@@ -594,7 +594,7 @@ fn every_command_that_exists_is_in_the_help() {
     let help = ui::everything();
     let mut listed = 0;
     for line in handler.lines() {
-        // a match arm whose pattern is one or more quoted names: `"prune" | "keep" | "restore" =>`
+        // a match arm whose pattern is one or more quoted names: `"exclude" | "restore" =>`
         let Some((arms, _)) = line.split_once("=>") else {
             continue;
         };

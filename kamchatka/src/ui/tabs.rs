@@ -541,7 +541,7 @@ pub(super) fn draw_context(
 /// note: shared by the rows and by the line above them saying what the policy answers about
 /// everything it has not been told about. Two of them is two places for `ask` to stop being
 /// yellow, on the one screen where the colour is the answer. The word itself is the shared one,
-/// because `/policy` prints these same rows for a caller with no tab and two spellings of
+/// because `/permissions` prints these same rows for a caller with no tab and two spellings of
 /// `allow` would be the tab and the page disagreeing.
 fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
     (
