@@ -72,6 +72,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`/compact` names the compactor as somebody reads it.** Its sentences said
+  `kamchatka::tools::tool_trimmer::ToolTrimmer has nothing to do`; they say `ToolTrimmer` now.
+  `/seams`, a table where the full path is the useful form, keeps it.
 - **`--requests` holds a turn whose calls are asked about.** Every question answered, by
   `--on-ask` or at the keys, gave the turn a fresh budget, so `--requests 1` beside a model reading
   two files one call at a time made three requests and exited `0` rather than pausing with `4`.
