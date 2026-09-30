@@ -530,6 +530,7 @@ fn a_file_name_read_as_a_domain_says_how_to_write_the_rule() {
         }
         .check()
         .expect_err("a rule nothing is judged under is not a success")
+        .to_string()
     };
 
     for (rule, said) in [
@@ -1232,6 +1233,7 @@ fn a_rule_nothing_is_judged_under_is_refused() {
             ..Setup::default()
         }
         .check()
+        .map_err(|refused| refused.to_string())
     };
 
     let tool = checked("shell").expect_err("a tool's name is not what it is judged as");
@@ -1521,4 +1523,46 @@ fn a_file_named_on_the_command_line_says_why_it_could_not_be_read() {
     // and one that is there goes in
     let (ok, said) = run_from(&dir, &["-f", "notes.md"], "/budget\n");
     assert!(ok, "{said}");
+}
+
+/// A value typed on the command line and refused after the merge is not answered with the file,
+/// whatever else the file carries - and a value the file said is.
+///
+/// note: the refusals that come after the merge - a device, a path rule, a tool - were prefixed
+/// with the file whenever `tools` was not typed, and `tools` can only ever come from a file, so a
+/// typed `--sandbox-device /home` was answered `kamchatka.json: /home: ...` by a file that said
+/// nothing about devices. Which setting was refused is part of the refusal now, and the file is
+/// named only where it carried that setting.
+#[test]
+fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
+    let dir = common::scratch("typed-device");
+    // a file that says something, just nothing about devices
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "tools": ["fs"] }"#).expect("written");
+
+    let (ok, out) = run_from(
+        &dir,
+        &[
+            "--config-file",
+            "kamchatka.json",
+            "--sandbox-device",
+            "/home",
+        ],
+        "",
+    );
+    assert!(!ok, "{out}");
+    assert!(out.contains("names a device under `/dev`"), "{out}");
+    assert!(
+        !out.contains("Error: kamchatka.json"),
+        "the file is named for a value somebody typed: {out}"
+    );
+
+    // and the same refusal, the file's own, still names it
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{ "tools": ["fs"], "sandbox-device": ["/home"] }"#,
+    )
+    .expect("written");
+    let (ok, out) = run_from(&dir, &["--config-file", "kamchatka.json"], "");
+    assert!(!ok, "{out}");
+    assert!(out.contains("Error: kamchatka.json: /home"), "{out}");
 }

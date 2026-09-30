@@ -466,6 +466,18 @@ impl Args {
             .filter_map(|(id, carried)| carried.then_some(id))
             .collect();
             let granting = config::granting(&settings);
+            // every key the file gave a value, as the argument it stands in for spells it: what
+            // says a refused value was the file's rather than a default's, or a snapshot's
+            let carried = serde_json::to_value(&settings)
+                .ok()
+                .and_then(|value| value.as_object().cloned())
+                .map(|keys| {
+                    keys.into_iter()
+                        .filter(|(_, value)| !value.is_null())
+                        .map(|(key, _)| key.replace('-', "_"))
+                        .collect()
+                })
+                .unwrap_or_default();
             args = args
                 .under(settings, &matches)
                 .map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))?;
@@ -473,6 +485,7 @@ impl Args {
                 at: path.clone(),
                 matches: matches.clone(),
                 unserved,
+                carried,
             });
 
             // note: asked after the file is read and merged, both of which only look at it, so a
@@ -520,9 +533,14 @@ impl Args {
         // one function for the refusals that are about the arguments, so that a value out of a
         // file is answered with the file beside it and a value off the command line is answered
         // as it always was
+        //
+        // note: the file only where the file said it - carried the key, and was not overruled by a
+        // flag. Asked the other way round, "not typed" named the file for every default
         let at = |field: &str| match filed {
-            Some(filed) if filed.typed(field) => None,
-            _ => filed.map(|filed| format!("{}: ", filed.at.display())),
+            Some(filed) if !filed.typed(field) && filed.carried.iter().any(|key| key == field) => {
+                Some(format!("{}: ", filed.at.display()))
+            }
+            _ => None,
         };
         // note: here rather than where the limit is read, because that is a round trip away and a
         // session measuring itself against nothing is not a session anybody finds out about. Every
@@ -660,11 +678,15 @@ impl Args {
         // the last of the refusals, and the first one a value out of a file can reach without
         // having said which file it came from: what this program offers and what a rule can match
         // are both decided here, so a tool, a server and a path rule are all refused after the
-        // merge rather than in it
-        let refused = at("tools")
-            .or_else(|| at("sandbox_device"))
-            .unwrap_or_default();
-        setup.check().map_err(|e| anyhow::anyhow!("{refused}{e}"))?;
+        // merge rather than in it - and the refusal says which setting it was, so that the file is
+        // named for what the file said and for nothing else
+        setup.check().map_err(|refused| {
+            let at = refused
+                .setting
+                .and_then(|setting| at(&setting.replace('-', "_")))
+                .unwrap_or_default();
+            anyhow::anyhow!("{at}{refused}")
+        })?;
 
         Ok(setup)
     }
@@ -834,6 +856,12 @@ pub struct Filed {
     /// day, which is exactly the case that gets dropped without a word. See
     /// [`Given::unserved`].
     pub unserved: Vec<&'static str>,
+    /// Every key this file gave a value, as the argument's own name.
+    ///
+    /// note: what says a value is the file's. Not being typed does not: a value nobody typed may be
+    /// a default, or a resumed session's own name, and a refusal naming the file for one of those
+    /// sends somebody to read a file that does not say it.
+    pub carried: Vec<String>,
 }
 
 impl Filed {
