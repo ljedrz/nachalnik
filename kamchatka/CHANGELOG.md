@@ -9,6 +9,18 @@ minor bump may break you.
 
 ### changed
 
+- **`border` is `border-color`, and it has a colour of its own.** Left out it is `#1A936F`, and
+  the shipped file says so; `null` is the terminal's own foreground colour. It was the terminal's
+  yellow either way, so leaving the key out and saying `null` could not be told apart.
+  **Breaking** for a settings file that says `border`, and for the library: `Settings::border` is
+  `Settings::border_color`, an `Option<Option<String>>`; `Args::border` is `Args::border_color`,
+  whose `None` is the terminal's colour; `App::accent` starts at `config::BORDER_COLOR`; and
+  `config::BORDER_COLOR` is new.
+- **`tools` in the settings file cannot be `null`.** It meant every tool, beside `[]` meaning none,
+  which is a key read the wrong way by somebody. The shipped file lists all six instead; left out,
+  it is still every tool. **Breaking** for a settings file that says `"tools": null`, which is the
+  shipped one until now.
+
 - **`Trim` is `ToolTrimmer`.** It takes tool results and nothing else, and the name says so now.
   **Breaking** for the library: `tools::Trim` is `tools::ToolTrimmer`.
 

@@ -273,8 +273,8 @@ fn leaving_a_question_is_refused_where_nobody_else_could_answer_it() {
 ///
 /// note: this is the whole reason the value is read in `Args::under` and not where the frame is
 /// drawn. A settings file is written once and then trusted, so the failure mode worth designing
-/// against is not a crash - it is `"border": "#7aa2f"` sitting in a file for a month while the
-/// frame stays yellow and nobody can see why the setting does nothing.
+/// against is not a crash - it is `"border-color": "#7aa2f"` sitting in a file for a month while
+/// the frame stays the default and nobody can see why the setting does nothing.
 ///
 /// note: a headless run, which is what the suite can drive - and it is the harder case rather
 /// than a dodge. A build with no screen still refuses the colour, so one settings file is either
@@ -282,19 +282,44 @@ fn leaving_a_question_is_refused_where_nobody_else_could_answer_it() {
 /// on a terminal.
 #[test]
 fn a_border_that_is_not_a_colour_is_refused_by_name() {
-    let path = settings("border-bad", r##"{ "border": "#7aa2f" }"##);
+    let path = settings("border-bad", r##"{ "border-color": "#7aa2f" }"##);
 
     let (ok, said) = run(&["--config-file", &path], "");
 
     assert!(!ok, "a colour nobody can read is not a success");
-    assert!(said.contains("`border` in the settings file"), "{said}");
+    assert!(
+        said.contains("`border-color` in the settings file"),
+        "{said}"
+    );
     assert!(said.contains(&path), "the file is named: {said}");
     assert!(said.contains("six hex digits"), "the form is shown: {said}");
 
     // and one that is a colour is simply taken
-    let good = settings("border-good", r##"{ "border": "#7aa2f7" }"##);
+    let good = settings("border-good", r##"{ "border-color": "#7aa2f7" }"##);
     let (ok, said) = run(&["--config-file", &good], "/quit\n");
     assert!(ok, "{said}");
+
+    // and so is `null`, which is the terminal's own colour rather than the key left out
+    let terminal = settings("border-null", r#"{ "border-color": null }"#);
+    let (ok, said) = run(&["--config-file", &terminal], "/quit\n");
+    assert!(ok, "{said}");
+}
+
+/// `tools` left out is every tool, `[]` is none, and `null` is neither and is refused.
+///
+/// note: `null` beside `[]` reads as none as readily as it reads as all, and it meant all. A key
+/// that can be read two ways gets read the wrong way by somebody, so the shipped file lists every
+/// tool and `null` stops the program, naming the key.
+#[test]
+fn a_null_tools_is_refused_by_name() {
+    let path = settings("tools-null", r#"{ "tools": null }"#);
+
+    let (ok, said) = run(&["--config-file", &path], "");
+
+    assert!(!ok, "{said}");
+    assert!(said.contains(&path), "the file is named: {said}");
+    assert!(said.contains("`tools` is a list"), "{said}");
+    assert!(said.contains("cannot be `null`"), "{said}");
 }
 
 #[test]

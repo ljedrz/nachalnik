@@ -883,6 +883,23 @@ pub fn ended(kernel: &Kernel) -> bool {
 mod tests {
     use super::*;
 
+    /// The shipped settings file lists every tool this program offers, and nothing else.
+    ///
+    /// note: the file lists them rather than leaving the key out, since `null` is refused and all
+    /// of them is otherwise nothing a reader can see. A list that is written out is a list that
+    /// goes stale, and a tool added without it is a tool a copied file quietly turns off.
+    #[test]
+    fn the_shipped_file_lists_every_tool() {
+        let shipped: crate::config::Settings =
+            serde_json::from_str(crate::config::SHIPPED).expect("the shipped settings parse");
+        let mut listed = shipped.tools.expect("the shipped file lists the tools");
+        let mut offered: Vec<String> = offered().into_iter().map(|it| it.id).collect();
+        listed.sort();
+        offered.sort();
+
+        assert_eq!(listed, offered);
+    }
+
     /// A session is over once anything said so, whatever was recorded after.
     ///
     /// note: the case a second `ctrl+c` makes - ended while a turn is still running, which goes

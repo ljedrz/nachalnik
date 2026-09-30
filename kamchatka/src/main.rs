@@ -475,14 +475,17 @@ async fn session() -> Result<Option<headless::Stop>> {
         //
         // note: parsed again rather than carried through as three bytes, and it cannot fail here -
         // `under` refused the file if it would. Doing it there is what makes a bad colour an error
-        // about a settings file instead of a frame that is silently still yellow
+        // about a settings file instead of a frame that is silently the default colour
         #[cfg(feature = "tui")]
-        if let Some((r, g, b)) = args
-            .border
-            .as_deref()
-            .and_then(|it| kamchatka::config::rgb(it).ok())
         {
-            app.accent = ratatui::style::Color::Rgb(r, g, b);
+            app.accent = match args
+                .border_color
+                .as_deref()
+                .and_then(|it| kamchatka::config::rgb(it).ok())
+            {
+                Some((r, g, b)) => ratatui::style::Color::Rgb(r, g, b),
+                None => ratatui::style::Color::Reset,
+            };
         }
 
         // note: three statements rather than one match over the pair, because a resumed headless
