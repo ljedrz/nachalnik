@@ -114,7 +114,9 @@ its own, so a script can tell a session that did its work from one that was stop
 | `129`, `130`, `143` | was ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` and the signal |
 
 The first of them to happen is the one reported, and a pause is the last turn's: one that
-`/continue` carried on from is not where the run stopped.
+`/continue` carried on from is not where the run stopped. A session served with no screen leaves
+the same way when a signal ends it — `129`, `130` or `143` — so a service manager stopping one can
+tell that from a `/quit`.
 
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script

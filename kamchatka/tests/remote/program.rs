@@ -1729,3 +1729,45 @@ async fn a_session_out_of_descriptors_says_so_once() {
         .expect("the session did not end")
         .expect("the host did not finish");
 }
+
+/// A served session a signal ended leaves with `128` and the signal, as a headless run does.
+///
+/// note: it was taken as `/quit` and left with `0`, so a service manager's `SIGTERM` or a closed
+/// terminal's `SIGHUP` read to whoever started the host as a session that had finished its work.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_session_a_signal_ended_says_so_in_its_status() {
+    for (signal, expected) in [("TERM", 143), ("HUP", 129)] {
+        let dir = crate::common::scratch(&format!("served-{signal}"));
+        let socket = dir.join("s.sock");
+        let host = crate::common::command()
+            .args(["--no-record", "-m", "nothing", "--serve"])
+            .arg(format!("unix:{}", socket.display()))
+            .env("KAMCHATKA_BASE_URL", CLOSED)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the program did not start");
+        for _ in 0..100 {
+            if socket.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(socket.exists(), "SIG{signal}: nothing listened");
+
+        let sent = std::process::Command::new("kill")
+            .args([&format!("-{signal}"), &host.id().to_string()])
+            .status()
+            .expect("`kill` is on the path");
+        assert!(sent.success());
+        let out = host.wait_with_output().expect("it ended");
+        assert_eq!(
+            out.status.code(),
+            Some(expected),
+            "SIG{signal}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
