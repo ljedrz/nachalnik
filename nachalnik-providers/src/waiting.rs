@@ -167,7 +167,8 @@ impl Unsent {
         match self {
             Self::Transport(e) => worth_waiting_out(e),
             // the same thing the transport's own timeout means, arrived at by counting rather
-            // than by being told: a server that took the connection and went quiet is busy
+            // than by being told: a server that took the connection and went quiet is busy - and
+            // may be busy with this, which is `may_have_been_heard`'s to say
             Self::Silent(_) => true,
             Self::Interrupted => false,
         }
@@ -348,13 +349,13 @@ pub(crate) async fn sent(
             // connection is *not* this - it is a definite answer, usually an address with nothing
             // behind it, and making a typo take three doublings to report helps nobody
             //
-            // note: and a whole answer that has not arrived is not this either, unless it never
-            // reached the server. Its headers come with its last token, so no answer yet means the
-            // model is still writing it - and sending it again would pay for it again, four times
-            // over, and fail anyway once the last attempt ran as long as the first
-            Err(reason)
-                if reason.worth_waiting_out() && (streaming || !reason.may_have_been_heard()) =>
-            {
+            // note: and an answer that has not started is not this either, unless it never
+            // reached the server. A whole answer's headers come with its last token, so none yet
+            // means the model is still writing it; and a stream's may come only with its first,
+            // as ollama's do while it loads the model. Sending either again would pay for it
+            // again, four times over, and fail anyway once the last attempt ran as long as the
+            // first - so what is sent again is a request that never made its connection
+            Err(reason) if reason.worth_waiting_out() && !reason.may_have_been_heard() => {
                 Busy::Unsent(reason)
             }
             Err(reason) => return Err(reason.giving_up(asking.model, tried)),

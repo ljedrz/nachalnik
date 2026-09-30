@@ -57,9 +57,10 @@ turn or somebody's money. All three are separated here, and shared by both diale
   program with no way to take it back.
 - **the silence is reported.** After ten seconds it says so through `Endpoint::take_notice`, and
   again every thirty; after 150 it gives up on that attempt. A stream that had said something
-  keeps it, as a turn cut off, and one that had not is a failure; a request whose headers never
-  came is sent again, as a busy server's is, so a server that never answers at all is given up on
-  after four tries.
+  keeps it, as a turn cut off, and one that had not is a failure. A request whose headers never
+  came is not sent again, streamed or not: an endpoint may hold them until its first token, as
+  ollama does while it loads a model, so a server that took the request may be working on it, and
+  a second try is a second bill. Only a request that never made its connection is sent again.
 - **a busy server is retried, a spent quota is not.** A `Retry-After` longer than a minute is a
   daily limit answering with the seconds until midnight, and sitting through three doublings to
   discover that wastes the turn as well as the wait.
