@@ -120,7 +120,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   commands. laya now serves itself over HTTP as well: `pip install "laya[serve]"` and `laya-serve`
   answer `POST /v1/systemone`, so `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` reaches it
   through `Jev` with no Rust written, as an address this program does not recognise is read as
-  keeping TypeSafe's paths.
+  keeping TypeSafe's paths. It needs `KAMCHATKA_SYSTEM1_API_KEY` beside it, set to anything,
+  because a borrowed key goes to OpenRouter and nowhere else.
 
   One thing stands between that and recommending it over the pipe, and it has not been tried
   against a running `laya-serve`.
@@ -218,7 +219,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 
   There is nothing to unblock and nothing to do while this is `1`. The day the number moves is the
   day it is needed, and it is not the day anybody will be thinking about it. What it costs is the
-  number kept per connection and every write in `remote::server::attend` asking about it - which is
+  number kept per connection and every write in `remote::server::connection::attend` asking about it - which is
   more than a field, because "a message this version lacks" is a fact about each variant that
   nothing declares today.
 
@@ -231,7 +232,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
 
   **Where the attach and leave lines go is decided: the trace**, and not the conversation, for the
-  reason in the note in `Server::attend`. `Attached::trace` carries them, so every client still
+  reason in the note in `Serving::attend`. `Attached::trace` carries them, so every client still
   sees them.
 
   What is left is the count itself. A session will take connections until something else runs out,
@@ -279,6 +280,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   documented and drawn. What would settle it is the next release that may break `nachalnik`: mark
   `ModelInfo` `#[non_exhaustive]` and give it the address in the same one.
 
+  It matters more now that `-r` carries on with the model the record names: a session moved by
+  `/endpoint URL` alone resumes that model at whatever address the flags give, and the record gives
+  no hint that it had moved.
+
 - **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
   `{label}:\n{text}`, which builds a new string from the item's content each time the context is
   projected - the largest cost in a projection, and the one place it copies content the rest of the
@@ -307,12 +312,16 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **`log` stops at the resume.** A resumed session's log begins at `session.resumed`, so `log read`
   cannot answer for anything before the restart, though the record written beside the snapshot
-  holds all of it; `App::recall` reads that file for `context.replaced` and nothing else. Reaching
+  holds all of it; `App::recall` reads that file for `context.replaced`, and `-r` for the model the
+  session was talking to, and nothing reads it for anything else. Reaching
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
 - **Two calls' streamed output on one line.** With `--parallel`, the output two running calls
-  stream interleaves on one line of the transcript.
+  stream interleaves on one line of the transcript, because `Event::ToolOutput` is appended to
+  whichever line is open and the transcript keeps only one open. Keying the open line by call is
+  the change, and it reaches `caught_up`, which drops every streamed line as soon as any one call's
+  result is in the context.
 
 - **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
   target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
@@ -384,9 +393,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   being asked gets a sentence naming the encoding. Reading it means reqwest's `gzip` feature, one
   more dependency in a crate that rations them.
 
-- **A `y` typed at `--connect` before its question arrives.** It goes to the model as a message
-  and the question is then answered by `--on-ask`. Holding a bare letter until a question comes, and
-  dropping it if none does, changes when the client reads its input at all.
+- **A `y` typed at `--connect` before its question arrives.** At a terminal it goes to the model as
+  a message, and the question waits for the next one. A pipe does not meet this, because a piped
+  client reads its next line only once the turn is over or a question is open. Holding a bare
+  letter at a terminal until a question comes, and dropping it if none does, is the change, and
+  it makes `y` mean something different depending on when it was typed.
 
 - **A record that shows it has not been edited.** Each record could carry a hash of the one before
   it, so that `--check` could say a log is unedited from its first record to its last. That says
