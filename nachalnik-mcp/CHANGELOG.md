@@ -12,7 +12,10 @@ minor bump may break you.
 - **A spawned server is killed when it is dropped.** `rmcp` kills a child it drops from a task
   it spawns, and a runtime shutting down need not run that task, so a server busy with a call -
   which never reads the end of its input - outlived the program that started it. `Server::spawn`
-  now sets `kill_on_drop` on the command it is handed.
+  now starts the process itself, with `kill_on_drop`, and hands `rmcp` its two pipes, so the
+  process goes in the `Server`'s own drop. `Server::shutdown` still gives it three seconds to
+  leave of its own accord first, as `rmcp` did. The `child-process` feature builds `rmcp`'s
+  `transport-async-rw` rather than `transport-child-process`.
 
 ## [0.7.2] - 2026-09-29
 
