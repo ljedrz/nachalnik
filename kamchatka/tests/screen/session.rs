@@ -149,6 +149,34 @@ async fn a_save_is_readable_by_its_owner_alone() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A save into a directory that is not there names the directory, and makes nothing.
+///
+/// note: the write failed and its error named the file, which reads as a problem with a file
+/// nobody expected to exist yet. Both spellings reach it: a name inside a missing directory, and
+/// the missing directory itself.
+#[tokio::test]
+async fn a_save_into_a_directory_that_is_not_there_names_the_directory() {
+    let dir = common::scratch("save-nowhere");
+    let missing = dir.join("not-yet");
+    let mut harness = Harness::new([]);
+
+    for asked in [
+        missing.join("notes").display().to_string(),
+        format!("{}/", missing.display()),
+    ] {
+        harness.send(&format!("/save {asked}")).await;
+        assert!(
+            harness.flat().contains("there is no directory"),
+            "{asked}: {}",
+            harness.screen()
+        );
+        assert!(harness.packed().contains("not-yet"), "{}", harness.screen());
+        assert!(!missing.exists(), "{asked}: it made the directory");
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// The two files of a save describe one moment, and a save that cannot finish leaves the one
 /// before it as it was.
 ///

@@ -34,6 +34,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`/save` into a directory that is not there names the directory.** The write failed with an
+  error naming the file, `No such file or directory`, which read as a problem with a file nobody
+  expected to exist yet. Nothing is made; the directory is said, with the file form and the
+  directory form alike.
 - **The advisor's tokens are counted against `--spend`.** The advisor is asked from inside the
   permission policy, which writes no event, so the ceiling added up the model's responses and
   dropped what every rating cost - and an advisor borrowing the session's key spends out of the

@@ -471,10 +471,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   one. Both want the same decision as the entry above: what the record should say about a turn that
   did not end the way its last event suggests.
 
-- **`/save DIR/` into a directory that is not there.** It fails, and the error names the file
-  rather than the missing directory. Creating the directory is one answer and naming it the other;
-  the first changes what `/save` can do, like the `fs write` entry above.
-
 - **A heuristic refusal under `--no-sandbox` is described as a person's.** With no confinement,
   `net:reach` is judged from a command's name; a command that trips it under `--on-ask deny` is
   refused as though somebody had been asked, and the model is told a different approach may be
