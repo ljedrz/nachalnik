@@ -792,11 +792,15 @@ impl Jev {
             }
 
             // 429 is a rate limit and 529 is an overloaded upstream; the documentation names both
-            // and asks for a backoff. Everything else here is a decision - 400 for a model that
-            // does not exist, 401 for a key, 422 for a request that would not validate - and
-            // sending it again would only spend the wait
+            // and asks for a backoff. 502 and 503 are what a proxy in front of it says for a
+            // moment, and get one more try and no more: the dialects retry every 5xx, but this is
+            // answering a person at a permission prompt, and a service that is down is better
+            // said at once. Everything else here is a decision - 400 for a model that does not
+            // exist, 401 for a key, 422 for a request that would not validate - and sending it
+            // again would only spend the wait
             let busy_now = status.as_u16() == 429 || status.as_u16() == 529;
-            if busy_now && attempt < RETRIES {
+            let blip = matches!(status.as_u16(), 502 | 503) && attempt == 1;
+            if (busy_now && attempt < RETRIES) || blip {
                 *self.notice.lock() = Some(busy(&self.model(), status.as_str(), waited));
                 tokio::time::sleep(waited).await;
                 waited *= 2;
@@ -1313,6 +1317,34 @@ mod tests {
             Some(busy("jev-latest", "429", longest))
         );
         assert_eq!(SystemOne::notice(&jev), None, "a notice is said once");
+    }
+
+    /// A 502 or a 503 is asked once more and no more, and any other 5xx is not asked again.
+    ///
+    /// note: once, because a proxy's blip is over by then and a service that is down is not, and
+    /// the person at the prompt is better off with a quick failure than with the backoff a
+    /// documented 429 gets.
+    #[tokio::test]
+    async fn a_gateway_blip_is_asked_once_more() {
+        for (raw, attempts) in [
+            (&b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"[..], 2),
+            (&b"HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"[..], 2),
+            (&b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"[..], 1),
+        ] {
+            let at = answering(raw).await;
+            let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+            assert!(
+                jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+                    .await
+                    .is_err()
+            );
+            assert_eq!(
+                jev.attempts(),
+                attempts,
+                "{}",
+                String::from_utf8_lossy(raw).lines().next().unwrap_or_default()
+            );
+        }
     }
 
     /// A server that takes the request and never answers is asked again, as often as a busy one
