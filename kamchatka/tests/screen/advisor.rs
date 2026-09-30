@@ -357,3 +357,53 @@ async fn what_the_advisor_spends_is_counted_against_the_ceiling() {
     harness.app.set_spend(Some(100));
     assert!(harness.app.overspent());
 }
+
+/// A stop while the advisor is rating a command is taken at once, and the question says the advice
+/// was not waited for.
+///
+/// note: an advisor that takes the connection and never answers, which is a busy service's four
+/// tries of thirty seconds. The stop was honoured once the ask returned, so `ctrl+c` did nothing
+/// visible for two minutes; `settle` gives the turn five seconds to end, so a stop that waited for
+/// the advisor fails here.
+#[tokio::test]
+async fn a_stop_does_not_wait_for_the_advisor() {
+    let deaf = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let endpoint = format!("http://{}", deaf.local_addr().expect("its address"));
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((socket, _)) = deaf.accept().await {
+            held.push(socket);
+        }
+    });
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "action": "run", "cmd": "rm -rf ~/work" }),
+        )]),
+        ModelResponse::text("stopped"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+    let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
+    let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
+    harness
+        .app
+        .kernel
+        .set_policy(advised.clone() as Arc<dyn PermissionPolicy>);
+    harness.app.advisor = Some(advised);
+
+    harness.send("tidy up").await;
+    // long enough for the rating to be under way, and nowhere near an attempt's thirty seconds
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    harness.app.interrupt();
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("the advisor was not waited for"),
+        "the question does not say why it has no rating: {screen}"
+    );
+}

@@ -354,6 +354,9 @@ impl Rated {
     }
 }
 
+/// Why a command has no rating when the turn it was asked about was stopped first.
+const NOT_WAITED: &str = "the turn was stopped, so the advisor was not waited for";
+
 /// [`Careful`], with the shell commands it is going to ask about rated for the person answering.
 pub struct Advised {
     /// The standing rules, which decide every call.
@@ -366,6 +369,8 @@ pub struct Advised {
     readings: Mutex<VecDeque<(ToolCallId, Result<Rated, String>)>>,
     /// What the engine has reported its answers cost, added up: see [`Advised::spent`].
     spent: AtomicU64,
+    /// Whether the turn this is rating for has been asked to stop; see [`Advised::stop`].
+    stopped: tokio::sync::watch::Sender<bool>,
 }
 
 impl Advised {
@@ -376,7 +381,29 @@ impl Advised {
             jev,
             readings: Mutex::new(VecDeque::new()),
             spent: AtomicU64::new(0),
+            stopped: tokio::sync::watch::Sender::new(false),
         }
+    }
+
+    /// Gives up on any rating in flight, and on any asked for until [`Advised::resume`].
+    ///
+    /// note: what makes a stop immediate. The advisor is asked inside the permission policy, which
+    /// the kernel awaits while preparing the calls and which does not read the interrupt, and an
+    /// ask is up to four attempts with a wait between - so a `ctrl+c` did nothing visible for as
+    /// long as the service took, two minutes at worst. A rating decides nothing, so giving up on
+    /// one cannot change a verdict: the question still comes, saying the advice was not waited
+    /// for, and the kernel honours the stop before any call runs.
+    ///
+    /// note: a flag rather than a pulse, because the stop can land before the rating starts - the
+    /// policy is asked after the interrupt, on the way to the kernel noticing it - and a pulse
+    /// nobody was waiting on is a stop that did nothing.
+    pub fn stop(&self) {
+        self.stopped.send_replace(true);
+    }
+
+    /// Rates again, for the next turn.
+    pub fn resume(&self) {
+        self.stopped.send_replace(false);
     }
 
     /// The tokens the engine has reported its answers cost, over the life of this policy.
@@ -481,11 +508,13 @@ impl Advised {
             questions.push((format!("{DANGER}-{n}"), claiming(&cmd[*from..*to])));
         }
 
-        let answers = self
-            .jev
-            .ask(state(request), questions)
-            .await
-            .map_err(|e| cut(&e.to_string()))?;
+        let mut stopped = self.stopped.subscribe();
+        let answers = tokio::select! {
+            asked = self.jev.ask(state(request), questions) => {
+                asked.map_err(|e| cut(&e.to_string()))?
+            }
+            _ = stopped.wait_for(|stopped| *stopped) => return Err(NOT_WAITED.to_owned()),
+        };
         if let Some(usage) = &answers.usage {
             let tokens = usage
                 .input_tokens
@@ -986,6 +1015,72 @@ mod tests {
         let unreached = Advised::new(Arc::new(Careful::new()), unreachable());
         unreached.evaluate(&request).await;
         assert_eq!(unreached.spent(), 0);
+    }
+
+    /// A stop gives up on a rating at once, and the question says the advice was not waited for.
+    ///
+    /// note: an engine that never answers, which is a busy service's four tries and their waits at
+    /// their longest. Before, a `ctrl+c` here did nothing for as long as the ask took; the verdict
+    /// is the standing rules' either way, so giving up on the rating changes nothing but the wait.
+    #[tokio::test]
+    async fn a_stop_does_not_wait_for_the_advisor() {
+        struct Silent;
+
+        #[async_trait]
+        impl SystemOne for Silent {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                std::future::pending().await
+            }
+
+            fn named(&self) -> String {
+                "silent".to_owned()
+            }
+        }
+
+        let advised = Arc::new(Advised::new(Arc::new(Careful::new()), Arc::new(Silent)));
+        let request = asking("shell", Capability::exec("run"));
+
+        // stopped while it is being asked
+        let asking_it = tokio::spawn({
+            let (advised, request) = (advised.clone(), request.clone());
+            async move { advised.evaluate(&request).await }
+        });
+        tokio::task::yield_now().await;
+        advised.stop();
+        let verdict = tokio::time::timeout(std::time::Duration::from_secs(5), asking_it)
+            .await
+            .expect("the stop was waited out rather than taken")
+            .expect("not a panic");
+        assert_eq!(verdict, Verdict::Ask, "the verdict is the standing rules'");
+        assert_eq!(
+            advised.why_unrated(&request.call).as_deref(),
+            Some(NOT_WAITED)
+        );
+
+        // and stopped before it was asked, which is the order the kernel can put the two in
+        let verdict = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            advised.evaluate(&request),
+        )
+        .await
+        .expect("a stop that came first was missed");
+        assert_eq!(verdict, Verdict::Ask);
+
+        // and the next turn is rated again, rather than stopped for good
+        advised.resume();
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(100),
+                advised.evaluate(&request)
+            )
+            .await
+            .is_err(),
+            "a resumed advisor was not asked"
+        );
     }
 
     /// A command of eight stages costs the round trip a command of one costs.
