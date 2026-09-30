@@ -105,8 +105,8 @@ impl Recorder {
         Self::start_under(app, &private_dir()?)
     }
 
-    /// Claims a record under `dir`, which has to be a directory only its owner can enter, and
-    /// writes what the session holds so far.
+    /// Claims a record under `dir`, which has to be a directory of this user's that only it can
+    /// enter, and writes what the session holds so far.
     ///
     /// note: the check is the one [`record`] makes of the temporary directory, and it is made of
     /// any directory rather than only that one because what goes into the record is the same
@@ -216,22 +216,32 @@ fn private_dir() -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
-/// Refuses `dir` unless it is a directory only its owner can enter.
+/// Refuses `dir` unless it is a directory of this user's that only its owner can enter.
 fn private(dir: &std::path::Path) -> Result<(), String> {
-    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
     // note: opened without following a link, and made private and looked at through what was
     // opened, because the temporary directory is everybody's and this name is fixed. A link
     // somebody left at it is refused before anything is done through it, a chmod of what it
     // points at included. A directory somebody else made there first is one the chmod cannot
     // make private - it fails, and is ignored - so without the look the transcript would go
-    // into a directory they can read. A real directory that nobody but its owner can enter is
-    // one this user owns, or one it cannot write in at all
+    // into a directory they can read.
+    //
+    // note: and whose it is, before the chmod, because the mode bits say nothing to a process
+    // that can read past them. Run as root, or holding `CAP_DAC_OVERRIDE`, this writes into a
+    // directory another user made `0700` there first, and chmods one they left open - and they
+    // read the transcript either way
     let private = std::fs::OpenOptions::new()
         .read(true)
         .custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::DIRECTORY).bits() as i32)
         .open(dir)
         .is_ok_and(|opened| {
+            let ours = opened
+                .metadata()
+                .is_ok_and(|meta| meta.uid() == rustix::process::geteuid().as_raw());
+            if !ours {
+                return false;
+            }
             // it may already exist from an earlier run, made before this did it; either way,
             // this is the run that is about to write a transcript into it
             let _ = opened.set_permissions(std::fs::Permissions::from_mode(0o700));

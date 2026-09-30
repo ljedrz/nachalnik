@@ -287,12 +287,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
   says what a screen holds.
 
-- **Which checks the record directory's privacy makes.** It checks that the path is a directory
-  and not a link, and its mode bits, and not who owns it - which matters only to a process that can
-  read past the bits anyway, root or one holding `CAP_DAC_OVERRIDE`. `std` reads a directory's owner
-  and not the process's own uid, but `libc`, a direct dependency since the network gate, has
-  `geteuid`, so nothing is in the way of the check but deciding what to do about a mismatch.
-
 - **An `--allow-server` for a server this run does not start.** A server rule naming no server
   is refused, allow and deny alike, as a rule about a domain no tool declares already is. A settings
   file that allows a server is refused with it when the command line's `--mcp` replaces the file's
