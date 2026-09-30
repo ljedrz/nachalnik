@@ -449,12 +449,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   no domain claims as a path rule would make a typo like `--deny contextt` a rule about a file that
   quietly matches nothing, so it waits for a spelling that is unambiguous either way.
 
-- **A `--connect` client whose input closes answers every question waiting.** Watching a session
-  with `--connect ADDR < /dev/null` denies, under the default `--on-ask deny`, questions raised by
-  somebody else's client, while RUNNING.md says a question waits for somebody to come back. Only
-  answering the questions raised while that client was attached, or an `--on-ask leave`, would
-  settle it.
-
 - **`fs write` makes no directories.** A write into a directory that is not there is refused and
   names the directory, and a model with `exec` refused has no way to make one. Making the missing
   parents beneath the reach is a change to what `fs:write` can do, and so a question for the

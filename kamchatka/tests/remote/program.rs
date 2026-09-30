@@ -567,6 +567,76 @@ async fn a_question_nobody_is_left_to_answer_is_answered_on_the_way_out() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A client that leaves its questions exits without answering one, and the question waits for
+/// the next client.
+///
+/// note: what `--connect` does unless `--on-ask` is typed. A watcher whose input closed answered
+/// every open question with `deny` - questions another client's person had been asked - while
+/// RUNNING.md says a question waits for somebody to come back. The second client is the somebody:
+/// it finds the question still open, and its answer is what takes the turn to the other side.
+#[tokio::test]
+async fn a_client_that_leaves_its_questions_leaves_them_for_the_next_one() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("it would not let me"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"go\n").await.expect("could not type");
+    drop(feed);
+
+    // under `PATIENCE`: a client that waited for the question to be answered would be waiting on
+    // nobody, and that one hangs rather than fails
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .leaves_questions()
+            .waits_for_turns()
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("it is left for another client"),
+        "it left without saying what it did with the question: {prose}"
+    );
+    assert!(
+        !prose.contains("nobody is here to answer for `peek`"),
+        "it answered a question it was to leave: {prose}"
+    );
+    assert!(!prose.contains("it would not let me"), "{prose}");
+
+    // and the next client finds it still open, answers it, and the turn goes on
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(tokio::io::empty())),
+    )
+    .await
+    .expect("the second client never left")
+    .expect("the second client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("nobody is here to answer for `peek`"),
+        "the question was not waiting for it: {prose}"
+    );
+    assert!(prose.contains("it would not let me"), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A session speaking a version this client does not is left rather than attached to again.
 ///
 /// note: the client sends the version this build speaks, so the only way to be refused for one is

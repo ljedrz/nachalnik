@@ -210,7 +210,8 @@ pub struct Args {
     pub deny_server: Vec<String>,
 
     /// What to do with a question nobody is there to answer: in a headless run, and in a
-    /// `--connect` one once its input has closed.
+    /// `--connect` one once its input has closed. `--connect` leaves it for somebody else unless
+    /// this is given; `leave` is for `--connect` alone.
     #[arg(long, value_name = "ANSWER", default_value = "deny")]
     pub on_ask: OnAsk,
 
@@ -347,6 +348,16 @@ impl Args {
                      gets, and this is `{on_ask}`: it is `deny` or `allow`"
                 )
             })?;
+            // note: a file is read by the runs that have nobody else to ask, and `leave` there is
+            // a question nobody will ever answer. `--connect` does not read the file's `on-ask`
+            // at all; see `Args::connecting`
+            if self.on_ask == OnAsk::Leave {
+                return Err(anyhow::anyhow!(
+                    "`on-ask` in the settings file is `leave`, which only `--connect` can do - \
+                     and `--connect` takes `--on-ask` from its own command line. It is `deny` or \
+                     `allow`"
+                ));
+            }
         }
         match settings.mcp {
             #[cfg(feature = "mcp")]
@@ -886,20 +897,28 @@ impl Given {
 /// which grants every question it is asked. That is right for a recording somebody is watching and
 /// wrong for a program: a run nobody is watching should not be able to do a thing nobody has
 /// allowed, and `--allow exec` is one flag away for anyone who means it.
+///
+/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries - it was
+/// missing, and `Leave` is what found out.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[non_exhaustive]
 pub enum OnAsk {
     /// Refuse it. The model is told, and told that it was this call rather than a standing rule.
     Deny,
     /// Grant it.
     Allow,
+    /// Answer nothing, and leave it for another client attached to the same session, or for one
+    /// that comes back. `--connect` only: a headless run has nobody else to leave it to.
+    Leave,
 }
 
 impl OnAsk {
-    /// The answer itself, as the kernel spells it.
-    pub fn grant(self) -> Grant {
+    /// The answer itself, as the kernel spells it; `None` for [`OnAsk::Leave`], which gives none.
+    pub fn grant(self) -> Option<Grant> {
         match self {
-            Self::Deny => Grant::Deny,
-            Self::Allow => Grant::Allow,
+            Self::Deny => Some(Grant::Deny),
+            Self::Allow => Some(Grant::Allow),
+            Self::Leave => None,
         }
     }
 }
