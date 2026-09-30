@@ -29,7 +29,7 @@ mod policy;
 mod reaching;
 mod search;
 mod shell;
-mod trim;
+mod tool_trimmer;
 
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Advised, Rated, Rating};
@@ -37,7 +37,7 @@ pub use crate::tools::{
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
     reaching::{Reached, Reaching},
     shell::{Exit, Shell, Stragglers, joints},
-    trim::Trim,
+    tool_trimmer::ToolTrimmer,
 };
 
 /// The domains this program's own tools act in, beside the three the runtime names.

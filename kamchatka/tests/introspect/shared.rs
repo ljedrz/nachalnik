@@ -112,7 +112,7 @@ async fn a_tool_taken_away_is_named_by_no_tool_that_is_still_there() {
         ModelResponse::text("done"),
     ]);
     // a compactor, so the sentence about putting compacted items back is in the answer at all
-    kernel.set_compactor(Some(Arc::new(kamchatka::tools::Trim {
+    kernel.set_compactor(Some(Arc::new(kamchatka::tools::ToolTrimmer {
         threshold: 0.8,
         target: 0.6,
     })));

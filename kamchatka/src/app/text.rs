@@ -296,7 +296,7 @@ pub(super) fn moved(report: &nachalnik::CompactionReport) -> String {
 /// A type's path with the modules taken off, which is the part somebody reads.
 ///
 /// note: a seam names itself with `std::any::type_name`, so what arrives here is
-/// `kamchatka::tools::Trim` and the column it goes in is thirty characters wide.
+/// `kamchatka::tools::ToolTrimmer` and the column it goes in is thirty characters wide.
 ///
 /// note: every path in the string rather than the last segment of the whole of it, because a seam
 /// can be generic and the counter this program ships is. `rsplit("::").next()` on

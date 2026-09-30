@@ -574,7 +574,10 @@ impl Setup {
         // wire is the thing asked what it can carry - rather than a caller deciding a second time
         // from the same flag, which is how the two come apart
         kernel.set_projector(Arc::new(provider.projection()));
-        let trim = self.compact.filter(|it| *it < 1.0).map(tools::Trim::under);
+        let trim = self
+            .compact
+            .filter(|it| *it < 1.0)
+            .map(tools::ToolTrimmer::under);
         let compact_target = trim.as_ref().map(|trim| trim.target);
         if let Some(trim) = trim {
             kernel.set_compactor(Some(Arc::new(trim)));

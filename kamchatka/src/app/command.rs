@@ -868,7 +868,7 @@ impl App {
     /// ordinary as a message, and it should get old and be compacted like one. `p` pins it if
     /// this one is meant to last.
     ///
-    /// note: a pin would be wrong twice over. It protects against nothing: `Trim` only ever
+    /// note: a pin would be wrong twice over. It protects against nothing: `ToolTrimmer` only ever
     /// considers a `ContextKind::ToolResult`, so an attachment is a `Reference` it will never
     /// take, pinned or not. And where a compactor *could*
     /// take one, silently making it the one thing in the context that cannot be compacted is the
@@ -1569,7 +1569,7 @@ impl App {
         // which makes every figure above true of the context and not of what goes out
         //
         // note: the compactor is not named here, though it could be. `name()` defaults to the
-        // type path, so this would read `kamchatka::tools::trim::Trim` in the middle of a
+        // type path, so this would read `kamchatka::tools::tool_trimmer::ToolTrimmer` in the middle of a
         // sentence - and `/seams` is the place that answers "which one", in a table where a
         // full path is the useful form
         if budget.fraction_used().is_some_and(|used| used >= 1.0)

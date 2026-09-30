@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **`Trim` is `ToolTrimmer`.** It takes tool results and nothing else, and the name says so now.
+  **Breaking** for the library: `tools::Trim` is `tools::ToolTrimmer`.
+
 - **What a command left running is stopped when the session ends.** A job a `shell` command put in
   the background stays in the command's process group, so it survived the call and the program,
   reparented to init with nothing left to answer its network questions or record what it did.

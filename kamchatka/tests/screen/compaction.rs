@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crossterm::event::KeyCode;
-use kamchatka::tools::Trim;
+use kamchatka::tools::ToolTrimmer;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
 
@@ -50,7 +50,7 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         vec![],
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.0,
         target: 0.0,
     };
@@ -106,7 +106,7 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
     );
 }
 
-/// A second pass with nothing left to elide is not a pass. `Trim` runs before every request, so a
+/// A second pass with nothing left to elide is not a pass. `ToolTrimmer` runs before every request, so a
 /// pass that answers with a plan whatever the state of the context adds a summary and burns an
 /// undo on every one of them - and the context it is meant to shrink grows for the rest of the
 /// session.
@@ -137,7 +137,7 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
         false,
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -175,7 +175,7 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
     );
 }
 
-/// A pinned tool result is one `Trim` may not have, and naming it anyway is not free: the kernel
+/// A pinned tool result is one `ToolTrimmer` may not have, and naming it anyway is not free: the kernel
 /// refuses it, the plan is a plan all the same, and a plan carries a summary. One pinned result
 /// bigger than the target keeps the context over the threshold for the rest of the session, so
 /// against a live endpoint this added a summary and burned an undo before every request, growing
@@ -204,7 +204,7 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
         Some("this has to last".into()),
     );
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.2,
         target: 0.1,
     };
@@ -234,7 +234,7 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
 }
 
 /// A marker is not free, and a pass that credits itself with the whole of what it elided is
-/// counting on it being. `Trim` subtracted each item's tokens and put a line of its own reason
+/// counting on it being. `ToolTrimmer` subtracted each item's tokens and put a line of its own reason
 /// where the content had been, so on a context full of small results the arithmetic said it had
 /// recovered hundreds of tokens while the request it was making got bigger.
 #[tokio::test]
@@ -264,7 +264,7 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
         ));
     }
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -368,7 +368,7 @@ async fn a_pass_that_would_grow_the_request_takes_nothing() {
         false,
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -435,7 +435,7 @@ async fn a_result_worth_more_than_its_marker_and_the_summary_is_still_taken() {
         false,
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -501,7 +501,7 @@ async fn a_summary_counts_only_what_this_compactor_elided() {
         Some("I have what I need from this one".to_owned()),
     );
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -527,7 +527,7 @@ async fn a_summary_counts_only_what_this_compactor_elided() {
 /// A blob goes first, ahead of results older than it, and the arithmetic gets no say. Every
 /// counter in this workspace puts a `Content::Blob` at `0` tokens, so the two rules the rest of
 /// this pass runs on - oldest first, and nothing smaller than its own marker - between them made
-/// the largest thing in the context the one thing `Trim` could never take: ranked last by age,
+/// the largest thing in the context the one thing `ToolTrimmer` could never take: ranked last by age,
 /// then skipped for recovering nothing.
 #[tokio::test]
 async fn blobs_are_taken_before_anything_else() {
@@ -575,7 +575,7 @@ async fn blobs_are_taken_before_anything_else() {
          600 KB picture as free"
     );
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -649,7 +649,7 @@ async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
         false,
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -711,7 +711,7 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
     // the first turn excluded, which takes its result out of the request with it
     kernel.set_state([results[0].0], ContextState::Excluded, None);
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.1,
         target: 0.05,
     };
@@ -766,7 +766,7 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         vec![],
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -821,7 +821,7 @@ async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
         "A".repeat(600_000),
     )));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -855,7 +855,7 @@ async fn compaction_summaries_do_not_pile_up() {
 
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     };
@@ -928,7 +928,7 @@ async fn compaction_summaries_do_not_pile_up() {
 #[tokio::test]
 async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
         threshold: 0.8,
         target: 0.5,
     })));
@@ -1116,7 +1116,7 @@ async fn a_request_too_long_names_what_is_pinned() {
 #[tokio::test]
 async fn compact_under_the_target_says_the_context_is_under_it() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
         threshold: 0.5,
         target: 0.3,
     })));
@@ -1144,7 +1144,7 @@ async fn compact_under_the_target_says_the_context_is_under_it() {
 #[tokio::test]
 async fn compact_above_the_target_says_nothing_is_eligible() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
         threshold: 0.5,
         target: 0.3,
     })));
@@ -1192,7 +1192,7 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
     use nachalnik::{Content, ToolCall};
 
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(Trim {
+    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
         threshold: 0.0,
         target: 0.0,
     })));
@@ -1368,7 +1368,7 @@ async fn compact_without_a_compactor_says_there_is_none() {
 #[test]
 fn a_compactor_aims_lower_than_the_point_it_starts_at() {
     for threshold in [0.99, 0.8, 0.5, 0.3, 0.2, 0.15, 0.05, 0.01] {
-        let trim = Trim::under(threshold);
+        let trim = ToolTrimmer::under(threshold);
         assert!(
             trim.target < trim.threshold,
             "aims at {} from {threshold}, which is not down",
@@ -1383,7 +1383,7 @@ fn a_compactor_aims_lower_than_the_point_it_starts_at() {
 
     // and where there is room for it, twenty points is still twenty points: the default pass
     // starts at four fifths of the limit and takes the context to three fifths of it
-    let default = Trim::under(0.8);
+    let default = ToolTrimmer::under(0.8);
     assert!(
         (default.target - 0.6).abs() < 0.001,
         "the default aims at {}",
@@ -1423,7 +1423,7 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
         false,
     ));
 
-    let trim = Trim {
+    let trim = ToolTrimmer {
         threshold: 0.5,
         target: 0.3,
     };
