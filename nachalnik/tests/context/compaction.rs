@@ -14,6 +14,30 @@ use serde_json::json;
 
 use crate::kernel;
 
+/// A pass that takes a picture says the request before it carried something unpriced.
+///
+/// note: the two token totals alone read as a request that shrank by exactly what they differ by,
+/// when the picture it took had no figure at all - the request before was bigger than
+/// `tokens_before` by an amount nobody knows.
+#[test]
+fn a_compaction_says_what_it_could_not_price() {
+    let kernel = kernel();
+    kernel.push(ContextItem::user("what is on the screen?"));
+    let shot = kernel.push(ContextItem::user(nachalnik::Content::blob(
+        "image/png",
+        "A".repeat(4_000),
+    )));
+
+    let report = kernel.apply_compaction(CompactionPlan {
+        elide: vec![shot],
+        reason: "a picture nobody could price".into(),
+        ..CompactionPlan::default()
+    });
+    assert_eq!(report.elided.len(), 1);
+    assert_eq!(report.uncounted_before, 1, "the picture was going out");
+    assert_eq!(report.uncounted_after, 0, "and its marker is text");
+}
+
 /// The same rule, for the one operation that used to be exempt from it. A `Compactor` is asked
 /// before every request, so a pass that moves nothing is not an odd hand-written plan - it is what
 /// a compactor whose every candidate is pinned or already elided answers with, every time.

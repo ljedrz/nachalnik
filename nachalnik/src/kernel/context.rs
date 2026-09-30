@@ -440,7 +440,7 @@ impl Kernel {
             // walk over the items that moves `Content` by pointer, and it happens once a request
             // at most
             let before = projector.project(context.items());
-            let tokens_before = projection_cost(&before, counter).tokens;
+            let cost_before = projection_cost(&before, counter);
             // what a pass may take is what the request is carrying, and the projection is the
             // only thing that knows. An item the projector repaired away - a second result for a
             // call that already has one - is `Active`, holds everything it holds, and is
@@ -570,20 +570,23 @@ impl Kernel {
                 });
             }
 
+            // a pass that moved nothing left the context as it found it, under this same lock - and
+            // it is the pass a compactor with nothing left to take answers with before every
+            // request
+            let cost_after = match moved {
+                true => projection_cost(&projector.project(context.items()), counter),
+                false => cost_before,
+            };
             let report = CompactionReport {
                 removed,
                 elided,
                 refused,
                 summary: added,
                 reason,
-                tokens_before,
-                // a pass that moved nothing left the context as it found it, under this same
-                // lock - and it is the pass a compactor with nothing left to take answers with
-                // before every request
-                tokens_after: match moved {
-                    true => projection_cost(&projector.project(context.items()), counter).tokens,
-                    false => tokens_before,
-                },
+                tokens_before: cost_before.tokens,
+                tokens_after: cost_after.tokens,
+                uncounted_before: cost_before.uncounted,
+                uncounted_after: cost_after.uncounted,
             };
 
             // still under the lock, and the pass's own events before the report of it: see the
