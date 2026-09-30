@@ -19,6 +19,14 @@ minor bump may break you.
   next request, and excludes it as there is room again. A copy already standing - a session
   resumed while full - is recognised by what it says and not placed twice.
 
+### fixed
+
+- **An answered question does not refill a turn's request budget.** `Kernel::turn` counted the
+  requests it sent itself, so the `turn` called once a question was answered started from
+  nothing, and a turn whose every call was asked about ran as many requests as it liked under
+  `max_requests_per_turn`. The count is the turn's now: a `turn` called from `Deciding` or `Ready`
+  carries on from where the last one stopped, and one called from anywhere else starts again.
+
 ## [0.7.3] - 2026-09-29
 
 ### added
