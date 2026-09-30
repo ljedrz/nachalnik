@@ -72,6 +72,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`--connect` prints a call whole, as `--headless` does.** It cut the arguments to one line of
+  96 characters, so a file write read as the first line of the file, in a client that says it
+  writes what `--headless` writes.
 - **Two `context` changes asked for together are made one at a time.** Under `--parallel` they
   ran on two threads, and an operation is a change and then the journal entry `undo` walks, so an
   `undo` could run between another call's two halves and the entry come out describing somebody

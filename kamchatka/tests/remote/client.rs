@@ -189,6 +189,38 @@ async fn an_answer_that_was_not_streamed_is_printed() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A call is printed with the whole of its arguments, as `--headless` prints it.
+///
+/// note: it was cut to one line of 96 characters, so a file write read as the first line of the
+/// file - while this client says it writes what `--headless` writes, which prints them all, and
+/// a script moved from one to the other is the reader that would notice.
+#[tokio::test]
+async fn a_call_is_printed_whole() {
+    let args = json!({ "content": format!("{}\nand a second line", "x".repeat(200)) });
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", args.clone())]),
+        ModelResponse::text("done"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"ask something\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(prose.contains(&format!("⟩ peek({args})")), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// Two answers in a row are two lines, as they are down a pipe.
 ///
 /// note: the last answer very likely ended mid-sentence, so the next one used to start on the end

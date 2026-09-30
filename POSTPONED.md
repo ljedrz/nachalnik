@@ -407,12 +407,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   what `--check` already reads: a reader that is not this program, and a record that says what went
   wrong with it.
 
-- **`--headless` and `--connect` print a tool call differently.** `remote::client` says it writes
-  what `--headless` writes, in the same words, and for a call it does not: `--connect` cuts the
-  arguments to one line of 96 characters, and `--headless` prints the whole of them, which for a
-  file write is the file. Either is a change to what a script reading one of them already sees, so
-  which one gives way is a person's call.
-
 - **A session's roots are resolved on every check.** `Reach` canonicalises the working directory
   and every `--sandbox-allow` and `--sandbox-read` root each time it judges a path, which a `grep`
   over a large tree pays per file and per link. Resolving them once would move when a root is read
