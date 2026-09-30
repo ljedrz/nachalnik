@@ -295,7 +295,8 @@ pub mod advise {
         ///
         /// note: `KAMCHATKA_SYSTEM1_BASE_URL` moves the address and does not move the account.
         /// It is for a proxy in front of one of the two, and somebody pointing it at the *other*
-        /// service is setting the model by hand as well.
+        /// service is setting the model by hand as well. A borrowed key never reaches an address
+        /// here that is not OpenRouter's, because `chosen` refuses to borrow for one.
         ///
         /// note: and it is the whole of what a *third* service takes, which is why the variables
         /// are named for the kind of model rather than for the company that sells one. Anything
@@ -344,6 +345,7 @@ pub mod advise {
                 .ok(),
             api_key().ok(),
             session_endpoint,
+            env::var("KAMCHATKA_SYSTEM1_BASE_URL").ok().as_deref(),
         )
     }
 
@@ -352,10 +354,17 @@ pub mod advise {
     /// note: split out from [`account`] so the rule can be checked without the environment - what
     /// is left above reads the environment and decides nothing. The rule is the one thing here
     /// that can leak a credential, so it is the one thing that wants a test with no key in it.
+    ///
+    /// note: `advisor_endpoint` is `KAMCHATKA_SYSTEM1_BASE_URL`, and it is here because a borrowed
+    /// key goes wherever that names - [`Account::base_url`] prefers it to OpenRouter's. A session
+    /// talking to OpenRouter with the advisor pointed at a local `laya-serve` would otherwise hand
+    /// that server an OpenRouter credential, so the key is borrowed only where *both* ends are
+    /// OpenRouter's.
     fn chosen(
         dedicated: Option<String>,
         own: Option<String>,
         session_endpoint: &str,
+        advisor_endpoint: Option<&str>,
     ) -> Result<Account, BoxError> {
         if let Some(key) = dedicated {
             return Ok(Account::Dedicated(key));
@@ -365,6 +374,15 @@ pub mod advise {
             return Err(format!(
                 "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). This \
                  session talks to {session_endpoint}, so its own key is not OpenRouter's to borrow"
+            )
+            .into());
+        }
+
+        if let Some(advisor) = advisor_endpoint.filter(|advisor| !is_openrouter(advisor)) {
+            return Err(format!(
+                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). Its \
+                 questions go to {advisor}, so this session's OpenRouter key is not borrowed for \
+                 them; any value will do where that service checks no key"
             )
             .into());
         }
@@ -424,13 +442,14 @@ pub mod advise {
             // a dedicated key pays wherever the session is pointed, and is the only thing that
             // reaches TypeSafe at all
             for anywhere in ["https://openrouter.ai/api/v1", "http://localhost:11434/v1"] {
-                let account = chosen(dedicated(), own(), anywhere).expect("a dedicated key pays");
+                let account =
+                    chosen(dedicated(), own(), anywhere, None).expect("a dedicated key pays");
                 assert!(matches!(&account, Account::Dedicated(_)), "{anywhere}");
                 assert_eq!(account.api_key(), "apikey_typesafe");
             }
 
             // without one, the session's own key pays where it is already being sent
-            let borrowed = chosen(None, own(), "https://openrouter.ai/api/v1")
+            let borrowed = chosen(None, own(), "https://openrouter.ai/api/v1", None)
                 .expect("an OpenRouter session may spend its own key at OpenRouter");
             assert!(matches!(&borrowed, Account::Borrowed(_)));
             assert_eq!(borrowed.api_key(), "sk-the-session-key");
@@ -444,7 +463,7 @@ pub mod advise {
                 "https://api.openai.com/v1",
                 "https://openrouter.ai.example.com/api/v1",
             ] {
-                let refused = chosen(None, own(), elsewhere)
+                let refused = chosen(None, own(), elsewhere, None)
                     .expect_err("a key that is not OpenRouter's is not spent there");
                 let said = refused.to_string();
                 assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
@@ -453,9 +472,37 @@ pub mod advise {
                 assert!(said.contains(elsewhere), "{said}");
             }
 
+            // and an OpenRouter session whose advisor is pointed somewhere else keeps its key: the
+            // address the key would travel to is the advisor's, not the conversation's. A proxy
+            // in front of OpenRouter itself is still OpenRouter's address
+            let openrouter = "https://openrouter.ai/api/v1";
+            for advisor in [
+                "http://127.0.0.1:8000/v1",
+                "https://api.typesafe.ai/v1",
+                "https://openrouter.ai.example.com/api/v1",
+            ] {
+                let refused = chosen(None, own(), openrouter, Some(advisor))
+                    .expect_err("a borrowed key is not sent past OpenRouter");
+                let said = refused.to_string();
+                assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
+                assert!(said.contains(advisor), "{said}");
+            }
+            let proxied = chosen(None, own(), openrouter, Some(openrouter))
+                .expect("OpenRouter's own address named by hand is still OpenRouter's");
+            assert!(matches!(&proxied, Account::Borrowed(_)));
+            // a dedicated key is the person's to send where they point it
+            let local = chosen(
+                dedicated(),
+                own(),
+                openrouter,
+                Some("http://127.0.0.1:8000/v1"),
+            )
+            .expect("a dedicated key pays wherever the advisor is pointed");
+            assert!(matches!(&local, Account::Dedicated(_)));
+
             // a session with no key at all is refused whatever it is pointed at
-            assert!(chosen(None, None, "https://openrouter.ai/api/v1").is_err());
-            assert!(chosen(None, None, "http://localhost:11434/v1").is_err());
+            assert!(chosen(None, None, "https://openrouter.ai/api/v1", None).is_err());
+            assert!(chosen(None, None, "http://localhost:11434/v1", None).is_err());
         }
     }
 }

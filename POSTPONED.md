@@ -155,15 +155,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   through `Jev` with no Rust written, as an address this program does not recognise is read as
   keeping TypeSafe's paths.
 
-  Two things stand between that and recommending it over the pipe, and neither has been tried
+  One thing stands between that and recommending it over the pipe, and it has not been tried
   against a running `laya-serve`.
-
-  **The key.** `Jev` will not start without one, and a session talking to OpenRouter with no
-  `KAMCHATKA_SYSTEM1_API_KEY` borrows the conversation's key - and sends it to whatever address
-  `KAMCHATKA_SYSTEM1_BASE_URL` names, so a local `laya-serve` would be handed an OpenRouter
-  credential. A dedicated key keeps it home: laya's own `LAYA_API_KEY`, or anything at all where
-  `laya-serve` checks none. Borrowing is right for OpenRouter's address and nowhere else, and the
-  rule in `endpoint::chosen` does not look at the address yet.
 
   **The answer.** `contrib/laya_advisor.py` builds its answer rather than passing laya's through,
   because laya's `confidence` is its own quantity and read as this program's it drew every command

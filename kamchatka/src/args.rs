@@ -46,7 +46,8 @@ The advisor, which is only ever asked when --advise is given:
                               leaves the machine when it is set
   KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
-                              talks to OpenRouter, which serves jev too
+                              talks to OpenRouter, which serves jev too, and the
+                              questions go there as well
   KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
                               those two keys was found, or any other service that
                               answers the same typed questions

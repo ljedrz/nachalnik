@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### security
+
+- **A borrowed key is sent only to OpenRouter.** `--advise` with no `KAMCHATKA_SYSTEM1_API_KEY`
+  borrows the conversation's key where the session talks to OpenRouter, and then sent it wherever
+  `KAMCHATKA_SYSTEM1_BASE_URL` pointed - so an advisor pointed at a local `laya-serve` was handed
+  an OpenRouter credential. An advisor address that is not OpenRouter's now needs a dedicated key,
+  and the session is refused before it begins, naming the address.
+
 ## [0.16.1] - 2026-09-29
 
 ### security
