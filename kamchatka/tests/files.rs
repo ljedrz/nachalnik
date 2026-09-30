@@ -673,9 +673,9 @@ async fn a_range_that_names_no_line_is_refused() {
 #[tokio::test]
 async fn a_file_past_what_is_counted_is_read_a_part_at_a_time() {
     let dir = scratch("files-huge");
-    let lines = kamchatka::tools::KEPT / 16 + 1_000;
+    let lines = kamchatka::tools::COUNTED as usize / 16 + 1_000;
     let file: String = (1..=lines).map(|n| format!("{n:>15}\n")).collect();
-    assert!(file.len() > kamchatka::tools::KEPT);
+    assert!(file.len() as u64 > kamchatka::tools::COUNTED);
     std::fs::write(dir.join("huge.log"), &file).expect("a file");
 
     let start = ask(&dir, "read", json!({ "path": "huge.log" })).await;
@@ -712,6 +712,31 @@ async fn a_file_past_what_is_counted_is_read_a_part_at_a_time() {
     assert_eq!(
         middle,
         format!("[lines 5-6, and more after them]\n{:>15}\n{:>15}\n", 5, 6)
+    );
+}
+
+/// A file past what a tool keeps is still counted, so a read that is cut says how many lines there
+/// are and where the last of them is.
+///
+/// note: counting was bounded by what a tool keeps, so a 9 MB log said which lines it showed and
+/// not how many it had. A live model asked for its last line paged forward 32 KB a request until
+/// `--requests` stopped the turn; told the total, it reads the end in one.
+#[tokio::test]
+async fn a_file_past_what_is_kept_says_how_many_lines_it_has() {
+    let dir = scratch("files-counted");
+    let lines = kamchatka::tools::KEPT / 16 + 1_000;
+    let file: String = (1..=lines).map(|n| format!("{n:>15}\n")).collect();
+    assert!(file.len() > kamchatka::tools::KEPT);
+    std::fs::write(dir.join("big.log"), &file).expect("a file");
+
+    let start = ask(&dir, "read", json!({ "path": "big.log" })).await;
+    let (header, _) = start.split_once('\n').expect("a header");
+    assert!(header.contains(&format!(" of {lines}:")), "{header}");
+
+    let end = ask(&dir, "read", json!({ "path": "big.log", "from": lines })).await;
+    assert_eq!(
+        end,
+        format!("[lines {lines}-{lines} of {lines}]\n{lines:>15}\n")
     );
 }
 
