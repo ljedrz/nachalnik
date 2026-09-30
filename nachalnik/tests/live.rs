@@ -555,20 +555,24 @@ async fn pruning_a_tool_exchange_still_produces_a_request_the_api_accepts() {
     assert_eq!(repairs.len(), 1, "{repairs:?}");
 
     kernel.push(ContextItem::user("What did I just ask you about?"));
+    // note: the first request after the pruning, and not the last one. A model that can no longer
+    // see the result is entitled to call the tool again to find out, and the request after that
+    // carries a call and a result of its own that have nothing to do with what was pruned
+    let before = provider.requests().len();
     let state = turn!(kernel);
 
     // the API accepted the repaired projection - this is the assertion a mock cannot make
     assert!(matches!(state, State::Finished { .. }), "{state:?}");
-    let last = provider.requests().pop().unwrap();
+    let repaired = provider.requests().swap_remove(before);
     assert!(
-        !last.messages.iter().any(|m| m.role == Role::Tool),
+        !repaired.messages.iter().any(|m| m.role == Role::Tool),
         "the pruned result is gone: {:?}",
-        last.messages
+        repaired.messages
     );
     assert!(
-        last.messages.iter().all(|m| m.tool_calls.is_empty()),
+        repaired.messages.iter().all(|m| m.tool_calls.is_empty()),
         "and so is the call it answered: {:?}",
-        last.messages
+        repaired.messages
     );
     assert!(!answer(&kernel).is_empty());
 }
