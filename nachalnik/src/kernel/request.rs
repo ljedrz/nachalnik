@@ -5,7 +5,10 @@
 //! the crate: what a caller gets is [`super::Kernel::preview_request`] and
 //! [`super::Kernel::step`], and this is what those two are made of.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::HashSet,
+    sync::{Arc, atomic::Ordering},
+};
 
 use crate::{
     context::ContextItem,
@@ -251,19 +254,37 @@ impl Kernel {
     }
 
     /// Asks the compactor whether the context needs managing, and applies whatever it says.
+    ///
+    /// note: it measures what came of the pass rather than being told. Still wanting room once the
+    /// compactor has taken what it will is the context being full, which only somebody else can
+    /// do anything about, and [`Event::ContextFull`] says so as it happens - and again as it
+    /// stops. With no compactor there is nobody to want room, so never full.
     async fn maybe_compact(&self) {
         let Some(compactor) = self.compactor() else {
             return;
         };
 
-        let budget = self.budget();
-        if !compactor.should_compact(&budget) {
-            return;
+        if !compactor.should_compact(&self.budget()) {
+            return self.mark_full(false);
         }
 
-        let items = self.items();
+        let (items, budget) = (self.items(), self.budget());
         if let Some(plan) = compactor.plan(&items, &budget).await {
             self.apply_compaction(plan);
+        }
+
+        self.mark_full(compactor.wants_room(&self.budget()));
+    }
+
+    /// Records whether the context is full, and says so where that changed.
+    fn mark_full(&self, full: bool) {
+        if self.0.full.swap(full, Ordering::SeqCst) != full {
+            let budget = self.budget();
+            self.emit(Event::ContextFull {
+                full,
+                used: budget.used(),
+                limit: budget.limit,
+            });
         }
     }
 

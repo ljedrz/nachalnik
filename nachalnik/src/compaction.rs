@@ -175,6 +175,17 @@ pub trait Compactor: Send + Sync {
     /// note: This is called before every request, so it should be cheap.
     fn should_compact(&self, budget: &Budget) -> bool;
 
+    /// Returns whether the context is too full for this compactor's liking.
+    ///
+    /// note: what the kernel asks *after* a pass, to decide whether the context is full -
+    /// [`Event::ContextFull`](crate::Event::ContextFull) - with nothing more the compactor will
+    /// take. It defaults to [`Compactor::should_compact`], and is worth overriding where
+    /// that asks for a pass for a reason other than room: a compactor that wants a look at
+    /// something it cannot price wants a pass, and does not thereby find the context full.
+    fn wants_room(&self, budget: &Budget) -> bool {
+        self.should_compact(budget)
+    }
+
     /// Returns what to do about the current context, or `None` to leave it alone.
     ///
     /// note: The items arrive in insertion order, with their states, labels, sizes and

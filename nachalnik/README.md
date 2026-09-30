@@ -170,7 +170,7 @@ trait object you can set, swap at runtime, and inspect:
 | `PermissionPolicy` | what is allowed | the question, and the refusal |
 | `Projector` | the shape of a request | the context it is projected from |
 | `TokenCounter` | how tokens are counted | every number it reports, and what each request really cost |
-| `Compactor` | what to drop when it fills up | the veto on pinned items, and the report |
+| `Compactor` | what to drop when it fills up | the veto on pinned items, the report, and saying when nothing more can go |
 
 Each of them can also say what it is — `Provider` through `info()`, `Tool` through `spec()`, and
 the other four through a `name()` whose default is the implementing type's own path. So

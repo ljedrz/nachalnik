@@ -275,6 +275,8 @@ struct InnerKernel {
     seen_calls: Mutex<HashSet<ToolCallId>>,
     /// Whether somebody has asked [`Kernel::turn`] to stop at the next opportunity.
     interrupted: AtomicBool,
+    /// Whether the compactor last wanted room it could not make; see [`Event::ContextFull`].
+    full: AtomicBool,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -564,6 +566,7 @@ impl Kernel {
             next_permission: AtomicU64::new(1),
             seen_calls: Mutex::new(HashSet::new()),
             interrupted: AtomicBool::new(false),
+            full: AtomicBool::new(false),
             config,
         };
 
