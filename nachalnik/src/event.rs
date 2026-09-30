@@ -476,6 +476,23 @@ pub enum Event {
         /// Exactly what was removed, what was kept, and why.
         report: CompactionReport,
     },
+    /// The compactor still wants room and can make no more, or it has stopped wanting room.
+    ///
+    /// note: measured by the kernel rather than claimed by the compactor: after its pass, the
+    /// compactor still [wants room](crate::Compactor::wants_room). What is left is for somebody else to take - the person, or the model
+    /// through whatever tools it has - and this is the moment to tell them.
+    ///
+    /// note: on the change only, so a context that stays full is said to be once, and one that
+    /// comes back under says so. A session starts not full.
+    #[serde(rename = "context.full")]
+    ContextFull {
+        /// Whether it is full from here on.
+        full: bool,
+        /// What the next request would cost, as [`Budget::used`](crate::Budget::used) counts it.
+        used: usize,
+        /// The limit it is measured against, if there is one.
+        limit: Option<usize>,
+    },
     /// The set of registered tools changed.
     #[serde(rename = "tools.changed")]
     ToolsChanged {
@@ -569,6 +586,7 @@ impl Event {
             Self::ToolPanicked { .. } => "tool.panicked",
             Self::ToolFinished { .. } => "tool.finished",
             Self::Compacted { .. } => "context.compacted",
+            Self::ContextFull { .. } => "context.full",
             Self::ToolsChanged { .. } => "tools.changed",
             Self::PolicyChanged { .. } => "policy.changed",
             Self::ProjectorChanged { .. } => "projector.changed",

@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **The kernel says when the context is full.** `Event::ContextFull` (`context.full`) is broadcast
+  as a compactor that still wants room finds nothing more to take, and again as it stops wanting
+  it. Measured by the kernel, not claimed by the compactor. `Compactor::wants_room`, which
+  defaults to `should_compact`, is what "still wants room" asks, for a compactor that asks for a
+  pass for other reasons too.
+
 ## [0.7.3] - 2026-09-29
 
 ### added

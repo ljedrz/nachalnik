@@ -337,3 +337,73 @@ fn a_switch_in_place_is_announced_from_what_was_announced() {
         [(Some("first".to_owned()), Some("second".to_owned()))]
     );
 }
+
+/// A kernel whose model takes a thousand tokens, answering `answers` in turn.
+fn limited(answers: usize) -> Kernel {
+    let provider = Arc::new(
+        ScriptedProvider::new((0..answers).map(|_| ModelResponse::text("ok"))).with_info(
+            ModelInfo {
+                context_limit: Some(1_000),
+                ..ModelInfo::new("scripted", "small")
+            },
+        ),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider);
+
+    kernel
+}
+
+/// A context the compactor wants room in and can take nothing more from is said to be full, once,
+/// and said not to be once room is made.
+///
+/// note: measured, not claimed: the compactor is asked, proposes nothing it may take, and still
+/// wants room. What is left is for somebody else to take, and this is the moment to tell them -
+/// so it is said as it becomes true and not before every request it stays true for.
+#[tokio::test]
+async fn a_context_nothing_more_can_be_taken_from_is_full() {
+    let kernel = limited(3);
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    let kept = kernel.push(ContextItem::file("kept.txt", "k".repeat(2_400)).pinned());
+    kernel.push(ContextItem::user("go on"));
+
+    let mut events = kernel.subscribe();
+    kernel.turn().await.unwrap();
+    let full: Vec<Event> = drain(&mut events)
+        .into_iter()
+        .filter(|event| event.name() == "context.full")
+        .collect();
+    assert_eq!(full.len(), 1, "{full:?}");
+    assert!(
+        matches!(
+            full[0],
+            Event::ContextFull {
+                full: true,
+                limit: Some(1_000),
+                ..
+            }
+        ),
+        "{full:?}"
+    );
+
+    // still full, and not said again
+    kernel.push(ContextItem::user("and again"));
+    kernel.turn().await.unwrap();
+    assert_eq!(crate::common::count(&drain(&mut events), "context.full"), 0);
+
+    // and the person makes the room the compactor could not
+    kernel.set_state([kept], ContextState::Excluded, None);
+    kernel.push(ContextItem::user("and now"));
+    kernel.turn().await.unwrap();
+    let full: Vec<Event> = drain(&mut events)
+        .into_iter()
+        .filter(|event| event.name() == "context.full")
+        .collect();
+    assert!(
+        matches!(full.as_slice(), [Event::ContextFull { full: false, .. }]),
+        "{full:?}"
+    );
+}
