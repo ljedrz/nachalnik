@@ -222,16 +222,24 @@ pub struct Wired {
 /// other one asks it to say so, which is the one thing left that it can do. A `/tools toggle`
 /// later does not change it.
 fn full_notice(context_tool: bool) -> ContextItem {
+    // note: both say what is left - messages and turns, and no tool results - because a model
+    // told only that the context was full went looking for tool results to elide, and one told
+    // to ask the person wrote a file larger than the room there was. Both say what not to do,
+    // since a request over the limit is not sent at all
     let said = match context_tool {
         true => {
-            "The context is full: every tool result the compactor may take has been elided, and \
-             what is left is the conversation itself. Before going on, use the `context` tool to \
-             `exclude` or `elide` what you no longer need - earlier turns included - and say why."
+            "The context is full, and there are no tool results left to elide: what fills it now \
+             is the conversation's own messages and turns. Before anything else, `look` with the \
+             `context` tool, then `exclude` or `elide` by id the messages and turns you no longer \
+             need, and say why. Add nothing large until there is room - a request over the limit \
+             is not sent."
         }
         false => {
-            "The context is full: every tool result the compactor may take has been elided, and \
-             what is left is the conversation itself. Say so to the person you are working with, \
-             who can exclude what is no longer needed, before going on."
+            "The context is full, and what fills it now is the conversation's own messages and \
+             turns. Add nothing large to it - no long answers, no large files written or read - \
+             because a request over the limit is not sent. Tell the person you are working with \
+             that the context is full, so they can exclude what is no longer needed, and keep to \
+             short answers until there is room."
         }
     };
 

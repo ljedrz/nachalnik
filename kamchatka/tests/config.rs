@@ -1620,7 +1620,7 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
     };
 
     let all = notice(Setup::default()).expect("a notice with the compactor");
-    assert!(all.contains("use the `context` tool"), "{all}");
+    assert!(all.contains("`look` with the `context` tool"), "{all}");
 
     let without = notice(Setup {
         tools: Some(vec!["fs".to_owned()]),
