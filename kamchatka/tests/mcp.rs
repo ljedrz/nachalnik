@@ -286,11 +286,14 @@ async fn a_dropped_server_fails_its_calls_instead_of_hanging() {
     assert!(run.names.contains(&"tool.finished".to_owned()));
     // and the model is told what went wrong, in the result of the call it made, rather than being
     // handed an empty answer to carry on from
-    // the bridge's own sentence rather than the transport's: a server that is gone is one whose
-    // answer never comes, which the bridge says in words of its own
+    // the bridge's own sentence rather than the transport's. Which of its two it is depends on how
+    // far the server had got in going: a connection already closed refuses the call before it is
+    // sent, and one that closes while the call is out never answers it
     let told = run.app.kernel.items().iter().any(|item| {
+        let said = item.content.to_text();
         matches!(item.kind, ContextKind::ToolResult { is_error: true, .. })
-            && item.content.to_text().contains("the MCP server went away")
+            && (said.contains("the MCP server went away")
+                || said.contains("the call could not be sent to the MCP server"))
     });
     assert!(told, "the call failed without saying why: {}", run.prose);
 }

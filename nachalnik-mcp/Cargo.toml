@@ -25,11 +25,12 @@ default = ["child-process"]
 # servers are distributed, and it is the reason this crate is not part of the runtime: the
 # runtime spawns no processes.
 #
-# note: `process` because `Server::spawn` names a `tokio::process::Command` in its signature, and
-# `io-util` and `rt` for the server's standard error, which is read in the background rather than
-# inherited; see `Server::spawn`.
+# note: `process` because `Server::spawn` names a `tokio::process::Command` in its signature and
+# spawns it, and `io-util` and `rt` for the server's standard error, which is read in the background
+# rather than inherited; see `Server::spawn`. `rmcp` is handed the child's two pipes rather than
+# the command, so that the child is ours to kill; see the note there.
 child-process = [
-    "rmcp/transport-child-process",
+    "rmcp/transport-async-rw",
     "tokio/process",
     "tokio/io-util",
     "tokio/rt",

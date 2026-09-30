@@ -65,6 +65,11 @@ pub struct Server {
     prefix: bool,
     trust: Trust,
     running: RunningService<RoleClient, ()>,
+    /// The process, where this spawned one; see [`Server::spawn`].
+    ///
+    /// note: after `running`, so that dropping this ends the session before the process goes.
+    #[cfg(feature = "child-process")]
+    child: Option<tokio::process::Child>,
 }
 
 impl Server {
@@ -84,6 +89,8 @@ impl Server {
             prefix: true,
             trust: Trust::default(),
             running,
+            #[cfg(feature = "child-process")]
+            child: None,
         })
     }
 
@@ -99,27 +106,41 @@ impl Server {
     /// a few lines of it, for the one moment it is worth reading: a handshake that failed, where
     /// it is the reason.
     ///
-    /// note: and killed when it is dropped, whatever the `Command` says. `rmcp` kills a child it
-    /// drops from a task it spawns, and a runtime shutting down need not run that task - so a
-    /// server still busy with a call, which never reads the end of its input, outlived the program
-    /// that started it. Killed in the drop itself, it goes with the handle.
+    /// note: and spawned here rather than by `rmcp`, so that the process is this value's and goes
+    /// when it does. `rmcp`'s own transport kills a child it drops from a task it spawns, and a
+    /// runtime being shut down need not run that task - so a server still busy with a call, which
+    /// never reads the end of its input, outlived the program that started it. Held here with
+    /// `kill_on_drop`, whatever the `Command` says, it is killed in the drop itself.
     #[cfg(feature = "child-process")]
     pub async fn spawn(
         name: impl Into<String>,
         mut command: tokio::process::Command,
     ) -> Result<Self> {
-        command.kill_on_drop(true);
-        let (transport, stderr) = rmcp::transport::TokioChildProcess::builder(command)
-            .stderr(std::process::Stdio::piped())
+        use std::process::Stdio;
+
+        let mut child = command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| Error::Connect(Box::new(e)))?;
+        let (Some(stdout), Some(stdin)) = (child.stdout.take(), child.stdin.take()) else {
+            unreachable!("both were asked for as pipes a line above");
+        };
         let said = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
         // read for as long as the server runs, because a pipe nobody reads fills and blocks the
         // process writing to it
-        let draining = stderr.map(|stderr| tokio::spawn(drain(stderr, said.clone())));
+        let draining = child
+            .stderr
+            .take()
+            .map(|stderr| tokio::spawn(drain(stderr, said.clone())));
 
-        match Self::connect(name, transport).await {
-            Ok(server) => Ok(server),
+        match Self::connect(name, (stdout, stdin)).await {
+            Ok(server) => Ok(Self {
+                child: Some(child),
+                ..server
+            }),
             Err(Error::Connect(e)) => {
                 // a server that failed the handshake has usually exited, and what it said on the
                 // way out may not have been read yet
@@ -298,12 +319,25 @@ impl Server {
     }
 
     /// Ends the session, and waits for the server to notice.
+    ///
+    /// note: a spawned server is told by its input closing, and given three seconds to finish before
+    /// it is killed - the wait `rmcp`'s own transport made, so that what a server does on its way
+    /// out is done by the time this returns.
     pub async fn shutdown(self) -> Result<()> {
-        self.running
+        let ended = self
+            .running
             .cancel()
             .await
             .map(|_| ())
-            .map_err(|e| Error::Request(Box::new(e)))
+            .map_err(|e| Error::Request(Box::new(e)));
+        #[cfg(feature = "child-process")]
+        if let Some(mut child) = self.child
+            && tokio::time::timeout(GRACE, child.wait()).await.is_err()
+        {
+            let _ = child.kill().await;
+        }
+
+        ended
     }
 }
 
@@ -354,6 +388,10 @@ const KEPT: usize = 20;
 /// How long a server that failed its handshake is given to finish saying why.
 #[cfg(feature = "child-process")]
 const LAST_WORDS: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// How long [`Server::shutdown`] waits for a spawned server to leave of its own accord.
+#[cfg(feature = "child-process")]
+const GRACE: std::time::Duration = std::time::Duration::from_secs(3);
 
 /// How much of one line of a server's standard error is kept.
 #[cfg(feature = "child-process")]
