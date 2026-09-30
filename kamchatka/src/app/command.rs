@@ -1137,6 +1137,7 @@ impl App {
                 None => format!("no ceiling; this run has spent {spent} tokens"),
             };
             self.say(Speaker::Note, said);
+            self.say_advice_spent();
 
             return;
         }
@@ -1153,6 +1154,26 @@ impl App {
             ),
         };
         self.say(Speaker::Note, said);
+        self.say_advice_spent();
+    }
+
+    /// Says how much of what `/spend` just reported was the advisor's, where any was.
+    ///
+    /// note: a line of its own rather than a clause in each of the sentences above, and only when
+    /// there is something to say. The figure is in the total whichever key paid for it, and a
+    /// person whose advisor has a key of its own is owed the split: what the model spent is
+    /// otherwise not a number they can read off this.
+    fn say_advice_spent(&mut self) {
+        let advice = self.spent_on_advice();
+        if advice > 0 {
+            self.say(
+                Speaker::Note,
+                format!(
+                    "{} of it the advisor's, for rating commands",
+                    plural(advice as usize, "token")
+                ),
+            );
+        }
     }
 
     /// Shows the output limits, or changes one.

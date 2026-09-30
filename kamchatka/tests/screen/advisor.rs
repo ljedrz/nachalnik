@@ -314,3 +314,46 @@ async fn a_build_that_can_rate_commands_says_when_nothing_is_rating_them() {
     let said = harness.flat();
     assert!(said.contains("--advise is what turns that on"), "{said}");
 }
+
+/// What the advisor's answers cost is counted against `--spend`, and `/spend` says how much of it
+/// was the advisor's.
+///
+/// note: it was dropped. The advisor is asked inside the permission policy, which writes no event,
+/// so a ceiling that added up `model.finished` alone was none at all on the advisor - and one
+/// borrowing the session's key spends out of the same account. The scripted model reports no
+/// usage, so whatever is counted here is the advisor's.
+#[tokio::test]
+async fn what_the_advisor_spends_is_counted_against_the_ceiling() {
+    let endpoint = serving(
+        "200 OK",
+        "application/json",
+        format!(
+            "{{\"model\":\"jev-1\",\"answers\":{{{}}},\
+             \"usage\":{{\"input_tokens\":300,\"output_tokens\":20}}}}",
+            scored("rating", 1.9, 0.93)
+        ),
+    )
+    .await;
+    let mut harness = asked_by(endpoint).await;
+
+    assert_eq!(
+        harness.app.spent(),
+        320,
+        "the advisor's answer is in the total"
+    );
+    assert_eq!(harness.app.spent_on_advice(), 320);
+    // the question is answered first: while it is open, the keys are the question's
+    harness.press(crossterm::event::KeyCode::Tab).await;
+    harness.press(crossterm::event::KeyCode::Char('n')).await;
+    harness.settle().await;
+    harness.send("/spend").await;
+    assert!(
+        harness.flat().contains("320 tokens of it the advisor's"),
+        "{}",
+        harness.screen()
+    );
+
+    // and a ceiling under it is reached by the advisor alone
+    harness.app.set_spend(Some(100));
+    assert!(harness.app.overspent());
+}

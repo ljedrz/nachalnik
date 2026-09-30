@@ -665,6 +665,10 @@ pub struct App {
     /// ceiling could be passed by whatever the lag took. The log drops nothing, and nothing in this
     /// program drains it.
     charged: u64,
+    /// How much of [`Advised::spent`](crate::tools::Advised::spent) has been charged, which is
+    /// how much of `spent` was the advisor's.
+    #[cfg(feature = "shell-advisor")]
+    advised: u64,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
     /// Whether the last turn was refused for a request longer than the model takes, until another
@@ -799,6 +803,8 @@ impl App {
             previews: 0,
             spent: 0,
             charged,
+            #[cfg(feature = "shell-advisor")]
+            advised: 0,
             overspent: false,
             oversized: false,
             unreported: false,
