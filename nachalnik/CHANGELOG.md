@@ -14,6 +14,10 @@ minor bump may break you.
   it. Measured by the kernel, not claimed by the compactor. `Compactor::wants_room`, which
   defaults to `should_compact`, is what "still wants room" asks, for a compactor that asks for a
   pass for other reasons too.
+- **The caller's notice is put into the context as it becomes full.** `Kernel::set_full_notice`
+  takes the item, whose words are the caller's; the kernel pushes it once per fill, before the
+  next request, and excludes it as there is room again. A copy already standing - a session
+  resumed while full - is recognised by what it says and not placed twice.
 
 ## [0.7.3] - 2026-09-29
 

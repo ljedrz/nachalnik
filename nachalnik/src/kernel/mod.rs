@@ -277,6 +277,8 @@ struct InnerKernel {
     interrupted: AtomicBool,
     /// Whether the compactor last wanted room it could not make; see [`Event::ContextFull`].
     full: AtomicBool,
+    /// What is put into the context as it becomes full; see [`Kernel::set_full_notice`].
+    full_notice: RwLock<Option<ContextItem>>,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -567,6 +569,7 @@ impl Kernel {
             seen_calls: Mutex::new(HashSet::new()),
             interrupted: AtomicBool::new(false),
             full: AtomicBool::new(false),
+            full_notice: RwLock::new(None),
             config,
         };
 
@@ -984,6 +987,33 @@ impl Kernel {
     /// Returns the compactor, if one is set.
     pub fn compactor(&self) -> Option<Arc<dyn Compactor>> {
         self.0.compactor.read().clone()
+    }
+
+    /// Sets (or, with `None`, removes) what is put into the context as it becomes full, returning
+    /// the previous one.
+    ///
+    /// note: how the model is told, and the words are the caller's, since the kernel ships no text
+    /// the model reads - what the model can do about a full context depends on the tools it has,
+    /// which only the caller knows. The kernel owns *when* and *where*: the notice is pushed as
+    /// [`Event::ContextFull`] says the context is full, which is before a request, between a
+    /// turn's tool results and the next request - so a tool loop that fills the context hears it
+    /// in the same turn, while there is still room under the limit for the request that carries
+    /// it. It is pushed once per fill, and excluded again as the context has room.
+    ///
+    /// note: the notice in the context is recognised by what it is - its kind, source, label and
+    /// content - rather than by an identifier remembered here, so that a session resumed while
+    /// full does not stack a second copy on the first. A notice the person or the model excluded
+    /// stays excluded for the rest of that fill, and one they pinned is left where it is.
+    ///
+    /// note: each placing and each retiring is an ordinary change to the context, so each is an
+    /// undo step, and neither is taken more than once per fill.
+    pub fn set_full_notice(&self, notice: Option<ContextItem>) -> Option<ContextItem> {
+        std::mem::replace(&mut *self.0.full_notice.write(), notice)
+    }
+
+    /// Returns what is put into the context as it becomes full, if anything is.
+    pub fn full_notice(&self) -> Option<ContextItem> {
+        self.0.full_notice.read().clone()
     }
 
     /// Returns the parameters that will be sent with the next request.

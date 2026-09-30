@@ -407,3 +407,98 @@ async fn a_context_nothing_more_can_be_taken_from_is_full() {
         "{full:?}"
     );
 }
+
+/// The caller's notice is put into the context as it becomes full, carried by the request that
+/// follows, placed once for as long as it stays full, and excluded as there is room again.
+///
+/// note: this is how the model hears it. An event reaches a client, and a headless run has no
+/// client that can act on one; the notice reaches the model, inside the turn that filled the
+/// context, while there is still room under the limit for the request carrying it.
+#[tokio::test]
+async fn the_full_notice_reaches_the_model_once_and_goes_when_there_is_room() {
+    let provider = Arc::new(
+        ScriptedProvider::new((0..3).map(|_| ModelResponse::text("ok"))).with_info(ModelInfo {
+            context_limit: Some(1_000),
+            ..ModelInfo::new("scripted", "small")
+        }),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    let notice = ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "client",
+        "context full",
+        "the context is full; exclude what you no longer need",
+    );
+    kernel.set_full_notice(Some(notice));
+    let kept = kernel.push(ContextItem::file("kept.txt", "k".repeat(2_400)).pinned());
+    kernel.push(ContextItem::user("go on"));
+
+    let placed = |kernel: &Kernel| -> Vec<(nachalnik::ContextId, ContextState)> {
+        kernel
+            .items()
+            .iter()
+            .filter(|item| item.label == "context full")
+            .map(|item| (item.id, item.state))
+            .collect()
+    };
+
+    kernel.turn().await.unwrap();
+    let first = placed(&kernel);
+    assert!(
+        matches!(first.as_slice(), [(_, ContextState::Active)]),
+        "{first:?}"
+    );
+    assert!(
+        format!("{:?}", provider.requests()[0]).contains("exclude what you no longer need"),
+        "the request that followed carried it"
+    );
+
+    // still full, and not placed again
+    kernel.push(ContextItem::user("and again"));
+    kernel.turn().await.unwrap();
+    assert_eq!(placed(&kernel), first);
+
+    // and the room the compactor could not make retires it
+    kernel.set_state([kept], ContextState::Excluded, None);
+    kernel.push(ContextItem::user("and now"));
+    kernel.turn().await.unwrap();
+    assert_eq!(placed(&kernel), vec![(first[0].0, ContextState::Excluded)]);
+}
+
+/// A notice already standing in the context is not placed a second time.
+///
+/// note: the case a resumed session makes. Whether the context is full is not in a snapshot, so a
+/// session resumed while full finds it full again as if for the first time - and a notice
+/// recognised by an identifier held in memory would be pushed on top of the one already there.
+#[tokio::test]
+async fn a_standing_notice_is_not_placed_twice() {
+    let kernel = limited(1);
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    let notice = ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "client",
+        "context full",
+        "the context is full",
+    );
+    kernel.set_full_notice(Some(notice.clone()));
+    kernel.push(ContextItem::file("kept.txt", "k".repeat(2_400)).pinned());
+    kernel.push(notice);
+    kernel.push(ContextItem::user("go on"));
+
+    kernel.turn().await.unwrap();
+
+    let standing = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "context full")
+        .count();
+    assert_eq!(standing, 1);
+}

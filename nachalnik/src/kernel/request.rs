@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    context::ContextItem,
+    context::{ContextItem, ContextState},
     error::{Error, Result},
     event::{DeltaSink, Event},
     model::{
@@ -276,15 +276,47 @@ impl Kernel {
         self.mark_full(compactor.wants_room(&self.budget()));
     }
 
-    /// Records whether the context is full, and says so where that changed.
+    /// Records whether the context is full, says so where that changed, and places or retires the
+    /// caller's notice; see [`Kernel::set_full_notice`].
     fn mark_full(&self, full: bool) {
-        if self.0.full.swap(full, Ordering::SeqCst) != full {
-            let budget = self.budget();
-            self.emit(Event::ContextFull {
-                full,
-                used: budget.used(),
-                limit: budget.limit,
-            });
+        if self.0.full.swap(full, Ordering::SeqCst) == full {
+            return;
+        }
+
+        let budget = self.budget();
+        self.emit(Event::ContextFull {
+            full,
+            used: budget.used(),
+            limit: budget.limit,
+        });
+
+        let Some(notice) = self.full_notice() else {
+            return;
+        };
+        let standing = |item: &ContextItem| {
+            item.kind == notice.kind
+                && item.source == notice.source
+                && item.label == notice.label
+                && item.content == notice.content
+        };
+        let items = self.items();
+        if full {
+            // note: any copy that still sends, pinned included, is the notice already said; one
+            // excluded by hand is not, and a fill after the one it was excluded in is told again
+            if !items
+                .iter()
+                .any(|item| standing(item) && item.state.sends_content())
+            {
+                self.push(notice.clone());
+            }
+        } else {
+            // note: `Active` alone - a pinned copy is somebody's decision to keep it
+            let retired: Vec<_> = items
+                .iter()
+                .filter(|item| standing(item) && item.state == ContextState::Active)
+                .map(|item| item.id)
+                .collect();
+            self.set_state(retired, ContextState::Excluded, None);
         }
     }
 
