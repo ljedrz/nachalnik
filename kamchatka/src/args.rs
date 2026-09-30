@@ -255,14 +255,15 @@ pub struct Args {
     #[arg(long, value_name = "PATH")]
     pub check: Option<String>,
 
-    /// The frame's colour, which only a settings file can say; see `Settings::border`.
+    /// The frame's colour, which only a settings file can say; `None` is the terminal's own
+    /// foreground colour. See `Settings::border_color`.
     ///
     /// note: `skip` rather than an argument nobody would type twice, and it lives on `Args` all
     /// the same so that the one merge in `under` stays the one place the file meets the command
     /// line. A second path from a settings file to the program is a second set of rules about
     /// which wins.
-    #[arg(skip)]
-    pub border: Option<String>,
+    #[arg(skip = Some(config::BORDER_COLOR.to_owned()))]
+    pub border_color: Option<String>,
 
     /// Which tools to offer at startup, which only a settings file can say; see `Settings::tools`.
     ///
@@ -338,12 +339,18 @@ impl Args {
             self.system = settings.system;
         }
         // read here rather than where it is drawn, so that a colour nobody can parse is a startup
-        // error naming the file rather than a frame that is quietly still yellow. There is no
+        // error naming the file rather than a frame that is quietly the default. There is no
         // argument to lose to, so there is nothing to ask `typed` about
-        if let Some(border) = &settings.border {
-            config::rgb(border)
-                .map_err(|e| anyhow::anyhow!("`border` in the settings file: {e}"))?;
-            self.border = settings.border;
+        //
+        // note: a `null` is a colour of its own - the terminal's - and not the key left out
+        match settings.border_color {
+            None => {}
+            Some(None) => self.border_color = None,
+            Some(Some(border)) => {
+                config::rgb(&border)
+                    .map_err(|e| anyhow::anyhow!("`border-color` in the settings file: {e}"))?;
+                self.border_color = Some(border);
+            }
         }
         // the other one with no argument to lose to. Checking the names is `Setup::wire`'s, since
         // the tools it would be checking against are the ones it is about to build

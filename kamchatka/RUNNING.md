@@ -579,19 +579,18 @@ every key is the only kind worth predicting, and the other way round there is no
 fewer. `--model` is the one setting with a variable behind it, so the order there is command line,
 then `KAMCHATKA_MODEL`, then the file.
 
-**`border` and `tools` are the exceptions**, the two settings with no argument behind them:
+**`border-color` and `tools` are the exceptions**, the two settings with no argument behind them:
 
 ```json
-{ "border": "#7aa2f7" }
+{ "border-color": "#7aa2f7" }
 ```
 
 Six hex digits, `#` optional, and it is the colour of the window's frame — along with everything
-else that is yellow to say *the keys are here*: the active tab, the prompt while it has them, a
-permission question you can answer where you stand. It exists because that yellow is the one
-colour in the program picked to sit beside *your* terminal theme rather than to mean something,
-and there is no argument for it because nobody types a colour twice. Left out, or `null`, it stays
-the terminal's own yellow — which is the right default precisely because it is not a hex: a window
-with nothing configured belongs to whatever palette it is opened in.
+else drawn in it to say *the keys are here*: the active tab, the prompt while it has them, a
+permission question you can answer where you stand. It exists because that is the one colour in
+the program picked to sit beside *your* terminal theme rather than to mean something, and there is
+no argument for it because nobody types a colour twice. Left out, it is `#1A936F`; `null` is the
+terminal's own foreground colour, for a window that belongs to whatever palette it is opened in.
 
 What it does not touch is the vocabulary. `ask` on the permissions tab, a budget bar past seven
 tenths, a command that was killed, a pinned row — those are yellow because yellow *means*
@@ -609,7 +608,8 @@ everywhere, rather than one that works until somebody opens it on a terminal.
 { "tools": ["fs", "shell", "context", "log", "setup"] }
 ```
 
-Left out, or `null`, every tool is offered. The list above is the whole set minus `fork`, which is
+Left out, every tool is offered, and the shipped file lists all six. `null` is refused: beside
+`[]` for none it could be read either way. The list above is the whole set minus `fork`, which is
 how a project says *do not go buying extra requests*. An empty list offers none of them, which is
 a session with whatever an MCP server brought and nothing else. A name that is
 not a tool stops the program and says which ones there are, for the same reason an unknown key

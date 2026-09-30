@@ -399,13 +399,13 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
 
 /// The prompt, which is the one thing on the chat tab the keys can be on.
 ///
-/// note: yellow when the keys are on it, which is the same yellow the pinned question wears for
-/// the same reason - the two are the boxes that can hold them, and one of them holding them is
+/// note: the accent when the keys are on it, which is the same colour the pinned question wears
+/// for the same reason - the two are the boxes that can hold them, and one of them holding them is
 /// what the colour says. Not white: against grey that is a difference in brightness rather than
 /// in hue, the weaker of the two signals and the first to go on a pale theme.
 ///
-/// note: an edit is yellow only while the keys are on it, like a message. Yellow either way would
-/// be the same colour doing a second job, and would leave two yellow boxes on the screen at once
+/// note: an edit is the accent only while the keys are on it, like a message. The accent either way
+/// would be the same colour doing a second job, and would leave two such boxes on the screen at once
 /// with the item being edited on the tab underneath. What says this box is not composing a message
 /// is its title, which spells the whole of it out; the colour is left to say the one thing it says
 /// everywhere else.

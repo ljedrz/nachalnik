@@ -6,7 +6,7 @@ How many packages in Cargo.lock come from crates.io, and how many are workspace 
 Using git, show me the last five commits that touched kamchatka/src/args.rs, and summarise what each one changed.
 Which author has the most commits in this repository?
 Run `cargo test --offline -p nachalnik --lib` and tell me how many tests passed and how long the build took.
-Find the test that checks a `border` in the settings file that is not a colour is refused, and explain what it asserts.
+Find the test that checks a `border-color` in the settings file that is not a colour is refused, and explain what it asserts.
 Without running it, tell me which source function it exercises and quote the lines of that function that produce the error.
 In kamchatka/src/tools/ops.rs there is a private function called `held`. Rename it to `what_it_held` everywhere it is used in the workspace, and show me the lines you changed.
 Now add a one-line doc comment above `what_it_held` saying what it returns, matching the style of the doc comments around it.

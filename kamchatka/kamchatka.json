@@ -8,7 +8,7 @@
   "requests": 8,
   "compact": 0.8,
   "parallel": false,
-  "tools": null,
+  "tools": ["context", "fork", "fs", "log", "setup", "shell"],
   "forget-truncated": false,
   "send-oversized": false,
 
@@ -27,5 +27,5 @@
   "spend": null,
   "no-record": false,
 
-  "border": null
+  "border-color": "#1A936F"
 }

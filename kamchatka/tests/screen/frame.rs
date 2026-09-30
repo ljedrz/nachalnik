@@ -387,8 +387,8 @@ async fn a_tab_with_no_prompt_on_it_takes_the_keys() {
 
 /// Every tab is framed the same, and the box with the keys in it is the one that says so.
 ///
-/// note: the chat tab used to be the one screen in the program with no yellow on it anywhere. The
-/// window border went yellow when the keys were on the tab's body, and on the chat tab they never
+/// note: the chat tab used to be the one screen in the program with no accent on it anywhere. The
+/// window border took the accent when the keys were on the tab's body, and on the chat tab they never
 /// are - `Focus::Body` there is the pinned question, which has a box of its own - so the tab a
 /// session is mostly spent on could not look open while the other three did. The prompt did not
 /// make up for it in white: against grey that is a difference in brightness rather than in hue.
@@ -399,27 +399,28 @@ async fn every_window_is_framed_the_same_and_the_keys_say_where_they_are() {
         .app
         .kernel
         .push(ContextItem::file("notes.txt", "the wrong note"));
+    let accent = harness.app.accent;
 
     // the open window is framed the same on the tab with a prompt and on the tab without one ...
     harness.tab(Tab::Chat);
     assert_eq!(harness.app.focus, Focus::Input);
     assert_eq!(
         harness.corners(),
-        vec![Color::Yellow, Color::Yellow],
+        vec![accent, accent],
         "the window is framed, and the prompt under it has the keys"
     );
 
     harness.tab(Tab::Context);
     assert_eq!(harness.app.focus, Focus::Body);
-    assert_eq!(harness.corners(), vec![Color::Yellow]);
+    assert_eq!(harness.corners(), vec![accent]);
 
     // ... and while an item is being edited the prompt is the one that answers "where do the keys
     // go?", which it could not do while an edit was yellow whether it had them or not
     harness.press(KeyCode::Char('e')).await;
-    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Yellow]);
+    assert_eq!(harness.corners(), vec![accent, accent]);
     harness.press(KeyCode::Tab).await;
     assert_eq!(harness.app.focus, Focus::Body);
-    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Gray]);
+    assert_eq!(harness.corners(), vec![accent, Color::Gray]);
     // and the box that has lost them says how to get back, the way the prompt's own title does
     assert!(
         harness.flat().contains("editing [1] · tab"),
@@ -430,7 +431,7 @@ async fn every_window_is_framed_the_same_and_the_keys_say_where_they_are() {
 
 /// The frame is drawn in whatever colour it was given, and the vocabulary is not.
 ///
-/// note: every border that is yellow to mean *the keys are here* moves together - the window, the
+/// note: every border drawn in the accent to mean *the keys are here* moves together - the window, the
 /// active tab in its title, the prompt while it has them - because they are one statement, and a
 /// setting that moved two of three would leave the third reading as a different kind of thing.
 /// The unfocused prompt stays grey for the same reason: grey is what "not here" looks like, and
@@ -448,9 +449,14 @@ async fn the_frame_is_drawn_in_the_colour_it_was_given() {
         .kernel
         .push(ContextItem::file("a.rs", "one").pinned());
 
-    // untouched, it is the terminal's own yellow rather than a hex of one - so a window with
-    // nothing configured belongs to whatever palette it is opened in
-    assert_eq!(harness.corners(), vec![Color::Yellow, Color::Yellow]);
+    // untouched, it is the program's own default, the colour a settings file leaves it at
+    let default = Color::Rgb(0x1a, 0x93, 0x6f);
+    assert_eq!(harness.corners(), vec![default, default]);
+
+    // and the terminal's own foreground colour is one it can be given, which is what a `null`
+    // `border-color` asks for
+    harness.app.accent = Color::Reset;
+    assert_eq!(harness.corners(), vec![Color::Reset, Color::Reset]);
 
     let blue = Color::Rgb(0x7a, 0xa2, 0xf7);
     harness.app.accent = blue;

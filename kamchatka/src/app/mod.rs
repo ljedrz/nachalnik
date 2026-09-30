@@ -441,11 +441,12 @@ pub struct App {
     /// The prompt.
     #[cfg(feature = "tui")]
     pub input: TextArea<'static>,
-    /// The colour of the window's frame, and of everything that is yellow to say *the keys are
+    /// The colour of the window's frame, and of everything drawn in it to say *the keys are
     /// here*: the active tab, the prompt while it has them, an answerable question.
+    /// [`config::BORDER_COLOR`](crate::config::BORDER_COLOR) unless a settings file says otherwise.
     ///
     /// note: one field rather than one per border, because they are one statement. All four are
-    /// yellow to say the same thing, and a setting that moved three of them would leave the
+    /// this colour to say the same thing, and a setting that moved three of them would leave the
     /// fourth reading as a different kind of thing rather than as the one somebody forgot.
     ///
     /// note: not every yellow in the program. `ask` on the permissions tab, a budget bar past
@@ -761,11 +762,15 @@ impl App {
             trace: VecDeque::new(),
             #[cfg(feature = "tui")]
             input,
-            // note: the terminal's own yellow rather than a hex of one, so that a window with
-            // nothing configured still belongs to whatever palette it is opened in. A default
-            // written as `#ffff00` would look the same in one theme and wrong in every other
+            // note: the same colour the program draws with when nothing says otherwise, so that
+            // an embedder's window and this program's are one window. Read off the constant
+            // rather than written out again, and it cannot fail - it is a hex the suite parses
             #[cfg(feature = "tui")]
-            accent: ratatui::style::Color::Yellow,
+            accent: {
+                let (r, g, b) = crate::config::rgb(crate::config::BORDER_COLOR)
+                    .expect("the default border colour is a colour");
+                ratatui::style::Color::Rgb(r, g, b)
+            },
             focus: Focus::Input,
             selected: 0,
             sending_only: false,

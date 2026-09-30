@@ -25,8 +25,8 @@ use serde::{Deserialize, Serialize};
 /// note: the names are the arguments' own, with `-` where the argument has one, so that reading a
 /// file is reading `--help`. The ones left out are the ones that are not settings: a message, a
 /// session to resume and a file to attach belong to an invocation rather than to a project, and
-/// `--headless` decides itself from whether stdout is a terminal. `border` and `tools` go the
-/// other way - settings with no argument - and the notes on them say why.
+/// `--headless` decides itself from whether stdout is a terminal. `border-color` and `tools` go
+/// the other way - settings with no argument - and the notes on them say why.
 ///
 /// note: it serializes as well as deserializes, and every field is written even when it is
 /// `null` - which is what makes a settings file something a program can produce rather than only
@@ -63,7 +63,7 @@ pub struct Settings {
     pub parallel: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
     ///
-    /// note: a key with no argument behind it, for the reason `border` is one: which tools a
+    /// note: a key with no argument behind it, for the reason `border-color` is one: which tools a
     /// project wants its agent to have is settled once and then not thought about again.
     /// `/tools toggle` changes it at any point in a session, and this says where the toggles start.
     ///
@@ -71,6 +71,11 @@ pub struct Settings {
     /// brought and nothing else. A name that is not a tool is refused at startup, like an unknown
     /// key - a settings file asking for `contxt` and quietly getting a session with no context
     /// tool is the failure worth naming.
+    ///
+    /// note: `null` is refused rather than read as "all of them". Beside `[]` for none, a `null`
+    /// reads as none just as well, and a key that can be read both ways is read the wrong way by
+    /// somebody; the shipped file lists every tool instead, and all of them is leaving the key out.
+    #[serde(default, deserialize_with = "not_null")]
     pub tools: Option<Vec<String>>,
     /// Whether to run with no confinement at all, as `--no-sandbox` does: the shell unconfined,
     /// and `fs` no longer held to the working directory.
@@ -101,19 +106,56 @@ pub struct Settings {
     pub send_oversized: Option<bool>,
     /// Whether to leave the session unwritten when it ends.
     pub no_record: Option<bool>,
-    /// The colour the window's frame is drawn in, as `#rrggbb`.
+    /// The colour the window's frame is drawn in, as `#rrggbb`: left out, [`BORDER_COLOR`]; `null`,
+    /// the terminal's own foreground colour.
     ///
     /// note: a key with no argument behind it, which is a decision rather than an oversight. Nearly
     /// every setting stands in for something somebody would otherwise type, and nobody types a
     /// colour twice - it is picked once to sit beside a terminal theme and then never thought about
-    /// again, which is the thing a file is for and the command line is not. A `--border` would also
-    /// have to be `tui`-gated, and would put a colour in the `--help` of a program half of whose
+    /// again, which is the thing a file is for and the command line is not. A `--border-color`
+    /// would also have to be `tui`-gated, and would put a colour in the `--help` of a program half of whose
     /// runs have no screen.
     ///
     /// note: not gated here, for the reason `mcp` is not: one file works for every build. A
     /// headless build reads this and has nothing to draw with it, which costs nothing and grants
     /// nothing - unlike an MCP server it cannot run, which is worth refusing over.
-    pub border: Option<String>,
+    ///
+    /// note: the one key where leaving it out and saying `null` are two different things, because
+    /// they are two different colours: the outer `Option` is whether the file said anything, the
+    /// inner one what it said.
+    #[serde(default, deserialize_with = "stated")]
+    pub border_color: Option<Option<String>>,
+}
+
+/// The colour a window's frame is drawn in when nothing says otherwise.
+pub const BORDER_COLOR: &str = "#1A936F";
+
+/// `tools`, which may be left out but not given as `null`.
+///
+/// note: the key is named in the refusal, since serde's own position is a line and a column.
+fn not_null<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // note: only called for a key that is there, since `default` covers one that is not
+    Option::<Vec<String>>::deserialize(deserializer)?
+        .map(Some)
+        .ok_or_else(|| {
+            serde::de::Error::custom(
+                "`tools` is a list of this program's tools, `[]` for none of them, and left out \
+                 for all of them - it cannot be `null`",
+            )
+        })
+}
+
+/// A key whose `null` is a value of its own, told apart from the key being left out.
+fn stated<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    // note: only called for a key that is there, since `default` covers one that is not
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// A `#rrggbb` colour, as the three bytes it names.
