@@ -44,6 +44,8 @@ const WALK: u64 = 64;
 pub(super) struct Changes {
     pinned: Pinned,
     journal: Mutex<Journal>,
+    /// Held for the whole of one operation; see [`Changes::make`].
+    one_at_a_time: Mutex<()>,
 }
 
 impl Changes {
@@ -60,6 +62,7 @@ impl Changes {
         Self {
             pinned,
             journal: Mutex::new(Journal::default()),
+            one_at_a_time: Mutex::new(()),
         }
     }
 }
@@ -278,6 +281,13 @@ impl Changes {
     /// are the vocabulary's and the vocabulary belongs to the half next door: that is the tool a
     /// model called, it holds the list of twelve, and it is what says so when a call names none of
     /// them. What is in here is what changing a context *is*.
+    ///
+    /// note: one at a time, because under `--parallel` two calls run on two threads, and an
+    /// operation is a change to the kernel and then an entry describing it. A walk back that ran
+    /// between the two would take the entry before the one it is about, and an entry made after
+    /// another call's change describes the items as that call left them rather than as this one
+    /// did. Which of two calls asked for together goes first is still not said; that each is whole
+    /// is.
     pub(super) fn make(
         &self,
         kernel: &Kernel,
@@ -286,6 +296,8 @@ impl Changes {
         op: &str,
         reason: &str,
     ) -> ToolOutput {
+        // the outermost lock, taken before `pinned` and the journal wherever either is taken
+        let _one = self.one_at_a_time.lock();
         match op {
             "revise" => self.revise(kernel, call, args, reason),
             "note" => self.note(kernel, args, reason),
