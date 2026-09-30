@@ -96,10 +96,7 @@ async fn the_trace_can_be_searched_by_the_hour_it_happened() {
     harness.tab(Tab::Trace);
 
     // the whole reason the stamp is built beside the filter rather than in the pane
-    let hour = kamchatka::app::when::read_off(harness.app.trace[0].wall)
-        .expect("the clock reads")
-        .time[..2]
-        .to_owned();
+    let hour = kamchatka::app::when::read_off(harness.app.trace[0].wall).time[..2].to_owned();
 
     harness.press(KeyCode::Char('/')).await;
     type_in(&mut harness, &hour).await;

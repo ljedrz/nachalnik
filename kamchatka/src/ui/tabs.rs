@@ -770,7 +770,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
         // dimmer than the gap on purpose: the gap is the figure being looked for, the time is the
         // one being looked *up*. A run whose zone could not be determined is shown in UTC and
         // marked, rather than shown as though it were local
-        let read = when.then(|| read_off(event.wall)).flatten();
+        let read = when.then(|| read_off(event.wall));
         // note: the date is a rule across the pane rather than a column, and is drawn only where it
         // changes. A session can outlast a day - that is the shape of run this clock is for - and
         // `00:15` against two different Tuesdays says nothing; repeating the date on every line to

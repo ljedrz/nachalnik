@@ -9,6 +9,8 @@ minor bump may break you.
 
 ### changed
 
+- **`app::when::read_off` answers a `When`, not an `Option` of one.** There was never a `None`: a
+  zone that cannot be read is UTC, said as UTC. **Breaking** for the library.
 - **A command that does something to the session has one name.** `/prune` and `/keep` are gone
   in favour of `/exclude` and `/pin`, `/policy` in favour of `/permissions`, which is the tab it
   opens, and `/provider` in favour of `/endpoint`, which is what it switches. The old names are
@@ -34,6 +36,8 @@ minor bump may break you.
 
 ### fixed
 
+- **A clock shown in UTC says so.** An offset `time` refuses fell back to UTC and was still
+  reported as local, so the trace's times were out by the zone with no ` UTC` beside the date.
 - **One answer to whether a session has ended.** `Setup::relaunch` asked whether the *last* record
   ended it and the program's parting whether *any* did, which disagree for a session ended while
   a turn is still recording - a second `ctrl+c` does that - so an embedder relaunching such a
