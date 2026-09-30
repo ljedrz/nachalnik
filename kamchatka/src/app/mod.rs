@@ -582,6 +582,9 @@ pub struct App {
     pub grants: ratatui::widgets::ListState,
     /// Whether the last stop was asked for rather than reached.
     interrupting: bool,
+    /// Whether the last turn stopped at the request budget rather than ending; see
+    /// [`App::paused`].
+    paused: bool,
     /// Whether the model has been seen to think without showing any of it, so it is said once.
     ///
     /// note: a property of the endpoint rather than news about a turn, the way `repairs` below is.
@@ -785,6 +788,7 @@ impl App {
             #[cfg(feature = "tui")]
             grants: ratatui::widgets::ListState::default(),
             interrupting: false,
+            paused: false,
             thought_unseen: false,
             unanswered: None,
             compact_target: None,
@@ -848,6 +852,7 @@ impl App {
         self.since = Instant::now();
         self.stepping = stepping;
         self.interrupting = false;
+        self.paused = false;
         self.failed = None;
         let (kernel, outcomes) = (self.kernel.clone(), self.outcomes.clone());
         let turn = tokio::spawn(async move {
@@ -1017,6 +1022,7 @@ impl App {
             // a turn that stops in `Idle` either ran out of requests or was asked to stop, and
             // the difference matters to whoever is reading the screen
             Outcome::Stopped(State::Idle) if !interrupted => {
+                self.paused = true;
                 let budget = self
                     .kernel
                     .config()

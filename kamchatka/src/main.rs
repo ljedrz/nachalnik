@@ -55,7 +55,7 @@ const TICK: std::time::Duration = std::time::Duration::from_millis(120);
 #[cfg(feature = "tui")]
 const HEARTBEAT: u32 = 8;
 
-fn main() -> Result<()> {
+fn main() -> Result<std::process::ExitCode> {
     // before anything else, and before a runtime exists: this is the mode the `shell` tool
     // re-executes this program in, and its whole job is to confine itself and run one command.
     // Landlock restricts the calling thread, so the one shape that needs no thought about which
@@ -91,7 +91,22 @@ fn main() -> Result<()> {
     // their child processes - and what is being abandoned is a thread waiting on a pipe.
     runtime.shutdown_background();
 
-    outcome
+    // note: a headless run cut short says so in its status as well as on standard error, because
+    // the status is what a script reads; see `headless::Stop`. Every other run that ends without
+    // an error is a `0`, and an error is `anyhow`'s `1`
+    match outcome {
+        Ok(stopped) => Ok(std::process::ExitCode::from(
+            stopped.map_or(0, headless::Stop::code),
+        )),
+        // said the way `main` returning an error says it, and then left with a deadline's status
+        Err(e) if e.is::<OutOfTime>() => {
+            let _ = writeln!(std::io::stderr(), "Error: {e:?}");
+            Ok(std::process::ExitCode::from(
+                headless::Stop::Deadline.code(),
+            ))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Whether this run is driven by lines rather than by keys.
@@ -108,6 +123,26 @@ fn headless(asked: bool, piped: bool) -> bool {
     asked || piped || cfg!(not(feature = "tui"))
 }
 
+/// A deadline that passed before the session had started.
+///
+/// note: a type of its own so that `main` can find it under `anyhow` and leave with the status a
+/// deadline has - `124`, as a deadline in the middle of a run does - rather than a failure's `1`.
+/// A script asking whether a run was out of time should not have to know how far it had got.
+#[derive(Debug)]
+struct OutOfTime(String);
+
+impl std::fmt::Display for OutOfTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "out of time {}: `--deadline` passed before the session started, and nothing was run",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for OutOfTime {}
+
 /// Awaits one step of starting a run, unless the deadline passes first.
 ///
 /// note: an error rather than the driver's "out of time", which ends a session and writes it out.
@@ -121,12 +156,7 @@ async fn starting<T>(
         None => doing.await,
         Some(ends) => tokio::time::timeout_at(ends, doing)
             .await
-            .unwrap_or_else(|_| {
-                Err(anyhow::anyhow!(
-                    "out of time {step}: `--deadline` passed before the session started, and \
-                     nothing was run"
-                ))
-            }),
+            .unwrap_or_else(|_| Err(OutOfTime(step.to_owned()).into())),
     }
 }
 
@@ -207,7 +237,7 @@ fn checked(path: &str) -> Result<()> {
 }
 
 /// The program proper: wired the same way whichever of the two drives it.
-async fn session() -> Result<()> {
+async fn session() -> Result<Option<headless::Stop>> {
     let begun = tokio::time::Instant::now();
     // whole, rather than taken apart here, because `--serve` asks the arguments which of the two
     // it does not read and a settings file's answer is not in the matches; see
@@ -225,10 +255,10 @@ async fn session() -> Result<()> {
         // sends a redirect as readily as a place a person types one
         let _ = write!(stdout(), "{}", kamchatka::config::SHIPPED);
 
-        return Ok(());
+        return Ok(None);
     }
     if let Some(path) = &args.check {
-        return checked(path);
+        return checked(path).map(|()| None);
     }
     // note: printed before anything the file asked for is done, because what it can ask for
     // includes MCP servers - programs started a few lines below - and a sandbox turned off. The
@@ -279,6 +309,7 @@ async fn session() -> Result<()> {
         return client
             .run(&address, tokio::io::BufReader::new(tokio::io::stdin()))
             .await
+            .map(|()| None)
             .map_err(|e| anyhow::anyhow!("{e}"));
     }
 
@@ -542,12 +573,15 @@ async fn session() -> Result<()> {
         let ran = match &mut server {
             Some(server) => match headless {
                 #[cfg(feature = "tui")]
-                false => drawn(&mut app, &mut events, &mut finished, Some(server)).await,
+                false => drawn(&mut app, &mut events, &mut finished, Some(server))
+                    .await
+                    .map(|()| None),
                 #[cfg(not(feature = "tui"))]
                 false => unreachable!("there is no screen in this build"),
                 true => server
                     .run(&mut app, &mut events, &mut finished)
                     .await
+                    .map(|()| None)
                     .map_err(|e| anyhow::anyhow!("{e}")),
             },
             None => match headless {
@@ -565,10 +599,13 @@ async fn session() -> Result<()> {
                     driver
                         .run(&mut app, &mut events, &mut finished, &mut input)
                         .await
+                        .map(|()| driver.stopped())
                         .map_err(|e| anyhow::anyhow!("{e}"))
                 }
                 #[cfg(feature = "tui")]
-                false => drawn(&mut app, &mut events, &mut finished, None).await,
+                false => drawn(&mut app, &mut events, &mut finished, None)
+                    .await
+                    .map(|()| None),
                 #[cfg(not(feature = "tui"))]
                 false => unreachable!("there is no screen in this build"),
             },
@@ -639,7 +676,7 @@ fn start_recording(app: &mut App, record: bool) {
 /// about how it was driven. The one thing it asks about the driving is `logged`: whether stdout
 /// is carrying the record stream, which a headless run does and a served one does not, even with
 /// no screen.
-fn finish(app: &App, record: bool, logged: bool, outcome: Result<()>) -> Result<()> {
+fn finish<T>(app: &App, record: bool, logged: bool, outcome: Result<T>) -> Result<T> {
     // note: the headless driver and the server each end the session themselves, so that the record
     // saying so goes down their own stream with the rest rather than being the one nobody was sent.
     // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has

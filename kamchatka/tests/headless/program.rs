@@ -191,7 +191,8 @@ fn a_resumed_headless_run_says_both_what_it_picked_up_and_how_it_is_driven() {
 /// had tests since they were written and this one had none, because it is a *signal* and the suite
 /// had no way to send one. It does: the run is a child process, and `kill -INT` is a command.
 /// What it asserts is the difference between stopping and being killed - the line that says so,
-/// the `session.finished` record at the end of the log, and an exit that is not a failure.
+/// the `session.finished` record at the end of the log, and the status a stopped run has rather
+/// than a failure's or a finished one's.
 #[test]
 fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     use std::io::Read as _;
@@ -240,7 +241,9 @@ fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
     };
     stderr.read_to_string(&mut said).expect("the rest of it");
 
-    assert!(status.success(), "a stopped run is not a failure: {said}");
+    // `130`, as a shell reports a program `ctrl+c` ended: a run stopped short is not one that
+    // finished, and a script is owed the difference
+    assert_eq!(status.code(), Some(130), "{said}");
     assert!(
         said.contains("what has arrived is kept"),
         "it did not say it was stopping: {said}"
@@ -273,8 +276,8 @@ fn ctrl_c_stops_a_headless_run_rather_than_killing_it() {
 /// note: `ctrl+c` says it and the deadline says it, and neither of the signals that end a run
 /// without a keyboard said anything at all - so a run closed by `docker stop`, an ssh drop or
 /// `timeout` ended on a record and a `0` and looked exactly like one that had finished its work.
-/// The exit code is the script's business and is unchanged; the line is what tells a reader of
-/// the tail that the run did not get to choose.
+/// The line is what tells a reader of the tail that the run did not get to choose, and `143` - `128`
+/// and `SIGTERM` - is what tells a script.
 ///
 /// note: both an idle run and one with a turn in flight, because they are different code paths. A
 /// turn running is interrupted and waited for; a run with nothing to do reaches the signal in a
@@ -328,7 +331,7 @@ fn a_termination_signal_says_it_ended_the_run() {
         };
         stderr.read_to_string(&mut said).expect("the rest of it");
 
-        assert!(status.success(), "a signalled run is not a failure: {said}");
+        assert_eq!(status.code(), Some(143), "{what}: {said}");
         assert!(
             said.contains("ended by a termination signal"),
             "{what} did not say a signal ended it: {said}"
@@ -653,11 +656,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     interrupt(child.id());
     let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
 
-    assert!(
-        status.success(),
-        "stopping is not a failure: {}",
-        said.lock()
-    );
+    assert_eq!(status.code(), Some(130), "{}", said.lock());
     assert!(
         pressed.elapsed() < std::time::Duration::from_secs(20),
         "`sleep 30` outlived the interrupt, so the command was waited for rather than stopped"
@@ -869,11 +868,7 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
     let pressed = std::time::Instant::now();
     let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
 
-    assert!(
-        status.success(),
-        "leaving is not a failure: {}",
-        said.lock()
-    );
+    assert_eq!(status.code(), Some(130), "{}", said.lock());
     assert!(
         pressed.elapsed() < std::time::Duration::from_secs(5),
         "the first press waited for the server anyway: {:?}",
@@ -933,7 +928,17 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
             .expect("`kill` is on the path");
         assert!(sent.success());
         let status = waited_out(&mut child, std::time::Duration::from_secs(10), &said);
-        assert!(status.success(), "SIG{signal}: {}", said.lock());
+        // `128` and the signal, as a shell reports a program one ended
+        let expected = match signal {
+            "TERM" => 143,
+            _ => 129,
+        };
+        assert_eq!(
+            status.code(),
+            Some(expected),
+            "SIG{signal}: {}",
+            said.lock()
+        );
 
         let said = said.lock().clone();
         assert!(
@@ -1219,7 +1224,11 @@ async fn the_spend_ceiling_stops_the_program_itself() {
         .expect("the binary under test is built");
 
     let said = String::from_utf8_lossy(&out.stderr);
-    assert!(out.status.success(), "{said}");
+    assert_eq!(
+        out.status.code(),
+        Some(3),
+        "a run the ceiling stopped says so: {said}"
+    );
     assert!(
         said.contains("spent 1,200 tokens of 100; stopping"),
         "the ceiling did not stop it: {said}"
@@ -1254,6 +1263,7 @@ async fn a_deadline_of_nothing_is_none() {
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(said.contains("with time to spare"), "{said}");
     assert!(!said.contains("out of time"), "{said}");
+    assert_eq!(out.status.code(), Some(0), "a run that finished: {said}");
 }
 
 /// `--requests` is how many requests one turn makes before it pauses and says so, and `0` is no
@@ -1264,19 +1274,30 @@ async fn a_deadline_of_nothing_is_none() {
 /// ceiling of nothing is a turn refused before its first request.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_request_ceiling_stops_the_program_itself() {
-    let run = async |requests: &str, answers: Vec<String>| {
+    let run = async |requests: &str, answers: Vec<String>, lines: &str| {
+        use std::io::Write as _;
+
         let base = common::endpoint(answers).await;
-        let out = common::command()
+        let mut child = common::command()
             .args(["--headless", "--no-record", "-m", "nothing", "--requests"])
             .args([requests, "go"])
             .current_dir(common::scratch(&format!("requests-{requests}")))
             .env("KAMCHATKA_BASE_URL", &base)
             .env("KAMCHATKA_API_KEY", "not-a-key")
-            .stdin(std::process::Stdio::null())
-            .output()
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .expect("the binary under test is built");
+        let mut input = child.stdin.take().expect("stdin is a pipe");
+        input.write_all(lines.as_bytes()).expect("typed");
+        drop(input);
+        let out = child.wait_with_output().expect("it ended");
 
-        String::from_utf8_lossy(&out.stderr).into_owned()
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
     };
 
     // a call to a tool nobody has is an error result, and a turn with a request left asks again
@@ -1287,13 +1308,32 @@ async fn the_request_ceiling_stops_the_program_itself() {
             "function": {"name": "nothing", "arguments": "{}"}}]},
             "finish_reason": "tool_calls"}]})
     );
-    let said = run("1", vec![calling, common::answer("asked again")]).await;
+    let (code, said) = run(
+        "1",
+        vec![calling.clone(), common::answer("asked again")],
+        "",
+    )
+    .await;
     assert!(said.contains("paused after 1 request;"), "{said}");
     assert!(!said.contains("asked again"), "{said}");
+    // and `4`, because a paused turn's records read as those of one the model ended - the status
+    // is the one place a script can tell the two apart
+    assert_eq!(code, Some(4), "{said}");
 
-    let said = run("0", vec![common::answer("an answer")]).await;
+    // a pause that is carried on from is not where the run stopped: the status is the last turn's
+    let (code, said) = run(
+        "1",
+        vec![calling, common::answer("asked again")],
+        "/continue\n",
+    )
+    .await;
+    assert!(said.contains("asked again"), "{said}");
+    assert_eq!(code, Some(0), "{said}");
+
+    let (code, said) = run("0", vec![common::answer("an answer")], "").await;
     assert!(said.contains("an answer"), "{said}");
     assert!(!said.contains("paused after"), "{said}");
+    assert_eq!(code, Some(0), "{said}");
 }
 
 /// `--forget-truncated` reaches the session: what `setup` tells the model about the rest of a cut
@@ -1583,11 +1623,8 @@ async fn the_deadline_ends_the_program_itself() {
     let started = std::time::Instant::now();
     let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
 
-    assert!(
-        status.success(),
-        "out of time is not a failure: {}",
-        said.lock()
-    );
+    // `124`, as `timeout(1)` leaves with
+    assert_eq!(status.code(), Some(124), "{}", said.lock());
     assert!(
         started.elapsed() < std::time::Duration::from_secs(10),
         "it waited far longer than it was given: {:?}",
@@ -1629,7 +1666,8 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         let said = watch(child.stderr.take().expect("stderr is a pipe"));
         let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
 
-        assert!(!status.success(), "nothing was run: {}", said.lock());
+        // the deadline's status wherever it falls, so a script need not know how far it got
+        assert_eq!(status.code(), Some(124), "{}", said.lock());
         assert!(
             said.lock().contains(&format!("out of time {step}")),
             "{}",

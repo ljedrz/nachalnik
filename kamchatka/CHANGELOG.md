@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### changed
 
+- **A headless run cut short leaves with a status of its own.** `--deadline`, the spend ceiling, a
+  turn paused at `--requests` and a signal all left with the `0` a finished run has, so a script
+  could not tell them apart from a session that did its work. Now: `3` for the ceiling, `4` for a
+  pause the run ended on, `124` for the deadline - during startup too, which was a `1` - and `128`
+  plus the signal for `ctrl+c` (`130`), `SIGTERM` (`143`) and `SIGHUP` (`129`). A failed turn is
+  still `1`. `--help` and RUNNING.md list them. `headless::Stop`, `Headless::stopped`,
+  `App::paused`, `stopping::Ending` and `Terminated::which_arrived` are new.
+
 - **A `--connect` client whose input closes leaves open questions for somebody else.** It answered
   every waiting question with `--on-ask`, `deny` by default - including questions raised by
   another client's person - so watching a session with `--connect ADDR < /dev/null` refused tool

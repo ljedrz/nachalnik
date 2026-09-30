@@ -96,6 +96,21 @@ cut short is a command of your own that is waiting on the endpoint: `/models` fe
 `/model` and `/provider` finish their switch before the next line is read, so a deadline that
 falls during one of those is served when it returns.
 
+A run that one of these cut short says which on stderr as it happens, and leaves with a status of
+its own, so a script can tell a session that did its work from one that was stopped:
+
+| status | the run |
+| --- | --- |
+| `0` | worked through its input |
+| `1` | failed: the last turn could not be finished, or the program could not start |
+| `3` | reached the `--spend` ceiling |
+| `4` | ended on a turn paused at `--requests`, waiting for `/continue` |
+| `124` | ran out of `--deadline`, whether or not the session had started — as `timeout` does |
+| `129`, `130`, `143` | was ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` and the signal |
+
+The first of them to happen is the one reported, and a pause is the last turn's: one that
+`/continue` carried on from is not where the run stopped.
+
 A line is read only while the runtime is resting, which is the one place this differs from a
 person at a prompt and is what makes a piped script mean what it says: the lines of a script
 cannot overtake the turns they belong to. `--no-default-features --features mcp` builds this and

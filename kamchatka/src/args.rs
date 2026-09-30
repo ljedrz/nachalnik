@@ -24,7 +24,8 @@ use crate::{
     wiring::Setup,
 };
 
-/// The variables `--help` lists, and what each of them is for.
+/// The variables `--help` lists, and what each of them is for - and the exit statuses, which are
+/// the other thing a script reads and a flag cannot say.
 ///
 /// note: they are read by [`Args::provider`], and the advisor's by `Args::advised`, rather than
 /// declared as arguments, so clap cannot list them the way it lists `KAMCHATKA_MODEL` beside
@@ -63,7 +64,10 @@ Environment:
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
                            OpenRouter by default, or Google's own v1beta with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
-  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}"
+  KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}
+
+Exit status of a headless run: 0 done, 1 failed, 3 --spend reached, 4 paused at --requests,
+124 --deadline passed, 129/130/143 SIGHUP, ctrl+c or SIGTERM"
     )
 }
 
