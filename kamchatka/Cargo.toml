@@ -178,7 +178,7 @@ unicode-width = { version = "0.2", optional = true }
 #
 # note: under a target table although this crate builds for Linux and nothing else. Without one,
 # a build for any other target fails inside these crates before it reaches the `compile_error!` in
-# `lib.rs`, which is the sentence that says why and where to start a port from
+# `lib.rs`, which is the sentence that says why
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
 # the raw system calls behind `gate`, which holds a confined command's attempt to open an internet

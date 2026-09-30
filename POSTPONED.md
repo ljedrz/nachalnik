@@ -114,31 +114,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   reading before anything is sent to a model - the same argument `/request` is there for. A flag
   that does both is a convenience on top of it, not the primitive.
 
-- **`kamchatka` anywhere but Linux.** It builds for Linux on x86_64 and aarch64 and `lib.rs`
-  refuses every other target, because what makes its shell worth handing a model - Landlock,
-  `openat2` beneath a directory, and the network gate's seccomp filter - is Linux's, and off Linux
-  the shell ran unconfined behind a question read off the command's name. The libraries are not
-  affected and are still tested on macOS and Windows. **0.15.1 is the last version that builds
-  elsewhere**, with a Mac binary, and is where a port starts: the `cfg`s for unix sockets, signals,
-  process groups and a Windows filesystem's spelling of names are all still in place there.
-
-  What a port has to bring is a confinement, since a shell with none is the thing this dropped. On
-  macOS that is Seatbelt, reachable without FFI as `exec sandbox-exec -p <profile> -- sh -c <cmd>`
-  from the child this program re-executes - deprecated in its own man page and still shipped, with
-  `apple/containerization#737` asking for a timeline and unanswered. Landlock's paths-with-rights
-  map onto SBPL directly: `(deny default)`, `(allow file-read* (subpath ...))`,
-  `(allow file-write* (subpath ...))`, `(deny network*)`, which covers UDP. A profile applies or it
-  does not, so there is no `Partial`; `SYSTEM` needs a macOS twin (`/System`, `/private/var`,
-  `/Library`); and the profile is generated text, so a working directory holding a `"` wants
-  escaping and a test first. Nothing there can hold a call, so the network would be asked about by
-  name again - `reaches_the_network` is still in `tools::policy` for exactly the kernels that
-  cannot hold one. `birdcage` confines the calling process rather than a child, which leaks past
-  the spawn. A Mac binary is unsigned without a paid Apple Developer account, and quarantined on
-  download until `xattr -d com.apple.quarantine`.
-
-  What would unblock it is somebody who can test the boundary on that platform, since CI would
-  otherwise be the only thing that ever checked it.
-
 - **`laya` over HTTP, through `Jev`.** [`laya`](https://github.com/NandhaKishorM/laya) works with
   `kamchatka` today as a process: `contrib/laya_advisor.py`, named by `SYSTEM1_ADVISOR_COMMAND`,
   which `advisor::Local` speaks to over a pipe in the body `Jev` sends - RUNNING.md has the

@@ -68,8 +68,7 @@ wherever the kernel is new enough.
 
 **0.15.1 is the last version that builds on macOS and Windows.** There its shell ran unconfined
 and the network was asked about by the command's name; everything since leans on Landlock and a
-seccomp filter, which are Linux's. Anybody porting it should start from that tag, where the
-`cfg`s for the other two are still in place.
+seccomp filter, which are Linux's.
 
 Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
