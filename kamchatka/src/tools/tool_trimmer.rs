@@ -1,4 +1,4 @@
-//! `Trim`: the compactor, which elides the oldest tool results and says exactly what it took.
+//! `ToolTrimmer`: the compactor, which elides the oldest tool results and says exactly what it took.
 //!
 //! note: it takes nothing unless what it frees beats what it costs, and both sides are counted on
 //! the counter's own scale. An elided item leaves behind a sentence carrying the reason for
@@ -42,14 +42,14 @@ use nachalnik::{
 /// will only ever name. Every one of those is a reason to be the first thing out and none of them
 /// is visible to an arithmetic over `tokens`. A client that shows pictures should want a
 /// different rule, which is why this one is `kamchatka`'s and not the runtime's.
-pub struct Trim {
+pub struct ToolTrimmer {
     /// How full the context has to be before this bothers.
     pub threshold: f64,
     /// How empty it is trying to get it.
     pub target: f64,
 }
 
-impl Trim {
+impl ToolTrimmer {
     /// One that starts at this fraction of the limit and aims below it.
     ///
     /// note: the pair has to be ordered or the pass is a no-op that keeps being asked for, and
@@ -70,7 +70,7 @@ impl Trim {
 }
 
 #[async_trait]
-impl Compactor for Trim {
+impl Compactor for ToolTrimmer {
     /// note: the threshold, *or* anything in the request the counter would not price. The second
     /// half is what makes taking blobs first worth anything: a context that is mostly pictures
     /// reports a handful of tokens, so the fraction never reaches the threshold, so `plan` is

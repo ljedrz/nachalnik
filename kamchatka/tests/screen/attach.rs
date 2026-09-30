@@ -96,7 +96,7 @@ async fn a_pdf_is_attached_as_bytes_and_nothing_pretends_to_price_it() {
     );
     assert_eq!(item.uncounted, 1, "one piece of it has no number on it");
 
-    // and the whole budget says so, which is what `Trim` reads to decide it should run at all
+    // and the whole budget says so, which is what `ToolTrimmer` reads to decide it should run at all
     assert!(!harness.app.kernel.budget().fully_counted());
 
     // not pinned: a file brought into a conversation gets old like anything else in it, and

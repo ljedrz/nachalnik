@@ -69,7 +69,7 @@ What each is for:
 - **b** is cut by SIGTERM, which is a leaving: the turn is stopped and waited for, and the snapshot
   is current.
 - **c** starts by asking the model to free room. At 40000 the context reaches the limit in c or
-  before it - a run can get there in a: `Trim` takes only tool results, and the model's own turns
+  before it - a run can get there in a: `ToolTrimmer` takes only tool results, and the model's own turns
   are what fills a long session. That is POSTPONED's *a context the model's own turns have filled*,
   and the soak's evidence for it rather than a finding. Past the limit, headless passes each
   message over unsent and says so once, so a segment that reaches it ends having done little, and

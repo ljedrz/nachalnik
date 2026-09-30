@@ -194,7 +194,7 @@ libc = "0.2"
 rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 
 # using TypeSafe's `jev` to decide what a full context can afford to lose, against the age order
-# `Trim` really uses. Nothing in the crate does this - it is here to be read and run by somebody
+# `ToolTrimmer` really uses. Nothing in the crate does this - it is here to be read and run by somebody
 # wondering what a System One model is for. It wants a real endpoint, so it rides on the feature
 # that brings that client in
 [[example]]

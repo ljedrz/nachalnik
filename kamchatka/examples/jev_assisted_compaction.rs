@@ -9,7 +9,7 @@
 //! [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the two
 //! choose the account and the model the same way.
 //!
-//! An agent's context fills up, and something has to go. `kamchatka` ships [`Trim`], which elides
+//! An agent's context fills up, and something has to go. `kamchatka` ships [`ToolTrimmer`], which elides
 //! the oldest tool results - and age is a *proxy*. Nobody wants the oldest gone; they want the
 //! least useful gone, and "useful" is a relation between a result and what the session is trying
 //! to do. Nothing in a terminal client could evaluate that, so the pass answers the question it
@@ -27,10 +27,10 @@
 //! the file you are working on first and then spend twenty turns running things against it, and
 //! it is the shape age gets wrong every time.
 //!
-//! What this compares is the **order**, holding the number of items taken fixed: `Trim` decides
+//! What this compares is the **order**, holding the number of items taken fixed: `ToolTrimmer` decides
 //! how many it must elide to get under its target, and the same count is taken off the bottom of
 //! the ranking. So the two are choosing between the same alternatives. It deliberately does
-//! not reimplement the rest of `Trim` - the marker arithmetic, the floor under what is worth
+//! not reimplement the rest of `ToolTrimmer` - the marker arithmetic, the floor under what is worth
 //! eliding, the superseded summary - because a copy of those in an example would be a subtly
 //! wrong one.
 
@@ -39,7 +39,7 @@ use std::{
     sync::Arc,
 };
 
-use kamchatka::{endpoint, tools::Trim};
+use kamchatka::{endpoint, tools::ToolTrimmer};
 use nachalnik::{
     BoxError, Compactor, Config, ContextItem, ContextKind, ContextState, Kernel, ModelInfo,
     test::{ScriptedProvider, call},
@@ -269,7 +269,7 @@ async fn main() -> Result<(), BoxError> {
     let items = kernel.items();
     let budget = kernel.budget();
 
-    // the same filter `Trim` uses, and the only one of its rules this needs: a tool result that is
+    // the same filter `ToolTrimmer` uses, and the only one of its rules this needs: a tool result that is
     // still sending its content and is not pinned
     let candidates: Vec<_> = items
         .iter()
@@ -309,7 +309,7 @@ async fn main() -> Result<(), BoxError> {
     );
 
     // ---- what the real compactor does, which is the age order
-    let by_age = Trim::under(THRESHOLD)
+    let by_age = ToolTrimmer::under(THRESHOLD)
         .plan(&items, &budget)
         .await
         .ok_or("the context was not full enough to compact")?;
@@ -365,7 +365,7 @@ async fn main() -> Result<(), BoxError> {
         .collect();
     ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    // what each pass would take. `Trim` decides how many have to go; the same count comes off the
+    // what each pass would take. `ToolTrimmer` decides how many have to go; the same count comes off the
     // bottom of the ranking, so the two are choosing between the same alternatives
     let going = by_age.elide.len();
     let cut_by_age: BTreeSet<_> = by_age.elide.iter().copied().collect();
