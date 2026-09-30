@@ -683,11 +683,7 @@ fn finish<T>(app: &App, record: bool, logged: bool, outcome: Result<T>) -> Resul
     // been, rather than asking which loop ran: a loop meant to end the session can leave before it
     // gets there - the headless driver returns on a line it cannot read, or a stdout that went away
     // - and the record written below still has to say the session ended
-    let ended = app.kernel.with_history(|log| {
-        log.since(0)
-            .any(|record| matches!(record.event, nachalnik::Event::SessionFinished))
-    });
-    if !ended {
+    if !kamchatka::wiring::ended(&app.kernel) {
         app.kernel.finish();
     }
     // note: on stderr in a headless run, because stdout is the log there. A line of prose in the

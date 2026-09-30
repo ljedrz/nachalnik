@@ -357,11 +357,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
-- **Three small differences between the loops.**
+- **Two small differences between the loops.**
   - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
   - `--headless` prints a `ToolRequested`'s arguments in full, and `--connect` through `one_line`.
-  - `wiring::ended` asks whether the last record ended the session and `main::finish` whether any
-    did; they differ only after a double `ctrl+c`, and one predicate would serve both.
 
 - **`app::when::read_off` returns an `Option` that is always `Some`.** A zone that cannot be read
   falls back to UTC and says so, so there is never a `None`. Returning `When` removes an arm that

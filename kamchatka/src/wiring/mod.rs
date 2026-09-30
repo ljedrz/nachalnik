@@ -767,10 +767,45 @@ impl Setup {
 /// also the only answer that stays right for a loop nobody here has written: an embedder that ends
 /// its own session gets one `session.finished`, and one that leaves it to [`Setup::relaunch`] gets
 /// one too.
-fn ended(kernel: &Kernel) -> bool {
+///
+/// note: *any* record rather than the last. They differ after a second `ctrl+c`, which leaves a
+/// headless run without waiting for the turn: the session is ended while the turn is still
+/// running, and what it records after that is later than `session.finished`. Asking of the last
+/// record then says the session never ended, and it is ended a second time. The program's own
+/// parting asks this too, so the two can no longer disagree.
+pub fn ended(kernel: &Kernel) -> bool {
     kernel.with_history(|log| {
         log.records()
-            .last()
-            .is_some_and(|record| record.event == Event::SessionFinished)
+            .any(|record| record.event == Event::SessionFinished)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A session is over once anything said so, whatever was recorded after.
+    ///
+    /// note: the case a second `ctrl+c` makes - ended while a turn is still running, which goes
+    /// on recording. Reading the last record, this said the session had never ended, and it was
+    /// ended again.
+    #[test]
+    fn a_session_that_said_it_was_over_is_over() {
+        let kernel = Kernel::new(Config::default());
+        assert!(!ended(&kernel));
+
+        kernel.finish();
+        assert!(ended(&kernel));
+
+        // something recorded after the end, as a turn still running would
+        kernel.push(ContextItem::user("late"));
+        assert!(
+            kernel.with_history(|log| log
+                .records()
+                .last()
+                .is_some_and(|record| record.event != Event::SessionFinished)),
+            "the push recorded nothing, so this checks nothing"
+        );
+        assert!(ended(&kernel), "a record after the end undid it");
+    }
 }

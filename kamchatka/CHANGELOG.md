@@ -34,6 +34,10 @@ minor bump may break you.
 
 ### fixed
 
+- **One answer to whether a session has ended.** `Setup::relaunch` asked whether the *last* record
+  ended it and the program's parting whether *any* did, which disagree for a session ended while
+  a turn is still recording - a second `ctrl+c` does that - so an embedder relaunching such a
+  session ended it twice. Both ask `wiring::ended` now, which is public and reads any record.
 - **`/save` into a directory that is not there names the directory.** The write failed with an
   error naming the file, `No such file or directory`, which read as a problem with a file nobody
   expected to exist yet. Nothing is made; the directory is said, with the file form and the
