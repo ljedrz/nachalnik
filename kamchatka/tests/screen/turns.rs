@@ -626,6 +626,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             policy: harness.app.policy.clone(),
             confiner: Some(std::path::PathBuf::from("/self")),
             limits: Limits::default(),
+            stragglers: Default::default(),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),

@@ -78,6 +78,7 @@ pub fn builtin_under(
             policy,
             confiner: None,
             limits: Limits::default(),
+            stragglers: Default::default(),
         },
         Reach {
             workdir: dir.to_path_buf(),

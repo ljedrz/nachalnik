@@ -422,12 +422,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   two test servers and both skills are Python - but `scripts/` is shell, and a campaign that finds
   errors rather than reviews code is a different thing from the sweep.
 
-- **A command's background process outlives the session.** `sleep 300 &` in a `shell` call is in
-  the command's own session, so it survives the call and the program's exit, reparented to init.
-  The tool result says so while the session lasts; nothing does at exit. Killing the command's
-  process group when the session ends, and saying at exit what is still running, are the two
-  answers, and the first changes what a person who started a server on purpose gets.
-
 - **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused, and told to write
   `b.txt*`, because a domain, a tool's id and a file name are all bare words. Reading a bare word
   no domain claims as a path rule would make a typo like `--deny contextt` a rule about a file that

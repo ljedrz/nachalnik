@@ -241,6 +241,89 @@ pub struct Shell {
     /// door), and a limit handed out by one of two routes is a limit `/limit` silently fails to
     /// change on the other.
     pub limits: Limits,
+    /// What a command left running when its call ended, for whoever ends the session to stop;
+    /// see [`Stragglers`].
+    pub stragglers: Stragglers,
+}
+
+/// The process groups whose command's call ended with something of theirs still running.
+///
+/// note: `sleep 300 &`, a server, a watcher - a job put in the background stays in the command's
+/// group when the command exits, so it survives the call, and it survived the program too,
+/// reparented to init with nothing left that answers its network questions or records what it
+/// does. The call says so while the session lasts; this is what makes the end of the session say
+/// it, and stop them - [`Stragglers::stop`] - unless somebody asked to leave them running.
+///
+/// note: shared, since the tool records and whoever ends the session stops; a clone is the same
+/// list. Reached through `rustix`, which signals a group without `unsafe` and without a `sh`. A
+/// group is signalled only while something is still in it, and an identifier cannot be reused while
+/// a group of that number has members, so what is stopped is what the command left.
+#[derive(Clone, Default)]
+pub struct Stragglers(Arc<parking_lot::Mutex<Vec<(u32, String)>>>);
+
+/// How long a straggler is given to leave on `SIGTERM` before it is sent `SIGKILL`.
+const GRACE: Duration = Duration::from_secs(2);
+
+impl Stragglers {
+    /// Remembers `group` if anything is still running in it.
+    fn left(&self, group: u32, cmd: &str) {
+        if alive(group) {
+            self.0.lock().push((group, crate::app::text::one_line(cmd)));
+        }
+    }
+
+    /// The commands whose groups still have something running, as they were typed.
+    pub fn running(&self) -> Vec<String> {
+        let mut left = self.0.lock();
+        left.retain(|(group, _)| alive(*group));
+
+        left.iter().map(|(_, cmd)| cmd.clone()).collect()
+    }
+
+    /// Stops every group still running - `SIGTERM`, and `SIGKILL` for what is still there after
+    /// two seconds - and hands back the commands whose groups were stopped.
+    ///
+    /// note: blocking, and short: it is called as a session ends, where there is nothing left to
+    /// be responsive for, and a runtime may already be on its way out.
+    pub fn stop(&self) -> Vec<String> {
+        let left: Vec<(u32, String)> = std::mem::take(&mut *self.0.lock())
+            .into_iter()
+            .filter(|(group, _)| alive(*group))
+            .collect();
+        for (group, _) in &left {
+            signal(*group, rustix::process::Signal::TERM);
+        }
+        let until = std::time::Instant::now() + GRACE;
+        while left.iter().any(|(group, _)| alive(*group)) && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for (group, _) in &left {
+            if alive(*group) {
+                signal(*group, rustix::process::Signal::KILL);
+            }
+        }
+
+        left.into_iter().map(|(_, cmd)| cmd).collect()
+    }
+}
+
+/// Whether anything is still in process group `group`.
+fn alive(group: u32) -> bool {
+    pid(group).is_some_and(|pid| rustix::process::test_kill_process_group(pid).is_ok())
+}
+
+/// Sends `signal` to process group `group`, if it is one.
+fn signal(group: u32, signal: rustix::process::Signal) {
+    if let Some(pid) = pid(group) {
+        let _ = rustix::process::kill_process_group(pid, signal);
+    }
+}
+
+/// `group` as the identifier `rustix` takes, if it is one.
+fn pid(group: u32) -> Option<rustix::process::Pid> {
+    i32::try_from(group)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
 }
 
 /// The one thing it does, and the one argument that does it.
@@ -660,6 +743,10 @@ impl Tool for Shell {
             None => child.wait().await,
         };
         let reached = gatekeeper.and_then(Gatekeeper::over);
+        // before `over` forgets it: what is still in the group now is what the command left
+        if let Some(group) = running.group {
+            self.stragglers.left(group, cmd);
+        }
         let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
@@ -1036,6 +1123,7 @@ mod tests {
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
+            stragglers: Default::default(),
         }
     }
 

@@ -230,6 +230,11 @@ pub struct Args {
     #[arg(long, value_name = "TOKENS")]
     pub spend: Option<u64>,
 
+    /// Leave what a `shell` command started in the background running when the session ends,
+    /// rather than stopping it. Either way, the end of the session names each one.
+    #[arg(long)]
+    pub leave_running: bool,
+
     /// A JSON file of settings, for the ones you would otherwise type every time. Anything given
     /// here on the command line wins over what it says. Given none, `./kamchatka.json` is read if
     /// it is there and you say yes when asked, and the one under your config directory if it is
@@ -628,6 +633,7 @@ impl Args {
             // note: `0` is no ceiling, as `/spend 0` and `--requests 0` say it: a ceiling of nothing
             // would be a session that refuses its first turn without saying why
             spend: self.spend.filter(|it| *it > 0),
+            leave_running: self.leave_running,
             confine: !self.no_sandbox,
             reachable: self.sandbox_allow.clone(),
             readable: self.sandbox_read.clone(),

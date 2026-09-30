@@ -102,6 +102,9 @@ pub struct Setup {
     /// failure nothing else here catches - a model that has found a loop and a caller that is not
     /// watching. See [`App::set_spend`](crate::app::App::set_spend).
     pub spend: Option<u64>,
+    /// Whether what a command left running is left running when the session ends, rather than
+    /// stopped; see [`stragglers_at_end`].
+    pub leave_running: bool,
     /// Which of this program's own tools to offer, by id; `None` is all of them.
     ///
     /// note: a list rather than a flag per family, because "which tools" is one question, and a
@@ -176,6 +179,7 @@ impl Default for Setup {
             refuse_oversized: true,
             compact: Some(0.8),
             spend: None,
+            leave_running: false,
             tools: None,
             confine: true,
             reachable: Vec::new(),
@@ -223,6 +227,7 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
             devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
             confiner: None,
             limits: Limits::default(),
+            stragglers: tools::Stragglers::default(),
         },
         crate::sandbox::Reach {
             workdir: std::path::PathBuf::new(),
@@ -588,6 +593,8 @@ impl Setup {
         // list would make `/tools toggle shell` in a session that started without one an unconfined
         // shell, with nothing on the screen saying so
         let mut confinement = sandbox::Confinement::Off;
+        // what the shell's commands leave running, which `App` holds for whoever ends the session
+        let stragglers = tools::Stragglers::default();
         let mut unconfined_because = None;
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
         if building {
@@ -624,6 +631,7 @@ impl Setup {
                     // whose every command comes back with an error nobody can account for
                     confiner: confinement.is_confined().then(|| program.clone()),
                     limits: limits.clone(),
+                    stragglers: stragglers.clone(),
                 },
                 reach,
                 limits.clone(),
@@ -665,6 +673,7 @@ impl Setup {
             app.advisor = advisor;
         }
         app.confinement = confinement;
+        app.stragglers = stragglers;
         app.unconfined_because = unconfined_because;
         app.introspect = introspect;
         app.set_spend(self.spend);
@@ -729,6 +738,8 @@ impl Setup {
         if !ended(&app.kernel) {
             app.kernel.finish();
         }
+        // the old session's stragglers are the old session's: the fresh one has a list of its own
+        let stragglers = stragglers_at_end(app, self.leave_running);
 
         let name = app.kernel.session_name();
         let said = match self.record {
@@ -743,6 +754,10 @@ impl Setup {
                 Err(e) => format!("{name} ended, and could not be written down: {e}"),
             },
         };
+        let said = std::iter::once(said)
+            .chain(stragglers)
+            .collect::<Vec<_>>()
+            .join("\n");
 
         let started = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -761,6 +776,29 @@ impl Setup {
 
         Ok((wired, said))
     }
+}
+
+/// Stops what the session's commands left running, or with `leave` only names it, and hands back
+/// the lines saying which.
+///
+/// note: stopped by default, because the session that started them is over: a server or a
+/// `sleep 300 &` the model put in the background ran on reparented to init, with nothing left to
+/// answer its network questions or record what it did, and usually nobody had asked for it to
+/// outlive anything. `--leave-running` is for somebody who did - a server started on purpose - and
+/// is still told what it is leaving.
+pub fn stragglers_at_end(app: &App, leave: bool) -> Vec<String> {
+    let (commands, done) = match leave {
+        true => (
+            app.stragglers.running(),
+            "left running, as `--leave-running` asked",
+        ),
+        false => (app.stragglers.stop(), "stopped what it had left running"),
+    };
+
+    commands
+        .into_iter()
+        .map(|cmd| format!("· `{cmd}` {done}"))
+        .collect()
 }
 
 /// Whether the session has already said it is over.

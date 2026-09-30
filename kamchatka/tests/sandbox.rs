@@ -151,6 +151,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             policy: policy.clone(),
             confiner: Some(common::program()),
             limits: Limits::default(),
+            stragglers: Default::default(),
         }
         .spec()
         .description
@@ -904,6 +905,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
     kernel.set_policy(Arc::new(AllowAll));
     kernel.add_tool(Arc::new(Shell {
         limits: Limits::default(),
+        stragglers: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),
@@ -964,6 +966,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
     let dir = common::workdir("dropped-scratch");
     let shell = Shell {
         limits: Limits::default(),
+        stragglers: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),
@@ -1354,6 +1357,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
     }
     let shell = Shell {
         limits: Limits::default(),
+        stragglers: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: common::workdir("scratch-refusal"),
         extra: Vec::new(),
@@ -1416,6 +1420,7 @@ async fn a_command_reading_its_input_reads_end_of_file() {
         policy: Arc::new(Careful::new()),
         confiner: None,
         limits: Limits::default(),
+        stragglers: Default::default(),
     };
 
     let said = through(&open, "read line; echo read").await;
@@ -1441,6 +1446,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
     policy.gate_the_network();
     let shell = Shell {
         limits: Limits::default(),
+        stragglers: Default::default(),
         policy: policy.clone(),
         workdir: dir.to_path_buf(),
         extra: Vec::new(),
@@ -1819,6 +1825,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
         policy: Arc::new(Careful::new()),
         confiner: Some(common::program()),
         limits: Limits::default(),
+        stragglers: Default::default(),
     };
 
     let said = through(
@@ -2017,4 +2024,52 @@ fn under_a_terminal(argv: &[std::ffi::OsString], dir: &Path, leading: bool) -> S
         .expect("python3 is here");
 
     String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// A job a command left running is remembered when its call ends, and stopped when asked.
+///
+/// note: `sleep 30 &` stays in the command's group when the command exits, so the call is over and
+/// the job is not - and it outlived the program too, reparented to init. What is checked here is
+/// the list the end of a session reads: the job is on it while it runs, and gone, with its
+/// process, once the list has stopped it.
+#[tokio::test]
+async fn what_a_command_leaves_running_is_remembered_and_stopped() {
+    let dir = common::workdir("stragglers");
+    let stragglers = kamchatka::tools::Stragglers::default();
+    let shell = Shell {
+        limits: Limits::default(),
+        stragglers: stragglers.clone(),
+        policy: Arc::new(Careful::new()),
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        confiner: Some(common::program()),
+    };
+
+    let cmd = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
+    through(&shell, cmd).await;
+    let job: i32 = std::fs::read_to_string(dir.join("job.pid"))
+        .expect("the command said which job it started")
+        .trim()
+        .parse()
+        .expect("a process identifier");
+    let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
+    assert!(
+        running(job),
+        "the job was not left running, so this checks nothing"
+    );
+
+    // a command that leaves nothing is not remembered
+    through(&shell, "true").await;
+    assert_eq!(stragglers.running(), vec![cmd.to_owned()]);
+
+    assert_eq!(stragglers.stop(), vec![cmd.to_owned()]);
+    // reaped by init, which takes a moment once the signal has landed
+    let until = std::time::Instant::now() + Duration::from_secs(5);
+    while running(job) && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!running(job), "the job outlived being stopped");
+    assert!(stragglers.running().is_empty());
 }

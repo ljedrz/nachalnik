@@ -339,6 +339,88 @@ fn a_termination_signal_says_it_ended_the_run() {
     }
 }
 
+/// What a command left running is stopped when the run ends, and left with `--leave-running` - and
+/// named either way.
+///
+/// note: `sleep 30 &` outlived the program, reparented to init, with nothing at exit saying it was
+/// there. The job writes its identifier so the test can see which it is.
+#[tokio::test(flavor = "multi_thread")]
+async fn what_a_command_left_running_ends_with_the_run() {
+    for leave in [false, true] {
+        let dir = common::scratch(&format!("stragglers-{leave}"))
+            .canonicalize()
+            .expect("it exists");
+        let cmd = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
+        let base = common::endpoint(vec![
+            format!(
+                "data: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                    "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                    "function": {"name": "shell",
+                        "arguments": json!({"cmd": cmd}).to_string()}}
+                ]}, "finish_reason": "tool_calls"}]})
+            ),
+            common::answer("started it"),
+        ])
+        .await;
+
+        let mut command = common::command();
+        command
+            .args([
+                "--headless",
+                "--no-record",
+                "-m",
+                "nothing",
+                "--allow",
+                "exec:run,fs:write",
+            ])
+            .arg("go")
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .stdin(std::process::Stdio::null());
+        if leave {
+            command.arg("--leave-running");
+        }
+        let out = command.output().expect("the binary under test is built");
+        let said = String::from_utf8_lossy(&out.stderr);
+
+        let job: i32 = std::fs::read_to_string(dir.join("job.pid"))
+            .unwrap_or_else(|e| panic!("the command never ran ({e}): {said}"))
+            .trim()
+            .parse()
+            .expect("a process identifier");
+        let running = std::path::Path::new(&format!("/proc/{job}")).exists();
+        match leave {
+            true => {
+                assert!(
+                    said.contains("left running, as `--leave-running` asked"),
+                    "{said}"
+                );
+                assert!(running, "it was stopped although it was to be left: {said}");
+                let _ = std::process::Command::new("kill")
+                    .arg(job.to_string())
+                    .status();
+            }
+            false => {
+                assert!(said.contains("stopped what it had left running"), "{said}");
+                // reaped by init, which takes a moment once the signal has landed
+                let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while std::path::Path::new(&format!("/proc/{job}")).exists()
+                    && std::time::Instant::now() < until
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                assert!(
+                    !std::path::Path::new(&format!("/proc/{job}")).exists(),
+                    "the job outlived the run: {said}"
+                );
+            }
+        }
+        assert!(said.contains(cmd), "it did not name the command: {said}");
+    }
+}
+
 /// A resumed run says the parameters it is sending with, when there are any.
 ///
 /// note: they come back in force from the snapshot and nothing on the screen shows them, so a
@@ -1926,6 +2008,7 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
                 devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
                 confiner: Some(common::program()),
                 limits: kamchatka::tools::Limits::default(),
+                stragglers: Default::default(),
             }));
         }),
     )

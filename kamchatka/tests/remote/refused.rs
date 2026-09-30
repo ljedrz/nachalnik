@@ -489,6 +489,7 @@ print('answered' if got else 'hung up')
         policy: std::sync::Arc::new(Careful::new()),
         confiner: Some(program),
         limits: Limits::default(),
+        stragglers: Default::default(),
     };
     let said = tokio::time::timeout(
         PATIENCE,

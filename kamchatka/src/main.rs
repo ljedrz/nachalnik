@@ -648,7 +648,13 @@ async fn session() -> Result<Option<headless::Stop>> {
         }
     };
 
-    finish(&app, base.record, headless && server.is_none(), outcome)
+    finish(
+        &app,
+        base.record,
+        headless && server.is_none(),
+        base.leave_running,
+        outcome,
+    )
 }
 
 /// Starts writing the session down as it goes, unless `--no-record` was given.
@@ -676,7 +682,13 @@ fn start_recording(app: &mut App, record: bool) {
 /// about how it was driven. The one thing it asks about the driving is `logged`: whether stdout
 /// is carrying the record stream, which a headless run does and a served one does not, even with
 /// no screen.
-fn finish<T>(app: &App, record: bool, logged: bool, outcome: Result<T>) -> Result<T> {
+fn finish<T>(
+    app: &App,
+    record: bool,
+    logged: bool,
+    leave_running: bool,
+    outcome: Result<T>,
+) -> Result<T> {
     // note: the headless driver and the server each end the session themselves, so that the record
     // saying so goes down their own stream with the rest rather than being the one nobody was sent.
     // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has
@@ -721,6 +733,11 @@ fn finish<T>(app: &App, record: bool, logged: bool, outcome: Result<T>) -> Resul
         // where the records went instead - a piped run writes them to stdout whatever else was
         // asked for, and a drawn or a served one has nowhere
         None => say("`--no-record`, so nothing was written"),
+    }
+    // last, because it is the one thing here that waits - a straggler is given a moment to leave on
+    // `SIGTERM` - and a record written first is a record a slow one cannot keep from being kept
+    for line in kamchatka::wiring::stragglers_at_end(app, leave_running) {
+        say(&line);
     }
 
     outcome
