@@ -503,7 +503,7 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
 
     // the address as well as the name, because the same name at a different address is a different
     // model: without it a session pointed at a local ollama looks exactly like one talking to
-    // OpenRouter. The host alone: the rest of the URL is `/provider`'s to show, and there is no
+    // OpenRouter. The host alone: the rest of the URL is `/endpoint`'s to show, and there is no
     // room for it here
     //
     // note: a session with no model gets a placeholder in the model's place rather than a corner

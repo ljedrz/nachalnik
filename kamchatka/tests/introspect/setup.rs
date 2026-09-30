@@ -455,7 +455,7 @@ async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
 /// a tool asks for - a model that wants the network writes `curl` - so the table, which is filled
 /// from what the tools declare, printed `net:reach  deny  nothing here is judged by it` beside a
 /// verdict that had just refused one of the model's commands, while the same session's own
-/// `/policy` said `shell, when the command reaches for it`. A model reading it has no way to work
+/// `/permissions` said `shell, when the command reaches for it`. A model reading it has no way to work
 /// out that it may not reach the network, which is the whole question the tool's own description
 /// says it answers.
 ///

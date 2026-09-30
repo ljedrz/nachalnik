@@ -733,9 +733,9 @@ pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
 /// What a command that changes the context says when a turn is running or waiting on an answer.
 pub(super) const MID_TURN: &str = "not while a turn is running or a call is waiting to be answered";
 
-/// What the policy's tab says where there is nothing to list, which is what `/policy` prints then.
+/// What the policy's tab says where there is nothing to list, which is what `/permissions` prints then.
 ///
-/// note: here rather than in the pane that draws it, because `/policy` is answered in a build with
+/// note: here rather than in the pane that draws it, because `/permissions` is answered in a build with
 /// no screen at all - and a page of prose about the absence of decisions is answerable there.
 /// The tab reads this same string, so the two cannot say different things about what an empty
 /// policy means.
@@ -754,7 +754,7 @@ pub(crate) const NOTHING_DECIDED: &str = "nothing has been decided yet, which is
 /// The word a verdict is read back in, for a line a person reads.
 ///
 /// note: one place, because it is one word per mechanism and there are two things to say it: the
-/// permissions tab, which colours the answer, and `/policy`, which prints the same rows for a
+/// permissions tab, which colours the answer, and `/permissions`, which prints the same rows for a
 /// caller with no tab. A second spelling of `allow` beside the first would be a rule and a
 /// paragraph disagreeing, and which of them a model reads is not something anybody would notice
 /// until the two were side by side.

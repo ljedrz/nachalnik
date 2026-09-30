@@ -325,13 +325,18 @@ for, so there is nothing for it to agree with.
   action, and gave up; they were right and the levels were wrong. The four moves are actions now,
   named for the state each leaves behind.
 
-  This is about what the program **says**, not what it accepts. Taking a word somebody reached for
-  costs nothing and refusing it costs them a turn, so `/prune` and `/keep` still work at the
-  prompt, and the help names each only as an alias of the word it stands in for. A synonym in an
-  enum, a help line or a message is the bug; a synonym in a `match` is a kindness. The one place
-  that takes no second spelling is a tool's schema: the model's `context` moves used to, and every
-  place answering "which operation is this call" then needed a table of the words that are not in
-  it (the note on `state_of` in `introspect/context/changes.rs` has the rest).
+  This is about what the program **accepts** as well as what it says. A command that does
+  something to the session - its context, its model, where its requests go, what it may do - has
+  one name, the word its help line and its effects are read back in: a second spelling at the
+  prompt is a second word for one act in every script, trace and question about it, which is the
+  bug this rule is for. The janitorial ones are the exception, because they do nothing to the
+  session and their other spellings are every other program's: `/quit` is also `/exit` and `/q`,
+  and `/help` is also `/?`. A name that is not a command is refused as not one; the only refusal
+  that points somewhere is for a word somebody arrives with from other agents, as `/clear` is. A
+  tool's schema takes no second spelling either:
+  the model's `context` moves used to, and every place answering "which operation is this call"
+  then needed a table of the words that are not in it (the note on `state_of` in
+  `introspect/context/changes.rs` has the rest).
 - **Seams identify themselves.** `Projector`, `TokenCounter`, `PermissionPolicy` and `Compactor`
   each carry a `name()` defaulting to the implementing type's path, so a client can put the six
   seams on a screen (`/seams` in `kamchatka`). It is for showing a person, not for matching on.

@@ -774,7 +774,7 @@ impl Dialect for OpenAiCompatible {
 ///
 /// note: the native listing is kept because a limit and a list of names both fall back to it on
 /// Google's compatible endpoint, and a switch asks for both - each reading it for itself was the
-/// same request twice on every `/model` and `/provider`.
+/// same request twice on every `/model` and `/endpoint`.
 struct Listings {
     conventional: Option<Value>,
     /// `None` until asked for; then what the native listing answered, if anything.

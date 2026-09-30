@@ -347,7 +347,7 @@ fn named(domain: &str, ids: &[&str]) -> Option<String> {
 /// it, for a `/restart` to put back.
 ///
 /// note: a restart carries the provider over rather than connecting again, because the connection
-/// is what is not cheap to rebuild - and `/model` and `/provider` switch that provider in place, so
+/// is what is not cheap to rebuild - and `/model` and `/endpoint` switch that provider in place, so
 /// the model on it is this session's drift and not the flags'. Taken once, before the first
 /// session is wired, and put back before every relaunch.
 #[derive(Debug, Clone)]
@@ -365,7 +365,7 @@ impl Flagged {
         }
     }
 
-    /// Points `provider` back there, where a `/model` or a `/provider` has moved it; nothing is
+    /// Points `provider` back there, where a `/model` or an `/endpoint` has moved it; nothing is
     /// asked of the endpoint where nothing moved.
     pub async fn restore(&self, provider: &dyn Dialect) {
         if provider.endpoint() != self.endpoint || provider.model() != self.model {

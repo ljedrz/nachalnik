@@ -345,7 +345,7 @@ impl App {
             // nothing at all down a pipe: the rules are the whole of what this command is for, and
             // they are printed from what the tab draws, so the two cannot drift apart. The tab is
             // still switched, because a person at one is asking to be there rather than to be told
-            "policy" | "permissions" => self.permissions_page(),
+            "permissions" => self.permissions_page(),
             // note: the same function `-f` goes through. Putting a file in the context at startup
             // and putting one there at the prompt are the same act at two moments, and a second
             // implementation of it is a second place for the media types to go stale
@@ -358,8 +358,8 @@ impl App {
             // is named for that - and `context`'s own moves are named the same way, so the person
             // and the model reach for the same word. The old spellings still work: accepting a
             // word somebody typed costs nothing
-            "exclude" | "prune" => self.by_selector("exclude", rest),
-            "pin" | "keep" => self.by_selector("pin", rest),
+            "exclude" => self.by_selector("exclude", rest),
+            "pin" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),
             "model" => {
                 if !rest.is_empty() {
@@ -414,7 +414,7 @@ impl App {
                 }
             }
             // the ids an endpoint serves are its own - `google/gemini-3.5-flash` at one address
-            // and `gemini-3.5-flash` at another - so after `/provider` this is how to find out what
+            // and `gemini-3.5-flash` at another - so after `/endpoint` this is how to find out what
             // to hand `/model` rather than guess it. The provider already fetches this list, to
             // say when a model is not on it; this is the same call with the answer shown rather
             // than checked.
@@ -468,7 +468,7 @@ impl App {
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                // no address in the title: it is one `/provider` away, and the room it costs is
+                // no address in the title: it is one `/endpoint` away, and the room it costs is
                 // the room the line below needs to say what to do with any of this
                 let title = match filter.is_empty() {
                     true => format!(" {} models", shown.len()),
@@ -479,7 +479,7 @@ impl App {
             // the other half of `/model`: the same model name means a different model at a
             // different address, and comparing what is hosted with what is on this machine is two
             // endpoints rather than two names
-            "provider" | "endpoint" => {
+            "endpoint" => {
                 if rest.is_empty() {
                     let endpoint = self.provider.endpoint();
                     self.say(Speaker::Note, format!("requests go to {endpoint}"));
@@ -500,7 +500,7 @@ impl App {
                         Speaker::Error,
                         format!(
                             "`{url}` is not an address: it wants http:// or https:// and a host, \
-                             as in `/provider http://localhost:11434/v1`; requests still go to {}",
+                             as in `/endpoint http://localhost:11434/v1`; requests still go to {}",
                             self.provider.endpoint()
                         ),
                     );
@@ -533,7 +533,7 @@ impl App {
                 // and then the kernel is told, as `/model` tells it
                 //
                 // note: which says the model the session is asking, and the record takes notice
-                // of a change only where that model changed. A `/provider` given no model keeps
+                // of a change only where that model changed. A `/endpoint` given no model keeps
                 // the old name, and `Kernel::provider_changed` compares what the provider reports
                 // about itself - so nothing is announced, and the only trace of the switch is the
                 // line above and the address inside the error the next request brings back.
@@ -801,7 +801,7 @@ impl App {
     /// caller with no keys changes nothing - but what it may have asked is what the rules are, and
     /// answering that with silence was the same answer as a policy that allows nothing.
     ///
-    /// note: the tab is opened as well as the page. A person at a desk sent `/policy` to be able
+    /// note: the tab is opened as well as the page. A person at a desk sent `/permissions` to be able
     /// to change a rule, and a page printed down a pipe of somebody else's session changes
     /// nothing there.
     ///

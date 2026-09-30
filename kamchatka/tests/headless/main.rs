@@ -2027,6 +2027,44 @@ async fn clear_says_which_of_the_two_things_it_could_mean_is_where() {
     assert_eq!(run.app.cleared(), 0, "it cleared the notices anyway");
 }
 
+/// A command has one name, and the second spellings it used to take are not commands.
+///
+/// note: `/prune` and `/keep` were aliases of `/exclude` and `/pin`, and `/policy` and `/provider`
+/// the other names of `/permissions` and `/endpoint` - so every place a session is read back in,
+/// the help, the trace and a script, had two words for one act. They are refused as any word that
+/// is not a command is, with no pointer: a pointer is kept for a name somebody arrives with from
+/// another agent, as `/clear` is, and none of these is one. Nothing happens to the context, which
+/// is what an unknown command owes.
+#[tokio::test]
+async fn a_command_has_one_name() {
+    let run = run(
+        "/prune files\n/keep files\n/policy\n/provider\n",
+        vec![],
+        |app| {
+            app.kernel.push(ContextItem::file("a.rs", "one"));
+        },
+    )
+    .await;
+
+    for old in ["prune", "keep", "policy", "provider"] {
+        assert!(
+            run.prose.contains(&format!(
+                "there is no `/{old}`; `/help` lists what there is"
+            )),
+            "{}",
+            run.prose
+        );
+    }
+    assert!(
+        run.app
+            .kernel
+            .items()
+            .iter()
+            .all(|item| item.state == nachalnik::ContextState::Active),
+        "an old name moved something anyway"
+    );
+}
+
 /// A session started without a model asks nobody anything, and `/model` is what ends that.
 ///
 /// note: through `Setup::wire` with a provider that names no model, because that is what `main`
@@ -2096,7 +2134,7 @@ async fn a_session_with_no_model_sends_nothing_until_one_is_picked() {
     );
 }
 
-/// A `/model` or `/provider` switch is in the record, from what was in use to what is now.
+/// A `/model` or `/endpoint` switch is in the record, from what was in use to what is now.
 ///
 /// note: both switch the provider the kernel already holds in place, so the kernel's slot never
 /// changed and `model.changed` was never emitted: the session talked to another model and the
@@ -2126,7 +2164,7 @@ async fn a_switch_of_model_is_in_the_record() {
             &mut app,
             &mut events,
             &mut finished,
-            "/model second\n/provider http://127.0.0.1:2 third\n/model\n".as_bytes(),
+            "/model second\n/endpoint http://127.0.0.1:2 third\n/model\n".as_bytes(),
         )
         .await
         .expect("the run failed");
@@ -2147,10 +2185,10 @@ async fn a_switch_of_model_is_in_the_record() {
     assert!(changes.contains(&named("second", "third")), "{changes:?}");
 }
 
-/// `/provider` with something that is not an address refuses it and keeps the one it had.
+/// `/endpoint` with something that is not an address refuses it and keeps the one it had.
 ///
-/// note: it took any word, so `/provider not a url at all` announced `a url at all at not` and the
-/// next request failed as a `builder error`; and `/provider localhost:11434/v1`, the scheme left
+/// note: it took any word, so `/endpoint not a url at all` announced `a url at all at not` and the
+/// next request failed as a `builder error`; and `/endpoint localhost:11434/v1`, the scheme left
 /// off, is a URL whose scheme is `localhost`.
 #[tokio::test]
 async fn provider_refuses_what_is_not_an_address() {
@@ -2176,7 +2214,7 @@ async fn provider_refuses_what_is_not_an_address() {
             &mut app,
             &mut events,
             &mut finished,
-            "/provider not a url at all\n/provider localhost:11434/v1\n/provider http:///v1\n"
+            "/endpoint not a url at all\n/endpoint localhost:11434/v1\n/endpoint http:///v1\n"
                 .as_bytes(),
         )
         .await
@@ -2796,7 +2834,7 @@ async fn a_copy_that_went_to_the_terminal_is_not_taken_back() {
     assert_eq!(notes, [format!("[{id}] to the clipboard: 7 bytes")]);
 }
 
-/// `/policy` says what the policy is, down a pipe as well as at a screen.
+/// `/permissions` says what the policy is, down a pipe as well as at a screen.
 ///
 /// note: it was a tab and nothing else, so a caller with no screen got no rules at all - and the
 /// rules are the answer the command is for: what is allowed, what is refused, and what each
@@ -2804,7 +2842,7 @@ async fn a_copy_that_went_to_the_terminal_is_not_taken_back() {
 /// rows than a line holds, and this is the page a caller without a tab reads instead.
 #[tokio::test]
 async fn the_policy_is_a_page_and_not_only_a_tab() {
-    let run = run("/policy\n", vec![], |app| {
+    let run = run("/permissions\n", vec![], |app| {
         app.kernel.add_tool(Arc::new(
             ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
         ));

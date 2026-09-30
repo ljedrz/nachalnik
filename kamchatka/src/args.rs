@@ -694,7 +694,7 @@ impl Args {
     /// Where this session's requests go, in whichever dialect was asked for.
     ///
     /// note: two wire formats, one trait. `--gemini` is what a person picks, and everything
-    /// downstream - the kernel, the screen, `/model`, `/provider` - holds a `Dialect` and never
+    /// downstream - the kernel, the screen, `/model`, `/endpoint` - holds a `Dialect` and never
     /// finds out which one it got.
     ///
     /// note: no model unless one was named. A default means that a session started without `-m`

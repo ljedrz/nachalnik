@@ -278,9 +278,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         the model should know and does not have to answer.
                         It goes in with the next request rather than starting
                         one, and the model reads it as `note: ...`
-    /exclude SELECTOR   take items out of the request; also /prune. With no
-                        selector, the whole selector language
-    /pin SELECTOR       protect them from compaction; also /keep
+    /exclude SELECTOR   take items out of the request. With no selector, the
+                        whole selector language
+    /pin SELECTOR       protect them from compaction
     /restore SELECTOR   put them back
     /undo              take the last change to the context back, whatever put
                         it there, and /redo puts it back again. u and U on
@@ -306,12 +306,12 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
     /limit SUBJECT BYTES
                         change one, from its next call onwards. A subject is
                         what a permission is: fs:read, exec:run
-    /policy             open the permissions tab; also /permissions
+    /permissions        open the permissions tab
     /model [ID]         show or switch the model, and say where it is
     /models [FILTER]    what this endpoint serves, which is what /model takes
-    /provider [URL [ID]] show or switch the address the requests go to, and
-                        the model with it; also /endpoint. The key is the one
-                        this started with
+    /endpoint [URL [ID]] show or switch the address the requests go to, and
+                        the model with it. The key is the one this started
+                        with
     /params [KEY JSON]  show or set a model parameter, and what else this model
                         takes. One it does not take is sent and ignored, and
                         KEY null takes one away

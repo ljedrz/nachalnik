@@ -453,7 +453,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
                 // `net:reach` and the network gate. The gate is what asks about a command, and it
                 // asks about a `shell`, so a row for it read `nothing here is judged by it` beside
                 // a verdict that had just refused one of the model's commands - while the same
-                // session's own `/policy` said `shell, when the command reaches for it`. Named
+                // session's own `/permissions` said `shell, when the command reaches for it`. Named
                 // here, because the operator's view and the model's are one answer written twice
                 // and they cannot say opposite things
                 if reaches {

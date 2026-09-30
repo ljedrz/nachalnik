@@ -346,12 +346,12 @@ pub struct App {
     pub advisor: Option<Arc<crate::tools::Advised>>,
     /// The provider, for switching models - whichever dialect it speaks.
     pub provider: Arc<dyn Dialect>,
-    /// A `/model` or `/provider` still settling, which the next line waits for.
+    /// A `/model` or `/endpoint` still settling, which the next line waits for.
     ///
     /// note: both commands hand the switch to a task rather than standing there while it happens,
     /// because finding out what the new model holds and whether the new address serves it is two
     /// round trips and a screen should not stop for them. What the *next line* may not do is read
-    /// a session that has not finished changing: `/provider URL ID` followed by `/model` would
+    /// a session that has not finished changing: `/endpoint URL ID` followed by `/model` would
     /// report the old model, and a message on the line after a switch could be asked of whichever
     /// of the two won the race. Down a pipe there is no gap between the lines at all, so what is a
     /// race at a keyboard is the ordinary case in a script.
@@ -940,7 +940,7 @@ impl App {
         heard
     }
 
-    /// Waits for a `/model` or `/provider` still settling, and says what the switch had to say.
+    /// Waits for a `/model` or `/endpoint` still settling, and says what the switch had to say.
     ///
     /// note: the notice is taken here, the moment the switch is done, because it is about that
     /// switch: left for the next look, it lands after whatever the next line does, and a script's
@@ -1219,7 +1219,7 @@ impl App {
     ) -> Option<String> {
         use tokio::sync::broadcast::error::RecvError;
 
-        // a `/model` or `/provider` still settling first, for the reason the turn is waited for:
+        // a `/model` or `/endpoint` still settling first, for the reason the turn is waited for:
         // its change is a record, and a script whose last line is the switch reaches the end of
         // its input with no next line to wait for it. Under the same bound, and left the same way
         self.settled(Some(LEAVING)).await;

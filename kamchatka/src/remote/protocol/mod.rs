@@ -347,7 +347,7 @@ pub enum Message {
     /// resumes.
     ///
     /// note: on the wire as well as in the records, which since `Kernel::provider_changed` say
-    /// when the model changed. `/model` and `/provider` finish inside the
+    /// when the model changed. `/model` and `/endpoint` finish inside the
     /// [`Dialect`](nachalnik_providers::Dialect) the kernel already holds, so the record comes when
     /// the switch is done - and a client that follows the model on screen is told the moment the
     /// session's answer changes, the way [`Message::Busy`] tells it the other thing a screen shows.

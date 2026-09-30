@@ -50,7 +50,7 @@ impl Stance {
         self.verdict != Verdict::Ask
     }
 
-    /// What this rule reaches, as the sentence the permissions tab draws and `/policy` prints.
+    /// What this rule reaches, as the sentence the permissions tab draws and `/permissions` prints.
     ///
     /// note: one sentence rather than two, because the two places that show a rule are the tab
     /// and the page a caller with no screen is given, and they are the same answer to the same
