@@ -1265,6 +1265,15 @@ async fn a_record_kept_as_it_goes_holds_the_whole_log() {
         snapshot.last_seq,
         kept.last().map(|r| r.seq).unwrap_or_default()
     );
+
+    // note: both halves are the whole conversation, so both are their owner's alone. The
+    // snapshot was, and the log beside it came out `0644` under an ordinary umask - kept private
+    // only by the directory it happens to be in
+    for path in [&log, &state] {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "{path} is {mode:o}");
+    }
 }
 
 /// A session at rest writes its snapshot again when something was logged since, and not otherwise.

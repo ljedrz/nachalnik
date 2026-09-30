@@ -147,6 +147,9 @@ minor bump may break you.
 
 ### security
 
+- **A run's log is its owner's alone, as its snapshot is.** The `.jsonl` a session writes as it
+  goes was created under the umask - `0644` under an ordinary one - beside a `0600` snapshot,
+  and kept private only by the directory it was in. It is created `0600` now.
 - **A record directory another user owns is refused.** The check read the directory's mode bits
   and not its owner, which a process run as root reads past: it would write the transcript into
   a `kamchatka` directory another user had made first under the temporary one, and make it

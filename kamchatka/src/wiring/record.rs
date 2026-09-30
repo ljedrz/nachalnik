@@ -285,6 +285,8 @@ fn private(dir: &std::path::Path) -> Result<(), String> {
 /// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
 /// a thousand tries later would be the wrong one.
 pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String, std::fs::File), String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+
     // bounded, so that a directory full of these is an error rather than a loop
     for nth in 1..1_000 {
         let stem = match nth {
@@ -298,9 +300,12 @@ pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String, std::
             continue;
         }
 
+        // note: `0600`, as the snapshot beside it is and as `/save` makes both. It is the whole
+        // conversation, and the directory being private is a second guard rather than the only one
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
+            .mode(0o600)
             .open(&log)
         {
             Ok(file) => return Ok((log, state, file)),
