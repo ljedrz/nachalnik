@@ -369,10 +369,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
-- **`/prune` and `/keep` in CONTRIBUTING and in `/help`.** Settled: they are meant to be found, as
-  aliases. CONTRIBUTING says they still work at the prompt, and `/help` names each only as an alias
-  of the word it stands in for, which `every_command_that_exists_is_in_the_help` holds it to.
-
 - **Three small differences between the loops.**
   - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
   - `--headless` prints a `ToolRequested`'s arguments in full, and `--connect` through `one_line`.
@@ -459,11 +455,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   oldest assistant turns as a last resort, which changes what `Trim` promises and leaves the
   projector to repair any results whose call it took. The other is to give the model a request of
   its own to free room, which needs room held back for that request, since it is over the limit too.
-
-- **A stream that fails after it has started - settled.** This entry weighed keeping what had
-  streamed before an `error` event against treating an answer the server disowned as no answer.
-  It is kept now, as a stall or a cut-off is, stopped as `cut off` with the server's sentence as
-  the notice; reverting that one commit in `nachalnik-providers` is the other choice.
 
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
