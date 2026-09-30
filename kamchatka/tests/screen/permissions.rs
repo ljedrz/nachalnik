@@ -607,6 +607,15 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
         screen.contains("shell: could not be confined, so a command can do any of these"),
         "{screen}"
     );
+    // and why, where something said: a kernel with Landlock that refused this ruleset is a
+    // different problem from one with none
+    harness.app.unconfined_because = Some("the ruleset could not be applied: EPERM".to_owned());
+    // wide enough for the reason on the one line the row has
+    let screen = harness.sized(200, 30);
+    assert!(
+        screen.contains("shell: could not be confined (the ruleset could not be applied: EPERM)"),
+        "{screen}"
+    );
 
     // refusing it outright puts the other rows back in charge either way
     harness

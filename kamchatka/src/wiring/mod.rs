@@ -588,6 +588,7 @@ impl Setup {
         // list would make `/tools toggle shell` in a session that started without one an unconfined
         // shell, with nothing on the screen saying so
         let mut confinement = sandbox::Confinement::Off;
+        let mut unconfined_because = None;
         let building = self.tools.as_ref().is_none_or(|it| !it.is_empty());
         if building {
             let program =
@@ -595,6 +596,7 @@ impl Setup {
             if self.confine {
                 let probed = sandbox::available(&program);
                 confinement = probed.confinement;
+                unconfined_because = probed.why;
                 // note: only where the shell is confined, which `available` already folds in: the
                 // gate is installed by the child that confines itself, so an unconfined shell has
                 // nothing to hold a call with and goes on being asked about by name
@@ -663,6 +665,7 @@ impl Setup {
             app.advisor = advisor;
         }
         app.confinement = confinement;
+        app.unconfined_because = unconfined_because;
         app.introspect = introspect;
         app.set_spend(self.spend);
         app.compact_target = compact_target;
