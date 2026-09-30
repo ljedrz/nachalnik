@@ -340,12 +340,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   that works through the OpenAI dialect can fail a request through Google's. Checking needs a Google
   key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
 
-- **What `system1` does with a busy service.** Its retries ignore `Retry-After`, do not ask
-  `out_of_quota` about a 429, and retry only 429 and 529 - the two statuses the service documents -
-  where the dialects retry every 5xx. That fits a client answering a person at a permission prompt,
-  who is better served by a quick failure than a long wait. Whether a 502 or 503 is worth one more
-  try is the decision.
-
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
   soaked `nachalnik-providers` against OpenRouter through a fault-injecting proxy, live outside

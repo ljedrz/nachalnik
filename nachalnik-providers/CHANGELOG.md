@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **`system1` asks once more after a 502 or a 503.** It retried only the two statuses the service
+  documents, 429 and 529, so a proxy's blip in front of it failed the question. A 502 or a 503
+  now gets one more try and no more; any other 5xx still fails at once, because what is waiting
+  on the answer is a person at a permission prompt.
+
 ### fixed
 
 - **A stream silent before its headers is asked for once.** A streamed request the server took
