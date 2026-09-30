@@ -138,6 +138,11 @@ minor bump may break you.
 
 ### security
 
+- **A record directory another user owns is refused.** The check read the directory's mode bits
+  and not its owner, which a process run as root reads past: it would write the transcript into
+  a `kamchatka` directory another user had made first under the temporary one, and make it
+  private for them. It is refused now with the sentence a link there gets, before its mode is
+  touched.
 - **A borrowed key is sent only to OpenRouter.** `--advise` with no `KAMCHATKA_SYSTEM1_API_KEY`
   borrows the conversation's key where the session talks to OpenRouter, and then sent it wherever
   `KAMCHATKA_SYSTEM1_BASE_URL` pointed - so an advisor pointed at a local `laya-serve` was handed
