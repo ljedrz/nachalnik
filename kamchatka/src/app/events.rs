@@ -5,7 +5,7 @@ use nachalnik::{Delta, Event, Grant, GrantSource};
 
 use super::{
     Anchor, App, Speaker,
-    text::{self, moved, thousands, trace_line},
+    text::{self, moved, thousands, trace_line, unpriced},
 };
 
 impl App {
@@ -224,10 +224,11 @@ impl App {
             }
             Event::Compacted { report } => {
                 let mut note = format!(
-                    "compacted: {}, {} → {} tokens ({})",
+                    "compacted: {}, {} → {} tokens{} ({})",
                     moved(&report),
                     report.tokens_before,
                     report.tokens_after,
+                    unpriced(&report),
                     report.reason
                 );
                 if !report.refused.is_empty() {
