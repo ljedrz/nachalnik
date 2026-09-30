@@ -402,15 +402,26 @@ Referenced from [AGENTS.md](AGENTS.md).
   which its one tool, asking for nothing, can never reach; the arm is a defensive branch or dead
   code, with the unreachable `Deny` beside it.
 
-- **A context the model's own turns have filled.** `ToolTrimmer` takes only tool results, so at a small
-  limit a session can reach a point where nothing is left for it to take: what remains is the
-  model's turns and the tool schemas every request carries, and the kernel refuses to send a request
-  over the limit. The refusal says so - how much compaction could free, and that the rest is the
-  model's own turns to exclude by hand - but a headless run has nobody to exclude them, and ends
-  there. A session that only talks gets there first. One way out is for compaction to elide the
-  oldest assistant turns as a last resort, which changes what `ToolTrimmer` promises and leaves the
-  projector to repair any results whose call it took. The other is to give the model a request of
-  its own to free room, which needs room held back for that request, since it is over the limit too.
+- **A context the model's own turns have filled.** `ToolTrimmer` takes only tool results, so at a
+  small limit a session can reach a point where nothing is left for it to take: what remains is the
+  model's turns and the tool schemas every request carries, and the kernel refuses to send a
+  request over the limit. The refusal says so - how much compaction could free, and that the rest
+  is the model's own turns to exclude by hand - but a headless run has nobody to exclude them, and
+  ends there. A session that only talks gets there first.
+
+  **Decided: the promise stays.** `ToolTrimmer` takes tool results and nothing else - the name was
+  `Trim` until it was made to say so - and eliding the model's oldest turns as a last resort is
+  ruled out. What is wanted instead is the person or the model compacting by hand once the context
+  is full, which means telling the model while there is still room for the request that tells it:
+  past the compaction threshold with nothing left to trim, the target's twenty points are that room.
+
+  **What is undecided is where the telling lives.** The kernel adds a compactor's summary only when
+  the pass moved something, which is what keeps a pass with nothing to take from piling up a
+  sentence before every request - so the one pass that has this to say cannot say it. Two shapes:
+  a `notice` on `CompactionPlan` that the kernel adds even when nothing moved, sent once per fill,
+  which reaches the model mid-turn and is a break for `nachalnik` (`CompactionPlan` is built from
+  literals and not `#[non_exhaustive]`); or `App` adding a note at the start of a turn, which
+  needs no runtime change and is too late for a tool loop that fills the context inside one turn.
 
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
