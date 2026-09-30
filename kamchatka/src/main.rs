@@ -254,8 +254,25 @@ async fn session() -> Result<()> {
                 ignored.join(", ")
             ));
         }
+        // note: `leave` unless this command line says otherwise - a settings file's `on-ask`
+        // included, which is written for the runs that have nobody else to ask. A client whose
+        // input closes is usually one watching a session somebody else is driving, and answering
+        // their questions for them - `deny` by default - was this client deciding what another
+        // person was about to
+        let typed = matches.value_source("on_ask") == Some(clap::parser::ValueSource::CommandLine);
+        let on_ask = match typed {
+            true => args.on_ask,
+            false => kamchatka::args::OnAsk::Leave,
+        };
         let (mut records, mut prose) = (stdout(), std::io::stderr());
-        let mut client = remote::Client::new(args.on_ask.grant(), &mut records, &mut prose);
+        let mut client = remote::Client::new(
+            on_ask.grant().unwrap_or(nachalnik::Grant::Deny),
+            &mut records,
+            &mut prose,
+        );
+        if on_ask.grant().is_none() {
+            client = client.leaves_questions();
+        }
         if !std::io::stdin().is_terminal() {
             client = client.waits_for_turns();
         }
@@ -264,6 +281,15 @@ async fn session() -> Result<()> {
             .await
             .map_err(|e| anyhow::anyhow!("{e}"));
     }
+
+    // refused before anything is started - a socket, a provider or an MCP server: `leave` is
+    // somebody else's to answer, and a run that is not a `--connect` has nobody else
+    let Some(on_ask) = args.on_ask.grant() else {
+        return Err(anyhow::anyhow!(
+            "`--on-ask leave` is for `--connect`, where another client can answer what this one \
+             leaves; here nobody else can, so it is `deny` or `allow`"
+        ));
+    };
 
     // note: bound before the provider is reached, so that an address nobody can listen on is a
     // refusal in the first second rather than after a round trip to somebody's API. The socket
@@ -384,7 +410,6 @@ async fn session() -> Result<()> {
         .await?
     };
 
-    let on_ask = args.on_ask.grant();
     // note: one reader for the whole run rather than one per session, because of `/restart` in a
     // piped run. A `BufReader` has read ahead by the time a line is handed over, so building a
     // second one for the second session drops whatever was already in the first one's buffer -

@@ -134,6 +134,11 @@ pub struct Client<'a> {
     /// everything else belongs to whoever is serving, and what a *detaching* client does with an
     /// open question does not.
     on_ask: Grant,
+    /// Whether a question is left for somebody else once the input has closed, rather than
+    /// answered with `on_ask`; see [`Client::leaves_questions`].
+    leaves: bool,
+    /// Whether it has said that it is leaving questions, which it says once.
+    said_left: bool,
     /// Whether a turn is running, as of the last thing the session said about that.
     busy: bool,
     /// How many commands this has sent and not yet been answered about.
@@ -209,6 +214,8 @@ impl<'a> Client<'a> {
     pub fn new(on_ask: Grant, records: &'a mut dyn Write, prose: &'a mut dyn Write) -> Self {
         Self {
             on_ask,
+            leaves: false,
+            said_left: false,
             records,
             prose: crate::headless::Prose::new(prose),
             streamed: false,
@@ -240,6 +247,20 @@ impl<'a> Client<'a> {
     /// `--headless` does, or where a question waits for one to answer it.
     pub fn waits_for_turns(mut self) -> Self {
         self.paced = true;
+        self
+    }
+
+    /// Answers nothing once the input has closed, and leaves a question waiting for another
+    /// client, or for one that comes back - `--on-ask leave`, and what `--connect` does unless
+    /// told otherwise.
+    ///
+    /// note: every attached client may answer, so one watching with its input closed answered
+    /// questions another client's person had been asked, `deny` by default - while RUNNING.md says
+    /// a question waits for somebody to come back. This client cannot tell whose question it is,
+    /// since nothing on the wire says who typed what, so leaving them all is the answer that holds
+    /// whoever raised it.
+    pub fn leaves_questions(mut self) -> Self {
+        self.leaves = true;
         self
     }
 
@@ -1012,8 +1033,18 @@ impl<'a> Client<'a> {
     /// question, detach, and exit `0`, leaving a served session waiting on an answer that could no
     /// longer come from anywhere. What ends the wait is [`Client::settle`]; this is only
     /// the half that stops it being called rest.
+    ///
+    /// note: except for a client that leaves its questions, for whom a session waiting on nothing
+    /// but a question is at rest: the turn will not move until somebody else answers, and waiting
+    /// here for that would be a client that never exits.
     fn resting(&self) -> bool {
-        self.idle() && self.held.is_none()
+        let asked = !self.asking.is_empty() || !self.reaching.is_empty();
+        let rest = match self.leaves && asked {
+            true => self.outstanding == 0,
+            false => self.idle(),
+        };
+
+        rest && self.held.is_none()
     }
 
     /// Whether the session has caught up with this client and asks it nothing, with no turn
@@ -1145,6 +1176,18 @@ impl<'a> Client<'a> {
         &mut self,
         write: &mut W,
     ) -> Result<(), String> {
+        if self.leaves {
+            let asked = !self.asking.is_empty() || !self.reaching.is_empty();
+            if asked && !self.said_left {
+                self.said_left = true;
+                self.prose.fresh_line()?;
+                self.tell(
+                    "nobody is here to answer what the session is asking, so it is left for \
+                     another client, or for this one coming back",
+                )?;
+            }
+            return Ok(());
+        }
         while let Some(request) = self.asking.pop_front() {
             self.prose.fresh_line()?;
             self.tell(&format!(

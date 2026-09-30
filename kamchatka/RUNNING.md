@@ -131,6 +131,14 @@ say, because [the log names things rather than copying them](#-a-session-on-disk
 that [reaches for the network](#-the-network-when-a-command-tries) is answered with the same three
 letters, once the kernel's own questions are.
 
+A question still open when a client's input closes is left for somebody else: another client, or
+this one coming back. Every attached client may answer, and a watcher cannot tell whose question
+it is, so answering it would be deciding for whoever was asked. A script that drives a session
+alone and wants its questions answered on the way out says so with `--on-ask deny` or
+`--on-ask allow` on the `--connect` command line; a settings file's `on-ask` is for runs that have
+nobody else to ask, and `--connect` does not read it. `leave`, the `--connect` default, is refused
+anywhere else, because there nobody else could answer.
+
 **Where it listens is the whole of its authentication, so it refuses to listen anywhere else.**
 There is no bearer token in this protocol and there is not going to be one: it carries a `shell`
 tool, so reaching the session is reaching the machine, and a scheme that had to be kept in step
@@ -1055,7 +1063,8 @@ $ kamchatka --headless --allow exec:run 'fetch the release notes'
 
 says on stderr which command reached out and what it was answered, and the tool result the model
 reads says it was asked and refused. A `--connect` client
-answers the same way once its input has closed, and a served session sends the question to every
+given `--on-ask` answers the same way once its input has closed, and leaves it for another client
+otherwise; a served session sends the question to every
 client as it waits: `reaching` is the list, whole each time it changes, and `reach` answers one of
 them the way `decide` answers the kernel's. They are two commands because the two questions are
 numbered by different things — the kernel's by the kernel, and a running command's by the policy

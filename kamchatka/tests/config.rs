@@ -244,6 +244,26 @@ fn a_word_the_file_gets_wrong_is_refused() {
     assert!(said.contains("on-ask"), "{said}");
 }
 
+/// `leave` is refused wherever there is nobody else to leave a question to.
+///
+/// note: `--on-ask leave` is `--connect`'s, where another client can answer what this one does
+/// not. A headless run given it, from the command line or from a file, would pause on its first
+/// question for ever - so it is refused before anything starts, saying where it belongs.
+#[test]
+fn leaving_a_question_is_refused_where_nobody_else_could_answer_it() {
+    let (ok, said) = run(&["--on-ask", "leave"], "");
+    assert!(!ok, "a headless run cannot leave a question to anybody");
+    assert!(
+        said.contains("`--on-ask leave` is for `--connect`"),
+        "{said}"
+    );
+
+    let path = settings("on-ask-leave", r#"{ "on-ask": "leave" }"#);
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "nor can a file ask it to");
+    assert!(said.contains("which only `--connect` can do"), "{said}");
+}
+
 /// A key nothing reads is an error, rather than a setting that quietly does nothing.
 ///
 /// note: the failure this format is most likely to have, and the one a person cannot see: a file

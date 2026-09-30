@@ -7,6 +7,17 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **A `--connect` client whose input closes leaves open questions for somebody else.** It answered
+  every waiting question with `--on-ask`, `deny` by default - including questions raised by
+  another client's person - so watching a session with `--connect ADDR < /dev/null` refused tool
+  calls somebody else had been asked about. The new `--on-ask leave` answers nothing, and is what
+  `--connect` does unless `--on-ask` is on its command line; a settings file's `on-ask` is no
+  longer read by `--connect`. `leave` is refused for every other run, where nobody else could
+  answer. **Breaking** for the library: `OnAsk` gains `Leave` and is now `#[non_exhaustive]`, and
+  `OnAsk::grant` answers `Option<Grant>`. `Client::leaves_questions` is new.
+
 ### fixed
 
 - **The advisor's tokens are counted against `--spend`.** The advisor is asked from inside the
