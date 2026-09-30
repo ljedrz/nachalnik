@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **A context the compactor cannot help is said to be full.** `ToolTrimmer` takes tool results
+  alone, so a conversation that is its own bulk grew in silence until the kernel refused a
+  request over the limit. The session now says, once, that the context is full and nothing more
+  may be taken automatically - with room still under the limit - and what is left is for the
+  person to `/exclude` or the model to exclude through `context`; and says so again when there is
+  room. `ToolTrimmer::wants_room` is its threshold alone, so an unpriced pin does not read as full.
+
 ### changed
 
 - **`Trim` is `ToolTrimmer`.** It takes tool results and nothing else, and the name says so now.

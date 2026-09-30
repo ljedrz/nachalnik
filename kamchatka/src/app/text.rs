@@ -97,6 +97,15 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
                 false => format!(": {}", one_line(&report.reason)),
             },
         ),
+        Event::ContextFull { full, used, limit } => match (full, limit) {
+            (true, Some(limit)) => format!(
+                "{} of {} tokens, and nothing more the compactor may take",
+                thousands(*used),
+                thousands(*limit)
+            ),
+            (true, None) => "nothing more the compactor may take".to_owned(),
+            (false, _) => "room again".to_owned(),
+        },
         Event::ModelFailed { error, .. } | Event::StepFailed { error, .. } => one_line(error),
         // note: everything below here has its own arm rather than the catch-all, which prints a
         // name against an empty line. Each of them carries something worth reading, and a log

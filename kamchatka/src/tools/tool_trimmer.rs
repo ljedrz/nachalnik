@@ -95,6 +95,15 @@ impl Compactor for ToolTrimmer {
         over || !budget.fully_counted()
     }
 
+    /// note: the threshold alone. Something unpriced is a reason to look, which is what
+    /// `should_compact` answers, and not a sign the context is full: a pinned picture keeps that
+    /// half true for the whole session, and a context holding one at five percent is not full
+    fn wants_room(&self, budget: &Budget) -> bool {
+        budget
+            .fraction_used()
+            .is_some_and(|used| used >= self.threshold)
+    }
+
     async fn plan(&self, items: &[Arc<ContextItem>], budget: &Budget) -> Option<CompactionPlan> {
         let limit = budget.limit?;
         let target = (limit as f64 * self.target) as usize;

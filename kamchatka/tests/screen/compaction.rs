@@ -1446,3 +1446,49 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
         .expect("over the threshold");
     assert_eq!(plan.elide, vec![seen, fresh]);
 }
+
+/// A context over the compactor's threshold that holds no tool results is said to be full, once,
+/// and the person is told what can still be done.
+///
+/// note: `ToolTrimmer` keeps its promise and takes tool results alone, so a conversation that is
+/// its own bulk is one it can do nothing about. It used to say nothing, and the session went on
+/// until the kernel refused a request over the limit - which a headless run did not come back
+/// from. The kernel measures it now, and this is the line it comes to.
+#[tokio::test]
+async fn a_context_the_compactor_cannot_help_is_said_to_be_full_once() {
+    let mut harness = Harness::new([
+        nachalnik::ModelResponse::text("ok"),
+        nachalnik::ModelResponse::text("ok again"),
+    ]);
+    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+        threshold: 0.5,
+        target: 0.3,
+    })));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(ContextItem::user(
+        "a line of routine output. ".repeat(limit / 10),
+    ));
+    let used = harness
+        .app
+        .kernel
+        .budget()
+        .fraction_used()
+        .expect("a limit");
+    assert!((0.5..1.0).contains(&used), "the setup is off: {used}");
+
+    let said = "the context is full, and the compactor has nothing more it may take";
+    harness.send("go on").await;
+    harness.settle().await;
+    assert!(harness.flat().contains(said), "{}", harness.screen());
+
+    // still full, and not said a second time: a screen tall enough to hold both turns and both
+    // lines, had there been two
+    harness.send("and again").await;
+    harness.settle().await;
+    let screen = harness.sized(400, 120);
+    assert!(
+        screen.contains("ok again"),
+        "the second turn is not on it: {screen}"
+    );
+    assert_eq!(screen.matches(said).count(), 1, "{screen}");
+}

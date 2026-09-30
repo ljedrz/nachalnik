@@ -415,13 +415,18 @@ Referenced from [AGENTS.md](AGENTS.md).
   is full, which means telling the model while there is still room for the request that tells it:
   past the compaction threshold with nothing left to trim, the target's twenty points are that room.
 
-  **What is undecided is where the telling lives.** The kernel adds a compactor's summary only when
-  the pass moved something, which is what keeps a pass with nothing to take from piling up a
-  sentence before every request - so the one pass that has this to say cannot say it. Two shapes:
-  a `notice` on `CompactionPlan` that the kernel adds even when nothing moved, sent once per fill,
-  which reaches the model mid-turn and is a break for `nachalnik` (`CompactionPlan` is built from
-  literals and not `#[non_exhaustive]`); or `App` adding a note at the start of a turn, which
-  needs no runtime change and is too late for a tool loop that fills the context inside one turn.
+  **What is left is telling the model**, so that a headless run can compact itself rather than
+  run into the refusal. The shape settled on: the caller hands the kernel an item to place when
+  the context becomes full - `kamchatka`'s naming its `context` tool, since the kernel ships no
+  words the model reads - and the kernel places it once, at the point compaction runs, between a
+  turn's results and its next request, and excludes it again when there is room. Not a field on
+  `CompactionPlan`, which is built from literals, and not a note from `App` at the start of a
+  turn, which is too late for a tool loop that fills the context inside one.
+
+  Worth knowing for whoever picks it up: `ToolTrimmer::should_compact` also answers yes for
+  anything it cannot price, which `wants_room` leaves out. What an unpriced item should do to a
+  budget that says it is full is not settled; it matters little to a program that is mostly about
+  code.
 
 - **The fuzzing harness and the provider soak are not in the repository.** What drove
   `kamchatka` headless and served with a live model and mined the records for errors, and what
