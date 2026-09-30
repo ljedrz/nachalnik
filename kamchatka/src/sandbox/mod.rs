@@ -866,6 +866,17 @@ pub fn confines_unix_sockets() -> bool {
 /// unless somebody said otherwise - because `/dev/null` is not optional and the rest of `/dev`
 /// reaches past the command: another terminal of the person's, their shared memory, a camera.
 pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
+    confine_saying(sandbox, scratch).0
+}
+
+/// The same, with why it did not take where it did not.
+///
+/// note: `Unavailable` covers a kernel with no Landlock and a ruleset call that failed, and the
+/// error of the second was dropped - so the child said the sandbox did not take and not why, and a
+/// person with a kernel that has Landlock was left to guess what refused it. The reason travels
+/// beside the value rather than in it, because `Confinement` is a `Copy` answer matched all over
+/// this program, and the reason is for saying rather than for deciding.
+pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement, Option<String>) {
     use landlock::{
         ABI, Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
         RulesetError, RulesetStatus, path_beneath_rules,
@@ -901,8 +912,9 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         true => AccessFs::from_all(abi) | AccessFs::ResolveUnix,
         false => AccessFs::from_all(abi),
     };
-    let Ok(mut ruleset) = Ruleset::default().handle_access(rights) else {
-        return Confinement::Unavailable;
+    let mut ruleset = match Ruleset::default().handle_access(rights) {
+        Ok(ruleset) => ruleset,
+        Err(e) => return unavailable(format!("the filesystem rights were refused: {e}")),
     };
     if sandbox.network.refuses_tcp() {
         // ABI v4 and up; on an older kernel this is the part that comes back `Partial`.
@@ -914,7 +926,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
         // the top of this module for why, and change the wording along with the rights.
         match ruleset.handle_access(AccessNet::ConnectTcp | AccessNet::BindTcp) {
             Ok(with_net) => ruleset = with_net,
-            Err(_) => return Confinement::Unavailable,
+            Err(e) => return unavailable(format!("the network rights were refused: {e}")),
         }
     }
     // note: a port is closed by granting every other one, since a ruleset only ever grants. That is
@@ -926,7 +938,7 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
     if closing {
         match ruleset.handle_access(AccessNet::ConnectTcp) {
             Ok(with_net) => ruleset = with_net,
-            Err(_) => return Confinement::Unavailable,
+            Err(e) => return unavailable(format!("the closed ports were refused: {e}")),
         }
     }
     let open = (1..=u16::MAX)
@@ -967,12 +979,57 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
 
     match restricted {
         Ok(status) => match status.ruleset {
-            RulesetStatus::FullyEnforced => Confinement::Full,
-            RulesetStatus::PartiallyEnforced => Confinement::Partial,
-            RulesetStatus::NotEnforced => Confinement::Unavailable,
+            RulesetStatus::FullyEnforced => (Confinement::Full, None),
+            RulesetStatus::PartiallyEnforced => (Confinement::Partial, None),
+            RulesetStatus::NotEnforced => {
+                unavailable("the kernel enforces no Landlock ruleset".to_owned())
+            }
         },
-        Err(_) => Confinement::Unavailable,
+        Err(e) => unavailable(format!("the ruleset could not be applied: {e}")),
     }
+}
+
+/// A confinement that did not take, and why.
+fn unavailable(why: String) -> (Confinement, Option<String>) {
+    (Confinement::Unavailable, Some(why))
+}
+
+/// The line [`run_if_asked`] writes for [`available`] to read: how much took, whether the gate
+/// holds, and why the sandbox did not take where it did not.
+///
+/// note: the reason goes last, after `; `, because it is the kernel's words and may hold spaces;
+/// the two before it are single words. One function each way, so the two ends cannot drift.
+fn report_line(confinement: Confinement, gated: bool, why: Option<&str>) -> String {
+    let took = match confinement {
+        Confinement::Full => "full",
+        Confinement::Partial => "partial",
+        Confinement::Unavailable | Confinement::Off => "unavailable",
+    };
+    let gate = match gated {
+        true => " gated",
+        false => "",
+    };
+    let why = why
+        .map(|why| format!("; {}", why.replace('\n', " ")))
+        .unwrap_or_default();
+
+    format!("{REPORT}{took}{gate}{why}")
+}
+
+/// What [`report_line`] wrote, read back from after its prefix.
+fn read_report(reported: &str) -> (Confinement, bool, Option<String>) {
+    let (words, why) = match reported.split_once("; ") {
+        Some((words, why)) => (words, Some(why.to_owned())),
+        None => (reported, None),
+    };
+    let (took, gate) = words.split_once(' ').unwrap_or((words, ""));
+    let confinement = match took {
+        "full" => Confinement::Full,
+        "partial" => Confinement::Partial,
+        _ => Confinement::Unavailable,
+    };
+
+    (confinement, gate == "gated", why)
 }
 
 /// The temporary directory a confined command is given, named after the process it belongs to.
@@ -1028,11 +1085,14 @@ pub fn make_scratch(path: &Path) -> Option<PathBuf> {
 
 /// What a probe found here: how much of a ruleset the kernel takes, and whether the network gate
 /// holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Probed {
     /// How much of the ruleset the kernel took.
     pub confinement: Confinement,
+    /// Why it did not take, where it did not and something said why: the kernel's refusal, or a
+    /// probe that could not be run at all.
+    pub why: Option<String>,
     /// Whether the gate went on, and the kernel can hold a call for this process to answer; see
     /// [`crate::gate`].
     pub gated: bool,
@@ -1080,24 +1140,29 @@ pub fn available(program: &Path) -> Probed {
             output
         });
 
-    let reported = output.ok().and_then(|output| {
-        String::from_utf8_lossy(&output.stderr)
+    let (confinement, gate, why) = match output {
+        Err(e) => (
+            Confinement::Unavailable,
+            false,
+            Some(format!("the probe could not be run: {e}")),
+        ),
+        Ok(output) => match String::from_utf8_lossy(&output.stderr)
             .lines()
             .find_map(|line| line.strip_prefix(REPORT).map(str::to_owned))
-    });
-    let (took, gate) = match &reported {
-        Some(reported) => reported.split_once(' ').unwrap_or((reported, "")),
-        None => ("", ""),
-    };
-    let confinement = match took {
-        "full" => Confinement::Full,
-        "partial" => Confinement::Partial,
-        _ => Confinement::Unavailable,
+        {
+            Some(reported) => read_report(&reported),
+            None => (
+                Confinement::Unavailable,
+                false,
+                Some("the probe said nothing about the sandbox".to_owned()),
+            ),
+        },
     };
 
     Probed {
         confinement,
-        gated: confinement.is_confined() && gate == "gated" && crate::gate::holds(),
+        why,
+        gated: confinement.is_confined() && gate && crate::gate::holds(),
     }
 }
 
@@ -1139,7 +1204,7 @@ pub fn run_if_asked() -> Option<i32> {
     // removes it again, being the only one of the two processes that can
     let scratch = make_scratch(&scratch_for(std::process::id()));
 
-    let confinement = confine(&sandbox, scratch.as_deref());
+    let (confinement, why) = confine_saying(&sandbox, scratch.as_deref());
     // note: after the ruleset, so that nothing the gate does is outside it, and before the command,
     // which inherits the filter across `exec` and into everything it starts
     let gated = match sandbox.network {
@@ -1148,16 +1213,8 @@ pub fn run_if_asked() -> Option<i32> {
     };
     if std::env::var_os(REPORT_VAR).is_some() {
         eprintln!(
-            "{REPORT}{}{}",
-            match confinement {
-                Confinement::Full => "full",
-                Confinement::Partial => "partial",
-                Confinement::Unavailable | Confinement::Off => "unavailable",
-            },
-            match gated {
-                Some(Ok(())) => " gated",
-                _ => "",
-            }
+            "{}",
+            report_line(confinement, matches!(gated, Some(Ok(()))), why.as_deref())
         );
     }
 
@@ -1175,7 +1232,8 @@ pub fn run_if_asked() -> Option<i32> {
     if !confinement.is_confined() {
         eprintln!(
             "nothing was run: this program was asked to confine the command first and the sandbox \
-             did not take"
+             did not take{}",
+            why.map(|why| format!(": {why}")).unwrap_or_default()
         );
         return Some(126);
     }
@@ -1228,4 +1286,40 @@ pub fn run_if_asked() -> Option<i32> {
     eprintln!("could not run the command: {failure}");
 
     Some(127)
+}
+
+#[cfg(test)]
+mod report {
+    use super::*;
+
+    /// What the child says about its sandbox is what the probe reads, the reason included.
+    ///
+    /// note: the reason was dropped, so a probe that found no confinement could not say whether
+    /// the kernel had no Landlock or refused this ruleset. It is the kernel's words, so the case
+    /// that matters is one with spaces - and a newline, which would have ended the line early.
+    #[test]
+    fn the_report_carries_why_a_sandbox_did_not_take() {
+        for (confinement, gated, why) in [
+            (Confinement::Full, true, None),
+            (Confinement::Partial, false, None),
+            (
+                Confinement::Unavailable,
+                false,
+                Some("the ruleset could not be applied: Operation not permitted"),
+            ),
+        ] {
+            let line = report_line(confinement, gated, why);
+            let reported = line.strip_prefix(REPORT).expect("the prefix");
+            assert_eq!(
+                read_report(reported),
+                (confinement, gated, why.map(str::to_owned)),
+                "{line}"
+            );
+        }
+
+        let line = report_line(Confinement::Unavailable, false, Some("one\ntwo"));
+        assert!(!line.contains('\n'), "{line:?}");
+        let reported = line.strip_prefix(REPORT).expect("the prefix");
+        assert_eq!(read_report(reported).2.as_deref(), Some("one two"));
+    }
 }

@@ -122,7 +122,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   two a machine is, and it is asked rather than assumed, because handling a right that is not
   there would cost the ruleset its `Full` status and quietly stop the suite that tests it.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
-  can fail and the permissions tab draws it. Never let it degrade silently.
+  can fail and the permissions tab draws it, with the kernel's own reason where a ruleset was
+  refused - `Probed::why` - since a kernel with no Landlock and one that refused this ruleset are
+  different problems. Never let it degrade silently.
 - **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock
   refuses an `open` with `EACCES`, which is exactly what the kernel says about a file that belongs
   to somebody else - so a confined command is handed a permission error indistinguishable from an

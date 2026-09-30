@@ -407,6 +407,9 @@ pub struct App {
     /// applying a ruleset in a child process and that is not something a frame should be doing
     /// sixty times a second. It cannot change while the program runs.
     pub confinement: Confinement,
+    /// Why the sandbox did not take, where it was asked for and did not and something said why;
+    /// see [`crate::sandbox::Probed::why`].
+    pub unconfined_because: Option<String>,
     /// What the provider charged for the last request, and what was in it. See [`Anchor`].
     pub anchor: Option<Anchor>,
     /// The items the request now in flight was built from, until there is a figure to pair
@@ -745,6 +748,7 @@ impl App {
             // the terminal's own default, for a screen test that never spawns anything; the
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Off,
+            unconfined_because: None,
             anchor: None,
             pending: Anchor::default(),
             failed: None,

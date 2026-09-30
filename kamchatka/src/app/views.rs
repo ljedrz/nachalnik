@@ -640,9 +640,15 @@ impl App {
                 true => format!("shell: {}, network gated", self.confinement),
                 false => format!("shell: {}, network not gated", self.confinement),
             },
-            Confinement::Unavailable => {
-                "shell: could not be confined, so a command can do any of these".to_owned()
-            }
+            // and why, where the kernel or the probe said: a kernel with Landlock that refused
+            // this ruleset is a different problem from one with none, and only the words tell
+            Confinement::Unavailable => match &self.unconfined_because {
+                Some(why) => format!(
+                    "shell: could not be confined ({}), so a command can do any of these",
+                    crate::app::one_line(why)
+                ),
+                None => "shell: could not be confined, so a command can do any of these".to_owned(),
+            },
             Confinement::Off => "shell: a command can do any of these".to_owned(),
         })
     }

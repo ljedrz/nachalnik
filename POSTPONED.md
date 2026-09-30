@@ -497,12 +497,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   file write is the file. Either is a change to what a script reading one of them already sees, so
   which one gives way is a person's call.
 
-- **Why a sandbox did not take.** `confine` answers `Confinement::Unavailable` for a kernel with no
-  Landlock and for a ruleset call that failed, and the error of the second is dropped, so the child
-  says the sandbox did not take and not why. Carrying the reason is a field on a public enum and a
-  new line in the confinement's report, and that report is what [SECURITY.md](SECURITY.md) holds to
-  saying what is and is not enforced.
-
 - **A session's roots are resolved on every check.** `Reach` canonicalises the working directory
   and every `--sandbox-allow` and `--sandbox-read` root each time it judges a path, which a `grep`
   over a large tree pays per file and per link. Resolving them once would move when a root is read

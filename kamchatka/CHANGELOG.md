@@ -36,6 +36,13 @@ minor bump may break you.
 
 ### fixed
 
+- **A sandbox that did not take says why.** `Confinement::Unavailable` covers a kernel with no
+  Landlock and a ruleset call that failed, and the second's error was dropped, so the permissions
+  tab and the confined child both said the sandbox did not take and neither said why. The reason
+  now travels with the probe as `Probed::why` - the kernel's refusal, or a probe that could not
+  run - and is drawn beside `could not be confined`, and said by a child that refuses to run a
+  command. `sandbox::confine_saying` and `App::unconfined_because` are new; `Probed` is no longer
+  `Copy`, which is **breaking** for the library.
 - **A clock shown in UTC says so.** An offset `time` refuses fell back to UTC and was still
   reported as local, so the trace's times were out by the zone with no ` UTC` beside the date.
 - **One answer to whether a session has ended.** `Setup::relaunch` asked whether the *last* record
