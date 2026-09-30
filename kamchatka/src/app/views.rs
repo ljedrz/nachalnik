@@ -436,13 +436,12 @@ impl App {
     /// `14:` or a date answers it only if the date and the time are among the things being
     /// matched.
     fn event_text(event: &Traced) -> String {
-        match when::read_off(event.wall) {
-            Some(read) => format!(
-                "{} {} {} {}",
-                read.date, read.time, event.name, event.detail
-            ),
-            None => format!("{} {}", event.name, event.detail),
-        }
+        let read = when::read_off(event.wall);
+
+        format!(
+            "{} {} {} {}",
+            read.date, read.time, event.name, event.detail
+        )
     }
 
     /// Every capability that matters here, and what would happen if a tool asked for it.

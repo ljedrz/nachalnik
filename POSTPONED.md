@@ -361,10 +361,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   - With `--parallel`, streamed output from two calls interleaves on one line of the transcript.
   - `--headless` prints a `ToolRequested`'s arguments in full, and `--connect` through `one_line`.
 
-- **`app::when::read_off` returns an `Option` that is always `Some`.** A zone that cannot be read
-  falls back to UTC and says so, so there is never a `None`. Returning `When` removes an arm that
-  cannot run, and changes the signature of a public function.
-
 - **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
   target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
   files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the
