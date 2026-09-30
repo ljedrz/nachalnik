@@ -799,8 +799,7 @@ impl<'a> Client<'a> {
             }
             Event::ToolRequested { tool, args, .. } => {
                 self.prose.fresh_line()?;
-                writeln!(self.prose, "⟩ {tool}({})", one_line(&args.to_string()))
-                    .map_err(|e| e.to_string())?;
+                writeln!(self.prose, "⟩ {tool}({args})").map_err(|e| e.to_string())?;
             }
             Event::ToolFinished {
                 tool,
