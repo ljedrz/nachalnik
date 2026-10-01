@@ -106,6 +106,7 @@ pub(super) fn look(
         out.push_str(&line(item, &going, &row(item, &going)));
     }
     out.push_str(floor(&items));
+    out.push_str(gaps(&items));
 
     // note: the second sentence is there because the columns are easy to read wrong. Asked what
     // it could free, a model names the turn holding the most of its own thinking and offers to
@@ -150,6 +151,28 @@ fn figure(item: &ContextItem, going: &Going) -> String {
     match item.uncounted {
         0 => figure,
         _ => format!("{figure}+"),
+    }
+}
+
+/// The line under a full listing that accounts for the numbers it skips, where it skips any.
+///
+/// note: this listing is every item, and an identifier is never given twice, so a number missing
+/// from it belongs to an item that is no longer in the context - taken away by an `undo` of its
+/// addition, or left out of the snapshot this session was resumed from - and never to one the
+/// list left off. Without the line a model reading `24, 26` cannot tell which. Said only where
+/// there is a gap, so an unbroken listing costs nothing.
+fn gaps(items: &[Arc<ContextItem>]) -> &'static str {
+    let ids: Vec<u64> = items.iter().map(|item| item.id.0).collect();
+    let gapped = match (ids.iter().min(), ids.iter().max()) {
+        (Some(low), Some(high)) => (high - low + 1) as usize != ids.len(),
+        _ => false,
+    };
+    match gapped {
+        true => {
+            "\nthe numbers skip where an item was removed: a number is never given twice, so one \
+             missing here is no longer in the context, not left off this list\n"
+        }
+        false => "",
     }
 }
 

@@ -836,3 +836,49 @@ async fn the_models_own_notes_are_named_in_the_description_and_found_by_it() {
     assert!(said.contains("finding"), "{said}");
     assert!(!said.contains("nothing in your context matches"), "{said}");
 }
+
+/// A full listing accounts for the numbers it skips, and says nothing where it skips none.
+///
+/// note: found live: after an `undo` took 25 away, a model reading `24, 26` said it could not tell
+/// whether 25 was gone or not shown.
+#[tokio::test]
+async fn look_accounts_for_the_numbers_it_skips() {
+    let gap = "the numbers skip where an item was removed";
+
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+    kernel.push(ContextItem::user("one"));
+    kernel.push(ContextItem::user("two"));
+    kernel.push(ContextItem::user("three"));
+    assert!(kernel.undo().expect("undo"), "the last push was undoable");
+    kernel.push(ContextItem::user("four"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains(gap),
+        "a gap in the ids is accounted for: {said}"
+    );
+    assert!(
+        said.contains("no longer in the context, not left off this list"),
+        "and named as removed rather than hidden: {said}"
+    );
+
+    // and with no gap, the line is not there to misread
+    let (whole, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+    whole.push(ContextItem::user("one"));
+    whole.push(ContextItem::user("two"));
+    whole.turn().await.expect("the turn failed");
+    assert!(
+        !answered(&whole).contains(gap),
+        "an unbroken listing says nothing of gaps: {}",
+        answered(&whole)
+    );
+}
