@@ -199,9 +199,8 @@ would be locked out of its own session for longer than it keeps trying.
 
 Several people driving one agent is not something this program has a design for, and one at a time
 is what stands in for one. A session drawn at a desk and served is still two ways in: both may
-submit, interrupt and answer questions, there is room for exactly one message queued into a running
-turn, and when the second line replaces the first the session says so rather than letting it
-disappear.
+submit, interrupt and answer questions, and a message either sends into a running turn waits in one
+queue with the other's. Each goes in on its own, in the order it was sent, with a turn of its own.
 
 **A command that reaches for the endpoint is answered before the next one is**, because there is
 one session and answering anybody needs it: `/models` fetches a listing, `/compact` runs a whole

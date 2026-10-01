@@ -30,6 +30,13 @@ minor bump may break you.
   first, because the usual second connection is the same client coming back while the session
   still holds its old, half-open one. A connection that never attaches replaces nobody. **Breaking**
   for a client of the protocol that kept two connections to one session: the first is let go of.
+- **Messages typed into a running turn wait in a queue, each for a turn of its own.** There was
+  room for one, and a second took its place - a person at the desk lost their line whenever a
+  client typed after them. Each now waits in order, drawn at the end of the conversation, and
+  every turn that ends takes the oldest in; none is merged with another. `up` takes the newest
+  back out. A session resting with some still waiting - after a turn was stopped - puts a new line
+  behind them and the oldest in. `Attached::queued_behind` lists the ones after `queued`.
+  **Breaking** for the library: `App::queued` is an iterator over all of them.
 - **A compaction pass says what it could not price.** The line announcing one, and its row on
   the trace tab, add `1 → 0 piece(s) unpriced` beside the token totals wherever something in the
   request had no figure.

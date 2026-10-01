@@ -1,8 +1,8 @@
 //! The session is not the client: it outlives one, and it serves one at a time.
 //!
 //! note: what a turn does when the client that started it goes away, what happens to a client when
-//! another attaches, and what happens to a line queued into a running turn when a second arrives -
-//! which are the two places this program takes something away, and says so.
+//! another attaches - the one place this program takes something away, and says so - and what
+//! happens to lines typed into a running turn.
 
 use std::sync::Arc;
 
@@ -111,17 +111,18 @@ async fn a_client_that_attaches_replaces_the_one_attached() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// A second line typed into a running turn replaces the first, and the session says so.
+/// Lines typed into a running turn wait in a queue, and each goes in with a turn of its own.
 ///
-/// note: what this pins is an honest account of a limitation rather than the absence of one. There
-/// is room for exactly one queued message, which the desk and the client share where a session is
-/// drawn as well as served - so the one thing that must not happen is the quiet version, where both
-/// lines are answered `queued` and one of them is never seen again by anybody.
+/// note: the desk and the client share the queue where a session is drawn as well as served, so
+/// what must not happen is a line answered `queued` and then never seen again - which is what the
+/// one slot the newest won used to do to whoever typed first.
 #[tokio::test]
-async fn a_line_that_replaces_a_queued_one_says_so() {
+async fn lines_typed_into_a_running_turn_each_get_a_turn() {
     let script = vec![
         ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
         ModelResponse::text("done"),
+        ModelResponse::text("for the first"),
+        ModelResponse::text("for the second"),
     ];
     let session = served(script, |app| {
         app.kernel.add_tool(Arc::new(Slow));
@@ -163,51 +164,42 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         ),
         "a line sent into a running turn was not queued"
     );
-    // a command is not a line that waits, and replaces nothing
+    // a command is not a line that waits, and runs at once
     one.send(Command::Submit {
         line: "/spend".to_owned(),
     })
     .await;
     one.send(Command::Submit {
-        line: "no, mine".to_owned(),
+        line: "and mine".to_owned(),
     })
     .await;
-
-    let heard = one
-        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("replaced")))
-        .await;
-    let Some(Message::Said { text, .. }) = heard.last() else {
-        unreachable!("just matched")
-    };
-    assert!(text.contains("`mine`"), "it did not say which line: {text}");
-
-    // and said once for each line that went, which the next replacement is the end of
-    one.send(Command::Submit {
-        line: "mine again".to_owned(),
-    })
-    .await;
-    let heard = [
-        heard,
-        one.until(
-            |message| matches!(message, Message::Said { text, .. } if text.contains("`no, mine`")),
-        )
-        .await,
-    ]
-    .concat();
-    let replaced: Vec<&String> = heard
-        .iter()
-        .filter_map(|message| match message {
-            Message::Said { text, .. } if text.contains("replaced") => Some(text),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(replaced.len(), 2, "{replaced:#?}");
+    one.until_words("for the second").await;
 
     one.send(Command::Submit {
         line: "/quit".to_owned(),
     })
     .await;
-    session.ended().await.1.expect("the session failed");
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    let said: Vec<String> = app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .filter(|text| !text.is_empty() && text != "waited")
+        .collect();
+    assert_eq!(
+        said,
+        [
+            "go",
+            "done",
+            "mine",
+            "for the first",
+            "and mine",
+            "for the second"
+        ],
+        "each line went in on its own, in order, with an answer of its own"
+    );
 }
 
 /// A provider's retry reaches a client while the provider waits, above the answer it held up.

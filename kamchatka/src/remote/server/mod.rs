@@ -16,7 +16,7 @@
 //! note: **one client at a time**, and the newest one wins. A connection that attaches takes the
 //! session, and whichever had it is told it was replaced and let go of - see `Serving::seated`.
 //! Several clients driving one agent is a conversation nobody has designed: every one of them may
-//! submit, interrupt and answer questions, and a line queued into a running turn has room for one.
+//! submit, interrupt and answer questions, and each would be steering the others' turns.
 //! And the newest rather than the first, because the ordinary second connection is the *same*
 //! client coming back - a laptop that changed access points, a browser tab reconnecting - while
 //! the server still holds its old one half-open, which keepalive takes minutes to notice. Refused,
@@ -32,7 +32,7 @@ use tokio::{
 };
 
 use crate::{
-    app::{App, Did, NOTICES, Outcome, Overlay, Speaker, text},
+    app::{App, NOTICES, Outcome, Overlay, Speaker, text},
     remote::protocol::{
         self, Address, Attached, Command, Judged, Line, Listed, Message, Printed, Stanced, Tracing,
         Unjudged,
@@ -826,7 +826,7 @@ impl Serving {
                     self.seated(app, client);
                 }
                 let _ = answer.send(Answered {
-                    message: apply(app, client, command).await,
+                    message: apply(app, command).await,
                     voice,
                     standing,
                 });
@@ -948,7 +948,7 @@ impl Drop for Server {
 /// that asked it, out of a `Kernel` handle of its own, because reading it needs no `App` - and a
 /// client reading a four-megabyte tool result should not be something the session stops to do. An
 /// earlier version is `App`'s to remember, so that one comes here.
-async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> {
+async fn apply(app: &mut App, command: Command) -> Option<Message> {
     match command {
         // note: a resume is answered with a `done` rather than with nothing, and the reason is the
         // invariant `Message::Done` states: every command gets exactly one answer. A resume that
@@ -1006,13 +1006,6 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
             error: "a blank line is not a message, so nothing was sent".to_owned(),
         }),
         Command::Submit { line } => {
-            // note: read before the line goes in, because handing one in is what replaces it.
-            // There is room for exactly one queued message, so a second line during a turn - the
-            // client's, or the desk's where the session is drawn as well - silently takes the
-            // first one's place; see `App::queued`. Saying so is the least this can do about it,
-            // and it is said to everybody, because the person who lost a line may be the one who
-            // is not asking
-            let replacing = app.queued().map(str::to_owned);
             // note: a client has no keys of this program's to press, whatever the loop driving the
             // session has, so `App::keys` is set around the one call that reads it rather than once
             // for the session. A served session can have a screen as well: a `/help` typed at the
@@ -1033,18 +1026,6 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
                     proposed.rows.iter().map(|row| format!("· {row}")).collect();
                 app.say(Speaker::Note, rows.join("\n"));
                 app.take_proposal(true).await;
-            }
-            // only a line that went into the slot took anything out of it: a command, or a line
-            // said straight into an idle session, leaves whatever was waiting where it was
-            if let Some(lost) = replacing.filter(|_| matches!(reply.did, Did::Queued)) {
-                app.say(
-                    Speaker::Note,
-                    format!(
-                        "client {client}'s line replaced one that was already waiting for this \
-                         turn to end: `{}`",
-                        text::one_line(&lost)
-                    ),
-                );
             }
 
             Some(Message::Replied {
@@ -1244,7 +1225,8 @@ fn project(app: &App) -> Attached {
         untold: crate::tools::Careful::untold(),
         permissions: app.permissions().iter().map(Stanced::of).collect(),
         undecided: app.undecided(),
-        queued: app.queued().map(str::to_owned),
+        queued: app.queued().next().map(str::to_owned),
+        queued_behind: app.queued().skip(1).map(str::to_owned).collect(),
         confinement: app.confinement(),
     }
 }

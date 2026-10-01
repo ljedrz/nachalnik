@@ -624,14 +624,17 @@ pub struct App {
     /// has, and giving it one would be this program's screen leaking into the runtime's model of
     /// a session. What the kernel is told is the pass itself, once, when somebody says yes.
     pub proposed: Option<Proposed>,
-    /// A message somebody sent into a turn that was already running, waiting for it to end.
+    /// The messages somebody sent into a turn that was already running, oldest first, each
+    /// waiting for a turn of its own.
     ///
-    /// note: one, and the newest wins. [`App::put_back`] is the way back to *this* one - `up`
-    /// takes it out of here and into the prompt, where it can be changed, sent again or simply
-    /// dropped - and there is no way back to one it replaced, so the replacement is said out loud
-    /// where it happens. The row is drawn at the end of the conversation, and a row that vanishes
-    /// with no account of why is the thing this program does not do.
-    typed_ahead: Option<String>,
+    /// note: a queue rather than one slot, and each stays its own message. A session drawn at a
+    /// desk and served is two ways in, and a slot the newest won took one person's line away
+    /// whenever the other typed after them; merging them instead would hand the model two people's words as
+    /// one. So every turn that ends takes the oldest in and gives it a turn, and the next waits for
+    /// that one. [`App::put_back`] is the way back to the newest - `up` takes it out of here and
+    /// into the prompt, where it can be changed, sent again or simply dropped. Each is drawn at the
+    /// end of the conversation, in order, until it becomes an item.
+    typed_ahead: VecDeque<String>,
     /// The last line submitted at the prompt, message or command, for [`App::put_back`].
     last_sent: Option<String>,
     /// What [`App::put_back`] last put in the prompt, for as long as the prompt still says
@@ -810,7 +813,7 @@ impl App {
             question_scroll: 0,
             settling: None,
             proposed: None,
-            typed_ahead: None,
+            typed_ahead: VecDeque::new(),
             last_sent: None,
             #[cfg(feature = "tui")]
             recalled: None,
@@ -1055,13 +1058,14 @@ impl App {
             Outcome::Stepped(state) => self.stepped(state),
         }
 
-        // a message somebody sent into this turn has waited for it to end; now it goes in, and
-        // unless the turn was stopped, stepped or failed it gets a turn of its own
+        // a message somebody sent into this turn has waited for it to end; now the oldest goes in,
+        // and unless the turn was stopped, stepped or failed it gets a turn of its own. The rest
+        // wait for that one, as they waited for this
         //
         // note: `caught_up` because the line saying it was waiting is a live one - it was said
         // when there was no item to say it from - and pushing is what gives it one. The item is
         // drawn in its place, at the end of the conversation, which is where the request has it
-        if ended && let Some(message) = self.typed_ahead.take() {
+        if ended && let Some(message) = self.typed_ahead.pop_front() {
             let id = self.kernel.push(ContextItem::user(message));
             self.caught_up(id);
             if carry_on {
@@ -1560,15 +1564,10 @@ impl App {
             .skip(said)
     }
 
-    /// The message waiting for the running turn to end, if there is one.
-    ///
-    /// note: there is room for exactly one, which is a decision a prompt can live with and two ways
-    /// into one session cannot. A person at the desk and a client attached to the same session who
-    /// both type during a turn produce one message and two [`Did::Queued`]s, and the one whose line
-    /// was replaced is never told. Whoever hands a line in on somebody else's behalf reads this first and says so; see
-    /// [`crate::remote`], which is the caller that made it worth exposing.
-    pub fn queued(&self) -> Option<&str> {
-        self.typed_ahead.as_deref()
+    /// The messages waiting for the running turn to end, oldest first; each will get a turn of
+    /// its own.
+    pub fn queued(&self) -> impl ExactSizeIterator<Item = &str> {
+        self.typed_ahead.iter().map(String::as_str)
     }
 
     /// Puts the prompt back to composing a message, whatever it was doing.

@@ -539,8 +539,16 @@ pub struct Attached {
     /// eighteen answers is a different kind of dishonest, and a client cannot work this out from
     /// the list above, because the list is exactly what it leaves out.
     pub undecided: usize,
-    /// A message somebody typed into the running turn, waiting for it to end.
+    /// The next message somebody typed into the running turn, waiting for it to end.
     pub queued: Option<String>,
+    /// The ones waiting behind that one, oldest first; each gets a turn of its own.
+    ///
+    /// note: beside [`Attached::queued`] rather than instead of it, because a session holds a queue
+    /// now and held one message before. A client written against `queued` reads the next of them
+    /// and is not broken by the rest, and a projection from an older session reads as nothing
+    /// waiting behind.
+    #[serde(default)]
+    pub queued_behind: Vec<String>,
     /// What the shell tool's sandbox came to, or nothing where there is none.
     pub confinement: Option<String>,
 }
