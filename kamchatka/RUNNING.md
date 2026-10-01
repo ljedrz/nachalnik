@@ -158,7 +158,8 @@ letters, once the kernel's own questions are.
 
 A question still open when a client's input closes is left for somebody else: the next client to
 attach, the desk where the session is drawn, or this one coming back. A client cannot tell whose
-question it is, so answering it would be deciding for whoever was asked. A script that drives a session
+question it is, so answering it would be deciding for whoever was asked. The lines of its script
+that were waiting for that turn to be over go unsent, and it says which as it leaves. A script that drives a session
 alone and wants its questions answered on the way out says so with `--on-ask deny` or
 `--on-ask allow` on the `--connect` command line; a settings file's `on-ask` is for runs that have
 nobody else to ask, and `--connect` does not read it. `leave`, the `--connect` default, is refused

@@ -202,6 +202,12 @@ minor bump may break you.
   among the classes a `select` takes, and a model looking for its own notes reached for it and
   found nothing, since a note is a `reference` from source `agent`, not a memory. The description
   now says the notes are `source:agent`.
+- **A `--connect` that leaves its questions leaves with a line still waiting.** A script's line
+  read while a question was open was held for the turn to be over, and while it was held the
+  input was not read - so `printf 'go\n/budget\n' | kamchatka --connect` against a turn that
+  stopped on a question said it was leaving the question and then stayed attached for as long as
+  nobody answered. It reads on now, and once the input has closed it leaves, naming the lines it
+  did not send.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

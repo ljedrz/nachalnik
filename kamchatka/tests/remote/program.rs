@@ -637,6 +637,51 @@ async fn a_client_that_leaves_its_questions_leaves_them_for_the_next_one() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A client that leaves its questions leaves too when a line of its own is held behind one, and
+/// says the line was not sent.
+///
+/// note: found live. `/budget` piped after a message whose turn stopped on a question was held for
+/// the turn to be over, and the turn was waiting for another client: the client said it was
+/// leaving the question and then stayed attached for as long as anybody let it.
+#[tokio::test]
+async fn a_line_held_behind_a_question_it_leaves_does_not_keep_the_client() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("it would not let me"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"go\n/budget\n")
+        .await
+        .expect("could not type");
+    drop(feed);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .leaves_questions()
+            .waits_for_turns()
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("it is left for another client"), "{prose}");
+    assert!(prose.contains("`/budget` was not sent"), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A session speaking a version this client does not is left rather than attached to again.
 ///
 /// note: the client sends the version this build speaks, so the only way to be refused for one is
