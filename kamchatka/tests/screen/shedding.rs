@@ -334,7 +334,7 @@ async fn with_no_limit_the_first_rule_runs_and_the_second_does_not() {
     );
 }
 
-/// The whole of an output a limit shortened is archived and stays so; the short copy the model
+/// The whole of an output a limit shortened is excluded and stays so; the short copy the model
 /// was shown is what the first rule takes.
 #[tokio::test]
 async fn the_whole_of_a_shortened_output_is_not_the_first_rules() {
@@ -355,8 +355,15 @@ async fn the_whole_of_a_shortened_output_is_not_the_first_rules() {
     let items = kernel.items();
     let whole = items
         .iter()
-        .find(|item| item.state == ContextState::Archived)
-        .expect("the whole of it is archived")
+        // told apart by its note, which says what it is; its state says only that it is out
+        .find(|item| {
+            item.state == ContextState::Excluded
+                && item
+                    .note
+                    .as_deref()
+                    .is_some_and(|note| note.starts_with("the whole output"))
+        })
+        .expect("the whole of it is excluded")
         .id;
     let short = items
         .iter()
@@ -369,7 +376,7 @@ async fn the_whole_of_a_shortened_output_is_not_the_first_rules() {
 
     let plan = planned(&Shedder::under(0.8), &kernel, Some(1_000_000)).await;
     // the short copy is smaller than a marker at 200 bytes, so there may be nothing to do at all;
-    // what must not happen is the archived whole being named
+    // what must not happen is the excluded whole being named
     if let Some(plan) = plan {
         assert!(!plan.elide.contains(&whole) && !plan.remove.contains(&whole));
         assert!(plan.elide.iter().all(|id| *id == short), "{:?}", plan.elide);
