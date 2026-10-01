@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.8, whose `ModelInfo` is `#[non_exhaustive]` and says where a provider
+  sends its requests. Both dialects build their `ModelInfo` with its `with_` methods and report
+  their base URL in `ModelInfo::endpoint`, and every provider here names runtime types throughout
+  its public interface, so this release cannot be mixed with a 0.7-series runtime.
 - **Both dialects say where their requests go.** `OpenAiCompatible` and `Gemini` report their base
   URL as `ModelInfo::endpoint`, without any `user:password@` or query string in it, since that
   goes into every record of a session. A `set_endpoint` that keeps the model's name is therefore
