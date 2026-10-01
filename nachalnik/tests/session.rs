@@ -804,7 +804,7 @@ async fn a_result_that_pairs_with_no_call_is_named_and_an_unanswered_call_is_not
 /// The whole of a shortened output is the kernel's own second answer to its call, and a snapshot
 /// holding one has nothing wrong with it - in whatever state the pair is left.
 ///
-/// note: `/load` archives everything that was in the context, the shown copy with the rest, which
+/// note: `/load` excludes everything that was in the context, the shown copy with the rest, which
 /// is the shape that first surfaced this. A second answer that is not the kernel's is still named.
 #[tokio::test]
 async fn the_whole_of_a_shortened_output_is_not_a_second_answer() {
@@ -835,9 +835,9 @@ async fn the_whole_of_a_shortened_output_is_not_a_second_answer() {
     assert!(snapshot.problems().is_empty(), "{:?}", snapshot.problems());
 
     let ids: Vec<_> = results.iter().map(|item| item.id).collect();
-    kernel.set_state(ids, ContextState::Archived, None);
-    let archived = kernel.snapshot();
-    assert!(archived.problems().is_empty(), "{:?}", archived.problems());
+    kernel.set_state(ids, ContextState::Excluded, None);
+    let excluded = kernel.snapshot();
+    assert!(excluded.problems().is_empty(), "{:?}", excluded.problems());
 
     let mut twice = snapshot.clone();
     let shown = twice

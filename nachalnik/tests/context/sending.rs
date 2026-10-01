@@ -369,8 +369,8 @@ fn two_calls_sharing_an_identifier_each_keep_their_own_result() {
 ///
 /// note: the two ways to fail to claim a call read the same and are not the same thing. A call
 /// this projection does not carry is an orphan; a call it carries that is already answered is a
-/// second result for it. Telling somebody who has just restored an archive that the call "is not
-/// in the projection" sends them looking for a call that is on their screen.
+/// second result for it. Telling somebody who has just restored the whole of one that the call "is
+/// not in the projection" sends them looking for a call that is on their screen.
 #[tokio::test]
 async fn a_second_result_for_one_call_is_not_reported_as_a_missing_call() {
     let kernel = kernel();
@@ -378,7 +378,7 @@ async fn a_second_result_for_one_call_is_not_reported_as_a_missing_call() {
     kernel.push(ContextItem::user("read it"));
     kernel.push(ContextItem::assistant("reading", vec![asked.clone()]));
 
-    // the shape `Config::keep_truncated_output` leaves behind: the whole, archived, and the
+    // the shape `Config::keep_truncated_output` leaves behind: the whole, excluded, and the
     // shortened copy the model was handed, both answering the one call
     let whole = kernel.push(ContextItem::tool_result(
         asked.id.clone(),
@@ -386,7 +386,7 @@ async fn a_second_result_for_one_call_is_not_reported_as_a_missing_call() {
         "the whole file".repeat(50),
         false,
     ));
-    kernel.set_state([whole], ContextState::Archived, None);
+    kernel.set_state([whole], ContextState::Excluded, None);
     kernel.push(ContextItem::tool_result(
         asked.id.clone(),
         "read",

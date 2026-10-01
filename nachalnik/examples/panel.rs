@@ -337,7 +337,12 @@ fn report_contexts(panel: &[Panelist]) {
         let budget = panelist.kernel.budget();
         let superseded = items
             .iter()
-            .filter(|i| i.state == ContextState::Superseded)
+            .filter(|i| {
+                i.state == ContextState::Excluded
+                    && i.note
+                        .as_deref()
+                        .is_some_and(|note| note.starts_with("replaced by item"))
+            })
             .count();
 
         println!(

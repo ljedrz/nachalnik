@@ -54,7 +54,7 @@ impl Going {
     /// What the next request does with each item: what it costs, or why it is not in it.
     ///
     /// note: not [`ContextItem::tokens`], which is what an item *holds*. An elided one holds a
-    /// thousand tokens and costs the dozen its marker takes; an archived one holds whatever it
+    /// thousand tokens and costs the dozen its marker takes; an excluded one holds whatever it
     /// holds and costs nothing. A pane showing the held figure under a column headed `tokens`
     /// would be answering a question nobody asked, and would disagree with the status line
     /// beside it by exactly the elided items.
@@ -144,7 +144,7 @@ impl Going {
     ///
     /// note: the difference between the two counts rather than the whole of an item that is not
     /// going, because an item is not simply in or out. Those are the same number for an
-    /// excluded, archived or repaired-away item, whose message costs nothing; they are not for
+    /// excluded or repaired-away item, whose message costs nothing; they are not for
     /// the two that are partly there. An elided one holds its content and sends a marker. And an
     /// assistant turn under an endpoint that will not take reasoning back - which is every
     /// OpenAI-compatible one - sends what it said and holds what it thought, which on a reasoning

@@ -259,7 +259,7 @@ impl Kernel {
     fn record_output(&self, prepared: &PreparedCall, mut output: ToolOutput, batch: &mut Batch) {
         // an output limit decides what the *model* is shown. It is not permission to throw the
         // rest away, so unless the user has said otherwise the whole of it goes into the context
-        // too - archived, listed, inspectable, and restorable like anything else
+        // too - excluded, listed, inspectable, and restorable like anything else
         let limit = prepared
             .tool
             .limit(&prepared.call)
@@ -273,14 +273,14 @@ impl Kernel {
                 output.content.clone(),
                 output.is_error,
             );
-            item.state = ContextState::Archived;
+            item.state = ContextState::Excluded;
             // the same label its short copy gets, because the two are one call and the row
             // somebody opens to read what was cut is this one. Labelled `fs` beside an `fs:read`
             // copy, it would read as a different call by a tool that did not say what it did
             if let Some(label) = Self::operation_label(&*prepared.tool, &prepared.call) {
                 item.label = label;
             }
-            // the note says why it is archived, which is what a note is for and which stops being
+            // the note says why it is out, which is what a note is for and which stops being
             // true the moment somebody activates it. The `because` is the half that does not:
             // this item is the whole of an output that was shortened, whatever state it ends up in
             item.note = Some("the whole output; the model was shown a truncated copy".to_owned());

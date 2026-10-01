@@ -334,7 +334,7 @@ impl Changes {
 /// action for what such a model is actually doing. The `[id]` alone is a constant-shaped signal in
 /// a template that reads the same every time, which is the shape a model learns to skim.
 ///
-/// note: what still goes into the request, rather than everything with the name. An archived note
+/// note: what still goes into the request, rather than everything with the name. An excluded note
 /// costs nothing and contradicts nothing, and a warning about one is a warning about nothing.
 fn already(clashes: &[ContextId], label: &str) -> String {
     if clashes.is_empty() {
@@ -703,12 +703,12 @@ impl Changes {
             self.note_pin(kernel, id, ContextState::Pinned, Some(reason.to_owned()));
         }
         // the way back from having written it is to put it away; nothing here destroys anything,
-        // so an undone note is archived and still listed rather than gone
+        // so an undone note is excluded and still listed rather than gone
         self.record(
             kernel,
             Undoing::States(vec![(
                 id,
-                ContextState::Archived,
+                ContextState::Excluded,
                 Some("a note this tool wrote, and then walked back".to_owned()),
             )]),
         );

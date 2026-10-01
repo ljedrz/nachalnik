@@ -24,10 +24,10 @@
 //!
 //! - [`introspect::Context`] is the context. It lists what is being carried and what each item
 //!   costs, reports the budget against what the last request really cost, shows the request about
-//!   to go out, and finds text anywhere in it - the archive included, which nothing else can read
-//!   without paying to carry it again. It also elides, excludes, pins, restores and rewrites what
-//!   is being carried, writes down something compaction cannot take, and walks its own changes
-//!   back.
+//!   to go out, and finds text anywhere in it - what is excluded included, which nothing else can
+//!   read without paying to carry it again. It also elides, excludes, pins, restores and rewrites
+//!   what is being carried, writes down something compaction cannot take, and walks its own
+//!   changes back.
 //! - [`introspect::Fork`] stands up a throwaway copy of the session and asks it something, so an
 //!   answer can be read before it is given, and a piece of context can be taken away to see what
 //!   it was doing.

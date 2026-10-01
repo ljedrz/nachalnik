@@ -1,8 +1,8 @@
 //! Items: what one is, what state it is in, and what changing it does to the rest.
 //!
-//! note: the invariant every one of these is a version of - nothing is destroyed. An excluded,
-//! archived or superseded item keeps its identifier, is still listed, is still inspectable, and
-//! comes back with a `set_state`. Removal is a state change, which is why `pinning_is_just_
+//! note: the invariant every one of these is a version of - nothing is destroyed. An excluded or
+//! elided item keeps its identifier, is still listed, is still inspectable, and comes back with a
+//! `set_state`. Removal is a state change, which is why `pinning_is_just_
 //! another_state` is not the joke the name makes it sound like.
 
 use std::sync::Arc;
@@ -249,7 +249,7 @@ fn superseding_is_explicit_and_reversible() {
         .supersede(old, ContextItem::file("src/a.rs", "fn a() -> u8 { 1 }"))
         .unwrap();
 
-    assert_eq!(kernel.item(old).unwrap().state, ContextState::Superseded);
+    assert_eq!(kernel.item(old).unwrap().state, ContextState::Excluded);
     assert!(!kernel.item(old).unwrap().is_projected());
     assert_eq!(
         kernel.item(old).unwrap().note.as_deref(),
@@ -275,6 +275,33 @@ fn superseding_is_explicit_and_reversible() {
             .supersede(ContextId(999), ContextItem::user("x"))
             .is_err()
     );
+}
+
+/// The two words a state used to have beside `excluded` still read back as it, and only
+/// `excluded` is written.
+///
+/// note: `archived` and `superseded` were `excluded` under two more names, and nothing branched on
+/// which: why an item is out is its note. A snapshot or a log written before they went says them,
+/// and has to load - an item out of the request then is out of it now, for the same reason, which
+/// its note still gives.
+#[test]
+fn the_words_excluded_used_to_have_read_back_as_it() {
+    for old in ["archived", "superseded"] {
+        let read: ContextState = serde_json::from_value(serde_json::json!(old)).unwrap();
+        assert_eq!(read, ContextState::Excluded, "{old}");
+    }
+    assert_eq!(
+        serde_json::to_value(ContextState::Excluded).unwrap(),
+        serde_json::json!("excluded")
+    );
+
+    // and in a whole item, which is where a snapshot carries one
+    let mut item = serde_json::to_value(ContextItem::user("from an older build")).unwrap();
+    item["state"] = serde_json::json!("archived");
+    item["note"] = serde_json::json!("the whole output; the model was shown a truncated copy");
+    let item: ContextItem = serde_json::from_value(item).unwrap();
+    assert_eq!(item.state, ContextState::Excluded);
+    assert!(!item.is_projected());
 }
 
 #[test]

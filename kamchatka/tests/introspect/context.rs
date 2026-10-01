@@ -421,17 +421,18 @@ async fn budget_promises_no_state_the_vocabulary_cannot_reach() {
         .expect("and the clause saying which of them the model sets")
         .0;
 
-    for state in ["archived", "pinned", "superseded"] {
-        assert!(
-            !claimed.contains(state),
-            "`budget` offers `{state}` as a state the model sets, and no action leaves one: {said}"
-        );
-    }
+    // a pin holds nothing back, so it is not among them
+    assert!(
+        !claimed.contains("pinned"),
+        "`budget` offers `pinned` as a way of holding tokens back: {said}"
+    );
     for state in ["excluded", "elided"] {
         assert!(claimed.contains(state), "{said}");
     }
-    // archived is still worth naming, as somewhere items arrive rather than somewhere to send them
-    assert!(said.contains("archived"), "{said}");
+    // and what the program excludes is said as excluded, which is one word for one thing: a note
+    // walked back and the whole of a shortened answer are out the same way anything else is
+    assert!(said.contains("the program excludes too"), "{said}");
+    assert!(!said.contains("archived"), "{said}");
 }
 
 /// A turn whose thinking the endpoint will not take back is ranked by what it sends.
@@ -504,9 +505,9 @@ async fn the_expensive_list_ranks_by_what_a_row_sends_not_by_what_it_holds() {
         "an ordinal here reads as item ids, because the table under it is a column of them: {said}"
     );
     // note: it was `three states you set` until `archive` stopped being an action, which made the
-    // count wrong as well as the ordinal - the model sets two of the four now, and `archived` is
-    // somewhere items arrive rather than somewhere to send them. Naming them is the part that
-    // matters and the part this holds; the number was never the point
+    // count wrong as well as the ordinal - the model sets two of the states, and what the program
+    // excludes on its own is said beside them rather than under a word of its own. Naming them is
+    // the part that matters and the part this holds; the number was never the point
     assert!(
         said.contains("excluded or elided to a marker, which you set"),
         "so the ones that are the caller's are named as states instead: {said}"
@@ -797,7 +798,7 @@ async fn look_counts_what_the_projection_carries_rather_than_the_states() {
         false,
     ));
     kernel.push(ContextItem::user("go on"));
-    kernel.set_state([turn], ContextState::Archived, Some("set aside".into()));
+    kernel.set_state([turn], ContextState::Excluded, Some("taken out".into()));
 
     kernel.turn().await.expect("the turn failed");
 

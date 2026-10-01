@@ -408,8 +408,6 @@ fn ops() -> impl Strategy<Value = Vec<Op>> {
         Just(ContextState::Excluded),
         Just(ContextState::Pinned),
         Just(ContextState::Elided),
-        Just(ContextState::Archived),
-        Just(ContextState::Superseded),
     ];
     let op = prop_oneof![
         4 => pushed.prop_map(Op::Push),
@@ -544,7 +542,7 @@ fn the_generators_reach_what_the_properties_are_about() {
         /// An undo that undid something, and a redo that put it back.
         an_undo_that_did_something: usize,
         a_redo_that_did_something: usize,
-        /// A superseded item, since `supersede` is the only thing that makes that state.
+        /// A superseded item, excluded with the note `supersede` gives it.
         something_superseded: usize,
         /// A snapshot with claimed identifiers in it.
         a_reserved_identifier: usize,
@@ -584,7 +582,13 @@ fn the_generators_reach_what_the_properties_are_about() {
             let items = world.kernel.items();
             if items
                 .iter()
-                .any(|item| item.state == ContextState::Superseded)
+                .any(|item| {
+                    item.state == ContextState::Excluded
+                        && item
+                            .note
+                            .as_deref()
+                            .is_some_and(|note| note.starts_with("replaced by item"))
+                })
             {
                 reached.something_superseded += 1;
             }

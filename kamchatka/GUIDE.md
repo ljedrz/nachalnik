@@ -60,9 +60,7 @@ the next request — and the column that matters most, what the model will actua
 | `·` | active | it goes |
 | `▪` | pinned | it goes, and the compactor is refused if it comes for it |
 | `…` | elided | it goes as a one-line marker in its place |
-| `-` | excluded | it does not go |
-| `▫` | archived | kept whole, and it does not go |
-| `~` | superseded | a later item stands in its place |
+| `-` | excluded | it does not go; the row says who took it out, and why |
 
 The line along the bottom counts the items and how many of them are not having what they say
 sent, the elided ones among them; past the limit it also says by how much the request is over.
@@ -152,7 +150,7 @@ never had it. So the line it prints says what it did — which item, and how man
 over — and the byte count is what to compare against whatever turns up in the paste.
 
 An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
-whole of it beside it, marked `▫ archived` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
+whole of it beside it, marked `- excluded` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
 row is how you say **send the whole thing**, as `/restore` with its number is, and the token count
 in the row is what it will cost you.
 
@@ -191,9 +189,10 @@ stays excluded and an elided one stays elided. What it said before is under <kbd
 reads the item out of the context rather than keeping its own copy. Trimming a 2,000-line file down
 to the function that matters is two keystrokes and a delete.
 
-The `~ superseded` state is never an edit's. It belongs to [`Kernel::supersede`], the shape for a
-client whose next round replaces the last while the earlier ones stay readable, and a session saved
-by one of those still draws in order here.
+An edit never makes a second item. [`Kernel::supersede`] does - the shape for a client whose next
+round replaces the last while the earlier ones stay readable: the new item goes in and the old one
+is excluded, with a note naming the new - and a session saved by one of those still draws in order
+here.
 
 [`Kernel::supersede`]: https://docs.rs/nachalnik/latest/nachalnik/struct.Kernel.html#method.supersede
 
@@ -767,16 +766,16 @@ sends — the column the decision is actually made from — and says what it is 
 because an agent that cannot see the difference cannot tell a context it could shrink from one it
 cannot.
 
-`search` is the one that reaches the archive. An archived item is kept in full and never sent, and
-reading one back copies it into the context, so without `search` a session that had put its largest
-outputs away could not look at any of them without undoing the saving it had just made. That would
-make the archive write-only from the agent's side, which is not what *nothing is destroyed* is
-supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
+`search` is the one that reaches what is excluded. An excluded item is kept in full and never sent,
+and reading one back copies it into the context, so without `search` a session that had put its
+largest outputs away could not look at any of them without undoing the saving it had just made.
+That would make what is excluded write-only from the agent's side, which is not what *nothing is
+destroyed* is supposed to mean. Same rule as `log`: the count and the price first, the lines on request, never the
 item. A search answers with how many lines say the text, what taking them all would cost, and which
 items they are in, with each one's state; `take` shows that many of the lines, up to 64 — a wider
 one is taken as 64 and the answer says so, with what narrows for the rest, because a result the
 compactor elides on the way in is one the model paid for and did not get. An answer without `take`
-says that searching an archived item left it archived.
+says that searching an excluded item left it excluded.
 
 Case is ignored, because a model that searched for `landlock` in a context full of `Landlock` and
 was told there were no matches has been told something false about itself, silently — the one

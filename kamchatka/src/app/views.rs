@@ -141,7 +141,7 @@ impl App {
     /// note: three answers rather than one, and the middle one is the reason. An item that is
     /// still sending its content is worth what the projection says it costs - the message it
     /// becomes, which is the figure the budget is built from. One that is *not* any more -
-    /// excluded, archived, or elided since - is worth what it holds, because that is what it
+    /// excluded or elided since - is worth what it holds, because that is what it
     /// contributed to the provider's figure and that is what has to come back out of it; the
     /// marker standing in its place now is already counted on the other side. One that no longer
     /// exists at all, because an undo took it, is worth nothing anybody can recover, and the next
@@ -175,7 +175,7 @@ impl App {
     ///
     /// note: [`Context::tokens_withheld`](nachalnik::Context::tokens_withheld) answers this from
     /// the item states, which is the right answer to a question about states and the wrong one
-    /// here: it counts an excluded, archived or elided item and misses one the projector repaired
+    /// here: it counts an excluded or elided item and misses one the projector repaired
     /// away, because that one's state says it is sending. `/budget` and the context tab have to
     /// agree about this figure or they are two accounts of one request.
     ///

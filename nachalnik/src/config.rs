@@ -71,17 +71,17 @@ pub struct Config {
     /// note: Truncation is recorded on the context item and reported in
     /// [`Event::ToolFinished`], so it can never happen silently.
     pub default_tool_output_limit: Option<usize>,
-    /// Whether the whole of a truncated tool output is kept in the context, archived beside the
+    /// Whether the whole of a truncated tool output is kept in the context, excluded, beside the
     /// shortened copy the model is shown.
     ///
     /// note: On by default, because an output limit is a decision about what the *model* is
     /// shown, and reading it as permission to destroy what the tool actually said would make
     /// this the one place in the crate where something is removed and cannot be brought back.
-    /// With it on, the whole output is a
-    /// [`ContextState::Archived`](crate::ContextState::Archived) item, listed and inspectable
+    /// With it on, the whole output is an
+    /// [`ContextState::Excluded`](crate::ContextState::Excluded) item, listed and inspectable
     /// like any other, and restoring it is a [`Kernel::set_state`] like any other.
     ///
-    /// note: Keeping it costs a pointer, not a copy - the archived item shares the allocation
+    /// note: Keeping it costs a pointer, not a copy - the excluded item shares the allocation
     /// the tool already produced, and only the shortened copy is new. What it does cost is
     /// *retention*: with this off, the whole output is dropped once it has been shortened. Turn
     /// it off when a tool can produce more than you are willing to go on holding. The truncation

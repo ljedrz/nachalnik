@@ -504,10 +504,10 @@ fn told_by_the_world(item: &ContextItem) -> bool {
 
 /// Where a piece of text is in the context, and what reading it would cost - the count first.
 ///
-/// note: the thing `look` cannot do. An archived item is kept in full and never sent, and the only
+/// note: the thing `look` cannot do. An excluded item is kept in full and never sent, and the only
 /// other way to see inside one is to read it back, which copies it into the context - so a session
-/// could not look at anything it had put away without undoing the saving. That would make the
-/// archive write-only from the model's side, which is not what "nothing is destroyed" is supposed
+/// could not look at anything it had put away without undoing the saving. That would make what is
+/// excluded write-only from the model's side, which is not what "nothing is destroyed" is supposed
 /// to mean.
 ///
 /// note: so the rule is `log`'s rule, for the same reason: the count and its price first, the
@@ -604,8 +604,8 @@ pub(super) fn search(
     };
     if matches == 0 {
         return format!(
-            "no line of your context says `{text}`{where_}. Case was ignored, archived and \
-             excluded items were searched, and {read} item(s) were looked at.{unknown}\n",
+            "no line of your context says `{text}`{where_}. Case was ignored, excluded items were \
+             searched, and {read} item(s) were looked at.{unknown}\n",
         );
     }
 
@@ -647,7 +647,7 @@ pub(super) fn search(
     let Some(take) = take else {
         out.push_str(
             "\n`take` shows that many of the lines. None of this puts an item into your request: \
-             an archived one is still archived, and searching it changed nothing.\n",
+             an excluded one is still excluded, and searching it changed nothing.\n",
         );
 
         return out;
@@ -758,10 +758,10 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine) -> String {
 
     let mut out = format!(
         "the next request is ~{} tokens{room}\n  {} in the context, {} in the tool definitions\n\
-         ~{} tokens are being held back: excluded or elided to a marker, which you set; archived, \
-         which is where a note you undid and the whole of a shortened answer go; or thinking this \
-         endpoint will not take back, which is not yours to change. `restore` puts an excluded, \
-         elided or archived item back\n",
+         ~{} tokens are being held back: excluded or elided to a marker, which you set - and the \
+         program excludes too: a note you walked back, and the whole of a shortened answer; or \
+         thinking this endpoint will not take back, which is not yours to change. `restore` puts \
+         an excluded or elided item back\n",
         thousands(budget.used()),
         thousands(budget.context_tokens),
         thousands(budget.tool_tokens),

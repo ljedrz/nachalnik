@@ -1628,7 +1628,7 @@ async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
 ///
 /// note: the sequence is generated now, where it used to be six moves somebody chose. The six
 /// were `excluded, restored, elided, edited, undone, redone` over three fixed items, which is one
-/// path through a space that has `pinned`, `archived` and `superseded` in it as well, and no
+/// path through a space that has pins and supersessions in it as well, and no
 /// interleaving at all - and the interleavings are where this went wrong before: a line drawn
 /// twice needs a state left and returned to, and the six could not do that. The shrinker is the
 /// other half of the reason. The hand-written version failed immediately on its own fixture, with
@@ -1647,10 +1647,9 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         Restore(usize),
         Elide(usize),
         Pin(usize),
-        Archive(usize),
         /// New words under the same identifier: what `e` does, and what `context revise` does.
         Edit(usize),
-        /// New words beside it, with the old marked superseded. Nothing in this program does
+        /// New words beside it, with the old excluded. Nothing in this program does
         /// this any more - `e` replaces - but [`Kernel::supersede`] is the runtime's and a
         /// resumed context can arrive with one in it, so the chat has to draw it either way.
         Supersede(usize),
@@ -1658,7 +1657,7 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         Redo,
     }
 
-    /// What a run reached, so that a property over nine moves cannot quietly become one over two.
+    /// What a run reached, so that a property over eight moves cannot quietly become one over two.
     #[derive(Default, Debug)]
     struct Reached {
         withheld_an_item: usize,
@@ -1666,7 +1665,6 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         excluded: usize,
         elided: usize,
         pinned: usize,
-        archived: usize,
         superseded: usize,
         edited: usize,
         undid_something: usize,
@@ -1679,7 +1677,6 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         2 => (0usize..8).prop_map(Move::Restore),
         3 => (0usize..8).prop_map(Move::Elide),
         2 => (0usize..8).prop_map(Move::Pin),
-        2 => (0usize..8).prop_map(Move::Archive),
         2 => (0usize..8).prop_map(Move::Edit),
         2 => (0usize..8).prop_map(Move::Supersede),
         2 => Just(Move::Undo),
@@ -1739,10 +1736,6 @@ fn the_chat_is_the_conversation_the_model_is_in() {
                         Move::Pin(k) => {
                             kernel.set_state([at(k)], ContextState::Pinned, None);
                             tally.pinned += 1;
-                        }
-                        Move::Archive(k) => {
-                            kernel.set_state([at(k)], ContextState::Archived, None);
-                            tally.archived += 1;
                         }
                         Move::Edit(k) => {
                             let said = format!("a question of E{edits:02}WORD");
@@ -1809,7 +1802,7 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         }
     );
 
-    // a property over nine moves that only ever reached two of them is one nobody should trust,
+    // a property over eight moves that only ever reached two of them is one nobody should trust,
     // and the way that happens is a reweighted `prop_oneof!` rather than anybody's decision
     let reached = reached.into_inner();
     for (what, count) in [
@@ -1818,7 +1811,6 @@ fn the_chat_is_the_conversation_the_model_is_in() {
         ("excluded", reached.excluded),
         ("elided", reached.elided),
         ("pinned", reached.pinned),
-        ("archived", reached.archived),
         ("superseded", reached.superseded),
         ("edited", reached.edited),
         ("undid_something", reached.undid_something),

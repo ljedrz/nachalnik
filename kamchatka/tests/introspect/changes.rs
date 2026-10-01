@@ -1667,7 +1667,7 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
         Some("so it outlives this turn")
     );
 
-    // and it is one of its own changes, so it can walk it back - which archives it rather than
+    // and it is one of its own changes, so it can walk it back - which excludes it rather than
     // destroying it, like everything else here
     let tool = kernel.tool("context").expect("installed");
     tool.invoke(
@@ -1678,7 +1678,7 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
     .expect("the tool answered");
 
     let written = kernel.item(written.id).expect("still listed");
-    assert_eq!(written.state, ContextState::Archived);
+    assert_eq!(written.state, ContextState::Excluded);
     assert!(written.content.to_text().contains("do not touch the lexer"));
 }
 

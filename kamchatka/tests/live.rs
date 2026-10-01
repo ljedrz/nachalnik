@@ -1383,7 +1383,7 @@ async fn a_shortened_read_is_reported_and_the_limit_can_be_raised() {
         app.kernel
             .items()
             .iter()
-            .any(|item| matches!(item.state, ContextState::Archived)),
+            .any(|item| matches!(item.state, ContextState::Excluded)),
         "and the whole of it was kept"
     );
 
@@ -1454,14 +1454,13 @@ async fn the_whole_of_a_cut_output_put_back_is_shown_as_left_out() {
     )
     .await;
 
-    let archived = app
+    let whole = app
         .kernel
         .items()
         .into_iter()
-        .find(|item| matches!(item.state, ContextState::Archived))
+        .find(|item| matches!(item.state, ContextState::Excluded))
         .expect("the whole was kept");
-    app.kernel
-        .set_state([archived.id], ContextState::Active, None);
+    app.kernel.set_state([whole.id], ContextState::Active, None);
 
     // two results now answer one call, and the projector drops one of them
     let going = app.going();

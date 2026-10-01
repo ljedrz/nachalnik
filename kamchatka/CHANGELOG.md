@@ -34,6 +34,12 @@ minor bump may break you.
 
 ### changed
 
+- **An item that is out of the request is `excluded`, whoever took it out.** The context tab
+  drew the whole of a shortened output as `▫ archived` and an item a newer one replaced as
+  `~ superseded`; both are `- excluded` now, and the row's note says why, as it always did.
+  `/load` excludes what was in the context rather than archiving it, an undone note is excluded,
+  and `context`'s `budget` and `search` say `excluded` where they said `archived`. A session saved
+  with the old words loads, and reads them as `excluded`.
 - **A projection over the line limit has its longest lines cut down, rather than leaving the
   session unattachable.** One message larger than `MAX_LINE` in the context made `Message::Attached`
   itself that long, and a projection cannot be skipped the way an oversized record is, so every

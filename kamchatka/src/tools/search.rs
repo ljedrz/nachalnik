@@ -706,7 +706,7 @@ impl Grep {
         // this tool already gives a capped answer - ask for `files_only` - is the same move, so
         // taking it rather than printing it saves a round trip and the lines nobody asked for.
         //
-        // note: what is lost is that the lines are not archived beside the shortened copy, the
+        // note: what is lost is that the lines are not excluded beside the shortened copy, the
         // way an output limit's truncation leaves them. They were never handed over: a tool
         // deciding what its answer *is* is a different thing from the kernel shortening one it
         // was given, and this tool has always decided - it stops at a hundred matches and never

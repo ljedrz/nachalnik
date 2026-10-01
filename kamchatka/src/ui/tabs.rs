@@ -889,7 +889,7 @@ pub(super) fn draw_trace(frame: &mut Frame, app: &mut App, inner: Rect) -> Scrol
 /// The mark and style an item in this state is drawn with.
 ///
 /// note: shared by the context tab and the chat, so that one screen cannot call an item
-/// superseded while the other draws it as though it were still being read.
+/// excluded while the other draws it as though it were still being read.
 fn state_mark(state: ContextState) -> (&'static str, Style) {
     match state {
         ContextState::Active => ("·", Style::default()),
@@ -898,8 +898,6 @@ fn state_mark(state: ContextState) -> (&'static str, Style) {
         // in the request, but only as a marker: a mark of its own, because "going" and
         // "not going" is the wrong question about it and either answer would mislead
         ContextState::Elided => ("…", quiet()),
-        ContextState::Archived => ("▫", quiet()),
-        ContextState::Superseded => ("~", quiet()),
         _ => ("?", quiet()),
     }
 }

@@ -87,7 +87,7 @@ async fn setup_tools_says_whether_what_is_cut_is_kept() {
         let said = answered(&kernel);
         match keep {
             true => assert!(
-                said.contains("archived beside what you were shown"),
+                said.contains("excluded beside what you were shown"),
                 "{said}"
             ),
             false => assert!(

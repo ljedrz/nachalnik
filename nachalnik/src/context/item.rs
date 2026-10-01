@@ -85,7 +85,7 @@ impl ContextKind {
 }
 
 /// What the kernel gives as the reason for the whole of a tool output an output limit shortened -
-/// the second result it records for one call, archived beside the copy the model is shown.
+/// the second result it records for one call, kept out beside the copy the model is shown.
 ///
 /// note: one sentence in one place, because it is also how [`Snapshot::problems`] tells the
 /// kernel's own second answer from one something else put there.
@@ -97,18 +97,26 @@ pub(crate) const WHOLE_OUTPUT: &str = "the whole of a tool output an output limi
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
-/// note: three of these - [`ContextState::Excluded`], [`ContextState::Archived`] and
-/// [`ContextState::Superseded`] - are one behaviour under three words. Nothing in this crate
-/// branches on which of them an item is in: [`ContextState::is_projected`] groups them, they are
-/// equally absent from the request, they take a tool call down with them alike, and every one of
-/// them is restorable by [`Kernel::set_state`]. What differs is what a reader is told, which is
-/// worth having and is not a rule: a client that lists a context shows the word, and a selector
-/// picks on it. [`ContextState::Elided`] is the one distinction here that the projector actually
-/// makes; its note says how.
+/// note: one state for each thing the projector does with an item, and no more. There were two
+/// more words for [`ContextState::Excluded`] - `archived` for the whole of a shortened output and
+/// `superseded` for an item [`Kernel::supersede`] replaced - which nothing branched on: they were
+/// equally absent from the request, took a call down with them alike, and came back the same way.
+/// A word that names no behaviour of its own is a second thing to learn, so why an item is out is
+/// its note, which says it in a sentence, and the state says only that it is. Both words still read
+/// back as `excluded`, so a snapshot or a log written with them loads.
+///
+/// note: [`ContextState::Elided`] is the one distinction here the projector makes beyond in and
+/// out; its note says how.
 pub enum ContextState {
     /// Included in the projection.
     Active,
-    /// Not included; taken out by the user or by a [`Compactor`].
+    /// Not included; the item's note says who took it out and why.
+    ///
+    /// note: whoever that was - a person, the model, a [`Compactor`], or the kernel itself, which
+    /// keeps the whole of a shortened tool output out beside the copy the model is shown, and
+    /// takes out an item [`Kernel::supersede`] replaced. It is restored the same way whoever did
+    /// it.
+    #[serde(alias = "archived", alias = "superseded")]
     Excluded,
     /// Included in the projection, and protected: the kernel refuses to let a [`Compactor`]
     /// remove it.
@@ -131,27 +139,13 @@ pub enum ContextState {
     /// [`LinearProjector::send_reasoning`](crate::LinearProjector::send_reasoning). What stays is
     /// the shape: the turn is still there, and its calls still answer their results.
     Elided,
-    /// Not included; kept for the record, and not expected to be wanted again.
-    ///
-    /// note: [`ContextState::Excluded`] with a different thing to say, and the kernel sets it in
-    /// one place: the whole of a tool output an output limit shortened, which is kept so that the
-    /// short copy is not the only one left. "Not expected" is a remark about intent and not a
-    /// restriction - restoring it is the same call as restoring any other.
-    Archived,
-    /// Not included; replaced by a newer item.
-    ///
-    /// note: The kernel sets this only through [`Kernel::supersede`], because deciding that one
-    /// item replaces another is a judgement about meaning - two reads of the same file may be
-    /// two versions or two separate facts - and the kernel is not the one who knows.
-    Superseded,
 }
 
 impl ContextState {
     /// Returns whether an item in this state takes part in the projection.
     ///
     /// note: [`ContextState::Active`], [`ContextState::Pinned`] and [`ContextState::Elided`] do;
-    /// the rest do not. The kernel attaches no other meaning to the remaining three - they are
-    /// there so that *you* can tell why something is out.
+    /// [`ContextState::Excluded`] does not.
     ///
     /// note: an elided item takes part as a marker rather than as its content, so this being
     /// true does not mean the model reads what the item says. [`ContextState::is_elided`] is the
@@ -182,8 +176,6 @@ impl fmt::Display for ContextState {
             Self::Excluded => "excluded",
             Self::Pinned => "pinned",
             Self::Elided => "elided",
-            Self::Archived => "archived",
-            Self::Superseded => "superseded",
         };
         f.write_str(s)
     }

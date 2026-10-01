@@ -118,7 +118,7 @@ fn ops() -> Vec<Op> {
         ),
         Op::new(
             "search",
-            "finds text anywhere in your context, archived items included, which `look` can only \
+            "finds text anywhere in your context, excluded items included, which `look` can only \
              read by copying them in; it says how many lines match and what they would cost \
              before showing you one",
             vec![

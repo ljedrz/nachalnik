@@ -644,7 +644,6 @@ fn whatever_the_forks_the_session_made_is_sound() {
         Just(ContextState::Pinned),
         Just(ContextState::Elided),
         Just(ContextState::Excluded),
-        Just(ContextState::Superseded),
     ];
     let fork = (
         prop::collection::vec(added.clone(), 0..6),

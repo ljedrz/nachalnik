@@ -55,6 +55,17 @@ minor bump may break you.
   `max_requests_per_turn`. The count is the turn's now: a `turn` called from `Deciding` or `Ready`
   carries on from where the last one stopped, and one called from anywhere else starts again.
 
+### removed
+
+- **`ContextState::Archived` and `ContextState::Superseded`.** They were `Excluded` under two more
+  words: nothing branched on either, both left the request the same way, took a call down with
+  them alike and came back with the same `set_state`. Why an item is out is its note, which says it
+  in a sentence. The whole of a shortened tool output is now `Excluded`, with the note it always
+  had, and `Kernel::supersede` excludes the item it replaces, noting `replaced by item N`. Both
+  words still read back as `excluded`, so a snapshot or a log written with them loads; only
+  `excluded` is written. The selectors `state:archived` and `state:superseded` are gone with them.
+  **Breaking**: a `match` naming either variant no longer compiles.
+
 ## [0.7.3] - 2026-09-29
 
 ### added
