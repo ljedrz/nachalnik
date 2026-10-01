@@ -1162,6 +1162,46 @@ async fn a_request_too_long_names_what_is_pinned() {
     );
 }
 
+/// A request the tool definitions alone put over the limit says so and names `/tools toggle`,
+/// rather than asking for exclusions that cannot cover it.
+///
+/// note: found against an endpoint whose model takes a thousand tokens. The request was four
+/// thousand, nearly all of it the tools, and the sentence said to `/exclude` by number until the
+/// corner was under the limit - which no exclusion could ever make it.
+#[tokio::test]
+async fn a_request_the_tools_put_over_the_limit_names_them() {
+    let said = |harness: &Harness| -> String {
+        harness
+            .app
+            .loose
+            .iter()
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.add_tool(Arc::new(
+        nachalnik::test::ConstTool::new("vast", "done").with_schema(json!({
+            "type": "object",
+            "description": "a tool described at length. ".repeat(limit / 4),
+        })),
+    ));
+    harness.send("hello").await;
+    harness.settle().await;
+
+    let told = said(&harness);
+    assert!(
+        told.contains("tokens have to go before it is sent"),
+        "{told}"
+    );
+    assert!(told.contains("the tool definitions to"), "{told}");
+    assert!(told.contains("`/tools toggle ID`"), "{told}");
+    assert!(!told.contains("`/exclude` by number"), "{told}");
+}
+
 /// `/compact` in a context that has not reached the compactor's own target says the context is
 /// under it, rather than that nothing in it is eligible.
 ///

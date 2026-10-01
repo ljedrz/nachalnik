@@ -208,6 +208,12 @@ minor bump may break you.
   stopped on a question said it was leaving the question and then stayed attached for as long as
   nobody answered. It reads on now, and once the input has closed it leaves, naming the lines it
   did not send.
+- **A request the tool definitions put over the limit says so.** The sentence on a request too
+  long to send priced the tool results, the pins and the model's turns, and never the tools: a
+  model with a window of a thousand tokens was refused a four-thousand-token request that was
+  nearly all tool definitions, and told to `/exclude` by number until the corner was under the
+  limit. Where the whole context is less than the overrun it now says what the tools come to, and
+  that `/tools toggle ID` stops offering one.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one
