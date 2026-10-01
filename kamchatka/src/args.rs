@@ -77,7 +77,14 @@ Exit status of a headless run: 0 done, 1 failed, 3 --spend reached, 4 paused at 
 #[derive(Parser)]
 #[non_exhaustive]
 #[command(version, about, long_about = None, after_help = environment())]
+// note: no `help` command beside `reconcile`: `--help` is the one spelling, and every name taken
+// by a command is a first message that stops being one
+#[command(disable_help_subcommand = true)]
 pub struct Args {
+    /// Something to do other than run a session.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// A first message, sent as soon as it starts.
     pub message: Vec<String>,
 
@@ -426,8 +433,9 @@ impl Args {
             .unwrap();
         // note: before anything is looked for, because what this flag is for is
         // `--print-config > kamchatka.json` - and the shell has emptied that file before this runs,
-        // so reading it first is a parse error about the file this was about to write
-        if args.print_config || args.check.is_some() {
+        // so reading it first is a parse error about the file this was about to write. `--check`
+        // and a command run no session for a file's settings to be about
+        if args.print_config || args.check.is_some() || args.command.is_some() {
             return Ok(Given {
                 args,
                 matches,
@@ -834,15 +842,26 @@ pub fn last_endpoint(path: &std::path::Path) -> Option<String> {
 
 /// The last thing the record beside a snapshot says about the model the session was talking to.
 fn last_talked_to(path: &std::path::Path) -> Option<nachalnik::ModelInfo> {
-    use nachalnik::{Event, Record};
+    use nachalnik::Record;
 
     let log = std::fs::read_to_string(path.with_extension("jsonl")).ok()?;
-
-    log.lines()
+    let records: Vec<Record> = log
+        .lines()
         .filter_map(|line| serde_json::from_str::<Record>(line).ok())
-        .filter_map(|record| match record.event {
-            Event::ModelChanged { to, .. } => Some(to),
-            Event::ModelRequested { model, .. } => Some(Some(model)),
+        .collect();
+
+    talked_to(&records)
+}
+
+/// The last thing a log says about the model its session was talking to.
+pub(crate) fn talked_to(records: &[nachalnik::Record]) -> Option<nachalnik::ModelInfo> {
+    use nachalnik::Event;
+
+    records
+        .iter()
+        .filter_map(|record| match &record.event {
+            Event::ModelChanged { to, .. } => Some(to.clone()),
+            Event::ModelRequested { model, .. } => Some(Some(model.clone())),
             _ => None,
         })
         .next_back()
@@ -983,6 +1002,30 @@ impl Given {
             (false, None) => said.join(" or "),
         }
     }
+}
+
+/// What this program does instead of running a session.
+///
+/// note: a command rather than a flag, unlike `--check`, because it takes a list and an output
+/// and is a program of its own. `--check` reads; this writes a session somebody then resumes.
+#[derive(clap::Subcommand)]
+#[non_exhaustive]
+pub enum Command {
+    /// Fold several hard forks of one session into one session to carry on from, and stop.
+    ///
+    /// The items the forks share are kept whole. From each fork's own part only the notes the
+    /// agent wrote down for itself are carried, and two that disagree are both kept and named.
+    /// Nothing is sent to a model: `kamchatka -r` on what it wrote carries on, and `/request`
+    /// shows what the first request would be.
+    Reconcile {
+        /// The forks: sessions `/save` wrote, each with the log beside it where there is one.
+        #[arg(value_name = "PATH", num_args = 2.., required = true)]
+        forks: Vec<String>,
+        /// Where to write the session it makes, as a pair `/load` reads. Nothing there is
+        /// written over.
+        #[arg(short, long, value_name = "PATH")]
+        output: String,
+    },
 }
 
 /// What an unanswerable question is answered with.

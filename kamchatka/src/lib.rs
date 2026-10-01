@@ -113,6 +113,7 @@ pub mod headless;
 pub mod introspect;
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub mod reconcile;
 pub mod remote;
 pub mod sandbox;
 pub mod stopping;

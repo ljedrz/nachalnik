@@ -395,6 +395,20 @@ so a finding is not always a fault; anything found makes the exit status non-zer
 reads are in `nachalnik/tests/records/`, one of every event and a snapshot per format, and a
 reader written against those does not need this program.
 
+`kamchatka reconcile a.json b.json -o merged` folds several forks of one session — one snapshot
+resumed twice and carried on two ways — into one session to carry on from, and starts nothing. The
+items the forks still share are kept whole. From the rest of each fork only the notes the agent
+wrote down for itself come across; the turns stay behind, because the same work done twice in an
+order that never happened is not a conversation. A shared item left in a different state in each
+fork gets the most included one, and an item one fork revised is kept as revised — two forks that
+revised it differently are refused, naming both. Two notes under one label are both kept, and a
+pinned instruction at the point where the forks parted says which notes came from which fork and
+which labels more than one of them carries. Each fork's log is read for the model it was talking
+to, and the token counter's correction is kept only where they all talked to the same one. What it
+writes is a log and a snapshot that check clean, and nothing is written over: `kamchatka -r
+merged.json` carries on, and `/request` is how to read what the first request would be before
+anything is sent.
+
 `/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
 than to the model: the same thing is `google/gemini-3.5-flash` at one address and
 `gemini-3.5-flash` at another, and after an `/endpoint` there is no other way to find out which

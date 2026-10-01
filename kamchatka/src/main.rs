@@ -32,7 +32,7 @@ use crossterm::{
 
 use kamchatka::{
     app::{App, Speaker},
-    args::{Args, Given},
+    args::{Args, Command, Given},
     headless, remote, sandbox,
     wiring::Wired,
 };
@@ -170,7 +170,7 @@ async fn starting<T>(
 /// note: read off the matches rather than declared as `conflicts_with_all`, because the list would
 /// be every argument this program has and two of them are behind features. `--serve` can say it
 /// the short way because it conflicts with two.
-fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
+fn also_typed(matches: &clap::ArgMatches, besides: &[&str]) -> Vec<String> {
     // the declared arguments rather than `ArgMatches::ids`, which also hands back the group clap's
     // derive makes for the struct itself - and that group reads as typed whenever anything in it is
     Args::command()
@@ -181,7 +181,7 @@ fn also_typed(matches: &clap::ArgMatches) -> Vec<String> {
         // belongs to whoever is serving; this says what *this* client does with a question left
         // open when its input closes, which is nobody else's business. See `Client::settle`
         .filter(|id| {
-            !matches!(id.as_str(), "connect" | "on_ask")
+            !besides.contains(&id.as_str())
                 && matches.value_source(id) == Some(clap::parser::ValueSource::CommandLine)
         })
         .map(|id| match id.as_str() {
@@ -236,6 +236,52 @@ fn checked(path: &str) -> Result<()> {
     }
 }
 
+/// `reconcile`: folds the forks into one session, writes it under `output`, and says what it
+/// decided on the way.
+fn reconciled(paths: &[String], output: &str) -> Result<()> {
+    use kamchatka::reconcile::{Fork, reconcile, session_name, write};
+
+    let mut seen = std::collections::HashSet::new();
+    for path in paths {
+        let (_, state) = kamchatka::check::pair(path);
+        let same = std::fs::canonicalize(&state).unwrap_or(state);
+        anyhow::ensure!(
+            seen.insert(same),
+            "{path} is named twice, and a fork reconciled with itself is the fork"
+        );
+    }
+    let forks = paths
+        .iter()
+        .map(|path| Fork::read(path))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let reconciled = reconcile(&forks, &session_name()).map_err(|e| anyhow::anyhow!(e))?;
+    let (log, state) = write(&reconciled, output).map_err(|e| anyhow::anyhow!(e))?;
+
+    let mut out = stdout();
+    let _ = writeln!(
+        out,
+        "the forks agree up to item {}",
+        reconciled.shared_through
+    );
+    for line in &reconciled.said {
+        let _ = writeln!(out, "  {line}");
+    }
+    // the model too, where they agree: a snapshot holds the conversation and not the model, and
+    // the fresh log names none, so `-r` alone would start a session talking to nobody
+    let carry_on = match &reconciled.model {
+        Some(model) => format!("kamchatka -r {state} -m {model}"),
+        None => format!("kamchatka -r {state}"),
+    };
+    let _ = writeln!(
+        out,
+        "{} records in {log}, and a session in {state}: `{carry_on}` carries on from it",
+        reconciled.records.len()
+    );
+
+    Ok(())
+}
+
 /// The program proper: wired the same way whichever of the two drives it.
 async fn session() -> Result<Option<headless::Stop>> {
     let begun = tokio::time::Instant::now();
@@ -260,6 +306,21 @@ async fn session() -> Result<Option<headless::Stop>> {
     if let Some(path) = &args.check {
         return checked(path).map(|()| None);
     }
+    if let Some(command) = &args.command {
+        // refused rather than ignored, as beside `--connect`: a command runs no session, so a
+        // flag for one typed before it would be dropped on the floor
+        let ignored = also_typed(matches, &[]);
+        if !ignored.is_empty() {
+            return Err(anyhow::anyhow!(
+                "a command takes only its own arguments, after its name. Drop {}",
+                ignored.join(", ")
+            ));
+        }
+        return match command {
+            Command::Reconcile { forks, output } => reconciled(forks, output).map(|()| None),
+            _ => unreachable!("every command this build has is matched above"),
+        };
+    }
     // note: printed before anything the file asked for is done, because what it can ask for
     // includes MCP servers - programs started a few lines below - and a sandbox turned off. The
     // conversation exists only once the session is wired, which is too late to be the first place
@@ -276,7 +337,7 @@ async fn session() -> Result<Option<headless::Stop>> {
     // attached to somebody else's session and then failed because *it* could not reach a provider
     // would be failing about a job that was never its own
     if let Some(address) = args.connect.clone() {
-        let ignored = also_typed(matches);
+        let ignored = also_typed(matches, &["connect", "on_ask"]);
         if !ignored.is_empty() {
             return Err(anyhow::anyhow!(
                 "`--connect` takes nothing else but `--on-ask`: the model, the key, the tools, \

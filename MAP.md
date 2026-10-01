@@ -53,6 +53,11 @@ driving a session with a loop of its own had neither and lost every session it r
 `check.rs` is `--check`: a session's two files read the way somebody else's program would read
 them, with no kernel built, and what does not add up said rather than repaired.
 
+`reconcile.rs` is `kamchatka reconcile`: several hard forks of one session folded into one, as a
+`Vec<Snapshot>` in and one `Snapshot` out. The session it makes is the runtime's own - a
+`Kernel::resume` of the items the forks share and one `push_all` of the manifest and the notes it
+carries - so the fresh log is the kernel's, and the forks' logs are read and never merged.
+
 `headless.rs` is the other loop: a line of stdin where the terminal has a key, the session log on
 stdout and what a person reads on stderr. `remote/` is the *third* loop, and a client for it:
 `protocol/` is the wire, framed in `frames.rs`, `server/` is a session with a socket in front of it
