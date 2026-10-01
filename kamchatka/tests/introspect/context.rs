@@ -809,3 +809,30 @@ async fn look_counts_what_the_projection_carries_rather_than_the_states() {
         "{said}"
     );
 }
+
+/// The notes the model wrote are a class it can name, and the description says which: a model
+/// that looked for them as `all:memories` found nothing, since a memory is another source.
+#[tokio::test]
+async fn the_models_own_notes_are_named_in_the_description_and_found_by_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "note", "label": "finding", "content": "the parser is in src/parse.rs", "reason": "to keep it" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "look", "select": "source:agent" }),
+        ),
+    ]));
+    let description = kernel.tool("context").expect("offered").spec().description;
+    assert!(description.contains("`source:agent`"), "{description}");
+
+    kernel.push(ContextItem::user("write it down"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("finding"), "{said}");
+    assert!(!said.contains("nothing in your context matches"), "{said}");
+}

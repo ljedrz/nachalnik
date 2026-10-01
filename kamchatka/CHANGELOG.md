@@ -198,6 +198,10 @@ minor bump may break you.
   writing into a path opened up read-only got `Permission denied` and nothing else. Where the
   person could have made that write, the tool result now says the session may read there and not
   write.
+- **`context` says how to select the notes the model wrote.** Its description listed `memories`
+  among the classes a `select` takes, and a model looking for its own notes reached for it and
+  found nothing, since a note is a `reference` from source `agent`, not a memory. The description
+  now says the notes are `source:agent`.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one
