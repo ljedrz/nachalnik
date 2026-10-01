@@ -38,9 +38,15 @@
 //! note: an abstract unix socket has no path for that right to name, and the X server listens on
 //! one that takes any process of the user's without a cookie - a connection that can type into the
 //! person's terminal. Linux 6.12 scopes it: a command may connect to an abstract socket made
-//! inside its own confinement, and to no other. [`confines_abstract_sockets`] asks. Signals have a
-//! scope of the same age that is left off: each command is confined in a domain of its own, so it
-//! would refuse a command stopping a server an earlier call left running.
+//! inside its own confinement, and to no other. [`confines_abstract_sockets`] asks.
+//!
+//! note: signals have a scope of the same age, and it is not in a command's own ruleset: each
+//! command confines itself in a domain of its own, so there it would refuse a command stopping a
+//! server an earlier call left running. The scope is checked per layer, so it goes on the one
+//! layer every command shares - this program's own, put on by [`scope_signals`] before it starts
+//! anything - and a command may signal this program and whatever it started, and nothing else.
+//! This program itself is inside that boundary, which keeping out would take a process of its own
+//! for every command to be started from.
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `CommandExt::pre_exec`, which runs between `fork` and `exec` in
@@ -926,6 +932,51 @@ pub fn confines_abstract_sockets() -> bool {
         .is_ok()
 }
 
+/// Whether this kernel can refuse a process a signal to anything outside its Landlock domain.
+///
+/// note: put to the kernel through the crate, as [`confines_abstract_sockets`] is, and applying
+/// nothing: the scope is ABI 6, which is Linux 6.12.
+pub fn confines_signals() -> bool {
+    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .scope(Scope::Signal)
+        .is_ok()
+}
+
+/// Puts this process in a Landlock domain that refuses a signal to anything outside it, so that
+/// everything it starts from here on - every command, and what a command leaves running - may
+/// signal this process and what it started, and nothing else; whether the kernel took it.
+///
+/// note: on this process rather than in a command's ruleset, because the scope is checked per
+/// layer: a command's own layer is its alone, and a scope there refuses it the jobs an earlier call
+/// left running, which the next call stopping is how a server started in the background is ever
+/// stopped. A layer all of them inherit is the session's boundary instead. `kill -9 -1` from a
+/// command was every process the person has, this program among them.
+///
+/// note: before the runtime exists, since Landlock binds the calling thread and the threads it
+/// starts afterwards - a command spawned from a worker thread made earlier would be outside the
+/// layer - and before anything is spawned, since this process may not signal what it started
+/// before it, and it stops its MCP servers by signal. It costs `no_new_privs` on everything this
+/// process starts, which is why the caller does not ask for it under `--no-sandbox`: a command
+/// there, or an MCP server anywhere, gains no privileges through a set-user-ID program such as
+/// `sudo`.
+///
+/// note: `HardRequirement`, so a kernel without the scope - below Linux 6.12 - is a `false` and
+/// nothing applied, rather than a ruleset that restricts nothing and still costs the privileges.
+pub fn scope_signals() -> bool {
+    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+
+    confines_signals()
+        && Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
+            .scope(Scope::Signal)
+            .and_then(|ruleset| ruleset.create())
+            .and_then(|created| created.restrict_self())
+            .is_ok()
+}
+
 /// Applies the sandbox to *this* process, returning how much of it the kernel took.
 ///
 /// note: `scratch` is a directory of this run's own, handed over as `TMPDIR`, rather than the
@@ -996,7 +1047,8 @@ pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement
     };
     // note: asked for where the kernel has it and nowhere else, for the reason `ResolveUnix` is.
     // Not `Scope::Signal` beside it: every command confines itself in a domain of its own, so a
-    // command could no longer stop a server an earlier call left running
+    // command could no longer stop a server an earlier call left running. That scope is on the
+    // layer every command shares; see `scope_signals`
     if confines_abstract_sockets() {
         match ruleset.scope(landlock::Scope::AbstractUnixSocket) {
             Ok(scoped) => ruleset = scoped,

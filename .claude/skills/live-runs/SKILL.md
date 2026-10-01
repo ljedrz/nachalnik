@@ -125,6 +125,8 @@ Each is fixed with a test, so a return of any of them is a regression:
 
 - a confined shell connecting to the X server's abstract socket - no cookie needed, so it could type
   into the person's terminal (Landlock's abstract-socket scope)
+- a confined shell signalling any process of the person's, `kill -9 -1` included (the signal scope,
+  on the layer every command shares - a command can still signal kamchatka itself)
 - the full notice taking a request that fitted over the limit, so the model never read it
 - a `--connect` script that piped a second line after a question hanging for ever
 - `/limit fs:read 200` showing no line of any file
@@ -133,8 +135,8 @@ Each is fixed with a test, so a return of any of them is a regression:
   reported as done, a write refused where the session only reads, the session's own closed port,
   a request the tool definitions alone put over the limit, the selector for the model's own notes
 
-And four decisions in POSTPONED.md: the first undo of a fresh session, signals out of the sandbox,
-output limits that ignore the window, and `revise` of the person's words.
+And three decisions in POSTPONED.md: the first undo of a fresh session, output limits that ignore
+the window, and `revise` of the person's words.
 
 ## what goes wrong
 

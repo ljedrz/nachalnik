@@ -75,10 +75,23 @@ fn main() -> Result<std::process::ExitCode> {
             .map(time::UtcOffset::whole_seconds),
     );
 
+    // and still before a runtime exists, for the reason the first of these gives: the answers
+    // decide whether this run assembles a session with its commands confined, and such a run puts
+    // itself where nothing it starts may signal past it - see `sandbox::scope_signals` - which has
+    // to happen while this is the only thread and nothing has been started
+    let given = Args::given()?;
+    let assembles = !given.args.print_config
+        && given.args.check.is_none()
+        && given.args.command.is_none()
+        && given.args.connect.is_none();
+    if assembles && !given.args.no_sandbox {
+        sandbox::scope_signals();
+    }
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
-    let outcome = runtime.block_on(session());
+    let outcome = runtime.block_on(session(given));
     // note: the runtime is let go of rather than dropped, and without this the program *hangs*
     // after every early stop there is. `tokio::io::stdin` reads on a blocking thread; a blocking
     // read on a pipe nobody is writing to does not return; and dropping a runtime waits for its
@@ -286,12 +299,11 @@ fn reconciled(paths: &[String], output: &str) -> Result<()> {
 }
 
 /// The program proper: wired the same way whichever of the two drives it.
-async fn session() -> Result<Option<headless::Stop>> {
+async fn session(given: Given) -> Result<Option<headless::Stop>> {
     let begun = tokio::time::Instant::now();
     // whole, rather than taken apart here, because `--serve` asks the arguments which of the two
     // it does not read and a settings file's answer is not in the matches; see
     // `Given::unserved`
-    let given = Args::given()?;
     let Given {
         args,
         matches,

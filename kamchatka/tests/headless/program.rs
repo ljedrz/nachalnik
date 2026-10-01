@@ -622,6 +622,81 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     );
 }
 
+/// A command may signal what an earlier call left running, and nothing this session did not start.
+///
+/// note: through the binary, because the scope is on the program's own process, put there before
+/// anything is started - see `sandbox::scope_signals` - and nothing in process can stand in for
+/// that. A live session's shell had `kill -0` succeed against the program running it, and so
+/// against every process the person has.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_programs_commands_signal_each_other_and_nothing_outside() {
+    if !kamchatka::sandbox::confines_signals() {
+        eprintln!("skipped: no Landlock scope for a signal here, which is ABI 6");
+        return;
+    }
+    let mut outside = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("a process outside the session");
+    let call = |id: &str, cmd: &str| {
+        format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
+                {"index": 0, "id": id, "type": "function", "function": {"name": "shell",
+                 "arguments": json!({ "cmd": cmd }).to_string()}}
+            ]}, "finish_reason": "tool_calls"}]})
+        )
+    };
+    let base = common::endpoint(vec![
+        call("c1", "sleep 300 > /dev/null 2>&1 & echo $! > job.pid"),
+        call(
+            "c2",
+            &format!(
+                "kill -0 $(cat job.pid) && echo job=reached >> said.txt; \
+                 kill -0 {} 2>/dev/null || echo outside=refused >> said.txt",
+                outside.id()
+            ),
+        ),
+        common::answer("done"),
+    ])
+    .await;
+    let dir = common::workdir("program-signals");
+
+    let status = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--allow",
+            "exec:run",
+            "--deadline",
+            "60",
+            "go",
+        ])
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .expect("the binary under test is built");
+    let _ = outside.kill();
+    let _ = outside.wait();
+
+    assert!(status.success(), "{status}");
+    let said = std::fs::read_to_string(dir.join("said.txt")).expect("the second call wrote");
+    assert!(
+        said.contains("job=reached"),
+        "an earlier call's job was out of reach: {said}"
+    );
+    assert!(
+        said.contains("outside=refused"),
+        "a process outside was signalled: {said}"
+    );
+}
+
 /// `--sandbox-device` reaches the shell the program wires: a command that reads `/dev/zero`
 /// succeeds under the usual list and fails where only `/dev/null` was named.
 ///

@@ -130,12 +130,17 @@ Referenced from [AGENTS.md](AGENTS.md).
   `kamchatka` asks for the scope where the kernel has it, the same way: a command may connect to
   an abstract socket made inside its own confinement, and to no other. Below that kernel every
   abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets` says which.
-- **A confined command can signal any process of the user's.** Landlock's signal scope is as old
-  as the abstract-socket one and is not asked for: each command confines itself in a domain of
-  its own, so under it a command could not stop a server an earlier call had left running, and
-  that is the ordinary way to stop one. What it would close is a command killing processes
-  outside its call - this program among them, and with `kill -9 -1` every process the person
-  has. [POSTPONED.md](POSTPONED.md) has what would settle it.
+- **A confined command signals only the session.** Landlock's signal scope is as old as the
+  abstract-socket one, and a command's own ruleset does not carry it: each command confines
+  itself in a domain of its own, so there it would refuse a command stopping a server an earlier
+  call left running. The scope is checked per layer, so `kamchatka` puts it on its own process
+  before it starts anything, where every command inherits it: a command may signal what the
+  session started and `kamchatka` itself, and `kill -9 -1` reaches nothing else the person has.
+  `kamchatka` being inside that boundary is the part left open - keeping it out would take a
+  process of its own to start every command from. It costs `no_new_privs` on everything
+  `kamchatka` starts, MCP servers included, so a set-user-ID program such as `sudo` gains nothing
+  in them; under `--no-sandbox` it is not asked for. Below Linux 6.12 there is no such scope and
+  every process of the user's is in reach. `sandbox::confines_signals` says which.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it, with the kernel's own reason where a ruleset was
   refused - `Probed::why` - since a kernel with no Landlock and one that refused this ruleset are

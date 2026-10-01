@@ -343,6 +343,13 @@ minor bump may break you.
 
 ### security
 
+- **A confined command signals only the session.** A command could signal any process of the
+  user's - `kill -0` succeeded against the program running it, and `kill -9 -1` would have
+  reached everything the person had. Landlock's signal scope is put on this program's own process
+  before it starts anything, so every command inherits it and may still stop what an earlier call
+  left running; anything outside the session is refused. Linux 6.12 and up, never under
+  `--no-sandbox`, and at the cost of `no_new_privs` on everything this program starts, MCP servers
+  included. `sandbox::confines_signals` and `sandbox::scope_signals` are new.
 - **A confined command cannot reach an abstract unix socket made outside it.** The right that
   holds a `connect` to the sockets a command could have written names a path, and an abstract
   socket has none - so every one of the user's was in reach, the X server's among them, which takes
