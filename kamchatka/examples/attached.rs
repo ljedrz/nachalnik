@@ -99,9 +99,16 @@ async fn main() -> Result<(), String> {
     for line in &attached.conversation {
         // a line can arrive cut down, where the whole projection was too long for one frame; what
         // it says it lost goes on the end, and an `inspect` of its item is the rest of it
-        match line.clipped {
-            Some(gone) => println!("{} {} … [{gone} more bytes]", mark(line.speaker), line.text),
-            None => println!("{} {}", mark(line.speaker), line.text),
+        match (line.clipped, line.item) {
+            (Some(gone), Some(id)) => println!(
+                "{} {} … [{gone} more bytes; an `inspect` of item {id} has the rest]",
+                mark(line.speaker),
+                line.text
+            ),
+            (Some(gone), None) => {
+                println!("{} {} … [{gone} more bytes]", mark(line.speaker), line.text)
+            }
+            (None, _) => println!("{} {}", mark(line.speaker), line.text),
         }
     }
     if question.is_empty() {
