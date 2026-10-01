@@ -393,6 +393,20 @@ impl App {
                     the same decision made by hand"
                 .to_owned();
         }
+        // note: and where the context entire is less than the overrun, nothing in it is the
+        // remedy, pinned or not: what is left is the tool definitions. A model with a window of a
+        // few thousand tokens is refused before it has been asked anything, and pointing it at
+        // `/exclude` is a sentence asking for a thing that cannot work
+        let budget = self.kernel.budget();
+        if budget.context_tokens < over {
+            return format!(
+                "the whole of the context comes to ~{} and the tool definitions to ~{}, so no \
+                 exclusion covers it: `/tools toggle ID` stops offering a tool, and `/tools` \
+                 lists them",
+                thousands(budget.context_tokens),
+                thousands(budget.tool_tokens),
+            );
+        }
 
         let mut said = String::new();
         if !pinned.is_empty() {
