@@ -323,7 +323,8 @@ pub enum Message {
     /// is reading it correctly, and [`Attached::busy`] is the same fact for one that has just
     /// arrived.
     Busy {
-        /// Whether a turn is running.
+        /// Whether a turn is running, or a command is still out at the endpoint; see
+        /// [`App::working`](crate::app::App::working).
         busy: bool,
     },
     /// The running commands waiting to hear whether they may reach the network, sent whenever
@@ -469,7 +470,7 @@ pub struct Attached {
     pub seq: u64,
     /// What the runtime is doing.
     pub state: State,
-    /// Whether a turn is running.
+    /// Whether a turn is running, or a command is still out at the endpoint.
     pub busy: bool,
     /// Whether the loop is being driven a transition at a time.
     pub stepping: bool,

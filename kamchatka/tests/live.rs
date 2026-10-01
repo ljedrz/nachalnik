@@ -643,7 +643,7 @@ async fn this_crates_provider_can_do_a_tool_call() {
 #[tokio::test]
 async fn models_lists_what_the_endpoint_actually_serves() {
     let _serial = SERIAL.lock().await;
-    let (mut app, _finished) = live!();
+    let (mut app, mut finished) = live!();
 
     let model = model_in_use();
     for c in format!("/models {model}").chars() {
@@ -652,6 +652,13 @@ async fn models_lists_what_the_endpoint_actually_serves() {
     }
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .await;
+    // the listing is asked for off the loop, and shown when it comes back - as the loop hands it
+    // to `on_outcome`
+    let returned = tokio::time::timeout(deadline(), finished.recv())
+        .await
+        .expect("the listing should have come back")
+        .expect("the channel outlives the request");
+    app.on_outcome(returned);
 
     let screen = draw(&mut app);
     assert!(

@@ -48,7 +48,8 @@ minor bump may break you.
   list is said rather than paged. **Breaking** for the library: `Outcome::Returned` is new and is
   handed to `App::on_outcome` like the rest; `App::take_proposal` is no longer `async`;
   `App::in_flight` and `App::release` are new, and a loop that holds lines calls `release` each
-  time round.
+  time round. A served session says it is `busy` while a command is out, as `App::working`, so a
+  piped `--connect` stays for the list or the pass it asked for.
 - **A compaction pass says what it could not price.** The line announcing one, and its row on
   the trace tab, add `1 → 0 piece(s) unpriced` beside the token totals wherever something in the
   request had no figure.
