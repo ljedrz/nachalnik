@@ -275,7 +275,8 @@ impl Tool for Context {
              item number; `all`; `all:tool_results` (or files, diagnostics, selections, memories, \
              instructions, system, user, model, compaction); `kind:<kind>` or `state:<state>`, \
              taking the words `look` prints in those columns; `tool:<name>`, optionally `:first` \
-             or `:latest`; `source:<name>`; `file:<path>`, a file attached rather than read; \
+             or `:latest`; `source:<name>`, and the notes you wrote are `source:agent`; \
+             `file:<path>`, a file attached rather than read; \
              `label:<text>`. Anything else is read as a label.",
         )
         .with_schema(self.schema.clone())
