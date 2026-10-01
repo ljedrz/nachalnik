@@ -1420,7 +1420,59 @@ impl App {
     /// that does not look at its interrupt could hold them for as long as it runs. A turn still
     /// going when the bound runs out is said to be, and is in the record as it stood: its
     /// `turn.interrupted` with no `state.changed` to `idle` after it before `session.finished`.
+    ///
+    /// note: and what was waiting to go in and never will is said, as [`App::unsent`] says it,
+    /// once the turn is done with - its end takes the oldest in.
     pub async fn wait_for_turn(
+        &mut self,
+        events: &mut tokio::sync::broadcast::Receiver<Event>,
+        finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
+        heard: impl FnMut(&Event),
+    ) -> Option<String> {
+        let failed = self.waited_for_turn(events, finished, heard).await;
+        self.unsent();
+
+        failed
+    }
+
+    /// Says what was waiting to go in when the session ended, and lets go of it.
+    ///
+    /// note: messages typed into a turn wait in a queue, and lines handed in while a command was
+    /// out wait behind it; a session that ends takes none of them in. They used to go with it
+    /// without a word - a line answered `queued` and then seen again by nobody, which is the one
+    /// thing the queue is there to stop. What can be done for them is to say which, so that
+    /// whoever typed one knows to send it again.
+    ///
+    /// note: for a loop that leaves without [`App::wait_for_turn`], which calls this - a second
+    /// `ctrl+c`.
+    pub fn unsent(&mut self) {
+        let lines: Vec<String> = std::mem::take(&mut self.typed_ahead)
+            .into_iter()
+            .chain(
+                std::mem::take(&mut self.held)
+                    .into_iter()
+                    .map(|(line, _)| line),
+            )
+            .collect();
+        if lines.is_empty() {
+            return;
+        }
+        let named: Vec<String> = lines
+            .iter()
+            .map(|line| format!("`{}`", one_line(line)))
+            .collect();
+        self.say(
+            Speaker::Note,
+            format!(
+                "the session ended with {} waiting, not sent: {}",
+                plural(lines.len(), "line"),
+                named.join(", ")
+            ),
+        );
+    }
+
+    /// The whole of [`App::wait_for_turn`] but the parting.
+    async fn waited_for_turn(
         &mut self,
         events: &mut tokio::sync::broadcast::Receiver<Event>,
         finished: &mut tokio::sync::mpsc::UnboundedReceiver<Outcome>,
