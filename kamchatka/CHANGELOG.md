@@ -187,6 +187,11 @@ minor bump may break you.
   answered with the reason alone - `[11] pinned by the person you are working with, and a pin is a
   promise` - which a model read as a remark, and it told the person the revision had gone
   through. It reads `refused: …` now, as a refused move does, and says nothing was revised.
+- **A full context does not say the model was told before it is.** The line said on a full
+  context ended `the model has been told as well`, written as the context filled and before the
+  notice went in - and the kernel now leaves the notice out where it would take the request over
+  the limit. The notice says itself as it goes in, as every item does, and the line no longer
+  vouches for it.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

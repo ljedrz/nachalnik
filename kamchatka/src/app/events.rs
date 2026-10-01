@@ -245,11 +245,14 @@ impl App {
             // is pinned - so once the rest is gone, only the person or the model can say what of
             // that may go. The model is told by the notice the wiring gave
             // the kernel, which it reads in the next request; see `wiring::full_notice`
+            //
+            // note: whether the model was told is not said here. The kernel leaves the notice out
+            // where it would take the request over the limit, and the notice says itself when it
+            // goes in, as every item does
             Event::ContextFull { full: true, .. } => self.say(
                 Speaker::Note,
                 "the context is full, and the compactor has nothing more it may take: what is left \
-                 is the turn in progress and what is pinned. `/exclude` what is no longer needed - \
-                 the model has been told as well",
+                 is the turn in progress and what is pinned. `/exclude` what is no longer needed",
             ),
             Event::ContextFull { full: false, .. } => {
                 self.say(Speaker::Note, "the context has room again")

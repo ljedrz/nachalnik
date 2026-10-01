@@ -464,6 +464,52 @@ async fn the_full_notice_reaches_the_model_once_and_goes_when_there_is_room() {
     assert_eq!(placed(&kernel), vec![(first[0].0, ContextState::Excluded)]);
 }
 
+/// A notice that would take the request over the limit is left out, and the request that fits
+/// without it goes.
+///
+/// note: a live run filled its context to a hundred tokens under the limit with one tool result,
+/// and the notice placed after it made the request one the kernel refused - so the turn ended
+/// with nothing sent and the model never read the notice either.
+#[tokio::test]
+async fn a_notice_that_would_not_fit_is_left_out_and_the_request_goes() {
+    let provider = Arc::new(
+        ScriptedProvider::new([ModelResponse::text("ok")])
+            .with_info(ModelInfo::new("scripted", "small").with_context_limit(1_000)),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    kernel.set_full_notice(Some(ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "client",
+        "context full",
+        "n".repeat(400),
+    )));
+    kernel.push(ContextItem::user("go on"));
+    // pinned up to twenty tokens under the limit, which the compactor may not touch
+    let room = 1_000 - 20 - kernel.budget().used();
+    kernel.push(ContextItem::file("kept.txt", "k".repeat(room * 4)).pinned());
+    let used = kernel.budget().used();
+    assert!((970..1_000).contains(&used), "{used}");
+
+    kernel
+        .turn()
+        .await
+        .expect("the request fits without the notice");
+
+    assert_eq!(provider.requests().len(), 1, "the request went");
+    assert!(
+        !kernel
+            .items()
+            .iter()
+            .any(|item| item.label == "context full"),
+        "a notice nobody could read was placed"
+    );
+}
+
 /// A notice already standing in the context is not placed a second time.
 ///
 /// note: the case a resumed session makes. Whether the context is full is not in a snapshot, so a

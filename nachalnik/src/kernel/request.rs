@@ -11,7 +11,7 @@ use std::{
 };
 
 use crate::{
-    context::{ContextItem, ContextState},
+    context::{ContextId, ContextItem, ContextState},
     error::{Error, Result},
     event::{DeltaSink, Event},
     model::{
@@ -303,9 +303,16 @@ impl Kernel {
         if full {
             // note: any copy that still sends, pinned included, is the notice already said; one
             // excluded by hand is not, and a fill after the one it was excluded in is told again
+            //
+            // note: and only where the request still fits with it. A notice is for the model to
+            // read, and one that took the request over the limit was read by nobody: a tool result
+            // that filled the context to within a hundred tokens of it left a request that would
+            // have gone, and the notice made it one the kernel refused, so the turn that could
+            // have answered ended with nothing sent
             if !items
                 .iter()
                 .any(|item| standing(item) && item.state.sends_content())
+                && self.carries(&notice)
             {
                 self.push(notice.clone());
             }
@@ -318,6 +325,33 @@ impl Kernel {
                 .collect();
             self.set_state(retired, ContextState::Excluded, None);
         }
+    }
+
+    /// Whether the next request would still be under the limit with `item` at the end of the
+    /// context, by the same check that refuses one that is not.
+    fn carries(&self, item: &ContextItem) -> bool {
+        let counter = self.counter();
+        let tools = tool_tokens(&self.tool_specs(), &*counter);
+        let projection = {
+            let projector = self.projector();
+            let context = self.0.context.read();
+            let mut item = item.clone();
+            item.id = ContextId(context.next_id());
+            let mut items = context.items().to_vec();
+            items.push(Arc::new(item));
+            projector.project(&items)
+        };
+        let cost = projection_cost(&projection, &*counter);
+        let limit = self.model_info().and_then(|info| info.context_limit);
+
+        self.oversized(
+            limit,
+            &Cost {
+                tokens: cost.tokens + tools,
+                uncounted: cost.uncounted,
+            },
+        )
+        .is_none()
     }
 
     /// Projects the context and reports what the projection costs.
