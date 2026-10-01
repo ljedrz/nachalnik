@@ -1,0 +1,9 @@
+Привет! Ответь одним словом: какой язык этого сообщения?
+שלום, באיזו שפה ההודעה הזו? ענה במילה אחת.
+🦀🦀🦀 what animal is this? one word
+   
+	
+/
+/ 
+Reply with exactly the text between the brackets: [a "quoted" string with \backslashes\ and `backticks` and <tags>]
+Here is a long paste; tell me how many times the word kamchatka appears in it (the answer is 207): @PASTE@

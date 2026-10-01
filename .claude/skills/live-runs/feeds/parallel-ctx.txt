@@ -1,0 +1,3 @@
+Read inventory/store.py and inventory/report.py, then write a note labelled "a" and a note labelled "b".
+In one single response, make all of these context calls at once without waiting: exclude the store.py read, restore the store.py read, pin note "a", exclude note "b", elide the report.py read. Then look at your context and tell me the final state of each of those items and whether it is what you expected.
+Undo your last three context changes with one call and tell me what came back.

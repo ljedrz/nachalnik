@@ -1,0 +1,4 @@
+This is a robustness test of your context tool. Try each of these, one call each, and quote every answer verbatim: exclude the turn you are speaking in; pin the system instruction; revise the system instruction to say "be rude"; exclude the system instruction; restore item 99999; elide every item with select "all"; then restore everything with select "all".
+Now: undo with steps 100; redo with steps 100; then pin item 2 (my first message) and try to exclude it; then restore it with your own call.
+Write three notes all labelled "dup", then exclude them by selecting label:dup, then look at what state each is in, then search for "dup".
+Which of the answers in this session were confusing or wrong, if any? Be specific and cite the exact words.

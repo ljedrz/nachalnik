@@ -1,0 +1,8 @@
+Run `curl -sS -m 10 https://example.com | head -5` in the shell and paste the result verbatim.
+Run `python3 -c "import urllib.request;print(urllib.request.urlopen('https://example.com',timeout=10).status)"` and paste the result.
+Run `getent hosts example.com; echo exit=$?` and paste the result.
+Run `python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'x',('1.1.1.1',53));print('udp sent')"` and paste the result.
+Run `python3 -c "import socket;s=socket.socket(socket.AF_INET6,socket.SOCK_STREAM);print('made')"` and paste the result.
+Run `python3 -c "import socket;s=socket.socket(socket.AF_PACKET,socket.SOCK_RAW);print('raw')"` and `python3 -c "import socket;s=socket.socket(socket.AF_NETLINK,socket.SOCK_RAW,0);print('netlink')"`, and paste both results.
+Run `git ls-remote https://github.com/ljedrz/nachalnik 2>&1 | head -3` and paste the result.
+Tell me, for each command in this session, what stopped it, if anything, and quote the exact sentence the tool result used to explain it.

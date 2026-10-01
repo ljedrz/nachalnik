@@ -1,0 +1,3 @@
+In one single response, call all of these tools at once, in parallel, without waiting: read inventory/store.py, read inventory/report.py, read README.md, run `sleep 2; echo a` in the shell, run `sleep 1; echo b` in the shell, grep for "def " across the project, and glob "**/*.py". Then tell me in what order the results arrived.
+In one single response, make these three edits to README.md at once as three separate fs edit calls: change "tiny" to "small", change "Run the tests" to "Run its tests", and append nothing else. Then show me README.md.
+In one single response, write three files a.txt, b.txt and c.txt with fs write, and at the same time run `ls *.txt` in the shell. Tell me what ls saw.

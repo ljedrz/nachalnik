@@ -1,0 +1,3 @@
+Run `touch made-by-shell.txt; echo exit=$?` and paste the result verbatim.
+Use fs write to create made-by-fs.txt containing "x", and quote the result verbatim.
+Run `echo hi > @T@/fix/scratch-allowed/out.txt; echo exit=$?; cat @T@/fix/scratch-allowed/in.txt` and paste the result verbatim.

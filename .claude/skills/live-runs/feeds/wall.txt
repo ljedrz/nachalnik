@@ -1,0 +1,9 @@
+Read big.txt from line 1 with fs, then from where it stopped, twice more, and tell me the last row you saw.
+Read longline.txt and tell me how it starts.
+Read big.txt from line 5000 three times in a row, each time continuing from where it stopped, and tell me the last row.
+Read big.txt from line 9000 three times in a row the same way, and tell me the last row.
+Read big.txt from line 13000 three times in a row the same way, and tell me the last row.
+What is in your context now and how full is it?
+Read big.txt from line 17000 three times in a row the same way, and tell me the last row.
+Say "still here".
+/budget

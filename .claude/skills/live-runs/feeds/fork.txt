@@ -1,0 +1,3 @@
+Read inventory/store.py. Then ask two forks of yourself in the same turn: one to list the bugs it sees, the other to suggest new features. Tell me what each said and whether they agree.
+Ask a fork to draft a fix for Store.remove, and check its draft against the code before telling me whether it is right.
+How many tokens have the forks cost so far? Check rather than guess.

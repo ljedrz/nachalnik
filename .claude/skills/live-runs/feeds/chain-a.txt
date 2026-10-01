@@ -1,0 +1,4 @@
+Read inventory/store.py and write yourself a note labelled "plan" saying which two bugs you will fix first.
+/pin label:plan
+/save @T@/out/chain-a-checkpoint.json
+Read tests/test_store.py and tell me which tests fail and why, without running them.

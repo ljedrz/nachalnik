@@ -1,0 +1,13 @@
+/step How many lines does inventory/store.py have? Use the shell.
+/request
+/step
+/step
+/step
+/step
+/step Now count the lines in inventory/report.py with the shell.
+/step
+/stop
+/request
+/step And the README?
+/continue
+/budget

@@ -1,0 +1,1 @@
+Read every file in this project one at a time with fs, one call per request, and summarise each.

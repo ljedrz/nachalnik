@@ -1,0 +1,6 @@
+What model are you, what tools do you have, what parameters are you being sent, and what are you allowed to do without asking? Check with your tools rather than guessing.
+Read README.md, then use your log tool to tell me every tool call you have made in this session, with whether each succeeded, and the most expensive one.
+What will the compactor and projector do to your context unasked? Check.
+Was this session resumed from a snapshot? How do you know?
+Use the log tool to find every permission asked for in this session and what it was answered.
+Look at what your next request will contain, item by item, and the three biggest items by cost.

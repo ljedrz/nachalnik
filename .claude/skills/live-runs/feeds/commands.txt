@@ -1,0 +1,72 @@
+/undo
+/redo
+/exclude
+/exclude 999
+/exclude abc
+/pin 0
+/restore all
+/limit fs:read 0
+/limit fs:read -5
+/limit nonsense 100
+/limit 999 100
+/limit 19 abc
+/limit 19
+/tools toggle nope
+/tools toggle shell
+/tools toggle shell
+/params temperature 0.2
+/params temperature notjson
+/params messages []
+/params tools null
+/params reasoning {"effort":"high"}
+/params reasoning null
+/params temperature null
+/model
+/model nonexistent/model-xyz
+say hi in two words
+/model stealth/space-bunny-alpha
+/models bunny
+/models
+/endpoint
+/endpoint notaurl
+/endpoint http://127.0.0.1:1/v1
+say hi again
+/endpoint https://openrouter.ai/api/v1 stealth/space-bunny-alpha
+/save
+/save relative-save
+/save /nonexistent/dir/x
+/load /nonexistent/file.json
+/attach missing.txt
+/attach README.md what is this file?
+/note
+/note the user prefers short answers
+/step
+/continue
+/stop
+/compact
+/spend abc
+/spend -1
+/spend 0
+/copy
+/copy 999
+/copy 1
+/request
+/payload
+/raw
+/cleanup
+/unknowncommand
+/
+//double
+/exclude all
+/request
+/undo
+/undo
+/redo
+/pin all
+/compact
+/budget
+/restart
+/budget
+say hi one last time
+/quit
+this line is after quit

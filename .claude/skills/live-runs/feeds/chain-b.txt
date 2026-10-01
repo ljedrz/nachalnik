@@ -1,0 +1,1 @@
+Run the tests, then fix the remove() bug in store.py, then run the tests again, then fix total_value, then run them again. Report after each step.

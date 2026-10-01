@@ -1,0 +1,5 @@
+Create a file big.log with the shell containing 10 MB of the line "log line" repeated (use python or yes). Then try to change the first "log line" to "LOG LINE" with fs edit, and quote the answer verbatim.
+Create a file latin.txt with the shell containing the bytes of "caf" followed by byte 0xE9 and a newline, then the line "second". Try to replace "second" with "2nd" using fs edit, and quote the answer verbatim.
+Create a file crlf.txt with the shell containing "a\r\nb\r\n". Use fs edit to replace "a\nb" with "x\ny" and quote the answer verbatim.
+Write a file with fs write whose content is exactly 0 bytes long, called empty.txt, and quote the answer. Then edit empty.txt replacing "" with "x" and quote the answer.
+Use fs edit on a directory (inventory) and on a path that does not exist (nope/nope.txt), and quote both answers verbatim.

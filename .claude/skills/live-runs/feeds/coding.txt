@@ -1,0 +1,4 @@
+This is a small Python project. Run its tests (python3 -m unittest discover -s tests), find out why the failing ones fail, and fix the library code, not the tests. Run the tests again to show they pass.
+Add a method Store.restock(sku, qty) that raises ValueError for unknown skus and non-positive quantities, with tests for both errors and the happy path. Run the tests.
+Commit your work with git, with a sensible message, and show me git log --stat for the last commit.
+Add a docs/api.md describing every public method of Store in one line each, by reading the code rather than from memory.

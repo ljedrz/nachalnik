@@ -1,0 +1,6 @@
+/limit exec:run 300
+Run `seq 1 500` in the shell and tell me the last number you see, and what the tool said about cutting it.
+Is the full output still somewhere you can get to? If it is, get it back and tell me the real last number.
+/limit exec:run 32000
+/limit fs:read 200
+Read inventory/store.py and tell me what the last method is. If it was cut, get the rest some way.

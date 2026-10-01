@@ -1,0 +1,6 @@
+Show me your plan note, and tell me whether this session was resumed and from where. Check with your tools.
+/undo
+/undo
+/redo
+/load @T@/out/chain-a-checkpoint.json
+What is in your context now? Give a short list.

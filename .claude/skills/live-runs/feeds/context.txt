@@ -1,0 +1,17 @@
+Read inventory/store.py and inventory/report.py and tell me in two sentences what they do.
+Write yourself a note labelled "bugs" listing every bug you can see in store.py. Then look at your context and tell me what items it has.
+/pin label:bugs
+Elide the read of report.py from your context, then exclude the read of store.py, then tell me what your next request will cost.
+/undo
+/undo
+/redo
+Restore everything you elided or excluded, then revise your "bugs" note to add a line saying "checked twice". Show me the note.
+Search your context for the word "threshold" and tell me where it appears.
+Undo your last two context changes using your context tool, then redo one, and tell me what state each item is in now.
+/save @T@/out/context-checkpoint.json
+Exclude every tool result from your context in one go, and tell me how much that freed.
+/load @T@/out/context-checkpoint.json
+What is in your context now? Is anything there twice?
+/undo
+/undo
+What is in your context now?

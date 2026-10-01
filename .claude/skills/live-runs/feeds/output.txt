@@ -1,0 +1,9 @@
+Run `seq 1 2000000` and tell me the last number you can see and whether the output was cut, quoting what the tool said about cutting it.
+Run `head -c 3000 /dev/urandom` and describe what you got back.
+Run `printf 'no newline at end'` and `printf 'a\rb\rc\rprogress 100%%\n'` and `printf '\x1b[31mred\x1b[0m\n'` separately and paste exactly what you got for each.
+Run `printf 'caf\xe9 \xff\xfe bad utf8\n'` and paste what you got.
+Run `for i in 1 2 3; do echo out$i; echo err$i >&2; done; exit 7` and paste the result, including the exit status.
+Run `cat` with no arguments, then `read x; echo got:$x`, and paste both results.
+Run `sh -c 'kill -9 $$'` and paste the result.
+Run `yes | head -c 50000000 | wc -c` and then `yes | head -c 20000000` and report what came back from each and how much.
+Run `sleep 45; echo done` and tell me what happened while it ran.

@@ -1,0 +1,10 @@
+Using only the fs tool, read each of these files and give me one line per file saying what you got back (quote any error verbatim): crlf.txt, nonl.txt, empty.txt, blob.bin, latin1.txt, bom.txt, nul.txt, ansi.txt, "ünïcødé/naïve file.md", "dir with spaces/a b.txt", "[weird]name*.txt", "-rf", "./~", "~".
+Using only fs, read outside_link, inside_link, loop_a and parent_link/edge-not-there.txt, and report what each returned verbatim.
+Using only fs, read longline.txt and big.txt. Then read just lines 15000 to 15005 of big.txt, if the tool lets you pick lines. Tell me what you saw and whether anything was cut.
+Using fs edit, change "line two" to "line 2" in crlf.txt. Then grep crlf.txt for a carriage return character to find out whether its line endings survived, and tell me.
+In dups.txt, use fs edit to replace "dup" with "DUP". Report exactly what the tool said. Then make only the second occurrence uppercase, and show me the file.
+Use fs write to create new/nested/dir/file.txt containing "hello". Then use fs write to create "ünïcødé/второй файл.txt" with the text "привет".
+Try each of these with fs write, one at a time, containing "escape", and quote each result verbatim: parent_link/escape1.txt, ../escape2.txt, /tmp/escape3.txt, outside_link, deep/../../escape4.txt.
+Use fs glob with each of these patterns and say how many paths each returned: "**/*.txt", "*.{txt,md}", "\[weird\]*", "deep/**", "**/*.log", ".*".
+Use fs grep for each of these and say what matched: the literal text "[bracket]", the emoji 🦀, the regex "^dup$", the word "LINE" case-insensitively if the tool allows it, and "hunter2".
+Read the file called fifo with fs, and tell me what happened.

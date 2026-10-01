@@ -1,0 +1,1 @@
+Write yourself a note labelled "y-finding" saying that low_stock uses a strict comparison. Then say done.
