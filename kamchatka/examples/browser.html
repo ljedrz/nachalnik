@@ -171,6 +171,7 @@
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
+  .clipped { color: var(--dim); font-style: italic; }
   footer {
     flex: none; border-top: 1px solid var(--line); padding: 8px;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
@@ -333,8 +334,32 @@ function conversation(lines) {
   pending = [];
   mine.clear();
   open = null;
-  for (const l of lines) say(l.speaker, l.text, l.item ?? undefined);
+  for (const l of lines) {
+    const el = say(l.speaker, l.text, l.item ?? undefined);
+    if (l.clipped != null) clipped(el, l);
+  }
   log.scrollTop = stuck ? log.scrollHeight : was;
+}
+
+/**
+ * Says on the end of a line how much of it the projection left out, and where the rest is.
+ *
+ * note: a projection too long for one frame arrives with its longest lines cut down, each saying
+ * by how much - see `Line::clipped` - and a line that read as the whole message when it was the
+ * start of one would be this page telling somebody what was said and leaving half of it out. Where
+ * the line is an item the context view reads it whole; where it is not, the count is all there is.
+ *
+ * note: a span of its own rather than more text, so that an `item` answer filling the line puts
+ * the whole of it where the start was and the note goes with what it was about.
+ */
+function clipped(el, l) {
+  const note = document.createElement("span");
+  note.className = "clipped";
+  const bytes = l.clipped.toLocaleString();
+  note.textContent = l.item == null
+    ? ` … ${bytes} more bytes not sent`
+    : ` … ${bytes} more bytes not sent; the context view has the whole of item ${l.item}`;
+  el.append(note);
 }
 
 /**

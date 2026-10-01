@@ -1175,6 +1175,10 @@ fn standing(app: &App) -> Vec<Message> {
 }
 
 /// Where the session stands, in the form a client can start rendering from.
+///
+/// note: abridged here rather than at either of the writes that send it, because there are two -
+/// an attach and a `project` - and a projection one of them cut and the other refused would be a
+/// session a browser can attach to and then never redraw. See [`Attached::abridge`].
 fn project(app: &App) -> Attached {
     // note: first, before anything it is the watermark for. A turn runs on a task of its own and
     // goes on changing the kernel while this reads it, so a record written between reading the
@@ -1187,7 +1191,7 @@ fn project(app: &App) -> Attached {
     let going = app.going();
     let asking = app.kernel.pending_permissions();
 
-    Attached {
+    let mut attached = Attached {
         rated: rated(app, &asking),
         unrated: unrated(app, &asking),
         version: protocol::VERSION,
@@ -1224,7 +1228,10 @@ fn project(app: &App) -> Attached {
         queued: app.queued().next().map(str::to_owned),
         queued_behind: app.queued().skip(1).map(str::to_owned).collect(),
         confinement: app.confinement(),
-    }
+    };
+    attached.abridge();
+
+    attached
 }
 
 /// The trace as the pane draws it, with the gap between lines worked out the pane's way.

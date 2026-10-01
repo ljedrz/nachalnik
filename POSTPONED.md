@@ -74,28 +74,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   not send it - `is_openrouter` is already the test for that, and it is the same test the request
   path uses.
 
-- **A projection larger than `protocol::MAX_LINE` makes a session unattachable.** The *record* half
-  of this is closed: a record over the cap goes out as `Message::Oversized`, which names its
-  sequence and its size, and the client takes that sequence as seen and carries on. What is left is
-  the projection: a message larger than the cap makes `Message::Attached` itself too long, and
-  unlike a record a projection cannot be skipped. A client with no projection has nothing.
-
-  So it wants abridging rather than naming, and that is the decision. A tool result already reaches
-  a projection as its first lines, and a file or a note as one line naming it, but a message is
-  a `Line`'s `text` whole, and clipping one changes what every client is handed - the browser, the
-  gateway and `--connect` alike. `Message::Item` is already *the whole of what one
-  context item says*, fetched on demand, so there is somewhere for the rest to live and the shape
-  of the answer is not in doubt. What is in doubt is the number: a cap per line has to leave an
-  ordinary conversation untouched and still hold when a session has a thousand lines in it, and a
-  projection is one message however many lines are in it.
-
-  Worth knowing for whoever picks this up: a file does not reach it. This entry once said `/attach`
-  was the way in, and it is not: `/attach`, `-f`, `/note` and an embedder's `ContextItem::file` all
-  read in a projection as one line naming the item. What reaches it is a message - one pasted at
-  the desk, one of the model's own answers with its reasoning, one in a session that was loaded, or
-  one an embedder pushes. A client cannot send one, because its own line is held to `MAX_LINE` on
-  the way in.
-
 - **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
   The rule on the constant is that a session refuses a version it does not know and serves an older
   one it does. The first half is machinery - an attach naming a later version is refused, by that

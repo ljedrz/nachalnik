@@ -485,6 +485,10 @@ pub struct Attached {
     /// Whether that ceiling has been reached.
     pub overspent: bool,
     /// The conversation as it reads now.
+    ///
+    /// note: whole, unless the whole of it is more than one frame carries - in which case the
+    /// longest lines are cut down to whatever length lets the rest fit, and each one cut says by
+    /// how much; see [`Line::clipped`].
     pub conversation: Vec<Line>,
     /// Every context item, named rather than carried.
     pub items: Vec<Listed>,
@@ -541,6 +545,12 @@ pub struct Attached {
     /// the list above, because the list is exactly what it leaves out.
     pub undecided: usize,
     /// The next message somebody typed into the running turn, waiting for it to end.
+    ///
+    /// note: cut where [`Attached::conversation`] is cut, and with nothing on it to say so. A
+    /// message waiting is also the last lines of the conversation, word for word, so the same
+    /// length cuts both the same way and the line there carries the [`Line::clipped`] this
+    /// cannot. Left whole, the one message would be carried twice in a projection that is being
+    /// cut down because it is too long.
     pub queued: Option<String>,
     /// The ones waiting behind that one, oldest first; each gets a turn of its own.
     ///
@@ -674,6 +684,23 @@ pub struct Line {
     /// looking at. A tool result reads as its first six lines here, the same as it does on the
     /// chat tab, and this is how the other four hundred are reachable.
     pub item: Option<ContextId>,
+    /// How many bytes of what it says were left out of [`Line::text`], which is then the start of
+    /// it; `None` where it is whole.
+    ///
+    /// note: only ever set where a projection would otherwise be longer than [`MAX_LINE`], which
+    /// a client cannot read and a session cannot skip. Nothing is cut until something has to be,
+    /// and then only the lines longer than the longest length that lets the whole projection fit,
+    /// down to that length - so whether a line arrives whole depends on how long the session is,
+    /// and one a projection carried whole can be cut in the next once the session has grown. Where
+    /// the line is an item, [`Command::Inspect`] answers with all of it. Where it is not - something the
+    /// program said, or a message still waiting for a turn to end - the rest is not anywhere a
+    /// client can ask for, and the count is all there is.
+    ///
+    /// note: a field rather than a sentence on the end of the text, because the text is
+    /// somebody's message and a note in this program's voice glued onto it would read as part of
+    /// what they said. Drawing it is the client's, as everything else about a line is.
+    #[serde(default)]
+    pub clipped: Option<usize>,
 }
 
 impl Line {
@@ -683,8 +710,147 @@ impl Line {
             speaker: said.speaker,
             text: said.text.to_string(),
             item: said.item.map(|item| item.id),
+            clipped: None,
         }
     }
+}
+
+/// What a frame carrying a projection adds to the projection itself: `"is":"projected",`, and room
+/// to spare.
+const ENVELOPE: usize = 32;
+
+/// What a line that is cut grows by: `"clipped":null` becoming `"clipped":` and a count, which is
+/// at most twenty digits.
+const CLIPPING: usize = 20;
+
+impl Attached {
+    /// Cuts the longest lines down until the projection fits in one frame, and leaves a projection
+    /// that already fits exactly as it is.
+    ///
+    /// note: the decision `POSTPONED.md` once held, and it is a *derived* length rather than a
+    /// chosen one. Any fixed length per line is either short enough to cut an ordinary long answer
+    /// in a session that never needed it, or long enough that ten thousand lines of it go past
+    /// the frame anyway - a projection is one message however many lines are in it. So nothing is
+    /// cut until something has to be, and then the length is the longest one at which every line
+    /// cut to it leaves the whole projection inside [`MAX_LINE`]: the lines shorter than that are
+    /// left whole, and only the ones that are the problem are touched.
+    ///
+    /// note: measured as JSON rather than as text, because the frame is JSON and a message of
+    /// quotes and newlines is up to twice its length on the wire, and one of control characters
+    /// six times. [`escaped`] is serde_json's own arithmetic, so the cut is exact and there is no
+    /// second attempt.
+    ///
+    /// note: what it cannot help is a projection too long for reasons other than its lines - a
+    /// trace, a list of items - and it leaves that one as it is. The write that follows is what
+    /// says so, because it measures every frame it sends.
+    ///
+    /// note: a cost worth knowing, and the reason it is stated here: whether a line arrives whole
+    /// depends on how long the whole session is, so a message one projection carried whole can be
+    /// cut in the next once the session has grown. Every client here takes each projection as the
+    /// conversation afresh, so nothing is left disagreeing, and the line says what it lost.
+    pub(crate) fn abridge(&mut self) {
+        let whole = measured(self) + ENVELOPE;
+        if whole <= MAX_LINE {
+            return;
+        }
+        let sizes: Vec<usize> = self
+            .conversation
+            .iter()
+            .map(|line| line.text.as_str())
+            .chain(self.queued.as_deref())
+            .chain(self.queued_behind.iter().map(String::as_str))
+            .map(escaped)
+            .collect();
+        let fixed = whole - sizes.iter().sum::<usize>();
+        let Some(room) = MAX_LINE.checked_sub(fixed + CLIPPING * sizes.len()) else {
+            return;
+        };
+        let cap = level(&sizes, room);
+
+        for line in &mut self.conversation {
+            line.clipped = cut(&mut line.text, cap);
+        }
+        for text in self.queued.iter_mut().chain(&mut self.queued_behind) {
+            cut(text, cap);
+        }
+    }
+}
+
+/// How long a value is as JSON, without writing it anywhere.
+fn measured(value: &impl Serialize) -> usize {
+    struct Counted(usize);
+
+    impl std::io::Write for Counted {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counted = Counted(0);
+    // a value that cannot be serialized cannot be framed either, and the write says so
+    let _ = serde_json::to_writer(&mut counted, value);
+
+    counted.0
+}
+
+/// How long one character is inside a JSON string, the way serde_json writes it.
+fn escaped_char(c: char) -> usize {
+    match c {
+        '"' | '\\' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => 2,
+        '\0'..='\u{1f}' => 6,
+        _ => c.len_utf8(),
+    }
+}
+
+/// How long a text is inside a JSON string, not counting the quotes around it.
+fn escaped(text: &str) -> usize {
+    text.chars().map(escaped_char).sum()
+}
+
+/// The longest length every size can be held to and still come to no more than `room` in all.
+///
+/// note: the shortest first, because each one that fits whole hands what it did not use to the
+/// ones still over. Where they all fit there is no length to hold them to, which is what `MAX`
+/// says.
+fn level(sizes: &[usize], room: usize) -> usize {
+    let mut sorted = sizes.to_vec();
+    sorted.sort_unstable();
+    let mut left = room;
+    for (at, &size) in sorted.iter().enumerate() {
+        let share = left / (sorted.len() - at);
+        if size > share {
+            return share;
+        }
+        left -= size;
+    }
+
+    usize::MAX
+}
+
+/// Cuts a text to the longest start of it that is no more than `cap` long as JSON, and says how
+/// many bytes went; `None` where it was short enough already.
+fn cut(text: &mut String, cap: usize) -> Option<usize> {
+    if escaped(text) <= cap {
+        return None;
+    }
+    let mut used = 0;
+    let mut end = 0;
+    for (at, c) in text.char_indices() {
+        used += escaped_char(c);
+        if used > cap {
+            break;
+        }
+        end = at + c.len_utf8();
+    }
+    let gone = text.len() - end;
+    text.truncate(end);
+
+    Some(gone)
 }
 
 /// One line of the trace, as the trace tab draws it.
@@ -969,5 +1135,59 @@ mod tests {
         assert_eq!(overlong(b"short\n"), None);
         // and nothing at all is not a frame, but it is not over the limit either
         assert_eq!(overlong(b""), None);
+    }
+
+    /// The arithmetic a projection is cut by is serde_json's own, character for character.
+    ///
+    /// note: what the cut is exact *because of*. Measured as text rather than as JSON, a message
+    /// of quotes and newlines comes out twice the length it was cut to and one of control
+    /// characters six times, and the projection it was cut to fit goes past the frame anyway.
+    #[test]
+    fn a_text_is_measured_the_way_serde_json_writes_it() {
+        let text = "plain, \"quoted\", back\\slash, a\ttab\nand\rbreaks, \u{0}\u{1f}\u{7f}, \
+                    ünïcödé, 漢字, 🦀, and a / that is left alone";
+        let written = serde_json::to_string(text).unwrap();
+        assert_eq!(escaped(text), written.len() - 2);
+        for c in text.chars() {
+            let written = serde_json::to_string(&c.to_string()).unwrap();
+            assert_eq!(escaped_char(c), written.len() - 2, "{c:?}");
+        }
+    }
+
+    /// The lines under the length are left whole and hand what they did not use to the ones over it.
+    #[test]
+    fn a_length_is_the_longest_that_leaves_everything_inside_the_room() {
+        // the 1 and the 10 fit whole and leave 50 of the 61, which is what the 100 is held to
+        assert_eq!(level(&[100, 1, 10], 61), 50);
+        // in any order, because it is the sizes that decide and not where they are
+        assert_eq!(level(&[10, 100, 1], 61), 50);
+        // two over it share what is left between them
+        assert_eq!(level(&[100, 100, 1], 61), 30);
+        // and where everything fits there is nothing to hold anything to
+        assert_eq!(level(&[1, 10], 61), usize::MAX);
+        // and where nothing does, nothing is what each gets
+        assert_eq!(level(&[5, 5], 1), 0);
+    }
+
+    /// A text is cut on a character, to no more than the length as JSON, and says what it lost.
+    #[test]
+    fn a_text_is_cut_to_its_length_as_json_on_a_character() {
+        let mut short = "short".to_owned();
+        assert_eq!(cut(&mut short, 5), None);
+        assert_eq!(short, "short");
+
+        // `"` is two as JSON, so four of it is the first two
+        let mut quoted = "\"\"\"\"".to_owned();
+        assert_eq!(cut(&mut quoted, 4), Some(2));
+        assert_eq!(quoted, "\"\"");
+
+        // and a character is not split: `ü` is two bytes, and a length of four keeps `aü` whole
+        // and not one byte of the second `ü`
+        let mut letters = "aüü".to_owned();
+        assert_eq!(cut(&mut letters, 4), Some(2));
+        assert_eq!(letters, "aü");
+        let mut letters = "aüü".to_owned();
+        assert_eq!(cut(&mut letters, 2), Some(4));
+        assert_eq!(letters, "a");
     }
 }

@@ -204,33 +204,101 @@ fn a_path_at_the_limit_is_still_a_path_a_socket_can_hold() {
     assert_eq!(protocol::overlong_path(&over), Some(protocol::MAX_PATH + 1));
 }
 
-/// A projection over the cap is refused by name, rather than sent as a frame the client cannot read.
+/// A projection over the cap is sent with its longest line cut down, rather than refused.
 ///
-/// note: the *record* half of this is closed - a record over the cap goes out as
+/// note: the *record* half of this was closed first - a record over the cap goes out as
 /// `Message::Oversized`, names its sequence, and the client carries on. A projection is the other
 /// half, and unlike a record it cannot be skipped: a client with no projection has nothing. It was
-/// written with no size check at all, so a message past `MAX_LINE` in the context went out as a
-/// frame the reader refused - which closed the connection, and the client read a refused frame as a
-/// dropped one, and spent a minute reattaching to a session that had answered perfectly well every
-/// time before giving up saying the session was gone.
+/// first written with no size check at all, so one message past `MAX_LINE` in the context went out
+/// as a frame the reader refused, and then refused by name, which was honest and still left every
+/// client with no session. What it does now is cut the line that is the problem, and only that one.
 ///
-/// note: what a client can do about this is read the records without a projection, so the sentence
-/// says that. Abridging the projection is a decision about what every client is handed and is not
-/// taken here; see `POSTPONED.md`.
+/// note: and the same for a `project`, which is the other write a projection goes out by. A
+/// session a browser could attach to and then never redraw - every reshape of its chat asks for
+/// one - would be the old refusal moved one step later.
 ///
 /// note: over a socket file rather than a loopback port, because a sandbox that refuses the port
 /// is a machine on which this whole suite cannot run, and one test that can is better than none.
 /// On a socket rather than in the tests above because this one is about what happens once a client
 /// is attached, which takes a session and a running loop.
 #[tokio::test]
-async fn a_projection_too_long_to_send_is_refused_rather_than_written() {
+async fn a_projection_too_long_to_send_is_cut_down_to_fit() {
     use crate::{Socket, served_over_a_socket};
     use nachalnik::ContextItem;
 
     let session = served_over_a_socket("oversized-projection", Vec::new(), |app| {
-        // one message larger than the cap, which is what makes the projection itself that long
+        // one message larger than the cap, which is what makes the projection itself that long,
+        // and one beside it that is nothing like it
         app.kernel
             .push(ContextItem::user("x".repeat(protocol::MAX_LINE)));
+        app.kernel.push(ContextItem::user("and a short one"));
+    })
+    .await;
+
+    let mut socket = Socket::connect(&session.at).await;
+    socket.send(crate::attaching(None, None)).await;
+    let Message::Attached(attached) = socket.recv().await else {
+        panic!("a projection too long for one frame was not sent");
+    };
+    let cut = |conversation: &[protocol::Line]| {
+        let [long, short] = conversation else {
+            panic!("the conversation is not the two messages: {conversation:?}");
+        };
+        // the long one is the start of itself, and says how much of it is not here
+        let gone = long.clipped.expect("a cut line did not say it was cut");
+        assert!(!long.text.is_empty(), "the line was cut to nothing");
+        assert!(
+            long.text.bytes().all(|b| b == b'x'),
+            "the line is not the start of itself"
+        );
+        assert_eq!(long.text.len() + gone, protocol::MAX_LINE);
+        assert!(
+            long.item.is_some(),
+            "a cut line lost the item that has the rest of it"
+        );
+        // and the short one is untouched, because it is not the problem
+        assert_eq!(short.text, "and a short one");
+        assert_eq!(short.clipped, None);
+    };
+    cut(&attached.conversation);
+
+    // a `project` is cut the same way, rather than answered with a refusal the chat cannot get past
+    socket.send(Command::Project).await;
+    let projected = loop {
+        if let Message::Projected(projected) = socket.recv().await {
+            break projected;
+        }
+    };
+    cut(&projected.conversation);
+
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A projection still over the cap once its lines are cut is refused by name, rather than sent as
+/// a frame the client cannot read.
+///
+/// note: what cutting lines cannot reach, which is the rest of a projection - here an item whose
+/// label alone is past the cap, which the item list carries whole. Rare by construction, and the
+/// write that sends a projection measures it anyway: sent unchecked, it is a frame the reader
+/// refuses, which closes the connection, and the client reads a refused frame as a dropped one and
+/// spends a minute reattaching to a session that answered perfectly well every time.
+///
+/// note: what a client can do about this is read the records without a projection, so the sentence
+/// says that.
+#[tokio::test]
+async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
+    use crate::{Socket, served_over_a_socket};
+    use nachalnik::ContextItem;
+
+    let session = served_over_a_socket("overlabelled-projection", Vec::new(), |app| {
+        let mut item = ContextItem::user("a short message under a very long name");
+        item.label = "x".repeat(protocol::MAX_LINE);
+        app.kernel.push(item);
     })
     .await;
 
@@ -243,6 +311,7 @@ async fn a_projection_too_long_to_send_is_refused_rather_than_written() {
     // named as itself, so a client does not read it as a drop and start a minute of attempts
     assert_eq!(about, "projection");
     assert!(error.contains("cannot be attached"), "{error}");
+    assert!(error.contains("cut down"), "{error}");
     assert!(error.contains(&protocol::MAX_LINE.to_string()), "{error}");
     // and told what it can do: the records are still there, and `inspect` is how one item is read
     assert!(error.contains("records are still there"), "{error}");
