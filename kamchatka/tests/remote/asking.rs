@@ -322,6 +322,9 @@ async fn a_compact_from_a_client_is_taken_and_said() {
             Content::text("it is forty thousand x"),
             vec![],
         ));
+        // and asked something since, so that turn is over: a pass leaves the turn in progress
+        // alone
+        app.kernel.push(ContextItem::user("and now?"));
     })
     .await;
 

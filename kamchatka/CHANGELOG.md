@@ -55,16 +55,16 @@ minor bump may break you.
 - **The compactor is `Shedder`, and it is one for a long session rather than a full one.** It sheds
   what the conversation is done with, by two rules. Before every request, however empty the
   context is, a tool result whose turn is over goes to a marker, and so does a picture or a document
-  once the model has been shown it. Once the context passes `--compact`, the oldest exchanges go
+  the model has been shown, once its exchange is over. Once the context passes `--compact`, the oldest exchanges go
   whole - the person's message, the turns answering it, their results and a file attached for it -
   until it is down to the new `--compact-target` (`compact-target` in a settings file), which is
-  at most `--compact` and is derived from it as before when left out; with no older exchange left,
-  it elides what the model has already been shown of the turn in progress, oldest first. Neither
-  rule drops the turn in progress, takes a pin, or touches a note the model wrote for itself, and a
-  standing summary says how many exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
+  at most `--compact` and is derived from it as before when left out. Neither rule touches the turn
+  in progress, a pin, or a note the model wrote for itself, and a standing summary says how many
+  exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
   it - a model reading one that said only "compacted" disowned its own summaries of the files
-  behind it; the one exception is a request that would not fit the limit at all, whose unread
-  results go too, under a marker that says nothing about reading and a summary that says how many.
+  behind it - and that holds for a request that would not fit the limit too, which is not sent
+  rather than sent without what the model has not seen. A turn that fills the context is told so by
+  the full notice, inside the turn; what goes then is the model's or the person's to say.
   A result the person brings back is left alone until the context is full, where it was elided
   again before the next request: `/restore` and <kbd>space</kbd> leave a note saying who restored
   it. **Breaking** for the library: `tools::ToolTrimmer` is `tools::Shedder`, and it takes more than

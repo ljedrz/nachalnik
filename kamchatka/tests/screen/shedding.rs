@@ -26,7 +26,7 @@ use crate::harness::Harness;
 /// A `read` that answers with as many bytes as its call asks for.
 ///
 /// note: not the runtime's `EchoTool`, which answers with its arguments - so a large answer was a
-/// large call as well, and the turn in progress, which no pass may drop, filled the context with
+/// large call as well, and the turn in progress, which no pass may take, filled the context with
 /// calls rather than results.
 struct Sized {
     limit: Option<usize>,
@@ -280,10 +280,10 @@ async fn a_routine_pass_says_nothing_about_room_and_leaves_the_summary_standing(
     assert!(!plan.remove.contains(&standing));
 }
 
-/// A picture attached at the prompt goes once the model has been shown it, and not before; one
-/// attached at startup is pinned and stays.
+/// A picture attached at the prompt goes once the model has been shown it and the exchange it was
+/// brought in for is over, and not before; one attached at startup is pinned and stays.
 #[tokio::test]
-async fn an_attached_picture_goes_once_it_has_been_shown() {
+async fn an_attached_picture_goes_once_its_exchange_is_over() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
     let at_startup = kernel.push(
@@ -305,9 +305,15 @@ async fn an_attached_picture_goes_once_it_has_been_shown() {
         Content::text("a login form"),
         vec![],
     ));
+    assert!(
+        planned(&trim, kernel, Some(1_000_000)).await.is_none(),
+        "shown, and still what the exchange in progress is about"
+    );
+
+    kernel.push(ContextItem::user("and now?"));
     let plan = planned(&trim, kernel, Some(1_000_000))
         .await
-        .expect("it has been shown");
+        .expect("its exchange is over");
     assert_eq!(plan.elide, vec![attached], "and the pinned one is not");
     assert!(!plan.elide.contains(&at_startup));
 }
@@ -448,27 +454,16 @@ async fn a_target_at_the_threshold_drops_just_enough() {
     assert_eq!(plan.remove, all[0].all(), "one exchange is enough");
 }
 
-/// The turn in progress is never dropped, however large: when it is all that is left, the pass
-/// can only elide what the model has already read of it, and the context is full.
+/// The turn in progress is never touched, however large, and a result of it the model has read is
+/// no exception: when it is all that is left, the pass has nothing to do and the context is full.
 #[tokio::test]
-async fn the_turn_in_progress_is_never_dropped() {
+async fn the_turn_in_progress_is_never_touched() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
-    let only = exchange(kernel, "a", &words(40_000), &["x".repeat(4_000)]);
+    exchange(kernel, "a", &words(40_000), &["x".repeat(4_000)]);
     let limit = filled_to(kernel, 0.9);
     let trim = Shedder::under(0.8);
 
-    let plan = planned(&trim, kernel, Some(limit))
-        .await
-        .expect("a result it has read");
-    assert!(
-        plan.remove.iter().all(|id| !only.all().contains(id)),
-        "{:?}",
-        plan.remove
-    );
-    assert_eq!(plan.elide, only.results);
-
-    kernel.apply_compaction(plan);
     assert!(planned(&trim, kernel, Some(limit)).await.is_none());
     assert!(
         trim.wants_room(&against(kernel, Some(limit))),
@@ -632,9 +627,10 @@ async fn an_exchange_smaller_than_its_summary_is_not_dropped() {
     assert_eq!(kernel.item(pinned).unwrap().state, ContextState::Pinned);
 }
 
-/// A pass that drops exchanges and then makes room in the turn in progress says both.
+/// A pass that drops exchanges leaves the turn in progress whole, however much of it is read, and
+/// its summary is about the exchanges alone.
 #[tokio::test]
-async fn the_summary_says_what_went_from_the_past_and_from_this_turn() {
+async fn a_pass_that_drops_exchanges_leaves_the_turn_in_progress_whole() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
     exchange(kernel, "a", &words(4_000), &[]);
@@ -657,8 +653,13 @@ async fn the_summary_says_what_went_from_the_past_and_from_this_turn() {
     .expect("over the threshold");
     let said = said(&plan);
     assert!(said.contains("The 1 earliest exchange(s)"), "{said}");
-    assert!(said.contains("you had already read in this turn"), "{said}");
-    assert!(plan.elide.contains(&current.results[0]));
+    assert!(!said.contains("this turn"), "{said}");
+    for id in current.all() {
+        assert!(
+            !plan.elide.contains(&id) && !plan.remove.contains(&id),
+            "{id}"
+        );
+    }
 }
 
 /// A summary the person pinned is theirs, and the next pass's summary does not supersede it.
@@ -752,10 +753,11 @@ async fn a_pinned_result_keeps_the_turn_it_answers_whole() {
 }
 
 /// A result nothing followed before the next question goes with its exchange, and is not elided
-/// by the last resort as well.
+/// as well.
 ///
-/// note: found by the property below: an unread result at the end of an older exchange is in the
-/// range the last resort reads, and the plan named it in both lists.
+/// note: found by the property below, when a pass could take what had not been read to make a
+/// request fit: an unread result at the end of an older exchange was in the range it read, and the
+/// plan named it in both lists.
 #[tokio::test]
 async fn an_unread_result_in_an_older_exchange_goes_with_it_once() {
     let harness = Harness::new([]);
@@ -773,8 +775,8 @@ async fn an_unread_result_in_an_older_exchange_goes_with_it_once() {
         "x".repeat(4_000),
         false,
     ));
-    // and a question past the limit on its own, so that the last resort still runs once the
-    // older exchange has gone
+    // and a question past the limit on its own, so that the context is still full once the older
+    // exchange has gone
     kernel.push(ContextItem::user(words(6_000)));
 
     let plan = planned(&Shedder::under(0.8), kernel, Some(1_000))
@@ -862,48 +864,12 @@ async fn a_turn_the_request_no_longer_carries_is_not_named() {
     );
 }
 
-// ------------------------------------------------------------------------- the last resort
+// ------------------------------------------------------------------- a request too long to send
 
-/// A picture the model has not been shown is not taken even by the last resort: the counter
-/// cannot price it, so taking it would not be seen to help, and it is the thing the model asked for.
+/// A request that would not fit the limit has nothing of its turn taken to make it fit, read or
+/// unread: the context is full, and what goes is for the model or the person to say.
 #[tokio::test]
-async fn the_last_resort_does_not_take_an_unseen_picture() {
-    let harness = Harness::new([]);
-    let kernel = &harness.app.kernel;
-    kernel.push(ContextItem::user("look at the screen, and read the log"));
-    // one turn asking for both, so that neither has been shown: a result before a later turn was
-    // in the request that turn answered
-    let (shot, read) = (
-        call("c1", "screenshot", json!({})),
-        call("c2", "read", json!({})),
-    );
-    kernel.push(ContextItem::assistant(
-        Content::text(""),
-        vec![shot.clone(), read.clone()],
-    ));
-    let picture = kernel.push(ContextItem::tool_result(
-        shot.id.clone(),
-        "screenshot",
-        Content::blob("image/png", "A".repeat(600_000)),
-        false,
-    ));
-    let text = kernel.push(ContextItem::tool_result(
-        read.id.clone(),
-        "read",
-        "x".repeat(8_000),
-        false,
-    ));
-
-    let plan = planned(&Shedder::under(0.8), kernel, Some(1_000))
-        .await
-        .expect("over the limit");
-    assert!(!plan.elide.contains(&picture));
-    assert_eq!(plan.elide, vec![text]);
-}
-
-/// The last resort takes what the request needs to fit and stops there, oldest first.
-#[tokio::test]
-async fn the_last_resort_stops_once_the_request_fits() {
+async fn a_request_that_would_not_fit_leaves_its_turn_alone() {
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
     kernel.push(ContextItem::user("read both"));
@@ -912,27 +878,21 @@ async fn the_last_resort_stops_once_the_request_fits() {
         call("c2", "read", json!({ "n": 2 })),
     ];
     kernel.push(ContextItem::assistant(Content::text(""), calls.clone()));
-    let results: Vec<_> = calls
-        .iter()
-        .map(|asked| {
-            kernel.push(ContextItem::tool_result(
-                asked.id.clone(),
-                "read",
-                "x".repeat(8_000),
-                false,
-            ))
-        })
-        .collect();
+    for asked in &calls {
+        kernel.push(ContextItem::tool_result(
+            asked.id.clone(),
+            "read",
+            "x".repeat(8_000),
+            false,
+        ));
+    }
 
-    // the two of them are 4,000 tokens; one of them alone fits
-    let plan = planned(&Shedder::under(0.8), kernel, Some(3_000))
-        .await
-        .expect("over the limit");
-    assert_eq!(plan.elide, vec![results[0]]);
+    // the two of them are 4,000 tokens, against a limit of 3,000
+    let trim = Shedder::under(0.8);
+    assert!(planned(&trim, kernel, Some(3_000)).await.is_none());
     assert!(
-        said(&plan).contains("1 of them before you could read them"),
-        "{}",
-        said(&plan)
+        trim.wants_room(&against(kernel, Some(3_000))),
+        "and so it is full"
     );
 }
 
@@ -1030,6 +990,9 @@ struct Watched {
     dropped: usize,
     /// How many times the session was said to be full.
     full: usize,
+    /// The person's message of each turn that ended in a request too long to send, which nothing
+    /// of the turn was taken to make fit.
+    refused: Vec<ContextId>,
 }
 
 /// Runs turn `n` of the script, and holds every request and pass of it to the rules.
@@ -1047,7 +1010,11 @@ async fn play(
             .with_info(ModelInfo::new("m", "m").with_context_limit(limit)),
     ));
     let start = kernel.push(ContextItem::user(words(*asked)));
-    kernel.turn().await.expect("the turn");
+    match kernel.turn().await {
+        Ok(_) => {}
+        Err(nachalnik::Error::TooLong(_)) => watched.refused.push(start),
+        Err(e) => panic!("turn {n}: {e}"),
+    }
 
     while let Ok(event) = events.try_recv() {
         match event {
@@ -1078,7 +1045,7 @@ async fn play(
                     report.tokens_before,
                     report.tokens_after
                 );
-                // nothing of the turn in progress is ever excluded
+                // nothing of the turn in progress is ever excluded or elided
                 let current: Vec<_> = kernel
                     .items()
                     .iter()
@@ -1093,6 +1060,13 @@ async fn play(
                         removed.id
                     );
                 }
+                for elided in &report.elided {
+                    assert!(
+                        !current.contains(&elided.id),
+                        "turn {n}: {} of the turn in progress was elided",
+                        elided.id
+                    );
+                }
             }
             Event::ContextFull { full: true, .. } => watched.full += 1,
             _ => {}
@@ -1101,7 +1075,7 @@ async fn play(
 }
 
 /// What the context must look like between turns, whatever happened in them.
-fn hold(kernel: &Kernel, n: usize) {
+fn hold(kernel: &Kernel, n: usize, watched: &Watched) {
     let items = kernel.items();
     let dropped = |item: &ContextItem| {
         item.state == ContextState::Excluded
@@ -1150,13 +1124,20 @@ fn hold(kernel: &Kernel, n: usize) {
         }
     }
 
-    // every finished turn's result worth eliding is elided or gone with its exchange
+    // every finished turn's result worth eliding is elided or gone with its exchange - but for a
+    // turn whose last request was too long to send, which the model never read the end of
     let last = items
         .iter()
         .rposition(|item| item.kind == ContextKind::UserMessage)
         .unwrap();
+    let mut refused = false;
     for item in &items[..last] {
-        if matches!(item.kind, ContextKind::ToolResult { .. }) && item.state == ContextState::Active
+        if item.kind == ContextKind::UserMessage {
+            refused = watched.refused.contains(&item.id);
+        }
+        if !refused
+            && matches!(item.kind, ContextKind::ToolResult { .. })
+            && item.state == ContextState::Active
         {
             assert!(
                 item.tokens < 120,
@@ -1183,7 +1164,7 @@ async fn a_long_session_holds_to_the_rules_at_every_request() {
         let mut watched = Watched::default();
         for n in 0..script.turns.len() {
             play(&kernel, &mut events, &script, n, limit, &mut watched).await;
-            hold(&kernel, n);
+            hold(&kernel, n, &watched);
         }
         assert!(watched.requests > 60, "seed {seed}: {}", watched.requests);
         assert!(
@@ -1210,7 +1191,7 @@ async fn a_long_session_at_a_target_equal_to_its_threshold() {
     let mut watched = Watched::default();
     for n in 0..script.turns.len() {
         play(&kernel, &mut events, &script, n, limit, &mut watched).await;
-        hold(&kernel, n);
+        hold(&kernel, n, &watched);
     }
     assert!(watched.dropped > 0);
 }
@@ -1262,7 +1243,7 @@ async fn a_session_carried_across_a_restart_counts_on_from_where_it_was() {
     for n in 0..20 {
         play(&kernel, &mut events, &script, n, limit, &mut watched).await;
     }
-    hold(&kernel, 19);
+    hold(&kernel, 19, &watched);
 
     let snapshot = serde_json::from_str(&serde_json::to_string(&kernel.snapshot()).unwrap())
         .expect("a snapshot reads back");
@@ -1279,7 +1260,7 @@ async fn a_session_carried_across_a_restart_counts_on_from_where_it_was() {
     resumed.set_compactor(Some(Arc::new(Shedder::under(0.8))));
     for n in 20..40 {
         play(&resumed, &mut events, &script, n, limit, &mut watched).await;
-        hold(&resumed, n);
+        hold(&resumed, n, &watched);
     }
 }
 
@@ -1343,7 +1324,7 @@ async fn a_turn_that_fills_the_context_has_the_past_dropped_between_its_steps() 
         turns: vec![(100, vec![vec![6_000]; 6], 100)],
     };
     play(&kernel, &mut events, &busy, 0, limit, &mut watched).await;
-    hold(&kernel, 3);
+    hold(&kernel, 3, &watched);
     let gone = kernel
         .items()
         .iter()
@@ -1351,10 +1332,15 @@ async fn a_turn_that_fills_the_context_has_the_past_dropped_between_its_steps() 
             item.kind == ContextKind::UserMessage && item.state == ContextState::Excluded
         })
         .count();
-    assert!(gone >= 1, "the past made room for the turn");
+    assert_eq!(gone, 3, "the past made room for the turn, all of it");
     assert_eq!(
-        watched.full, 0,
-        "and with the past to drop and the turn's reads to elide, it was never full"
+        watched.full, 1,
+        "and with nothing older left, it was said to be full rather than have its reads taken"
+    );
+    assert_eq!(
+        watched.refused.len(),
+        1,
+        "and the request it could not fit was not sent"
     );
 }
 
@@ -1408,8 +1394,8 @@ async fn compact_between_the_marks_says_where_the_compactor_starts() {
 // ------------------------------------------------------------------------------ any context
 
 /// Whatever the context holds and whatever the marks are, a pass keeps every promise the rules
-/// make: it names nothing pinned and nothing twice, drops nothing of the turn in progress and
-/// nothing that outlasts an exchange, elides nothing unread except to make the request fit,
+/// make: it names nothing pinned and nothing twice, takes nothing of the turn in progress and
+/// nothing that outlasts an exchange, elides nothing unread,
 /// leaves the conversation as whole as it found it, and does not make the request bigger.
 ///
 /// note: a property rather than more cases, because the cases above are the edges somebody
@@ -1467,8 +1453,6 @@ fn any_pass_over_any_context_keeps_the_rules() {
     struct Reached {
         routine: usize,
         dropped: usize,
-        this_turn: usize,
-        last_resort: usize,
         a_picture: usize,
         around_a_pin: usize,
     }
@@ -1606,11 +1590,8 @@ fn any_pass_over_any_context_keeps_the_rules() {
                 let it = item(*id);
                 prop_assert!(it.state != ContextState::Pinned, "{id} is pinned");
                 prop_assert!(it.state.sends_content(), "{id} is not being sent");
-                prop_assert!(
-                    index(*id) < seen || plan.reason.starts_with("compacted because the request"),
-                    "{id} unread, and elided for `{}`",
-                    plan.reason
-                );
+                prop_assert!(index(*id) < seen, "{id} unread, and elided");
+                prop_assert!(index(*id) < current, "{id} is in the turn in progress");
                 prop_assert!(
                     matches!(it.kind, ContextKind::ToolResult { .. })
                         || (it.kind == ContextKind::Reference && !it.content.blobs().is_empty()),
@@ -1652,9 +1633,6 @@ fn any_pass_over_any_context_keeps_the_rules() {
                 let mut tally = reached.borrow_mut();
                 tally.routine += plan.reason.contains("to keep the context short") as usize;
                 tally.dropped += plan.remove.iter().any(|id| index(*id) < current) as usize;
-                tally.this_turn += plan.elide.iter().any(|id| index(*id) >= current) as usize;
-                tally.last_resort +=
-                    plan.reason.starts_with("compacted because the request") as usize;
                 tally.a_picture += elided_a_picture as usize;
                 tally.around_a_pin += (!plan.remove.is_empty()
                     && items.iter().any(|it| it.state == ContextState::Pinned && index(it.id) > 0))
@@ -1700,8 +1678,6 @@ fn any_pass_over_any_context_keeps_the_rules() {
     assert!(
         reached.routine > 0
             && reached.dropped > 0
-            && reached.this_turn > 0
-            && reached.last_resort > 0
             && reached.a_picture > 0
             && reached.around_a_pin > 0,
         "a kind of pass was never made: {reached:?}"
@@ -1761,37 +1737,6 @@ async fn what_the_first_rule_frees_counts_toward_the_room() {
         "{}",
         plan.reason
     );
-}
-
-/// The last resort takes as many unread results as the request needs to fit, oldest first, and
-/// never the person's own words.
-#[tokio::test]
-async fn the_last_resort_takes_what_it_needs_and_never_the_question() {
-    let harness = Harness::new([]);
-    let kernel = &harness.app.kernel;
-    let asked = kernel.push(ContextItem::user(words(2_000)));
-    let calls: Vec<_> = (0..3)
-        .map(|n| call(&format!("c{n}"), "read", json!({ "n": n })))
-        .collect();
-    kernel.push(ContextItem::assistant(Content::text(""), calls.clone()));
-    let results: Vec<_> = calls
-        .iter()
-        .map(|asked| {
-            kernel.push(ContextItem::tool_result(
-                asked.id.clone(),
-                "read",
-                "x".repeat(8_000),
-                false,
-            ))
-        })
-        .collect();
-
-    // three results of 2,000 tokens and a question of 500, against 3,500: two have to go
-    let plan = planned(&Shedder::under(0.8), kernel, Some(3_500))
-        .await
-        .expect("over the limit");
-    assert_eq!(plan.elide, results[..2].to_vec());
-    assert!(!plan.elide.contains(&asked));
 }
 
 /// A counter's own correction is what a marker and a summary are priced on.
