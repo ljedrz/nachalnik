@@ -173,7 +173,9 @@ minor bump may break you.
   the keys it holds, with a word that every argument goes beside the others.
 - **An `edit` of a file that is not there says so, and what makes one.** It answered with the
   system's `No such file or directory` and nothing else, which says neither that nothing was
-  changed nor that `write` is the operation for a new file.
+  changed nor that `write` is the operation for a new file. Where the file's directory is not
+  there either, it says that too, and what makes the directory, since the `write` it names would
+  be refused for it next.
 - **Lines still waiting when a session ends are named as not sent.** Messages queued into a turn,
   and lines held behind a command still out, went with the session without a word when it ended
   by `/quit`, `/restart` or a signal - the turn's end takes the oldest in, and the rest were seen
