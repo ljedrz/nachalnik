@@ -1061,3 +1061,79 @@ async fn an_argument_no_action_here_has_is_refused_with_the_ones_that_are() {
         "and it did not search: {said}"
     );
 }
+
+/// A root that is not there is said to be, rather than counted as a file that could not be read.
+///
+/// note: found live: `grep` of a directory the model misnamed answered "skipped: 1 file(s) that
+/// could not be read", and the model went looking for a permission problem.
+#[tokio::test]
+async fn a_search_root_that_is_not_there_says_so() {
+    let dir = tree("search-missing-root");
+
+    let grep = ask(&dir, "grep", json!({ "pattern": "Kernel", "path": "nope" })).await;
+    assert!(grep.contains("`nope` is not there"), "{grep}");
+    assert!(grep.contains("nothing was searched"), "{grep}");
+    assert!(
+        !grep.contains("could not be read"),
+        "not a file that could not be read: {grep}"
+    );
+
+    let glob = ask(&dir, "glob", json!({ "pattern": "*", "path": "nope" })).await;
+    assert!(glob.contains("`nope` is not there"), "{glob}");
+    assert!(glob.contains("nothing was listed"), "{glob}");
+    assert!(
+        !glob.contains("could not be read"),
+        "not a file that could not be read: {glob}"
+    );
+
+    // a link is there, and what it names is not - so it is not called absent itself
+    std::os::unix::fs::symlink("gone", dir.join("dangling")).expect("a link to nothing");
+    let link = ask(
+        &dir,
+        "grep",
+        json!({ "pattern": "Kernel", "path": "dangling" }),
+    )
+    .await;
+    assert!(link.contains("`dangling` is a link to nothing"), "{link}");
+    assert!(!link.contains("is not there,"), "{link}");
+}
+
+/// A link to a missing path a rule refuses is refused by the rule, not said to be absent.
+///
+/// note: the rules are asked first, so whether a refused path exists is not what the answer says.
+#[tokio::test]
+async fn a_root_a_rule_refuses_is_refused_before_it_is_looked_for() {
+    use kamchatka::tools::{Careful, Subject};
+    use nachalnik::Verdict;
+
+    let dir = tree("missing-root-refused");
+    std::fs::create_dir_all(dir.join("secret")).expect("a directory");
+    std::os::unix::fs::symlink("secret/gone", dir.join("alias")).expect("a link");
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Path("secret/".to_owned()), Verdict::Deny);
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy);
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+
+    let said = fs
+        .invoke(
+            &call(
+                "c1",
+                "fs",
+                json!({ "action": "grep", "pattern": "Kernel", "path": "alias" }),
+            ),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(
+        said.contains("the path rule for `secret/` refuses"),
+        "{said}"
+    );
+    assert!(!said.contains("not there"), "{said}");
+}
