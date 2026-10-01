@@ -842,6 +842,15 @@ async fn run(
         if let Some(serving) = &mut serving {
             serving.pump(app);
         }
+        // the lines that waited for a command still out, the desk's and the client's, once it has
+        // come back or been stopped - after the pump, so that a client hears what the command came
+        // back with before what the lines after it did; see `App::in_flight`
+        if app.release().await {
+            if let Some(serving) = &mut serving {
+                serving.pump(app);
+            }
+            stale = true;
+        }
         if stale {
             terminal.draw(|frame| ui::draw(frame, app))?;
             (stale, quiet_ticks) = (false, 0);
@@ -925,14 +934,12 @@ async fn run(
                 }
             } => {
                 // note: the same as in `remote::Server::run`: the command holds the `App` and the
-                // loop waits, but the kernel's broadcast is read meanwhile, because it is the one
-                // channel here that drops what nobody took rather than queueing it. The keys are in
-                // a stream, the outcome in an unbounded channel, a connection in the listen
-                // backlog; all of those arrive late. A lagged subscription is a hole in what the
-                // screen shows and in the trace every later client is handed.
-                //
-                // note: the screen does not redraw while it waits, which is visible and explains
-                // itself; losing events would not be.
+                // loop waits for as long as it takes to do - never for an endpoint, which a command
+                // is sent out to instead (see `App::in_flight`) - and the kernel's broadcast is read
+                // meanwhile, because it is the one channel here that drops what nobody took rather
+                // than queueing it. The keys are in a stream, the outcome in an unbounded channel, a
+                // connection in the listen backlog; all of those arrive late. A lagged subscription
+                // is a hole in what the screen shows and in the trace every later client is handed.
                 let mut held = Vec::new();
                 if let Some(serving) = &mut serving {
                     let doing = serving.answer(app, ask);

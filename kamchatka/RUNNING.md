@@ -202,13 +202,16 @@ is what stands in for one. A session drawn at a desk and served is still two way
 submit, interrupt and answer questions, and a message either sends into a running turn waits in one
 queue with the other's. Each goes in on its own, in the order it was sent, with a turn of its own.
 
-**A command that reaches for the endpoint is answered before the next one is**, because there is
-one session and answering anybody needs it: `/models` fetches a listing, `/compact` runs a whole
-pass, and a `/model` still settling is waited for before the next line is read. So a client's
-`/models` at an endpoint that has gone quiet is the client's own wait, and where the session is
-also drawn at a desk, the screen there does not redraw until it comes back. What that costs is
-patience and nothing else — the kernel's own stream is read throughout, so nothing that happened
-while it waited is lost to anybody.
+**A command that reaches for the endpoint is finished before the next line is read**, without the
+session standing still for it. `/models` fetches a listing, `/compact` works out a pass and a
+`/model` or `/endpoint` settles a switch, each sent off while the session goes on drawing,
+answering clients and reading the kernel; the line after one waits until it is back, because the
+line after `/models` is often the `/model` it was asked for. A client's waiting line is answered
+`queued` at once and handed in afterwards, and anything it opens on a page is said instead.
+`ctrl+c` — or a client's interrupt, or `--deadline` — stops a listing or a pass; a switch is
+always let finish, because half an `/endpoint` is worse than a wait. Down a pipe and from a client,
+a `/compact` is taken when its pass comes back, with what it took said first, and the list from
+`/models` is said rather than paged.
 
 The protocol itself is newline-delimited JSON, which is to say `nc` and `jq` read it. It lives in
 [`remote`](https://docs.rs/kamchatka/latest/kamchatka/remote/) rather than in a crate of its own,

@@ -136,13 +136,11 @@ impl<'a> Headless<'a> {
     /// interrupted in among them - would be written nowhere. A deadline reached here interrupts
     /// the turn, lets what arrived be recorded, and leaves by the ordinary door.
     ///
-    /// note: what it does not interrupt is a *command* of the operator's own that is waiting on an
-    /// endpoint - `/models` fetches a list and `/model` and `/endpoint` finish a switch before the
-    /// next line is read. Those are awaited inside the branch that read the line, so this branch
-    /// and `ctrl+c` cannot be reached until they answer. The hole is narrow: the model's own turns
-    /// are interruptible, which is where a run spends its time. Closing it means running a command
-    /// as a task the loop can outlive, and a half-applied `/endpoint` is a worse thing to leave
-    /// behind than a late deadline - see POSTPONED.md.
+    /// note: and a command of the operator's own waiting on an endpoint - `/models`, or a
+    /// compaction pass - is stopped the same way, since it is sent out rather than awaited where
+    /// its line was read; see `App::in_flight`. A `/model` or `/endpoint` switch is let finish
+    /// instead, under the bound the turn is waited for with: a half-applied `/endpoint` is a worse
+    /// thing to leave behind than a late deadline.
     pub fn deadline(mut self, after: Duration) -> Self {
         self.deadline = Some(after);
         self
@@ -283,8 +281,14 @@ impl<'a> Headless<'a> {
                     passing = false;
                 }
                 // a session that is not going to be given anything else to do, and is not doing
-                // anything, is over. `quit` is `/quit`, which means the same here as at a prompt
-                if app.leaving() || (!reading && !app.busy) {
+                // anything, is over. `quit` is `/quit`, which means the same here as at a prompt.
+                // A command still out is something it is doing: a script whose last line is
+                // `/models` is asking for the list. Unless it was told to stop, when what is left
+                // is a switch - a listing or a pass was stopped with the turn - and the way out
+                // waits for that, under its own bound
+                if app.leaving()
+                    || (!reading && !app.busy && (!app.in_flight() || self.stopped.is_some()))
+                {
                     break;
                 }
 
@@ -296,8 +300,12 @@ impl<'a> Headless<'a> {
                     // lands above the answer it was asked after; and a *message* sent into a running
                     // turn waits in `App::typed_ahead` while the commands after it run at once, so
                     // the script's lines would happen in an order nobody wrote.
-                    // Nothing here can be typed during a turn, so nothing is lost by reading it after
-                    line = lines.next_line(), if reading && !app.busy => match line {
+                    // Nothing here can be typed during a turn, so nothing is lost by reading it after.
+                    //
+                    // note: and not while a command is out at the endpoint either, for the same
+                    // reason: the line after `/models` is often the `/model` it was asked for. See
+                    // `App::in_flight`
+                    line = lines.next_line(), if reading && !app.busy && !app.in_flight() => match line {
                         // note: what the prompt does with enter on nothing, and with spaces round a
                         // line. Otherwise a blank line down a pipe is sent as an empty message and
                         // answered - a request for nothing - and `  /help` is a message here and a
@@ -378,32 +386,9 @@ impl<'a> Headless<'a> {
                             {
                                     app.not_copied(&why);
                             }
-                            // `/compact` asks, and there are no keys here to answer with. Taken
-                            // rather than left, which is the opposite of what `--on-ask` does with a
-                            // tool's question - and the two are different questions. A tool's is the
-                            // *model* asking to do something nobody vouched for, so the default is
-                            // no; this one is the operator's own line, and a script that says
-                            // `/compact` and is answered "left alone" has been refused the thing it
-                            // asked for. The list is on stderr above it either way
-                            if let Some(proposed) = app.proposed.clone() {
-                                // the list itself, which on a screen is in the panel and down a pipe
-                                // has nowhere else to go. Without it this mode takes items on the
-                                // strength of a line saying how many, which is the opposite of what
-                                // the command is for
-                                self.prose.fresh_line()?;
-                                for row in &proposed.rows {
-                                    writeln!(self.prose, "· {row}").map_err(|e| e.to_string())?;
-                                }
-                                app.take_proposal(true).await;
-                                // and what it did, in the same breath as what it proposed. The pass
-                                // reports itself through an event like any other, and the loop would
-                                // otherwise read that one on some later turn round - after the next
-                                // line of the script, if there is one
-                                while let Ok(event) = events.try_recv() {
-                                    self.say(&app.kernel, &event)?;
-                                    app.on_event(event);
-                                }
-                            }
+                            // note: a `/compact` is taken by the `App` when its pass comes back,
+                            // because there are no keys here to answer the question with - see
+                            // `App::planned` - and its list is said, so `echo` prints it
                         }
                         // stdin has closed. Whatever is running still finishes, and the loop leaves
                         // when it has: a script that pipes one question in and goes away is asking
@@ -492,11 +477,23 @@ impl<'a> Headless<'a> {
                             self.say(&app.kernel, &event)?;
                             app.on_event(event);
                         }
-                        failed = match &outcome {
-                            Outcome::Failed(e) => Some(e.clone()),
-                            _ => None,
-                        };
+                        // a command coming back says nothing about how the last turn went
+                        let returned = matches!(outcome, Outcome::Returned(_));
+                        match &outcome {
+                            Outcome::Failed(e) => failed = Some(e.clone()),
+                            Outcome::Returned(_) => {}
+                            _ => failed = None,
+                        }
                         app.on_outcome(outcome);
+                        // what a command did when it came back is said with it, as what a line did
+                        // is - a pass taken reports itself in an event, and a script whose last line
+                        // was `/compact` would otherwise leave before the event was read
+                        if returned {
+                            while let Ok(event) = events.try_recv() {
+                                self.say(&app.kernel, &event)?;
+                                app.on_event(event);
+                            }
+                        }
                     }
                     // taken as `/quit`, which the check at the top of the loop then acts on. Said as it
                     // arrives rather than at the parting line, because a run a signal ended is over at

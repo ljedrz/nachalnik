@@ -964,6 +964,70 @@ async fn a_deadline_ends_a_session_that_is_waiting_for_nobody() {
     assert_eq!(names.last().map(String::as_str), Some("session.finished"));
 }
 
+/// A deadline reached while a command waits on an endpoint stops the wait, and the run.
+///
+/// note: `/models` was awaited inside the branch that read its line, so neither the deadline nor
+/// `ctrl+c` could be reached until the endpoint answered - and one that had gone quiet held a
+/// `--deadline` run for as long as the provider's own patience. The listing is sent out now, and
+/// the deadline stops it as it stops a turn. A switch would be waited for instead: half an
+/// `/endpoint` is worse than a late exit.
+#[tokio::test]
+async fn a_deadline_stops_a_command_waiting_on_an_endpoint() {
+    use tokio::io::AsyncWriteExt as _;
+
+    // takes every connection and says nothing, which is an endpoint that has gone quiet
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a port");
+    let at = listener.local_addr().expect("its address");
+    tokio::spawn(async move {
+        let mut held = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            held.push(socket);
+        }
+    });
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "quiet",
+        format!("http://{at}/v1"),
+        "",
+    )))
+    .expect("the wiring failed");
+    // held open, so that only the deadline can end the run
+    let (mut typing, reader) = tokio::io::duplex(64);
+    typing
+        .write_all(b"/models\n")
+        .await
+        .expect("could not type");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        Headless::new(Grant::Deny, &mut records, &mut prose)
+            .deadline(std::time::Duration::from_millis(200))
+            .run(&mut app, &mut events, &mut finished, BufReader::new(reader))
+            .await
+            .expect("the run failed")
+    })
+    .await
+    .expect("the deadline waited for the endpoint");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("out of time"), "{prose}");
+    assert!(
+        prose.contains("stopped waiting for the list of models"),
+        "{prose}"
+    );
+    drop(typing);
+}
+
 /// A deadline too far off to be an instant is no deadline, rather than a panic.
 ///
 /// note: `--deadline 18446744073709551615` added the seconds to the clock with `+`, which panics

@@ -338,7 +338,7 @@ async fn a_compact_from_a_client_is_taken_and_said() {
     })
     .await;
     // the list, in the session's voice, which is what says what was taken
-    peer.until(said(&["· [3]"])).await;
+    peer.until(said(&["[3] elide"])).await;
     assert!(
         session
             .kernel
