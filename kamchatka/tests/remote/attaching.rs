@@ -106,7 +106,7 @@ async fn the_records_alone_cannot_say_what_was_said() {
     })
     .await;
 
-    let (mut peer, attached) = Peer::attached(&session.at).await;
+    let (_, attached) = Peer::attached(&session.at).await;
     let log = app_history(&session.at).await;
     assert!(
         !log.contains("a sentence nothing else carries"),
@@ -120,14 +120,11 @@ async fn the_records_alone_cannot_say_what_was_said() {
         "the projection did not carry it either"
     );
 
-    peer.send(Command::Submit {
-        line: "/quit".to_owned(),
-    })
-    .await;
+    quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
 }
 
-/// Reads the session log the way a second client would, to compare it against a projection.
+/// Reads the session log the way a later client would, to compare it against a projection.
 async fn app_history(at: &str) -> String {
     let (mut peer, _) = Peer::attached(at).await;
     peer.send(attaching(Some(0), None)).await;

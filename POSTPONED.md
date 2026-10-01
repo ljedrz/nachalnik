@@ -153,31 +153,31 @@ Referenced from [AGENTS.md](AGENTS.md).
   not send it - `is_openrouter` is already the test for that, and it is the same test the request
   path uses.
 
-- **Arbitration between clients attached to one session.** Every attached client may submit,
-  interrupt and answer questions, and there is room for exactly one message queued into a running
-  turn - so a second client typing during a turn silently takes the first one's place. The session
-  says so, to everybody, and the first line is still lost. Anybody who attaches two phones to one
-  session meets this, and `RUNNING.md` names it in passing.
+- **Several people driving one agent.** A session serves one client at a time and the newest wins,
+  which stands in for a design rather than being one. What is left of the old problem is the desk:
+  a session drawn and served is two ways in, both may submit, interrupt and answer questions, and
+  there is room for exactly one message queued into a running turn - so a line typed at one
+  replaces the other's, and the session says so to both but the first line is still lost.
 
   There is nothing to unblock: what is missing is a decision about what several people driving one
   agent *means*. The cheap version is a queue instead of a slot, and it is cheap because the slot
   is one `Option<String>` on `App` - but a queue of messages into one turn is a different thing to
   be shown on a screen, and a second person's line arriving in the middle of the first person's
   thought is a conversation nobody has designed. The honest first step is smaller: say who typed
-  what. Nothing on the wire carries a client identifier today, and every later answer needs one.
+  what, which the desk and the one client are enough to tell apart.
 
 - **A client command that awaits the endpoint holds the whole session loop.** `remote::server`'s
   loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
   list, `/compact` works a pass out and then takes it, and a `/model` or `/endpoint` switch still
-  in flight is awaited before the next line is read at all. While any of those is
-  awaited the loop answers no other client, and one client typing `/models` at an endpoint that
-  has gone quiet stalls everybody attached.
+  in flight is awaited before the next line is read at all. While any of those is awaited the loop
+  answers nothing else - the client's next command, a client attaching to replace it - and where
+  the session is drawn at a desk as well, the screen there does not redraw.
 
   **Nothing is lost while it waits.** Both loops read the kernel's broadcast while a command is in
   flight, and everything else queues; the note on `Serving::answer` says what each of them is and
   why it is safe to leave waiting.
 
-  What is left is a client waiting for its turn, and it is not a queue anybody can add out here. It
+  What is left is a command waiting for its turn, and it is not a queue anybody can add out here. It
   is `App::submit` taking `&mut App` for the length of a round trip, so answering one client while
   another's command is in flight would need two of the one thing there is one of. The fix is the
   same one the headless deadline above wants - somewhere for a command to run that the loop can
@@ -226,18 +226,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   how a client finds out what the other end speaks without being refused first. Neither is the rule:
   an unknown message is *counted* as an answer, because a client cannot tell one from a broadcast,
   and a client that leaves a beat early is the cost of that guess.
-
-- **How many clients a session will accept.** Not bounded, and nothing refuses a connection.
-
-  **Where the attach and leave lines go is decided: the trace**, and not the conversation, for the
-  reason in the note in `Serving::attend`. `Attached::trace` carries them, so every client still
-  sees them.
-
-  What is left is the count itself. A session will take connections until something else runs out,
-  and there is nothing to say what "too many" is: a phone on a bad link is one client making a
-  hundred connections, and five people watching one agent is five clients making five. Telling
-  those apart is what a bound would have to do, and nothing on the wire carries a client identifier
-  to do it with - which is the same thing the arbitration entry above needs first.
 
 - **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
   the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old

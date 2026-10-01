@@ -175,7 +175,7 @@ formatters in `app/text.rs` are doing where they are: `/exclude` prints the sele
 `cargo test -p kamchatka --no-default-features` is the check, and every suite it runs is about the
 program rather than the screen: `policy`, `sandbox` and `introspect` never draw, `headless` drives a
 whole session - a message, a command, a tool call, a question nobody can answer - through an `App`
-that has no screen at all, and `remote` drives one through a socket, from two clients at once, and
+that has no screen at all, and `remote` drives one through a socket, one client replacing another, and
 in `remote/program.rs` with the binary itself at both ends. CI runs it. Adding `--features mcp` adds
 the `mcp` suite, which spawns a real server and grants it as `--allow-server py` would: somebody
 else's tools with no terminal anywhere, which is the configuration an embedder is most likely to be

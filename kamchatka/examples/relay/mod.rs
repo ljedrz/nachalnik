@@ -218,8 +218,8 @@ async fn page<W: AsyncWrite + Unpin>(write: &mut W) -> Result<(), String> {
 ///
 /// note: one connection to the session per stream, rather than one shared between tabs. The
 /// protocol answers every command exactly once and in order *on a connection*, so two browsers
-/// sharing one would be reading each other's answers - and a session that is somebody's own is
-/// cheap enough to attach to twice.
+/// sharing one would be reading each other's answers. A session serves one client at a time, so a
+/// second tab takes it from the first, which is told so and stops - see `browser.html`.
 async fn stream<W: AsyncWrite + Unpin>(
     write: &mut W,
     session: &str,

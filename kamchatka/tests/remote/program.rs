@@ -1080,31 +1080,26 @@ async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// `/cleanup` reaches every attached client, not only the one that typed it.
+/// `/cleanup` is said to the client, which has the program's lines on a screen of its own.
 ///
 /// note: a broadcast rather than an answer, for the reason every other notice is one: the program
-/// has one voice, and a session two people are watching does not have half of it cleared. The
-/// second client here never sends anything.
+/// has one voice, and a session drawn at a desk and watched from a phone does not have half of it
+/// cleared - a `/cleanup` typed at the desk reaches the client too.
 #[tokio::test]
-async fn clearing_the_notices_is_said_to_everybody() {
+async fn clearing_the_notices_is_said_to_the_client() {
     let served = served(vec![], |_| {}).await;
     let (mut one, _) = Peer::attached(&served.at).await;
-    let (mut two, _) = Peer::attached(&served.at).await;
 
-    // something for it to take away, said by a command rather than invented: `/seams` answers with
-    // a page, and the arrival of a second client is a note in its own right
     one.send(Command::Submit {
         line: "/cleanup".to_owned(),
     })
     .await;
 
-    for (who, peer) in [("the client that asked", &mut one), ("the other", &mut two)] {
-        let heard = peer.until(|m| matches!(m, Message::Cleared)).await;
-        assert!(
-            heard.iter().any(|m| matches!(m, Message::Cleared)),
-            "{who} was not told the lines went: {heard:?}"
-        );
-    }
+    let heard = one.until(|m| matches!(m, Message::Cleared)).await;
+    assert!(
+        heard.iter().any(|m| matches!(m, Message::Cleared)),
+        "the client was not told the lines went: {heard:?}"
+    );
 
     one.send(Command::Submit {
         line: "/quit".to_owned(),

@@ -984,8 +984,8 @@ pub enum OnAsk {
     Deny,
     /// Grant it.
     Allow,
-    /// Answer nothing, and leave it for another client attached to the same session, or for one
-    /// that comes back. `--connect` only: a headless run has nobody else to leave it to.
+    /// Answer nothing, and leave it for the next client to attach to the same session, or for this
+    /// one coming back. `--connect` only: a headless run has nobody else to leave it to.
     Leave,
 }
 

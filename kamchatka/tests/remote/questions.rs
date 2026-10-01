@@ -159,12 +159,12 @@ async fn a_question_nobody_was_here_for_is_in_the_projection() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// A running command that reached for the network is sent to every client as it waits, is in the
+/// A running command that reached for the network is sent to the client as it waits, is in the
 /// projection a client arrives to, and is answered from one.
 ///
 /// note: the list rather than a record, because the question is not the kernel's and is in no
 /// log; a client attaching while it waits has only the projection to learn of it from, which is
-/// why the second peer attaches late.
+/// why the second peer attaches late, replacing the first.
 #[tokio::test]
 async fn a_command_reaching_for_the_network_is_answered_from_a_client() {
     let script = vec![
@@ -199,16 +199,16 @@ async fn a_command_reaching_for_the_network_is_answered_from_a_client() {
         remember: false,
     })
     .await;
-    // and everybody hears that it has gone, the one who did not answer included. The turn it held
-    // may well have finished first: the list goes out when the loop next comes round
-    let heard = peer
+    // and it hears that it has gone. The turn it held may well have finished first: the list goes
+    // out when the loop next comes round
+    let heard = late
         .until(|message| matches!(message, Message::Reaching { waiting } if waiting.is_empty()))
         .await;
     if !streamed(&heard).contains("it went") {
-        peer.until_words("it went").await;
+        late.until_words("it went").await;
     }
     let (app, ended) = {
-        peer.send(Command::Submit {
+        late.send(Command::Submit {
             line: "/quit".to_owned(),
         })
         .await;
@@ -284,8 +284,8 @@ async fn a_client_coming_back_hears_what_the_voice_said_while_it_was_away() {
         remember: false,
     })
     .await;
-    here.until_words("it went").await;
-    here.send(Command::Submit {
+    back.until_words("it went").await;
+    back.send(Command::Submit {
         line: "/quit".to_owned(),
     })
     .await;

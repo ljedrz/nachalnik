@@ -694,6 +694,14 @@ impl<'a> Client<'a> {
 
                     return Err(format!("{about}: {error}"));
                 }
+                // and being replaced is the end of this client by design. The session serves one
+                // client at a time, so coming back by itself would take it from whoever just did,
+                // and two clients each reconnecting would trade it back and forth for a minute
+                if about == "replaced" {
+                    self.prose.fresh_line()?;
+
+                    return Err(format!("{about}: {error}"));
+                }
                 // a resume refused by a session that has not ended is a different session at the
                 // same address; see `Client::session`. One that has ended was cut short by the
                 // ending, and the close that follows is read as the ending it is

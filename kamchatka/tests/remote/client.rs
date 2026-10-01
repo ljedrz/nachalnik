@@ -25,25 +25,27 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{PATIENCE, Peer, Reacher, Trickle, quit, records, served, served_as, wired};
+use crate::{
+    PATIENCE, Peer, Reacher, Trickle, quit, records, says, served, served_as, until_session, wired,
+};
 
 /// The client's own two streams are the ones `--headless` writes.
 #[tokio::test]
 async fn the_client_writes_the_records_and_the_prose() {
     let session = served(vec![ModelResponse::text("an answer to read")], |_| {}).await;
 
-    // note: `/quit` is not typed until a second connection has watched the turn end, rather than
-    // handed in behind the message on one slice of bytes. A command runs the moment it arrives - at
-    // a prompt, and here, where the client is not told to wait for turns as it is down a pipe - so
-    // a `/quit` queued behind a question ends the session while the answer to it is still being
-    // written, and the test would be asserting about a race
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    // note: `/quit` is not typed until the session has the answer, rather than handed in behind
+    // the message on one slice of bytes. A command runs the moment it arrives - at a prompt, and
+    // here, where the client is not told to wait for turns as it is down a pipe - so a `/quit`
+    // queued behind a question ends the session while the answer to it is still being written,
+    // and the test would be asserting about a race
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"ask something\n")
             .await
             .expect("could not type");
-        watch.until_words("an answer to read").await;
+        until_session(&kernel, |kernel| says(kernel, "an answer to read")).await;
         feed.write_all(b"/quit\n").await.expect("could not type");
     });
 
@@ -427,13 +429,13 @@ async fn a_client_that_loses_its_socket_comes_back_and_still_detaches() {
         }
     });
 
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"ask something\n")
             .await
             .expect("could not type");
-        watch.until_words("an answer to read").await;
+        until_session(&kernel, |kernel| says(kernel, "an answer to read")).await;
         let _ = cut.send(());
         while reconnected.recv().await != Some(2) {}
         drop(feed);
@@ -735,15 +737,14 @@ async fn an_answer_the_dead_socket_took_with_it_is_asked_again() {
         }
     });
 
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"go\n").await.expect("could not type");
-        watch.until_record("permission.requested").await;
+        until_session(&kernel, |kernel| !kernel.pending_permissions().is_empty()).await;
         feed.write_all(b"y\n").await.expect("could not type");
         while reconnected.recv().await != Some(2) {}
         drop(feed);
-        watch.drop_it().await;
     });
 
     let (mut records, mut prose) = (Vec::new(), Vec::new());
@@ -887,11 +888,11 @@ async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
     // note: `y` is typed only once the question has actually been asked, because the client reads
     // it as an answer only while one is open - which is exactly how the terminal's panel behaves,
     // and is the thing this test is about. Sent ahead of the question it is a *message* of `y`
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"go\n").await.expect("could not type");
-        watch.until_record("permission.requested").await;
+        until_session(&kernel, |kernel| !kernel.pending_permissions().is_empty()).await;
         feed.write_all(b"y\n").await.expect("could not type");
         // and then the input closes, which detaches rather than ending anybody's session - so this
         // is also where the client's own rule is exercised: it stays for the turn it just let
@@ -968,37 +969,35 @@ async fn a_client_with_nobody_at_it_answers_a_running_command_with_on_ask() {
     );
 }
 
-/// What the program says for itself reaches a client, because a command that was silent is a verb
-/// that does nothing visible.
+/// What the program says for itself reaches the client, once, because a command that was silent is
+/// a verb that does nothing visible.
 ///
 /// note: a refused command is the cheapest line the program says for itself. It used to be a client
 /// arriving, which said the same thing for nothing - until arrivals moved to the trace, because a
 /// browser reconnecting on a flaky link put one in the conversation every second.
 #[tokio::test]
-async fn the_program_has_one_voice_and_every_client_hears_it() {
+async fn the_program_has_one_voice_and_the_client_hears_it_once() {
     let refused = "is not a number of tokens";
     let session = served(vec![], |_| {}).await;
 
     let (mut one, _) = Peer::attached(&session.at).await;
-    let (mut two, _) = Peer::attached(&session.at).await;
 
-    // a line said *after* both are attached, which is the only kind either of them can hear: what a
-    // client was told before it arrived is in the conversation it was handed
+    // a line said *after* it attached, which is the only kind it can hear: what a client was told
+    // before it arrived is in the conversation it was handed
     one.send(Command::Submit {
         line: "/spend nonsense".to_owned(),
     })
     .await;
 
-    // the second client asked for nothing and hears it, which is the whole of the claim
-    let heard = two
+    let heard = one
         .until(|message| matches!(message, Message::Said { text, .. } if text.contains(refused)))
         .await;
     assert!(heard.iter().any(
         |message| matches!(message, Message::Said { speaker, .. } if *speaker == Speaker::Error)
     ));
 
-    // and a client that arrives afterwards reads it once - in the conversation it is handed, rather
-    // than there and again underneath. Its subscription starts where its projection was taken, and
+    // and a client that arrives afterwards, replacing it, reads it once - in the conversation it is
+    // handed, rather than there and again underneath. Its subscription starts where its projection was taken, and
     // those are taken together for exactly this reason
     let (mut three, arriving) = Peer::attached(&session.at).await;
     assert!(
@@ -1026,24 +1025,23 @@ async fn the_program_has_one_voice_and_every_client_hears_it() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// A model change reaches every client, because nothing else would tell them.
+/// A model change reaches the client, because nothing else would tell it.
 ///
 /// note: `/model` and `/endpoint` finish inside the `Dialect` the kernel already holds, and before
 /// this a client went on naming the model before it until something made it ask for a fresh
-/// projection. A browser's header is where that showed, and a second client would never have
-/// found out at all.
+/// projection. A browser's header is where that showed, and a client that had not typed the
+/// switch itself - one beside a desk that did - would never have found out at all.
 ///
 /// note: driven by replacing the provider rather than by typing `/model`, because the suite's
 /// endpoint is a port nothing listens on and a switch is a round trip to it. What is under test is
 /// the watch in `Serving::pump`, and what it watches is `Kernel::model_info` - which this moves the
 /// honest way.
 #[tokio::test]
-async fn a_model_change_reaches_every_client() {
+async fn a_model_change_reaches_the_client() {
     let session = served(vec![], |_| {}).await;
-    // two, because the claim is that it is broadcast: the one that would have asked for a
+    // a client that did not make the change, because the one that would have asked for a
     // projection anyway is not the one this is for
     let (mut one, attached) = Peer::attached(&session.at).await;
-    let (mut two, _) = Peer::attached(&session.at).await;
     let before = attached.model.expect("the suite wires a provider").model;
 
     // the session starts talking to something else, which is a thing that happens to a session.
@@ -1057,20 +1055,15 @@ async fn a_model_change_reaches_every_client() {
     );
     session.kernel.set_provider(now);
 
-    for (who, peer) in [
-        ("the client that was here", &mut one),
-        ("the other", &mut two),
-    ] {
-        let heard = peer.until(|m| matches!(m, Message::Model { .. })).await;
-        let Some(Message::Model { model }) = heard.last() else {
-            unreachable!("the loop above only ends on one")
-        };
-        assert_eq!(
-            model.as_ref().map(|it| it.model.as_str()),
-            Some(named.as_str()),
-            "{who} was told the wrong model"
-        );
-    }
+    let heard = one.until(|m| matches!(m, Message::Model { .. })).await;
+    let Some(Message::Model { model }) = heard.last() else {
+        unreachable!("the loop above only ends on one")
+    };
+    assert_eq!(
+        model.as_ref().map(|it| it.model.as_str()),
+        Some(named.as_str()),
+        "the client was told the wrong model"
+    );
 
     one.send(Command::Submit {
         line: "/quit".to_owned(),
@@ -1174,11 +1167,11 @@ async fn a_loop_of_somebody_elses_can_serve_the_session() {
     assert!(app.quit, "a `/quit` from a client did not reach the loop");
 }
 
-/// A restart from a client hands the session back to be built again, and lets go of everybody.
+/// A restart from a client hands the session back to be built again, and lets go of the client.
 ///
 /// note: two claims, and they are the two halves `main` leans on. The loop returning with
 /// `restart` set and `quit` clear is what tells it to wire a second session rather than stop; and
-/// every connection ending is what stops a client reading a session nobody is in any more. Neither
+/// the connection ending is what stops a client reading a session nobody is in any more. Neither
 /// is visible from the other side - a client sees a socket close, and the loop sees a flag - so
 /// this is the one place both are true at once.
 ///
@@ -1188,14 +1181,10 @@ async fn a_loop_of_somebody_elses_can_serve_the_session() {
 /// them: every connection owns a `Kernel` handle, so the session being replaced leaves the old one
 /// alive inside the task reading it, and a client would go on being served a session that had been
 /// written out and abandoned.
-///
-/// note: two clients, because one would not catch a parting that reached only whoever spoke last.
-/// The second says nothing at all and is let go of on the same terms.
 #[tokio::test]
-async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody() {
+async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_it() {
     let session = served(vec![ModelResponse::text("unused")], |_| {}).await;
     let (mut asked, _) = Peer::attached(&session.at).await;
-    let (mut watching, _) = Peer::attached(&session.at).await;
 
     asked
         .send(Command::Submit {
@@ -1215,25 +1204,63 @@ async fn a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody() {
         "a restart is not a quit: `main` wires another session rather than stopping"
     );
 
-    for (which, peer) in [
-        ("the one that asked", &mut asked),
-        ("the other", &mut watching),
-    ] {
-        // note: drained to the close rather than read once. What the session has to say on the way
-        // out goes first, and the connection ending is the message this is about - a `while let`
-        // that never ends is the failure, and `Peer::next` is what bounds it
-        let mut heard = Vec::new();
-        while let Some(message) = peer.next().await {
-            heard.push(message);
-        }
-        assert!(
-            heard.iter().any(|message| matches!(
-                message,
-                Message::Record(record) if record.event.name() == "session.finished"
-            )),
-            "{which} was cut off without being told the session had ended: {heard:?}"
-        );
+    // note: drained to the close rather than read once. What the session has to say on the way
+    // out goes first, and the connection ending is the message this is about - a `while let` that
+    // never ends is the failure, and `Peer::next` is what bounds it
+    let mut heard = Vec::new();
+    while let Some(message) = asked.next().await {
+        heard.push(message);
     }
+    assert!(
+        heard.iter().any(|message| matches!(
+            message,
+            Message::Record(record) if record.event.name() == "session.finished"
+        )),
+        "the client was cut off without being told the session had ended: {heard:?}"
+    );
+}
+
+/// A client another has replaced leaves saying so, rather than coming back for the session.
+///
+/// note: the input is held open throughout, so nothing but the session can end this client - and
+/// a client that read being replaced as a drop would reconnect, replace the one that replaced it,
+/// and be in the session still when the timeout below goes off.
+#[tokio::test]
+async fn a_replaced_client_leaves_and_does_not_come_back() {
+    let session = served(Vec::new(), |_| {}).await;
+    let (mut typing, input) = tokio::io::duplex(256);
+    let (at, kernel) = (session.at.clone(), session.kernel.clone());
+    let replacing = tokio::spawn(async move {
+        // a note the client wrote, which is how the session says it has a client to replace
+        typing
+            .write_all(b"/note here first\n")
+            .await
+            .expect("could not type");
+        until_session(&kernel, |kernel| says(kernel, "here first")).await;
+        let (peer, _) = Peer::attached(&at).await;
+        (typing, peer)
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let left = tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the replaced client stayed");
+    let left = left.expect_err("being replaced is not a clean exit");
+    assert!(left.starts_with("replaced:"), "{left}");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        !prose.contains("attaching again"),
+        "the replaced client went back for the session: {prose}"
+    );
+
+    let (typing, peer) = replacing.await.expect("the replacing client panicked");
+    drop((typing, peer));
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
 }
 
 /// A client whose turn failed leaves with a failure, as `--headless` does.
@@ -1298,13 +1325,13 @@ async fn a_command_piped_in_leaves_its_records_behind_before_the_client_goes() {
 async fn a_blank_line_from_a_client_is_not_a_message() {
     let session = served(vec![ModelResponse::text("one")], |_| {}).await;
 
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"\n   \n  /budget\nfirst\n")
             .await
             .expect("could not type");
-        watch.until_words("one").await;
+        until_session(&kernel, |kernel| says(kernel, "one")).await;
         feed.write_all(b"/quit\n").await.expect("could not type");
     });
 
@@ -1388,12 +1415,11 @@ async fn two_answers_typed_together_answer_two_questions() {
     })
     .await;
 
-    let (mut watch, _) = Peer::attached(&session.at).await;
+    let kernel = session.kernel.clone();
     let (mut feed, input) = tokio::io::duplex(256);
     tokio::spawn(async move {
         feed.write_all(b"go\n").await.expect("could not type");
-        watch.until_record("permission.requested").await;
-        watch.until_record("permission.requested").await;
+        until_session(&kernel, |kernel| kernel.pending_permissions().len() == 2).await;
         feed.write_all(b"y\ny\n").await.expect("could not type");
     });
 
