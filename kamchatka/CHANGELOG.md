@@ -34,6 +34,17 @@ minor bump may break you.
 
 ### changed
 
+- **A projection over the line limit has its longest lines cut down, rather than leaving the
+  session unattachable.** One message larger than `MAX_LINE` in the context made `Message::Attached`
+  itself that long, and a projection cannot be skipped the way an oversized record is, so every
+  client was refused - and a browser's `project` after any reshape of its chat was answered with
+  `failed`, leaving the chat stale. Nothing is cut until the frame would be too long; then each line
+  over the longest length that lets the whole projection fit is cut to it, measured as JSON, and
+  the shorter lines are left whole. A line that was cut says how many bytes it lost in
+  `Line::clipped`, a field new to the wire and `null` everywhere else; where it is an item,
+  `inspect` reads the rest, and `--connect`, `examples/attached.rs` and the browser page say so on
+  the end of the line. A projection still too long once its lines are cut is refused by name as
+  before.
 - **A `/endpoint` that keeps the model's name is in the record.** It was in no record at all,
   since what the kernel compared to announce a switch carried no address; now `model.changed`
   names both, and the trace shows `model at address` either side where the address is what moved.

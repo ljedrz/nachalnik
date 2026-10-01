@@ -97,7 +97,12 @@ async fn main() -> Result<(), String> {
     // tokens and not one word of what it says - so a client fed nothing but the stream can follow a
     // turn as it arrives and cannot render a syllable of what happened before it connected
     for line in &attached.conversation {
-        println!("{} {}", mark(line.speaker), line.text);
+        // a line can arrive cut down, where the whole projection was too long for one frame; what
+        // it says it lost goes on the end, and an `inspect` of its item is the rest of it
+        match line.clipped {
+            Some(gone) => println!("{} {} … [{gone} more bytes]", mark(line.speaker), line.text),
+            None => println!("{} {}", mark(line.speaker), line.text),
+        }
     }
     if question.is_empty() {
         println!("--- nothing to ask, so nothing was asked ---");

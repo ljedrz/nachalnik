@@ -74,9 +74,10 @@
 //! undecided rather than unbuilt, and one at a time is what stands in for it. A session drawn at a
 //! desk still has two ways in, and a message either sends into a running turn waits in one queue
 //! with the other's, each to go in on its own. `POSTPONED.md` has the other things this module is
-//! knowingly without, among them a projection too large for [`protocol::MAX_LINE`], which no
-//! client can attach past. A single record that large is named rather than sent; see
-//! [`protocol::Message::Oversized`].
+//! knowingly without. Nothing here is lost to [`protocol::MAX_LINE`]: a single record that large
+//! is named rather than sent (see [`protocol::Message::Oversized`]), and a projection that large
+//! has its longest lines cut down until it fits, each saying what it lost (see
+//! [`protocol::Line::clipped`]).
 //!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
 //! held to. `nachalnik-mcp`, `kamchatka`'s introspection tools and

@@ -1717,8 +1717,8 @@ async fn an_interrupt_stops_a_command_waiting_on_an_endpoint() {
 /// note: the big one is what the item *used to* hold rather than what it holds, which is the shape
 /// the case actually takes - a rewritten tool result - and the only shape this closes. A context
 /// item that is large *now* makes the projection itself oversized, which is a second door to the
-/// same room and is in `POSTPONED.md`: the projection cannot be skipped, so it wants abridging and
-/// that is a decision about what every client is handed.
+/// same room: the projection cannot be skipped, so it is cut down to fit instead - see
+/// `refused::a_projection_too_long_to_send_is_cut_down_to_fit`.
 #[tokio::test]
 async fn a_record_too_long_to_send_is_named_rather_than_locking_everybody_out() {
     use nachalnik::ContextItem;

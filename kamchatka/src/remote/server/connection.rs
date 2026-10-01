@@ -367,20 +367,22 @@ async fn watermark<W: AsyncWrite + Unpin>(
         // other end refuses, which closes the connection and reads as a drop, and the client
         // spends a minute reattaching to a session that answered every time.
         //
-        // note: refused by name rather than written and hoped for. What a client can do about this
-        // is read the records without a projection, so that is what the sentence says; abridging
-        // the projection is a decision about what every client is handed and is not taken here.
-        // See `POSTPONED.md`.
+        // note: and it is now the rare case rather than the ordinary one. A conversation too long
+        // for a frame has been cut down to fit already - see `Attached::abridge` - so what reaches
+        // this is a projection too long for reasons that are not its lines: the parts of it nothing
+        // cuts, or lines so many that even cut to nothing they do not fit. Refused by name rather
+        // than written and hoped for, and what a client can do about it is read the records
+        // without a projection, so that is what the sentence says.
         let projection = Message::Attached(attached);
         let line = protocol::framed(&projection)?;
         if let Some(bytes) = protocol::overlong(&line) {
             return Err(Refused {
                 about: "projection",
                 error: format!(
-                    "this session cannot be attached: its projection is {bytes} bytes, more than \
-                     a client reads in one line ({}). The records are still there and are read \
-                     without a projection - `inspect ID` fetches any one item - but the whole \
-                     conversation at once does not fit in one line",
+                    "this session cannot be attached: its projection is {bytes} bytes even with \
+                     its longest lines cut down, more than a client reads in one line ({}). The \
+                     records are still there and are read without a projection - `inspect ID` \
+                     fetches any one item - but the session at once does not fit in one line",
                     protocol::MAX_LINE
                 ),
             });

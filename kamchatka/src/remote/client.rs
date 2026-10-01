@@ -744,8 +744,14 @@ impl<'a> Client<'a> {
         )
         .map_err(|e| e.to_string())?;
         for line in &attached.conversation {
-            writeln!(self.prose, "{} {}", speaks(line.speaker), line.text)
-                .map_err(|e| e.to_string())?;
+            writeln!(
+                self.prose,
+                "{} {}{}",
+                speaks(line.speaker),
+                line.text,
+                clipped(line)
+            )
+            .map_err(|e| e.to_string())?;
         }
         writeln!(
             self.prose,
@@ -1277,6 +1283,23 @@ async fn connect(address: &str) -> Result<super::Connection, String> {
             })
             .map_err(|e| format!("could not reach {host}: {e}")),
     }
+}
+
+/// What a line of the conversation says on the end of it about what it was not sent with, if
+/// anything; see [`protocol::Line::clipped`].
+///
+/// note: and the way to the rest where there is one, which is `?N` - the one command this client
+/// has for reading an item whole, and the one somebody holding a cut line wants next.
+fn clipped(line: &protocol::Line) -> String {
+    let Some(gone) = line.clipped else {
+        return String::new();
+    };
+    let rest = match line.item {
+        Some(id) => format!("; `?{id}` reads the whole of it"),
+        None => String::new(),
+    };
+
+    format!(" … [{} more not sent{rest}]", plural(gone, "byte"))
 }
 
 /// The mark a line of the conversation is printed under.
