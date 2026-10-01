@@ -449,7 +449,12 @@ impl Server {
         notices.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
+            // what the session has said first - the list a command came back with - and then the
+            // lines that waited for it, so that nothing is heard in an order it did not happen in
             serving.pump(app);
+            if app.release().await {
+                serving.pump(app);
+            }
             // a second `ctrl+c` or a closed stream leaves at once; a `/quit` waits for the turn
             if app.leaving() && !leaving {
                 failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
@@ -463,13 +468,14 @@ impl Server {
                 incoming = self.arrived() => apply_arrival(&mut serving, app, incoming),
                 Some(ask) = serving.asked() => {
                     // note: the command holds the `App` for as long as it takes - there is one of
-                    // it - so the loop waits. What it keeps doing meanwhile is reading the
-                    // kernel's broadcast, in a second `select!` underneath this one, because that
-                    // is the only thing here that *loses* rather than queues: a subscription that
-                    // falls behind drops what it did not read. What this loop reads the stream for
-                    // is `App::trace`, which is handed to every client that attaches afterwards -
-                    // so without this, a `/models` at an endpoint that has gone quiet gives
-                    // everybody who arrives later a trace with holes in it, and nothing says so.
+                    // it - so the loop waits. Nothing a client sends waits on an endpoint here any
+                    // more, since a command that would is sent out and finished when it comes back
+                    // (see `App::in_flight`), but answering one is still not instant. What the loop
+                    // keeps doing meanwhile is reading the kernel's broadcast, in a second
+                    // `select!` underneath this one, because that is the only thing here that
+                    // *loses* rather than queues: a subscription that falls behind drops what it
+                    // did not read. What this loop reads the stream for is `App::trace`, which is
+                    // handed to every client that attaches afterwards, holes and all.
                     //
                     // note: the events and nothing else. A connection waits in the listen backlog,
                     // an outcome in an unbounded channel and a `ctrl+c` in its own stream: all
@@ -478,9 +484,7 @@ impl Server {
                     //
                     // note: what is still *held* is the next command - the client's own, or the
                     // attach of one replacing it - because answering one needs the `App` and the
-                    // `App` is lent out. That is not a queue this can
-                    // add; it is `App::submit` being `&mut self` for the length of a round trip,
-                    // and `POSTPONED.md` has what splitting it would take.
+                    // `App` is lent out, for no longer than the command takes to do.
                     let mut held = Vec::new();
                     // a block of its own, because the future borrows the `App` until it is
                     // dropped and the drain below is what wants it back
@@ -511,7 +515,7 @@ impl Server {
                         _ => crate::headless::Stop::Terminated,
                     });
                 }
-                Some(outcome) = finished.recv() => failed = apply_outcome(app, events, outcome),
+                Some(outcome) = finished.recv() => apply_outcome(app, events, outcome, &mut failed),
                 Ok(()) = reaching.changed() => {}
                 // note: while a turn runs, for the reason `headless.rs` gives
                 _ = notices.tick(), if app.busy => {
@@ -574,24 +578,25 @@ fn apply_event(app: &mut App, event: Result<Event, broadcast::error::RecvError>)
     true
 }
 
-/// Takes in the end of a turn, and hands back what it failed with if it did.
+/// Takes in the end of a turn, and keeps what it failed with if it did; or a command coming back,
+/// which says nothing about how the last turn went.
 fn apply_outcome(
     app: &mut App,
     events: &mut broadcast::Receiver<Event>,
     outcome: Outcome,
-) -> Option<String> {
+    failed: &mut Option<String>,
+) {
     // the turn's last events are still queued behind this one, and `select!` picks whichever
     // branch is ready rather than whichever happened first
     while let Ok(event) = events.try_recv() {
         app.on_event(event);
     }
-    let failed = match &outcome {
-        Outcome::Failed(e) => Some(e.clone()),
-        _ => None,
-    };
+    match &outcome {
+        Outcome::Failed(e) => *failed = Some(e.clone()),
+        Outcome::Returned(_) => {}
+        _ => *failed = None,
+    }
     app.on_outcome(outcome);
-
-    failed
 }
 
 /// Takes in a `ctrl+c`; `true` when it is the second one and the session leaves at once.
@@ -782,20 +787,17 @@ impl Serving {
     /// Does one of them, and answers whoever asked.
     ///
     /// note: the doing happens here, in the caller's own loop, and it takes the [`App`] with it -
-    /// there is one of it, and answering anybody needs it. So a command that awaits an endpoint
-    /// holds the loop: `/models` fetches a listing, `/compact` runs a whole pass, and
-    /// [`App::submit`] awaits a switch still in flight before it reads the line at all. What that
-    /// costs is the client's next command waiting for its turn, and a screen that does not redraw
-    /// where the loop is also drawing one.
+    /// there is one of it, and answering anybody needs it. What it does not do is wait on an
+    /// endpoint: `/models`, a compaction pass and a switch are sent out and finished when they come
+    /// back, and a line arriving meanwhile is answered `queued` and handed in after - see
+    /// [`App::in_flight`]. So a client's command is answered in the time it takes to do, and the
+    /// loop goes back to everybody else.
     ///
     /// note: what it does not cost is anything *lost*. Both loops that call this read the
     /// kernel's broadcast while they wait - see the branch in [`Server::run`] - because a
     /// subscription that falls behind drops what it did not read, and `App::trace` is built from
     /// what this loop read. Everything else that arrives meanwhile queues: a connection in the
     /// listen backlog, an outcome in an unbounded channel, a `ctrl+c` in its own stream.
-    ///
-    /// note: the waiting is in `POSTPONED.md`, and it is not a queue anybody can add out here. It
-    /// is `App::submit` taking `&mut self` for the length of a round trip.
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
             FromClient::Left { client } => {
@@ -1012,21 +1014,13 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             // desk wants the key pages, and the same `/help` sent from a browser would be a
             // reference to a program the reader is not using. The flag is a fact about whoever just
             // asked. See `App::help`
+            //
+            // note: and `/compact` reads it when its pass comes back, which is after this: a client
+            // has no keys to answer the question with, so the pass is taken and its list said -
+            // see `App::planned`
             let keys = std::mem::replace(&mut app.keys, false);
-            let proposing = app.proposed.is_none();
             let reply = app.submit(&line).await;
             app.keys = keys;
-            // `/compact` asks, and a client has no keys to answer with - nor, in a session with no
-            // screen, has anybody. Taken, as `Headless` takes it and for its reason: this is
-            // somebody's own line, and one answered with a question nobody can reach has been
-            // refused the thing it asked for, and holds up every later `/compact` besides. The
-            // list goes out first, in the session's voice, so what was taken was said
-            if proposing && let Some(proposed) = app.proposed.clone() {
-                let rows: Vec<String> =
-                    proposed.rows.iter().map(|row| format!("· {row}")).collect();
-                app.say(Speaker::Note, rows.join("\n"));
-                app.take_proposal(true).await;
-            }
 
             Some(Message::Replied {
                 did: reply.did,

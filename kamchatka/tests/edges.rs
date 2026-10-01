@@ -22,13 +22,23 @@ use nachalnik_providers::OpenAiCompatible;
 use ratatui::{Terminal, backend::TestBackend};
 
 fn app() -> App {
+    let (app, outcomes) = answering();
+    std::mem::forget(outcomes);
+
+    app
+}
+
+/// The same session, with the end of the channel a command's request comes back on.
+fn answering() -> (
+    App,
+    tokio::sync::mpsc::UnboundedReceiver<kamchatka::app::Outcome>,
+) {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
     kernel.set_provider(Arc::new(ScriptedProvider::new([])));
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(ConstTool::new("read", "hello")));
-    let (outcomes, _keep) = tokio::sync::mpsc::unbounded_channel();
-    std::mem::forget(_keep);
+    let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
     let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
     let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
@@ -53,7 +63,7 @@ fn app() -> App {
     app.kernel
         .push(ContextItem::file("src/some/deep/path.rs", "fn parse() {}").pinned());
 
-    app
+    (app, finished)
 }
 
 fn draw(app: &mut App, width: u16, height: u16) {
@@ -683,13 +693,19 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
 async fn models_says_when_the_endpoint_lists_none() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-    let mut app = app();
+    let (mut app, mut finished) = answering();
     for c in "/models".chars() {
         app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
             .await;
     }
     app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .await;
+    // the listing is asked for off the loop, and finished when it comes back
+    let returned = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())
+        .await
+        .expect("the listing never came back")
+        .expect("the channel is open");
+    app.on_outcome(returned);
 
     let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("a backend");
     terminal

@@ -264,7 +264,7 @@ pub const LEAVING: std::time::Duration = std::time::Duration::from_secs(5);
 /// note: the drawn loop has a tick of its own and reads them on that.
 pub(crate) const NOTICES: std::time::Duration = std::time::Duration::from_millis(120);
 
-/// What the kernel's task reports when it stops.
+/// What the kernel's task reports when it stops, or what a command's request came back with.
 pub enum Outcome {
     /// The turn ended in this state.
     Stopped(State),
@@ -272,6 +272,34 @@ pub enum Outcome {
     Stepped(State),
     /// It could not be finished.
     Failed(String),
+    /// A command's request came back, and the command can be finished; see [`App::in_flight`].
+    ///
+    /// note: on the same channel as a turn's end rather than one of its own, because every loop
+    /// already waits on this one and hands what it reads to [`App::on_outcome`] - so a loop learns
+    /// nothing new to finish a command, and a command cannot be finished by a loop that forgot to
+    /// listen for it. It is not a turn ending: nothing about the turn changes.
+    Returned(Returned),
+}
+
+/// What a command's request came back with, for [`App::on_outcome`] to finish the command with.
+///
+/// note: opaque, because what it holds is the rest of the command - a closure over what came
+/// back - and nothing but the `App` that sent the request has any business running it.
+pub struct Returned {
+    /// Which errand it answers; `None` for a switch, which is never stopped and so never stale.
+    errand: Option<u64>,
+    /// The rest of the command.
+    finish: Box<dyn FnOnce(&mut App) + Send>,
+}
+
+/// A command's request that is still out, and how to stop waiting for it.
+struct Errand {
+    /// Which one, so that an answer to one that was stopped is told from the one awaited.
+    id: u64,
+    /// What it is, for the line saying it was stopped.
+    what: &'static str,
+    /// The request itself, which stopping aborts.
+    task: tokio::task::AbortHandle,
 }
 
 /// What one line handed to [`App::submit`] did.
@@ -285,7 +313,9 @@ pub enum Outcome {
 pub enum Did {
     /// It went into the context as a message, and a turn was started for it.
     Asked(ContextId),
-    /// A turn was already running, so it waits for the end of that one and then gets its own.
+    /// A turn was already running, so it waits for the end of that one and then gets its own; or
+    /// a command was still out at the endpoint, so the line waits for that and is handed in
+    /// after, whatever it turns out to be. See [`App::in_flight`].
     Queued,
     /// It began with `/`, so it was a command, and it has been run.
     Ran,
@@ -356,12 +386,22 @@ pub struct App {
     /// of the two won the race. Down a pipe there is no gap between the lines at all, so what is a
     /// race at a keyboard is the ordinary case in a script.
     ///
-    /// note: awaited in [`App::submit`] rather than anywhere the provider is read, which is the
+    /// note: held for in [`App::submit`] rather than anywhere the provider is read, which is the
     /// narrower door and the right one: a frame drawn mid-switch showing the old name for a
     /// moment is a frame, and the next one corrects it. A *line* acting on the old name is an
     /// answer. Every question a switch asks the endpoint is bounded by the provider, so this
-    /// cannot wait for ever.
+    /// cannot hold lines for ever. See [`App::in_flight`].
     pub settling: Option<tokio::task::JoinHandle<()>>,
+    /// A command's request still out at the endpoint - `/models`, or a compaction pass being
+    /// worked out - which [`App::on_outcome`] finishes when it comes back.
+    ///
+    /// note: one, because nothing is handed a line while it is out; see [`App::in_flight`].
+    errand: Option<Errand>,
+    /// How many errands have been sent, which is what numbers them.
+    errands: u64,
+    /// Lines handed to [`App::submit`] while a command was in flight, oldest first, each with
+    /// whether whoever sent it had keys to press; for [`App::release`].
+    held: VecDeque<(String, bool)>,
     /// How much of each tool's output the model is shown, which `/limit` changes.
     ///
     /// note: the same handle the tools were built with, so `/limit` changes the number they will
@@ -812,6 +852,9 @@ impl App {
             since: Instant::now(),
             question_scroll: 0,
             settling: None,
+            errand: None,
+            errands: 0,
+            held: VecDeque::new(),
             proposed: None,
             typed_ahead: VecDeque::new(),
             last_sent: None,
@@ -960,6 +1003,135 @@ impl App {
         heard
     }
 
+    /// Whether a command is still out at the endpoint: a switch settling, a listing, or a
+    /// compaction pass being worked out.
+    ///
+    /// note: what a loop asks before handing in the next line, and what [`App::submit`] holds a
+    /// line for. A command that waits on an endpoint used to wait *in* `submit`, holding the `App`
+    /// and so the loop: a served session answered nobody, a drawn one stopped redrawing, and a
+    /// headless deadline could not be reached. It is sent out instead and finished by
+    /// [`App::on_outcome`] when it comes back - but the line after it must still not act on a
+    /// session part-way through it: `/models` and then `/model` from the list, or a message on the
+    /// line after a switch. So lines wait while one is out, and the loop goes on drawing, reading
+    /// the kernel, and taking `ctrl+c`, which stops a listing or a pass. A switch is never stopped:
+    /// half an `/endpoint` is a worse thing to leave than a wait.
+    pub fn in_flight(&self) -> bool {
+        self.settling.is_some() || self.errand.is_some()
+    }
+
+    /// Whether there is anything for [`App::interrupt`] to stop: a turn, or a listing or a pass
+    /// being worked out.
+    #[cfg(feature = "tui")]
+    fn stoppable(&self) -> bool {
+        self.busy || self.errand.is_some()
+    }
+
+    /// Hands in the lines [`App::submit`] held while a command was in flight, in order, until one
+    /// of them sends out another.
+    ///
+    /// note: for the loops a line arrives at whenever somebody sends one: the drawn one, from the
+    /// keys, and a served one, from its clients - each of which was answered `queued` when it
+    /// was held, so that a client's next command, an interrupt among them, is not stuck behind it.
+    /// The headless loop reads no line while a command is in flight.
+    ///
+    /// note: each is handed in as whoever sent it, keys or none. A page one of them opens for
+    /// somebody with no screen to open it on is said instead, since the answer that would have
+    /// carried it has gone. `true` where it handed anything in, which is a loop's cue to draw.
+    pub async fn release(&mut self) -> bool {
+        let mut released = false;
+        while !self.in_flight()
+            && let Some((line, keys)) = self.held.pop_front()
+        {
+            let had = std::mem::replace(&mut self.keys, keys);
+            let reply = Box::pin(self.submit(&line)).await;
+            self.keys = had;
+            if !keys && let Some(Overlay::Text { title, pages, .. }) = reply.page {
+                let pages: Vec<String> = pages
+                    .iter()
+                    .map(|page| match page.name.is_empty() {
+                        true => page.body.clone(),
+                        false => format!("-- {} --\n{}", page.name, page.body),
+                    })
+                    .collect();
+                self.say(
+                    Speaker::Note,
+                    format!("--- {} ---\n{}", title.trim(), pages.join("\n")),
+                );
+            }
+            released = true;
+        }
+
+        released
+    }
+
+    /// Sends a command's request out, and has `then` finish the command when it comes back.
+    fn errand<T: Send + 'static>(
+        &mut self,
+        what: &'static str,
+        work: impl Future<Output = T> + Send + 'static,
+        then: impl FnOnce(&mut App, T) + Send + 'static,
+    ) {
+        self.errands += 1;
+        let id = self.errands;
+        let (_, task) = self.send_out(Some(id), what, work, then);
+        self.errand = Some(Errand { id, what, task });
+    }
+
+    /// Sends a `/model` or `/endpoint` switch out, to settle while the loop carries on.
+    fn switch(&mut self, work: impl Future<Output = ()> + Send + 'static) {
+        let (settling, _) = self.send_out(None, "the switch", work, |_, ()| {});
+        self.settling = Some(settling);
+    }
+
+    /// Runs `work` as a task, and sends what it came back with to the loop as an
+    /// [`Outcome::Returned`].
+    ///
+    /// note: a task watching a task, so that the answer is sent however the work ended. A request
+    /// that panicked would otherwise send nothing, and every line after it would be held for ever
+    /// behind a command that is never coming back; one that was stopped sends nothing on purpose,
+    /// because whoever stopped it has already let go of it.
+    fn send_out<T: Send + 'static>(
+        &mut self,
+        errand: Option<u64>,
+        what: &'static str,
+        work: impl Future<Output = T> + Send + 'static,
+        then: impl FnOnce(&mut App, T) + Send + 'static,
+    ) -> (tokio::task::JoinHandle<()>, tokio::task::AbortHandle) {
+        let outcomes = self.outcomes.clone();
+        let inner = tokio::spawn(work);
+        let stop = inner.abort_handle();
+        let outer = tokio::spawn(async move {
+            let finish: Box<dyn FnOnce(&mut App) + Send> = match inner.await {
+                Ok(got) => Box::new(move |app: &mut App| then(app, got)),
+                Err(e) if e.is_cancelled() => return,
+                Err(_) => Box::new(move |app: &mut App| {
+                    app.say(Speaker::Error, format!("{what} failed before it came back"))
+                }),
+            };
+            let _ = outcomes.send(Outcome::Returned(Returned { errand, finish }));
+        });
+
+        (outer, stop)
+    }
+
+    /// Finishes the command a request came back for, unless it was stopped meanwhile.
+    fn returned(&mut self, returned: Returned) {
+        match returned.errand {
+            None => {
+                self.settling = None;
+                (returned.finish)(self);
+                // the switch's own notice, which is about the switch: left for the next look it
+                // lands after whatever the next line does
+                self.take_notices();
+            }
+            Some(id) if self.errand.as_ref().is_some_and(|errand| errand.id == id) => {
+                self.errand = None;
+                (returned.finish)(self);
+            }
+            Some(_) => {}
+        }
+    }
+
     /// Waits for a `/model` or `/endpoint` still settling, and says what the switch had to say.
     ///
     /// note: the notice is taken here, the moment the switch is done, because it is about that
@@ -982,6 +1154,9 @@ impl App {
 
     /// Takes in the end of a turn.
     pub fn on_outcome(&mut self, outcome: Outcome) {
+        if let Outcome::Returned(returned) = outcome {
+            return self.returned(returned);
+        }
         self.busy = false;
         self.close();
         self.keep_record();
@@ -1010,6 +1185,8 @@ impl App {
             Outcome::Stopped(state) => !matches!(state, State::Deciding { .. }),
             Outcome::Stepped(state) => matches!(state, State::Idle | State::Finished { .. }),
             Outcome::Failed(_) => true,
+            // taken at the top, and never a turn's
+            Outcome::Returned(_) => false,
         };
         // a `Stepped` outcome is somebody driving this a transition at a time, and a failure is
         // not the moment to start something else; either way what was typed waits for `/continue`
@@ -1017,6 +1194,7 @@ impl App {
         let carry_on = ended && !interrupted && matches!(outcome, Outcome::Stopped(_));
         match outcome {
             Outcome::Failed(e) => self.say_error(e),
+            Outcome::Returned(_) => {}
             // note: a turn stopping to ask says nothing here, and opens nothing. The question is
             // drawn from `pending_permissions()` every frame, so there is no moment at which it
             // has to be put on the screen and none at which it has to be taken off, so nothing
@@ -1266,6 +1444,11 @@ impl App {
                         heard(&event);
                         self.on_event(event);
                     }
+                    // a command coming back is not the turn ending, and the turn is still waited for
+                    if let Outcome::Returned(_) = outcome {
+                        self.on_outcome(outcome);
+                        continue;
+                    }
                     let failed = match &outcome {
                         Outcome::Failed(e) => Some(e.clone()),
                         _ => None,
@@ -1316,6 +1499,15 @@ impl App {
     /// budget ceiling or a request cap watching from another task is another, and the kernel
     /// takes an interrupt from any thread. What it never does is discard what arrived.
     pub fn interrupt(&mut self) {
+        // a listing or a pass being worked out is stopped as a turn is, and before one: it is
+        // what holds every line after it. A switch is not, for the reason on `in_flight`
+        if let Some(errand) = self.errand.take() {
+            errand.task.abort();
+            self.say(
+                Speaker::Note,
+                format!("stopped waiting for {}", errand.what),
+            );
+        }
         if !self.busy {
             return;
         }
@@ -1671,7 +1863,7 @@ impl App {
         // a question nobody asked: `d` is a key at a permission question, and `ctrl+d` reaching it
         // would drop every pending call
         if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
-            match self.busy && key.code == KeyCode::Char('c') {
+            match self.stoppable() && key.code == KeyCode::Char('c') {
                 true => self.interrupt(),
                 false => self.quit = true,
             }
@@ -1699,7 +1891,7 @@ impl App {
         let count = std::mem::take(&mut self.count);
 
         match (key.code, ctrl) {
-            (KeyCode::Esc, _) if self.busy => self.interrupt(),
+            (KeyCode::Esc, _) if self.stoppable() => self.interrupt(),
             (KeyCode::Char('t'), true) => self.show(self.next_tab()),
             (KeyCode::Char('1'), _) if alt => self.show(Tab::Chat),
             (KeyCode::Char('2'), _) if alt => self.show(Tab::Context),
@@ -1926,7 +2118,7 @@ impl App {
     /// note: public because the screen is not the only thing entitled to answer. `--headless` has
     /// no keys and answers this itself; see the note there for why it takes it rather than
     /// refusing it the way it refuses a tool's question.
-    pub async fn take_proposal(&mut self, take: bool) {
+    pub fn take_proposal(&mut self, take: bool) {
         self.proposed = None;
         self.focus = Focus::Input;
         // the next question starts at the top of itself, whatever was being read in this one
@@ -1939,20 +2131,24 @@ impl App {
         let Some(compactor) = self.kernel.compactor() else {
             return;
         };
-        match compactor
-            .plan(&self.kernel.items(), &self.kernel.budget())
-            .await
-        {
-            // the report is said by `Event::Compacted`, like any other pass: one account of a
-            // compaction, whoever asked for it
-            Some(plan) => {
-                self.kernel.apply_compaction(plan);
-            }
-            None => self.say(
-                Speaker::Note,
-                "nothing left to take: everything the pass had listed is pinned now",
-            ),
-        }
+        // worked out again rather than applied as listed, and sent out as `/compact` sends its
+        // own: the pass can be a request of its own, and nothing holds the loop for one
+        let (items, budget) = (self.kernel.items(), self.kernel.budget());
+        self.errand(
+            "the compaction pass",
+            async move { compactor.plan(&items, &budget).await },
+            |app, plan| match plan {
+                // the report is said by `Event::Compacted`, like any other pass: one account of a
+                // compaction, whoever asked for it
+                Some(plan) => {
+                    app.kernel.apply_compaction(plan);
+                }
+                None => app.say(
+                    Speaker::Note,
+                    "nothing left to take: everything the pass had listed is pinned now",
+                ),
+            },
+        );
     }
 
     /// Whether the prompt is on the screen at all.

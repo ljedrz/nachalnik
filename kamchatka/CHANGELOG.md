@@ -37,6 +37,18 @@ minor bump may break you.
   back out. A session resting with some still waiting - after a turn was stopped - puts a new line
   behind them and the oldest in. `Attached::queued_behind` lists the ones after `queued`.
   **Breaking** for the library: `App::queued` is an iterator over all of them.
+- **A command that waits on an endpoint no longer holds the session.** `/models`, `/compact` and
+  `y` at its question work out what they ask for in a task, as `/model` and `/endpoint` already
+  settled their switch, and are finished when it comes back - so a served session goes on
+  answering its client, a drawn one goes on redrawing, and `--deadline`, `ctrl+c` and a client's
+  interrupt stop a listing or a pass where they used to wait for the endpoint. A switch is still
+  let finish. The line after one of them waits until it is back - the line after `/models` is
+  often the `/model` it listed - and a client's is answered `queued` at once and handed in after.
+  Down a pipe and from a client, `/compact` is taken when its pass comes back and the `/models`
+  list is said rather than paged. **Breaking** for the library: `Outcome::Returned` is new and is
+  handed to `App::on_outcome` like the rest; `App::take_proposal` is no longer `async`;
+  `App::in_flight` and `App::release` are new, and a loop that holds lines calls `release` each
+  time round.
 - **A compaction pass says what it could not price.** The line announcing one, and its row on
   the trace tab, add `1 → 0 piece(s) unpriced` beside the token totals wherever something in the
   request had no figure.

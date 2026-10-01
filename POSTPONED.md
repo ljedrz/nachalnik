@@ -35,25 +35,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
-- **A headless deadline that can cut short a command of the operator's own.** `--deadline` and
-  `ctrl+c` are branches of the driver's `select!`, and a line read from the input is submitted
-  *inside* the branch that read it - so while `/models` fetches a list, `/compact` works out a
-  pass, or the line after a `/model` or `/endpoint` waits in `App::submit` for the switch to
-  settle, neither branch can be reached. A deadline falling in that window is
-  served when the command returns. The model's own turns are interruptible, which is where a run
-  spends its time, so the hole is narrow.
-
-  What would unblock it is somewhere for a command to run that the loop can outlive. `App::submit`
-  takes `&mut App`, so the obvious move - a `timeout_at` around it - would drop the future
-  mid-command and leave an `/endpoint` half applied, which is a worse thing to leave a session than
-  a late deadline. `/model` and `/endpoint` already run their switch as a task, `App::settling`,
-  and that is half of the shape: the other half is that the wait for it, and for a command that is
-  itself a request, has to be something the driver's `select!` can race against the deadline rather
-  than an `await` at the top of `App::submit`. On the way out `App::wait_for_turn` already waits
-  for a settling switch, under `LEAVING`, so a deadline does not strand one. What has to be decided
-  first is what a deadline *means* for a command - whether it interrupts the request or merely
-  stops what comes after it.
-
 - **`--reconcile`: one context out of several hard forks of one session.** Two or more past
   snapshots that share an ancestor, folded into one session to carry on from. Nothing about it is
   blocked; it is not built. The design is written down here because most of it is decisions
@@ -152,26 +133,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   keeps no ranking of the apps calling it, so a `Jev` pointed there has nothing to send and must
   not send it - `is_openrouter` is already the test for that, and it is the same test the request
   path uses.
-
-- **A client command that awaits the endpoint holds the whole session loop.** `remote::server`'s
-  loop applies a command inside its own `select!`, and `App::submit` awaits: `/models` fetches a
-  list, `/compact` works a pass out and then takes it, and a `/model` or `/endpoint` switch still
-  in flight is awaited before the next line is read at all. While any of those is awaited the loop
-  answers nothing else - the client's next command, a client attaching to replace it - and where
-  the session is drawn at a desk as well, the screen there does not redraw.
-
-  **Nothing is lost while it waits.** Both loops read the kernel's broadcast while a command is in
-  flight, and everything else queues; the note on `Serving::answer` says what each of them is and
-  why it is safe to leave waiting.
-
-  What is left is a command waiting for its turn, and it is not a queue anybody can add out here. It
-  is `App::submit` taking `&mut App` for the length of a round trip, so answering one client while
-  another's command is in flight would need two of the one thing there is one of. The fix is the
-  same one the headless deadline above wants - somewhere for a command to run that the loop can
-  outlive - and it is rejected here for the same reason: a future dropped mid-command leaves a
-  `/endpoint` half applied. The shape that would work is `App::submit` splitting into what needs
-  the session and what only needs an `Arc`, and the question to settle first is what an interrupt
-  means for the half that is already in flight.
 
 - **A projection larger than `protocol::MAX_LINE` makes a session unattachable.** The *record* half
   of this is closed: a record over the cap goes out as `Message::Oversized`, which names its

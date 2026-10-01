@@ -7,7 +7,7 @@
 use std::{sync::Arc, time::Duration};
 
 use kamchatka::{
-    app::Speaker,
+    app::{Did, Speaker},
     remote::protocol::{self, Address, Command, Message},
 };
 use nachalnik::{
@@ -1491,14 +1491,15 @@ async fn slow_endpoint(after: Duration) -> (String, Arc<tokio::sync::Notify>) {
     (format!("http://{at}/v1"), asked)
 }
 
-/// The kernel is still heard while one client's command waits on an endpoint.
+/// The kernel is still heard while a client's command waits on an endpoint.
 ///
-/// note: the loop holds the `App` for the length of a command, because there is one of it and
-/// answering anybody needs it. What it used to stop doing as well was reading the kernel's
-/// broadcast - and that channel *drops* what nobody took rather than queueing it, which no other
-/// channel here does. What this loop reads the stream for is `App::trace`, handed to every client
-/// that attaches afterwards, so one `/models` at an endpoint that had gone quiet left everybody
-/// who arrived later with a trace full of holes and nothing anywhere saying so.
+/// note: the loop used to hold the `App` for the length of a command, and stopped reading the
+/// kernel's broadcast while it did - and that channel *drops* what nobody took rather than
+/// queueing it, which no other channel here does. What this loop reads the stream for is
+/// `App::trace`, handed to every client that attaches afterwards, so one `/models` at an endpoint
+/// that had gone quiet left everybody who arrived later with a trace full of holes and nothing
+/// anywhere saying so. The command is sent out now and the loop goes round while it is out; this
+/// holds it to hearing everything meanwhile.
 ///
 /// note: more items than the channel is deep, because the failure is a capacity exceeded rather
 /// than an ordering; `Config::event_queue_depth` is 1024. And pushed once the command's request has
@@ -1530,9 +1531,11 @@ async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
         }
     }
 
-    // the answer coming back is what says the command really was in flight for all of that
-    peer.until(|message| matches!(message, Message::Replied { .. }))
-        .await;
+    // the list coming back is what says the command really was in flight for all of that
+    peer.until(
+        |message| matches!(message, Message::Said { text, .. } if text.contains("a-slow-model")),
+    )
+    .await;
 
     peer.send(Command::Submit {
         line: "/quit".to_owned(),
@@ -1553,6 +1556,95 @@ async fn the_kernel_is_still_heard_while_a_command_waits_on_an_endpoint() {
         1500,
         "the session's own view of the context is short"
     );
+}
+
+/// A line sent while a command waits on an endpoint is answered at once, and read after it.
+///
+/// note: the line after `/models` is often the `/model` it was asked for, so it must not be read
+/// by a session that has not shown the list yet. And it must still be answered: a connection
+/// answers its client's commands in order, so a line held unanswered would hold the client's next
+/// command behind it - an interrupt among them.
+#[tokio::test]
+async fn a_line_sent_while_a_command_is_out_waits_for_it() {
+    let (endpoint, asked) = slow_endpoint(Duration::from_millis(400)).await;
+    let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+
+    peer.send(Command::Submit {
+        line: "/models".to_owned(),
+    })
+    .await;
+    tokio::time::timeout(PATIENCE, asked.notified())
+        .await
+        .expect("the command never reached the endpoint");
+    peer.send(Command::Submit {
+        line: "/note after the list".to_owned(),
+    })
+    .await;
+    let heard = peer
+        .until(|message| {
+            matches!(
+                message,
+                Message::Replied {
+                    did: Did::Queued,
+                    ..
+                }
+            )
+        })
+        .await;
+    assert!(
+        session.kernel.items().is_empty(),
+        "the line was read before the list came back: {heard:?}"
+    );
+
+    // and once the list is back, the line goes in
+    peer.until(
+        |message| matches!(message, Message::Said { text, .. } if text.contains("a-slow-model")),
+    )
+    .await;
+    crate::until_session(&session.kernel, |kernel| !kernel.items().is_empty()).await;
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// An interrupt stops a command waiting on an endpoint, and the line that waited behind it runs.
+#[tokio::test]
+async fn an_interrupt_stops_a_command_waiting_on_an_endpoint() {
+    let (endpoint, asked) = slow_endpoint(Duration::from_secs(30)).await;
+    let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+
+    peer.send(Command::Submit {
+        line: "/models".to_owned(),
+    })
+    .await;
+    tokio::time::timeout(PATIENCE, asked.notified())
+        .await
+        .expect("the command never reached the endpoint");
+    peer.send(Command::Submit {
+        line: "/note behind the list".to_owned(),
+    })
+    .await;
+    peer.send(Command::Interrupt).await;
+
+    // long before the endpoint would have answered, since `PATIENCE` bounds every wait here. A
+    // record goes out ahead of a line said before it, so the two are looked for in either order
+    let (mut stopped, mut noted) = (false, false);
+    while !(stopped && noted) {
+        match peer.recv().await {
+            Message::Said { text, .. }
+                if text.contains("stopped waiting for the list of models") =>
+            {
+                stopped = true
+            }
+            Message::Record(record) if record.event.name() == "context.added" => noted = true,
+            _ => {}
+        }
+    }
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
 }
 
 /// A record too long to send is named, and the session stays attachable.

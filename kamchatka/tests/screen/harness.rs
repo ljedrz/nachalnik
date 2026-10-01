@@ -131,7 +131,8 @@ impl Harness {
         self.app.show(tab);
     }
 
-    /// Waits for the running turn to stop, the way the real loop does.
+    /// Waits for the running turn to stop, or a command's request to come back, the way the real
+    /// loop does - and then hands in the lines that waited for it, as the loop does.
     ///
     /// note: With a deadline, because the alternative is a test that hangs for ever when a key
     /// press went somewhere other than where it was expected to - which is exactly the mistake
@@ -139,11 +140,12 @@ impl Harness {
     pub(crate) async fn settle(&mut self) {
         let outcome = tokio::time::timeout(Duration::from_secs(5), self.finished.recv())
             .await
-            .expect("a turn should have been started, and should have finished")
+            .expect("a turn or a command should have been started, and should have finished")
             .expect("the channel outlives the turn");
 
         self.drain();
         self.app.on_outcome(outcome);
+        self.app.release().await;
     }
 
     /// Draws, and returns what is on the screen.

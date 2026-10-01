@@ -73,10 +73,10 @@
 //! one is still half-open; see [`server`]. What several people driving one agent should *mean* is
 //! undecided rather than unbuilt, and one at a time is what stands in for it. A session drawn at a
 //! desk still has two ways in, and a message either sends into a running turn waits in one queue
-//! with the other's, each to go in on its own. `POSTPONED.md` has the other things this module is knowingly without, among
-//! them a command that awaits the endpoint holding the whole loop, and a projection too large for
-//! [`protocol::MAX_LINE`], which no client can attach past. A single record that large is named
-//! rather than sent; see [`protocol::Message::Oversized`].
+//! with the other's, each to go in on its own. `POSTPONED.md` has the other things this module is
+//! knowingly without, among them a projection too large for [`protocol::MAX_LINE`], which no
+//! client can attach past. A single record that large is named rather than sent; see
+//! [`protocol::Message::Oversized`].
 //!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
 //! held to. `nachalnik-mcp`, `kamchatka`'s introspection tools and

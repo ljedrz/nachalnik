@@ -183,6 +183,8 @@ async fn a_change_of_model_is_remarked_on_afresh() {
     harness.settle().await;
     harness.send("/model something-else").await;
     harness.send("go").await;
+    // the switch coming back, which hands in the `go` that waited for it, and then its turn
+    harness.settle().await;
     harness.settle().await;
 
     let screen = harness.screen();
@@ -1247,6 +1249,8 @@ async fn a_line_after_a_switch_waits_for_the_switch() {
 
     harness.send("/model something-else").await;
     harness.send("/model").await;
+    // the second line waited for the switch, and is handed in when it has come back
+    harness.settle().await;
 
     let screen = harness.flat();
     assert!(

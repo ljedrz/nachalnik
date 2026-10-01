@@ -63,11 +63,21 @@ impl App {
     /// should not have to watch the two of them change to find out. The copy is cheap, and the
     /// alternative is a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
-        // a switch still in flight is finished before this line is read, so that nothing acts on
-        // a session part-way through changing model. See `App::settling`
-        self.settled(None).await;
-
         let (from, pages) = (self.loose.len(), self.previews);
+        // a command still out at the endpoint is finished before this line is read, so that
+        // nothing acts on a session part-way through changing model, or on a list somebody has not
+        // been shown yet. Held rather than waited for, so that the loop goes on; see
+        // `App::in_flight` and `App::release`
+        if self.in_flight() {
+            self.held.push_back((line.to_owned(), self.keys));
+            self.say(
+                Speaker::Note,
+                "this waits for the command before it to come back; `ctrl+c` stops a listing or a \
+                 compaction pass",
+            );
+
+            return self.replied(Did::Queued, from, pages);
+        }
         // whatever this line turns into, the time before it was somebody deciding what to type.
         // The next line the trace draws is the one that gap belongs to
         self.acted = true;
@@ -385,7 +395,7 @@ impl App {
                     // the new model has a context limit of its own, and finding it out is a round
                     // trip; the screen should not stop for it, and the next line does
                     let kernel = self.kernel.clone();
-                    self.settling = Some(tokio::spawn(async move {
+                    self.switch(async move {
                         provider.set_model(model).await;
                         // a session started without `-m` has held no provider until now, and this
                         // is what ends that - after the switch rather than before it, so that
@@ -402,7 +412,7 @@ impl App {
                                 kernel.provider_changed();
                             }
                         }
-                    }));
+                    });
 
                     return;
                 }
@@ -435,62 +445,16 @@ impl App {
             // say when a model is not on it; this is the same call with the answer shown rather
             // than checked.
             //
-            // note: awaited here rather than spawned, unlike the two switches. Those are told to
-            // go and do something and the screen carries on; this one *is* the answer, and a
-            // person who asked for a list is waiting for it either way
+            // note: sent out as the two switches are, and finished in `listed` when it comes back,
+            // so that an endpoint slow to answer holds nothing but the lines after this one
             "models" => {
                 let provider = self.provider.clone();
-                let listed = provider.models().await;
-                // note: "did not answer with" rather than "lists no": an empty answer is an
-                // address that publishes no listing *or* one that could not be reached, and the
-                // provider does not say which
-                if listed.is_empty() {
-                    self.say(
-                        Speaker::Error,
-                        format!(
-                            "{} did not answer with a list of models: it may publish none, or not \
-                             be reachable",
-                            provider.host()
-                        ),
-                    );
-                    return;
-                }
-
-                let filter = rest.trim().to_lowercase();
-                let shown: Vec<&String> = listed
-                    .iter()
-                    .filter(|name| filter.is_empty() || name.to_lowercase().contains(&filter))
-                    .collect();
-                if shown.is_empty() {
-                    self.say(
-                        Speaker::Note,
-                        format!("none of the {} listed match `{filter}`", listed.len()),
-                    );
-                    return;
-                }
-
-                // the one in use is marked where it stands rather than pulled to the top, so the
-                // list keeps the order the endpoint gave it
-                let current = self.kernel.model_info().map(|info| info.model);
-                let body = shown
-                    .iter()
-                    .map(|name| {
-                        let mark = match &current {
-                            Some(model) if nachalnik_providers::same_model(name, model) => "▸",
-                            _ => " ",
-                        };
-                        format!("{mark} {name}")
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                // no address in the title: it is one `/endpoint` away, and the room it costs is
-                // the room the line below needs to say what to do with any of this
-                let title = match filter.is_empty() {
-                    true => format!(" {} models", shown.len()),
-                    false => format!(" {} of {} matching `{filter}`", shown.len(), listed.len()),
-                };
-                self.preview(format!("{title} · /model ID switches "), body);
+                let (filter, keys) = (rest.trim().to_lowercase(), self.keys);
+                self.errand(
+                    "the list of models",
+                    async move { provider.models().await },
+                    move |app, listed| app.show_models(listed, &filter, keys),
+                );
             }
             // the other half of `/model`: the same model name means a different model at a
             // different address, and comparing what is hosted with what is on this machine is two
@@ -556,10 +520,10 @@ impl App {
                 // Carrying the address in the record means a `ModelInfo` that holds one, which is
                 // a field on a published struct; see POSTPONED.md.
                 let kernel = self.kernel.clone();
-                self.settling = Some(tokio::spawn(async move {
+                self.switch(async move {
                     provider.set_endpoint(url, model).await;
                     kernel.provider_changed();
-                }));
+                });
             }
             "params" => {
                 // a key alone is half a command, and taken as `/params` it listed the parameters
@@ -1344,6 +1308,69 @@ impl App {
         }
     }
 
+    /// Shows what `/models` came back with: on a page at the desk, and said to anybody else.
+    ///
+    /// note: said rather than opened where whoever asked has no keys of this program's - down a
+    /// pipe, or from a client. A page used to reach them as the answer to their line, and the list
+    /// now comes back after the answer has gone; the program's voice is what reaches them later.
+    fn show_models(&mut self, listed: Vec<String>, filter: &str, keys: bool) {
+        // note: "did not answer with" rather than "lists no": an empty answer is an address that
+        // publishes no listing *or* one that could not be reached, and the provider does not say
+        // which
+        if listed.is_empty() {
+            self.say(
+                Speaker::Error,
+                format!(
+                    "{} did not answer with a list of models: it may publish none, or not be \
+                     reachable",
+                    self.provider.host()
+                ),
+            );
+            return;
+        }
+
+        let shown: Vec<&String> = listed
+            .iter()
+            .filter(|name| filter.is_empty() || name.to_lowercase().contains(filter))
+            .collect();
+        if shown.is_empty() {
+            self.say(
+                Speaker::Note,
+                format!("none of the {} listed match `{filter}`", listed.len()),
+            );
+            return;
+        }
+
+        // the one in use is marked where it stands rather than pulled to the top, so the list
+        // keeps the order the endpoint gave it
+        let current = self.kernel.model_info().map(|info| info.model);
+        let body = shown
+            .iter()
+            .map(|name| {
+                let mark = match &current {
+                    Some(model) if nachalnik_providers::same_model(name, model) => "▸",
+                    _ => " ",
+                };
+                format!("{mark} {name}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // no address in the title: it is one `/endpoint` away, and the room it costs is the room
+        // the line below needs to say what to do with any of this
+        let title = match filter.is_empty() {
+            true => format!(" {} models", shown.len()),
+            false => format!(" {} of {} matching `{filter}`", shown.len(), listed.len()),
+        };
+        match keys {
+            true => self.preview(format!("{title} · /model ID switches "), body),
+            false => self.say(
+                Speaker::Note,
+                format!("---{title} · /model ID switches ---\n{body}"),
+            ),
+        }
+    }
+
     /// Lists what a compaction pass would take, and asks whether to take it.
     ///
     /// note: the compactor the kernel runs before a request is the same object, asked by hand.
@@ -1383,9 +1410,35 @@ impl App {
             return;
         };
 
-        let items = self.kernel.items();
-        let budget = self.kernel.budget();
-        let Some(plan) = compactor.plan(&items, &budget).await else {
+        let (items, budget) = (self.kernel.items(), self.kernel.budget());
+        let keys = self.keys;
+        self.errand(
+            "the compaction pass",
+            async move {
+                let plan = compactor.plan(&items, &budget).await;
+                (plan, items, budget, compactor)
+            },
+            move |app, (plan, items, budget, compactor)| {
+                app.planned(plan, &items, &budget, &*compactor, keys)
+            },
+        );
+    }
+
+    /// Asks about the pass `/compact` worked out, or takes it for somebody who cannot be asked.
+    ///
+    /// note: taken where whoever asked has no keys of this program's to answer with - down a pipe,
+    /// or from a client. Their line is somebody's own, and one answered with a question nobody can
+    /// reach has been refused the thing it asked for. The list is said first, so what was taken
+    /// was said.
+    fn planned(
+        &mut self,
+        plan: Option<nachalnik::CompactionPlan>,
+        items: &[std::sync::Arc<ContextItem>],
+        budget: &nachalnik::Budget,
+        compactor: &dyn nachalnik::Compactor,
+        keys: bool,
+    ) {
+        let Some(plan) = plan else {
             // note: `under` rather than `nothing it may take`, because a pass is only asked for
             // a context that has reached the threshold, and above the threshold there is a
             // target below the total every time. Finding no plan while the context is already
@@ -1456,11 +1509,6 @@ impl App {
             .map(|item| item.tokens)
             .sum();
 
-        self.proposed = Some(Proposed {
-            rows,
-            count,
-            holding,
-        });
         // said as well as asked, so the scrollback keeps the fact that it was proposed at all:
         // the panel goes the moment it is answered, and a session read back afterwards would
         // otherwise show a compaction with nothing in front of it
@@ -1472,6 +1520,19 @@ impl App {
                 thousands(holding),
             ),
         );
+        if !keys {
+            for row in rows {
+                self.say(Speaker::Note, row);
+            }
+            // the report is said by `Event::Compacted`, like any other pass
+            self.kernel.apply_compaction(plan);
+            return;
+        }
+        self.proposed = Some(Proposed {
+            rows,
+            count,
+            holding,
+        });
     }
 
     /// `/copy` hands the last thing the model said to the terminal; `/copy N` hands item N.

@@ -655,11 +655,11 @@ impl App {
                 KeyCode::PageDown => self.question_scroll += PAGE,
                 KeyCode::Up => self.question_scroll = self.question_scroll.saturating_sub(1),
                 KeyCode::Down => self.question_scroll += 1,
-                KeyCode::Char('y') => self.take_proposal(true).await,
+                KeyCode::Char('y') => self.take_proposal(true),
                 // `esc` as well as `n`, because a panel somebody opened and thought better of is
                 // the one thing everybody tries `esc` on. There is no turn to interrupt here for
                 // it to mean anything else: `esc` stops a run, and a question is the loop resting
-                KeyCode::Char('n') | KeyCode::Esc => self.take_proposal(false).await,
+                KeyCode::Char('n') | KeyCode::Esc => self.take_proposal(false),
                 _ => {}
             }
 

@@ -1137,6 +1137,8 @@ async fn compact_under_the_target_says_the_context_is_under_it() {
     harness.drain();
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
 
     let screen = harness.flat();
     assert!(
@@ -1169,6 +1171,8 @@ async fn compact_above_the_target_says_nothing_is_eligible() {
     harness.drain();
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
 
     let screen = harness.flat();
     assert!(
@@ -1245,6 +1249,8 @@ async fn compact_lists_what_would_go_and_waits() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
 
     let packed = harness.packed();
     assert!(packed.contains(&format!("[{result}]")), "{packed}");
@@ -1283,6 +1289,8 @@ async fn a_pin_made_while_the_question_waits_is_honoured() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
     // over to the list, onto the row the question named, and keep it - all of it while the
     // question waits, which is what a question in the prompt's place is for
     harness.alt(KeyCode::Char('2')).await;
@@ -1303,6 +1311,7 @@ async fn a_pin_made_while_the_question_waits_is_honoured() {
     harness.alt(KeyCode::Char('1')).await;
     harness.press(KeyCode::Tab).await;
     harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
     harness.drain();
 
     assert_eq!(
@@ -1323,8 +1332,11 @@ async fn y_takes_it_and_says_what_it_took() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
     harness.press(KeyCode::Tab).await;
     harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
     harness.drain();
 
     assert_eq!(
@@ -1341,6 +1353,8 @@ async fn n_leaves_it_alone() {
     let (mut harness, result) = ready_to_compact().await;
 
     harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
     harness.press(KeyCode::Tab).await;
     harness.press(KeyCode::Char('n')).await;
 
