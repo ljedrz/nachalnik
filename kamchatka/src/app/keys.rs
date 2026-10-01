@@ -469,6 +469,7 @@ impl App {
         // record otherwise says only that the policy decided
         self.kernel
             .record_rule(subject.to_string(), decided, None, false);
+        self.refresh_full_notice();
         // said out loud, because this is a decision about what may happen later and the tab it
         // was made on is not the one somebody will be looking at when it does
         self.say(

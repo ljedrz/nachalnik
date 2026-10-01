@@ -544,14 +544,22 @@ nothing left it may take, the session says the context is full, once, while ther
 under the limit: what is left is for you to `/exclude`, or for the model to exclude through its
 `context` tool. The model is told too, by a note put into the context before its next request —
 inside the turn that filled it, so a run nobody is watching can make its own room rather than run
-into the limit. Without the `context` tool, the note asks the model to tell you instead. It says
-so again when there is room, and the note is excluded.
+into the limit. Where the model could not make room with the `context` tool — it is turned off,
+a rule refuses `exclude` and `elide`, or a headless run would refuse them for want of somebody to
+ask — the note asks the model to tell you instead, and it is worded again, a copy already in the
+context included, whenever that changes. It says so again when there is room, and the note is
+excluded.
 
 In a headless run that making of room is a question like any other: every `context` call is
-asked about, `look` included, and `--on-ask deny` refuses them all, so the model reads the note
-and can do nothing about it. `--allow context` is what lets it — or
+asked about, `look` included, and `--on-ask deny` refuses them all, so the note sends the model
+nowhere it cannot go. `--allow context` is what lets it make room — or
 `--allow context:look,context:exclude,context:elide`, for a run that should free room and change
 nothing else.
+
+The same holds for every sentence that sends the model to a tool: a refusal from `fs` names
+`shell`, `grep` or `write`, and an answer from `setup`, `log` or `fork` names `context` or `log`,
+only where the model could make that call now — the tool on offer, and the call not refused by a
+rule or by a question nobody is there to answer.
 
 Past the limit the request is not sent at all: the runtime refuses it rather than paying a round
 trip for an endpoint to say what the corner already says, and it prints how much of it has to go.

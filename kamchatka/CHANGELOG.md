@@ -29,8 +29,18 @@ minor bump may break you.
   room. `Shedder::wants_room` is its threshold alone, so an unpriced pin does not read as full.
 - **The model is told the context is full, where it can act on it.** A note naming the `context`
   tool goes into the context before the next request - inside the turn that filled it - so a
-  headless run can make its own room rather than run into the limit. Without the `context` tool
-  the note asks the model to tell the person instead; it is excluded again when there is room.
+  headless run can make its own room rather than run into the limit. Where the model could not
+  make room with it - the tool turned off, `exclude` and `elide` refused by a rule, or refused by a
+  headless run for want of somebody to ask - the note asks the model to tell the person instead.
+  It is worded again, a copy standing in the context included, whenever that changes, and it is
+  excluded again when there is room. `App::refresh_full_notice` is new.
+- **A sentence sends the model only to a call it could make now.** A refusal from `fs` named
+  `shell`, `grep` and `write`, and answers from `setup`, `log`, `fork` and `context` named
+  `context`, `log` and `setup`, whether or not the session would let the model make that call - and
+  a model sent to a tool it did not have named one that does not exist. Each is said now only where
+  the tool is on offer and the call would not be refused, by a rule or by a headless run's
+  `--on-ask deny`. `Careful::reachable`, `Careful::permits`, `Careful::withdraw` and
+  `Careful::unanswered` are new; `/tools toggle` tells the policy what it took away.
 
 ### changed
 

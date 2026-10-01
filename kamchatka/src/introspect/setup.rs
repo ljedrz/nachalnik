@@ -33,7 +33,7 @@ use crate::{
     },
 };
 
-use super::{Reach, action, if_offered, unknown};
+use super::{Reach, action, if_reachable, unknown};
 
 /// The four things this reads, which take no arguments and are therefore one shape.
 ///
@@ -127,9 +127,9 @@ impl Tool for Setup {
         }
         match action {
             "model" => Ok(ToolOutput::new(model(&kernel))),
-            "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits))),
+            "tools" => Ok(ToolOutput::new(tools(&kernel, &self.limits, &self.policy))),
             "permissions" => Ok(ToolOutput::new(permissions(&kernel, &self.policy))),
-            "policy" => Ok(ToolOutput::new(rules(&kernel))),
+            "policy" => Ok(ToolOutput::new(rules(&kernel, &self.policy))),
             other => Ok(ToolOutput::error(unknown(other, &actions(&self.ops)))),
         }
     }
@@ -259,7 +259,7 @@ fn written_by_others(kernel: &Kernel, current: &str) -> BTreeMap<String, Vec<Con
 /// `fs:read` and `fs:grep` alike, which is the thing keying them by subject exists to stop - and a
 /// row per subject would spend most of this answer on a figure that is the same everywhere until
 /// somebody changes one. So: the number they share, and then whichever ones do not share it.
-fn tools(kernel: &Kernel, limits: &Limits) -> String {
+fn tools(kernel: &Kernel, limits: &Limits, policy: &Careful) -> String {
     let specs = kernel.tool_specs();
     if specs.is_empty() {
         return "you are offered no tools at all; whatever you ask for will come back unknown.\n"
@@ -310,7 +310,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
              away mid-session is not on this list.\n"
         }
     });
-    out.push_str(&if_offered(kernel, "log", || {
+    out.push_str(&if_reachable(kernel, policy, "log:read", || {
         "`log` with `kinds: [\"tools.changed\"]` says when one went.\n".to_owned()
     }));
 
@@ -320,7 +320,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
 /// How much of an answer reaches the model, by subject: the figure they share, then the rest.
 ///
 /// note: only the subjects these tools actually declare, so a session that is not offering `fs`
-/// is not told what `fs:read` would be cut at. It is the rule `if_offered` is named for, one
+/// is not told what `fs:read` would be cut at. It is the rule `if_reachable` is named for, one
 /// level down: everything named in an answer reads as a thing that is there.
 fn shown(specs: &[nachalnik::ToolSpec], limits: &Limits, floor: Option<usize>) -> String {
     let mut held: Vec<(String, usize)> = specs
@@ -612,7 +612,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         "\n`ask` is nobody having decided yet, not a refusal: the call stops and somebody is \
          asked. A refusal is a standing answer and the same call will be refused again.\n",
     );
-    out.push_str(&if_offered(kernel, "log", || {
+    out.push_str(&if_reachable(kernel, policy, "log:read", || {
         "How each of these was arrived at is in `log` with `kinds: [\"permission.decided\"]`.\n"
             .to_owned()
     }));
@@ -627,7 +627,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
 /// These are the two seams that rewrite a context on their own, the projector and the compactor,
 /// and the counter and the limit they are measured by, named so that they can be looked up, with
 /// the numbers that say when each of them acts.
-fn rules(kernel: &Kernel) -> String {
+fn rules(kernel: &Kernel, policy: &Careful) -> String {
     let config = kernel.config();
     let budget = kernel.budget();
 
@@ -636,7 +636,7 @@ fn rules(kernel: &Kernel) -> String {
          which items become which messages, in what order, and which are left out or repaired to \
          keep the request valid.{}\n",
         short(kernel.projector().name()),
-        if_offered(kernel, "context", || {
+        if_reachable(kernel, policy, "context:request", || {
             " `context` with `request` says what it did to the next one.".to_owned()
         }),
     );
@@ -647,10 +647,10 @@ fn rules(kernel: &Kernel) -> String {
              of it without being asked - it cannot take anything pinned, it says exactly what it \
              moved{}.{}\n",
             short(compactor.name()),
-            if_offered(kernel, "context", || {
+            if_reachable(kernel, policy, "context:restore", || {
                 ", and `context` with `restore` puts any of it back".to_owned()
             }),
-            if_offered(kernel, "log", || {
+            if_reachable(kernel, policy, "log:read", || {
                 " `log` with `kinds: [\"context.compacted\"]` is every pass it has made.".to_owned()
             }),
         ),
@@ -667,7 +667,7 @@ fn rules(kernel: &Kernel) -> String {
         out.push_str(&format!(
             "the budget it is measured against is {} tokens{}.\n",
             thousands(limit),
-            if_offered(kernel, "context", || {
+            if_reachable(kernel, policy, "context:budget", || {
                 "; `context` with `budget` is where you stand against it".to_owned()
             }),
         ));
@@ -683,7 +683,7 @@ fn rules(kernel: &Kernel) -> String {
         },
     ));
     if config.keep_truncated_output {
-        out.push_str(&if_offered(kernel, "context", || {
+        out.push_str(&if_reachable(kernel, policy, "context:search", || {
             "`context` with `search` reaches what was cut without putting it back.\n".to_owned()
         }));
     }

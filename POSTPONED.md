@@ -230,13 +230,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   from when it is used to when the session starts, so a root that appears, moves or is relinked
   during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
 
-- **The full notice after `/tools toggle context`.** Which of its two sentences the model is told
-  is fixed at startup by whether `context` is offered then. A session that toggled it off was told
-  to `look` with a tool it did not have, and a model told so named a tool that does not exist.
-  Choosing the sentence when the notice is placed means `set_full_notice` again on every toggle,
-  and the kernel recognises a standing notice by its content, so a copy in the old words would not
-  be excluded when the context has room again.
-
 - **A `--compact` beside the shipped settings file.** The shipped file names `compact-target: 0.6`,
   what `0.8` derives, so that adopting it changes nothing - but it does change one thing: with the
   file in place, `--compact 0.5` on the command line is refused, because the file's target is

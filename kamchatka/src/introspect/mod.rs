@@ -66,7 +66,7 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 /// from in here, is the shape that has an end.
 pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Installed {
     let anchor = Arc::new(kernel.clone());
-    let reach = Reach(Arc::downgrade(&anchor));
+    let reach = Reach(Arc::downgrade(&anchor), policy.clone());
     let forked = Arc::new(AtomicU64::new(0));
 
     kernel.add_tool(Arc::new(Context::new(reach.clone(), limits.clone())));
@@ -104,9 +104,9 @@ impl Installed {
     }
 }
 
-/// The way back to the kernel a tool is registered on.
+/// The way back to the kernel a tool is registered on, and the policy its calls are judged by.
 #[derive(Clone)]
-struct Reach(Weak<Kernel>);
+struct Reach(Weak<Kernel>, Arc<Careful>);
 
 impl Reach {
     /// The kernel, or the reason there is not one any more.
@@ -114,6 +114,11 @@ impl Reach {
         self.0.upgrade().ok_or_else(|| {
             "this session is over; there is nothing left to look at or change".into()
         })
+    }
+
+    /// The policy, which says what of what an answer could point at the model could use now.
+    fn policy(&self) -> &Careful {
+        &self.1
     }
 }
 
@@ -131,6 +136,39 @@ pub(crate) fn if_offered(kernel: &Kernel, tool: &str, said: impl FnOnce() -> Str
         true => said(),
         false => String::new(),
     }
+}
+
+/// A sentence sending the model to `capability` - `log:read`, `context:restore` - or nothing if
+/// the model could not use it now: no tool on offer declares it, or it would be refused.
+///
+/// note: [`if_offered`] one level further. A tool on offer whose every call a rule refuses, or
+/// that a headless run refuses for want of somebody to ask, is no more something to try than one
+/// that was taken away; see [`Careful::reachable`]. The tool naming its own operations is no
+/// exception, since a rule may be about one operation and not the others. What is on offer is
+/// asked of the kernel's registry, which is what a tool taken away by any door leaves.
+pub(crate) fn if_reachable(
+    kernel: &Kernel,
+    policy: &Careful,
+    capability: &str,
+    said: impl FnOnce() -> String,
+) -> String {
+    match reachable(kernel, policy, capability) {
+        true => said(),
+        false => String::new(),
+    }
+}
+
+/// Whether the model could use `capability` now; see [`if_reachable`].
+pub(crate) fn reachable(kernel: &Kernel, policy: &Careful, capability: &str) -> bool {
+    let Ok(capability) = nachalnik::Capability::parse(capability) else {
+        return false;
+    };
+    let offered = kernel
+        .tool_specs()
+        .iter()
+        .any(|spec| spec.capabilities.contains(&capability));
+
+    offered && policy.permits(&capability)
 }
 
 /// The action the call names, or the fact that it names none or names it with something else.

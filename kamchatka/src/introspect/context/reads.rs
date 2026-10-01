@@ -8,6 +8,7 @@ use serde_json::Value;
 use crate::{
     app::{Going, text::thousands},
     introspect::{Mine, TAKE, protected},
+    tools::Careful,
 };
 
 /// How much of an item's text the listing shows on its row.
@@ -52,6 +53,7 @@ pub(super) fn look(
     whole: bool,
     own: Option<ContextId>,
     mine: &Mine,
+    policy: &Careful,
 ) -> String {
     let items = kernel.items();
     let going = Going::of(kernel);
@@ -72,7 +74,7 @@ pub(super) fn look(
     let theirs = kernel.with_context(|context| context.undo_len());
     let withheld: usize = items.iter().map(|item| going.held_back(item)).sum();
 
-    let mut out = inherited(kernel, &items);
+    let mut out = inherited(kernel, &items, policy);
     out.push_str(&format!(
         "{} items · {} of them go into the next request\n\
          ~{} tokens going{}, ~{} held back - what the request does not carry, whether because \
@@ -191,6 +193,7 @@ pub(super) fn matched(
     ids: &[ContextId],
     mine: &Mine,
     own: Option<ContextId>,
+    policy: &Careful,
 ) -> String {
     let items = kernel.items();
     let going = Going::of(kernel);
@@ -212,7 +215,7 @@ pub(super) fn matched(
     let carried: Vec<Arc<ContextItem>> = picked.iter().map(|item| Arc::clone(item)).collect();
     let budget = kernel.budget();
 
-    let mut out = inherited(kernel, &carried);
+    let mut out = inherited(kernel, &carried, policy);
     out.push_str(&format!(
         "`{select}` matches {} of {} items · {} of them go into the next request\n\
          ~{} of the ~{} tokens in the context are those items, and ~{} more of what they hold is \
@@ -273,7 +276,7 @@ pub(super) fn matched(
 /// `context.added` alone, because `Kernel::drain_history` also takes those away. Absent that
 /// record, an item with no beginning here means the log was shortened, which is a different fact
 /// and would be a false one to report as this.
-fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>]) -> String {
+fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>], policy: &Careful) -> String {
     let (resumed, added) = kernel.with_history(|session| {
         let mut resumed = false;
         let mut added = BTreeSet::new();
@@ -305,10 +308,12 @@ fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>]) -> String {
     format!(
         "this session was resumed from a snapshot, and {} of the items below were already in it: \
          {}. They were not produced here. A turn among them reads in the first person and was \
-         written by whatever model that session ran, which nothing in the turn records - `setup` \
-         with `model` says what this one is.\n\n",
+         written by whatever model that session ran, which nothing in the turn records{}.\n\n",
         carried.len(),
         carried.join(", "),
+        crate::introspect::if_reachable(kernel, policy, "setup:model", || {
+            " - `setup` with `model` says what this one is".to_owned()
+        }),
     )
 }
 

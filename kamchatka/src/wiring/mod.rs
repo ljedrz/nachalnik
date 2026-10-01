@@ -222,30 +222,37 @@ pub struct Wired {
 /// tool loop that fills the context hears it inside the same turn - see
 /// `nachalnik::Kernel::set_full_notice`.
 ///
-/// note: which of two sentences is decided by whether the `context` tool is offered as the session
-/// starts. A notice sending the model to a tool it does not have is a notice it cannot act on; the
-/// other one asks it to say so, which is the one thing left that it can do. A `/tools toggle`
-/// later does not change it.
-fn full_notice(context_tool: bool) -> ContextItem {
+/// note: the `context` tool is named only where the model could use it to make room now - offered,
+/// and with `exclude` or `elide` not refused, by a rule or by a question nobody is there to answer -
+/// and `look` only where that is too. A notice sending the model to a tool it does not have was
+/// followed to one that does not exist; the other one asks it to tell the person, which is the one
+/// thing left that it can do. Worked out again whenever what the model could use changes - see
+/// `App::refresh_full_notice`.
+pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
+    let can = |op: &str| crate::introspect::reachable(kernel, policy, &format!("context:{op}"));
     // note: both say what is left - this turn, what is pinned and the notes - because a model
     // told only that the context was full went looking for tool results to elide, and one told
     // to ask the person wrote a file larger than the room there was. Both say what not to do,
     // since a request over the limit is not sent at all
-    let said = match context_tool {
-        true => {
-            "The context is full, and nothing more will be taken from it automatically: the \
-             earlier exchanges are gone and what you had read is elided, so what fills it now is \
-             this turn, what is pinned and the notes you kept. Before anything else, `look` with \
-             the `context` tool, then `exclude` or `elide` by id what you no longer need, and say \
-             why. Add nothing large until there is room - a request over the limit is not sent."
-        }
-        false => {
-            "The context is full, and what fills it now is this turn and what is pinned. Add \
-             nothing large to it - no long answers, no large files written or read - \
-             because a request over the limit is not sent. Tell the person you are working with \
-             that the context is full, so they can exclude what is no longer needed, and keep to \
-             short answers until there is room."
-        }
+    let said = match (can("exclude") || can("elide"), can("look")) {
+        (true, looks) => format!(
+            "The context is full, and nothing more will be taken from it automatically: what \
+             fills it now is this turn, what is pinned and the notes you kept. Before anything \
+             else, {} what you no longer need, and say why. Add nothing large until there is \
+             room - a request over the limit is not sent.",
+            match looks {
+                true =>
+                    "`look` with the `context` tool to see what there is, then `exclude` or \
+                         `elide` by id",
+                false => "`exclude` or `elide` with the `context` tool, by id,",
+            }
+        ),
+        (false, _) => "The context is full, and what fills it now is this turn and what is \
+                       pinned. Add nothing large to it - no long answers, no large files written \
+                       or read - because a request over the limit is not sent. Tell the person \
+                       you are working with that the context is full, so they can exclude what is \
+                       no longer needed, and keep to short answers until there is room."
+            .to_owned(),
     };
 
     ContextItem::new(
@@ -688,11 +695,8 @@ impl Setup {
         let compact_threshold = shed.as_ref().map(|shed| shed.threshold);
         if let Some(shed) = shed {
             kernel.set_compactor(Some(Arc::new(shed)));
-            let context_tool = self
-                .tools
-                .as_ref()
-                .is_none_or(|tools| tools.iter().any(|it| it == "context"));
-            kernel.set_full_notice(Some(full_notice(context_tool)));
+            // worked out again once the tools not asked for are off; see below
+            kernel.set_full_notice(Some(full_notice(&kernel, &policy)));
         }
 
         // one table, shared by the tools that declare a limit and the `/limit` that changes them
@@ -813,6 +817,7 @@ impl Setup {
                 app.toggle(id);
             }
         }
+        app.refresh_full_notice();
 
         Ok(Wired {
             app,

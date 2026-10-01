@@ -309,6 +309,11 @@ pub struct Careful {
     /// when what is wrong is its arguments. Knowing the tool's declaration is how a refusal can
     /// tell - see `ops::unnamed_operation` - and it is told here by whoever installs the tools.
     offered: Mutex<BTreeMap<String, ToolSpec>>,
+    /// The tools among [`Careful::offered`] taken off offer for now, by `/tools toggle`.
+    withdrawn: Mutex<BTreeSet<String>>,
+    /// What a question comes to where nobody is there to answer it - a headless run's `--on-ask` -
+    /// and `None` where somebody is.
+    unanswered: Mutex<Option<Verdict>>,
     /// Why the last few refusals were refused, by the call they refused.
     ///
     /// note: the policy is the only thing that knows this, and nothing carries it out: the
@@ -366,6 +371,8 @@ impl Careful {
             ),
             networked: Mutex::new(BTreeSet::new()),
             offered: Mutex::new(BTreeMap::new()),
+            withdrawn: Mutex::new(BTreeSet::new()),
+            unanswered: Mutex::new(None),
             refusals: Mutex::new(VecDeque::new()),
             gated: AtomicBool::new(false),
             reaching: Reaching::new(),
@@ -648,6 +655,74 @@ impl Careful {
     /// operation is refused saying so.
     pub fn offers(&self, spec: ToolSpec) {
         self.offered.lock().insert(spec.id.clone(), spec);
+    }
+
+    /// Says that a tool [`Careful::offers`] was told about is off offer for now, or back on it.
+    pub fn withdraw(&self, tool: &str, withdrawn: bool) {
+        let mut off = self.withdrawn.lock();
+        match withdrawn {
+            true => off.insert(tool.to_owned()),
+            false => off.remove(tool),
+        };
+    }
+
+    /// The suggestions among `ways` a model could act on now, each a clause naming what it would
+    /// call, joined into one; `None` where there is none to make.
+    pub(crate) fn ways(&self, ways: &[(Capability, &str)]) -> Option<String> {
+        let open: Vec<&str> = ways
+            .iter()
+            .filter(|(capability, _)| self.reachable(capability))
+            .map(|(_, said)| *said)
+            .collect();
+
+        match open.as_slice() {
+            [] => None,
+            [one] => Some((*one).to_owned()),
+            [rest @ .., last] => Some(format!("{}, and {last}", rest.join(", "))),
+        }
+    }
+
+    /// Says what a question comes to where nobody is there to answer it, which is what a headless
+    /// run's `--on-ask` is; `None` is somebody being there.
+    pub fn unanswered(&self, verdict: Option<Verdict>) {
+        *self.unanswered.lock() = verdict;
+    }
+
+    /// Whether a model sent to `capability` could use it now: a tool on offer declares it, and it
+    /// would not be refused - by a rule, or by a question nobody is there to answer.
+    ///
+    /// note: what every sentence that sends a model to a tool asks first, so that none of them
+    /// names one the model does not have, or one it would be refused. A suggestion is read as
+    /// something to try, and a model sent to a tool that is off, or that a headless run refuses
+    /// every call to, makes the call, is refused, and has spent a request on being misdirected -
+    /// or, sent to one it cannot see at all, names a tool that does not exist.
+    ///
+    /// note: a policy told nothing about what is offered - one an embedder built without
+    /// [`Careful::offers`] - takes everything to be, and goes by its rules alone.
+    pub fn reachable(&self, capability: &Capability) -> bool {
+        let named = capability.to_string();
+        let offered = {
+            let offered = self.offered.lock();
+            let withdrawn = self.withdrawn.lock();
+            offered.is_empty()
+                || offered.values().any(|spec| {
+                    !withdrawn.contains(&spec.id)
+                        && spec.capabilities.iter().any(|it| it.to_string() == named)
+                })
+        };
+
+        offered && self.permits(capability)
+    }
+
+    /// The half of [`Careful::reachable`] that is the policy's own: that a call needing
+    /// `capability` would not be refused, by a rule or by a question nobody is there to answer -
+    /// for a caller that knows better than this what is on offer.
+    pub fn permits(&self, capability: &Capability) -> bool {
+        match self.stance(&Subject::Capability(capability.clone())) {
+            Verdict::Allow => true,
+            Verdict::Deny => false,
+            Verdict::Ask => *self.unanswered.lock() != Some(Verdict::Deny),
+        }
     }
 
     /// Records that a tool came from an MCP server, so that calls to it are answerable as that

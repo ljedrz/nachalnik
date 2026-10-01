@@ -37,7 +37,8 @@ use crate::{
     },
 };
 
-use super::{Reach, if_offered, unknown};
+use super::{Reach, if_reachable, unknown};
+use crate::tools::Careful;
 
 /// How wide the event-name column is, which is the longest name plus a space.
 const NAMES: usize = 20;
@@ -203,7 +204,12 @@ impl Tool for Log {
             }
         });
 
-        Ok(ToolOutput::new(query.report(&kernel, &read, &*counter)))
+        Ok(ToolOutput::new(query.report(
+            &kernel,
+            &read,
+            &*counter,
+            self.reach.policy(),
+        )))
     }
 }
 
@@ -382,6 +388,7 @@ impl Query {
         kernel: &Kernel,
         read: &Read,
         counter: &dyn nachalnik::TokenCounter,
+        policy: &Careful,
     ) -> String {
         let all = counter.count(&Content::text(read.every.clone()));
 
@@ -456,7 +463,7 @@ impl Query {
                 // and here most of all, because an `ids` filter that matched nothing is the exact
                 // shape an inherited item makes, and "nothing matched" is the least useful way to
                 // say so
-                out.push_str(&self.inherited(kernel, read));
+                out.push_str(&self.inherited(kernel, read, policy));
 
                 return out;
             }
@@ -522,7 +529,7 @@ impl Query {
             // over a resumed log counts only what happened since the resume
             _ => out.push_str(&apart(earlier(read))),
         }
-        out.push_str(&self.inherited(kernel, read));
+        out.push_str(&self.inherited(kernel, read, policy));
         out.push('\n');
         out.push_str(&read.matched[beyond..].concat());
 
@@ -536,7 +543,7 @@ impl Query {
     /// `model.requested` rows naming that item - every one of them true, because the item has been
     /// in every request since - and can read them as proof it wrote the item itself. What decides
     /// the question is the record that is not there.
-    fn inherited(&self, kernel: &Kernel, read: &Read) -> String {
+    fn inherited(&self, kernel: &Kernel, read: &Read, policy: &Careful) -> String {
         // an item the kernel has never held has no beginning anywhere, and saying it was inherited
         // would be telling a model a history that did not happen
         let (unborn, never): (Vec<&ContextId>, Vec<&ContextId>) = self
@@ -562,7 +569,7 @@ impl Query {
              log begins, so nothing in it says where {them} came from or who wrote {them}. {}{}\n",
             numbered(&unborn),
             earlier(read),
-            if_offered(kernel, "setup", || {
+            if_reachable(kernel, policy, "setup:model", || {
                 " `setup` with `model` says whether this one did.".to_owned()
             }),
         )

@@ -19,7 +19,7 @@ use crate::sandbox::{Access, Reach};
 use nachalnik::{BoxError, Capability, OutputSink, ToolOutput, Verdict};
 use serde_json::Value;
 
-use crate::tools::{CEILING, Careful, KEPT, Limits, Subject, arg, number};
+use crate::tools::{CEILING, Careful, KEPT, Limits, arg, number};
 
 /// What every tool here says about the path it takes.
 ///
@@ -71,10 +71,11 @@ impl Read {
         // the row `/limit fs:read` changes, read afresh for every call as the kernel reads it
         let budget = self.1.of("fs:read").unwrap_or(CEILING);
 
-        let (reach, opened) = (self.0.clone(), path.clone());
-        let read = tokio::task::spawn_blocking(move || read(&reach, &opened, span, budget))
-            .await
-            .map_err(std::io::Error::other);
+        let (reach, opened, policy) = (self.0.clone(), path.clone(), self.2.clone());
+        let read =
+            tokio::task::spawn_blocking(move || read(&reach, &opened, span, budget, &policy))
+                .await
+                .map_err(std::io::Error::other);
         // a failure the model should read and react to, rather than one that stops the loop
         match read.and_then(|read| read) {
             Ok(Ok(content)) => Ok(ToolOutput::new(content)),
@@ -197,8 +198,9 @@ fn read(
     path: &Path,
     span: Span,
     budget: usize,
+    policy: &Careful,
 ) -> std::io::Result<Result<String, String>> {
-    let file = reach.open(path, Access::Reading)?;
+    let file = reach.open_for(path, Access::Reading, policy)?;
     // a size is what a file says about itself, and `/proc` says nothing - so this decides only
     // whether to count to the end, and a file claiming less than it holds is counted anyway
     let countable = file.metadata().is_ok_and(|meta| meta.len() <= COUNTED);
@@ -284,7 +286,7 @@ fn read(
                 Some(last) => at - last - 1,
                 None => at,
             };
-            return Err(untext(Some((line, within)), &e.utf8_error()));
+            return Err(untext(Some((line, within)), &e.utf8_error(), policy));
         }
     };
 
@@ -304,7 +306,14 @@ fn read(
         ),
         Some(Stop::Long) => format!(
             "[line {first}{of} is longer than the output limit ({budget} bytes), so this is its \
-             start; `grep` finds what is in it, and `shell` can read the rest]"
+             start{}]",
+            policy
+                .ways(&[
+                    (Capability::fs("grep"), "`grep` finds what is in it"),
+                    (Capability::exec("run"), "`shell` can read the rest"),
+                ])
+                .map(|ways| format!("; {ways}"))
+                .unwrap_or_default()
         ),
     };
 
@@ -356,10 +365,10 @@ fn next_line(
 /// note: one byte past the ceiling is read rather than the size asked for first, because a size is
 /// what a file says about itself: `/proc` reports nothing, and a log is larger by the time it has
 /// been read.
-async fn whole(reach: &Reach, path: &Path) -> std::io::Result<String> {
+async fn whole(reach: &Reach, path: &Path, policy: &Careful) -> std::io::Result<String> {
     use tokio::io::AsyncReadExt as _;
 
-    let mut file = tokio::fs::File::from_std(reach.open(path, Access::Reading)?);
+    let mut file = tokio::fs::File::from_std(reach.open_for(path, Access::Reading, policy)?);
     let mut bytes = Vec::new();
     (&mut file)
         .take(KEPT as u64 + 1)
@@ -371,12 +380,15 @@ async fn whole(reach: &Reach, path: &Path) -> std::io::Result<String> {
             _ => "larger".to_owned(),
         };
         return Err(std::io::Error::other(format!(
-            "{size}, more than `fs` edits at once ({KEPT} bytes), so it was not changed. Change it \
-             through `shell` - `sed -i`."
+            "{size}, more than `fs` edits at once ({KEPT} bytes), so it was not changed.{}",
+            match policy.reachable(&Capability::exec("run")) {
+                true => " Change it through `shell` - `sed -i`.",
+                false => "",
+            }
         )));
     }
 
-    String::from_utf8(bytes).map_err(|e| untext(None, &e.utf8_error()))
+    String::from_utf8(bytes).map_err(|e| untext(None, &e.utf8_error(), policy))
 }
 
 /// What a file that is not UTF-8 is answered with, naming where it stops being text - the line
@@ -388,12 +400,15 @@ async fn whole(reach: &Reach, path: &Path) -> std::io::Result<String> {
 /// file with one Latin-1 byte in it from a binary one, so it has nothing to search and reaches
 /// for `shell` to find out.
 ///
-/// note: the two ways out are named, and both can be told about without knowing the policy:
-/// `grep` reads bytes and says how a file came to be binary, and `shell` is a tool that reads
-/// them as bytes. Whether `shell` may run is the policy's answer, not this one's. Whether `read`
-/// showed nothing is also this one's, and `edit` says the same sentence about a file it changed
+/// note: the two ways out are named where the model could take them: `grep` reads bytes and says
+/// how a file came to be binary, and `shell` is a tool that reads them as bytes. Whether `read`
+/// showed nothing is this one's to say, and `edit` says the same sentence about a file it changed
 /// no line of, which is the point.
-fn untext(line: Option<(u64, usize)>, fault: &std::str::Utf8Error) -> std::io::Error {
+fn untext(
+    line: Option<(u64, usize)>,
+    fault: &std::str::Utf8Error,
+    policy: &Careful,
+) -> std::io::Error {
     let where_ = match line {
         Some((line, within)) => format!("byte {within} of line {line} of it"),
         None => format!("byte {} of it", fault.valid_up_to()),
@@ -401,8 +416,17 @@ fn untext(line: Option<(u64, usize)>, fault: &std::str::Utf8Error) -> std::io::E
     std::io::Error::new(
         std::io::ErrorKind::InvalidData,
         format!(
-            "not text: {where_} is not UTF-8, so nothing was shown and nothing was changed. \
-             `grep` searches a file whatever it holds, and `shell` can read it as bytes",
+            "not text: {where_} is not UTF-8, so nothing was shown and nothing was changed{}",
+            policy
+                .ways(&[
+                    (
+                        Capability::fs("grep"),
+                        "`grep` searches a file whatever it holds"
+                    ),
+                    (Capability::exec("run"), "`shell` can read it as bytes"),
+                ])
+                .map(|ways| format!(". {ways}"))
+                .unwrap_or_default()
         ),
     )
 }
@@ -520,9 +544,11 @@ fn no_directory(path: &Path) -> Option<String> {
 fn make_directory(path: &Path, policy: &Careful, then: &str) -> Option<String> {
     let dir = path.parent()?;
     Some(match makes_directories(policy) {
-        false => "`shell`, which makes directories, is refused in this session, so write it in a \
+        false => {
+            "`shell`, which makes directories, is not available in this session, so write it in a \
              directory that is there, or say which one you need made."
-            .to_owned(),
+                .to_owned()
+        }
         true => format!(
             "Make it with `shell` - `mkdir -p {}` - and {then}.",
             dir.display()
@@ -551,7 +577,7 @@ fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
     }
     let or = match makes_directories(policy) {
         true => format!(" - or make the directory with `shell` - `mkdir -p {named}`."),
-        false => "; `shell`, which makes directories, is refused in this session.".to_owned(),
+        false => "; `shell`, which makes directories, is not available in this session.".to_owned(),
     };
 
     Some(format!(
@@ -562,7 +588,7 @@ fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
 
 /// Whether a refusal may send the model to `shell` to make a directory `fs` will not.
 fn makes_directories(policy: &Careful) -> bool {
-    policy.stance(&Subject::Capability(Capability::exec("run"))) != Verdict::Deny
+    policy.reachable(&Capability::exec("run"))
 }
 
 /// How to add text with an edit, for the two refusals of an `edit` that names nothing to replace.
@@ -608,7 +634,7 @@ impl Edit {
         }
 
         let _changing = self.2.hold(&path).await;
-        let before = match whole(&self.0, &path).await {
+        let before = match whole(&self.0, &path, &self.1).await {
             Ok(before) => before,
             // note: the system's `No such file or directory` is the whole of what was said, and it
             // says neither that nothing was changed nor that an edit is the wrong operation for a
@@ -618,13 +644,21 @@ impl Edit {
             // note: and where the file's directory is not there either, that is said too, since
             // the `write` it is sent to would only be refused for it next
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let directory = no_directory(&path)
-                    .zip(make_directory(&path, &self.1, "then write the file"))
-                    .map(|(missing, next)| format!(" - once it has a directory: {missing}. {next}"))
-                    .unwrap_or_default();
+                let write = match self.1.reachable(&Capability::fs("write")) {
+                    true => {
+                        let directory = no_directory(&path)
+                            .zip(make_directory(&path, &self.1, "then write the file"))
+                            .map(|(missing, next)| {
+                                format!(" - once it has a directory: {missing}. {next}")
+                            })
+                            .unwrap_or_default();
+                        format!(", and `write` makes a new one{directory}")
+                    }
+                    false => String::new(),
+                };
                 return Ok(ToolOutput::error(format!(
                     "{} is not there, so nothing was changed; `edit` changes a file that is \
-                     there, and `write` makes a new one{directory}",
+                     there{write}",
                     path.display()
                 )));
             }
@@ -637,11 +671,17 @@ impl Edit {
         // nobody goes back for: a model that has been told its change landed does not read the
         // file again. An empty `old` is the same failure at the other end - it names position
         // zero and would put `new` at the front of the file.
+        // `write`, where it is offered and may run; see `Careful::reachable`
+        let or_write = |what: &str| match self.1.reachable(&Capability::fs("write")) {
+            true => format!(", or use `write` for the whole file{what}"),
+            false => what.to_owned(),
+        };
         if old.is_empty() {
             return Ok(ToolOutput::error(format!(
-                "`old` is empty, so it names no text in {}; give the text to replace, or use \
-                 `write` for the whole file. {INSERTING}",
-                path.display()
+                "`old` is empty, so it names no text in {}; give the text to replace{} \
+                 {INSERTING}",
+                path.display(),
+                or_write(".")
             )));
         }
         // note: overlapping, which `matches` does not count - `\n\n` is in `a\n\n\nb` twice, and
@@ -669,9 +709,9 @@ impl Edit {
                 ),
                 n => format!(
                     "`old` occurs {n} times in {} and nothing was changed; include enough of \
-                     the lines around the one you mean to name it, or use `write` for the \
-                     whole file",
-                    path.display()
+                     the lines around the one you mean to name it{}",
+                    path.display(),
+                    or_write("")
                 ),
             }));
         };
