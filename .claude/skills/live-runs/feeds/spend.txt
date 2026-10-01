@@ -1,0 +1,5 @@
+Read every file in this project one at a time and summarise each in one line.
+This line should be passed over unsent.
+/spend
+/spend 0
+Now say the word "resumed".

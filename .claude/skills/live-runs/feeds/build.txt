@@ -1,0 +1,5 @@
+In this empty directory, build a small command-line todo app in Python: todo.py with add, list, done and remove subcommands, storing todos in todo.json, plus tests in test_todo.py using unittest. Run the tests until they all pass. Keep your context tidy as you go.
+Add a "due date" option to add, with validation and tests. Run the tests.
+Add a "search" subcommand with case-insensitive matching, with tests. Run the tests.
+Refactor todo.py so the storage is a class with load and save, keeping every test passing. Run the tests.
+Tell me what you built, file by file, and how many tests there are. Check rather than guess.

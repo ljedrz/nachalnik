@@ -1,0 +1,8 @@
+/attach @T@/fix/media/red.png what colour is this picture, and what size?
+/attach @T@/fix/media/tiny.pdf what does this document say?
+/attach @T@/fix/edge/blob.bin
+/attach @T@/fix/media
+/attach @T@/fix/media/fake.png
+/budget
+What attachments are in your context? Check with your tools.
+/request

@@ -1,0 +1,4 @@
+Write a python script gen.py that creates a directory tree/ with 40 subdirectories, each holding 500 small text files named f0.txt to f499.txt, each containing its own path and the word needle in exactly one file of each directory (pick f137.txt). Run it.
+Using fs grep only, find every file containing the word needle under tree/, and tell me how many there are and how long the search took if you can tell.
+Using fs glob only, list every f137.txt under tree/ and tell me how many paths came back and whether anything was cut.
+Using fs glob, count the files under tree/ with the pattern "tree/**/*.txt", and tell me what the tool said about how many it returned.

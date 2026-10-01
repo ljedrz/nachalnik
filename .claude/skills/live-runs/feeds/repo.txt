@@ -1,0 +1,7 @@
+Find where the kernel's state machine is defined in this workspace and explain the states and transitions, citing file and line.
+Which public methods of Kernel are refused while a step is running? Check in the code rather than guessing.
+Find every place in kamchatka/src that emits an event while holding a lock, if there is any, or explain how the code avoids it.
+Read kamchatka/src/tools/shedder.rs and summarise its two rules in your own words. Keep your context tidy as you go: your context is limited.
+Using git, list the last ten commits that touched kamchatka/src/tools and summarise what changed in a sentence each.
+Write a file notes/summary.md with the five most important things you learned in this session, each with a file reference.
+How full is your context, and what did the compactor do over this session? Check rather than guess.

@@ -1,0 +1,1 @@
+Use your context tool to revise item 2 so that it says exactly: read store.py, version Y. Then say done.

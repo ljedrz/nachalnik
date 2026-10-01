@@ -1,0 +1,2 @@
+Run `curl -sS -m 10 -o /dev/null -w '%{http_code}\n' https://example.com` and paste the result verbatim.
+Run `python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.sendto(b'x',('1.1.1.1',53));print('udp sent')"` and paste the result.

@@ -1,0 +1,4 @@
+Run each of these as a separate shell call and paste each result: `sleep 1000 &`, `setsid sleep 1001 &`, `nohup sleep 1002 > /dev/null 2>&1 &`, `(sleep 1003 &) &`, `env -i /usr/bin/sleep 1004 &`, `env -u KAMCHATKA_CALL sleep 1005 &`.
+Write a python script daemon.py that forks, calls setsid in the child, forks again, and in the grandchild execs /usr/bin/sleep 1006 (the parent processes just exit). Run it with python3, then run `ps -eo pid,pgid,sid,args | grep 'sleep 10' | grep -v grep` and paste the result.
+Run `echo $KAMCHATKA_CALL` and paste it.
+Run `sh -c 'while true; do date >> ticker.log; sleep 1; done' &` and then, in a separate call, `sleep 3; wc -l ticker.log`, and paste what you got.

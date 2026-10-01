@@ -1,0 +1,3 @@
+Start `python3 -m http.server 18801` in the background in one shell call, then in a second shell call run `sleep 1; curl -s -m 5 http://127.0.0.1:18801/ | head -3`, and paste both results verbatim.
+In a new shell call, find the http.server process you started and stop it with kill, then confirm it is gone. Paste what each command printed.
+Create a virtualenv with `python3 -m venv .venv` and then try `.venv/bin/pip install requests`. Paste what happened, verbatim, including anything the tool said about the network.

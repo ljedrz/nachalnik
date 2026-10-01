@@ -1,0 +1,2 @@
+Run `python3 x11probe.py` in the shell and paste its output verbatim.
+Run `kill -0 $PPID; echo exit=$?` and paste its output verbatim.

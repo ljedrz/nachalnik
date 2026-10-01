@@ -1,0 +1,9 @@
+Read big.txt with fs and tell me what row 100 says.
+Read longline.txt and tell me how long its line is.
+Now read big.txt again and tell me what the last row you can see is.
+Grep big.txt for "row 1999" and tell me how many matches you got.
+Read every file under the deep directory and dir with spaces, one by one.
+What is in your context now, and how full is it? If it is getting full, make room yourself.
+Read big.txt one more time, and tell me row 50.
+/budget
+What did the compactor do in this session? Check your log rather than guessing.

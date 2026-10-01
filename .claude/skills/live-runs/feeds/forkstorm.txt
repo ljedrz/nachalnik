@@ -1,0 +1,3 @@
+Read inventory/store.py. Then, in one single response, ask five forks of yourself at once, each a different question: one about bugs, one about naming, one about tests that are missing, one about performance, one about documentation. Summarise what each said.
+How many tokens did those forks cost in total, and how do you know? Check with your tools.
+/spend
