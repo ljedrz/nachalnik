@@ -133,14 +133,17 @@ minor bump may break you.
   **Breaking** for the library: `tools::Trim` is `tools::ToolTrimmer`.
 
 - **What a command left running is stopped when the session ends.** A job a `shell` command put in
-  the background stays in the command's process group, so it survived the call and the program,
-  reparented to init with nothing left to answer its network questions or record what it did.
-  Every such group still running when the session ends - at exit and at `/restart` - is now sent
-  `SIGTERM`, then `SIGKILL` two seconds later, and each is named. `--leave-running` leaves them and
-  names them. A group is known by the processes that were in it and not by its number alone, so
-  one whose job finished early, and whose number has since gone to a group somebody else started,
-  is left alone rather than stopped in its place. **Breaking** for the library: `Shell` gains `stragglers` and `Setup` gains
-  `leave_running`; `tools::Stragglers`, `App::stragglers` and `wiring::stragglers_at_end` are new.
+  the background survived the call and the program, reparented to init with nothing left to
+  answer its network questions or record what it did. Every command now runs with
+  `KAMCHATKA_CALL` in its environment, naming the session and the call, and everything it starts
+  inherits it - so whatever is still running when the session ends, at exit and at `/restart`, is
+  found by that, in the command's process group or out of it (`setsid`, a double fork, `nohup`),
+  and is sent `SIGTERM`, then `SIGKILL` two seconds later, each command named. A process is
+  signalled through a `pidfd` and only while it carries the mark, so one whose number has since
+  gone to somebody else is left alone; one that cleared its own environment is not found.
+  `--leave-running` leaves them and names them. **Breaking** for the library: `Shell` gains
+  `stragglers` and `Setup` gains `leave_running`; `tools::Stragglers`, `tools::CALL_VAR`,
+  `App::stragglers` and `wiring::stragglers_at_end` are new.
 
 - **`app::when::read_off` answers a `When`, not an `Option` of one.** There was never a `None`: a
   zone that cannot be read is UTC, said as UTC. **Breaking** for the library.

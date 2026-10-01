@@ -5,7 +5,7 @@
 //! at once - and the one that runs under a real confinement, built from the stances the policy
 //! has accumulated rather than from the verdict on this one call.
 
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 
 use nachalnik::{
     BoxError, Capability, OutputSink, Tool, ToolCall, ToolCallId, ToolOutput, ToolSpec, Verdict,
@@ -246,142 +246,167 @@ pub struct Shell {
     pub stragglers: Stragglers,
 }
 
-/// The process groups whose command's call ended with something of theirs still running.
+/// What the commands of this session left running when their calls ended.
 ///
-/// note: `sleep 300 &`, a server, a watcher - a job put in the background stays in the command's
-/// group when the command exits, so it survives the call, and it survived the program too,
-/// reparented to init with nothing left that answers its network questions or records what it
-/// does. The call says so while the session lasts; this is what makes the end of the session say
-/// it, and stop them - [`Stragglers::stop`] - unless somebody asked to leave them running.
+/// note: `sleep 300 &`, a server, a watcher - a job put in the background survives the call, and
+/// it survived the program too, reparented to init with nothing left that answers its network
+/// questions or records what it does. The call says so while the session lasts; this is what makes
+/// the end of the session say it, and stop them - [`Stragglers::stop`] - unless somebody asked to
+/// leave them running.
 ///
-/// note: shared, since the tool records and whoever ends the session stops; a clone is the same
-/// list. Reached through `rustix`, which signals a group without `unsafe` and without a `sh`.
+/// note: a command's processes are known by a mark, not by their process group. Every command is
+/// started with [`CALL_VAR`] in its environment, naming this session and the call, and everything
+/// it starts inherits it - so a job that left the group is found as surely as one that stayed in
+/// it: `setsid sleep 300 &`, a daemon's double fork, `nohup`. A model asked for a job that outlives
+/// its call wraps it in `setsid` as often as not, and found by group, that job outlived the session
+/// unnamed. What escapes is what clears its own environment - `env -i` - which is a command saying
+/// it wants nothing of where it came from, and what is not this user's to read.
 ///
-/// note: a group is known by what was in it and not by its number alone. The number cannot be
-/// handed out again while the group has members, but a job that finishes on its own empties it,
-/// and a session is long: by the time it ends, the number may be the group of something else this
-/// user runs - a job in another terminal, another session's command - and signalled by number it
-/// would be stopped in its place. So each group is remembered with its members, each one an
-/// identifier and the moment it started, which together name one process however often the
-/// identifier has been reused, and it is signalled only while one of them is still in it. What it
-/// costs is a group whose remembered members have all gone and left only something they started
-/// after it was last looked at, which is left running rather than mistaken for somebody else's;
-/// every look - each call that leaves something, and the end of the session - renews the members,
-/// so that is a moment's window rather than a session's.
-#[derive(Clone, Default)]
-pub struct Stragglers(Arc<parking_lot::Mutex<Vec<Left>>>);
+/// note: and by the mark, not by a number remembered. A process identifier is handed out again
+/// once its process is gone, and a session is long: a number written down when a call ended can be
+/// somebody else's process by the time the session does. The processes are looked for when they
+/// are about to be stopped, each one signalled through a `pidfd` opened on it and read again
+/// through `/proc` after, so that what is signalled is a process that carries the mark.
+///
+/// note: shared, since the tool marks and whoever ends the session stops; a clone is the same.
+#[derive(Clone)]
+pub struct Stragglers(Arc<Marks>);
 
-/// One group a command left running, as it was when it was last looked at.
-struct Left {
-    group: u32,
-    cmd: String,
-    members: Vec<Member>,
+/// This session's mark, and the commands it has been handed, by call.
+struct Marks {
+    session: String,
+    calls: parking_lot::Mutex<Vec<String>>,
 }
 
-/// A process as `/proc` names it: its identifier, and when it started, in clock ticks since boot.
-type Member = (u32, u64);
+impl Default for Stragglers {
+    /// A session of its own: a mark no other process carries.
+    fn default() -> Self {
+        static SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let since = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let n = SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        Self(Arc::new(Marks {
+            session: format!("{}-{since}-{n}", std::process::id()),
+            calls: parking_lot::Mutex::new(Vec::new()),
+        }))
+    }
+}
+
+/// The variable a command's processes carry, naming the session and the call they came from.
+///
+/// note: a list, `;` between its entries, and a command adds to it rather than writing over it: a
+/// session run inside another one's command is that command's, and so is everything it starts.
+pub const CALL_VAR: &str = "KAMCHATKA_CALL";
 
 /// How long a straggler is given to leave on `SIGTERM` before it is sent `SIGKILL`.
 const GRACE: Duration = Duration::from_secs(2);
 
 impl Stragglers {
-    /// Remembers `group` if anything is still running in it.
-    fn left(&self, group: u32, cmd: &str) {
-        let Some(members) = members(group) else {
-            return;
+    /// Takes in a command about to run, and hands back what its environment carries for it.
+    fn mark(&self, cmd: &str) -> String {
+        let mut calls = self.0.calls.lock();
+        calls.push(crate::app::text::one_line(cmd));
+        let ours = format!("{}.{}", self.0.session, calls.len() - 1);
+
+        match std::env::var(CALL_VAR) {
+            Ok(outer) if !outer.is_empty() => format!("{outer};{ours}"),
+            _ => ours,
+        }
+    }
+
+    /// The processes still running that a command of this session started, by the call.
+    fn found(&self) -> BTreeMap<usize, Vec<u32>> {
+        let mut found: BTreeMap<usize, Vec<u32>> = BTreeMap::new();
+        let me = std::process::id();
+        let Ok(proc) = std::fs::read_dir("/proc") else {
+            return found;
         };
-        let mut left = self.0.lock();
-        // the list is looked at again while it is held, so a group that ended long ago is not
-        // carried to the end of the session to be mistaken for whatever took its number
-        left.retain_mut(Left::renewed);
-        left.push(Left {
-            group,
-            cmd: crate::app::text::one_line(cmd),
-            members,
-        });
+        for pid in proc.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok()) {
+            if pid == me {
+                continue;
+            }
+            if let Some(call) = self.call_of(pid) {
+                found.entry(call).or_default().push(pid);
+            }
+        }
+
+        found
     }
 
-    /// The commands whose groups still have something running, as they were typed.
+    /// Which of this session's calls process `pid` came from, by what its environment says.
+    fn call_of(&self, pid: u32) -> Option<usize> {
+        let environ = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+        let named = format!("{CALL_VAR}=");
+        let marks = environ
+            .split(|byte| *byte == 0)
+            .filter_map(|entry| std::str::from_utf8(entry).ok())
+            .find_map(|entry| entry.strip_prefix(named.as_str()))?;
+
+        marks.split(';').find_map(|mark| {
+            let (session, call) = mark.rsplit_once('.')?;
+            (session == self.0.session).then(|| call.parse().ok())?
+        })
+    }
+
+    /// The commands of `calls`, as they were typed.
+    fn named(&self, calls: impl Iterator<Item = usize>) -> Vec<String> {
+        let typed = self.0.calls.lock();
+        calls.filter_map(|call| typed.get(call).cloned()).collect()
+    }
+
+    /// The commands that still have something running, as they were typed.
     pub fn running(&self) -> Vec<String> {
-        let mut left = self.0.lock();
-        left.retain_mut(Left::renewed);
-
-        left.iter().map(|left| left.cmd.clone()).collect()
+        self.named(self.found().into_keys())
     }
 
-    /// Stops every group still running - `SIGTERM`, and `SIGKILL` for what is still there after
-    /// two seconds - and hands back the commands whose groups were stopped.
+    /// Stops everything a command left running - `SIGTERM`, and `SIGKILL` for what is still there
+    /// after two seconds - and hands back the commands whose processes were stopped.
     ///
     /// note: blocking, and short: it is called as a session ends, where there is nothing left to
     /// be responsive for, and a runtime may already be on its way out.
+    ///
+    /// note: looked for again before the `SIGKILL`, rather than the first list kept: a job that
+    /// forks as it is being stopped forks something that carries the mark too.
     pub fn stop(&self) -> Vec<String> {
-        let mut left: Vec<Left> = std::mem::take(&mut *self.0.lock());
-        left.retain_mut(Left::renewed);
-        for left in &left {
-            signal(left.group, rustix::process::Signal::TERM);
+        let found = self.found();
+        for pid in found.values().flatten() {
+            self.signal(*pid, rustix::process::Signal::TERM);
         }
         let until = std::time::Instant::now() + GRACE;
-        let mut lasting: Vec<&mut Left> = left.iter_mut().collect();
+        let mut lasting = self.found();
         while !lasting.is_empty() && std::time::Instant::now() < until {
             std::thread::sleep(Duration::from_millis(20));
-            lasting.retain_mut(|left| left.renewed());
+            lasting = self.found();
         }
-        for left in lasting {
-            signal(left.group, rustix::process::Signal::KILL);
+        for pid in lasting.values().flatten() {
+            self.signal(*pid, rustix::process::Signal::KILL);
         }
 
-        left.into_iter().map(|left| left.cmd).collect()
+        self.named(found.into_keys())
+    }
+
+    /// Sends `signal` to process `pid`, if it is still one carrying this session's mark.
+    ///
+    /// note: through a `pidfd`, opened first and the mark read after, so that a process that went
+    /// and had its number handed on between the look and the signal is not the one signalled.
+    fn signal(&self, pid: u32, signal: rustix::process::Signal) {
+        let Some(opened) = self::pid(pid).and_then(|pid| {
+            rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
+        }) else {
+            return;
+        };
+        if self.call_of(pid).is_some() {
+            let _ = rustix::process::pidfd_send_signal(&opened, signal);
+        }
     }
 }
 
-impl Left {
-    /// Whether the group is still the one the command left, with something in it - and if it is,
-    /// what is in it now, which is all of it the command's.
-    fn renewed(&mut self) -> bool {
-        match members(self.group) {
-            Some(now) if now.iter().any(|member| self.members.contains(member)) => {
-                self.members = now;
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-/// What is in process group `group` now, or `None` where nothing is.
-///
-/// note: read from `/proc/PID/stat`, where the group is the fifth field and the start the
-/// twenty-second, counted from the identifier. The name in brackets before them can hold anything,
-/// brackets and spaces included, so the fields are counted from after the last bracket. A process
-/// that leaves while this reads is passed over, as one that is not there.
-fn members(group: u32) -> Option<Vec<Member>> {
-    let members: Vec<Member> = std::fs::read_dir("/proc")
-        .ok()?
-        .filter_map(|entry| {
-            let pid: u32 = entry.ok()?.file_name().to_str()?.parse().ok()?;
-            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-            let fields: Vec<&str> = stat
-                .get(stat.rfind(')')? + 1..)?
-                .split_whitespace()
-                .collect();
-            let pgrp: u32 = fields.get(2)?.parse().ok()?;
-            let started: u64 = fields.get(19)?.parse().ok()?;
-            (pgrp == group).then_some((pid, started))
-        })
-        .collect();
-    (!members.is_empty()).then_some(members)
-}
-
-/// Sends `signal` to process group `group`, if it is one.
-fn signal(group: u32, signal: rustix::process::Signal) {
-    if let Some(pid) = pid(group) {
-        let _ = rustix::process::kill_process_group(pid, signal);
-    }
-}
-
-/// `group` as the identifier `rustix` takes, if it is one.
-fn pid(group: u32) -> Option<rustix::process::Pid> {
-    i32::try_from(group)
+/// `pid` as the identifier `rustix` takes, if it is one.
+fn pid(pid: u32) -> Option<rustix::process::Pid> {
+    i32::try_from(pid)
         .ok()
         .and_then(rustix::process::Pid::from_raw)
 }
@@ -579,6 +604,9 @@ impl Tool for Shell {
         for key in crate::endpoint::KEYS {
             command.env_remove(key);
         }
+        // and the mark everything it starts carries, which is how the end of the session finds what
+        // it left running; see `Stragglers`
+        command.env(CALL_VAR, self.stragglers.mark(cmd));
 
         // killed if this call is dropped before it is over; see `Running`
         command.kill_on_drop(true);
@@ -803,10 +831,6 @@ impl Tool for Shell {
             None => child.wait().await,
         };
         let reached = gatekeeper.and_then(Gatekeeper::over);
-        // before `over` forgets it: what is still in the group now is what the command left
-        if let Some(group) = running.group {
-            self.stragglers.left(group, cmd);
-        }
         let scratch = running.over();
         let (meant, status) = match (interrupted, waited) {
             (true, _) => (
@@ -1135,50 +1159,34 @@ fn keep(
 mod tests {
     use super::*;
 
-    /// A group whose number has gone to something else since the command left it is not stopped
-    /// at the end of the session, and is not named as stopped.
-    ///
-    /// note: forged rather than waited for: the number of a group the command left is handed out
-    /// again only once the system has gone through the rest, so the list is given a group that is
-    /// running now under members it never had - which is what the reused number looks like.
+    /// What no command of this session started is left alone at its end - a process of this user's
+    /// with no mark, and one carrying another session's - and is not named as stopped.
     #[test]
-    fn a_group_whose_number_was_handed_out_again_is_left_alone() {
-        use std::os::unix::process::CommandExt;
-
-        let mut somebody = std::process::Command::new("sleep")
-            .arg("30")
-            .process_group(0)
-            .spawn()
-            .expect("sleep runs");
-        let group = somebody.id();
-        let theirs = members(group).expect("the group has its one member");
+    fn what_this_session_did_not_start_is_left_alone() {
+        let somebody = |mark: Option<&str>| {
+            let mut sleep = std::process::Command::new("sleep");
+            sleep.arg("30").env_remove(CALL_VAR);
+            if let Some(mark) = mark {
+                sleep.env(CALL_VAR, mark);
+            }
+            sleep.spawn().expect("sleep runs")
+        };
         let stragglers = Stragglers::default();
-        stragglers.0.lock().push(Left {
-            group,
-            cmd: "sleep 300 &".to_owned(),
-            members: theirs
-                .iter()
-                .map(|(pid, started)| (*pid, started + 1))
-                .collect(),
-        });
+        let mut others = [
+            somebody(None),
+            somebody(Some(&format!("{}-0-0.0", std::process::id() + 1))),
+        ];
 
-        assert!(
-            stragglers.running().is_empty(),
-            "the group is not the command's"
-        );
-        stragglers.0.lock().push(Left {
-            group,
-            cmd: "sleep 300 &".to_owned(),
-            members: vec![(group, 0)],
-        });
+        assert!(stragglers.running().is_empty());
         assert!(stragglers.stop().is_empty());
-        assert!(
-            somebody.try_wait().expect("it can be asked").is_none(),
-            "somebody else's group was stopped"
-        );
-
-        somebody.kill().expect("it is still there to kill");
-        somebody.wait().expect("and to reap");
+        for other in &mut others {
+            assert!(
+                other.try_wait().expect("it can be asked").is_none(),
+                "somebody else's process was stopped"
+            );
+            other.kill().expect("it is still there to kill");
+            other.wait().expect("and to reap");
+        }
     }
 
     #[tokio::test]
