@@ -175,6 +175,10 @@ impl Span {
 pub const COUNTED: u64 = 64 * 1024 * 1024;
 
 /// Room kept under the output limit for the line saying which lines these are.
+///
+/// note: at most half the limit. `/limit fs:read 200` is a limit a person can set, and with the
+/// whole of this kept back it left no room for any line: every file was answered with a header
+/// calling its first line longer than the limit, and nothing of it.
 const HEADER: usize = 256;
 
 /// The lines `span` names of a file `allows` answered for, as text, stopping at the last whole
@@ -205,7 +209,7 @@ fn read(
     // whether to count to the end, and a file claiming less than it holds is counted anyway
     let countable = file.metadata().is_ok_and(|meta| meta.len() <= COUNTED);
     let mut reader = std::io::BufReader::new(file);
-    let room = budget.saturating_sub(HEADER);
+    let room = budget.saturating_sub(HEADER.min(budget / 2));
 
     let (mut number, mut kept, mut shown) = (0u64, Vec::new(), None::<(u64, u64)>);
     let (mut line, mut ended) = (Vec::new(), false);
