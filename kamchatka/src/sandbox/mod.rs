@@ -749,7 +749,23 @@ impl fmt::Display for Sandbox {
         for path in &self.readable {
             write!(f, ", {} read-only", path.display())?;
         }
-        write!(f, ", the system directories read-only, {}", self.network)
+        write!(f, ", the system directories read-only, {}", self.network)?;
+        // note: said wherever TCP is not refused outright, since that is where a closed port is the
+        // one connection refused - and a command refused it was told only that the network was
+        // reachable, with nothing to say why this one address was not
+        if !self.network.refuses_tcp() && !self.closed.is_empty() {
+            let ports: Vec<String> = self.closed.iter().map(u16::to_string).collect();
+            write!(
+                f,
+                " but for {} {} on this machine, where this session is served",
+                match ports.len() {
+                    1 => "port",
+                    _ => "ports",
+                },
+                ports.join(", "),
+            )?;
+        }
+        Ok(())
     }
 }
 

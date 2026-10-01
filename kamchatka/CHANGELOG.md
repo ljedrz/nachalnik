@@ -214,6 +214,10 @@ minor bump may break you.
   nearly all tool definitions, and told to `/exclude` by number until the corner was under the
   limit. Where the whole context is less than the overrun it now says what the tools come to, and
   that `/tools toggle ID` stops offering one.
+- **A served session's own port is part of what a command is said to reach.** A confined command
+  may not connect to the port a session is served on, and the reach the tool results describe
+  said only that the network was reachable - so a model whose command was refused that one
+  connection was told nothing about why. The description now ends with the closed ports.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one
