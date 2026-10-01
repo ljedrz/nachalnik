@@ -374,7 +374,7 @@ impl Sandbox {
         // each costing a dozen `canonicalize` calls, was minutes of work after the command had
         // already ended, with nothing to interrupt it
         let (mut named, mut mentioned): (Vec<String>, bool) = (Vec::new(), false);
-        let mut sockets = 0;
+        let (mut sockets, mut read_only) = (0, 0);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
             mentioned = true;
             if named.contains(&path) {
@@ -387,7 +387,12 @@ impl Sandbox {
             // a socket is judged by connecting and nothing else: see `connecting`
             let (socket, confined) = match self.connecting(&judged, scratch) {
                 Some(refused) => (true, refused),
-                None => (false, !self.reaches(&judged, scratch)),
+                None if !self.reaches(&judged, scratch) => (false, true),
+                None => {
+                    let barred = self.reads_only(&judged, scratch);
+                    read_only += usize::from(barred);
+                    (false, barred)
+                }
             };
             if confined {
                 sockets += usize::from(socket);
@@ -414,6 +419,14 @@ impl Sandbox {
                  with {self}. Say what you need the socket for and ask for it to be opened up.]",
                 named.join(", "),
             )),
+            // reached, and refused a write the person could have made: under `--deny fs:write`
+            // the working directory itself, or a path opened up with `--sandbox-read`
+            (false, _) if read_only == named.len() => Some(format!(
+                "[{} is where this session may read and not write, so the permission error below \
+                 is the confinement rather than the file's own permissions. This command runs \
+                 with {self}. Say what you need to write there and ask for it to be opened up.]",
+                named.join(", "),
+            )),
             (false, _) => Some(format!(
                 "[{} is outside what this session reaches{}, so the permission error below is the \
                  confinement rather than the file's own permissions. This command runs with \
@@ -426,6 +439,42 @@ impl Sandbox {
                 },
             )),
         }
+    }
+
+    /// Whether `path` is somewhere a confined command may read and not write, which the person
+    /// could have written to: a refusal there is the confinement's and not the file's.
+    ///
+    /// note: a path this session reaches is otherwise called the file's own permissions, which is
+    /// right for `cat /etc/shadow` and wrong for a write into a directory the session holds
+    /// read-only - under `--deny fs:write`, the working directory itself. Asked of the person's
+    /// permissions with `access(2)` from this process, which is not confined, on the path or the
+    /// nearest part of it that is there, since what a write is refused is often a file it was
+    /// going to make.
+    fn reads_only(&self, path: &Path, scratch: Option<&Path>) -> bool {
+        let Some(resolved) = resolve(path) else {
+            return false;
+        };
+        // a device that was reached was granted writing as well; see `reaches`
+        if resolved.starts_with("/dev") || self.writes(&resolved, scratch) {
+            return false;
+        }
+        resolved
+            .ancestors()
+            .find(|part| part.symlink_metadata().is_ok())
+            .is_some_and(|there| rustix::fs::access(there, rustix::fs::Access::WRITE_OK).is_ok())
+    }
+
+    /// Whether a resolved path is under one of the roots a confined command may write.
+    fn writes(&self, resolved: &Path, scratch: Option<&Path>) -> bool {
+        self.writable
+            .then_some(self.workdir.as_path())
+            .into_iter()
+            .chain(scratch)
+            .chain(self.extra.iter().map(PathBuf::as_path))
+            .any(|root| {
+                root.canonicalize()
+                    .is_ok_and(|root| resolved.starts_with(root))
+            })
     }
 
     /// Whether a confined command may not connect to `path`, if it is a socket; `None` if it is
@@ -452,18 +501,7 @@ impl Sandbox {
         {
             return None;
         }
-        let writable = self
-            .writable
-            .then_some(self.workdir.as_path())
-            .into_iter()
-            .chain(scratch)
-            .chain(self.extra.iter().map(PathBuf::as_path))
-            .any(|root| {
-                root.canonicalize()
-                    .is_ok_and(|root| resolved.starts_with(root))
-            });
-
-        Some(!writable && confines_unix_sockets())
+        Some(!self.writes(&resolved, scratch) && confines_unix_sockets())
     }
 
     /// What to hand a confined command as `GIT_CONFIG_GLOBAL`; `None` leaves git its own defaults.

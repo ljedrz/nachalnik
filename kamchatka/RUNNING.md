@@ -1061,7 +1061,10 @@ up.
 
 A refusal that names only paths the command *can* reach gets no such line: `cat /etc/shadow` is
 refused with or without a sandbox, and hedging about it would send a model looking for a boundary
-that had nothing to do with it.
+that had nothing to do with it. Reaching a path for reading is not reaching it for writing,
+though: a write refused where the session reads and does not write - the working directory under
+`--deny fs:write`, a `--sandbox-read` path - and that you could have made is named as the
+confinement too.
 
 **And it says where the session does reach**, in the tools that run in process too, in the same
 words the `shell` tool's description uses. A refusal that named only the working directory would
