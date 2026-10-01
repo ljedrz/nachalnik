@@ -5,6 +5,15 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- Requires `nachalnik` 0.8, whose `ModelInfo` became `#[non_exhaustive]` and whose
+  `ContextState` lost `Archived` and `Superseded`. Nothing in this crate had to change for it, but
+  `Subject::model` hands out a `ModelInfo` and `Origin::snapshot` a `Snapshot`, so this release
+  cannot be mixed with a 0.7-series runtime.
+
 ## [0.6.0] - 2026-09-28
 
 ### breaking
