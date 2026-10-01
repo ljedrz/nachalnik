@@ -580,16 +580,13 @@ fn the_generators_reach_what_the_properties_are_about() {
             }
 
             let items = world.kernel.items();
-            if items
-                .iter()
-                .any(|item| {
-                    item.state == ContextState::Excluded
-                        && item
-                            .note
-                            .as_deref()
-                            .is_some_and(|note| note.starts_with("replaced by item"))
-                })
-            {
+            if items.iter().any(|item| {
+                item.state == ContextState::Excluded
+                    && item
+                        .note
+                        .as_deref()
+                        .is_some_and(|note| note.starts_with("replaced by item"))
+            }) {
                 reached.something_superseded += 1;
             }
 
