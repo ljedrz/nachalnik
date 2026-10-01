@@ -241,9 +241,9 @@ impl App {
                 self.say(Speaker::Note, note);
             }
             // note: said, because it is the one thing about compaction a person has to act on. The
-            // compactor keeps its promise - `Shedder` takes neither the turn in progress nor what
-            // is pinned - so once the rest is gone, only the person or the model can say what of
-            // that may go. The model is told by the notice the wiring gave
+            // compactor keeps its promise - `Shedder` drops nothing of the turn in progress and
+            // takes nothing pinned - so once the rest is gone and what had been read of the turn
+            // is elided, only the person or the model can say what of that may go. The model is told by the notice the wiring gave
             // the kernel, which it reads in the next request; see `wiring::full_notice`
             Event::ContextFull { full: true, .. } => self.say(
                 Speaker::Note,

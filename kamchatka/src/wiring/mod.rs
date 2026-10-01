@@ -215,9 +215,9 @@ pub struct Wired {
 /// What the model is told as the context becomes full: that the compactor has nothing more it may
 /// take, and what it can do about the rest.
 ///
-/// note: `Shedder` never takes the turn in progress, what is pinned, or a note the model wrote for
-/// itself, so once the older exchanges and what has been read are gone that is what is left, and
-/// only the model or the person can say what of it may go.
+/// note: `Shedder` never drops the turn in progress, or takes what is pinned or a note the model
+/// wrote for itself, so once the older exchanges and what has been read are gone that is what is
+/// left, and only the model or the person can say what of it may go.
 /// The kernel places this once per fill, between a turn's results and its next request, so a
 /// tool loop that fills the context hears it inside the same turn - see
 /// `nachalnik::Kernel::set_full_notice`.

@@ -58,9 +58,10 @@ minor bump may break you.
   once the model has been shown it. Once the context passes `--compact`, the oldest exchanges go
   whole - the person's message, the turns answering it, their results and a file attached for it -
   until it is down to the new `--compact-target` (`compact-target` in a settings file), which is
-  at most `--compact` and is derived from it as before when left out. Neither rule takes the turn
-  in progress, a pin, or a note the model wrote for itself, and a standing summary says how many
-  exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
+  at most `--compact` and is derived from it as before when left out; with no older exchange left,
+  it elides what the model has already been shown of the turn in progress, oldest first. Neither
+  rule drops the turn in progress, takes a pin, or touches a note the model wrote for itself, and a
+  standing summary says how many exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
   it - a model reading one that said only "compacted" disowned its own summaries of the files
   behind it; the one exception is a request that would not fit the limit at all, whose unread
   results go too, under a marker that says nothing about reading and a summary that says how many.

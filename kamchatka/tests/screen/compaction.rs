@@ -1546,8 +1546,9 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
 /// A context over the compactor's threshold that holds nothing it may take is said to be full,
 /// once, and the person is told what can still be done.
 ///
-/// note: `Shedder` keeps its promise and takes neither what is pinned nor the turn in progress, so
-/// a context that is those is one it can do nothing about. It used to say nothing, and the session
+/// note: `Shedder` keeps its promise and takes nothing pinned and drops nothing of the turn in
+/// progress, so a context that is those is one it can do nothing about once what was read of the
+/// turn is elided. It used to say nothing, and the session
 /// went on until the kernel refused a request over the limit - which a headless run did not come
 /// back from. The kernel measures it now, and this is the line it comes to.
 #[tokio::test]

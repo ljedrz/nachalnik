@@ -331,7 +331,7 @@ impl App {
     ///
     /// note: `/compact` where the tool results could cover it, and the model's own turns where they
     /// could not. A request is refused for length after the compactor has had its pass, so what is
-    /// left is mostly the turn in progress, which no pass takes - and a sentence pointing at
+    /// left is mostly the turn in progress, which no pass drops - and a sentence pointing at
     /// `/compact` there points at a command that will find nothing, which a headless run, where
     /// nobody types it, reported as the last turn having failed and nothing more.
     ///
