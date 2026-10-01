@@ -329,11 +329,11 @@ impl App {
 
     /// What to do about a request `over` tokens past the limit.
     ///
-    /// note: `/compact` where a pass could free that much, and the model's own turns where it could
-    /// not. The compactor takes tool results and nothing else, so a session that has mostly talked
-    /// fills with what no pass will touch, and a sentence pointing at `/compact` there points at a
-    /// command that will find nothing - which a headless run, where nobody types it, reported as
-    /// the last turn having failed and nothing more.
+    /// note: `/compact` where the tool results could cover it, and the model's own turns where they
+    /// could not. A request is refused for length after the compactor has had its pass, so what is
+    /// left is mostly the turn in progress, which no pass takes - and a sentence pointing at
+    /// `/compact` there points at a command that will find nothing, which a headless run, where
+    /// nobody types it, reported as the last turn having failed and nothing more.
     ///
     /// note: the turns are priced off the request rather than off the items. A reasoning model's
     /// turn holds its thinking, which the projector does not send back, so the items' own figures
@@ -409,16 +409,16 @@ impl App {
         // overrun is a sentence asking somebody to do a thing that cannot work
         said.push_str(&match turns >= over {
             true => format!(
-                "compaction can free ~{} at most, since it takes tool results and nothing else, \
-                 and ~{} of what goes out is the model's own turns. `/exclude` the oldest of \
+                "the tool results come to ~{} at most, and ~{} of what goes out is the model's \
+                 own turns. `/exclude` the oldest of \
                  those by number - the context tab lists them with what each costs - and each is \
                  one `/undo` from coming back",
                 thousands(held),
                 thousands(turns),
             ),
             false => format!(
-                "compaction can free ~{} at most, and the model's own turns are only ~{} of the \
-                 request, so excluding all of them does not cover it. `/exclude` by number until \
+                "the tool results come to ~{} at most, and the model's own turns are only ~{} of \
+                 the request, so excluding all of them does not cover it. `/exclude` by number until \
                  the corner is under the limit, and every item taken out that way is one `/undo` \
                  from coming back",
                 thousands(held),

@@ -13,8 +13,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   and is no longer. Carrying it is a few lines - a `Content::Blob` instead of a sentence - and the
   reason to wait was that a server offering a 4 MB screenshot would put 5.5 MB of base64 into a
   context whose budget could not count it. **The counter is in as of 0.4.0**, so the blocker is
-  gone: a budget now says how many pieces it could not price, and `kamchatka`'s compactor takes an
-  unpriced tool result first.
+  gone: a budget now says how many pieces it could not price, and `kamchatka`'s compactor takes a
+  picture as soon as the model has been shown it.
 
   **The blocker was never only the counter.** Neither dialect accepts a picture in a *tool result* -
   `tool` content is a string in one and a `functionResponse` in the other - so a `Content::Blob` in
@@ -241,13 +241,3 @@ Referenced from [AGENTS.md](AGENTS.md).
   results other than `context`'s own reports - which quote the question back - would close it. It
   waits because it reverses a tested choice, and whether a result of the asking turn is part of
   "what the context holds" is the decision.
-
-- **A compaction marker does not say the model had read what it stands in for.** `ToolTrimmer`
-  takes results the model has already been shown before any it has not, but the marker says only
-  that the result was compacted and why. A live run compacted three reads mid-turn, after the model
-  had summarised each correctly; reading the markers, it decided it had never seen the files,
-  called its own summaries fabricated and withdrew them. A sentence saying the result was shown to
-  it before it was elided would stop that, but the reason is one string for every item in a pass,
-  and a pass may also take a result the model has not read when the request would not fit
-  otherwise - so either the pass carries two reasons, or the sentence is true only of a pass that
-  took nothing fresh. Which, and the cost of a longer marker on every elided item, is the decision.

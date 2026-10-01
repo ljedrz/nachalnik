@@ -854,11 +854,10 @@ impl App {
     /// ordinary as a message, and it should get old and be compacted like one. `p` pins it if
     /// this one is meant to last.
     ///
-    /// note: a pin would be wrong twice over. It protects against nothing: `ToolTrimmer` only ever
-    /// considers a `ContextKind::ToolResult`, so an attachment is a `Reference` it will never
-    /// take, pinned or not. And where a compactor *could*
-    /// take one, silently making it the one thing in the context that cannot be compacted is the
-    /// decision least likely to be what somebody attaching a 200-page PDF wanted.
+    /// note: and `Shedder` treats it as one: a picture goes to a marker once the model has been
+    /// shown it, and a file of text goes with the exchange it was brought in for. Silently making
+    /// it the one thing in the context that cannot be compacted is the decision least likely to
+    /// be what somebody attaching a 200-page PDF wanted.
     fn attach(&mut self, rest: &str) {
         if rest.is_empty() {
             self.say(
@@ -1019,7 +1018,13 @@ impl App {
                 Some(format!("at the terminal, by `{input}`")),
             ),
             "pin" => (ContextState::Pinned, None),
-            _ => (ContextState::Active, None),
+            // note: a note, where a restore used to clear one, because the compactor reads it: an
+            // item somebody brought back is one it leaves alone until the context is full, rather
+            // than eliding it again before the next request - see `tools::Shedder`
+            _ => (
+                ContextState::Active,
+                Some(format!("restored at the terminal, by `{input}`")),
+            ),
         };
         let changed = self.kernel.set_state(ids, state, note);
         self.say(
@@ -1652,7 +1657,7 @@ impl App {
         // which makes every figure above true of the context and not of what goes out
         //
         // note: the compactor is not named here, though it could be. `name()` defaults to the
-        // type path, so this would read `kamchatka::tools::tool_trimmer::ToolTrimmer` in the middle of a
+        // type path, so this would read `kamchatka::tools::shedder::Shedder` in the middle of a
         // sentence - and `/seams` is the place that answers "which one", in a table where a
         // full path is the useful form
         if budget.fraction_used().is_some_and(|used| used >= 1.0)

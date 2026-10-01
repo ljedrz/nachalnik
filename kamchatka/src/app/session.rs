@@ -420,7 +420,7 @@ pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::Pat
 }
 
 /// The calls an item is one half of a pair with: the ones a turn asks, or the one a result answers.
-fn named_calls(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
+pub(crate) fn named_calls(item: &ContextItem) -> impl Iterator<Item = &ToolCallId> {
     let result = match &item.kind {
         ContextKind::ToolResult { call, .. } => Some(call),
         _ => None,

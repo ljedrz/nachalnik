@@ -57,8 +57,11 @@ pub struct Settings {
     pub mcp: Option<Vec<String>>,
     /// How many requests one turn may make before it stops; `0` is no limit.
     pub requests: Option<usize>,
-    /// How full the context may get before the oldest tool results are elided; `1` never compacts.
+    /// How full the context may get before its oldest exchanges are excluded; `1` never compacts.
     pub compact: Option<f64>,
+    /// How far down a full context is taken once exchanges start going; at most `compact`, and
+    /// derived from it when left out.
+    pub compact_target: Option<f64>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
     pub parallel: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.

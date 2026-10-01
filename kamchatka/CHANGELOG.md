@@ -26,7 +26,7 @@ minor bump may break you.
   request over the limit. The session now says, once, that the context is full and nothing more
   may be taken automatically - with room still under the limit - and what is left is for the
   person to `/exclude` or the model to exclude through `context`; and says so again when there is
-  room. `ToolTrimmer::wants_room` is its threshold alone, so an unpriced pin does not read as full.
+  room. `Shedder::wants_room` is its threshold alone, so an unpriced pin does not read as full.
 - **The model is told the context is full, where it can act on it.** A note naming the `context`
   tool goes into the context before the next request - inside the turn that filled it - so a
   headless run can make its own room rather than run into the limit. Without the `context` tool
@@ -46,6 +46,23 @@ minor bump may break you.
   item they also say where the rest is: `?N`, or the context view, where an answer can carry it,
   and `/save`'s snapshot where the line alone is longer than any answer. A projection still too
   long once its lines are cut is refused by name as before.
+- **The compactor is `Shedder`, and it is one for a long session rather than a full one.** It sheds
+  what the conversation is done with, by two rules. Before every request, however empty the
+  context is, a tool result whose turn is over goes to a marker, and so does a picture or a document
+  once the model has been shown it. Once the context passes `--compact`, the oldest exchanges go
+  whole - the person's message, the turns answering it, their results and a file attached for it -
+  until it is down to the new `--compact-target` (`compact-target` in a settings file), which is
+  at most `--compact` and is derived from it as before when left out. Neither rule takes the turn
+  in progress, a pin, or a note the model wrote for itself, and a standing summary says how many
+  exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
+  it - a model reading one that said only "compacted" disowned its own summaries of the files
+  behind it; the one exception is a request that would not fit the limit at all, whose unread
+  results go too, under a marker that says nothing about reading and a summary that says how many.
+  A result the person brings back is left alone until the context is full, where it was elided
+  again before the next request: `/restore` and <kbd>space</kbd> leave a note saying who restored
+  it. **Breaking** for the library: `tools::ToolTrimmer` is `tools::Shedder`, and it takes more than
+  tool results; `Setup` has `compact_target`.
+
 - **A `/endpoint` that keeps the model's name is in the record.** It was in no record at all,
   since what the kernel compared to announce a switch carried no address; now `model.changed`
   names both, and the trace shows `model at address` either side where the address is what moved.

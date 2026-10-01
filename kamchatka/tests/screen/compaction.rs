@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crossterm::event::KeyCode;
-use kamchatka::tools::ToolTrimmer;
+use kamchatka::tools::Shedder;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
 
@@ -50,7 +50,7 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         vec![],
     ));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.0,
         target: 0.0,
     };
@@ -73,15 +73,17 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
     let request = kernel.preview_request().expect("a request");
     let sent = format!("{:?}", request.messages);
     assert!(!sent.contains("xxxx"), "the content is gone");
+    // and says the model had read it, which is the half a live run needed: a model reading a
+    // marker that said only "compacted" decided it had never seen the files it had just
+    // summarised, called its summaries fabricated and withdrew them
     assert!(
-        sent.contains("compacted to make room"),
+        sent.contains("compacted after you had read it"),
         "and says so where it was: {sent}"
     );
-    // and closes the retry, which is the half a live run needed: a model read a 10,000-token
-    // file into a 9,000-token context three times, with this marker in front of it each time
+    // and closes the retry, which is the other half: a model read a 10,000-token file into a
+    // 9,000-token context three times, with a marker in front of it each time
     assert!(
-        sent.contains("would put the same tokens back")
-            && sent.contains("ask for the part you need"),
+        sent.contains("ask for the part you need rather than the whole"),
         "a marker that only says what happened is read as an invitation to try again: {sent}"
     );
     assert_eq!(
@@ -106,7 +108,7 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
     );
 }
 
-/// A second pass with nothing left to elide is not a pass. `ToolTrimmer` runs before every request, so a
+/// A second pass with nothing left to elide is not a pass. `Shedder` runs before every request, so a
 /// pass that answers with a plan whatever the state of the context adds a summary and burns an
 /// undo on every one of them - and the context it is meant to shrink grows for the rest of the
 /// session.
@@ -136,8 +138,10 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
         "y".repeat(4_000),
         false,
     ));
+    // and read: what the model has not been shown is kept while the request fits
+    kernel.push(ContextItem::assistant("it is all y", vec![]));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -175,7 +179,7 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
     );
 }
 
-/// A pinned tool result is one `ToolTrimmer` may not have, and naming it anyway is not free: the kernel
+/// A pinned tool result is one `Shedder` may not have, and naming it anyway is not free: the kernel
 /// refuses it, the plan is a plan all the same, and a plan carries a summary. One pinned result
 /// bigger than the target keeps the context over the threshold for the rest of the session, so
 /// against a live endpoint this added a summary and burned an undo before every request, growing
@@ -204,7 +208,7 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
         Some("this has to last".into()),
     );
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.2,
         target: 0.1,
     };
@@ -234,7 +238,7 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
 }
 
 /// A marker is not free, and a pass that credits itself with the whole of what it elided is
-/// counting on it being. `ToolTrimmer` subtracted each item's tokens and put a line of its own reason
+/// counting on it being. `Shedder` subtracted each item's tokens and put a line of its own reason
 /// where the content had been, so on a context full of small results the arithmetic said it had
 /// recovered hundreds of tokens while the request it was making got bigger.
 #[tokio::test]
@@ -264,7 +268,7 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
         ));
     }
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -298,6 +302,7 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
         "y".repeat(1_200),
         false,
     ));
+    kernel.push(ContextItem::assistant("read it", vec![]));
 
     let with_big = budget().context_tokens;
     let plan = trim
@@ -367,8 +372,10 @@ async fn a_pass_that_would_grow_the_request_takes_nothing() {
         "y".repeat(300),
         false,
     ));
+    // read, so that what decides it is the arithmetic and not that it is new
+    kernel.push(ContextItem::assistant("pinned", vec![]));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -434,8 +441,9 @@ async fn a_result_worth_more_than_its_marker_and_the_summary_is_still_taken() {
         "y".repeat(2_000),
         false,
     ));
+    kernel.push(ContextItem::assistant("read it", vec![]));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -489,6 +497,7 @@ async fn a_summary_counts_only_what_this_compactor_elided() {
             false,
         ));
     }
+    kernel.push(ContextItem::assistant("read both", vec![]));
     let model_elided = kernel
         .items()
         .iter()
@@ -501,7 +510,7 @@ async fn a_summary_counts_only_what_this_compactor_elided() {
         Some("I have what I need from this one".to_owned()),
     );
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -519,16 +528,16 @@ async fn a_summary_counts_only_what_this_compactor_elided() {
         .map(|summary| summary.content.to_text().into_owned());
     assert!(
         said.as_deref()
-            .is_some_and(|said| said.starts_with("1 earlier tool result(s)")),
+            .is_some_and(|said| said.starts_with("1 tool result(s) you had already read")),
         "the model elided one of the two itself, and this pass is not what took it: {said:?}"
     );
 }
 
-/// A blob goes first, ahead of results older than it, and the arithmetic gets no say. Every
-/// counter in this workspace puts a `Content::Blob` at `0` tokens, so the two rules the rest of
-/// this pass runs on - oldest first, and nothing smaller than its own marker - between them made
-/// the largest thing in the context the one thing `ToolTrimmer` could never take: ranked last by age,
-/// then skipped for recovering nothing.
+/// A blob goes as soon as it has been shown, ahead of results older than it, and the arithmetic
+/// gets no say. Every counter in this workspace puts a `Content::Blob` at `0` tokens, so the two
+/// rules the rest of this pass runs on - oldest first, and nothing smaller than its own marker -
+/// between them made the largest thing in the context the one thing the compactor could never
+/// take: ranked last by age, then skipped for recovering nothing.
 #[tokio::test]
 async fn blobs_are_taken_before_anything_else() {
     use nachalnik::{Budget, Compactor, Content};
@@ -575,7 +584,7 @@ async fn blobs_are_taken_before_anything_else() {
          600 KB picture as free"
     );
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -594,12 +603,9 @@ async fn blobs_are_taken_before_anything_else() {
         "the blob goes first, though it is the newest item and the one counted at nothing"
     );
     assert!(
-        plan.summary
-            .as_ref()
-            .is_some_and(|summary| summary.content.to_text().contains("1 of them carrying an")),
-        "and the model is told a picture was among them, since the marker it reads will only \
-         mention a token limit: {:?}",
-        plan.summary.as_ref().map(|s| s.content.to_text())
+        plan.reason.starts_with("compacted after you had read it"),
+        "and the marker says it had been shown, which is what lets it go: {}",
+        plan.reason
     );
 
     let report = kernel.apply_compaction(plan);
@@ -649,7 +655,7 @@ async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
         false,
     ));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -711,7 +717,7 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
     // the first turn excluded, which takes its result out of the request with it
     kernel.set_state([results[0].0], ContextState::Excluded, None);
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.1,
         target: 0.05,
     };
@@ -731,7 +737,7 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
     assert!(
         summary
             .as_deref()
-            .is_some_and(|s| s.starts_with("1 earlier tool result(s)")),
+            .is_some_and(|s| s.starts_with("1 tool result(s) you had already read")),
         "{summary:?}"
     );
     let report = kernel.apply_compaction(plan);
@@ -766,7 +772,7 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         vec![],
     ));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -795,12 +801,12 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         .expect("a plan all the same");
     assert_eq!(plan.elide, vec![blob], "the picture, and nothing else");
 
-    // and once it is a marker there is nothing unpriced left, so the pass stops being asked -
-    // an abstention that outlived the content would ask for a plan before every request for the
-    // rest of the session
+    // and once it is a marker there is nothing unpriced left, and nothing more to plan - an
+    // abstention that outlived the content would make a plan before every request for the rest
+    // of the session
     kernel.apply_compaction(plan);
     assert_eq!(budget().uncounted, 0);
-    assert!(!trim.should_compact(&budget()));
+    assert!(trim.plan(&kernel.items(), &budget()).await.is_none());
 
     // and the line announcing the pass says what its two totals could not price, since without
     // it they read as a request that shrank by the difference
@@ -830,7 +836,7 @@ async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
         "A".repeat(600_000),
     )));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -880,7 +886,7 @@ async fn a_share_that_rounds_to_nothing_is_said_as_under_one_percent() {
     ));
     kernel.push(ContextItem::assistant("it is all x", Vec::new()));
 
-    let trim = ToolTrimmer::under(0.001);
+    let trim = Shedder::under(0.001);
     let budget = Budget {
         limit: Some(1_000_000),
         ..kernel.budget()
@@ -911,7 +917,7 @@ async fn compaction_summaries_do_not_pile_up() {
 
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
@@ -984,7 +990,7 @@ async fn compaction_summaries_do_not_pile_up() {
 #[tokio::test]
 async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
         threshold: 0.8,
         target: 0.5,
     })));
@@ -1172,7 +1178,7 @@ async fn a_request_too_long_names_what_is_pinned() {
 #[tokio::test]
 async fn compact_under_the_target_says_the_context_is_under_it() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
         threshold: 0.5,
         target: 0.3,
     })));
@@ -1193,8 +1199,8 @@ async fn compact_under_the_target_says_the_context_is_under_it() {
         "{screen}"
     );
     // and it is named as somebody reads it, not by its module path in the middle of a sentence
-    assert!(screen.contains("ToolTrimmer has nothing to do"), "{screen}");
-    assert!(!screen.contains("tools::tool_trimmer"), "{screen}");
+    assert!(screen.contains("Shedder has nothing to do"), "{screen}");
+    assert!(!screen.contains("tools::shedder"), "{screen}");
     assert!(
         !screen.contains("found nothing it may take"),
         "nothing is ineligible here; the context is simply not full enough: {screen}"
@@ -1205,7 +1211,7 @@ async fn compact_under_the_target_says_the_context_is_under_it() {
 #[tokio::test]
 async fn compact_above_the_target_says_nothing_is_eligible() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
         threshold: 0.5,
         target: 0.3,
     })));
@@ -1255,7 +1261,7 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
     use nachalnik::{Content, ToolCall};
 
     let mut harness = Harness::new([]);
-    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
         threshold: 0.0,
         target: 0.0,
     })));
@@ -1441,7 +1447,7 @@ async fn compact_without_a_compactor_says_there_is_none() {
 #[test]
 fn a_compactor_aims_lower_than_the_point_it_starts_at() {
     for threshold in [0.99, 0.8, 0.5, 0.3, 0.2, 0.15, 0.05, 0.01] {
-        let trim = ToolTrimmer::under(threshold);
+        let trim = Shedder::under(threshold);
         assert!(
             trim.target < trim.threshold,
             "aims at {} from {threshold}, which is not down",
@@ -1456,7 +1462,7 @@ fn a_compactor_aims_lower_than_the_point_it_starts_at() {
 
     // and where there is room for it, twenty points is still twenty points: the default pass
     // starts at four fifths of the limit and takes the context to three fifths of it
-    let default = ToolTrimmer::under(0.8);
+    let default = Shedder::under(0.8);
     assert!(
         (default.target - 0.6).abs() < 0.001,
         "the default aims at {}",
@@ -1496,7 +1502,7 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
         false,
     ));
 
-    let trim = ToolTrimmer {
+    let trim = Shedder {
         threshold: 0.5,
         target: 0.3,
     };
@@ -1518,29 +1524,48 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
         .await
         .expect("over the threshold");
     assert_eq!(plan.elide, vec![seen, fresh]);
+    // and the marker says nothing about having read it, since it is the note on both and one of
+    // them was not; the summary says which, since it is the one place there is room to
+    assert!(
+        plan.reason
+            .starts_with("compacted because the request would not have fit"),
+        "{}",
+        plan.reason
+    );
+    let said = plan
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.to_text().into_owned())
+        .unwrap_or_default();
+    assert!(
+        said.contains("1 of them before you could read them"),
+        "{said}"
+    );
 }
 
-/// A context over the compactor's threshold that holds no tool results is said to be full, once,
-/// and the person is told what can still be done.
+/// A context over the compactor's threshold that holds nothing it may take is said to be full,
+/// once, and the person is told what can still be done.
 ///
-/// note: `ToolTrimmer` keeps its promise and takes tool results alone, so a conversation that is
-/// its own bulk is one it can do nothing about. It used to say nothing, and the session went on
-/// until the kernel refused a request over the limit - which a headless run did not come back
-/// from. The kernel measures it now, and this is the line it comes to.
+/// note: `Shedder` keeps its promise and takes neither what is pinned nor the turn in progress, so
+/// a context that is those is one it can do nothing about. It used to say nothing, and the session
+/// went on until the kernel refused a request over the limit - which a headless run did not come
+/// back from. The kernel measures it now, and this is the line it comes to.
 #[tokio::test]
 async fn a_context_the_compactor_cannot_help_is_said_to_be_full_once() {
     let mut harness = Harness::new([
         nachalnik::ModelResponse::text("ok"),
         nachalnik::ModelResponse::text("ok again"),
     ]);
-    harness.app.kernel.set_compactor(Some(Arc::new(ToolTrimmer {
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
         threshold: 0.5,
         target: 0.3,
     })));
     let limit = harness.app.kernel.budget().limit.expect("a limit");
-    harness.app.kernel.push(ContextItem::user(
-        "a line of routine output. ".repeat(limit / 10),
-    ));
+    // pinned, because anything else in an exchange before the one in progress is the first thing
+    // a full context drops
+    harness.app.kernel.push(
+        ContextItem::file("notes.txt", "a line of routine output. ".repeat(limit / 10)).pinned(),
+    );
     let used = harness
         .app
         .kernel
@@ -1564,4 +1589,291 @@ async fn a_context_the_compactor_cannot_help_is_said_to_be_full_once() {
         "the second turn is not on it: {screen}"
     );
     assert_eq!(screen.matches(said).count(), 1, "{screen}");
+}
+
+// ------------------------------------------------------------------------- what is done with
+
+/// One exchange: the person's message, the model's call, its result and the model's answer.
+fn exchange(
+    kernel: &nachalnik::Kernel,
+    n: usize,
+    asked: &str,
+    output: &str,
+) -> Vec<nachalnik::ContextId> {
+    use nachalnik::Content;
+
+    let read = call(
+        &format!("c{n}"),
+        "read",
+        json!({"path": format!("f{n}.rs")}),
+    );
+    vec![
+        kernel.push(ContextItem::user(asked.to_owned())),
+        kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![read.clone()],
+        )),
+        kernel.push(ContextItem::tool_result(
+            read.id.clone(),
+            "read",
+            output.to_owned(),
+            false,
+        )),
+        kernel.push(ContextItem::assistant(Content::text("it is all x"), vec![])),
+    ]
+}
+
+/// A result goes to a marker once the turn that asked for it is over, however empty the context
+/// is, and while that turn lasts it stays.
+///
+/// note: the first of `Shedder`'s two rules, and the one that makes it a compactor for a long
+/// session rather than for a full one. What a tool said is the bulk of most contexts, and once the
+/// model has answered the person with it in front of it, the answer is what the conversation
+/// carries forward. Kept, it is paid for on every request after, until the context fills and
+/// something has to go anyway.
+#[tokio::test]
+async fn a_result_goes_once_its_turn_is_over() {
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let trim = Shedder::under(0.8);
+    // a limit nothing here comes near, so that nothing about this is about room
+    let budget = || Budget {
+        limit: Some(1_000_000),
+        ..kernel.budget()
+    };
+
+    let first = exchange(kernel, 1, "what is in f1.rs?", &"x".repeat(4_000));
+    assert!(
+        trim.plan(&kernel.items(), &budget()).await.is_none(),
+        "the turn is not over, so the result is the model's still"
+    );
+
+    kernel.push(ContextItem::user("and what does it mean?"));
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("the turn that asked for it is over");
+    assert_eq!(
+        plan.elide,
+        vec![first[2]],
+        "the result, and only the result"
+    );
+    assert!(plan.remove.is_empty(), "nothing of the conversation itself");
+    assert!(
+        plan.summary.is_none(),
+        "and no summary, since each marker says what happened in its own place"
+    );
+    assert!(
+        plan.reason
+            .starts_with("compacted after you had read it, to keep the context short"),
+        "{}",
+        plan.reason
+    );
+
+    kernel.apply_compaction(plan);
+    assert_eq!(kernel.item(first[2]).unwrap().state, ContextState::Elided);
+    assert!(
+        trim.plan(&kernel.items(), &budget()).await.is_none(),
+        "and once it is a marker there is nothing more to do"
+    );
+}
+
+/// A result the person brings back is left alone, where it used to go again before the next
+/// request.
+///
+/// note: a restore cleared the note, and an item with no note and a turn behind it is exactly what
+/// the first rule takes - so `/restore` on an elided result undid itself the moment anything was
+/// sent. A restore leaves a note now, and an item somebody has said something about is not the
+/// first rule's.
+#[tokio::test]
+async fn a_result_brought_back_by_the_person_is_left_alone() {
+    use nachalnik::{Budget, Compactor};
+
+    let mut harness = Harness::new([]);
+    let trim = Shedder::under(0.8);
+    let kernel = harness.app.kernel.clone();
+    let budget = || Budget {
+        limit: Some(1_000_000),
+        ..kernel.budget()
+    };
+
+    let first = exchange(&kernel, 1, "what is in f1.rs?", &"x".repeat(4_000));
+    kernel.push(ContextItem::user("and what does it mean?"));
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("the turn is over");
+    kernel.apply_compaction(plan);
+
+    harness.send(&format!("/restore {}", first[2])).await;
+    assert_eq!(kernel.item(first[2]).unwrap().state, ContextState::Active);
+    assert!(
+        trim.plan(&kernel.items(), &budget()).await.is_none(),
+        "brought back by hand, and kept"
+    );
+}
+
+/// A full context drops its oldest exchanges whole, down to the target, and never the one in
+/// progress.
+///
+/// note: the second rule, and the reason a long session does not end at the limit. Half an
+/// exchange is a conversation nobody had - a question with no answer, or a result whose call has
+/// gone - so it goes whole, and removed rather than elided: a marker for each of its messages
+/// would be the exchange's length in lines saying there was something there.
+#[tokio::test]
+async fn a_full_context_drops_its_oldest_exchanges_whole() {
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+
+    // the person's own words are the bulk, so that the first rule has nothing worth taking and
+    // what this measures is the second
+    let words = "a long question, and then another sentence of it. ".repeat(80);
+    let oldest = exchange(kernel, 1, &words, "small");
+    // a note the model wrote for itself in the oldest exchange, which is the one thing in it
+    // written to outlast it
+    let note = kernel.push(ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "agent",
+        "remember",
+        "the build is in ./out",
+    ));
+    // and a file attached at the prompt for the next question, which belongs to that one
+    let attached = kernel.push(ContextItem::file("plan.md", "the plan"));
+    let second = exchange(kernel, 2, &words, "small");
+    let current = exchange(kernel, 3, &words, "small");
+
+    let used = kernel.budget().used();
+    let trim = Shedder {
+        threshold: 0.8,
+        target: 0.7,
+    };
+    // just over the threshold, so that one exchange is enough to get under the target
+    let limit = (used as f64 / 0.82) as usize;
+    let budget = || Budget {
+        limit: Some(limit),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("over the threshold");
+
+    assert_eq!(
+        plan.remove, oldest,
+        "the oldest exchange, all of it, and nothing else"
+    );
+    assert!(!plan.remove.contains(&note), "the model's own note stays");
+    assert!(
+        !plan.remove.contains(&attached),
+        "and the file goes with the question it was brought in for, not the one before it"
+    );
+    for id in second.iter().chain(&current) {
+        assert!(!plan.remove.contains(id) && !plan.elide.contains(id));
+    }
+    let said = plan
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.to_text().into_owned())
+        .unwrap_or_default();
+    assert!(said.starts_with("The 1 earliest exchange(s)"), "{said}");
+
+    let report = kernel.apply_compaction(plan);
+    assert_eq!(report.removed.len(), oldest.len());
+    assert!(
+        kernel.project().repairs.is_empty(),
+        "and what is left is a conversation the projector did not have to mend"
+    );
+
+    // and the next one counts both, since it replaces this one's summary
+    let fourth = exchange(kernel, 4, &words, "small");
+    let budget = || Budget {
+        limit: Some(limit),
+        ..kernel.budget()
+    };
+    assert!(trim.wants_room(&budget()), "the setup is off");
+    let plan = trim
+        .plan(&kernel.items(), &budget())
+        .await
+        .expect("over the threshold again");
+    // the file this time, with the question it was brought in for
+    let going: Vec<_> = std::iter::once(attached).chain(second).collect();
+    assert!(plan.remove.starts_with(&going), "{:?}", plan.remove);
+    assert!(fourth.iter().all(|id| !plan.remove.contains(id)));
+    let said = plan
+        .summary
+        .as_ref()
+        .map(|summary| summary.content.to_text().into_owned())
+        .unwrap_or_default();
+    assert!(said.starts_with("The 2 earliest exchange(s)"), "{said}");
+}
+
+/// Between the target and the threshold nothing is dropped, so the drops come in bursts.
+///
+/// note: the reason there is a target at all. Dropping just enough to be under the threshold
+/// again is an exchange or so before nearly every turn once the context is full, and each of those
+/// moves the start of the request, which is what a provider's prompt cache keys on.
+#[tokio::test]
+async fn between_the_target_and_the_threshold_nothing_is_dropped() {
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let words = "a long question, and then another sentence of it. ".repeat(80);
+    for n in 0..3 {
+        exchange(kernel, n, &words, "small");
+    }
+
+    let used = kernel.budget().used();
+    let trim = Shedder {
+        threshold: 0.8,
+        target: 0.5,
+    };
+    // three quarters full: over the target, under the threshold
+    let budget = Budget {
+        limit: Some((used as f64 / 0.75) as usize),
+        ..kernel.budget()
+    };
+    assert!(trim.plan(&kernel.items(), &budget).await.is_none());
+}
+
+/// A pin in an old exchange holds its pair, and the rest of the exchange goes around it.
+///
+/// note: the kernel refuses to exclude either half of a pinned call and its result, since one
+/// without the other leaves the request, so a plan naming the call would be a refusal on the
+/// screen for every pass from then on.
+#[tokio::test]
+async fn a_pin_in_an_old_exchange_holds_its_pair() {
+    use nachalnik::{Budget, Compactor};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let words = "a long question, and then another sentence of it. ".repeat(80);
+    let oldest = exchange(kernel, 1, &words, "the one thing worth keeping");
+    kernel.set_state([oldest[2]], ContextState::Pinned, None);
+    exchange(kernel, 2, &words, "small");
+
+    let trim = Shedder {
+        threshold: 0.5,
+        target: 0.4,
+    };
+    let budget = Budget {
+        limit: Some(kernel.budget().used()),
+        ..kernel.budget()
+    };
+    let plan = trim
+        .plan(&kernel.items(), &budget)
+        .await
+        .expect("over the threshold");
+    assert!(plan.remove.contains(&oldest[0]), "the question goes");
+    assert!(plan.remove.contains(&oldest[3]), "and the answer");
+    assert!(
+        !plan.remove.contains(&oldest[1]) && !plan.remove.contains(&oldest[2]),
+        "the pinned result and the call it answers stay: {:?}",
+        plan.remove
+    );
+    assert!(kernel.apply_compaction(plan).refused.is_empty());
 }

@@ -1635,7 +1635,7 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
 
     let (mut app, _limits, mut finished) = agent!(&dir);
     app.kernel
-        .set_compactor(Some(Arc::new(kamchatka::tools::ToolTrimmer {
+        .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
             threshold: 0.5,
             target: 0.3,
         })));

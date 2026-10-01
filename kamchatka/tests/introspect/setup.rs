@@ -302,7 +302,7 @@ async fn setup_policy_names_the_seams_that_rewrite_a_context_on_their_own() {
         "setup",
         json!({ "action": "policy" }),
     )]));
-    kernel.set_compactor(Some(Arc::new(kamchatka::tools::ToolTrimmer {
+    kernel.set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
         threshold: 0.8,
         target: 0.6,
     })));
@@ -311,10 +311,7 @@ async fn setup_policy_names_the_seams_that_rewrite_a_context_on_their_own() {
 
     let said = answered(&kernel);
     assert!(said.contains("the projector is"), "{said}");
-    assert!(
-        said.contains("ToolTrimmer"),
-        "the compactor by name: {said}"
-    );
+    assert!(said.contains("Shedder"), "the compactor by name: {said}");
     assert!(
         said.contains("cannot take anything pinned"),
         "and the promise the kernel keeps against it: {said}"

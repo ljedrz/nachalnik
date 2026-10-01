@@ -5,8 +5,8 @@ usage: stats.py STEM...     (the same stems check.py takes, in order)
 
 Per segment: requests, calls and their errors, refusals, provider failures, compactions. Then the
 floor - what each compaction left behind - which is the number a long session lives or dies by:
-a pass only ever takes tool results, so everything else accumulates, and a floor that climbs
-towards the limit is a session that will stop being able to send. Last, what the final snapshot
+a pass takes neither the turn in progress nor what is pinned, so those accumulate, and a floor that
+climbs towards the limit is a session that will stop being able to send. Last, what the final snapshot
 holds, by kind and state, which says what the floor is made of.
 """
 

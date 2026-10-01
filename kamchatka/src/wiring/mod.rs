@@ -91,9 +91,12 @@ pub struct Setup {
     /// costs a round trip and gets the endpoint's own count of the request, which is worth more
     /// than any guess made here.
     pub refuse_oversized: bool,
-    /// How full the context may get before the oldest tool results are elided; `None` never
+    /// How full the context may get before its oldest exchanges are excluded; `None` never
     /// compacts.
     pub compact: Option<f64>,
+    /// How far down a full context is taken once they are; `None` is what `Shedder::under`
+    /// derives from `compact`.
+    pub compact_target: Option<f64>,
     /// How many tokens the provider may charge for the whole session before it stops; `None`
     /// never stops.
     ///
@@ -178,6 +181,7 @@ impl Default for Setup {
             keep_truncated: true,
             refuse_oversized: true,
             compact: Some(0.8),
+            compact_target: None,
             spend: None,
             leave_running: false,
             tools: None,
@@ -211,8 +215,9 @@ pub struct Wired {
 /// What the model is told as the context becomes full: that the compactor has nothing more it may
 /// take, and what it can do about the rest.
 ///
-/// note: `ToolTrimmer` keeps its promise and takes tool results alone, so once they are gone what
-/// is left is the conversation's own, and only the model or the person can say what of it may go.
+/// note: `Shedder` never takes the turn in progress, what is pinned, or a note the model wrote for
+/// itself, so once the older exchanges and what has been read are gone that is what is left, and
+/// only the model or the person can say what of it may go.
 /// The kernel places this once per fill, between a turn's results and its next request, so a
 /// tool loop that fills the context hears it inside the same turn - see
 /// `nachalnik::Kernel::set_full_notice`.
@@ -222,21 +227,21 @@ pub struct Wired {
 /// other one asks it to say so, which is the one thing left that it can do. A `/tools toggle`
 /// later does not change it.
 fn full_notice(context_tool: bool) -> ContextItem {
-    // note: both say what is left - messages and turns, and no tool results - because a model
+    // note: both say what is left - this turn, what is pinned and the notes - because a model
     // told only that the context was full went looking for tool results to elide, and one told
     // to ask the person wrote a file larger than the room there was. Both say what not to do,
     // since a request over the limit is not sent at all
     let said = match context_tool {
         true => {
-            "The context is full, and there are no tool results left to elide: what fills it now \
-             is the conversation's own messages and turns. Before anything else, `look` with the \
-             `context` tool, then `exclude` or `elide` by id the messages and turns you no longer \
-             need, and say why. Add nothing large until there is room - a request over the limit \
-             is not sent."
+            "The context is full, and nothing more will be taken from it automatically: the \
+             earlier exchanges are gone and what you had read is elided, so what fills it now is \
+             this turn, what is pinned and the notes you kept. Before anything else, `look` with \
+             the `context` tool, then `exclude` or `elide` by id what you no longer need, and say \
+             why. Add nothing large until there is room - a request over the limit is not sent."
         }
         false => {
-            "The context is full, and what fills it now is the conversation's own messages and \
-             turns. Add nothing large to it - no long answers, no large files written or read - \
+            "The context is full, and what fills it now is this turn and what is pinned. Add \
+             nothing large to it - no long answers, no large files written or read - \
              because a request over the limit is not sent. Tell the person you are working with \
              that the context is full, so they can exclude what is no longer needed, and keep to \
              short answers until there is room."
@@ -672,13 +677,16 @@ impl Setup {
         // wire is the thing asked what it can carry - rather than a caller deciding a second time
         // from the same flag, which is how the two come apart
         kernel.set_projector(Arc::new(provider.projection()));
-        let trim = self
-            .compact
-            .filter(|it| *it < 1.0)
-            .map(tools::ToolTrimmer::under);
-        let compact_target = trim.as_ref().map(|trim| trim.target);
-        if let Some(trim) = trim {
-            kernel.set_compactor(Some(Arc::new(trim)));
+        let shed = self.compact.filter(|it| *it < 1.0).map(|threshold| {
+            let derived = tools::Shedder::under(threshold);
+            tools::Shedder {
+                target: self.compact_target.unwrap_or(derived.target),
+                ..derived
+            }
+        });
+        let compact_target = shed.as_ref().map(|shed| shed.target);
+        if let Some(shed) = shed {
+            kernel.set_compactor(Some(Arc::new(shed)));
             let context_tool = self
                 .tools
                 .as_ref()

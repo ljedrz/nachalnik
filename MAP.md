@@ -93,7 +93,7 @@ is a fact about the command rather than about drawing it, so `joints` cannot liv
 `ui/markdown.rs` beside the code that colours them, behind `tui`: `advice.rs` takes a command
 apart at the same places before it runs. `reaching.rs` is the other kind of question: a running
 command that reached for the network, held by the gate and waiting, which `Careful` keeps because
-the shell and the `App` already share it. `policy.rs` is `Careful`, `tool_trimmer.rs` the compactor, and
+the shell and the `App` already share it. `policy.rs` is `Careful`, `shedder.rs` the compactor, and
 `ops.rs` what a tool that does several things declares - one table of operations, with the schema,
 the refusal and `unread` all made out of it. `mod.rs` holds `Limits`, the domains this program's
 own tools act in, and the argument readers every tool here shares - `arg`, `whole` and `truth` -
@@ -308,7 +308,7 @@ machine. The HTTP half of both is `relay/mod.rs` - `mod relay;` from each, the w
 is included, and cargo builds no example out of a directory with no `main.rs` in it - and the page
 it serves is `browser.html`, compiled in.
 `jev_assisted_compaction.rs` (feature `advise`) asks TypeSafe's `jev` which tool results a full
-context can afford to lose, against `ToolTrimmer`'s oldest-first.
+context can afford to lose, against the compactor's oldest-first.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream. It takes a brief and two tasks rather than a
