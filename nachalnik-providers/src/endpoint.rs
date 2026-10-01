@@ -40,10 +40,16 @@ pub trait Endpoint: Send + Sync {
             .map_or(endpoint.as_str(), |(_, rest)| rest);
 
         // the query and the fragment too, and not only the path: a key passed as `?key=` would
-        // otherwise be drawn on the status line of an endpoint given with no path
+        // otherwise be drawn on the status line of an endpoint given with no path - and for the
+        // same reason not a `user:password@` before the host, which is a credential too
         after_scheme
             .split(['/', '?', '#'])
             .next()
+            .map(|authority| {
+                authority
+                    .rsplit_once('@')
+                    .map_or(authority, |(_, host)| host)
+            })
             .filter(|host| !host.is_empty())
             .unwrap_or(&endpoint)
             .to_owned()

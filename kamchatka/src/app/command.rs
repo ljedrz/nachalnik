@@ -427,7 +427,7 @@ impl App {
                         format!(
                             "{} at {} ({}), {} tokens of context",
                             info.model,
-                            self.provider.endpoint(),
+                            crate::endpoint::shown(&self.provider.endpoint()),
                             info.provider,
                             info.context_limit
                                 .map(thousands)
@@ -466,7 +466,7 @@ impl App {
             // endpoints rather than two names
             "endpoint" => {
                 if rest.is_empty() {
-                    let endpoint = self.provider.endpoint();
+                    let endpoint = crate::endpoint::shown(&self.provider.endpoint());
                     self.say(Speaker::Note, format!("requests go to {endpoint}"));
                     return;
                 }
@@ -487,7 +487,7 @@ impl App {
                             "`{url}` is not an address: it wants http:// or https:// and a host, \
                              and no `?` or `#`, as in `/endpoint http://localhost:11434/v1`; \
                              requests still go to {}",
-                            self.provider.endpoint()
+                            crate::endpoint::shown(&self.provider.endpoint())
                         ),
                     );
                     return;
@@ -495,7 +495,7 @@ impl App {
                 let provider = self.provider.clone();
                 // the address the requests will go to, which is this without the trailing `/` a
                 // copied address often carries - said as typed, it named one the provider trims
-                let shown = url.trim_end_matches('/');
+                let shown = crate::endpoint::shown(url.trim_end_matches('/'));
                 self.say(
                     Speaker::Note,
                     match (&model, self.kernel.model_info()) {
@@ -1057,7 +1057,7 @@ impl App {
                 Some(info) => format!(
                     "{} at {} ({})",
                     info.model,
-                    self.provider.endpoint(),
+                    crate::endpoint::shown(&self.provider.endpoint()),
                     info.provider
                 ),
                 None => "none until `/model ID` picks one".to_owned(),

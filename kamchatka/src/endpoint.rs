@@ -149,6 +149,28 @@ pub fn is_an_address(url: &str) -> bool {
         && rest.split('/').next().is_some_and(|host| !host.is_empty())
 }
 
+/// An address as this program says it back: without a `user:password@` before the host.
+///
+/// note: the request still goes with it, and a person may well have meant it there; what is left
+/// out is its being said. Every line naming an address goes to a screen, down a pipe into a log
+/// somebody pastes, and to every client of a served session, and the record already writes it
+/// down without one - so the status line, `/model`, `/endpoint` and `/seams` say it as the record
+/// does.
+pub fn shown(url: &str) -> String {
+    let (scheme, rest) = url
+        .split_once("://")
+        .map_or(("", url), |(scheme, rest)| (scheme, rest));
+    let (authority, path) = rest.split_at(rest.find(['/', '?', '#']).unwrap_or(rest.len()));
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+
+    match scheme {
+        "" => format!("{host}{path}"),
+        scheme => format!("{scheme}://{host}{path}"),
+    }
+}
+
 /// The base URL, if it is one; refused at startup rather than on the first request.
 ///
 /// note: what the variable held is said back with the variable's name, because the failure it
