@@ -187,7 +187,11 @@ pub struct Client<'a> {
     /// note: what `--headless` does with the same script. A question nobody at a pipe answers is
     /// answered with `--on-ask`, and the line after it is read once the turn it paused is over -
     /// sent at once, it met a turn still running and was refused, and the lines after it went too.
-    held: Option<String>,
+    ///
+    /// note: a queue, because a client that leaves its questions reads on while a line is held:
+    /// the line waits on somebody else's answer, and only reading on says whether the input has
+    /// closed. What it reads meanwhile waits behind the line, in order.
+    held: VecDeque<String>,
     /// Whether a write to this connection has failed.
     ///
     /// note: what keeps a refused write from ending the connection by itself. A session that
@@ -239,7 +243,7 @@ impl<'a> Client<'a> {
             reached: false,
             unwritable: false,
             paced: false,
-            held: None,
+            held: VecDeque::new(),
         }
     }
 
@@ -290,7 +294,7 @@ impl<'a> Client<'a> {
                 // the reason is not repeated, for headless's reason: it went by as the session said
                 // it, and what is left to say is the exit status
                 Left::Done if self.failed => return Err("the last turn failed".to_owned()),
-                Left::Done => return Ok(()),
+                Left::Done => return self.unsent(),
                 Left::Failed(e) => return Err(e),
                 Left::Dropped if waited >= GIVE_UP => {
                     return Err(format!(
@@ -429,7 +433,7 @@ impl<'a> Client<'a> {
                 // note: the branch is switched off once the input has closed, rather than reading
                 // the end of it for ever. A `select!` arm over a reader at EOF is ready every time
                 // round the loop, and this one would have spun on it
-                line = typed.next_line(), if !self.detaching && self.held.is_none() && self.ready() => match line {
+                line = typed.next_line(), if !self.detaching && self.reads() => match line {
                     // note: what `--headless` does with a blank line and with spaces round one,
                     // for its reason: a blank line sent is a request for nothing, and `  /help`
                     // would be a message here and a command there
@@ -1049,15 +1053,54 @@ impl<'a> Client<'a> {
     ///
     /// note: except for a client that leaves its questions, for whom a session waiting on nothing
     /// but a question is at rest: the turn will not move until somebody else answers, and waiting
-    /// here for that would be a client that never exits.
+    /// here for that would be a client that never exits. A line held behind that question is
+    /// waiting on the same somebody, so it does not keep the client either: it goes unsent, and
+    /// [`Client::unsent`] says so.
     fn resting(&self) -> bool {
         let asked = !self.asking.is_empty() || !self.reaching.is_empty();
-        let rest = match self.leaves && asked {
+        match self.leaves && asked {
             true => self.outstanding == 0,
-            false => self.idle(),
-        };
+            false => self.idle() && self.held.is_empty(),
+        }
+    }
 
-        rest && self.held.is_none()
+    /// Whether the next line of input may be read.
+    ///
+    /// note: past a held line only for a client that leaves its questions, and only while one is
+    /// open: the held line waits for somebody else, and this client has to learn whether its own
+    /// input has closed, or it waits with them for as long as nobody comes.
+    fn reads(&self) -> bool {
+        let asked = !self.asking.is_empty() || !self.reaching.is_empty();
+        match self.held.is_empty() {
+            true => self.ready(),
+            false => self.leaves && asked,
+        }
+    }
+
+    /// Says that the lines held behind a question were never sent, if any were; for a client
+    /// leaving.
+    fn unsent(&mut self) -> Result<(), String> {
+        if self.held.is_empty() {
+            return Ok(());
+        }
+        let lines: Vec<String> = self
+            .held
+            .drain(..)
+            .map(|line| format!("`{line}`"))
+            .collect();
+        self.prose.fresh_line()?;
+        self.tell(&format!(
+            "{} not sent: {} for the turn to be over, and the turn waits on the question left for \
+             another client",
+            match lines.len() {
+                1 => format!("{} was", lines[0]),
+                _ => format!("{} were", lines.join(", ")),
+            },
+            match lines.len() {
+                1 => "it waits",
+                _ => "they wait",
+            },
+        ))
     }
 
     /// Whether the session has caught up with this client and asks it nothing, with no turn
@@ -1074,8 +1117,8 @@ impl<'a> Client<'a> {
         line: &str,
     ) -> Result<(), String> {
         let asked = !self.asking.is_empty() || !self.reaching.is_empty();
-        if self.paced && asked && !matches!(line, "y" | "n" | "a") {
-            self.held = Some(line.to_owned());
+        if !self.held.is_empty() || (self.paced && asked && !matches!(line, "y" | "n" | "a")) {
+            self.held.push_back(line.to_owned());
             return self.answer_for_nobody(write).await;
         }
 
@@ -1117,7 +1160,7 @@ impl<'a> Client<'a> {
             self.catch_up(write).await?;
         }
         if self.idle()
-            && let Some(line) = self.held.take()
+            && let Some(line) = self.held.pop_front()
         {
             self.typed(write, &line).await?;
         }
