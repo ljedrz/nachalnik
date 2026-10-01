@@ -21,9 +21,9 @@ recorded/
 **/*.rs.bk
 *.profraw
 
-# what running `kamchatka/contrib/laya_advisor.py` leaves beside it. There is no build step in
-# this workspace that would have caught it: `cargo package` takes what `git` tracks, so a stray
-# 29 KB of bytecode for one interpreter version went onto the registry inside kamchatka 0.14.0
+# what running a Python script leaves beside it. There is no build step in this workspace that
+# would catch it: `cargo package` takes what `git` tracks, so a stray 29 KB of bytecode for one
+# interpreter version went onto the registry inside kamchatka 0.14.0
 **/__pycache__/
 *.pyc
 

@@ -145,6 +145,19 @@ minor bump may break you.
   `/spend` says how much of the total was the advisor's. `Advised::spent` and
   `App::spent_on_advice` are new.
 
+### removed
+
+- **`SYSTEM1_ADVISOR_COMMAND`, and the advisor spoken to over a pipe.** It existed because `laya`
+  shipped as a library and nothing else; `laya-serve` now answers over HTTP at the path the hosted
+  engine uses, so an engine on this machine is reached like any other: `KAMCHATKA_SYSTEM1_BASE_URL`
+  pointed at it, and any `KAMCHATKA_SYSTEM1_API_KEY` beside it. RUNNING.md has the commands.
+  `contrib/laya_advisor.py` and `contrib/laya_fit.json` go with it, and so does what the script
+  did to laya's answer - recomputing its `confidence`, refitting its temperatures - so whether
+  `laya-serve`'s answer is drawn as sure is now laya's to get right; POSTPONED.md has the open
+  question. **Breaking** for the library: `kamchatka::advisor` and `advisor::Local` are gone. A
+  session that set the variable gets the hosted advisor or, with no key for it, is refused at
+  startup saying which key to set.
+
 ### security
 
 - **A run's log is its owner's alone, as its snapshot is.** The `.jsonl` a session writes as it

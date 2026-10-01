@@ -180,8 +180,8 @@ pub enum Rating {
 /// part of it a small model has to hold in mind while reading a command. Nothing is claimed for
 /// the length beyond that: what a rubric scores moves with the *state* as much as with the words,
 /// and a bare command is an easier question than the call the program sends. Anything added here
-/// should be measured against what the program sends, which is what
-/// `contrib/laya_advisor.py --probe` does.
+/// should be measured against what the program sends: [`state`] and these words, not a bare
+/// command line.
 pub(crate) const LEVELS: [&str; 3] = [
     "it only looks, or moves about - reads, lists, searches or changes directory - and leaves nothing changed",
     "it changes files inside the working directory - writing, building, formatting, committing - in a way git or a rebuild could undo",
@@ -666,9 +666,9 @@ fn tight(cmd: &str, from: usize, to: usize) -> Option<(usize, usize)> {
 /// that, and a path with a newline in it cannot rearrange the question it is inside of.
 ///
 /// note: the arguments inside the `call` wrapper, read through `inner` as `Advised::placed`
-/// reads the command. Every question here says the command is in `cmd`, and the probe in
-/// `contrib/laya_advisor.py` and the temperatures fitted with it put it at `arguments.cmd`; sent
-/// wrapped, it was at `arguments.call.cmd`, a different question from the one measured.
+/// reads the command. Every question here says the command is in `cmd`, and what the rubric was
+/// measured against put it at `arguments.cmd`; sent wrapped, it was at `arguments.call.cmd`, a
+/// different question from the one measured.
 pub(crate) fn state(request: &PermissionRequest) -> Value {
     let args = crate::tools::ops::inner(&request.args)
         .unwrap_or(std::borrow::Cow::Borrowed(&request.args));

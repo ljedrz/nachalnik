@@ -32,26 +32,24 @@ use crate::{
 /// `--model`. A setting nothing on the screen mentions is a setting nobody finds, and `--help` is
 /// where a person looks for the list.
 ///
-/// note: a function rather than a literal, so that the advisor's four are listed by a build that
+/// note: a function rather than a literal, so that the advisor's three are listed by a build that
 /// has an `--advise` to use them and by no other. A variable named in the help of a program that
 /// reads it nowhere is the same failure as a settings key nothing consults.
 pub fn environment() -> String {
-    /// The advisor's four, listed by a build that has an `--advise` and empty in one that does
+    /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
     /// not.
     #[cfg(feature = "shell-advisor")]
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
-  SYSTEM1_ADVISOR_COMMAND     an engine to run on this machine, as a command line.
-                              Takes precedence over the three below, and nothing
-                              leaves the machine when it is set
   KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
                               KAMCHATKA_API_KEY, but only where this session already
                               talks to OpenRouter, which serves jev too, and the
                               questions go there as well
   KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
                               those two keys was found, or any other service that
-                              answers the same typed questions
+                              answers the same typed questions, such as laya-serve
+                              on this machine
   KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
                               typesafe/jev-1.13 through OpenRouter";
     #[cfg(not(feature = "shell-advisor"))]
@@ -98,8 +96,8 @@ pub struct Args {
     /// is asked about stage by stage and rated by its worst one, underlined where it is worse than
     /// the rest. The rating decides nothing: what the rules allow runs and what they refuse is
     /// refused. Sends the call's tool name, capabilities and arguments to the advisor; see
-    /// SYSTEM1_ADVISOR_COMMAND for one on this machine, where nothing is sent, and
-    /// KAMCHATKA_SYSTEM1_API_KEY for the hosted default.
+    /// KAMCHATKA_SYSTEM1_API_KEY for the hosted default, and KAMCHATKA_SYSTEM1_BASE_URL for one on
+    /// this machine, where nothing leaves it.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
     pub advise: bool,
