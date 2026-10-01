@@ -201,6 +201,71 @@ async fn a_long_output_in_wide_characters_is_shortened_rather_than_fatal() {
     assert!(live.text.ends_with("日本語テスト\n"));
 }
 
+/// Two calls streaming at once are two lines, and the first to finish takes only its own away.
+///
+/// note: `--parallel` runs calls abreast, and their output was appended to whichever line was
+/// open - so it interleaved fragment by fragment on one line, and the first call to finish dropped
+/// the other's output with its own while that one was still running.
+#[tokio::test]
+async fn two_calls_streaming_at_once_are_two_lines() {
+    let mut harness = Harness::new([]);
+    let (one, two) = (
+        nachalnik::ToolCallId("c1".to_owned()),
+        nachalnik::ToolCallId("c2".to_owned()),
+    );
+    for call in [&one, &two] {
+        harness.app.on_event(Event::ToolStarted {
+            call: call.clone(),
+            tool: "shell".to_owned(),
+        });
+    }
+    for (call, chunk) in [
+        (&one, "alpha "),
+        (&two, "bravo "),
+        (&one, "one"),
+        (&two, "two"),
+    ] {
+        harness.app.on_event(Event::ToolOutput {
+            call: call.clone(),
+            tool: "shell".to_owned(),
+            chunk: chunk.to_owned(),
+        });
+    }
+    let live = |harness: &Harness| -> Vec<String> {
+        harness
+            .app
+            .loose
+            .iter()
+            .filter(|entry| entry.open)
+            .map(|entry| entry.text.clone())
+            .collect()
+    };
+    assert_eq!(live(&harness), ["alpha one", "bravo two"]);
+
+    // the first finishes, and the second goes on arriving where it was
+    let item = harness.app.kernel.push(nachalnik::ContextItem::tool_result(
+        one.clone(),
+        "shell",
+        nachalnik::Content::text("alpha one"),
+        false,
+    ));
+    harness.app.on_event(Event::ToolFinished {
+        call: one.clone(),
+        tool: "shell".to_owned(),
+        is_error: false,
+        truncated: None,
+        tokens: 3,
+        item,
+        whole: None,
+    });
+    harness.app.on_event(Event::ToolOutput {
+        call: two.clone(),
+        tool: "shell".to_owned(),
+        chunk: " three".to_owned(),
+    });
+    assert_eq!(live(&harness), ["bravo two three"]);
+}
+
 #[tokio::test]
 async fn what_a_tool_said_is_shown_as_the_tool_said_it() {
     let mut harness = Harness::new([]);

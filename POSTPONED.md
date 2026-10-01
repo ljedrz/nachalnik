@@ -228,12 +228,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
-- **Two calls' streamed output on one line.** With `--parallel`, the output two running calls
-  stream interleaves on one line of the transcript, because `Event::ToolOutput` is appended to
-  whichever line is open and the transcript keeps only one open. Keying the open line by call is
-  the change, and it reaches `caught_up`, which drops every streamed line as soon as any one call's
-  result is in the context.
-
 - **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
   target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
   files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the

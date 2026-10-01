@@ -109,6 +109,11 @@ minor bump may break you.
 
 ### fixed
 
+- **Two calls streaming at once are two lines.** Under `--parallel`, a tool's output was appended
+  to whichever line of the transcript was open, so two running calls interleaved fragment by
+  fragment on one line, and the first to finish took the other's output away with its own while
+  that one was still running. Each call's output is a line of its own, and a call finishing drops
+  only its own; `Entry::call` says whose a line is.
 - **An MCP server busy with a call goes when the session does.** A run ended by `ctrl+c`, a
   signal or `--deadline` while a server was still answering left that server running, orphaned,
   until its call returned. It is killed with the session now, by `nachalnik-mcp`.

@@ -209,12 +209,13 @@ impl App {
             // drawn from it, so they arrive with the answer rather than one event later - and
             // they go when it goes, without anybody having to remember which turn proposed them
             Event::ToolRequested { .. } => {}
-            Event::ToolOutput { chunk, .. } => self.append(Speaker::Result, &chunk),
-            Event::ToolFinished { item, .. } => {
-                // whatever streamed in is dropped for the item, which holds what the model was
-                // actually given - and the line about what it cost is read off the item too,
-                // truncation included, so a resumed session says the same thing this one does
-                self.caught_up(item);
+            Event::ToolOutput { call, chunk, .. } => self.append_output(&call, &chunk),
+            Event::ToolFinished { call, item, .. } => {
+                // whatever this call streamed in is dropped for the item, which holds what the
+                // model was actually given - and the line about what it cost is read off the item
+                // too, truncation included, so a resumed session says the same thing this one does.
+                // Another call's, still running, stays
+                self.caught_up_with(&call, item);
                 // a fork is charged in a kernel of its own, and this is the first moment after
                 // it that this session hears anything
                 let forked = self.introspect.as_ref().map_or(0, |it| it.forked());
