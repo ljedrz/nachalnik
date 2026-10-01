@@ -7,6 +7,11 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **Built against `nachalnik` 0.8.** The runtime's minor moved, and the bridge's tools and servers
+  are that runtime's types, so a caller on 0.7 and a bridge on 0.8 are two runtimes in one build.
+
 ### fixed
 
 - **A spawned server is killed when it is dropped.** `rmcp` kills a child it drops from a task
