@@ -63,6 +63,16 @@ mod stopping;
 /// twenty minutes later with no output about which assertion never came true.
 const PATIENCE: Duration = Duration::from_secs(5);
 
+/// How long a test waits for an answer that is a whole frame, where [`PATIENCE`] is for the rest.
+///
+/// note: a projection cut down to fit is cut to just under [`protocol::MAX_LINE`], so the answer
+/// is thirty-two megabytes. The session measures it, cuts it and writes it, and the test reads it
+/// back, and each of those is a walk over every byte - which in a debug build on CI's arm runner
+/// took longer than five seconds, for an answer that was correct. Apart rather than raising
+/// [`PATIENCE`], which bounds every wait in the suite, so a test that waits for something that is
+/// never coming still fails in seconds.
+const PATIENCE_FOR_A_WHOLE_FRAME: Duration = Duration::from_secs(60);
+
 /// Where the session's own provider points unless a test says otherwise: a port with nothing on
 /// it, so that anything reaching for the endpoint fails at once rather than waiting.
 const CLOSED: &str = "http://127.0.0.1:1";
@@ -245,9 +255,21 @@ impl Socket {
             .expect("the connection closed with nothing left on it")
     }
 
+    /// The next message, where it may be a whole frame; see [`PATIENCE_FOR_A_WHOLE_FRAME`].
+    async fn recv_a_whole_frame(&mut self) -> Message {
+        self.next_within(PATIENCE_FOR_A_WHOLE_FRAME)
+            .await
+            .expect("the connection closed with nothing left on it")
+    }
+
     /// The next message, where the connection closing is an answer too.
     async fn next(&mut self) -> Option<Message> {
-        tokio::time::timeout(PATIENCE, protocol::read(&mut self.lines))
+        self.next_within(PATIENCE).await
+    }
+
+    /// The same, waiting this long for it.
+    async fn next_within(&mut self, patience: Duration) -> Option<Message> {
+        tokio::time::timeout(patience, protocol::read(&mut self.lines))
             .await
             .expect("nothing arrived")
             .expect("the session said something unreadable")

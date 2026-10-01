@@ -237,7 +237,7 @@ async fn a_projection_too_long_to_send_is_cut_down_to_fit() {
 
     let mut socket = Socket::connect(&session.at).await;
     socket.send(crate::attaching(None, None)).await;
-    let Message::Attached(attached) = socket.recv().await else {
+    let Message::Attached(attached) = socket.recv_a_whole_frame().await else {
         panic!("a projection too long for one frame was not sent");
     };
     let cut = |conversation: &[protocol::Line]| {
@@ -265,7 +265,7 @@ async fn a_projection_too_long_to_send_is_cut_down_to_fit() {
     // a `project` is cut the same way, rather than answered with a refusal the chat cannot get past
     socket.send(Command::Project).await;
     let projected = loop {
-        if let Message::Projected(projected) = socket.recv().await {
+        if let Message::Projected(projected) = socket.recv_a_whole_frame().await {
             break projected;
         }
     };
@@ -305,7 +305,7 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
     let mut socket = Socket::connect(&session.at).await;
     socket.send(crate::attaching(None, None)).await;
 
-    let Message::Failed { about, error } = socket.recv().await else {
+    let Message::Failed { about, error } = socket.recv_a_whole_frame().await else {
         panic!("a projection no client can read was sent whole");
     };
     // named as itself, so a client does not read it as a drop and start a minute of attempts
@@ -327,7 +327,7 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
     // `Answered::standing`
     let mut done = false;
     for _ in 0..4 {
-        if matches!(socket.recv().await, Message::Done { .. }) {
+        if matches!(socket.recv_a_whole_frame().await, Message::Done { .. }) {
             done = true;
             break;
         }
