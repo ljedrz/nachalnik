@@ -136,12 +136,20 @@ impl Compactor for ToolTrimmer {
         // `tokens_before` and `tokens_after` are counted on - rather than `fraction_used`, which
         // has the tool definitions in it. Otherwise the sentence puts a fraction of one set of
         // numbers beside another
+        //
+        // note: and a share that rounds to nothing is said as under one percent rather than as
+        // `0%`, which reads as a pass run on an empty context. A threshold that low is a choice
+        // somebody can make - `--compact 0.01` on a million tokens - and the sentence is the one
+        // place the pass says why it ran
         let reached = match limit {
-            0 => 0,
-            limit => (budget.context_tokens as f64 / limit as f64 * 100.0).round() as usize,
+            0 => "0%".to_owned(),
+            limit => match (budget.context_tokens as f64 / limit as f64 * 100.0).round() as usize {
+                0 if budget.context_tokens > 0 => "under 1%".to_owned(),
+                share => format!("{share}%"),
+            },
         };
         let reason = format!(
-            "{MARK}; the context had reached {reached}% of the {limit}-token limit. Reading it \
+            "{MARK}; the context had reached {reached} of the {limit}-token limit. Reading it \
              again would put the same tokens back into a context that had no room for them - ask \
              for the part you need instead",
         );
