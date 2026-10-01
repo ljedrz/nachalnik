@@ -11,18 +11,12 @@
 //! types are the category's and not this vendor's: `laya`, the open one, has the same three under
 //! the same names.
 //!
-//! note: [`SystemOne`] is the seam, and there is a second implementation for it to fit. The open
-//! engines ship as *libraries* rather than services, so the second implementation is a local
-//! process - and this crate does not spawn processes, which is the line `nachalnik-mcp` exists on
-//! the other side of. So the trait is here, [`Jev`] implements it, and the local one lives in
-//! whichever crate is already spawning things. A caller holds `dyn SystemOne` and never learns
-//! which it got.
-//!
-//! note: what a third *service* takes, as against a second engine, is an address and nothing
-//! else. Anything answering a `state` and a map of typed questions at the path below works
-//! through [`Jev`] with [`crate::Endpoint::set_endpoint`] and a model name, because an address
-//! this does not recognise is read as keeping TypeSafe's paths - which is the shape a self-hosted
-//! one has.
+//! note: what a second engine takes is an address and nothing else. Anything answering a `state`
+//! and a map of typed questions at the path below works through [`Jev`] with
+//! [`crate::Endpoint::set_endpoint`] and a model name, because an address this does not recognise
+//! is read as keeping TypeSafe's paths - which is the shape a self-hosted one has, `laya-serve`'s
+//! among them. [`SystemOne`] is the seam a caller holds as `dyn`, so that what it asks with is
+//! decided in one place and a test can answer in its place.
 //!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
@@ -145,9 +139,8 @@ impl Service {
 
 /// The documented request body: a model, a state, and the questions put to it by name.
 ///
-/// note: public, and the one place the body is written, because not every engine that answers it
-/// is reached through a [`Jev`]. A local engine spoken to over a pipe takes the same body, and a
-/// second copy of it is a second place for the shape to drift.
+/// note: public, and the one place the body is written: a caller building the body for an engine
+/// of its own builds it here, and a second copy of it is a second place for the shape to drift.
 pub fn render(model: &str, state: &Value, questions: &[(String, Question)]) -> Value {
     json!({
         "model": model,
@@ -310,10 +303,8 @@ impl Question {
 
     /// The payload for this one question, as the documented request shape has it.
     ///
-    /// note: public because [`Jev`] is not the only thing that builds one of these bodies - a
-    /// local engine is spoken to over a pipe in the same shape, by a caller in another crate,
-    /// and two renderers for one documented format eventually disagree. [`Jev::render`] is the
-    /// whole body; this is one question of it.
+    /// note: public for the reason [`render`] is: two renderers for one documented format
+    /// eventually disagree. [`Jev::render`] is the whole body; this is one question of it.
     pub fn to_wire(&self) -> Value {
         match self {
             Self::Noul {
@@ -498,9 +489,9 @@ impl Answers {
     /// reason to throw away the others, and every accessor below already answers `None` for a
     /// question nobody answered.
     ///
-    /// note: public, and one reader for both engines. A local one answers over a pipe rather
-    /// than a socket and is parsed by a caller in another crate; a second reader written there
-    /// would be a second opinion about what `confidence` means the first time either moved.
+    /// note: public, and the one reader. A caller standing in for an engine - a test's, most
+    /// often - answers through it, and a second reader written there would be a second opinion
+    /// about what `confidence` means the first time either moved.
     pub fn read(raw: Value) -> Self {
         let answers = raw["answers"]
             .as_object()
@@ -553,11 +544,9 @@ impl Answers {
 /// Anything that answers typed questions put to a state.
 ///
 /// note: [`SystemOne::ask`] is the whole of what a caller of this module does. [`Jev`] is the
-/// implementation here; the reason there is a trait at all is that the other kind of System One
-/// engine is a *local* one - the open ones ship as libraries rather than services, so a caller
-/// reaching one is spawning a process rather than opening a socket, and this crate does not spawn
-/// processes. So the second implementation lives above this crate rather than in it, and this is
-/// the seam it fits.
+/// implementation here, and every engine is reached through it; the trait is what a caller holds,
+/// so that code downstream of the one place an advisor is built finds out nothing about it, and a
+/// test can stand in for the engine without a socket.
 ///
 /// note: concrete argument types where [`Jev::ask`] takes `impl Into<Value>` and an iterator,
 /// because a trait with generic methods is not one a caller can hold as `dyn`, and a caller has
@@ -565,8 +554,8 @@ impl Answers {
 /// caller downstream of that is written against this and finds out nothing.
 ///
 /// note: it does *not* extend [`Endpoint`]. Most of that trait is about an address and a listing,
-/// and a local engine has neither - so a local one implementing it would be answering those with
-/// nothing in order to be asked one question. [`SystemOne::notice`] is the one thing out of
+/// and a stand-in has neither - so one implementing it would be answering those with nothing in
+/// order to be asked one question. [`SystemOne::notice`] is the one thing out of
 /// `Endpoint` worth having here, because a caller that has quietly stopped getting answers should
 /// be able to see why.
 #[async_trait]
@@ -588,9 +577,8 @@ pub trait SystemOne: Send + Sync {
 
     /// What to call this engine on a screen, or in a line saying what the advice cost.
     ///
-    /// note: a sentence for a person rather than an address, because a local engine has no
-    /// address - what identifies one is the command somebody started it with. Not for matching
-    /// on, which is the same rule the four `name()` seams in the runtime carry.
+    /// note: a sentence for a person rather than an address. Not for matching on, which is the
+    /// same rule the four `name()` seams in the runtime carry.
     fn named(&self) -> String;
 }
 
@@ -1206,8 +1194,8 @@ mod tests {
 
     /// An engine that does not override [`SystemOne::notice`] has nothing to say.
     ///
-    /// note: the default is what the local kind of engine is held to, and a client polls it on
-    /// every tick: anything but `None` from it is a status line that never clears.
+    /// note: the default is what a stand-in is held to, and a client polls it on every tick:
+    /// anything but `None` from it is a status line that never clears.
     #[test]
     fn an_engine_with_no_notice_of_its_own_says_nothing() {
         struct Quiet;

@@ -31,8 +31,8 @@ path = "src/main.rs"
 
 [features]
 default = ["mcp", "tui"]
-# the client for a System One model - TypeSafe's `jev` over HTTP, or an engine on this machine -
-# and nothing in the program that asks it anything. `shell-advisor` is what does, and
+# the client for a System One model - TypeSafe's `jev`, or anything answering its typed questions
+# over HTTP - and nothing in the program that asks it anything. `shell-advisor` is what does, and
 # `jev_assisted_compaction` shows another use.
 advise = ["nachalnik-providers/system1"]
 # `--advise`: the advisor is asked where each `shell` command a question is about lands on a

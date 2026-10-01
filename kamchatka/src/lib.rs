@@ -101,9 +101,6 @@ compile_error!(
      builds anywhere else"
 );
 
-/// A System One engine running on this machine; see `SYSTEM1_ADVISOR_COMMAND`.
-#[cfg(feature = "advise")]
-pub mod advisor;
 pub mod app;
 pub mod args;
 pub mod attach;

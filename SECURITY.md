@@ -87,9 +87,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   process reads another's: confined, a command is refused its parent's, because Landlock denies a
   process in a domain any look into one outside it; with `--no-sandbox` it is not, and stripping
   the variables keeps them out of the command's environment and no further. MCP
-  servers and a local advisor keep them: those are programs the person chose, running unconfined
-  with everything the person can read, and stripping their environment would be a nuisance rather
-  than a boundary.
+  servers keep them: those are programs the person chose, running unconfined with everything the
+  person can read, and stripping their environment would be a nuisance rather than a boundary.
 - **A confined command does not have the terminal, and reaches five devices.** The child starts a
   session of its own before it runs anything, so it has no controlling terminal: `/dev/tty` does not
   open, and `TIOCSTI` is refused on every other one. With the terminal it could have pushed a `y`
@@ -227,9 +226,9 @@ what stands in the way, and what does not.
   machine: a session closes only the port it serves itself, and a connection carries no pid, so one
   process's confined command is a client like any other to a session in another. Its addresses
   belong to whoever started that one. A command allowed the network can reach all three.
-- **An MCP server or a local advisor.** These are programs the person chose, and they run
-  unconfined with the person's environment and everything the person can read. What `kamchatka`
-  controls is what their answers do: a server's tools are judged under the server's name, and what
+- **An MCP server.** It is a program the person chose, and it runs unconfined with the person's
+  environment and everything the person can read. What `kamchatka` controls is what its answers
+  do: a server's tools are judged under the server's name, and what
   it returns reaches the context like any other tool result, where the model reads it - which is
   the first actor above again.
 - **Whoever wrote the directory it is run in.** Given no `--config-file`, `kamchatka` reads

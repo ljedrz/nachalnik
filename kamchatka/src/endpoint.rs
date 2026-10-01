@@ -115,9 +115,9 @@ pub fn api_key() -> Result<String, BoxError> {
 /// nothing about what the command was handed when it started, so a key in its environment is the
 /// one secret it could always reach.
 ///
-/// note: the shell only. An MCP server or a local advisor is a program the person chose, running
-/// unconfined with everything they can read, and a server that calls an API of its own may read
-/// one of these names for its own key; taking them from it would be a nuisance and not a boundary.
+/// note: the shell only. An MCP server is a program the person chose, running unconfined with
+/// everything they can read, and a server that calls an API of its own may read one of these names
+/// for its own key; taking them from it would be a nuisance and not a boundary.
 pub const KEYS: [&str; 5] = [
     "KAMCHATKA_API_KEY",
     "OPENROUTER_API_KEY",
@@ -303,9 +303,8 @@ pub mod advise {
         /// answering a `state` and a map of typed questions at the path [`Jev`] posts to is
         /// reachable from here with these two set and no code at all - an address this program
         /// does not recognise is read as keeping TypeSafe's paths, because that is the shape a
-        /// self-hosted thing has. What it does not buy is a *different* wire format - laya's own
-        /// server speaks this one, and POSTPONED.md on `laya` says what reaching it here still
-        /// wants.
+        /// self-hosted thing has. It is how an engine on this machine is reached: `laya-serve`
+        /// answers at that path. What it does not buy is a *different* wire format.
         pub fn base_url(&self) -> String {
             env::var("KAMCHATKA_SYSTEM1_BASE_URL").unwrap_or_else(|_| {
                 match self {
@@ -403,15 +402,6 @@ pub mod advise {
     /// session paying through it gets no such warning - which is why the identifier this program
     /// sends there by default is a constant rather than something a person types.
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
-        // note: before the key, which is what `SYSTEM1_ADVISOR_COMMAND` taking precedence means.
-        // A machine with an engine of its own running and a key it would otherwise spend should
-        // use the engine: it is faster, it costs nothing, and - above all - no tool's arguments
-        // leave it. Somebody who wants the remote one anyway unsets the
-        // variable, which is a decision they can see themselves making
-        if let Some(local) = crate::advisor::configured() {
-            return local;
-        }
-
         let account = account(session_endpoint)?;
         let jev = Arc::new(Jev::new(
             account.model(),

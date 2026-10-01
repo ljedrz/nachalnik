@@ -83,7 +83,7 @@ fn spawn(
         // settings file under test would be overridden by it
         .env_remove("KAMCHATKA_MODEL")
         // and the same for an advisor, which would otherwise be found where no test put one
-        .env_remove("SYSTEM1_ADVISOR_COMMAND")
+        .env_remove("KAMCHATKA_SYSTEM1_BASE_URL")
         .env_remove("KAMCHATKA_SYSTEM1_API_KEY")
         .env_remove("TYPESAFE_API_KEY")
         .envs(env.iter().copied())
@@ -1366,14 +1366,16 @@ fn a_typed_advise_beats_the_file() {
 /// `--advise` puts the advisor in front of the standing rules, and a session that did not ask for
 /// it has the rules alone.
 ///
-/// note: a local advisor, so that nothing leaves the machine: `SYSTEM1_ADVISOR_COMMAND` is read
-/// before any key, and `true` is enough for a session that asks nothing. What is read is the
-/// policy the record names when the session starts, since a rating is only ever drawn beside a
-/// question.
+/// note: an advisor at a closed port on this machine, so that nothing leaves it: a session that
+/// asks nothing never finds out that nobody answers there. What is read is the policy the record
+/// names when the session starts, since a rating is only ever drawn beside a question.
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
-    let local = [("SYSTEM1_ADVISOR_COMMAND", "true")];
+    let local = [
+        ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
+        ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
+    ];
 
     let (ok, said) = run_with(&["--advise"], "", &local);
     assert!(ok, "{said}");

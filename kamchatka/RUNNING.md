@@ -782,8 +782,8 @@ so where the colour would have been: `the advisor could not rate this`, and why.
 sit behind a firewall that turns a request away by what is in it, and what it turns away is the
 command an advisor is most for: anything naming `/etc/shadow`, even in an `echo`, and a pipeline
 that reads a secret into `curl`. The question says the advisor could not rate it and quotes the
-firewall's page, so what is missing is the colour rather than the fact that it is missing. A local
-advisor, below, has no firewall in front of it.
+firewall's page, so what is missing is the colour rather than the fact that it is missing. An
+advisor on this machine, below, has no firewall in front of it.
 
 **What leaves the machine**: for each shell command you are about to be asked about — which in a
 default session is every command the model writes, since `exec:run` is a question by default — the
@@ -795,104 +795,26 @@ environment.
 
 ### an advisor on this machine
 
-`SYSTEM1_ADVISOR_COMMAND` points at a System One engine running here, and it is checked **before**
-the key — set it and the three `KAMCHATKA_SYSTEM1_` variables are not read at all. The point is not
-that it is free, though it is: **nothing leaves the machine**. Everything the section above says
-about a third party reading a command stops applying, because the command goes to a process you
-started, under your own user, and comes back as numbers.
+An engine running here is reached the way a third service is: `KAMCHATKA_SYSTEM1_BASE_URL` pointed
+at it. [`laya`](https://github.com/NandhaKishorM/laya) serves itself over HTTP at the path the
+hosted engine uses:
 
 ```console
-$ pip install laya
-$ export SYSTEM1_ADVISOR_COMMAND="$HOME/ai/venv/bin/python kamchatka/contrib/laya_advisor.py"
+$ pip install "laya[serve]"
+$ laya-serve
+$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1 KAMCHATKA_SYSTEM1_API_KEY=local
 $ kamchatka --advise -m qwen/qwen3-coder
 ```
 
-[`laya`](https://github.com/NandhaKishorM/laya) is a library first, so the command is an
-interpreter and a script, and `contrib/laya_advisor.py` is the script. laya also serves itself over
-HTTP now, as `laya-serve`, at the path the hosted engine uses; POSTPONED.md says what pointing
-`KAMCHATKA_SYSTEM1_BASE_URL` at it still wants. Most of it is comments, and the protocol is one JSON
-object per line in and one per line out, in the body kamchatka already builds for the hosted
-engine, because laya's question dicts and answers use the same three types under the same names.
+The key is there because a borrowed one is only ever sent to OpenRouter, and laya checks none, so
+any value will do. The point is not that it is free, though it is: **nothing leaves the machine**.
+Everything the section above says about a third party reading a command stops applying, because
+the command goes to a server you started, under your own user, and comes back as numbers.
 
-The process is started once and kept, because a 421M-parameter checkpoint costs seconds to load
-and milliseconds to run — loading it per question would put that wait in front of you every time
-you were asked to press `y`. It is killed when the session ends.
-
-The shim is an adapter and not a pipe. The two engines agree on the *question* shape and not on
-the answer: laya keys its answers by the primitive with no `type`, and its `confidence` is its own
-quantity rather than how concentrated the distribution is. Passed through, that is what turns `ls`
-into a yellow line at 1% — kamchatka will not draw a reading nobody is sure of green, so a number
-that is not a confidence makes every command yellow whatever it scored. The shim computes the
-field the caller means and stamps the type from the question it asked.
-
-If your `laya` answers under keys this does not expect, `--probe` says so without guessing:
-
-```console
-$ ~/ai/venv/bin/python kamchatka/contrib/laya_advisor.py --probe "ls -la"
-```
-
-It prints the state kamchatka sends and then what laya answered verbatim and what this shim would
-send on. It asks the program's questions, word for word, of the state the
-program sends: a probe that makes up its own measures something nobody runs. That goes for the
-state as much as the rubric — a bare command line where the program sends the whole call answers
-differently enough to be mistaken for a fact about the rubric. The state and the questions both
-come from the same constants the program sends, and a test fails if either drifts.
-
-An empty *would send on* is the translation not recognising what laya sent; a `score`
-in the right place under a flat distribution is the engine finding the question hard, which is a
-different problem and not one this file can fix. `--selftest` checks the translation against a
-recorded answer and needs no checkpoint; `cargo test` runs it.
-
-**Three of laya's own settings are not the ones it ships with**, because its model card says so:
-
-- **The temperatures are refitted.** The card is explicit that the checkpoint ships over-confident
-  and that one temperature per question type and option count has to be refitted on your own data
-  before the probabilities mean anything — the shipped numbers were fitted on its domain, not this
-  one. `contrib/laya_fit.json` is a set of labelled commands and `--fit` is what recomputes them
-  from it, printing the working: for each bucket, the shipped temperature and the fitted one, and how
-  each scores. Point it at a file of your own traffic if you have one:
-
-  ```console
-  $ python3 laya_advisor.py --fit           # or --fit path/to/your-own.json
-  ```
-
-  A temperature moves confidence and never the answer — accuracy is identical at every value — so
-  what this changes is only whether a reading is drawn as sure. `noul` was too *sharp* and the fit
-  pushes it the other way, and the rubric barely moved.
-- **The token budget is raised** to 512 for the question and 1024 for the whole sequence. A stage
-  of a command line travels in the question rather than in the state, and at the shipped 192 a
-  long one is cut there — silently, unlike the `(cut; …)` the state's own cap leaves.
-- **The checkpoint is chosen by script alone.** laya's router also guesses the language of Latin
-  text from stopwords, which its card calls best-effort and which is meaningless on a command
-  line: `python -c 'import os, sys'` reads as Portuguese, because `os` is a Portuguese stopword,
-  and goes to a checkpoint the card's own table rates worse on English.
-
-None of it makes laya good at this. Measured before the rubric drew its line at the working
-directory, against the sixty commands the set held then, 21 of 30 destructive commands came out
-red but *nothing* came out green — laya could not bring itself to say a command was safe, so 37
-of 60 sat on the middle band. The card's own summary is the one to read — *a fast
-base to specialise, not a zero-shot decision engine* — and its base checkpoint scores 0.362 on the
-typed-decisions benchmark against a 0.461 majority-class baseline. What the settings above buy is
-an advisor that draws anything red at all; what would buy more is fine-tuning, which is what
-laya's notebook is for.
-
-**Nothing it writes reaches your terminal.** Both its streams are held by kamchatka, which
-matters most on the first run: `laya` downloads a checkpoint and says so at length, and a child
-sharing your terminal would be writing over the screen ratatui is drawing. What the session is
-told instead is two lines and no more — that the advisor is not ready yet, and then that it is.
-
-The second one means it answered a question, not that it printed a word: the advisor is asked
-one trivial thing as soon as it starts, and readiness is that coming back. So a shim that cannot
-answer is found before a question depends on it, rather than at the first `y` — at startup,
-where the hosted advisor has `Jev::probe`.
-
-The last twenty lines of whatever the engine wrote are kept and hung on the end of the note that
-says it failed, so a traceback shows up in the session rather than having scrolled past.
-
-If it fails — the command is not there, it stops answering, a line does not parse, a question
-takes longer than 30s — the pipe is closed and every later question says the advisor is gone,
-rather than risking an answer being paired with the question before it. No question is coloured
-from then on, which is what happens when the hosted one is unreachable too.
+What laya answers is laya's own, passed through: whether its `confidence` is the quantity
+kamchatka reads has not been checked against a running `laya-serve` - see
+[POSTPONED.md](../POSTPONED.md). If it is not, every command is drawn yellow, because a reading
+nobody is sure of is never drawn green.
 
 ### what the colour says
 

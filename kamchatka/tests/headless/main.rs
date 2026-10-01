@@ -1713,8 +1713,8 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 /// note: the bug this is here for. `Args::advised` drained the queue at startup and printed it
 /// with `eprintln!`, on the reasoning that there was no screen yet - but the screen arrives at
 /// once and clears it, so the line went where nobody could read it *and* was gone from the queue
-/// the session reports from. What was lost was a local advisor's first notice, which is the one
-/// saying it is not ready yet.
+/// the session reports from. What was lost was the advisor's first notice, which is the one
+/// saying something is wrong before a question depends on it.
 ///
 /// note: driven through `App::on_outcome`, which is where the provider's own notice is read and
 /// is a door all three loops come through - so what this pins holds for the headless loop and a
@@ -1723,14 +1723,39 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 #[cfg(feature = "shell-advisor")]
 #[tokio::test]
 async fn the_advisor_says_what_it_has_to_say_to_the_session() {
-    // a child that answers nothing: what it reports is the notice it wrote on starting, which
-    // is the one that used to be eaten before the session could read it
-    let Ok(local) = kamchatka::advisor::Local::new("true") else {
-        return;
+    use nachalnik_providers::system1::Jev;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
     };
 
+    // an endpoint that lists a model other than the one asked for: what the advisor reports is
+    // the notice its probe left at startup, before the session could read it
+    let body = "{\"models\":[{\"name\":\"jev-1\"}]}";
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let mut discard = [0u8; 8192];
+            let _ = socket.read(&mut discard).await;
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+    let jev = Jev::new("jev-9", format!("http://{address}"), "k");
+    jev.probe().await;
+
     let wired = Setup {
-        advisor: Some(std::sync::Arc::new(local)),
+        advisor: Some(Arc::new(jev)),
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(
@@ -1753,7 +1778,7 @@ async fn the_advisor_says_what_it_has_to_say_to_the_session() {
 
     let said: Vec<String> = app.notes(0).map(|note| note.text.to_string()).collect();
     assert!(
-        said.iter().any(|line| line.contains("not ready yet")),
+        said.iter().any(|line| line.contains("does not list jev-9")),
         "the advisor's own first line should be in the session: {said:?}"
     );
 }

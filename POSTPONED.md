@@ -114,23 +114,21 @@ Referenced from [AGENTS.md](AGENTS.md).
   reading before anything is sent to a model - the same argument `/request` is there for. A flag
   that does both is a convenience on top of it, not the primitive.
 
-- **`laya` over HTTP, through `Jev`.** [`laya`](https://github.com/NandhaKishorM/laya) works with
-  `kamchatka` today as a process: `contrib/laya_advisor.py`, named by `SYSTEM1_ADVISOR_COMMAND`,
-  which `advisor::Local` speaks to over a pipe in the body `Jev` sends - RUNNING.md has the
-  commands. laya now serves itself over HTTP as well: `pip install "laya[serve]"` and `laya-serve`
-  answer `POST /v1/systemone`, so `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` reaches it
-  through `Jev` with no Rust written, as an address this program does not recognise is read as
-  keeping TypeSafe's paths. It needs `KAMCHATKA_SYSTEM1_API_KEY` beside it, set to anything,
-  because a borrowed key goes to OpenRouter and nowhere else.
+- **Whether `laya-serve`'s `confidence` is the one `Jev` reads.**
+  [`laya`](https://github.com/NandhaKishorM/laya) is reached over HTTP: `laya-serve` answers
+  `POST /v1/systemone`, and
+  `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` beside any `KAMCHATKA_SYSTEM1_API_KEY`
+  reaches it through `Jev` - RUNNING.md has the commands. The script that spoke to it over a pipe
+  is gone, and with it what that script did to laya's answer: it built the answer rather than
+  passing laya's through, because laya's `confidence` was its own quantity and read as this
+  program's it drew every command yellow; and it refitted laya's temperatures on sixty labelled
+  commands, raised its token budget and chose its checkpoint by script alone.
 
-  One thing stands between that and recommending it over the pipe, and it has not been tried
-  against a running `laya-serve`.
-
-  **The answer.** `contrib/laya_advisor.py` builds its answer rather than passing laya's through,
-  because laya's `confidence` is its own quantity and read as this program's it drew every command
-  yellow. `laya-serve` passes `predict()` through and says that is `Jev`'s shape; whether its
-  `confidence` is the one `Jev` reads is the thing to check first. If it is not, the recalibration
-  belongs upstream or in `Jev`, and which is the decision.
+  `laya-serve` passes `predict()` through and says that is `Jev`'s shape. Whether its
+  `confidence` is the one `Jev` reads has not been tried against a running server, and is the
+  thing to check first. If it is not, the recalibration belongs upstream or in `Jev`, and which is
+  the decision. The script and its sixty commands are in git history, last at `bcb9a2df`, for
+  whoever takes the working upstream.
 
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
   app headers, so a session that borrows its own key for `--advise` is attributed for the
@@ -338,8 +336,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   it. The soak of `kamchatka` itself is in: `.claude/skills/soak/` carries one session across
   resumes, kills and a context wall and checks the chain of records it leaves. Committed, the
   other two could be run again after a change rather than rebuilt; the cost is a key and hours of
-  wall-clock time, and where they go is the decision. Python is not new here - `kamchatka/contrib/`,
-  two test servers and both skills are Python - but `scripts/` is shell, and a campaign that finds
+  wall-clock time, and where they go is the decision. Python is not new here - two test servers
+  and both skills are Python - but `scripts/` is shell, and a campaign that finds
   errors rather than reviews code is a different thing from the sweep.
 
 - **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused, and told to write
