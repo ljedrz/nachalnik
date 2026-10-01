@@ -112,9 +112,37 @@ impl Looking {
             .allows_under(&asked, Access::Reading, &self.policy)?;
         // the call's own path is exempt from what a walk bars because it was asked about by its
         // name, and a link's name is not where it leads
-        match linked(&asked, &root, &self.reach, &self.policy, doing) {
-            Some(refusal) => Err(refusal),
-            None => Ok((asked, root)),
+        if let Some(refusal) = linked(&asked, &root, &self.reach, &self.policy, doing) {
+            return Err(refusal);
+        }
+        // note: a root that is not there is said to be, where a walk of it would count it as "a
+        // file that could not be read" - present and unreadable, which an absent path is not. After
+        // the path rules, so that whether a refused path exists is not said in place of the
+        // refusal; and only for a path that is absent, so a root that cannot be read for some
+        // other reason is still walked and counted as before. `root` is resolved, so a link to
+        // nothing reaches here through its missing target, and is named as what it is
+        match std::fs::symlink_metadata(&root) {
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::NotADirectory
+                ) =>
+            {
+                let link = self
+                    .reach
+                    .workdir
+                    .join(&asked)
+                    .symlink_metadata()
+                    .is_ok_and(|meta| meta.file_type().is_symlink());
+                Err(match link {
+                    true => format!(
+                        "`{asked}` is a link to nothing - what it names is not there - so nothing \
+                         was {doing}"
+                    ),
+                    false => format!("`{asked}` is not there, so nothing was {doing}"),
+                })
+            }
+            _ => Ok((asked, root)),
         }
     }
 }

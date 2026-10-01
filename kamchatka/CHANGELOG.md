@@ -176,6 +176,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A `grep` or `glob` of a path that is not there says so.** A walk of a root that is not there
+  counted it as "a file that could not be read", so a model that misremembered a directory's name
+  went looking for a permission problem. The answer now says the path is not there, or that it is
+  a link to nothing, and that nothing was searched or listed. A path rule's refusal still comes
+  first, so the answer does not say whether a refused path exists.
 - **A small `fs:read` limit still shows the lines that fit.** `read` kept 256 bytes back for the
   line naming which lines it shows, so under `/limit fs:read 200` there was room for nothing:
   every file came back as a header calling its first line longer than the limit, with none of the
