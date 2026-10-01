@@ -192,6 +192,12 @@ minor bump may break you.
   notice went in - and the kernel now leaves the notice out where it would take the request over
   the limit. The notice says itself as it goes in, as every item does, and the line no longer
   vouches for it.
+- **A write refused where the session only reads is named as the confinement.** A refusal naming
+  a path the session reaches was called the file's own permissions, which a write into the working
+  directory under `--deny fs:write`, or into a `--sandbox-read` path, is not: a headless session
+  writing into a path opened up read-only got `Permission denied` and nothing else. Where the
+  person could have made that write, the tool result now says the session may read there and not
+  write.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

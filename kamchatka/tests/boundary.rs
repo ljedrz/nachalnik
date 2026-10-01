@@ -643,6 +643,8 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
 /// A refusal that was the confinement says so, and one that was not says nothing.
 #[test]
 fn a_permission_error_says_when_the_confinement_caused_it() {
+    use std::os::unix::fs::PermissionsExt as _;
+
     let confined = Sandbox {
         workdir: PathBuf::from("/w"),
         extra: Vec::new(),
@@ -687,18 +689,33 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
 
     // ... and a path that has been opened up is not the confinement either. A real directory,
     // because a root that is not there is not one this opens up - the same answer `Reach::allows`
-    // gives, and for the same reason
+    // gives, and for the same reason - and a real file its own permissions refuse, since a file
+    // in reach that could be read would have been
     let opened_up = common::workdir("opened-up");
+    let settings = opened_up.join("settings.toml");
+    std::fs::write(&settings, "").expect("a file");
+    std::fs::set_permissions(&settings, std::fs::Permissions::from_mode(0o000))
+        .expect("its permissions");
     let mut opened = confined.clone();
     opened.readable = vec![opened_up.clone()];
     assert_eq!(
         opened.note_for(&format!(
-            "error: could not read settings file: '{}/settings.toml': Permission denied \
-             (os error 13)\n",
-            opened_up.display()
+            "error: could not read settings file: '{}': Permission denied (os error 13)\n",
+            settings.display()
         )),
         None,
     );
+
+    // but a write there that the person could have made is the confinement: reached for reading
+    // and not for writing, as `--sandbox-read` is and as the working directory is under
+    // `--deny fs:write`
+    let note = opened
+        .note_for(&format!(
+            "sh: line 1: {}/out.txt: Permission denied\n",
+            opened_up.display()
+        ))
+        .expect("a write the person could make, refused where this reads only");
+    assert!(note.contains("may read and not write"), "{note}");
 }
 
 /// A relative path in a refusal is judged where the command ran, and is never read as an absolute
