@@ -1019,6 +1019,16 @@ impl App {
         self.settling.is_some() || self.errand.is_some()
     }
 
+    /// Whether the session is doing anything: a turn running, or a command still out.
+    ///
+    /// note: what a client is told as `busy`, rather than the turn alone. A client whose input has
+    /// closed leaves on `busy: false`, and a piped `/models` or `/compact` is answered the moment
+    /// it is sent - so told only about the turn, it left before the list or the pass came back,
+    /// and wrote out none of what it had asked for.
+    pub fn working(&self) -> bool {
+        self.busy || self.in_flight()
+    }
+
     /// Whether there is anything for [`App::interrupt`] to stop: a turn, or a listing or a pass
     /// being worked out.
     #[cfg(feature = "tui")]

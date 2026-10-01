@@ -1608,6 +1608,32 @@ async fn a_line_sent_while_a_command_is_out_waits_for_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A piped `--connect` that asks for `/models` stays for the list.
+///
+/// note: found live. The command is answered the moment it is sent and the list comes back after,
+/// and a client whose input has closed leaves on `busy: false` - which the session said while the
+/// list was still out, so the client left having written nothing it had asked for.
+#[tokio::test]
+async fn a_piped_client_stays_for_a_command_that_is_still_out() {
+    let (endpoint, _asked) = slow_endpoint(Duration::from_millis(300)).await;
+    let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(&b"/models\n"[..])),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(prose.contains("a-slow-model"), "{prose}");
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// An interrupt stops a command waiting on an endpoint, and the line that waited behind it runs.
 #[tokio::test]
 async fn an_interrupt_stops_a_command_waiting_on_an_endpoint() {

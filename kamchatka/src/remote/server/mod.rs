@@ -681,7 +681,7 @@ impl Serving {
             asked,
             said: 0,
             cleared: app.cleared(),
-            announced: app.busy,
+            announced: app.working(),
             model: app.kernel.model_info(),
             reaching: app.policy.reaching().waiting(),
             clients: 0,
@@ -734,8 +734,8 @@ impl Serving {
         // command has and which carries this same figure - see `Message::Done`. A broadcast that
         // also fired per command would reach every other client as news about a session that had
         // not changed
-        if self.announced != app.busy {
-            self.announced = app.busy;
+        if self.announced != app.working() {
+            self.announced = app.working();
             let _ = self.voice.send(Arc::new(Message::Busy {
                 busy: self.announced,
             }));
@@ -963,7 +963,7 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             None => Message::Attached(Box::new(project(app))),
             Some(_) => Message::Done {
                 about: "attach".to_owned(),
-                busy: app.busy,
+                busy: app.working(),
             },
         }),
         // note: the same projection under a name that does not mean "start again", which is the
@@ -993,7 +993,7 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             Ok(true) => Message::Projected(Box::new(project(app))),
             Ok(false) => Message::Done {
                 about: "revise".to_owned(),
-                busy: app.busy,
+                busy: app.working(),
             },
             Err(error) => Message::Failed {
                 about: "revise".to_owned(),
@@ -1027,14 +1027,14 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 page: reply.page.map(|overlay| match overlay {
                     Overlay::Text { title, pages, .. } => Printed { title, pages },
                 }),
-                busy: app.busy,
+                busy: app.working(),
             })
         }
         Command::Interrupt => {
             app.interrupt();
             Some(Message::Done {
                 about: "interrupt".to_owned(),
-                busy: app.busy,
+                busy: app.working(),
             })
         }
         // note: applied on sight, exactly as the keys apply one. The window an answer can land in
@@ -1047,14 +1047,14 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
             grant,
             remember,
         } => {
-            // note: `app.busy` read *after* the decision rather than before, because answering the
+            // note: `busy` read *after* the decision rather than before, because answering the
             // last outstanding question is what starts the next turn - so a figure taken first
             // would tell the client the session was quiet in the one moment it had just stopped
             // being so
             match app.decide(id, grant, remember) {
                 Ok(()) => Some(Message::Done {
                     about: "decide".to_owned(),
-                    busy: app.busy,
+                    busy: app.working(),
                 }),
                 Err(error) => Some(Message::Failed {
                     about: "decide".to_owned(),
@@ -1071,7 +1071,7 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
         } => match app.decide_reach(id, grant, remember) {
             Ok(()) => Some(Message::Done {
                 about: "reach".to_owned(),
-                busy: app.busy,
+                busy: app.working(),
             }),
             Err(error) => Some(Message::Failed {
                 about: "reach".to_owned(),
@@ -1192,7 +1192,7 @@ fn project(app: &App) -> Attached {
         seq,
         session: app.kernel.session_name(),
         state: app.kernel.state(),
-        busy: app.busy,
+        busy: app.working(),
         stepping: app.stepping,
         model: app.kernel.provider().map(|provider| provider.info()),
         budget: app.kernel.budget(),
