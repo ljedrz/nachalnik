@@ -311,3 +311,25 @@ Referenced from [AGENTS.md](AGENTS.md).
   over a large tree pays per file and per link. Resolving them once would move when a root is read
   from when it is used to when the session starts, so a root that appears, moves or is relinked
   during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
+
+- **A `context` search does not read the results of the turn asking.** `search` skips the whole of
+  the asking turn - the message that started it, the assistant turns in it, and their results - so
+  that the question and the calls do not match themselves, and
+  `a_search_does_not_count_the_turn_asking_the_question` holds the results to it as well. A model
+  that reads a file and searches for a word in it within one turn is told `no line of your context
+  says` the word, which is the false "nothing" the search's own note calls the one wrong answer it
+  must not give; a live run met exactly that, a read of a source file and a search for a function
+  it defines, in the same turn. A result is not something the model wrote, so reading the turn's
+  results other than `context`'s own reports - which quote the question back - would close it. It
+  waits because it reverses a tested choice, and whether a result of the asking turn is part of
+  "what the context holds" is the decision.
+
+- **A compaction marker does not say the model had read what it stands in for.** `ToolTrimmer`
+  takes results the model has already been shown before any it has not, but the marker says only
+  that the result was compacted and why. A live run compacted three reads mid-turn, after the model
+  had summarised each correctly; reading the markers, it decided it had never seen the files,
+  called its own summaries fabricated and withdrew them. A sentence saying the result was shown to
+  it before it was elided would stop that, but the reason is one string for every item in a pass,
+  and a pass may also take a result the model has not read when the request would not fit
+  otherwise - so either the pass carries two reasons, or the sentence is true only of a pass that
+  took nothing fresh. Which, and the cost of a longer marker on every elided item, is the decision.
