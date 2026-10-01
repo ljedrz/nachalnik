@@ -2073,3 +2073,83 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
     assert!(!running(job), "the job outlived being stopped");
     assert!(stragglers.running().is_empty());
 }
+
+/// A job that leaves its command's group - `setsid`, or a fork whose parent is gone - is found at
+/// the end of the session as well, and stopped and named.
+///
+/// note: found live: a model asked for a job that outlives its call wrapped it in `setsid nohup`,
+/// and the session ended with it still writing into a directory that had been removed. Its own
+/// session and its own group, it was in no group a command had been run in.
+#[tokio::test]
+async fn a_job_that_left_its_group_is_stopped_too() {
+    let dir = common::workdir("stragglers-setsid");
+    let stragglers = kamchatka::tools::Stragglers::default();
+    let shell = Shell {
+        limits: Limits::default(),
+        stragglers: stragglers.clone(),
+        policy: Arc::new(Careful::new()),
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        confiner: Some(common::program()),
+    };
+
+    let away = "setsid sh -c 'echo $$ > away.pid; exec sleep 30' >/dev/null 2>&1 &";
+    let forked = "(sh -c 'echo $$ > forked.pid; exec sleep 30' >/dev/null 2>&1 &)";
+    through(&shell, away).await;
+    through(&shell, forked).await;
+    let job = |name: &str| -> i32 {
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Ok(pid) = std::fs::read_to_string(dir.join(name))
+                && let Ok(pid) = pid.trim().parse()
+            {
+                return pid;
+            }
+            assert!(
+                std::time::Instant::now() < until,
+                "{name} was never written"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    let jobs = [job("away.pid"), job("forked.pid")];
+    let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
+    assert!(
+        jobs.iter().all(|job| running(*job)),
+        "not left running, so this checks nothing"
+    );
+    let group = |pid: i32| -> String {
+        std::fs::read_to_string(format!("/proc/{pid}/stat"))
+            .unwrap_or_default()
+            .rsplit(')')
+            .next()
+            .and_then(|rest| rest.split_whitespace().nth(2))
+            .unwrap_or_default()
+            .to_owned()
+    };
+    assert_eq!(
+        group(jobs[0]),
+        jobs[0].to_string(),
+        "`setsid` made a group of its own"
+    );
+
+    let mut named = stragglers.running();
+    named.sort();
+    let mut expected = vec![away.to_owned(), forked.to_owned()];
+    expected.sort();
+    assert_eq!(named, expected);
+
+    let mut stopped = stragglers.stop();
+    stopped.sort();
+    assert_eq!(stopped, expected);
+    let until = std::time::Instant::now() + Duration::from_secs(5);
+    while jobs.iter().any(|job| running(*job)) && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        !jobs.iter().any(|job| running(*job)),
+        "a job outlived being stopped"
+    );
+}

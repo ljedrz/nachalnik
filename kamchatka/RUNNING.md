@@ -96,10 +96,13 @@ cut short is a command of your own that is waiting on the endpoint: `/models` fe
 `/model` and `/endpoint` finish their switch before the next line is read, so a deadline that
 falls during one of those is served when it returns.
 
-A job a command put in the background — `sleep 300 &`, a server it started — outlives its call,
-and is stopped when the session ends: `SIGTERM`, then `SIGKILL` for what is still there two seconds
-later, with a line naming each command it came from. `--leave-running` leaves them running for a
-server you asked for on purpose, and names them the same way.
+A job a command put in the background — `sleep 300 &`, a server it started, one it put in a
+session of its own with `setsid` — outlives its call, and is stopped when the session ends:
+`SIGTERM`, then `SIGKILL` for what is still there two seconds later, with a line naming each
+command it came from. They are found by `KAMCHATKA_CALL`, which every command runs with and
+everything it starts inherits, so what clears its own environment (`env -i`) is not found.
+`--leave-running` leaves them running for a server you asked for on purpose, and names them the
+same way.
 
 A run that one of these cut short says which on stderr as it happens, and leaves with a status of
 its own, so a script can tell a session that did its work from one that was stopped:
