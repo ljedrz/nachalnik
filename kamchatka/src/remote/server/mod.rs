@@ -524,6 +524,8 @@ impl Server {
             }
         }
 
+        // what never went in, said to whoever is still attached; see `App::unsent`
+        app.unsent();
         // note: the session is ended here rather than by the caller, for the reason `headless.rs`
         // gives: `session.finished` is a record like any other, and a caller that ended it after
         // this returned would have written every record but the last one

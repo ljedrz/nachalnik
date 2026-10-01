@@ -68,7 +68,10 @@ impl App {
         // nothing acts on a session part-way through changing model, or on a list somebody has not
         // been shown yet. Held rather than waited for, so that the loop goes on; see
         // `App::in_flight` and `App::release`
-        if self.in_flight() {
+        //
+        // note: except `/stop`, which is what ends the wait. Held, it stopped a turn only once the
+        // listing it was held behind came back, which is the one thing it was typed to avoid
+        if self.in_flight() && line.trim() != "/stop" {
             self.held.push_back((line.to_owned(), self.keys));
             self.say(
                 Speaker::Note,
@@ -263,7 +266,9 @@ impl App {
             // lands on nothing is a press somebody can see missing, and a line typed into a
             // session that was not running looks exactly like one that was ignored
             "stop" => match (self.busy, !self.kernel.pending_permissions().is_empty()) {
+                // a listing or a pass still out is stopped with the turn, or alone
                 (true, _) => self.interrupt(),
+                _ if self.errand.is_some() => self.interrupt(),
                 (false, true) => self.say(
                     Speaker::Note,
                     "the turn is waiting on a question, which stopping does not answer; deny it \
@@ -480,19 +485,23 @@ impl App {
                         Speaker::Error,
                         format!(
                             "`{url}` is not an address: it wants http:// or https:// and a host, \
-                             as in `/endpoint http://localhost:11434/v1`; requests still go to {}",
+                             and no `?` or `#`, as in `/endpoint http://localhost:11434/v1`; \
+                             requests still go to {}",
                             self.provider.endpoint()
                         ),
                     );
                     return;
                 }
                 let provider = self.provider.clone();
+                // the address the requests will go to, which is this without the trailing `/` a
+                // copied address often carries - said as typed, it named one the provider trims
+                let shown = url.trim_end_matches('/');
                 self.say(
                     Speaker::Note,
                     match (&model, self.kernel.model_info()) {
-                        (Some(model), _) => format!("{model} at {url}, from now on"),
+                        (Some(model), _) => format!("{model} at {shown}, from now on"),
                         (None, Some(info)) => format!(
-                            "requests now go to {url}, still asking for {}; the key is the one \
+                            "requests now go to {shown}, still asking for {}; the key is the one \
                              this started with",
                             info.model
                         ),
@@ -500,7 +509,7 @@ impl App {
                         // and saying it is "still asking for" nothing reads as a model called
                         // nothing rather than as the gap it is
                         (None, None) => format!(
-                            "requests now go to {url}; there is still no model, and `/models` \
+                            "requests now go to {shown}; there is still no model, and `/models` \
                              lists what this one serves"
                         ),
                     },

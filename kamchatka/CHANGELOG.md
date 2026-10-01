@@ -109,6 +109,19 @@ minor bump may break you.
 
 ### fixed
 
+- **Lines still waiting when a session ends are named as not sent.** Messages queued into a turn,
+  and lines held behind a command still out, went with the session without a word when it ended
+  by `/quit`, `/restart` or a signal - the turn's end takes the oldest in, and the rest were seen
+  again by nobody. The session now says which were never sent.
+- **`/stop` is not held behind the command it stops.** Every line waited while `/models` or a
+  compaction pass was out, `/stop` among them, so it stopped a turn only once the listing came
+  back. It runs at once, and stops a listing or a pass with no turn running.
+- **A base URL with a query string or a fragment is refused.** Every path is appended to the base
+  as it stands, so `…/v1?token=…` was asked for `…/v1?token=…/chat/completions`, which never
+  worked - and its failure wrote the token into the record, since the transport's error names the
+  URL. `KAMCHATKA_BASE_URL` and `/endpoint` both refuse one, and say why.
+- **`/endpoint` names the address the requests go to,** without the trailing `/` a copied address
+  carries and the provider trims.
 - **Two calls streaming at once are two lines.** Under `--parallel`, a tool's output was appended
   to whichever line of the transcript was open, so two running calls interleaved fragment by
   fragment on one line, and the first to finish took the other's output away with its own while

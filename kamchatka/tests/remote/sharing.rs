@@ -202,6 +202,46 @@ async fn lines_typed_into_a_running_turn_each_get_a_turn() {
     );
 }
 
+/// Lines still queued when the session ends are named as not sent, rather than going with it.
+///
+/// note: found live. The turn's end on the way out takes the oldest in, and the rest went with
+/// the session without a word - a line answered `queued` and then seen again by nobody.
+#[tokio::test]
+async fn lines_still_queued_when_the_session_ends_are_named() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))]),
+        ModelResponse::text("done"),
+    ];
+    let session = served(script, |app| {
+        app.kernel.add_tool(Arc::new(Slow));
+    })
+    .await;
+
+    let (mut one, _) = Peer::attached(&session.at).await;
+    one.send(Command::Submit {
+        line: "go".to_owned(),
+    })
+    .await;
+    one.until_record("tool.started").await;
+    for line in ["the first that waits", "the second that waits", "/quit"] {
+        one.send(Command::Submit {
+            line: line.to_owned(),
+        })
+        .await;
+    }
+
+    let heard = one
+        .until(|message| matches!(message, Message::Said { text, .. } if text.contains("not sent")))
+        .await;
+    let Some(Message::Said { text, .. }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert!(text.contains("`the second that waits`"), "{text}");
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(app.queued().next().is_none());
+}
+
 /// A provider's retry reaches a client while the provider waits, above the answer it held up.
 ///
 /// note: the pair of the headless suite's `a_retry_is_said_before_the_answer_it_held_up`. A notice

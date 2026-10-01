@@ -540,6 +540,9 @@ impl<'a> Headless<'a> {
                 .await;
             failed = waited.or(failed);
         }
+        // and what never went in, which `wait_for_turn` says on the way past and a second
+        // `ctrl+c` did not wait for
+        app.unsent();
 
         // note: the session is ended here rather than by the caller, and it is the one piece of
         // lifecycle this loop owns. `session.finished` is a record like any other, and a caller

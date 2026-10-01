@@ -1608,6 +1608,36 @@ async fn a_line_sent_while_a_command_is_out_waits_for_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// `/stop` is not held behind a command waiting on an endpoint: it is what ends the wait.
+///
+/// note: found live. Every line was held while a command was out, `/stop` among them, so it
+/// stopped a turn only once the listing it was held behind came back.
+#[tokio::test]
+async fn a_stop_is_not_held_behind_the_command_it_stops() {
+    let (endpoint, asked) = slow_endpoint(Duration::from_secs(30)).await;
+    let session = served_at(None, &endpoint, Vec::new(), |_| {}).await;
+    let (mut peer, _) = Peer::attached(&session.at).await;
+
+    peer.send(Command::Submit {
+        line: "/models".to_owned(),
+    })
+    .await;
+    tokio::time::timeout(PATIENCE, asked.notified())
+        .await
+        .expect("the command never reached the endpoint");
+    peer.send(Command::Submit {
+        line: "/stop".to_owned(),
+    })
+    .await;
+    peer.until(|message| {
+        matches!(message, Message::Said { text, .. } if text.contains("stopped waiting for the list of models"))
+    })
+    .await;
+
+    quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A piped `--connect` that asks for `/models` stays for the list.
 ///
 /// note: found live. The command is answered the moment it is sent and the list comes back after,

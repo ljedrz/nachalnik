@@ -126,23 +126,27 @@ pub const KEYS: [&str; 5] = [
     "TYPESAFE_API_KEY",
 ];
 
-/// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, and a host.
+/// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, a host, and
+/// nothing after the path.
 ///
-/// note: read by hand rather than parsed, like `Endpoint::host`, because what it catches is the two
+/// note: read by hand rather than parsed, like `Endpoint::host`, because what it catches is the
 /// ways a person gets an address wrong - a word that is not one, and a scheme left off, which
 /// makes `localhost:11434` a URL whose scheme is `localhost`. Either left to the provider fails on
 /// the next request, as a transport error, after the switch has already been announced. Anything
 /// subtler still reaches the provider, and its error says why.
+///
+/// note: and a query string or a fragment, which no request can be built on. Every path is
+/// appended to the base as it stands, so `…/v1?token=…` was asked for `…/v1?token=…/chat/
+/// completions` - a request that never worked, and whose failure wrote the token into the record,
+/// since the transport's error names the URL it could not reach.
 pub fn is_an_address(url: &str) -> bool {
     let Some((scheme, rest)) = url.split_once("://") else {
         return false;
     };
 
     matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https")
-        && rest
-            .split(['/', '?', '#'])
-            .next()
-            .is_some_and(|host| !host.is_empty())
+        && !rest.contains(['?', '#'])
+        && rest.split('/').next().is_some_and(|host| !host.is_empty())
 }
 
 /// The base URL, if it is one; refused at startup rather than on the first request.
@@ -154,7 +158,7 @@ fn addressed(url: String) -> Result<String, BoxError> {
         true => Ok(url),
         false => Err(format!(
             "KAMCHATKA_BASE_URL is `{url}`, which is not an address: it wants http:// or https:// \
-             and a host"
+             and a host, and no `?` or `#`, since every path is added after it"
         )
         .into()),
     }
