@@ -17,7 +17,9 @@ use std::{
     time::{Instant, SystemTime},
 };
 
-use nachalnik::{Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, Record};
+use nachalnik::{
+    Block, ContextId, ContextItem, ContextKind, ContextState, Event, Overrun, Record, ToolCallId,
+};
 
 use super::{
     App, Going, HOPS, LIVE_OUTPUT, TRACE_DEPTH, Traced,
@@ -91,6 +93,12 @@ pub struct Entry {
     /// moment later with a higher identifier; this is what re-anchors to it. Without it the
     /// conversation reads in an order the session never had.
     pub arriving: bool,
+    /// The call whose output this is, where it is a tool's streamed output.
+    ///
+    /// note: what keeps two calls running at once, under `--parallel`, on two lines. Appended to
+    /// whichever line was open, their output interleaved fragment by fragment on one, and the
+    /// first call to finish took the other's line away with its own.
+    pub call: Option<ToolCallId>,
 }
 
 impl Entry {
@@ -104,6 +112,30 @@ impl Entry {
     pub fn transient(&self) -> bool {
         self.streamed
     }
+}
+
+/// Keeps a tool's live output under [`LIVE_OUTPUT`], dropping from the front.
+///
+/// note: the bound is on a tool's output and on nothing else. A `find /` should not be able to fill
+/// the screen up, and the whole of it is in the context either way - but a long answer under the
+/// same bound loses its first paragraphs while the model is still writing the last one. A message
+/// is what somebody came here to read, and it is never shortened; the moment the turn is recorded
+/// the line is dropped and the item is what gets drawn.
+fn bounded(text: &mut String) {
+    if text.len() <= LIVE_OUTPUT {
+        return;
+    }
+    // note: in bytes, like the bound it answers. A count of characters taken from a length in bytes
+    // goes below zero in three-byte text - a panic inside the event handler in a debug build, and
+    // in a release one a cut at nothing and another marker on the front of every fragment
+    let mut cut = text.len() - LIVE_OUTPUT / 2;
+    while !text.is_char_boundary(cut) {
+        cut += 1;
+    }
+    *text = format!(
+        "[... the earlier output is not repeated here; the whole of it is in the context ...]\n{}",
+        &text[cut..]
+    );
 }
 
 /// One line of the conversation as it stands now, ready to be drawn.
@@ -199,6 +231,7 @@ impl App {
             streamed: false,
             after: self.newest(),
             arriving,
+            call: None,
         });
         if speaker == Speaker::User {
             self.follow = true;
@@ -407,62 +440,76 @@ impl App {
 
     /// Whether something is part-way through arriving.
     fn arriving(&self) -> bool {
-        self.loose.last().is_some_and(|entry| entry.open)
+        self.loose.iter().any(|entry| entry.open)
     }
 
     /// Appends to the line still arriving from this speaker, starting one if there is none.
     ///
-    /// note: the bound is on a tool's output and on nothing else. A `find /` should not be able to
-    /// fill the screen up, and the whole of it is in the context either way - but a long answer
-    /// under the same bound loses its first paragraphs while the model is still writing the last
-    /// one. A message is what somebody came here to read, and it is never shortened; the moment
-    /// the turn is recorded the line is dropped and the item is what gets drawn.
+    /// note: never shortened, unlike a tool's output; see `bounded`.
     pub(super) fn append(&mut self, speaker: Speaker, fragment: &str) {
         match self.loose.last_mut() {
-            Some(entry) if entry.open && entry.speaker == speaker => {
+            Some(entry) if entry.open && entry.speaker == speaker && entry.call.is_none() => {
                 entry.text.push_str(fragment);
-                if speaker == Speaker::Result && entry.text.len() > LIVE_OUTPUT {
-                    // note: in bytes, like the bound it answers. A count of characters taken from
-                    // a length in bytes goes below zero in three-byte text - a panic inside the
-                    // event handler in a debug build, and in a release one a cut at nothing and
-                    // another marker on the front of every fragment
-                    let mut cut = entry.text.len() - LIVE_OUTPUT / 2;
-                    while !entry.text.is_char_boundary(cut) {
-                        cut += 1;
-                    }
-                    entry.text = format!(
-                        "[... the earlier output is not repeated here; the whole of it is in the \
-                         context ...]\n{}",
-                        &entry.text[cut..]
-                    );
-                }
             }
-            _ => {
-                let after = self.newest();
-                self.close();
-                self.loose.push(Entry {
-                    speaker,
-                    text: fragment.to_owned(),
-                    open: true,
-                    streamed: true,
-                    after,
-                    arriving: false,
-                });
-            }
+            _ => self.open_line(speaker, fragment, None),
         }
     }
 
-    /// Closes whatever was still arriving, and drops it if it turned out to be nothing.
-    pub(super) fn close(&mut self) {
-        let Some(entry) = self.loose.last_mut() else {
-            return;
-        };
-
-        entry.open = false;
-        entry.text = unpadded(entry.text.trim_end()).to_owned();
-        if entry.text.is_empty() {
-            self.loose.pop();
+    /// Appends to the line still arriving from this call's output, starting one if there is none.
+    ///
+    /// note: by call rather than by whichever line is open last, because under `--parallel` two
+    /// calls stream at once and each is a line of its own. A line is looked for anywhere still
+    /// open, since the other call's fragment may have been the last thing to arrive.
+    pub(super) fn append_output(&mut self, call: &ToolCallId, fragment: &str) {
+        let open = self
+            .loose
+            .iter_mut()
+            .rev()
+            .find(|entry| entry.open && entry.call.as_ref() == Some(call));
+        match open {
+            Some(entry) => {
+                entry.text.push_str(fragment);
+                bounded(&mut entry.text);
+            }
+            None => self.open_line(Speaker::Result, fragment, Some(call.clone())),
         }
+    }
+
+    /// Starts a line still arriving, ending the model's if it was the one open: a tool's output
+    /// arrives once the answer that called it has.
+    fn open_line(&mut self, speaker: Speaker, fragment: &str, call: Option<ToolCallId>) {
+        let after = self.newest();
+        if self
+            .loose
+            .last()
+            .is_some_and(|entry| entry.open && entry.call.is_none())
+        {
+            self.close();
+        }
+        self.loose.push(Entry {
+            speaker,
+            text: fragment.to_owned(),
+            open: true,
+            streamed: true,
+            after,
+            arriving: false,
+            call,
+        });
+    }
+
+    /// Closes whatever was still arriving, and drops what turned out to be nothing.
+    ///
+    /// note: every line still open, which is one but for calls streaming at once.
+    pub(super) fn close(&mut self) {
+        self.loose.retain_mut(|entry| {
+            if !entry.open {
+                return true;
+            }
+            entry.open = false;
+            entry.text = unpadded(entry.text.trim_end()).to_owned();
+
+            !entry.text.is_empty()
+        });
     }
 
     /// Hands the lines that were arriving over to the item that now holds them.
@@ -477,6 +524,22 @@ impl App {
     /// [`Entry::arriving`].
     pub(super) fn caught_up(&mut self, item: ContextId) {
         self.loose.retain(|entry| !entry.transient());
+        self.reanchor(item);
+    }
+
+    /// Hands one call's streamed output over to the item that now holds it, and leaves any other
+    /// call's still arriving.
+    ///
+    /// note: the one exception to "all of them", which is two calls running at once. The first to
+    /// finish is not the second's item, and the second's output is still on its way.
+    pub(super) fn caught_up_with(&mut self, call: &ToolCallId, item: ContextId) {
+        self.loose
+            .retain(|entry| !(entry.transient() && entry.call.as_ref() == Some(call)));
+        self.reanchor(item);
+    }
+
+    /// Puts what was said while something was arriving after the item it turned into.
+    fn reanchor(&mut self, item: ContextId) {
         for entry in &mut self.loose {
             if entry.arriving {
                 entry.after = Some(item);
