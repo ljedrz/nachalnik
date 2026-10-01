@@ -1037,6 +1037,12 @@ command may reach only the abstract sockets it made itself. An X client that is 
 abstract one tries the file next, so `--sandbox-allow /tmp/.X11-unix/X0` is how a command gets a
 display back, and with it every window on that display.
 
+**A command may signal what the session started and nothing else**, on Linux 6.12 and up: a
+server one call left running is stopped by the next, and `kill` aimed anywhere else is `Operation
+not permitted`. The boundary is put on this program's own process before it starts anything, so
+everything it starts runs with `no_new_privs`, MCP servers included: a set-user-ID program such
+as `sudo` gains nothing in them. `--no-sandbox` leaves it off.
+
 **Under `/dev` a command reaches five devices**, `null`, `zero`, `full`, `random` and `urandom`,
 and nothing else: the rest of `/dev` is your other terminals, which a command could read what you
 type into, shared memory, and on a desktop the camera and microphone. The list is

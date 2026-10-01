@@ -230,15 +230,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   from when it is used to when the session starts, so a root that appears, moves or is relinked
   during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
 
-- **A confined command can signal any process of the user's.** Landlock's `Scope::Signal`, Linux
-  6.12, would refuse a confined process a signal to anything outside its domain - this program,
-  the person's editor, and with `kill -9 -1` every process they have. It is not asked for because
-  every command confines itself in a domain of its own: under it, a server one call left running
-  could not be stopped by the next call, which is the ordinary way to stop one. What would unblock
-  it is a way for a later call to reach an earlier one's jobs - one domain the calls share, or a
-  `context`-like operation that asks this program to stop a job - or the person deciding that a
-  model stopping its own servers is worth less than the boundary.
-
 - **The first undo of a fresh session takes its setup back.** `--system` and `-f` are pushed onto
   the context like anything else, so each is an undo step: `/undo` on a session nobody has typed
   into yet takes the system instruction out of the context, and a second takes the attached file,
