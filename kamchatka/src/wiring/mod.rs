@@ -685,6 +685,7 @@ impl Setup {
             }
         });
         let compact_target = shed.as_ref().map(|shed| shed.target);
+        let compact_threshold = shed.as_ref().map(|shed| shed.threshold);
         if let Some(shed) = shed {
             kernel.set_compactor(Some(Arc::new(shed)));
             let context_tool = self
@@ -792,6 +793,7 @@ impl Setup {
         app.introspect = introspect;
         app.set_spend(self.spend);
         app.compact_target = compact_target;
+        app.compact_threshold = compact_threshold;
 
         // note: everything is built and then what was not asked for is turned off, rather than
         // only the named ones being built. That is what makes the list a starting position: the

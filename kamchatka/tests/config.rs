@@ -1648,3 +1648,44 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
         None
     );
 }
+
+/// `--compact-target` reaches the session, at most `--compact` and derived from it when left out.
+///
+/// note: through `Args` rather than through the program, because what the target does is only on
+/// a screen once a pass runs, and a pass needs a model. What is under test is the wiring: a value
+/// that parses, is checked and then arrives nowhere is the failure a setting has.
+#[test]
+fn a_compaction_target_is_held_to_the_threshold_and_carried() {
+    use clap::Parser;
+    use kamchatka::args::Args;
+
+    let setup = |args: &[&str]| {
+        Args::try_parse_from(std::iter::once("kamchatka").chain(args.iter().copied()))
+            .expect("the arguments parse")
+            .setup()
+    };
+
+    let given = setup(&["--compact", "0.8", "--compact-target", "0.4"]).expect("a setup");
+    assert_eq!(given.compact_target, Some(0.4));
+    let equal = setup(&["--compact", "0.8", "--compact-target", "0.8"]).expect("equal is a choice");
+    assert_eq!(equal.compact_target, Some(0.8));
+    assert_eq!(
+        setup(&["--compact", "0.8"])
+            .expect("a setup")
+            .compact_target,
+        None,
+        "left out, the wiring derives it"
+    );
+
+    for (args, said) in [
+        (
+            &["--compact", "0.5", "--compact-target", "0.6"][..],
+            "at most `compact`, which is `0.5`",
+        ),
+        (&["--compact-target", "0"][..], "a fraction above 0"),
+        (&["--compact-target=-0.1"][..], "a fraction above 0"),
+    ] {
+        let refused = setup(args).err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(refused.contains(said), "{args:?}: {refused}");
+    }
+}

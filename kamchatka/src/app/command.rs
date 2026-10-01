@@ -1450,17 +1450,26 @@ impl App {
         keys: bool,
     ) {
         let Some(plan) = plan else {
-            // note: `under` rather than `nothing it may take`, because a pass is only asked for
-            // a context that has reached the threshold, and above the threshold there is a
-            // target below the total every time. Finding no plan while the context is already
-            // under that target is a different thing from finding no item eligible, and saying
-            // the second told somebody the wrong item was in the way.
-            let target = budget
-                .limit
-                .zip(self.compact_target)
-                .map(|(limit, target)| (limit as f64 * target) as usize);
-            let said = match target {
-                Some(target) if budget.used() <= target => format!(
+            // note: `under` rather than `nothing it may take`, because finding no plan while the
+            // context is under the point the compactor makes room at is a different thing from
+            // finding no item eligible, and saying the second told somebody the wrong item was in
+            // the way. The threshold where it is known and the target where only that is: the
+            // first is where `Shedder` starts, and a context between the two is one it leaves
+            let marks = |fraction: Option<f64>| {
+                budget
+                    .limit
+                    .zip(fraction)
+                    .map(|(limit, fraction)| (limit as f64 * fraction) as usize)
+            };
+            let said = match (marks(self.compact_threshold), marks(self.compact_target)) {
+                (Some(threshold), _) if budget.used() < threshold => format!(
+                    "{} has nothing to do: the next request is ~{} tokens, under the ~{} it \
+                     starts making room at",
+                    short(compactor.name()),
+                    thousands(budget.used()),
+                    thousands(threshold),
+                ),
+                (None, Some(target)) if budget.used() <= target => format!(
                     "{} has nothing to do: the next request is ~{} tokens, under the ~{} it \
                      takes the context to",
                     short(compactor.name()),

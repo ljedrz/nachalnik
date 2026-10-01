@@ -755,6 +755,13 @@ pub struct App {
     /// no reason to give it one. Whoever plugs in a compactor says what it aims for here, and
     /// `None` is the sentence that does not claim to know.
     pub compact_target: Option<f64>,
+    /// The fraction of the limit at which that compactor starts making room, for the same
+    /// question asked of a context between the two.
+    ///
+    /// note: `Shedder` makes room only past it, so a context between the target and the
+    /// threshold is one with nothing to do rather than one with nothing eligible - and measured
+    /// against the target alone, `/compact` there said the second.
+    pub compact_threshold: Option<f64>,
 }
 
 impl App {
@@ -849,6 +856,7 @@ impl App {
             thought_unseen: false,
             unanswered: None,
             compact_target: None,
+            compact_threshold: None,
             reported_repairs: Vec::new(),
             since: Instant::now(),
             question_scroll: 0,
