@@ -255,11 +255,31 @@ pub struct Shell {
 /// it, and stop them - [`Stragglers::stop`] - unless somebody asked to leave them running.
 ///
 /// note: shared, since the tool records and whoever ends the session stops; a clone is the same
-/// list. Reached through `rustix`, which signals a group without `unsafe` and without a `sh`. A
-/// group is signalled only while something is still in it, and an identifier cannot be reused while
-/// a group of that number has members, so what is stopped is what the command left.
+/// list. Reached through `rustix`, which signals a group without `unsafe` and without a `sh`.
+///
+/// note: a group is known by what was in it and not by its number alone. The number cannot be
+/// handed out again while the group has members, but a job that finishes on its own empties it,
+/// and a session is long: by the time it ends, the number may be the group of something else this
+/// user runs - a job in another terminal, another session's command - and signalled by number it
+/// would be stopped in its place. So each group is remembered with its members, each one an
+/// identifier and the moment it started, which together name one process however often the
+/// identifier has been reused, and it is signalled only while one of them is still in it. What it
+/// costs is a group whose remembered members have all gone and left only something they started
+/// after it was last looked at, which is left running rather than mistaken for somebody else's;
+/// every look - each call that leaves something, and the end of the session - renews the members,
+/// so that is a moment's window rather than a session's.
 #[derive(Clone, Default)]
-pub struct Stragglers(Arc<parking_lot::Mutex<Vec<(u32, String)>>>);
+pub struct Stragglers(Arc<parking_lot::Mutex<Vec<Left>>>);
+
+/// One group a command left running, as it was when it was last looked at.
+struct Left {
+    group: u32,
+    cmd: String,
+    members: Vec<Member>,
+}
+
+/// A process as `/proc` names it: its identifier, and when it started, in clock ticks since boot.
+type Member = (u32, u64);
 
 /// How long a straggler is given to leave on `SIGTERM` before it is sent `SIGKILL`.
 const GRACE: Duration = Duration::from_secs(2);
@@ -267,17 +287,26 @@ const GRACE: Duration = Duration::from_secs(2);
 impl Stragglers {
     /// Remembers `group` if anything is still running in it.
     fn left(&self, group: u32, cmd: &str) {
-        if alive(group) {
-            self.0.lock().push((group, crate::app::text::one_line(cmd)));
-        }
+        let Some(members) = members(group) else {
+            return;
+        };
+        let mut left = self.0.lock();
+        // the list is looked at again while it is held, so a group that ended long ago is not
+        // carried to the end of the session to be mistaken for whatever took its number
+        left.retain_mut(Left::renewed);
+        left.push(Left {
+            group,
+            cmd: crate::app::text::one_line(cmd),
+            members,
+        });
     }
 
     /// The commands whose groups still have something running, as they were typed.
     pub fn running(&self) -> Vec<String> {
         let mut left = self.0.lock();
-        left.retain(|(group, _)| alive(*group));
+        left.retain_mut(Left::renewed);
 
-        left.iter().map(|(_, cmd)| cmd.clone()).collect()
+        left.iter().map(|left| left.cmd.clone()).collect()
     }
 
     /// Stops every group still running - `SIGTERM`, and `SIGKILL` for what is still there after
@@ -286,30 +315,61 @@ impl Stragglers {
     /// note: blocking, and short: it is called as a session ends, where there is nothing left to
     /// be responsive for, and a runtime may already be on its way out.
     pub fn stop(&self) -> Vec<String> {
-        let left: Vec<(u32, String)> = std::mem::take(&mut *self.0.lock())
-            .into_iter()
-            .filter(|(group, _)| alive(*group))
-            .collect();
-        for (group, _) in &left {
-            signal(*group, rustix::process::Signal::TERM);
+        let mut left: Vec<Left> = std::mem::take(&mut *self.0.lock());
+        left.retain_mut(Left::renewed);
+        for left in &left {
+            signal(left.group, rustix::process::Signal::TERM);
         }
         let until = std::time::Instant::now() + GRACE;
-        while left.iter().any(|(group, _)| alive(*group)) && std::time::Instant::now() < until {
+        let mut lasting: Vec<&mut Left> = left.iter_mut().collect();
+        while !lasting.is_empty() && std::time::Instant::now() < until {
             std::thread::sleep(Duration::from_millis(20));
+            lasting.retain_mut(|left| left.renewed());
         }
-        for (group, _) in &left {
-            if alive(*group) {
-                signal(*group, rustix::process::Signal::KILL);
-            }
+        for left in lasting {
+            signal(left.group, rustix::process::Signal::KILL);
         }
 
-        left.into_iter().map(|(_, cmd)| cmd).collect()
+        left.into_iter().map(|left| left.cmd).collect()
     }
 }
 
-/// Whether anything is still in process group `group`.
-fn alive(group: u32) -> bool {
-    pid(group).is_some_and(|pid| rustix::process::test_kill_process_group(pid).is_ok())
+impl Left {
+    /// Whether the group is still the one the command left, with something in it - and if it is,
+    /// what is in it now, which is all of it the command's.
+    fn renewed(&mut self) -> bool {
+        match members(self.group) {
+            Some(now) if now.iter().any(|member| self.members.contains(member)) => {
+                self.members = now;
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+/// What is in process group `group` now, or `None` where nothing is.
+///
+/// note: read from `/proc/PID/stat`, where the group is the fifth field and the start the
+/// twenty-second, counted from the identifier. The name in brackets before them can hold anything,
+/// brackets and spaces included, so the fields are counted from after the last bracket. A process
+/// that leaves while this reads is passed over, as one that is not there.
+fn members(group: u32) -> Option<Vec<Member>> {
+    let members: Vec<Member> = std::fs::read_dir("/proc")
+        .ok()?
+        .filter_map(|entry| {
+            let pid: u32 = entry.ok()?.file_name().to_str()?.parse().ok()?;
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+            let fields: Vec<&str> = stat
+                .get(stat.rfind(')')? + 1..)?
+                .split_whitespace()
+                .collect();
+            let pgrp: u32 = fields.get(2)?.parse().ok()?;
+            let started: u64 = fields.get(19)?.parse().ok()?;
+            (pgrp == group).then_some((pid, started))
+        })
+        .collect();
+    (!members.is_empty()).then_some(members)
 }
 
 /// Sends `signal` to process group `group`, if it is one.
@@ -1074,6 +1134,52 @@ fn keep(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A group whose number has gone to something else since the command left it is not stopped
+    /// at the end of the session, and is not named as stopped.
+    ///
+    /// note: forged rather than waited for: the number of a group the command left is handed out
+    /// again only once the system has gone through the rest, so the list is given a group that is
+    /// running now under members it never had - which is what the reused number looks like.
+    #[test]
+    fn a_group_whose_number_was_handed_out_again_is_left_alone() {
+        use std::os::unix::process::CommandExt;
+
+        let mut somebody = std::process::Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .expect("sleep runs");
+        let group = somebody.id();
+        let theirs = members(group).expect("the group has its one member");
+        let stragglers = Stragglers::default();
+        stragglers.0.lock().push(Left {
+            group,
+            cmd: "sleep 300 &".to_owned(),
+            members: theirs
+                .iter()
+                .map(|(pid, started)| (*pid, started + 1))
+                .collect(),
+        });
+
+        assert!(
+            stragglers.running().is_empty(),
+            "the group is not the command's"
+        );
+        stragglers.0.lock().push(Left {
+            group,
+            cmd: "sleep 300 &".to_owned(),
+            members: vec![(group, 0)],
+        });
+        assert!(stragglers.stop().is_empty());
+        assert!(
+            somebody.try_wait().expect("it can be asked").is_none(),
+            "somebody else's group was stopped"
+        );
+
+        somebody.kill().expect("it is still there to kill");
+        somebody.wait().expect("and to reap");
+    }
 
     #[tokio::test]
     async fn an_action_that_is_not_a_word_runs_nothing() {
