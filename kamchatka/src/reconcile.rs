@@ -23,8 +23,9 @@
 use std::collections::{BTreeMap, HashSet};
 
 use nachalnik::{
-    Calibration, Config, Content, ContextId, ContextItem, ContextKind, ContextState, Event, Kernel,
-    Record, Snapshot,
+    BoxError, Calibration, Config, Content, ContextId, ContextItem, ContextKind, ContextState,
+    DeltaSink, Event, Kernel, ModelInfo, ModelRequest, ModelResponse, Provider, Record, Snapshot,
+    async_trait,
 };
 use serde_json::{Value, json};
 
@@ -86,11 +87,9 @@ impl Fork {
         Ok(Self::new(path, snapshot, log))
     }
 
-    /// The model the fork's log last says it was talking to.
-    fn model(&self) -> Option<String> {
-        crate::args::talked_to(&self.log)
-            .map(|info| info.model)
-            .filter(|model| !model.is_empty())
+    /// What the fork's log last says about the model it was talking to, where it names one.
+    fn talked_to(&self) -> Option<ModelInfo> {
+        crate::args::talked_to(&self.log).filter(|info| !info.model.is_empty())
     }
 
     /// Whether the fork's log says item `id` once said `content`, before something overwrote it.
@@ -182,7 +181,22 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
         return Err("a reconcile takes two forks or more".to_owned());
     }
 
+    // note: every way a fork comes about keeps the session's name - `-r`, a copy of the file, two
+    // `/save`s - and two sessions that are not forks of each other can still begin alike, with
+    // the same `-s` or a project's settings file. Their shared part would be the instruction, and
+    // what this made of them a session that never was
+    if let Some(other) = forks
+        .iter()
+        .find(|fork| fork.snapshot.session != forks[0].snapshot.session)
+    {
+        return Err(format!(
+            "{} and {} are not forks of one session: one is session {} and the other {}",
+            forks[0].name, other.name, forks[0].snapshot.session, other.snapshot.session
+        ));
+    }
+
     let mut shared: Vec<Shared> = Vec::new();
+    let mut parted_at_revision = None;
     for at in 0.. {
         let Some(versions) = forks
             .iter()
@@ -202,6 +216,12 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
             .all(|version| version.content == first.content)
         {
             let Some(kept) = revision(forks, &versions, at)? else {
+                if versions
+                    .iter()
+                    .any(|version| version.meta.get("revised").is_some())
+                {
+                    parted_at_revision = Some(first.id);
+                }
                 break;
             };
             revised_in = Some(kept);
@@ -289,6 +309,12 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
             }
         ));
     }
+    if let Some(id) = parted_at_revision {
+        said.push(format!(
+            "item {id} is revised in a fork, and taken for where the forks part: nothing after \
+             it agrees, and no log beside the forks says it was one item before the revision"
+        ));
+    }
     for kept in &shared {
         if let Some(fork) = kept.revised_in {
             said.push(format!(
@@ -342,11 +368,13 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
     used.dedup();
     merged.used_calls = used;
 
-    let models: Vec<Option<String>> = forks.iter().map(Fork::model).collect();
+    let talked_to: Vec<Option<ModelInfo>> = forks.iter().map(Fork::talked_to).collect();
+    let models: Vec<Option<&str>> = talked_to
+        .iter()
+        .map(|info| info.as_ref().map(|info| info.model.as_str()))
+        .collect();
     let model = match models.first() {
-        Some(Some(first)) if models.iter().all(|m| m.as_ref() == Some(first)) => {
-            Some(first.clone())
-        }
+        Some(Some(first)) if models.iter().all(|m| *m == Some(*first)) => Some(first.to_string()),
         _ => None,
     };
     // what a counter that learns says before it has learned anything is a calibration too, and
@@ -365,18 +393,32 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
             (Some(model), Some(_)) => {
                 format!("the token counter's correction is summed: every fork talked to {model}")
             }
-            _ => format!(
-                "the token counter's correction is dropped: {}",
-                models
-                    .iter()
-                    .zip(&names)
-                    .map(|(model, name)| match model {
-                        Some(model) => format!("{name} was talking to {model}"),
-                        None => format!("{name} has no log that says what it talked to"),
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            _ => {
+                // by model rather than by fork, so four forks on two models is two clauses
+                let mut by: Vec<(Option<&str>, Vec<&str>)> = Vec::new();
+                for (model, name) in models.iter().zip(&names) {
+                    match by.iter_mut().find(|(seen, _)| seen == model) {
+                        Some((_, named)) => named.push(name),
+                        None => by.push((*model, vec![name])),
+                    }
+                }
+                format!(
+                    "the token counter's correction is dropped: {}",
+                    listed(
+                        &by.iter()
+                            .map(|(model, named)| match model {
+                                Some(model) => format!("{} talked to {model}", listed(named)),
+                                None => format!(
+                                    "{} {} no log that says what {} talked to",
+                                    listed(named),
+                                    if named.len() == 1 { "has" } else { "have" },
+                                    if named.len() == 1 { "it" } else { "they" },
+                                ),
+                            })
+                            .collect::<Vec<_>>()
+                    )
+                )
+            }
         });
     }
 
@@ -415,6 +457,22 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
         },
         merged,
     );
+    // note: the model the forks were talking to, said in the fresh log as `-r` reads a model out
+    // of one: a snapshot holds the conversation and not the model, and a session resumed with
+    // none sends nothing. A provider that only says what it is, and is never asked anything -
+    // nothing here runs a turn. The address goes with it where every fork's log names the same
+    // one, and where they differ none is said, since `-r` would report the first as where the
+    // session had been talking
+    if let (Some(_), Some(Some(first))) = (&model, talked_to.first()) {
+        let mut info = first.clone();
+        if !talked_to.iter().all(|info| {
+            info.as_ref()
+                .is_some_and(|it| it.endpoint == first.endpoint)
+        }) {
+            info.endpoint = None;
+        }
+        kernel.set_provider(std::sync::Arc::new(Named(info)));
+    }
     let ids =
         kernel.push_all(std::iter::once(manifest).chain(carried.into_iter().map(|(_, item)| item)));
     // the manifest was written before the notes were numbered, and names them by number
@@ -432,6 +490,24 @@ pub fn reconcile(forks: &[Fork], session: &str) -> Result<Reconciled, String> {
         said,
         model,
     })
+}
+
+/// A provider that says which model it is and answers nothing, for the record.
+struct Named(ModelInfo);
+
+#[async_trait]
+impl Provider for Named {
+    fn info(&self) -> ModelInfo {
+        self.0.clone()
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        Err("a reconcile sends nothing to a model".into())
+    }
 }
 
 /// Which fork's revision of a shared item to keep, where the forks hold it with different
@@ -616,8 +692,7 @@ fn manifest(
     }
     for clash in clashes {
         text.push_str(&format!(
-            "\n`{}` is the label of more than one note here - {} - and they may not agree: each \
-             says what its own fork concluded.",
+            "\n`{}` is the label of more than one note here - {} - and they may not agree.",
             clash.label,
             clash.held.join(", ")
         ));
