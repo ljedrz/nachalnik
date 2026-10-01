@@ -109,6 +109,9 @@ minor bump may break you.
 
 ### fixed
 
+- **A compaction at a share that rounds to nothing says under one percent.** The marker the model
+  reads in place of what was elided said the context had reached `0%` of the limit, which reads as
+  a pass run on an empty context; a threshold that low is a setting somebody can choose.
 - **An argument nested inside another is told so.** A model that put the rest of an `edit` inside
   `new` - `{"new": {"old": …, "new": …}}` - was told `old` was required and how to add text, and
   sent the same nesting back. `new` is read first, and an object where text belongs is named by

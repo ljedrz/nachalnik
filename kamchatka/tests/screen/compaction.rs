@@ -851,6 +851,53 @@ async fn an_unpriced_item_the_pass_may_not_take_produces_no_plan() {
     assert_eq!(kernel.with_context(|c| c.undo_len()), undo);
 }
 
+/// A share of the limit that rounds to nothing is said as under one percent, not as `0%`.
+///
+/// note: found live, with `--compact 0.01` against a million tokens: the marker the model read in
+/// place of what it had been shown said the context had reached 0% of the limit, which reads as a
+/// pass that ran on an empty context.
+#[tokio::test]
+async fn a_share_that_rounds_to_nothing_is_said_as_under_one_percent() {
+    use nachalnik::{Budget, Compactor, Content, ToolCall};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let call = ToolCall::new(
+        "call-1",
+        "read",
+        std::sync::Arc::new(json!({"path": "big.rs"})),
+    );
+    kernel.push(ContextItem::user("what is in big.rs?"));
+    kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    kernel.push(ContextItem::tool_result(
+        call.id,
+        "read",
+        "x".repeat(8_000),
+        false,
+    ));
+    kernel.push(ContextItem::assistant("it is all x", Vec::new()));
+
+    let trim = ToolTrimmer::under(0.001);
+    let budget = Budget {
+        limit: Some(1_000_000),
+        ..kernel.budget()
+    };
+    assert!(budget.context_tokens > 0 && budget.context_tokens < 5_000);
+    let plan = trim
+        .plan(&kernel.items(), &budget)
+        .await
+        .expect("the result is over the threshold and has been read");
+    assert!(
+        plan.reason
+            .contains("the context had reached under 1% of the 1000000-token limit"),
+        "{}",
+        plan.reason
+    );
+}
+
 /// The pass leaves one standing summary, not one per pass.
 ///
 /// note: found live. Against a real endpoint at a 6,000-token limit, a tool loop left **twenty-one
