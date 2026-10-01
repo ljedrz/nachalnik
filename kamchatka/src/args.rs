@@ -131,10 +131,15 @@ pub struct Args {
     #[arg(long, value_name = "N", default_value_t = 8)]
     pub requests: usize,
 
-    /// How full the context may get before the oldest tool results are elided to a marker they
-    /// can be restored from; `1` never does.
+    /// How full the context may get before its oldest exchanges are excluded, which they can be
+    /// restored from; `1` never compacts at all.
     #[arg(long, value_name = "FRACTION", default_value_t = 0.8)]
     pub compact: f64,
+
+    /// How far down a full context is taken once exchanges start going, at most `--compact`;
+    /// left out, twenty points under it or half of it, whichever is more.
+    #[arg(long, value_name = "FRACTION")]
+    pub compact_target: Option<f64>,
 
     /// Let the model's tool calls run at the same time, instead of in the order it asked.
     #[arg(long)]
@@ -310,6 +315,7 @@ impl Args {
             gemini,
             requests,
             compact,
+            compact_target,
             parallel,
             no_sandbox,
             sandbox_allow,
@@ -581,6 +587,19 @@ impl Args {
             at("compact").unwrap_or_default(),
             self.compact
         );
+        // note: at most the threshold, because a target above it is a context that is over the
+        // threshold and already under the target, which a pass answers by dropping nothing - before
+        // every request, for as long as the context stays between the two. Equal is allowed: it is
+        // the pass that drops just enough each time, which is a choice and not a mistake
+        if let Some(target) = self.compact_target {
+            anyhow::ensure!(
+                target > 0.0 && target <= self.compact,
+                "{}`compact-target` is how far down a full context is taken, as a fraction above 0 \
+                 and at most `compact`, which is `{}` - and this was `{target}`",
+                at("compact_target").unwrap_or_default(),
+                self.compact
+            );
+        }
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
         // server rule naming a server this run does not start matches nothing, so a misspelled
         // `--deny-server` read as given and left the server it meant to the question - which a
@@ -672,6 +691,7 @@ impl Args {
             refuse_oversized: !self.send_oversized,
             record: !self.no_record,
             compact: Some(self.compact),
+            compact_target: self.compact_target,
             // note: `0` is no ceiling, as `/spend 0` and `--requests 0` say it: a ceiling of nothing
             // would be a session that refuses its first turn without saying why
             spend: self.spend.filter(|it| *it > 0),

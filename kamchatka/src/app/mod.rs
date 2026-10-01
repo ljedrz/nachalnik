@@ -40,6 +40,7 @@ mod views;
 
 pub use going::Going;
 pub use search::Search;
+pub(crate) use session::named_calls;
 pub use transcript::{Entry, Said, Speaker};
 pub use views::Stance;
 #[cfg(feature = "tui")]
@@ -2097,7 +2098,14 @@ impl App {
             // who did it may never have seen one. It is read back in `Projection::skipped`, which
             // is what a client draws beside the row to say why the item is not in the request
             ContextState::Elided => (ContextState::Excluded, Some("taken out by the user".into())),
-            _ => (ContextState::Active, None),
+            // note: a note here too, and for the compactor rather than the model, which is not
+            // shown a note on an item it is shown: one the person brought back is one it leaves
+            // alone until the context is full, where without it it was elided again before the
+            // next request - see `tools::Shedder`
+            _ => (
+                ContextState::Active,
+                Some("brought back by the user".into()),
+            ),
         };
         self.kernel.set_state([id], to, note);
 

@@ -302,7 +302,7 @@ async fn a_compact_from_a_client_is_taken_and_said() {
 
     let session = served(vec![], |app| {
         app.kernel
-            .set_compactor(Some(Arc::new(kamchatka::tools::ToolTrimmer {
+            .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
                 threshold: 0.0,
                 target: 0.0,
             })));

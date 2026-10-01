@@ -1465,7 +1465,7 @@ async fn compact_down_a_pipe_is_taken_and_said() {
     let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
     let run = run("/compact\n", vec![], |app| {
         app.kernel
-            .set_compactor(Some(Arc::new(kamchatka::tools::ToolTrimmer {
+            .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
                 threshold: 0.0,
                 target: 0.0,
             })));

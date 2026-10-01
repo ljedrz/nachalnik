@@ -68,9 +68,10 @@ What each is for:
   `/compact`, `/undo`, `/redo`, `/budget` - and leaves normally.
 - **b** is cut by SIGTERM, which is a leaving: the turn is stopped and waited for, and the snapshot
   is current.
-- **c** starts by asking the model to free room. At 40000 the context reaches the limit in c or
-  before it - a run can get there in a: `ToolTrimmer` takes only tool results, and the model's own
-  turns are what fills a long session. Once nothing is left for it to take, the kernel puts a note
+- **c** starts by asking the model to free room. `Shedder` drops the oldest exchanges whole once
+  the context passes the threshold, so a long session no longer fills on its own: what reaches the
+  limit is one turn bigger than the room left, or a context held by pins, and a run that never
+  gets there is not a finding either. Once nothing is left for it to take, the kernel puts a note
   into the context telling the model it is full and to `exclude` or `elide` through `context`; a
   model that acts on it keeps the run going, and one that does not reaches the limit - which is
   the soak's evidence of which of the two it was, rather than a finding. Past the limit, headless

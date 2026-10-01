@@ -28,8 +28,8 @@ pub(crate) mod ops;
 mod policy;
 mod reaching;
 mod search;
+mod shedder;
 mod shell;
-mod tool_trimmer;
 
 #[cfg(feature = "shell-advisor")]
 pub use crate::tools::advice::{Advised, Rated, Rating};
@@ -37,8 +37,8 @@ pub use crate::tools::{
     files::COUNTED,
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
     reaching::{Reached, Reaching},
+    shedder::Shedder,
     shell::{Exit, Shell, Stragglers, joints},
-    tool_trimmer::ToolTrimmer,
 };
 
 /// The domains this program's own tools act in, beside the three the runtime names.

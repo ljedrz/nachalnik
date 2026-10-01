@@ -97,12 +97,20 @@ conversation in which it never asked at all. What an elided item holds beyond it
 as held back rather than spent, and <kbd>space</kbd> twice — out altogether, then back to all of
 it — spends it again.
 
-The marker the model reads says one more thing than the row has room for: *reading it again
-would put the same tokens back into a context that had no room for them — ask for the part you
-need instead*. Without that half, a model that wants the file back simply reads it again and the
-compactor takes it again, over and over. A refusal that does not say the next attempt ends the
-same way is read as an invitation to make it; with the second half, the model narrows to a search
-instead.
+The marker the model reads says two more things than the row has room for. The first is that the
+model had *read* what it stands in for — a model reading a marker that said only "compacted"
+decided it had never seen the files it had just summarised, called its summaries fabricated and
+withdrew them. The second is what to do about it: once its turn is over, *read it again if you
+still need it*; in a context with no room, *ask for the part you need rather than the whole*.
+Without that half, a model that wants a file back in a full context simply reads it again and the
+compactor takes it again, over and over; with it, the model narrows to a search instead.
+
+The compactor takes more than results once the context is full: the oldest exchanges go whole, your
+message with everything that answered it, and are excluded rather than elided — a marker for each
+line of a forgotten exchange would be the exchange's length in lines saying there was something
+there. A summary at the end of the context says how many have gone. Each one is still a row here,
+`/restore` from coming back, and a <kbd>p</kbd> on a row keeps it, and the call it is paired with,
+through every pass.
 
 An assistant turn's thinking is the last way the two columns come apart, and the one a session is
 full of rather than the one it has once: most endpoints have no field for it, so the projector does

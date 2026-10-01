@@ -417,6 +417,11 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
     for (name, json, said) in [
         ("compact", r#"{ "compact": 2 }"#, "was `2`"),
         (
+            "target",
+            r#"{ "compact": 0.5, "compact-target": 0.6 }"#,
+            "at most `compact`, which is `0.5`",
+        ),
+        (
             "tools",
             r#"{ "tools": ["contxt"] }"#,
             "not one of this program's tools",

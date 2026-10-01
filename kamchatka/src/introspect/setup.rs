@@ -643,9 +643,9 @@ fn rules(kernel: &Kernel) -> String {
 
     out.push_str(&match kernel.compactor() {
         Some(compactor) => format!(
-            "\nthe compactor is `{}`. It runs when the context gets too full and moves items out \
-             of the request without being asked - it cannot take anything pinned, it says exactly \
-             what it moved{}.{}\n",
+            "\nthe compactor is `{}`. It is asked before every request, and may move items out \
+             of it without being asked - it cannot take anything pinned, it says exactly what it \
+             moved{}.{}\n",
             short(compactor.name()),
             if_offered(kernel, "context", || {
                 ", and `context` with `restore` puts any of it back".to_owned()
