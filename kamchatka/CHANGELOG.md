@@ -183,6 +183,10 @@ minor bump may break you.
 - **A link to nothing is counted as one.** `grep` and `glob` counted a dangling link, and a loop
   of links, among the paths that are not files - "a pipe, a socket, a device" - so a model was
   told about a pipe that was not there. They have a count of their own: `link(s) to nothing`.
+- **A refused `revise` says it was refused.** `context`'s `revise` of an item it may not change
+  answered with the reason alone - `[11] pinned by the person you are working with, and a pin is a
+  promise` - which a model read as a remark, and it told the person the revision had gone
+  through. It reads `refused: …` now, as a refused move does, and says nothing was revised.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

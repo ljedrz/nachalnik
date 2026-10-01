@@ -587,8 +587,11 @@ impl Changes {
         let Some(item) = kernel.item(id) else {
             return ToolOutput::error(format!("there is no context item {id}"));
         };
+        // note: said to be a refusal, as a move's is. `[11] pinned by the person ..., and a pin
+        // is a promise` on its own read as a remark about the item, and a model that got it told
+        // the person its revision had gone through
         if let Some(why) = protected(&item, &self.pinned.lock(), own_turn(kernel, &call.id)) {
-            return ToolOutput::error(format!("[{id}] {why}"));
+            return ToolOutput::error(format!("refused: [{id}] {why} - nothing was revised"));
         }
         // note: the three shapes a person's edit is refused for, refused here for the same reason:
         // text written over a picture is the picture gone, and over a turn whose calls live beside
