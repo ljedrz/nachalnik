@@ -181,6 +181,11 @@ minor bump may break you.
   went looking for a permission problem. The answer now says the path is not there, or that it is
   a link to nothing, and that nothing was searched or listed. A path rule's refusal still comes
   first, so the answer does not say whether a refused path exists.
+- **A full context listing accounts for the numbers it skips.** `context`'s `look` lists every
+  item, and the identifiers of items an `undo` took away, or that a resumed snapshot did not hold,
+  are simply absent from it - so a model reading `24, 26` could not tell whether 25 was gone or not
+  shown. Where the identifiers skip, the listing now says a missing one is no longer in the
+  context rather than left off the list; where they do not, it says nothing.
 - **A small `fs:read` limit still shows the lines that fit.** `read` kept 256 bytes back for the
   line naming which lines it shows, so under `/limit fs:read 200` there was room for nothing:
   every file came back as a header calling its first line longer than the limit, with none of the
