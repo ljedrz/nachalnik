@@ -283,6 +283,31 @@ pub(crate) fn address(url: impl Into<String>) -> String {
     url
 }
 
+/// A base URL as it may be written down: what [`ModelInfo::endpoint`](nachalnik::ModelInfo) says,
+/// which goes into every record of a session.
+///
+/// note: without whatever in it is a credential. A `user:password@` before the host, or a key in
+/// the query string, is a way some endpoints take one - and a record is a file that is kept,
+/// shared and pasted into bug reports, where an address belongs and a key does not. The scheme,
+/// the host and the path are what says where a session was talking.
+#[cfg(any(feature = "gemini", feature = "openai"))]
+pub(crate) fn recorded(url: &str) -> String {
+    let url = url.split(['?', '#']).next().unwrap_or_default();
+    let (scheme, rest) = match url.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme), rest),
+        None => (None, url),
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+
+    match scheme {
+        Some(scheme) => format!("{scheme}://{host}{path}"),
+        None => format!("{host}{path}"),
+    }
+}
+
 /// Installs the cryptography `rustls` will use, and says nothing if it is already installed.
 ///
 /// note: reqwest is built here with `rustls-no-provider`, so there is no default waiting behind
@@ -298,6 +323,31 @@ pub fn install_crypto() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An address goes into the record without the credentials some endpoints take in it.
+    #[cfg(any(feature = "gemini", feature = "openai"))]
+    #[test]
+    fn an_address_is_written_down_without_its_credentials() {
+        for (given, written) in [
+            (
+                "https://openrouter.ai/api/v1",
+                "https://openrouter.ai/api/v1",
+            ),
+            ("http://localhost:11434/v1", "http://localhost:11434/v1"),
+            (
+                "https://user:secret@proxy.example/v1",
+                "https://proxy.example/v1",
+            ),
+            (
+                "https://host.example/v1?key=secret#frag",
+                "https://host.example/v1",
+            ),
+            ("https://a@b@host.example", "https://host.example"),
+            ("localhost:8000/v1", "localhost:8000/v1"),
+        ] {
+            assert_eq!(recorded(given), written, "{given}");
+        }
+    }
 
     /// A listed name is the model under either decoration a listing puts on it, each on its own.
     ///

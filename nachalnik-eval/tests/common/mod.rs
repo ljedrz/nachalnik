@@ -104,10 +104,7 @@ impl Rulebook {
 #[async_trait]
 impl Provider for Rulebook {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            context_limit: Some(64_000),
-            ..ModelInfo::new("rulebook", "rulebook")
-        }
+        ModelInfo::new("rulebook", "rulebook").with_context_limit(64_000)
     }
 
     async fn respond(

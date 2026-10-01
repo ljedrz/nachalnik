@@ -19,11 +19,11 @@ use crate::common::{drain, names, permissive};
 #[tokio::test]
 async fn compaction_is_visible_and_reversible() {
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("thanks")]).with_info(ModelInfo {
-            context_limit: Some(1_000),
-            tool_calling: true,
-            ..ModelInfo::new("scripted", "small")
-        }),
+        ScriptedProvider::new([ModelResponse::text("thanks")]).with_info(
+            ModelInfo::new("scripted", "small")
+                .with_context_limit(1_000)
+                .with_tool_calling(true),
+        ),
     );
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(provider);
@@ -341,12 +341,8 @@ fn a_switch_in_place_is_announced_from_what_was_announced() {
 /// A kernel whose model takes a thousand tokens, answering `answers` in turn.
 fn limited(answers: usize) -> Kernel {
     let provider = Arc::new(
-        ScriptedProvider::new((0..answers).map(|_| ModelResponse::text("ok"))).with_info(
-            ModelInfo {
-                context_limit: Some(1_000),
-                ..ModelInfo::new("scripted", "small")
-            },
-        ),
+        ScriptedProvider::new((0..answers).map(|_| ModelResponse::text("ok")))
+            .with_info(ModelInfo::new("scripted", "small").with_context_limit(1_000)),
     );
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(provider);
@@ -417,10 +413,8 @@ async fn a_context_nothing_more_can_be_taken_from_is_full() {
 #[tokio::test]
 async fn the_full_notice_reaches_the_model_once_and_goes_when_there_is_room() {
     let provider = Arc::new(
-        ScriptedProvider::new((0..3).map(|_| ModelResponse::text("ok"))).with_info(ModelInfo {
-            context_limit: Some(1_000),
-            ..ModelInfo::new("scripted", "small")
-        }),
+        ScriptedProvider::new((0..3).map(|_| ModelResponse::text("ok")))
+            .with_info(ModelInfo::new("scripted", "small").with_context_limit(1_000)),
     );
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(provider.clone());

@@ -816,6 +816,24 @@ fn past_the_snapshot(snapshot: &mut nachalnik::Snapshot, path: &std::path::Path)
 /// snapshot, as one a killed run leaves does, is read to its end like everything else here. A
 /// switch to no model is `None`, and so is a record that is missing or names none.
 fn last_model(path: &std::path::Path) -> Option<String> {
+    last_talked_to(path)
+        .map(|info| info.model)
+        .filter(|model| !model.is_empty())
+}
+
+/// Where the record beside a snapshot says the session was last sending its requests, where it
+/// says.
+///
+/// note: read and said, never followed. The address is where this run's key would go, and a
+/// snapshot is a file anybody can hand somebody: `-r` on one whose record named an address of the
+/// sender's choosing would post the reader's key there. So a session resumed somewhere other than
+/// where it was is told so, and `/endpoint` is the person deciding to go back.
+pub fn last_endpoint(path: &std::path::Path) -> Option<String> {
+    last_talked_to(path).and_then(|info| info.endpoint)
+}
+
+/// The last thing the record beside a snapshot says about the model the session was talking to.
+fn last_talked_to(path: &std::path::Path) -> Option<nachalnik::ModelInfo> {
     use nachalnik::{Event, Record};
 
     let log = std::fs::read_to_string(path.with_extension("jsonl")).ok()?;
@@ -823,13 +841,12 @@ fn last_model(path: &std::path::Path) -> Option<String> {
     log.lines()
         .filter_map(|line| serde_json::from_str::<Record>(line).ok())
         .filter_map(|record| match record.event {
-            Event::ModelChanged { to, .. } => Some(to.map(|info| info.model)),
-            Event::ModelRequested { model, .. } => Some(Some(model.model)),
+            Event::ModelChanged { to, .. } => Some(to),
+            Event::ModelRequested { model, .. } => Some(Some(model)),
             _ => None,
         })
         .next_back()
         .flatten()
-        .filter(|model| !model.is_empty())
 }
 
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {

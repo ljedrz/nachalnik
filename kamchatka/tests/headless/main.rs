@@ -168,10 +168,7 @@ struct Trickle {
 #[async_trait]
 impl Provider for Trickle {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            context_limit: Some(128_000),
-            ..ModelInfo::new("trickle", "trickle")
-        }
+        ModelInfo::new("trickle", "trickle").with_context_limit(128_000)
     }
 
     async fn respond(
@@ -1065,12 +1062,8 @@ async fn a_message_that_cannot_fit_is_passed_over_until_there_is_room() {
         vec![],
         |app| {
             app.kernel.set_provider(Arc::new(
-                ScriptedProvider::new(vec![ModelResponse::text("there is room now")]).with_info(
-                    ModelInfo {
-                        context_limit: Some(400),
-                        ..ModelInfo::new("scripted", "scripted")
-                    },
-                ),
+                ScriptedProvider::new(vec![ModelResponse::text("there is room now")])
+                    .with_info(ModelInfo::new("scripted", "scripted").with_context_limit(400)),
             ));
             app.kernel
                 .push(ContextItem::file("big.rs", "x".repeat(4_000)).pinned());

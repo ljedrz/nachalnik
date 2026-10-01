@@ -38,11 +38,9 @@ impl ScriptedProvider {
     /// Creates a provider that will answer with the given responses, in order.
     pub fn new(responses: impl IntoIterator<Item = ModelResponse>) -> Self {
         Self {
-            info: ModelInfo {
-                context_limit: Some(128_000),
-                tool_calling: true,
-                ..ModelInfo::new("scripted", "scripted")
-            },
+            info: ModelInfo::new("scripted", "scripted")
+                .with_context_limit(128_000)
+                .with_tool_calling(true),
             script: Mutex::new(responses.into_iter().collect()),
             seen: Mutex::new(Vec::new()),
         }
@@ -107,11 +105,9 @@ impl TooLongProvider {
     /// Creates a provider that refuses every request as `tokens` long against a limit of `limit`.
     pub fn new(tokens: u64, limit: u64) -> Self {
         Self {
-            info: ModelInfo {
-                context_limit: Some(limit as usize),
-                tool_calling: true,
-                ..ModelInfo::new("scripted", "scripted")
-            },
+            info: ModelInfo::new("scripted", "scripted")
+                .with_context_limit(limit as usize)
+                .with_tool_calling(true),
             tokens,
             limit,
         }

@@ -416,10 +416,7 @@ struct Trickle {
 #[async_trait]
 impl Provider for Trickle {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            context_limit: Some(128_000),
-            ..ModelInfo::new("trickle", "trickle")
-        }
+        ModelInfo::new("trickle", "trickle").with_context_limit(128_000)
     }
 
     async fn respond(

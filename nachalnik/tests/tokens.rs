@@ -1038,12 +1038,8 @@ async fn a_refusal_of_something_unpriced_teaches_the_counter_nothing() {
 async fn a_request_over_the_limit_is_refused_before_it_is_sent() {
     let kernel = kernel();
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("never asked")]).with_info(
-            nachalnik::ModelInfo {
-                context_limit: Some(1_000),
-                ..nachalnik::ModelInfo::new("scripted", "scripted")
-            },
-        ),
+        ScriptedProvider::new([ModelResponse::text("never asked")])
+            .with_info(nachalnik::ModelInfo::new("scripted", "scripted").with_context_limit(1_000)),
     );
     kernel.set_provider(provider.clone());
     kernel.push(ContextItem::user("a".repeat(8_000)));
@@ -1087,10 +1083,8 @@ async fn a_request_over_the_limit_is_refused_before_it_is_sent() {
 async fn a_limit_of_nought_refuses_nothing() {
     let kernel = kernel();
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
-            context_limit: Some(0),
-            ..nachalnik::ModelInfo::new("scripted", "scripted")
-        }),
+        ScriptedProvider::new([ModelResponse::text("answered")])
+            .with_info(nachalnik::ModelInfo::new("scripted", "scripted").with_context_limit(0)),
     );
     kernel.set_provider(provider.clone());
     kernel.push(ContextItem::user("hello"));
@@ -1108,10 +1102,8 @@ async fn a_kernel_told_not_to_refuse_sends_it_anyway() {
         ..Config::default()
     });
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
-            context_limit: Some(1_000),
-            ..nachalnik::ModelInfo::new("scripted", "scripted")
-        }),
+        ScriptedProvider::new([ModelResponse::text("answered")])
+            .with_info(nachalnik::ModelInfo::new("scripted", "scripted").with_context_limit(1_000)),
     );
     kernel.set_provider(provider.clone());
     kernel.push(ContextItem::user("a".repeat(8_000)));
@@ -1136,10 +1128,9 @@ async fn a_request_that_comes_to_exactly_the_limit_is_sent() {
     // those bytes is the counter's business and this test is about the comparison
     let exactly = kernel.budget().used();
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
-            context_limit: Some(exactly),
-            ..nachalnik::ModelInfo::new("scripted", "scripted")
-        }),
+        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(
+            nachalnik::ModelInfo::new("scripted", "scripted").with_context_limit(exactly),
+        ),
     );
     kernel.set_provider(provider.clone());
 
@@ -1152,10 +1143,8 @@ async fn a_request_that_comes_to_exactly_the_limit_is_sent() {
 async fn nothing_is_refused_against_a_limit_nobody_stated() {
     let kernel = kernel();
     let provider = Arc::new(
-        ScriptedProvider::new([ModelResponse::text("answered")]).with_info(nachalnik::ModelInfo {
-            context_limit: None,
-            ..nachalnik::ModelInfo::new("scripted", "scripted")
-        }),
+        ScriptedProvider::new([ModelResponse::text("answered")])
+            .with_info(nachalnik::ModelInfo::new("scripted", "scripted").with_context_limit(None)),
     );
     kernel.set_provider(provider.clone());
     kernel.push(ContextItem::user("a".repeat(8_000)));

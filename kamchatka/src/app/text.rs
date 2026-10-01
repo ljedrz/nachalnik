@@ -159,11 +159,20 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         Event::ContextAnnotated { id, meta, .. } => {
             format!("[{id}] {}", one_line(&meta.to_string()))
         }
-        Event::ModelChanged { from, to } => format!(
-            "{} → {}",
-            from.as_ref().map(|i| i.model.as_str()).unwrap_or("none"),
-            to.as_ref().map(|i| i.model.as_str()).unwrap_or("none")
-        ),
+        Event::ModelChanged { from, to } => {
+            // the address beside each name where the two differ by it, which is the only way a
+            // switch that kept the name reads as one at all
+            let moved = from.as_ref().and_then(|i| i.endpoint.as_ref())
+                != to.as_ref().and_then(|i| i.endpoint.as_ref());
+            let named = |info: &Option<nachalnik::ModelInfo>| match info {
+                None => "none".to_owned(),
+                Some(info) => match (&info.endpoint, moved) {
+                    (Some(endpoint), true) => format!("{} at {endpoint}", info.model),
+                    _ => info.model.clone(),
+                },
+            };
+            format!("{} → {}", named(from), named(to))
+        }
         Event::ModelParamsChanged { params } => match params.is_empty() {
             true => "none; the provider's own defaults".to_owned(),
             false => one_line(&serde_json::to_string(params).unwrap_or_default()),

@@ -402,14 +402,13 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
     harness
         .app
         .kernel
-        .set_provider(Arc::new(ScriptedProvider::new([]).with_info(ModelInfo {
-            parameters: vec![
+        .set_provider(Arc::new(ScriptedProvider::new([]).with_info(
+            ModelInfo::new("scripted", "a/model").with_parameters(vec![
                 "temperature".to_owned(),
                 "top_p".to_owned(),
                 "tools".to_owned(),
-            ],
-            ..ModelInfo::new("scripted", "a/model")
-        })));
+            ]),
+        )));
 
     harness.send("/params seed 42").await;
     let screen = harness.screen();

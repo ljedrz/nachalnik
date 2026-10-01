@@ -9,6 +9,14 @@ minor bump may break you.
 
 ### added
 
+- **`ModelInfo::endpoint`: where a provider sends its requests.** A provider with an address says
+  it, and since the kernel compares a provider's whole `ModelInfo` to announce
+  `Event::ModelChanged`, a provider moved to another address under the same model name is now a
+  change in the record. Before this, the record of a session moved by address alone said it had
+  never moved. A record written before this reads as saying nothing about the address, and a
+  `ModelInfo` with none writes exactly what it wrote before.
+- **`ModelInfo::with_context_limit`, `with_max_output_tokens`, `with_tool_calling`,
+  `with_reasoning`, `with_parameters` and `with_endpoint`**, to build one from `ModelInfo::new`.
 - **A compaction report says what of the request it could not price.**
   `CompactionReport::uncounted_before` and `uncounted_after` are the other half of the two token
   totals, as `Budget::uncounted` is of the budget's, so a pass that elides a picture no longer
@@ -23,6 +31,14 @@ minor bump may break you.
   takes the item, whose words are the caller's; the kernel pushes it once per fill, before the
   next request, and excludes it as there is room again. A copy already standing - a session
   resumed while full - is recognised by what it says and not placed twice.
+
+### changed
+
+- **`ModelInfo` is `#[non_exhaustive]`.** **Breaking**: a `ModelInfo` built with a struct literal
+  outside this crate, including the `..ModelInfo::new(..)` form, no longer compiles - build it with
+  `ModelInfo::new` and the `with_` methods instead. The fields stay public to read and to set. What
+  a provider can say about itself grows with this, and it is the last time adding to it breaks
+  every implementation.
 
 ### fixed
 
