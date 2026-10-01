@@ -167,6 +167,30 @@ impl Compactor for Shedder {
             .filter(|item| item.state.is_projected())
             .flat_map(|item| item.calls().map(|call| &call.id))
             .collect();
+        // what the request carries of a turn: its words, or a call something still answers. A turn
+        // whose only call lost its result is no turn at all to the projector, which leaves it out
+        // - and the kernel will not move what the request is not carrying, so named, it is named
+        // again by every pass after, each of them crediting itself with what it never sent
+        let answered: HashSet<&ToolCallId> = items
+            .iter()
+            .filter(|item| item.state.is_projected())
+            .filter_map(|item| match &item.kind {
+                ContextKind::ToolResult { call, .. } if asked.contains(call) => Some(call),
+                _ => None,
+            })
+            .collect();
+        let carried = |item: &ContextItem| {
+            item.state.is_projected()
+                && match &item.kind {
+                    ContextKind::ToolResult { call, .. } => asked.contains(call),
+                    ContextKind::AssistantMessage { .. } => {
+                        item.state.is_elided()
+                            || item.content.as_text() != Some("")
+                            || item.calls().any(|call| answered.contains(&call.id))
+                    }
+                    _ => true,
+                }
+        };
         let sheddable = |item: &ContextItem| {
             item.state.sends_content()
                 && item.state != ContextState::Pinned
@@ -234,11 +258,23 @@ impl Compactor for Shedder {
             let target = (limit as f64 * self.target) as usize;
             // what a pin holds on to: the kernel refuses to exclude either half of a pinned call
             // and its result, so naming one would be a refusal on the screen and nothing moved
-            let pinned: HashSet<&ToolCallId> = items
+            //
+            // note: and the whole of the turn a pinned result answers, not only its own call. The
+            // turn is kept for the pin's sake, so a result of it dropped beside the pinned one
+            // leaves a call in it with no answer, which the projector then has to take out of the
+            // turn on every request from then on - the same shape `/load` keeps whole for the same
+            // reason
+            let mut pinned: HashSet<&ToolCallId> = items
                 .iter()
                 .filter(|item| item.state == ContextState::Pinned)
                 .flat_map(|item| named_calls(item))
                 .collect();
+            let turns: Vec<&ToolCallId> = items
+                .iter()
+                .filter(|item| item.calls().any(|call| pinned.contains(&call.id)))
+                .flat_map(|item| item.calls().map(|call| &call.id))
+                .collect();
+            pinned.extend(turns);
 
             // the second rule: the oldest exchanges, whole, and never the one in progress
             //
@@ -252,19 +288,28 @@ impl Compactor for Shedder {
                 }
                 let mut took = false;
                 for item in &items[exchange.start..exchange.end] {
+                    // note: and only what the request is carrying: a result whose call is out
+                    // already, or a turn with nothing left in it, is left out by the projector -
+                    // counted, it is a saving the request never sees
                     if !goes_with_its_exchange(item)
-                        || !item.state.is_projected()
+                        || !carried(item)
                         || item.state == ContextState::Pinned
                         || named_calls(item).any(|call| pinned.contains(call))
                     {
                         continue;
                     }
-                    // what it is sending now, which for anything elided - by an earlier pass, by
-                    // this one, or by somebody else - is the line standing in for it
-                    let elided = item.state.is_elided() || routine.contains(&item.id);
-                    let sending = match elided {
-                        true => marker,
-                        false => item.tokens,
+                    // what it is sending now, which for anything elided is the line standing in for
+                    // it - this pass's marker for what this pass elided, and the item's own note for
+                    // what was elided before, which may be a few words somebody wrote rather than
+                    // a sentence of this file's. Priced at this pass's marker, three of those read
+                    // as a hundred and fifty tokens freed, and a drop of short lines that freed
+                    // almost nothing passed for one worth its summary and grew the request
+                    let sending = match (item.state.is_elided(), routine.contains(&item.id)) {
+                        (_, true) => marker,
+                        (true, false) => {
+                            marker_tokens(item.note.as_deref().unwrap_or_default(), scale)
+                        }
+                        (false, false) => item.tokens,
                     };
                     used -= sending.min(used);
                     recovered += sending;
@@ -304,7 +349,10 @@ impl Compactor for Shedder {
                     if used <= limit {
                         break;
                     }
-                    if !sheddable(item) || carries_blob(&item.content) {
+                    // not one going with its exchange already, which is an unread result at the
+                    // end of an older one: nothing came after it before the next question
+                    if !sheddable(item) || carries_blob(&item.content) || remove.contains(&item.id)
+                    {
                         continue;
                     }
                     let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
@@ -341,9 +389,9 @@ impl Compactor for Shedder {
                 // elided as well
                 routine
                     .into_iter()
-                    .filter(|id| !remove.contains(id))
                     .chain(room)
                     .chain(unread.iter().copied())
+                    .filter(|id| !remove.contains(id))
                     .collect(),
                 remove,
             ),

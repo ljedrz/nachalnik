@@ -28,6 +28,7 @@ mod harness;
 mod permissions;
 mod search;
 mod session;
+mod shedding;
 mod status;
 mod trace;
 mod turns;
