@@ -589,6 +589,17 @@ impl Edit {
         let _changing = self.2.hold(&path).await;
         let before = match whole(&self.0, &path).await {
             Ok(before) => before,
+            // note: the system's `No such file or directory` is the whole of what was said, and it
+            // says neither that nothing was changed nor that an edit is the wrong operation for a
+            // file that is not there yet - which is what an edit of a missing file almost always
+            // is. Whether `write` may run is the policy's answer, not this one's
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(ToolOutput::error(format!(
+                    "{} is not there, so nothing was changed; `edit` changes a file that is \
+                     there, and `write` makes a new one",
+                    path.display()
+                )));
+            }
             Err(e) => return Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         };
         // note: the argument asks for enough of the surrounding lines to name one place, and this

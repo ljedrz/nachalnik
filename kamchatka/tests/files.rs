@@ -1000,6 +1000,27 @@ async fn a_write_into_a_missing_directory_names_it() {
     assert!(!dir.join("src").exists());
 }
 
+/// An edit of a file that is not there says nothing was changed and what makes a new one.
+///
+/// note: the system's `No such file or directory` was the whole answer, and it names neither.
+#[tokio::test]
+async fn an_edit_of_a_missing_file_names_write() {
+    let dir = scratch("files-edit-missing");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "missing.py", "old": "a", "new": "b" }),
+    )
+    .await;
+    assert!(
+        said.contains("is not there, so nothing was changed"),
+        "{said}"
+    );
+    assert!(said.contains("`write` makes a new one"), "{said}");
+    assert!(!dir.join("missing.py").exists());
+}
+
 /// A path ending in a separator, where `shell` is refused, is not answered with a `mkdir` to run.
 ///
 /// note: the same stance the missing-directory answer reads, so a model is not sent to a tool the
