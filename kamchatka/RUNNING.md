@@ -367,7 +367,8 @@ machine is two addresses. A comparison that cannot see the address is a comparis
 
 Every session is written down as it goes, and the last thing printed is where: a record of its
 events and a snapshot of its context, both in a `kamchatka` directory under the system's temporary
-one, and the `kamchatka -r` line that carries on from the snapshot. Each event is appended to the
+one, and the `kamchatka -r` line that carries on from the snapshot. Only the lines naming the jobs
+it stopped on the way out come after it, since stopping them is the one step that waits. Each event is appended to the
 record the moment it happens, and the snapshot is rewritten whenever the session comes to rest
 and when a turn begins — so a `kill -9`, an out-of-memory kill or a pulled plug leaves the record
 complete to the last event, and a snapshot of where things stood before the turn that was cut
