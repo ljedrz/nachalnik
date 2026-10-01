@@ -26,6 +26,8 @@ minor bump may break you.
   token - ollama while it loads a model - was then asked, and billed, four times. It now follows
   the whole answer's rule: only a request that never made its connection is sent again, and one
   that was taken and went quiet is given up on after one try's wait.
+- **`Endpoint::host` leaves out a `user:password@`.** It left out a query string so that a key
+  passed in one was not drawn on a status line, and drew a key passed before the host.
 
 ## [0.6.3] - 2026-09-29
 

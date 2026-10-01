@@ -189,6 +189,10 @@ minor bump may break you.
   URL. `KAMCHATKA_BASE_URL` and `/endpoint` both refuse one, and say why.
 - **`/endpoint` names the address the requests go to,** without the trailing `/` a copied address
   carries and the provider trims.
+- **An address is said without the `user:password@` in it.** `/model`, `/endpoint`, `/seams` and
+  the status line said a base URL as it was set, credential and all, to the screen, down a pipe and
+  to every client of a served session, where the record already wrote it down without one. The
+  requests still carry it.
 - **Two calls streaming at once are two lines.** Under `--parallel`, a tool's output was appended
   to whichever line of the transcript was open, so two running calls interleaved fragment by
   fragment on one line, and the first to finish took the other's output away with its own while

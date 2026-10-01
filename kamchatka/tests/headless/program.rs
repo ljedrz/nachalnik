@@ -2186,6 +2186,46 @@ async fn an_endpoint_switch_that_keeps_the_name_is_in_the_record() {
     );
 }
 
+/// An address with a `user:password@` in it is said without one, as the record writes it: by
+/// `/model`, `/endpoint` and `/seams`, where every line goes to a pipe somebody keeps.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_address_is_said_without_the_credential_in_it() {
+    let dir = common::scratch("endpoint-credential");
+    let with = |url: &str| url.replacen("://", "://someone:hunter2@", 1);
+    let first = common::endpoint(Vec::new()).await;
+    let second = common::endpoint(Vec::new()).await;
+    let out = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "--deadline",
+            "20",
+            "-m",
+            "nothing",
+        ])
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", with(&first))
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            child.stdin.take().expect("a pipe").write_all(
+                format!("/model\n/endpoint {}\n/endpoint\n/seams\n", with(&second)).as_bytes(),
+            )?;
+            child.wait_with_output()
+        })
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+
+    assert!(said.contains(&format!("nothing at {first}")), "{said}");
+    assert!(said.contains(&format!("requests go to {second}")), "{said}");
+    assert!(!said.contains("hunter2"), "{said}");
+}
+
 /// `-r` pointed somewhere other than the record says it was talking says so, and goes where it was
 /// pointed.
 ///

@@ -428,6 +428,7 @@ fn the_address_on_the_status_line_is_the_host() {
         ("localhost:8080/v1", "localhost:8080"),
         ("https://example.com?key=secret", "example.com"),
         ("https://example.com#v1", "example.com"),
+        ("https://user:secret@example.com/v1", "example.com"),
         ("", ""),
         ("https://", "https://"),
     ];
