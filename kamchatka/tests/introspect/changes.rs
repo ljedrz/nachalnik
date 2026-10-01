@@ -2164,3 +2164,24 @@ async fn an_action_that_is_not_a_string_is_not_called_missing() {
     assert!(!said[0].contains("required"), "{}", said[0]);
     assert!(said[1].contains("is required"), "{}", said[1]);
 }
+
+/// A revision of an item the person pinned is refused, and says that nothing was revised.
+///
+/// note: the reason alone - `pinned by the person you are working with, and a pin is a promise` -
+/// read to a model as a remark about the item, and it told the person the revision had landed.
+#[tokio::test]
+async fn a_revision_of_the_persons_pin_says_nothing_was_revised() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "revise", "ids": [1], "content": "the model's", "reason": "shorter" }),
+    )]));
+    let note = kernel.push(ContextItem::memory("a note", "the person's").pinned());
+    kernel.push(ContextItem::user("shorten it"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("refused: [1] pinned by the person"), "{said}");
+    assert!(said.contains("nothing was revised"), "{said}");
+    assert_eq!(kernel.item(note).unwrap().content.to_text(), "the person's");
+}
