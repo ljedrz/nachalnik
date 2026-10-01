@@ -247,3 +247,20 @@ Referenced from [AGENTS.md](AGENTS.md).
   setup - the bounded history cannot be read from outside, and an undo followed by a redo is two
   records for nothing - so what would unblock it is a kernel operation that starts the undo
   history afresh, which is a core addition for a client's sake.
+
+- **An output limit that does not know the window.** A call's output is cut at a fixed number of
+  bytes - 32,000 for `fs:read` - whatever the model's context, and the compactor never takes the
+  turn in progress. Against a 14,000-token window one read is over 8,000 tokens: a turn of two
+  reads fills the context past where the full notice leaves any room, the model's next call
+  takes it over the limit, the request is refused, and a headless run passes every message
+  after it over. Either half would settle it, and both change what the program does: limits that
+  scale to a share of the window, or the compactor taking what the model has already been shown
+  in this turn once the request would otherwise be refused.
+
+- **`context`'s `revise` reaches the person's own messages.** What it refuses is a system
+  instruction, the person's pins and the turn it is speaking in, so a message the person typed
+  can be rewritten: a model that meant to revise its note and gave the id of the message asking
+  for it replaced that message with the note's text. Nothing is lost - `context.replaced` keeps
+  the old words and an undo brings them back - but every later request reads the person as having
+  said something they did not. Refusing it is one more case in `protected`; whether the model may
+  tidy the person's words at all is the decision.
