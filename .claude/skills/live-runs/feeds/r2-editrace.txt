@@ -1,0 +1,4 @@
+Read inventory/store.py and tell me the exact first line.
+Now edit inventory/store.py: replace the text `qty: int = 0` with `qty: int = 1`. Quote the tool's result verbatim.
+Now edit inventory/store.py again replacing `qty: int = 0` with `qty: int = 2`. Quote the tool's result verbatim - did it find the old text?
+Read inventory/store.py again and quote the line with qty verbatim.

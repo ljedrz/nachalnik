@@ -1,0 +1,5 @@
+Use fs to write a file named b.txt with the content `second`.
+Now use fs to write b.txt again with the content `third` (it already exists). Quote the result verbatim - did it warn that the file existed?
+Read b.txt and quote its content verbatim.
+Use fs write with path `inventory/store.py` and content `overwritten` - a file that already exists and is pinned by nobody. Quote the result verbatim.
+Read inventory/store.py and quote its first line.

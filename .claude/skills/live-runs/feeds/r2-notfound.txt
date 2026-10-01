@@ -1,0 +1,4 @@
+Use fs grep to search for the pattern `TODO` in path `does-not-exist-dir`. Quote the result verbatim.
+Use fs glob with pattern `**/*.rs` in this Python project. Quote the result verbatim.
+Use fs read on a path that is an absolute path outside the workspace: `/etc/hostname`. Quote the result verbatim.
+Use fs read on path `../../../etc/passwd`. Quote the result verbatim.

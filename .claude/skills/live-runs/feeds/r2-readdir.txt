@@ -1,0 +1,3 @@
+Use fs read with path `inventory` (a directory, not a file). Quote the result verbatim.
+Use fs read with path `.` - the current directory. Quote the result verbatim.
+Use fs edit on path `inventory` (a directory) replacing `x` with `y`. Quote the result verbatim.
