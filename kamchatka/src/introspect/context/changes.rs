@@ -3,10 +3,11 @@
 
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use nachalnik::{
-    Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall, ToolCallId,
-    ToolOutput,
+    Capability, Content, ContextId, ContextItem, ContextKind, ContextState, Kernel, ToolCall,
+    ToolCallId, ToolOutput,
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
@@ -14,7 +15,7 @@ use serde_json::{Value, json};
 use crate::{
     app::text::{beyond_a_prompt, thousands},
     introspect::{ids, named, protected, unknown},
-    tools::yes_or_no,
+    tools::{Careful, yes_or_no},
 };
 
 use super::{CHANGES, Pinned};
@@ -43,6 +44,8 @@ const WALK: u64 = 64;
 /// being the ones it made.
 pub(super) struct Changes {
     pinned: Pinned,
+    /// What its answers may send the model to; see `introspect::if_reachable`.
+    policy: Arc<Careful>,
     journal: Mutex<Journal>,
     /// Held for the whole of one operation; see [`Changes::make`].
     one_at_a_time: Mutex<()>,
@@ -58,9 +61,10 @@ impl Changes {
     /// note: the pinned set *is* handed in, because it is shared with the half that reports it:
     /// what was pinned here is what `budget` says the model may unpin, and a second set would
     /// have the two disagreeing about a promise.
-    pub(super) fn new(pinned: Pinned) -> Self {
+    pub(super) fn new(pinned: Pinned, policy: Arc<Careful>) -> Self {
         Self {
             pinned,
+            policy,
             journal: Mutex::new(Journal::default()),
             one_at_a_time: Mutex::new(()),
         }
@@ -401,8 +405,10 @@ impl Changes {
             // better selector and trying again with the same one
             return ToolOutput::error(match selected {
                 Some(input) => format!(
-                    "`{input}` is a selector, and nothing in your context matches it; \
-                     `context` with `look` lists what there is.{}",
+                    "`{input}` is a selector, and nothing in your context matches it.{}{}",
+                    crate::introspect::if_reachable(kernel, &self.policy, "context:look", || {
+                        " `context` with `look` lists what there is.".to_owned()
+                    }),
                     crate::introspect::unmatched_file(kernel, input)
                 ),
                 // the mistake a model actually makes: `label` is in this schema, for naming a
@@ -521,17 +527,33 @@ impl Changes {
                 out.push_str(
                     "you have no notes: nothing you are carrying says what those items said.\n",
                 );
-                // note: said outright rather than through `if_offered`, because the tool naming
-                // `search` is the tool that has it
-                out.push_str(
-                    "The text is still in them - `search` reads a line of one without putting it \
-                     back, and `restore` returns the whole - but a finding you have to go and look \
-                     for again is not one you have.\n",
-                );
-                out.push_str(
-                    "`note` writes a finding down in an item of its own, which this move does not \
-                     touch.\n",
-                );
+                // note: through the policy even here, where the tool naming `search` is the tool
+                // that has it: a rule may be about one of its operations and not the others
+                let ways = self.policy.ways(&[
+                    (
+                        Capability::parse("context:search").expect("a capability"),
+                        "`search` reads a line of one without putting it back",
+                    ),
+                    (
+                        Capability::parse("context:restore").expect("a capability"),
+                        "`restore` returns the whole",
+                    ),
+                ]);
+                out.push_str(&format!(
+                    "The text is still in them{} - but a finding you have to go and look for \
+                     again is not one you have.\n",
+                    ways.map(|ways| format!(" - {ways}")).unwrap_or_default()
+                ));
+                out.push_str(&crate::introspect::if_reachable(
+                    kernel,
+                    &self.policy,
+                    "context:note",
+                    || {
+                        "`note` writes a finding down in an item of its own, which this move does \
+                         not touch.\n"
+                            .to_owned()
+                    },
+                ));
             }
         }
         for refusal in &refused {

@@ -251,7 +251,7 @@ impl Context {
         let ops = ops();
         let pinned = Pinned::default();
         Self {
-            changes: Changes::new(pinned.clone()),
+            changes: Changes::new(pinned.clone(), reach.1.clone()),
             reach,
             pinned,
             limits,
@@ -337,6 +337,7 @@ impl Tool for Context {
                         &named.ids,
                         &self.pinned.lock(),
                         own_turn(&kernel, &call.id),
+                        self.reach.policy(),
                     ),
                     None => look(
                         &kernel,
@@ -344,6 +345,7 @@ impl Tool for Context {
                         whole,
                         own_turn(&kernel, &call.id),
                         &self.pinned.lock(),
+                        self.reach.policy(),
                     ),
                 }))
             }
@@ -452,6 +454,12 @@ mod tests {
     }
 
     fn tool() -> Context {
-        Context::new(Reach(std::sync::Weak::new()), Limits::default())
+        Context::new(
+            Reach(
+                std::sync::Weak::new(),
+                Arc::new(crate::tools::Careful::new()),
+            ),
+            Limits::default(),
+        )
     }
 }

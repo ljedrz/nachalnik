@@ -21,7 +21,7 @@
 
 use std::{io::Write, time::Duration};
 
-use nachalnik::{Delta, Event, Grant, Kernel};
+use nachalnik::{Delta, Event, Grant, Kernel, Verdict};
 use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt},
     sync::{broadcast, mpsc},
@@ -196,6 +196,13 @@ impl<'a> Headless<'a> {
         // same `/help` the program does. See `App::keys`
         app.keys = false;
         self.stopped = None;
+        // what a question comes to here, so that nothing sends the model to a tool every call to
+        // which would be refused for want of somebody to ask; see `Careful::reachable`
+        app.policy.unanswered(Some(match self.on_ask {
+            Grant::Allow => Verdict::Allow,
+            Grant::Deny => Verdict::Deny,
+        }));
+        app.refresh_full_notice();
 
         let mut lines = Typed::new(input);
         let mut reading = true;

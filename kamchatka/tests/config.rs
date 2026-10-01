@@ -1656,6 +1656,61 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
     );
 }
 
+/// The notice follows what the model could use now, not what it started with: a `context` turned
+/// off mid-session, or one a headless run would refuse every call to for want of somebody to ask,
+/// is not where it is sent - and a copy of the notice standing in the context is reworded with it.
+///
+/// note: a notice fixed at startup sent a model that had had `context` toggled away to `look`
+/// with it, and the model named a tool that does not exist.
+#[tokio::test]
+async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
+    use std::sync::Arc;
+
+    use kamchatka::wiring::Setup;
+    use nachalnik::Verdict;
+    use nachalnik_providers::OpenAiCompatible;
+
+    let mut app = Setup::default()
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed")
+        .app;
+    let notice = |app: &kamchatka::app::App| {
+        app.kernel
+            .full_notice()
+            .expect("a notice with the compactor")
+            .content
+            .to_string()
+    };
+    assert!(notice(&app).contains("`context` tool"));
+    // as the kernel places it when the context fills
+    let standing = app.kernel.push(app.kernel.full_notice().expect("a notice"));
+
+    app.toggle("context");
+    let now = notice(&app);
+    assert!(!now.contains("`context`"), "{now}");
+    assert_eq!(
+        app.kernel
+            .item(standing)
+            .expect("still there")
+            .content
+            .to_string(),
+        now,
+        "the copy standing in the context says what the notice says now"
+    );
+
+    app.toggle("context");
+    assert!(notice(&app).contains("`context` tool"));
+
+    // and a headless run with nobody to ask, which refuses every `context` call nobody allowed
+    app.policy.unanswered(Some(Verdict::Deny));
+    app.refresh_full_notice();
+    assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
+}
+
 /// `--compact-target` reaches the session, at most `--compact` and derived from it when left out.
 ///
 /// note: through `Args` rather than through the program, because what the target does is only on

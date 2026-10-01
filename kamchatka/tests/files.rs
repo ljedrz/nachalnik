@@ -1111,7 +1111,7 @@ async fn a_path_ending_in_a_separator_with_no_shell_offers_no_mkdir() {
     assert!(said.contains("ends in a separator"), "{said}");
     assert!(said.contains("`trail`"), "{said}");
     assert!(!said.contains("mkdir"), "{said}");
-    assert!(said.contains("is refused in this session"), "{said}");
+    assert!(said.contains("is not available in this session"), "{said}");
 }
 
 /// And the other half of that answer, where `shell` is refused, reads as one sentence.
@@ -1149,7 +1149,7 @@ async fn a_write_into_a_missing_directory_with_no_shell_is_one_sentence() {
         .to_text()
         .into_owned();
 
-    assert!(said.contains("is refused in this session"), "{said}");
+    assert!(said.contains("is not available in this session"), "{said}");
     assert!(
         said.contains("so write it in a directory that is there"),
         "{said}"
@@ -1157,5 +1157,62 @@ async fn a_write_into_a_missing_directory_with_no_shell_is_one_sentence() {
     assert!(
         !said.contains("  "),
         "a message the model reads once carried a run of spaces: {said:?}"
+    );
+}
+
+/// `fs` sends the model to `shell`, or to an operation of its own, only where it could use it now:
+/// not with `shell` turned off, and not where nobody is there to answer the question a call to it
+/// would be.
+#[tokio::test]
+async fn fs_sends_the_model_only_where_it_could_go() {
+    use kamchatka::tools::Careful;
+    use nachalnik::Verdict;
+
+    let dir = scratch("files-reachable");
+    std::fs::write(dir.join("latin.txt"), b"caf\xe9\n").expect("written");
+    let policy = std::sync::Arc::new(Careful::new());
+    let tools = common::builtin_under(&dir, true, Limits::default(), policy.clone());
+    for tool in &tools {
+        policy.offers(tool.spec());
+    }
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let ask = |args: serde_json::Value| async {
+        fs.invoke(&call("c1", "fs", args), OutputSink::disconnected())
+            .await
+            .expect("the tool answers the call either way")
+            .content
+            .to_text()
+            .into_owned()
+    };
+    let edit = json!({ "action": "edit", "path": "notes/todo.md", "old": "a", "new": "b" });
+    let text = json!({ "action": "read", "path": "latin.txt" });
+
+    let said = ask(edit.clone()).await;
+    assert!(said.contains("mkdir"), "with `shell` on offer: {said}");
+    let said = ask(text.clone()).await;
+    assert!(said.contains("`shell` can read it as bytes"), "{said}");
+
+    policy.withdraw("shell", true);
+    let said = ask(edit.clone()).await;
+    assert!(
+        !said.contains("mkdir") && !said.contains("Make it"),
+        "{said}"
+    );
+    let said = ask(text.clone()).await;
+    assert!(!said.contains("`shell`"), "{said}");
+    assert!(said.contains("`grep` searches a file"), "{said}");
+    policy.withdraw("shell", false);
+
+    // a headless run that answers nobody's questions refuses every call nothing allowed
+    policy.unanswered(Some(Verdict::Deny));
+    let said = ask(edit).await;
+    assert!(!said.contains("`write`"), "{said}");
+    let said = ask(text).await;
+    assert!(
+        !said.contains("`shell`") && !said.contains("`grep`"),
+        "{said}"
     );
 }

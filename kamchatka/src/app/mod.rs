@@ -1394,14 +1394,49 @@ impl App {
     /// rules it was under before - which is the answer a person who turned it off for one turn
     /// wants, and a thing to know before turning one off as a way of stopping it.
     pub fn toggle(&mut self, id: &str) -> Option<bool> {
-        if let Some(tool) = self.kernel.remove_tool(id) {
-            self.shelved.insert(id.to_owned(), tool);
-            return Some(false);
+        let offered = match self.kernel.remove_tool(id) {
+            Some(tool) => {
+                self.shelved.insert(id.to_owned(), tool);
+                false
+            }
+            None => {
+                self.kernel.add_tool(self.shelved.remove(id)?);
+                true
+            }
+        };
+        self.policy.withdraw(id, !offered);
+        self.refresh_full_notice();
+
+        Some(offered)
+    }
+
+    /// Words the notice the model is told the context is full with for what it could use to make
+    /// room now, and rewrites a copy of it standing in the context to match.
+    ///
+    /// note: called wherever that can change - a tool toggled, a rule set, a headless run saying
+    /// what a question nobody answers comes to. The standing copy is replaced where it stands
+    /// rather than left: the kernel knows a notice it placed by what it says, so a copy in the old
+    /// words would be one it never took out again, and would go on sending the model to a tool it
+    /// no longer has. A session given no notice is given none here.
+    pub fn refresh_full_notice(&self) {
+        let Some(standing) = self.kernel.full_notice() else {
+            return;
+        };
+        let wanted = crate::wiring::full_notice(&self.kernel, &self.policy);
+        if wanted.content == standing.content {
+            return;
         }
-
-        self.kernel.add_tool(self.shelved.remove(id)?);
-
-        Some(true)
+        for item in self.kernel.items() {
+            if item.kind == standing.kind
+                && item.source == standing.source
+                && item.label == standing.label
+                && item.content == standing.content
+                && item.state.sends_content()
+            {
+                let _ = self.kernel.replace(item.id, wanted.content.clone());
+            }
+        }
+        self.kernel.set_full_notice(Some(wanted));
     }
 
     /// Whether the loop driving this session should let go of it.
@@ -1784,6 +1819,7 @@ impl App {
         let subject = Subject::Capability(Capability::net("reach"));
         if remember {
             self.policy.set(&subject, Verdict::Allow);
+            self.refresh_full_notice();
             for waiting in self.policy.reaching().waiting() {
                 let _ = self.policy.reaching().answer(waiting.id, true);
             }

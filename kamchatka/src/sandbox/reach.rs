@@ -6,9 +6,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nachalnik::{Capability, Verdict};
+use nachalnik::Capability;
 
-use crate::tools::{Careful, Subject};
+use crate::tools::Careful;
 
 use super::{SYSTEM, resolve, writes};
 
@@ -47,10 +47,10 @@ pub enum Access {
     Writing,
 }
 
-/// Whether `policy` lets `shell` run at all, which is what decides whether a refusal from `fs` may
-/// send a model to it.
+/// Whether a refusal from `fs` may send a model to `shell`: it is offered, and may run; see
+/// [`Careful::reachable`].
 fn runs(policy: &Careful) -> bool {
-    policy.stance(&Subject::Capability(Capability::exec("run"))) != Verdict::Deny
+    policy.reachable(&Capability::exec("run"))
 }
 
 impl Reach {
@@ -269,8 +269,28 @@ impl Reach {
     /// from; the open does not block either, whatever is there by then, and what it opened is
     /// looked at again before anything reads it.
     pub fn open(&self, path: &Path, doing: Access) -> std::io::Result<std::fs::File> {
+        self.opened(path, doing, None)
+    }
+
+    /// [`Reach::open`], for a tool whose refusal of what is not a file may name where else to go -
+    /// as far as `policy` says the model could go there.
+    pub(crate) fn open_for(
+        &self,
+        path: &Path,
+        doing: Access,
+        policy: &Careful,
+    ) -> std::io::Result<std::fs::File> {
+        self.opened(path, doing, Some(policy))
+    }
+
+    fn opened(
+        &self,
+        path: &Path,
+        doing: Access,
+        policy: Option<&Careful>,
+    ) -> std::io::Result<std::fs::File> {
         if std::fs::metadata(path).is_ok_and(|meta| !meta.is_file()) {
-            return Err(irregular(doing));
+            return Err(irregular(doing, policy));
         }
 
         let mut options = std::fs::OpenOptions::new();
@@ -292,7 +312,7 @@ impl Reach {
 
         match opened.metadata()?.is_file() {
             true => Ok(opened),
-            false => Err(irregular(doing)),
+            false => Err(irregular(doing, policy)),
         }
     }
 
@@ -412,15 +432,28 @@ impl Reach {
 ///
 /// note: a directory is not one refusal whichever way it was asked for. Read, it is a list of
 /// paths, which is what `glob` answers - and `shell` reads one that is meant to be read, a line
-/// in the middle of a log. Written, it is the only thing a `write` is never for, and the name of
-/// it is what a caller needs; `shell`, which can make a directory, is no part of that answer.
-fn irregular(doing: Access) -> std::io::Error {
+/// in the middle of a log - each named where `policy` says the model could use it, and neither
+/// where there is no policy to ask. Written, it is the only thing a `write` is never for, and the
+/// name of it is what a caller needs; `shell`, which can make a directory, is no part of that
+/// answer.
+fn irregular(doing: Access, policy: Option<&Careful>) -> std::io::Error {
     let reading = match doing {
-        Access::Reading => {
-            "; `glob` lists what a directory holds, and `shell` can read one that is meant to be \
-             read"
-        }
-        Access::Writing => ", so nothing was written; `fs` makes no directories",
+        Access::Reading => policy
+            .and_then(|policy| {
+                policy.ways(&[
+                    (
+                        Capability::fs("glob"),
+                        "`glob` lists what a directory holds",
+                    ),
+                    (
+                        Capability::exec("run"),
+                        "`shell` can read one that is meant to be read",
+                    ),
+                ])
+            })
+            .map(|ways| format!("; {ways}"))
+            .unwrap_or_default(),
+        Access::Writing => ", so nothing was written; `fs` makes no directories".to_owned(),
     };
     std::io::Error::new(
         std::io::ErrorKind::InvalidInput,

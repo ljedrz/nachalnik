@@ -757,3 +757,40 @@ fn a_rule_is_about_its_name_exactly() {
     assert!(path_matches(r"a\b", r"x/a\b"));
     assert!(path_matches("../", "../outside"));
 }
+
+/// What may be suggested to the model is what it could use now: a tool on offer that declares it,
+/// and a call nothing would refuse - a rule, or a question with nobody there to answer it.
+///
+/// note: the question every sentence sending a model to a tool asks first. A model sent to a tool
+/// that is off named one that does not exist, and one sent to a tool a headless run refuses every
+/// call to spends a request on being refused.
+#[test]
+fn a_capability_is_reachable_only_where_the_model_could_use_it() {
+    let run = nachalnik::Capability::exec("run");
+    let policy = Careful::new();
+    assert!(
+        policy.reachable(&run),
+        "told nothing of what is offered, it goes by its rules alone"
+    );
+
+    policy.offers(nachalnik::ToolSpec::new("shell", "runs").with_capabilities([run.clone()]));
+    policy.offers(nachalnik::ToolSpec::new("fs", "files"));
+    assert!(policy.reachable(&run), "asked about, with somebody to ask");
+
+    policy.withdraw("shell", true);
+    assert!(!policy.reachable(&run), "off");
+    policy.withdraw("shell", false);
+    assert!(policy.reachable(&run), "and back");
+
+    policy.unanswered(Some(Verdict::Deny));
+    assert!(!policy.reachable(&run), "asked about, with nobody to ask");
+    policy.set(&Subject::Capability(run.clone()), Verdict::Allow);
+    assert!(policy.reachable(&run), "allowed, so nobody has to be asked");
+    policy.unanswered(None);
+
+    policy.set(&Subject::Domain(nachalnik::Domain::Exec), Verdict::Deny);
+    assert!(
+        !policy.reachable(&run),
+        "refused, whatever the operation's own rule"
+    );
+}
