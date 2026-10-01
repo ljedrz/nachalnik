@@ -175,7 +175,9 @@ impl Compactor for Shedder {
             .iter()
             .filter(|item| item.state.is_projected())
             .filter_map(|item| match &item.kind {
-                ContextKind::ToolResult { call, .. } if asked.contains(call) => Some(call),
+                // whether its call is asked is not asked here: `answered` is only read for turns that
+                // are being sent, and a call in one of those is asked by definition
+                ContextKind::ToolResult { call, .. } => Some(call),
                 _ => None,
             })
             .collect();
@@ -582,17 +584,22 @@ fn summary(
     said.join(" ")
 }
 
-/// How many tokens the counter active here gives four bytes, taken from the tool results in hand.
+/// How many tokens the counter active here gives four bytes, taken from the items in hand.
 ///
 /// note: a [`Calibrating`](nachalnik::Calibrating) counter learns from what providers charge and
 /// is routinely above `1.0`, so a marker priced at a plain four bytes a token comes out under what
 /// it really costs. A result smaller than its own replacement then reads as worth eliding, and the
 /// pass reports tokens recovered while the request grows.
 ///
-/// note: the tool results, because a tool result is the one kind whose figure is its content and
-/// nothing else - an assistant turn counts its calls and its thinking on top, so including one
-/// would read that overhead as a bigger ratio. A result carrying a picture is left out for the
-/// reason it is everywhere else in this file: the counter prices a blob at nothing.
+/// note: every kind but the assistant's turns, because those are the one kind whose figure is more
+/// than its content - a turn counts its calls and its thinking on top, so including one would read
+/// that overhead as a bigger ratio. Anything carrying a picture is left out for the reason it is
+/// everywhere else in this file: the counter prices a blob at nothing.
+///
+/// note: not the tool results alone, which is what this read once. A conversation that has
+/// mostly talked has none, so the scale fell back to `1.0` under a counter reading forty percent
+/// high, and the summary a drop leaves was priced at the plain estimate - an exchange worth twice
+/// that went for a sentence that cost more than half of it.
 ///
 /// note: not the budget. Its `context_tokens` is what the *projection* costs, which carries every
 /// label and bracket the projector adds and cannot be divided by a byte count this does not have.
@@ -604,7 +611,8 @@ fn scale(items: &[Arc<ContextItem>]) -> f64 {
     let (counted, bytes) = items
         .iter()
         .filter(|item| {
-            matches!(item.kind, ContextKind::ToolResult { .. }) && !carries_blob(&item.content)
+            !matches!(item.kind, ContextKind::AssistantMessage { .. })
+                && !carries_blob(&item.content)
         })
         .fold((0, 0), |(counted, bytes), item| {
             (

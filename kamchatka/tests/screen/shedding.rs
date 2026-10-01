@@ -775,6 +775,8 @@ async fn an_unread_result_in_an_older_exchange_goes_with_it_once() {
         .expect("over the limit");
     assert!(plan.remove.contains(&unread));
     assert!(!plan.elide.contains(&unread), "{plan:?}");
+    // and the question past the limit is the person's, which no rule takes
+    assert!(plan.elide.is_empty(), "{:?}", plan.elide);
 }
 
 /// What somebody else elided is priced at the marker it really is: a few words of theirs, not a
@@ -1697,4 +1699,246 @@ fn any_pass_over_any_context_keeps_the_rules() {
             && reached.around_a_pin > 0,
         "a kind of pass was never made: {reached:?}"
     );
+}
+
+// ----------------------------------------------------------- what mutation testing asked for
+
+/// The marker of a pass made for room says how full the context was, as a share of the limit.
+#[tokio::test]
+async fn a_marker_made_for_room_says_how_full_the_context_was() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    exchange(kernel, "a", &words(8_000), &[]);
+    exchange(kernel, "b", &words(8_000), &[]);
+    let limit = filled_to(kernel, 0.95);
+    let budget = against(kernel, Some(limit));
+    let share = (budget.context_tokens as f64 / limit as f64 * 100.0).round() as usize;
+    assert!((80..=100).contains(&share), "the setup is off: {share}%");
+
+    let plan = Shedder::under(0.8)
+        .plan(&kernel.items(), &budget)
+        .await
+        .expect("over the threshold");
+    assert!(
+        plan.reason.contains(&format!(
+            "the context had reached {share}% of the {limit}-token limit"
+        )),
+        "{}",
+        plan.reason
+    );
+}
+
+/// A full context that the first rule alone brings back under the threshold has no exchange
+/// dropped, and its marker still says why the pass was made.
+///
+/// note: what the first rule frees counts toward the room the second is looking for. Counted the
+/// other way, an old exchange went for the room an old result had already made.
+#[tokio::test]
+async fn what_the_first_rule_frees_counts_toward_the_room() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let first = exchange(kernel, "a", &words(400), &["x".repeat(16_000)]);
+    exchange(kernel, "b", "and now?", &[]);
+    let limit = filled_to(kernel, 0.9);
+    let trim = Shedder::under(0.8);
+    assert!(trim.wants_room(&against(kernel, Some(limit))));
+
+    let plan = planned(&trim, kernel, Some(limit))
+        .await
+        .expect("a finished turn's result");
+    assert_eq!(plan.elide, first.results);
+    assert!(plan.remove.is_empty(), "{:?}", plan.remove);
+    assert!(plan.summary.is_none());
+    assert!(
+        plan.reason.contains("the context had reached"),
+        "{}",
+        plan.reason
+    );
+}
+
+/// The last resort takes as many unread results as the request needs to fit, oldest first, and
+/// never the person's own words.
+#[tokio::test]
+async fn the_last_resort_takes_what_it_needs_and_never_the_question() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let asked = kernel.push(ContextItem::user(words(2_000)));
+    let calls: Vec<_> = (0..3)
+        .map(|n| call(&format!("c{n}"), "read", json!({ "n": n })))
+        .collect();
+    kernel.push(ContextItem::assistant(Content::text(""), calls.clone()));
+    let results: Vec<_> = calls
+        .iter()
+        .map(|asked| {
+            kernel.push(ContextItem::tool_result(
+                asked.id.clone(),
+                "read",
+                "x".repeat(8_000),
+                false,
+            ))
+        })
+        .collect();
+
+    // three results of 2,000 tokens and a question of 500, against 3,500: two have to go
+    let plan = planned(&Shedder::under(0.8), kernel, Some(3_500))
+        .await
+        .expect("over the limit");
+    assert_eq!(plan.elide, results[..2].to_vec());
+    assert!(!plan.elide.contains(&asked));
+}
+
+/// A counter's own correction is what a marker and a summary are priced on.
+///
+/// note: a counter that has learned to read a third above the plain estimate prices a short result
+/// a third higher, and the marker that would replace it as well. Priced on the plain scale, the
+/// marker read as cheaper than the result and the result went for a line that cost more.
+#[tokio::test]
+async fn a_marker_is_priced_on_the_counters_own_scale() {
+    use nachalnik::{BytesPerToken, Calibrating, Calibration};
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+    kernel.recalibrate(Calibration {
+        scale: 1.4,
+        observations: 3,
+        estimated: 1_000,
+        reported: 1_400,
+    });
+
+    // a picture among the results, which the scale must not be taken from: it is priced at
+    // nothing and is a great many bytes
+    let shot = call("shot", "screenshot", json!({}));
+    kernel.push(ContextItem::user("look"));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![shot.clone()],
+    ));
+    kernel.push(ContextItem::tool_result(
+        shot.id.clone(),
+        "screenshot",
+        Content::blob("image/png", "A".repeat(60_000)),
+        false,
+    ));
+    // a result worth a little more than a marker on the plain scale and less than one on this
+    let short = exchange(kernel, "a", "read the short one", &["x".repeat(190)]);
+    let long = exchange(kernel, "b", "read the long one", &["x".repeat(800)]);
+    kernel.push(ContextItem::user("and now?"));
+
+    let plan = planned(&Shedder::under(0.8), kernel, Some(1_000_000))
+        .await
+        .expect("finished turns");
+    assert!(!plan.elide.contains(&short.results[0]), "{:?}", plan.elide);
+    assert!(plan.elide.contains(&long.results[0]), "{:?}", plan.elide);
+}
+
+/// The summary a drop leaves is priced on the counter's own scale too, so an exchange worth less
+/// than twice what its summary really costs is not dropped for it.
+///
+/// note: the smallest exchange that does go is found rather than written down, and then the one
+/// just smaller is held to the line: worth twice the summary on the plain scale, and not on this
+/// one. Written down, the sizes would be a guess at the summary's length.
+#[tokio::test]
+async fn a_summary_is_priced_on_the_counters_own_scale() {
+    use nachalnik::{BytesPerToken, Calibrating, Calibration};
+
+    let at = |bytes: usize| {
+        let harness = Harness::new([]);
+        let kernel = harness.app.kernel.clone();
+        kernel.set_counter(Arc::new(Calibrating::new(BytesPerToken::default())));
+        kernel.recalibrate(Calibration {
+            scale: 1.4,
+            observations: 3,
+            estimated: 1_000,
+            reported: 1_400,
+        });
+        kernel.push(ContextItem::file("big.txt", words(8_000)).pinned());
+        let oldest = exchange(&kernel, "a", &words(bytes), &[]);
+        exchange(&kernel, "b", "and now?", &[]);
+        let worth: usize = oldest
+            .all()
+            .iter()
+            .map(|id| kernel.item(*id).unwrap().tokens)
+            .sum();
+        (harness, worth, filled_to(&kernel, 0.95))
+    };
+
+    let runtime_plan = |bytes: usize| async move {
+        let (harness, worth, limit) = at(bytes);
+        let plan = planned(&Shedder::under(0.8), &harness.app.kernel, Some(limit)).await;
+        (worth, plan.filter(|plan| !plan.remove.is_empty()))
+    };
+
+    let mut smallest = None;
+    for bytes in (40..2_000).step_by(8) {
+        if let (_, Some(plan)) = runtime_plan(bytes).await {
+            smallest = Some((bytes, plan));
+            break;
+        }
+    }
+    let (bytes, plan) = smallest.expect("some exchange is worth dropping");
+    let summary = said(&plan);
+    let raw = (ContextItem::summary("").label.len() + 2 + summary.len()).div_ceil(4);
+
+    let (worth, declined) = runtime_plan(bytes - 8).await;
+    assert!(declined.is_none());
+    // a fifth above the plain line, so that what decided it is the scale and not a token of
+    // rounding either side of the plain line
+    assert!(
+        worth as f64 >= 2.4 * raw as f64,
+        "the one just smaller is worth {worth}, which is not over twice the {raw} a summary \
+         costs on the plain scale - so this is not the scale deciding"
+    );
+}
+
+/// What a picture frees is credited as the counter prices it, so a counter that does price one
+/// sees the room it made.
+///
+/// note: every counter here prices a picture at nothing, so the credit is nothing today; this is
+/// the counter that is not that, and the arithmetic has to have been the right way round for it.
+#[tokio::test]
+async fn a_picture_is_credited_as_its_counter_prices_it() {
+    struct PricesPictures;
+
+    impl nachalnik::TokenCounter for PricesPictures {
+        fn count(&self, content: &Content) -> usize {
+            let pictures = content.blobs().len();
+            content
+                .byte_len()
+                .div_ceil(4)
+                .saturating_sub(pictures * 15_000)
+                + pictures * 1_000
+        }
+    }
+
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    kernel.set_counter(Arc::new(PricesPictures));
+    // a question worth dropping on its own, so that a pass which miscounted the room would drop it
+    kernel.push(ContextItem::user(words(2_000)));
+    let shot = call("shot", "screenshot", json!({}));
+    kernel.push(ContextItem::assistant(
+        Content::text(""),
+        vec![shot.clone()],
+    ));
+    let picture = kernel.push(ContextItem::tool_result(
+        shot.id.clone(),
+        "screenshot",
+        Content::blob("image/png", "A".repeat(60_000)),
+        false,
+    ));
+    kernel.push(ContextItem::assistant(
+        Content::text("a login form"),
+        vec![],
+    ));
+    exchange(kernel, "b", &words(400), &[]);
+    let tokens = kernel.item(picture).unwrap().tokens;
+    assert!(tokens >= 1_000, "the setup is off: {tokens}");
+
+    // full because of the picture, and no longer once it is a marker
+    let plan = planned(&Shedder::under(0.8), kernel, Some(filled_to(kernel, 0.9)))
+        .await
+        .expect("a picture that has been shown");
+    assert_eq!(plan.elide, vec![picture]);
+    assert!(plan.remove.is_empty(), "{:?}", plan.remove);
 }
