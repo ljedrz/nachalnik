@@ -1021,6 +1021,30 @@ async fn an_edit_of_a_missing_file_names_write() {
     assert!(!dir.join("missing.py").exists());
 }
 
+/// An edit of a file whose directory is not there either says so, since the `write` it names
+/// would be refused for it next.
+#[tokio::test]
+async fn an_edit_of_a_file_in_a_missing_directory_names_the_directory() {
+    let dir = scratch("files-edit-missing-dir");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "notes/todo.md", "old": "a", "new": "b" }),
+    )
+    .await;
+    assert!(said.contains("`write` makes a new one"), "{said}");
+    assert!(
+        said.contains(&format!(
+            "the directory {} is not there",
+            dir.join("notes").display()
+        )),
+        "{said}"
+    );
+    assert!(said.contains("`fs` makes no directories"), "{said}");
+    assert!(!dir.join("notes").exists());
+}
+
 /// An edit whose arguments arrived nested inside `new` is told so, and not that `old` is missing.
 ///
 /// note: the shape a model sent twice in one session, each time told `old` was required and how

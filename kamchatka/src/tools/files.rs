@@ -494,24 +494,40 @@ impl Write {
 /// path a write was never going to find, and nothing in it says `fs` makes no directories. What to
 /// do next depends on whether `shell` may run, since that is what makes one.
 fn unmade(path: &Path, policy: &Careful) -> Option<String> {
+    Some(format!(
+        "{}: {}, so nothing was written. {}",
+        path.display(),
+        no_directory(path)?,
+        make_directory(path, policy, "write again")?,
+    ))
+}
+
+/// That the first directory on the way to `path` that is not there is not, and that `fs` makes
+/// none; `None` where they all are.
+fn no_directory(path: &Path) -> Option<String> {
+    let missing = path
+        .parent()?
+        .ancestors()
+        .take_while(|it| !it.exists())
+        .last()?;
+    Some(format!(
+        "the directory {} is not there, and `fs` makes no directories",
+        missing.display()
+    ))
+}
+
+/// What makes the directory `path` goes in, and then to `then`.
+fn make_directory(path: &Path, policy: &Careful, then: &str) -> Option<String> {
     let dir = path.parent()?;
-    let missing = dir.ancestors().take_while(|it| !it.exists()).last()?;
-    let next = match makes_directories(policy) {
+    Some(match makes_directories(policy) {
         false => "`shell`, which makes directories, is refused in this session, so write it in a \
              directory that is there, or say which one you need made."
             .to_owned(),
         true => format!(
-            "Make it with `shell` - `mkdir -p {}` - and write again.",
+            "Make it with `shell` - `mkdir -p {}` - and {then}.",
             dir.display()
         ),
-    };
-
-    Some(format!(
-        "{}: the directory {} is not there, and `fs` makes no directories, so nothing was \
-         written. {next}",
-        path.display(),
-        missing.display(),
-    ))
+    })
 }
 
 /// Why a `write` or an `edit` was handed a path that ends in a separator, which is a directory and
@@ -598,10 +614,17 @@ impl Edit {
             // says neither that nothing was changed nor that an edit is the wrong operation for a
             // file that is not there yet - which is what an edit of a missing file almost always
             // is. Whether `write` may run is the policy's answer, not this one's
+            //
+            // note: and where the file's directory is not there either, that is said too, since
+            // the `write` it is sent to would only be refused for it next
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let directory = no_directory(&path)
+                    .zip(make_directory(&path, &self.1, "then write the file"))
+                    .map(|(missing, next)| format!(" - once it has a directory: {missing}. {next}"))
+                    .unwrap_or_default();
                 return Ok(ToolOutput::error(format!(
                     "{} is not there, so nothing was changed; `edit` changes a file that is \
-                     there, and `write` makes a new one",
+                     there, and `write` makes a new one{directory}",
                     path.display()
                 )));
             }
