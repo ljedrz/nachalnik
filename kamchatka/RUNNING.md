@@ -404,7 +404,9 @@ fork gets the most included one, and an item one fork revised is kept as revised
 revised it differently are refused, naming both. Two notes under one label are both kept, and a
 pinned instruction at the point where the forks parted says which notes came from which fork and
 which labels more than one of them carries. Each fork's log is read for the model it was talking
-to, and the token counter's correction is kept only where they all talked to the same one. What it
+to: where they all talked to the same one, the token counter's correction is kept and the session
+carries on with that model, and otherwise it is dropped and `-m` says which. Forks of one session
+carry its name, so two sessions that only begin alike — the same `-s`, say — are refused. What it
 writes is a log and a snapshot that check clean, and nothing is written over: `kamchatka -r
 merged.json` carries on, and `/request` is how to read what the first request would be before
 anything is sent.

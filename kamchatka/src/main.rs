@@ -250,6 +250,10 @@ fn reconciled(paths: &[String], output: &str) -> Result<()> {
             "{path} is named twice, and a fork reconciled with itself is the fork"
         );
     }
+    // as `/load` says it, rather than as a missing `DIR/.json`
+    if let Some(dir) = paths.iter().find(|path| Path::new(path).is_dir()) {
+        anyhow::bail!("{dir} is a directory, and a fork is a session's file: `/save` names them");
+    }
     let forks = paths
         .iter()
         .map(|path| Fork::read(path))
@@ -267,16 +271,15 @@ fn reconciled(paths: &[String], output: &str) -> Result<()> {
     for line in &reconciled.said {
         let _ = writeln!(out, "  {line}");
     }
-    // the model too, where they agree: a snapshot holds the conversation and not the model, and
-    // the fresh log names none, so `-r` alone would start a session talking to nobody
-    let carry_on = match &reconciled.model {
-        Some(model) => format!("kamchatka -r {state} -m {model}"),
-        None => format!("kamchatka -r {state}"),
-    };
+    // the model is in the log where the forks agree on one, and `-r` reads it from there
     let _ = writeln!(
         out,
-        "{} records in {log}, and a session in {state}: `{carry_on}` carries on from it",
-        reconciled.records.len()
+        "{} records in {log}, and a session in {state}: `kamchatka -r {state}` carries on from it{}",
+        reconciled.records.len(),
+        match &reconciled.model {
+            Some(model) => format!(", talking to {model}"),
+            None => ", with the model `-m` names: the forks' logs do not name one model".to_owned(),
+        }
     );
 
     Ok(())
