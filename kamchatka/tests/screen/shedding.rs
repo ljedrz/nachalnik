@@ -26,7 +26,7 @@ use crate::harness::Harness;
 /// A `read` that answers with as many bytes as its call asks for.
 ///
 /// note: not the runtime's `EchoTool`, which answers with its arguments - so a large answer was a
-/// large call as well, and the turn in progress, which no pass may take, filled the context with
+/// large call as well, and the turn in progress, which no pass may drop, filled the context with
 /// calls rather than results.
 struct Sized {
     limit: Option<usize>,
