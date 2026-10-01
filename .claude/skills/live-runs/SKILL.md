@@ -134,6 +134,9 @@ Each is fixed with a test, so a return of any of them is a regression:
 - refusals that did not say they were refusals, or blamed the wrong thing: a `revise` the model
   reported as done, a write refused where the session only reads, the session's own closed port,
   a request the tool definitions alone put over the limit, the selector for the model's own notes
+- a `grep` or `glob` of a path that is not there, counted as "a file that could not be read"
+- a full `context look` skipping the ids of removed items, with nothing to say a gap was removed
+  rather than hidden
 
 And three decisions in POSTPONED.md: the first undo of a fresh session, output limits that ignore
 the window, and `revise` of the person's words.

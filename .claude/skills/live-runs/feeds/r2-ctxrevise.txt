@@ -1,0 +1,5 @@
+Use the context tool to list the current context items with their ids.
+Use context revise on your own most recent assistant message, changing its text to `[redacted by me]`. Quote the result verbatim.
+Use context revise on the very first item (the system instruction). Quote the result verbatim - was it allowed?
+Use context revise on a made-up id like 99999. Quote the result verbatim.
+Use the context tool to list items again and tell me which were actually changed.

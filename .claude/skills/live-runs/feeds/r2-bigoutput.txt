@@ -1,0 +1,2 @@
+Use a shell command to print 500000 bytes of the letter z with `yes z | head -c 500000 | tr -d '\n'` and then tell me how many bytes came back and whether it was shortened.
+Now use fs to read the file inventory/store.py but with from line 1 and lines 1 - just the first line.

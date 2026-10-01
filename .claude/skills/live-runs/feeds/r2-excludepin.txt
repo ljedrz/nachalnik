@@ -1,0 +1,4 @@
+Use the context tool to pin the system instruction item.
+Use the context tool to exclude that same pinned item. Quote the result verbatim - was it refused?
+Use the context tool to elide that same pinned item. Quote the result verbatim - was it refused?
+List the context and say what state the system item is in.
