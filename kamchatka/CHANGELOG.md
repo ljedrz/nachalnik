@@ -126,7 +126,9 @@ minor bump may break you.
   reparented to init with nothing left to answer its network questions or record what it did.
   Every such group still running when the session ends - at exit and at `/restart` - is now sent
   `SIGTERM`, then `SIGKILL` two seconds later, and each is named. `--leave-running` leaves them and
-  names them. **Breaking** for the library: `Shell` gains `stragglers` and `Setup` gains
+  names them. A group is known by the processes that were in it and not by its number alone, so
+  one whose job finished early, and whose number has since gone to a group somebody else started,
+  is left alone rather than stopped in its place. **Breaking** for the library: `Shell` gains `stragglers` and `Setup` gains
   `leave_running`; `tools::Stragglers`, `App::stragglers` and `wiring::stragglers_at_end` are new.
 
 - **`app::when::read_off` answers a `When`, not an `Option` of one.** There was never a `None`: a
