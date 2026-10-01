@@ -238,3 +238,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   it is a way for a later call to reach an earlier one's jobs - one domain the calls share, or a
   `context`-like operation that asks this program to stop a job - or the person deciding that a
   model stopping its own servers is worth less than the boundary.
+
+- **The first undo of a fresh session takes its setup back.** `--system` and `-f` are pushed onto
+  the context like anything else, so each is an undo step: `/undo` on a session nobody has typed
+  into yet takes the system instruction out of the context, and a second takes the attached file,
+  each said only as `undone`. A resumed session says there is nothing to undo, because
+  `Kernel::resume` restores its items without a checkpoint. A host cannot do the same for its own
+  setup - the bounded history cannot be read from outside, and an undo followed by a redo is two
+  records for nothing - so what would unblock it is a kernel operation that starts the undo
+  history afresh, which is a core addition for a client's sake.
