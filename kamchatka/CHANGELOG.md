@@ -312,6 +312,12 @@ minor bump may break you.
 
 ### security
 
+- **A confined command cannot reach an abstract unix socket made outside it.** The right that
+  holds a `connect` to the sockets a command could have written names a path, and an abstract
+  socket has none - so every one of the user's was in reach, the X server's among them, which takes
+  any process of the user's without a cookie and lets it type into the person's terminal. A live
+  session connected to it from a confined shell. Landlock's abstract-socket scope is asked for
+  where the kernel has it, Linux 6.12 and up, and `sandbox::confines_abstract_sockets` is new.
 - **A run's log is its owner's alone, as its snapshot is.** The `.jsonl` a session writes as it
   goes was created under the umask - `0644` under an ordinary one - beside a `0600` snapshot,
   and kept private only by the directory it was in. It is created `0600` now.

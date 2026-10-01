@@ -35,6 +35,13 @@
 //! --user` carries a command out and hands back the whole filesystem.
 //! [`confines_unix_sockets`] is where that is asked.
 //!
+//! note: an abstract unix socket has no path for that right to name, and the X server listens on
+//! one that takes any process of the user's without a cookie - a connection that can type into the
+//! person's terminal. Linux 6.12 scopes it: a command may connect to an abstract socket made
+//! inside its own confinement, and to no other. [`confines_abstract_sockets`] asks. Signals have a
+//! scope of the same age that is left off: each command is confined in a domain of its own, so it
+//! would refuse a command stopping a server an earlier call left running.
+//!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `CommandExt::pre_exec`, which runs between `fork` and `exec` in
 //! a process that has a `tokio` runtime's threads in it, where almost nothing is safe to call - the
@@ -848,6 +855,23 @@ pub fn confines_unix_sockets() -> bool {
         .is_ok()
 }
 
+/// Whether this kernel refuses a confined command a connection to an abstract unix socket made
+/// outside its confinement.
+///
+/// note: an abstract socket has no path, so [`confines_unix_sockets`]'s right does not reach it,
+/// and a desktop listens on them: the X server's `@/tmp/.X11-unix/X0` takes a connection from
+/// any process of the user's with no cookie, and a connection to it can type into any window -
+/// the person's terminal included. Landlock scopes it from ABI 6, which is Linux 6.12, and the
+/// question is put to the kernel the way that one is.
+pub fn confines_abstract_sockets() -> bool {
+    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .scope(Scope::AbstractUnixSocket)
+        .is_ok()
+}
+
 /// Applies the sandbox to *this* process, returning how much of it the kernel took.
 ///
 /// note: `scratch` is a directory of this run's own, handed over as `TMPDIR`, rather than the
@@ -916,6 +940,15 @@ pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement
         Ok(ruleset) => ruleset,
         Err(e) => return unavailable(format!("the filesystem rights were refused: {e}")),
     };
+    // note: asked for where the kernel has it and nowhere else, for the reason `ResolveUnix` is.
+    // Not `Scope::Signal` beside it: every command confines itself in a domain of its own, so a
+    // command could no longer stop a server an earlier call left running
+    if confines_abstract_sockets() {
+        match ruleset.scope(landlock::Scope::AbstractUnixSocket) {
+            Ok(scoped) => ruleset = scoped,
+            Err(e) => return unavailable(format!("the abstract socket scope was refused: {e}")),
+        }
+    }
     if sandbox.network.refuses_tcp() {
         // ABI v4 and up; on an older kernel this is the part that comes back `Partial`.
         //

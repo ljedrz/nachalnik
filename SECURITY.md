@@ -124,6 +124,18 @@ Referenced from [AGENTS.md](AGENTS.md).
   nothing governs a `connect` at all. `sandbox::confines_unix_sockets` is what says which of the
   two a machine is, and it is asked rather than assumed, because handling a right that is not
   there would cost the ruleset its `Full` status and quietly stop the suite that tests it.
+  An abstract socket has no path for that right to name, and the X server listens on one,
+  `@/tmp/.X11-unix/X0`, taking any process of the user's without a cookie - a connection that can
+  type into the person's terminal. Landlock scopes those from ABI 6, which is Linux 6.12, and
+  `kamchatka` asks for the scope where the kernel has it, the same way: a command may connect to
+  an abstract socket made inside its own confinement, and to no other. Below that kernel every
+  abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets` says which.
+- **A confined command can signal any process of the user's.** Landlock's signal scope is as old
+  as the abstract-socket one and is not asked for: each command confines itself in a domain of
+  its own, so under it a command could not stop a server an earlier call had left running, and
+  that is the ordinary way to stop one. What it would close is a command killing processes
+  outside its call - this program among them, and with `kill -9 -1` every process the person
+  has. [POSTPONED.md](POSTPONED.md) has what would settle it.
 - **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
   can fail and the permissions tab draws it, with the kernel's own reason where a ruleset was
   refused - `Probed::why` - since a kernel with no Landlock and one that refused this ruleset are

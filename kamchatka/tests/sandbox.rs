@@ -804,6 +804,60 @@ fn a_command_can_connect_to_one_it_could_have_written() {
     drop(listening);
 }
 
+/// An abstract unix socket made outside the confinement is refused, and one the command makes
+/// itself is not.
+///
+/// note: an abstract socket has no path, so the right the two tests above are about never
+/// reaches it - and the X server listens on one, `@/tmp/.X11-unix/X0`, taking a connection from
+/// any process of the user's without a cookie. A live session connected to it from a confined
+/// shell: a connection that can type into the person's terminal is the whole of the boundary.
+#[test]
+fn a_command_cannot_connect_to_an_abstract_socket_made_outside_it() {
+    use std::os::linux::net::SocketAddrExt as _;
+
+    if !enforced() {
+        return;
+    }
+    if !kamchatka::sandbox::confines_abstract_sockets() {
+        eprintln!("skipped: no Landlock scope for an abstract socket here, which is ABI 6");
+        return;
+    }
+    let name = format!("kamchatka-test-{}", std::process::id());
+    let address = std::os::unix::net::SocketAddr::from_abstract_name(name.as_bytes())
+        .expect("an abstract name");
+    let listening = UnixListener::bind_addr(&address).expect("an abstract socket outside it");
+    let connect = |name: &str| {
+        format!(
+            "python3 -c \"import socket; socket.socket(socket.AF_UNIX).connect(b'\\\\0{name}'); \
+             print('reached' * 2)\" 2>&1"
+        )
+    };
+
+    let unconfined = Command::new("sh")
+        .args(["-c", &connect(&name)])
+        .output()
+        .expect("sh is here");
+    assert!(
+        String::from_utf8_lossy(&unconfined.stdout).contains("reachedreached"),
+        "the socket is there to be refused: {unconfined:?}"
+    );
+    let (ok, said) = run(
+        &sandbox(common::workdir("abstract"), true, Network::NoTcp),
+        &connect(&name),
+    );
+    assert!(!ok && said.contains("Operation not permitted"), "{said}");
+    drop(listening);
+
+    // and one the command made itself is in its own confinement, so it answers
+    let (ok, said) = run(
+        &sandbox(common::workdir("abstract-own"), true, Network::NoTcp),
+        "python3 -c \"import socket
+own = socket.socket(socket.AF_UNIX); own.bind(b'\\0kamchatka-own'); own.listen()
+socket.socket(socket.AF_UNIX).connect(b'\\0kamchatka-own'); print('reached' * 2)\"",
+    );
+    assert!(ok && said.contains("reachedreached"), "{said}");
+}
+
 /// A read-only working directory is read-only for this too, and a path opened up for reading
 /// alone stays that way.
 ///
