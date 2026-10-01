@@ -473,43 +473,114 @@ async fn a_message_that_has_to_wait_says_that_it_is_waiting() {
     );
 }
 
-/// A second message into the same turn says that it replaces the first.
+/// A second message into the same turn waits behind the first, and each gets a turn of its own.
 ///
-/// note: the slot holds one and the newest wins, which is a decision; being silent about it is
-/// not. The waiting message is drawn at the end of the conversation, so a second one took that
-/// row away and put its own there with nothing said - and `up` reaches what is waiting now, never
-/// the one it replaced. A row that vanishes with no account of why is the thing this program does
-/// not do, which is what its own note on `put_back` says.
+/// note: a queue, not a slot and not a merge. The newest used to win, which took a line away from
+/// whoever typed first - a person at the desk, when a client typed after them - and merging them
+/// would have handed the model two messages as one. So both are drawn waiting, in order, and they
+/// go in one turn apart.
 #[tokio::test]
-async fn a_second_message_into_one_turn_says_which_of_them_is_going_in() {
-    let mut harness = Harness::new([ModelResponse::text("the first answer")]);
+async fn a_second_message_into_one_turn_waits_behind_the_first() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("the second answer"),
+        ModelResponse::text("the third answer"),
+    ]);
 
     harness.send("the first question").await;
     harness.app.busy = true;
     harness.send("the second question").await;
-    let screen = harness.screen();
-    assert!(
-        !screen.contains("replaces it"),
-        "nothing was replaced by the first of them: {screen}"
-    );
-
     harness.send("the third question").await;
     let screen = harness.screen();
     assert!(
-        screen.contains("the message that was waiting is not going in; this one replaces it"),
-        "the row that went away is accounted for: {screen}"
+        screen.contains("after the 1 message waiting ahead of it"),
+        "the second one says what it waits behind: {screen}"
     );
     assert!(
-        screen.contains("the third question"),
-        "and the one that is waiting is drawn: {screen}"
+        screen.contains("the second question") && screen.contains("the third question"),
+        "and both are drawn waiting: {screen}"
+    );
+
+    harness.app.busy = false;
+    for _ in 0..3 {
+        harness.settle().await;
+    }
+
+    let said: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        said,
+        [
+            "the first question",
+            "the first answer",
+            "the second question",
+            "the second answer",
+            "the third question",
+            "the third answer",
+        ],
+        "each went in on its own, in the order it was sent, with an answer of its own"
+    );
+}
+
+/// A message sent to a session resting with a backlog goes behind it, rather than overtaking it.
+///
+/// note: a turn that is stopped takes the oldest waiting message in without a turn and leaves the
+/// rest, so a session can be resting with messages still queued. A line sent then ran at once and
+/// overtook every line sent before it.
+#[tokio::test]
+async fn a_message_into_a_resting_session_with_a_backlog_waits_its_turn() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("an answer to the backlog"),
+        ModelResponse::text("an answer to the last"),
+    ]);
+
+    harness.send("the first question").await;
+    harness.app.busy = true;
+    harness.send("the second question").await;
+    harness.send("the third question").await;
+    // the turn is stopped: the second goes in and nothing is started, so the third is left
+    harness.app.interrupt();
+    harness.app.busy = false;
+    harness.settle().await;
+    assert_eq!(
+        harness.app.queued().collect::<Vec<_>>(),
+        ["the third question"]
+    );
+
+    harness.send("the fourth question").await;
+    assert_eq!(
+        harness.app.queued().collect::<Vec<_>>(),
+        ["the fourth question"],
+        "the third went in ahead of it"
+    );
+    let users: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "user")
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        users,
+        [
+            "the first question",
+            "the second question",
+            "the third question"
+        ]
     );
 }
 
 /// And <kbd>up</kbd> takes it back, which is the whole of what the key is for.
 ///
-/// note: a message typed into a running turn used to be unreachable: `typed_ahead` holds one, the
-/// newest wins, and the only way to change what was waiting was to send a second one and hope the
-/// replacement was what you meant. There is a key now, and what it hands back is the message
+/// note: a message typed into a running turn used to be unreachable: the only way to change what
+/// was waiting was to send a second one and hope the replacement was what you meant. There is a key now, and what it hands back is the message
 /// itself rather than a copy - leaving it in the queue would mean editing one thing while another
 /// was still going to be sent.
 #[tokio::test]

@@ -11,7 +11,7 @@ use ratatui_textarea::CursorMove;
 
 use super::{
     App, Focus, Overlay, Page, Search, Speaker, Tab,
-    text::{beyond_a_prompt, projected, stored, whole},
+    text::{self, beyond_a_prompt, projected, stored, whole},
 };
 
 /// How many lines `pgup` and `pgdn` move an overlay.
@@ -129,7 +129,7 @@ impl App {
     /// being drawn at the end of the conversation, and a row vanishing with no account of why is
     /// the thing this program does not do.
     pub(super) fn put_back(&mut self) {
-        let waiting = self.typed_ahead.take();
+        let waiting = self.typed_ahead.pop_back();
         let Some(line) = waiting.clone().or_else(|| self.last_sent.clone()) else {
             return;
         };
@@ -142,14 +142,25 @@ impl App {
         if waiting.is_some() {
             self.say(
                 Speaker::Note,
-                "taken back out of the queue; nothing is waiting now, and `enter` sends it again",
+                match self.typed_ahead.len() {
+                    0 => {
+                        "taken back out of the queue; nothing is waiting now, and `enter` sends it \
+                          again"
+                            .to_owned()
+                    }
+                    left => format!(
+                        "taken back out of the queue; {} still waiting, and `enter` sends this \
+                         one again",
+                        text::plural(left, "message")
+                    ),
+                },
             );
         }
     }
 
     /// Whether there is a line for `up` to put back.
     fn recallable(&self) -> bool {
-        self.typed_ahead.is_some() || self.last_sent.is_some()
+        !self.typed_ahead.is_empty() || self.last_sent.is_some()
     }
 
     /// Empties the prompt, wherever what was in it has just gone.

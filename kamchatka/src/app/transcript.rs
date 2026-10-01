@@ -688,11 +688,12 @@ impl App {
             }
         }
         said.extend(loose.map(loosed));
-        // and last, the message typed into a turn that is still running. It is drawn from the
-        // field holding it rather than said onto the screen, for the same reason the fragments
-        // are drawn from the context: it is state waiting to become an item, and the moment it
-        // becomes one the item is what gets drawn, in the same place, with nothing to clean up
-        if let Some(waiting) = &self.typed_ahead {
+        // and last, the messages typed into a turn that is still running, oldest first. They are
+        // drawn from the field holding them rather than said onto the screen, for the same reason
+        // the fragments are drawn from the context: each is state waiting to become an item, and
+        // the moment one becomes one the item is what gets drawn, in the same place, with nothing
+        // to clean up
+        for waiting in &self.typed_ahead {
             said.push(Said {
                 speaker: Speaker::User,
                 text: Cow::Borrowed(waiting),

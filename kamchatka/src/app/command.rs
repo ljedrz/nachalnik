@@ -99,25 +99,41 @@ impl App {
         // says a message *without* an item to tie it to is the one path that has no item yet.
         // Everywhere else goes through `App::ask`, which cannot forget the third step
         if self.busy || !self.kernel.pending_permissions().is_empty() {
-            let replaced = self.typed_ahead.replace(line.to_owned());
+            self.typed_ahead.push_back(line.to_owned());
             self.follow = true;
             // said out loud, because until the turn ends this is the one thing on the screen that
             // the context does not have: a session saved now would not contain it
+            let ahead = self.typed_ahead.len() - 1;
             self.say(
                 Speaker::Note,
-                "this goes in when the turn stops, and gets a turn of its own",
+                match ahead {
+                    0 => "this goes in when the turn stops, and gets a turn of its own".to_owned(),
+                    _ => format!(
+                        "this goes in after the {} waiting ahead of it, and gets a turn of its own",
+                        plural(ahead, "message")
+                    ),
+                },
             );
-            // note: and the one it replaced is accounted for. The slot holds one and the newest
-            // wins, which is a decision; what it cannot be is silent, because the waiting message
-            // is *drawn* at the end of the conversation - so a second one sent into the same turn
-            // takes that row away and puts its own there, and nothing else says so. `up` reaches
-            // what is waiting now, which is this one and never the one it replaced
-            if replaced.is_some() {
-                self.say(
-                    Speaker::Note,
-                    "the message that was waiting is not going in; this one replaces it",
-                );
-            }
+
+            return self.replied(Did::Queued, from, pages);
+        }
+
+        // note: a session resting with messages still waiting - the turn they waited for was
+        // stopped or failed, which takes one in without a turn and leaves the rest - keeps their
+        // order. This line goes behind them and the oldest goes in now, rather than this one
+        // overtaking every line that was sent before it
+        if let Some(oldest) = self.typed_ahead.pop_front() {
+            self.typed_ahead.push_back(line.to_owned());
+            self.say(
+                Speaker::Note,
+                format!(
+                    "this goes in after the {} waiting ahead of it, and the first of those goes \
+                     in now",
+                    plural(self.typed_ahead.len(), "message")
+                ),
+            );
+            self.ask(&oldest);
+            self.start_turn();
 
             return self.replied(Did::Queued, from, pages);
         }

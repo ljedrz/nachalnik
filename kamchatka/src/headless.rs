@@ -294,8 +294,8 @@ impl<'a> Headless<'a> {
                     // the moment they are written, and two things go wrong that a person at a prompt
                     // never sees: a command runs in the middle of the turn before it, so `/budget`
                     // lands above the answer it was asked after; and a *message* sent into a running
-                    // turn is held in `App::typed_ahead`, which holds one, so the third line of a
-                    // three-line script would quietly replace the second.
+                    // turn waits in `App::typed_ahead` while the commands after it run at once, so
+                    // the script's lines would happen in an order nobody wrote.
                     // Nothing here can be typed during a turn, so nothing is lost by reading it after
                     line = lines.next_line(), if reading && !app.busy => match line {
                         // note: what the prompt does with enter on nothing, and with spaces round a

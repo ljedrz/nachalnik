@@ -72,9 +72,8 @@
 //! the first, because the ordinary second connection is the same client coming back while its old
 //! one is still half-open; see [`server`]. What several people driving one agent should *mean* is
 //! undecided rather than unbuilt, and one at a time is what stands in for it. A session drawn at a
-//! desk still has two ways in, and the two share the one message that can be queued into a running
-//! turn: a second line takes the first one's place, and the session says so rather than letting it
-//! disappear quietly. `POSTPONED.md` has the other things this module is knowingly without, among
+//! desk still has two ways in, and a message either sends into a running turn waits in one queue
+//! with the other's, each to go in on its own. `POSTPONED.md` has the other things this module is knowingly without, among
 //! them a command that awaits the endpoint holding the whole loop, and a projection too large for
 //! [`protocol::MAX_LINE`], which no client can attach past. A single record that large is named
 //! rather than sent; see [`protocol::Message::Oversized`].
