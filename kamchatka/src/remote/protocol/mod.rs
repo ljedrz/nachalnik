@@ -691,10 +691,14 @@ pub struct Line {
     /// a client cannot read and a session cannot skip. Nothing is cut until something has to be,
     /// and then only the lines longer than the longest length that lets the whole projection fit,
     /// down to that length - so whether a line arrives whole depends on how long the session is,
-    /// and one a projection carried whole can be cut in the next once the session has grown. Where
-    /// the line is an item, [`Command::Inspect`] answers with all of it. Where it is not - something the
-    /// program said, or a message still waiting for a turn to end - the rest is not anywhere a
-    /// client can ask for, and the count is all there is.
+    /// and one a projection carried whole can be cut in the next once the session has grown.
+    ///
+    /// note: where the rest is. Where the line is an item, [`Command::Inspect`] asks for all of
+    /// it, and is answered with it wherever the answer fits in a frame - which an item longer than
+    /// [`MAX_LINE`] on its own does not, and then it is refused, and a snapshot is what holds it
+    /// whole. Where the line is not an item - something the program said, or a message still
+    /// waiting for a turn to end - the rest is not anywhere a client can ask for, and the count is
+    /// all there is.
     ///
     /// note: a field rather than a sentence on the end of the text, because the text is
     /// somebody's message and a note in this program's voice glued onto it would read as part of
@@ -749,8 +753,16 @@ impl Attached {
     /// cut in the next once the session has grown. Every client here takes each projection as the
     /// conversation afresh, so nothing is left disagreeing, and the line says what it lost.
     pub(crate) fn abridge(&mut self) {
+        self.abridge_within(MAX_LINE);
+    }
+
+    /// The same, inside a frame of any length.
+    ///
+    /// note: apart so that what it promises can be held to it at a length a test can afford. At
+    /// [`MAX_LINE`] one case is thirty-two megabytes, and the cases worth having are hundreds.
+    fn abridge_within(&mut self, limit: usize) {
         let whole = measured(self) + ENVELOPE;
-        if whole <= MAX_LINE {
+        if whole <= limit {
             return;
         }
         let sizes: Vec<usize> = self
@@ -762,7 +774,7 @@ impl Attached {
             .map(escaped)
             .collect();
         let fixed = whole - sizes.iter().sum::<usize>();
-        let Some(room) = MAX_LINE.checked_sub(fixed + CLIPPING * sizes.len()) else {
+        let Some(room) = limit.checked_sub(fixed + CLIPPING * sizes.len()) else {
             return;
         };
         let cap = level(&sizes, room);
@@ -1037,6 +1049,8 @@ pub enum Address<'a> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::*;
 
     /// The one thing a client must not be able to disagree with the terminal about.
@@ -1189,5 +1203,253 @@ mod tests {
         let mut letters = "aüü".to_owned();
         assert_eq!(cut(&mut letters, 2), Some(4));
         assert_eq!(letters, "a");
+    }
+
+    /// Any text, with the characters that measure differently as JSON in it often enough to
+    /// matter: the two-byte escapes, the six-byte ones, and characters of two, three and four bytes.
+    fn any_text(longest: usize) -> impl Strategy<Value = String> {
+        proptest::string::string_regex(&format!("[a-z \"\\\\\n\t\u{1}\u{1f}é漢🦀]{{0,{longest}}}"))
+            .expect("a pattern for the text")
+    }
+
+    /// `level` is the longest length that fits, and not merely one that does.
+    #[test]
+    fn the_length_is_the_longest_that_fits() {
+        proptest!(
+            ProptestConfig {
+                cases: 512,
+                failure_persistence: None,
+                ..ProptestConfig::default()
+            },
+            |(sizes in prop::collection::vec(0usize..500, 0..12), room in 0usize..3000)| {
+                let held = |cap: usize| sizes.iter().map(|&size| size.min(cap)).sum::<usize>();
+                let cap = level(&sizes, room);
+                prop_assert!(held(cap) <= room, "{cap} does not fit in {room}");
+                if cap == usize::MAX {
+                    prop_assert!(sizes.iter().sum::<usize>() <= room);
+                } else {
+                    prop_assert!(held(cap + 1) > room, "{} fits in {room} as well", cap + 1);
+                }
+            }
+        );
+    }
+
+    /// `cut` keeps the longest start of a text that is no longer than the length as JSON.
+    #[test]
+    fn a_cut_is_the_longest_start_that_fits() {
+        proptest!(
+            ProptestConfig {
+                cases: 512,
+                failure_persistence: None,
+                ..ProptestConfig::default()
+            },
+            |(text in any_text(60), cap in 0usize..200)| {
+                let mut kept = text.clone();
+                let gone = cut(&mut kept, cap);
+                prop_assert!(text.starts_with(&kept));
+                prop_assert!(escaped(&kept) <= cap);
+                match gone {
+                    None => prop_assert_eq!(&kept, &text),
+                    Some(gone) => {
+                        prop_assert_eq!(kept.len() + gone, text.len());
+                        // and one more character would have been one too many
+                        let next = text[kept.len()..].chars().next().expect("nothing was cut");
+                        prop_assert!(escaped(&kept) + escaped_char(next) > cap);
+                    }
+                }
+            }
+        );
+    }
+
+    /// A projection that fits is left exactly as it is, one that does not is cut to fit and no
+    /// further, the lines cut are the longest ones, and each says what it lost.
+    ///
+    /// note: inside frames of a few kilobytes rather than [`MAX_LINE`], which is the one thing
+    /// `abridge_within` is apart for: the arithmetic is the same at any length, and at the real one
+    /// a case is thirty-two megabytes.
+    ///
+    /// note: the messages still waiting are generated as the last lines of the conversation as
+    /// well, because that is what they are in a real projection - and the claim on
+    /// [`Attached::queued`] is that the two are cut the same way.
+    ///
+    /// note: what it reached is counted and held to, so that a property over three outcomes
+    /// cannot quietly become one over the easy one.
+    #[test]
+    fn a_projection_is_cut_to_fit_and_no_further() {
+        #[derive(Default, Debug)]
+        struct Reached {
+            untouched: usize,
+            cut: usize,
+            gave_up: usize,
+            cut_an_escape: usize,
+        }
+
+        let reached = std::cell::RefCell::new(Reached::default());
+        let lines = prop::collection::vec(
+            (
+                prop_oneof![3 => any_text(40), 2 => any_text(1500)],
+                any::<bool>(),
+            ),
+            0..10,
+        );
+        let waiting = prop::collection::vec(any_text(600), 0..3);
+
+        proptest!(
+            ProptestConfig {
+                cases: 512,
+                failure_persistence: None,
+                ..ProptestConfig::default()
+            },
+            |(lines in lines, waiting in waiting, fixed in 0usize..2000, limit in 300usize..6000)| {
+                let mut conversation: Vec<Line> = lines
+                    .iter()
+                    .enumerate()
+                    .map(|(at, (text, is_item))| Line {
+                        speaker: Speaker::Model,
+                        text: text.clone(),
+                        item: is_item.then_some(ContextId(at as u64)),
+                        clipped: None,
+                    })
+                    .collect();
+                conversation.extend(waiting.iter().map(|text| Line {
+                    speaker: Speaker::User,
+                    text: text.clone(),
+                    item: None,
+                    clipped: None,
+                }));
+                let before = projection(conversation, &waiting, fixed);
+                let mut after = before.clone();
+                after.abridge_within(limit);
+                let mut reached = reached.borrow_mut();
+
+                let n = after.conversation.len() + waiting.len();
+                let fits = measured(&after) + ENVELOPE <= limit;
+                if measured(&before) + ENVELOPE <= limit {
+                    reached.untouched += 1;
+                    prop_assert_eq!(&after, &before, "a projection that fits was changed");
+                    return Ok(());
+                }
+                if !fits {
+                    // given up on, and only where even every line cut to nothing would not fit
+                    reached.gave_up += 1;
+                    prop_assert_eq!(&after, &before, "a projection given up on was changed");
+                    let mut emptied = before.clone();
+                    for line in &mut emptied.conversation {
+                        line.text.clear();
+                    }
+                    emptied.queued = emptied.queued.map(|_| String::new());
+                    emptied.queued_behind.iter_mut().for_each(String::clear);
+                    prop_assert!(
+                        measured(&emptied) + ENVELOPE + CLIPPING * n > limit,
+                        "it gave up on a projection it could have cut to fit"
+                    );
+                    return Ok(());
+                }
+                reached.cut += 1;
+
+                let mut untouched = Vec::new();
+                let mut cut = Vec::new();
+                for (was, line) in before.conversation.iter().zip(&after.conversation) {
+                    prop_assert!(was.text.starts_with(&line.text), "a line is not its own start");
+                    prop_assert_eq!(line.item, was.item);
+                    match line.clipped {
+                        None => {
+                            prop_assert_eq!(&line.text, &was.text);
+                            untouched.push(escaped(&was.text));
+                        }
+                        Some(gone) => {
+                            prop_assert_eq!(line.text.len() + gone, was.text.len());
+                            prop_assert!(gone > 0, "a line says it was cut by nothing");
+                            cut.push((escaped(&was.text), escaped(&line.text)));
+                            if was.text.contains(['"', '\\', '\n', '\t', '\u{1}', '\u{1f}']) {
+                                reached.cut_an_escape += 1;
+                            }
+                        }
+                    }
+                }
+                // the lines cut are the longest ones: every line left whole was shorter than every
+                // line that was cut, and the cut ones end within a character of each other
+                if let (Some(&longest_whole), Some(&(shortest_cut, _))) =
+                    (untouched.iter().max(), cut.iter().min())
+                {
+                    prop_assert!(longest_whole < shortest_cut, "{longest_whole} whole, {shortest_cut} cut");
+                }
+                let ends = cut.iter().map(|&(_, now)| now);
+                if let (Some(low), Some(high)) = (ends.clone().min(), ends.max()) {
+                    prop_assert!(high - low < 6, "cut to {low} and to {high}");
+                }
+                // the messages waiting are cut exactly as their lines in the conversation were
+                let tail = &after.conversation[after.conversation.len() - waiting.len()..];
+                let waited: Vec<&str> = after
+                    .queued
+                    .iter()
+                    .chain(&after.queued_behind)
+                    .map(String::as_str)
+                    .collect();
+                let lined: Vec<&str> = tail.iter().map(|line| line.text.as_str()).collect();
+                prop_assert_eq!(waited, lined);
+                // the room kept for each count is room for any count, which these cases are far
+                // too short to reach on their own: a line of thirty megabytes cut to one says so in
+                // eight digits where `null` took four
+                let mut longest_counts = after.clone();
+                for line in &mut longest_counts.conversation {
+                    if line.clipped.is_some() {
+                        line.clipped = Some(usize::MAX);
+                    }
+                }
+                prop_assert!(
+                    measured(&longest_counts) + ENVELOPE <= limit,
+                    "the counts outgrew the room kept for them"
+                );
+                // and no further than it had to: what is left over is the rounding, a character a
+                // line, and the room kept for each count - not a length chosen short to be safe
+                let left = limit - (measured(&after) + ENVELOPE);
+                prop_assert!(left <= 29 * n, "{left} bytes to spare across {n} line(s)");
+            }
+        );
+
+        let reached = reached.into_inner();
+        assert!(reached.untouched > 20, "{reached:?}");
+        assert!(reached.cut > 50, "{reached:?}");
+        assert!(reached.gave_up > 5, "{reached:?}");
+        assert!(reached.cut_an_escape > 20, "{reached:?}");
+    }
+
+    /// A projection carrying the given conversation and messages waiting, and `fixed` bytes of
+    /// what nothing cuts.
+    fn projection(conversation: Vec<Line>, waiting: &[String], fixed: usize) -> Attached {
+        Attached {
+            version: VERSION,
+            session: "abridged".to_owned(),
+            seq: 0,
+            state: State::Idle,
+            busy: false,
+            stepping: false,
+            model: None,
+            budget: Budget {
+                context_tokens: 0,
+                tool_tokens: 0,
+                uncounted: 0,
+                limit: None,
+                reported: None,
+            },
+            spent: 0,
+            spend: None,
+            overspent: false,
+            conversation,
+            items: Vec::new(),
+            asking: Vec::new(),
+            reaching: Vec::new(),
+            rated: Vec::new(),
+            unrated: Vec::new(),
+            policy: "p".repeat(fixed),
+            untold: nachalnik::Verdict::Ask,
+            permissions: Vec::new(),
+            trace: Vec::new(),
+            undecided: 0,
+            queued: waiting.first().cloned(),
+            queued_behind: waiting.iter().skip(1).cloned().collect(),
+            confinement: None,
+        }
     }
 }

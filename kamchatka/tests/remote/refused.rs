@@ -344,6 +344,18 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// The browser page's copy of the line limit is the limit.
+///
+/// note: the page needs it to tell a line the context view can fetch whole from one no answer
+/// carries, and it has no way to ask; a copy that drifted would point somebody at a fetch that is
+/// refused, or away from one that works.
+#[test]
+fn the_page_knows_the_line_limit_the_session_has() {
+    let page = include_str!("../../examples/browser.html");
+    let copy = format!("const MAX_LINE = {};", protocol::MAX_LINE);
+    assert!(page.contains(&copy), "the page does not say `{copy}`");
+}
+
 /// An address without a scheme is refused rather than guessed at.
 #[test]
 fn an_address_says_what_kind_of_thing_it_is() {

@@ -171,7 +171,9 @@
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
-  .clipped { color: var(--dim); font-style: italic; }
+  /* the program's voice on the end of somebody's line, so drawn the way a note is and not the way
+     a thought is: on a reasoning line a dim italic would read as more of what the model thought */
+  .clipped { color: var(--note); font-style: normal; font-size: 12px; }
   footer {
     flex: none; border-top: 1px solid var(--line); padding: 8px;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
@@ -281,6 +283,17 @@ let adrift = false;     // and whether the stream has gone, which is the other h
  * tab order is the cheapest kind of similarity there is.
  */
 const VIEWS = ["chat", "context", "events", "permissions"];
+
+/**
+ * The longest line the session sends, which is `protocol::MAX_LINE` on the other side of the relay.
+ *
+ * note: a copy, because the page has no other way to know it, and it needs it for one thing: to
+ * tell a line cut down because the projection was too long, which the context view can fetch
+ * whole, from one too long for any answer at all, which it cannot. Spelled out rather than as
+ * `32 * 1024 * 1024` so that `tests/remote/refused.rs` can hold it to the Rust one by reading it.
+ */
+const MAX_LINE = 33554432;
+
 /**
  * The records after which the chat is not what the context says any more.
  *
@@ -356,9 +369,14 @@ function clipped(el, l) {
   const note = document.createElement("span");
   note.className = "clipped";
   const bytes = l.clipped.toLocaleString();
+  // measured on the text rather than as JSON, so it is only ever right to say: a line longer than a
+  // frame on its own is one no answer carries, and the context view asking for it is refused
+  const whole = new TextEncoder().encode(l.text).length + l.clipped;
   note.textContent = l.item == null
     ? ` … ${bytes} more bytes not sent`
-    : ` … ${bytes} more bytes not sent; the context view has the whole of item ${l.item}`;
+    : whole >= MAX_LINE
+      ? ` … ${bytes} more bytes not sent, more than any one answer carries; \`/save\` writes a snapshot that holds it whole`
+      : ` … ${bytes} more bytes not sent; the context view has the whole of item ${l.item}`;
   el.append(note);
 }
 
