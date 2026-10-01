@@ -28,12 +28,10 @@ struct Script(Mutex<VecDeque<ModelResponse>>);
 #[async_trait]
 impl Provider for Script {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            // deliberately tiny, so that a couple of tool results is already too much
-            context_limit: Some(2_000),
-            tool_calling: true,
-            ..ModelInfo::new("scripted", "as-if/gpt")
-        }
+        // deliberately tiny, so that a couple of tool results is already too much
+        ModelInfo::new("scripted", "as-if/gpt")
+            .with_context_limit(2_000)
+            .with_tool_calling(true)
     }
 
     async fn respond(

@@ -2128,3 +2128,112 @@ async fn a_resume_carries_on_with_the_model_its_record_names() {
         "to the model it was talking to before: {records}"
     );
 }
+
+/// A `/endpoint` that keeps the model's name is in the record, with both addresses.
+///
+/// note: the kernel announces a switch by comparing what the provider says about itself, and that
+/// carried no address - so `/endpoint URL` alone left a record saying the session never moved,
+/// and a session resumed from it had nothing to say where it had been talking.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_endpoint_switch_that_keeps_the_name_is_in_the_record() {
+    let dir = common::scratch("endpoint-recorded");
+    let first = common::endpoint(Vec::new()).await;
+    let second = common::endpoint(Vec::new()).await;
+    let out = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "--deadline",
+            "20",
+            "-m",
+            "nothing",
+        ])
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &first)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write as _;
+            child
+                .stdin
+                .take()
+                .expect("a pipe")
+                .write_all(format!("/endpoint {second}\n").as_bytes())?;
+            child.wait_with_output()
+        })
+        .expect("the binary under test is built");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+
+    let changed: Vec<(Option<String>, Option<String>)> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<nachalnik::Record>(line).ok())
+        .filter_map(|record| match record.event {
+            nachalnik::Event::ModelChanged { from, to } => Some((
+                from.and_then(|info| info.endpoint),
+                to.and_then(|info| info.endpoint),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        changed.last(),
+        Some(&(Some(first.clone()), Some(second.clone()))),
+        "{changed:?}"
+    );
+}
+
+/// `-r` pointed somewhere other than the record says it was talking says so, and goes where it was
+/// pointed.
+///
+/// note: said and not followed. The address is where this run's key goes, and a snapshot is a file
+/// anybody can hand somebody: following the record would post the reader's key wherever its
+/// sender chose.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_resume_pointed_elsewhere_says_where_the_record_was_talking() {
+    let dir = common::scratch("resume-elsewhere");
+    let first = common::endpoint(vec![common::answer("from the first")]).await;
+    let second = common::endpoint(vec![common::answer("from the second")]).await;
+    let run = |base: &str, args: &[&str]| {
+        common::command()
+            .args(["--headless", "--deadline", "20"])
+            .args(args)
+            .current_dir(&dir)
+            .env("TMPDIR", &dir)
+            .env("KAMCHATKA_BASE_URL", base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .env_remove("KAMCHATKA_MODEL")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built")
+    };
+
+    let out = run(&first, &["-m", "nothing", "go"]);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    let state = said
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("`kamchatka -r ")?
+                .strip_suffix("` carries on from it")
+        })
+        .unwrap_or_else(|| panic!("the parting line says how to carry on: {said}"))
+        .to_owned();
+
+    let out = run(&second, &["-r", &state, "again"]);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains(&format!(
+            "the record says this session was last talking to {first}"
+        )),
+        "{said}"
+    );
+    assert!(
+        said.contains("from the second"),
+        "it went where it was pointed: {said}"
+    );
+}

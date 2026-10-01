@@ -367,13 +367,13 @@ impl Provider for Gemini {
         // two in the other order on another thread
         let context_limit = *self.context_limit.lock();
         let model = self.model.lock().clone();
+        let endpoint = crate::recorded(&self.base_url.lock());
 
-        ModelInfo {
-            context_limit,
-            tool_calling: true,
-            reasoning: true,
-            ..ModelInfo::new("google", model)
-        }
+        ModelInfo::new("google", model)
+            .with_context_limit(context_limit)
+            .with_tool_calling(true)
+            .with_reasoning(true)
+            .with_endpoint(endpoint)
     }
 
     /// The payload, rendered once. `respond` sends exactly this.

@@ -22,6 +22,12 @@ minor bump may break you.
 
 ### changed
 
+- **A `/endpoint` that keeps the model's name is in the record.** It was in no record at all,
+  since what the kernel compared to announce a switch carried no address; now `model.changed`
+  names both, and the trace shows `model at address` either side where the address is what moved.
+- **`-r` says where the record was talking, where that is not where this run is pointed.** It
+  says so, with the `/endpoint` that carries on there, and does not follow it: the address is
+  where this run's key would go, and a snapshot is a file anybody can hand somebody.
 - **A served session has one client at a time, and the newest wins.** Every attached client could
   submit, interrupt and answer questions, and a second one typing during a turn took the first
   one's queued line. A client that attaches now takes the session, and the one that had it is sent

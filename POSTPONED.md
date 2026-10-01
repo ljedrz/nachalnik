@@ -195,21 +195,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
   denies is the other reading, at the cost of the two rules no longer being held alike.
 
-- **A `/endpoint` that keeps the model name is in no record.** The kernel announces a switch by
-  comparing the `ModelInfo` a provider reports, and a `ModelInfo` carries no address, so
-  `/endpoint URL` with no model leaves the record saying the session never moved; only the line the
-  command printed says otherwise. `/endpoint URL MODEL` is recorded, because the name changes.
-
-  It waits because every fix costs something. An `endpoint` field on `ModelInfo` is the honest one
-  and a break, since the struct is not `#[non_exhaustive]`; a field on `Event::ModelChanged` is a
-  break too; and folding the address into the provider's `provider` label puts a URL where a name is
-  documented and drawn. What would settle it is the next release that may break `nachalnik`: mark
-  `ModelInfo` `#[non_exhaustive]` and give it the address in the same one.
-
-  It matters more now that `-r` carries on with the model the record names: a session moved by
-  `/endpoint URL` alone resumes that model at whatever address the flags give, and the record gives
-  no hint that it had moved.
-
 - **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
   `{label}:\n{text}`, which builds a new string from the item's content each time the context is
   projected - the largest cost in a projection, and the one place it copies content the rest of the

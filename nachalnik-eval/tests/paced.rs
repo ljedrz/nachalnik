@@ -52,10 +52,7 @@ impl Counting {
 #[async_trait]
 impl Provider for Counting {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            context_limit: Some(64_000),
-            ..ModelInfo::new("counting", "counting")
-        }
+        ModelInfo::new("counting", "counting").with_context_limit(64_000)
     }
 
     async fn respond(
@@ -307,10 +304,7 @@ struct Spaced {
 #[async_trait]
 impl Provider for Spaced {
     fn info(&self) -> ModelInfo {
-        ModelInfo {
-            context_limit: Some(64_000),
-            ..ModelInfo::new("spaced", "spaced")
-        }
+        ModelInfo::new("spaced", "spaced").with_context_limit(64_000)
     }
 
     async fn respond(

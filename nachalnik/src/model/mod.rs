@@ -596,7 +596,12 @@ impl ModelResponse {
 }
 
 /// The identity and capabilities of the model behind a [`Provider`], as reported by it.
+///
+/// note: `#[non_exhaustive]`, so that what a provider can say about itself can grow without
+/// breaking every implementation again. Build one with [`ModelInfo::new`] and the `with_`
+/// methods; the fields stay public to read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ModelInfo {
     /// The provider's name, e.g. `openrouter`.
     pub provider: String,
@@ -622,6 +627,18 @@ pub struct ModelInfo {
     /// published", which is what it was.
     #[serde(default)]
     pub parameters: Vec<String>,
+    /// Where the provider sends its requests, where it has an address to say: the base URL, with
+    /// no credentials in it.
+    ///
+    /// note: part of what the kernel compares to announce [`Event::ModelChanged`](crate::Event),
+    /// so a provider moved to another address with the same model name is a change in the record.
+    /// Without it, a switch of address alone left a record saying the session never moved, and a
+    /// session resumed from it had nothing to say where it had been talking.
+    ///
+    /// note: `None` for a provider with no address - a scripted one, or one in the same process -
+    /// and for a record written before this existed, which reads as having said nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
 }
 
 impl ModelInfo {
@@ -636,7 +653,47 @@ impl ModelInfo {
             tool_calling: false,
             reasoning: false,
             parameters: Vec::new(),
+            endpoint: None,
         }
+    }
+
+    /// The same, with the model's context limit.
+    pub fn with_context_limit(mut self, limit: impl Into<Option<usize>>) -> Self {
+        self.context_limit = limit.into();
+        self
+    }
+
+    /// The same, with the most it will write in one answer.
+    pub fn with_max_output_tokens(mut self, max: impl Into<Option<usize>>) -> Self {
+        self.max_output_tokens = max.into();
+        self
+    }
+
+    /// The same, saying whether the model can call tools.
+    pub fn with_tool_calling(mut self, tool_calling: bool) -> Self {
+        self.tool_calling = tool_calling;
+        self
+    }
+
+    /// The same, saying whether the model exposes its reasoning.
+    pub fn with_reasoning(mut self, reasoning: bool) -> Self {
+        self.reasoning = reasoning;
+        self
+    }
+
+    /// The same, with the parameters the model is published to accept.
+    pub fn with_parameters(
+        mut self,
+        parameters: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.parameters = parameters.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// The same, with where the requests go; see [`ModelInfo::endpoint`].
+    pub fn with_endpoint(mut self, endpoint: impl Into<Option<String>>) -> Self {
+        self.endpoint = endpoint.into();
+        self
     }
 }
 
@@ -696,6 +753,34 @@ pub trait Provider: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::{content::sized, *};
+
+    /// A record written before `endpoint` existed still reads, and one with no address says
+    /// nothing about one.
+    ///
+    /// note: every `model.changed` and `model.requested` carries a `ModelInfo`, so a field that a
+    /// record without it could not be read past would be every session log from before it.
+    #[test]
+    fn a_model_with_no_address_reads_and_writes_as_it_did() {
+        let old = r#"{"provider":"p","model":"m","context_limit":null,"max_output_tokens":null,"tool_calling":true,"reasoning":false}"#;
+        let read: ModelInfo = serde_json::from_str(old).expect("an old record reads");
+        assert_eq!(read.endpoint, None);
+        assert!(
+            !serde_json::to_string(&read)
+                .expect("it writes")
+                .contains("endpoint")
+        );
+
+        let at = ModelInfo::new("p", "m").with_endpoint("https://example.test/v1".to_owned());
+        let written = serde_json::to_string(&at).expect("it writes");
+        assert!(
+            written.contains(r#""endpoint":"https://example.test/v1""#),
+            "{written}"
+        );
+        assert_eq!(
+            serde_json::from_str::<ModelInfo>(&written).expect("it reads"),
+            at
+        );
+    }
 
     /// A prompt figure smaller than its own cache is the one shape that says out loud which
     /// convention an endpoint is speaking.

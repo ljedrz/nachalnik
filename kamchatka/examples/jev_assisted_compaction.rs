@@ -209,15 +209,10 @@ fn context() -> Kernel {
     // though nothing here ever sends a request. It is scripted and has no answers in it, which is
     // the honest shape: what is being compared happens *before* a request, and the model that
     // would answer one is not part of the story
-    kernel.set_provider(Arc::new(ScriptedProvider::new([]).with_info(ModelInfo {
-        provider: "none".to_owned(),
-        model: "none".to_owned(),
-        context_limit: Some(LIMIT),
-        max_output_tokens: None,
-        tool_calling: false,
-        reasoning: false,
-        parameters: Vec::new(),
-    })));
+    kernel.set_provider(Arc::new(
+        ScriptedProvider::new([])
+            .with_info(ModelInfo::new("none", "none").with_context_limit(LIMIT)),
+    ));
 
     for (n, step) in SESSION.iter().enumerate() {
         match step {

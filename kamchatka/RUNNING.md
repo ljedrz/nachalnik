@@ -376,7 +376,11 @@ reading it, and it is also the name of its two files.
 Nobody has to type `/save` for any of this, because a session that ended badly is the one worth
 reading afterwards. A resumed session keeps its name, and its record goes beside the one it carried
 on from, as `NAME-2`, rather than over it. It carries on with the model its record says it was
-last talking to, unless `-m`, `KAMCHATKA_MODEL` or a settings file names another. It is a temporary directory because this is a
+last talking to, unless `-m`, `KAMCHATKA_MODEL` or a settings file names another — but at the
+address this run is pointed at, not the record's. The record says where it was, with credentials
+left out, and a session pointed somewhere else is told so along with the `/endpoint` that goes
+back; it is not taken there, because that address is where this run's key would go, and a
+snapshot is a file anybody can hand somebody. It is a temporary directory because this is a
 safety net and not an archive — `/save PATH` is still how a session goes somewhere it will be next
 week — and `--no-record` turns it off for anyone who would rather a transcript did not outlive the
 terminal. The directory is `0700`: what goes in it is a whole conversation and every byte every tool

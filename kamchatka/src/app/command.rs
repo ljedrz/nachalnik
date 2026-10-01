@@ -512,13 +512,10 @@ impl App {
                 // both are round trips, the screen should not stop for them, and the next line does
                 // and then the kernel is told, as `/model` tells it
                 //
-                // note: which says the model the session is asking, and the record takes notice
-                // of a change only where that model changed. A `/endpoint` given no model keeps
-                // the old name, and `Kernel::provider_changed` compares what the provider reports
-                // about itself - so nothing is announced, and the only trace of the switch is the
-                // line above and the address inside the error the next request brings back.
-                // Carrying the address in the record means a `ModelInfo` that holds one, which is
-                // a field on a published struct; see POSTPONED.md.
+                // note: which compares what the provider reports about itself, the address among
+                // it - so a `/endpoint` that keeps the model's name is a `model.changed` in the
+                // record like one that does not, and a session resumed from it can say where it
+                // had been talking
                 let kernel = self.kernel.clone();
                 self.switch(async move {
                     provider.set_endpoint(url, model).await;

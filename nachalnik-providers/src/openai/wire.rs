@@ -95,14 +95,14 @@ impl Provider for OpenAiCompatible {
         let context_limit = *self.context_limit.lock();
         let parameters = self.parameters.lock().clone();
         let model = self.model.lock().clone();
+        let endpoint = crate::recorded(&self.base_url.lock());
 
-        ModelInfo {
-            context_limit,
-            tool_calling: true,
-            reasoning: true,
-            parameters,
-            ..ModelInfo::new(self.label.clone(), model)
-        }
+        ModelInfo::new(self.label.clone(), model)
+            .with_context_limit(context_limit)
+            .with_tool_calling(true)
+            .with_reasoning(true)
+            .with_parameters(parameters)
+            .with_endpoint(endpoint)
     }
 
     /// The payload, rendered once. `respond` sends exactly this, so previewing it is not a second

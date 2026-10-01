@@ -518,6 +518,20 @@ async fn session() -> Result<Option<headless::Stop>> {
         if first && let Some(path) = &args.resume {
             app.recall(Path::new(path));
             app.replay();
+            // and where it was talking, where that is not where this run is pointed. Said rather
+            // than followed; see `args::last_endpoint`
+            if let Some(was) = kamchatka::args::last_endpoint(Path::new(path))
+                && let Some(now) = app.provider.info().endpoint
+                && now != was
+            {
+                app.say(
+                    Speaker::Note,
+                    format!(
+                        "the record says this session was last talking to {was}, and this run is \
+                         pointed at {now}; `/endpoint {was}` carries on there"
+                    ),
+                );
+            }
         }
         // note: `server.is_none()` as well as `!headless`, because those are two different
         // questions. The greeting tells the reader that `ctrl+p` shows the next request and `F1`

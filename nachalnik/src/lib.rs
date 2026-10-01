@@ -104,10 +104,7 @@
 //! #[async_trait]
 //! impl Provider for Parrot {
 //!     fn info(&self) -> ModelInfo {
-//!         ModelInfo {
-//!             context_limit: Some(8_192),
-//!             ..ModelInfo::new("example", "parrot")
-//!         }
+//!         ModelInfo::new("example", "parrot").with_context_limit(8_192)
 //!     }
 //!
 //!     async fn respond(
