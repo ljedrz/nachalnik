@@ -364,6 +364,28 @@ async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
     assert!(said.contains("1 path(s) that are not files"), "{said}");
 }
 
+/// A link to nothing - one whose file is not there, or a loop of links - is counted as that,
+/// rather than as a pipe, a socket or a device.
+#[tokio::test]
+async fn a_link_to_nothing_is_counted_as_one() {
+    let dir = tree("grep-dangling");
+    std::os::unix::fs::symlink("gone.rs", dir.join("dangling.rs")).expect("a dangling link");
+    std::os::unix::fs::symlink("loop-b", dir.join("loop-a")).expect("a link");
+    std::os::unix::fs::symlink("loop-a", dir.join("loop-b")).expect("and back");
+
+    for (action, args) in [
+        ("grep", json!({ "pattern": "Kernel" })),
+        ("glob", json!({ "pattern": "**/*" })),
+    ] {
+        let said = ask(&dir, action, args.clone()).await;
+        assert!(
+            said.contains("skipped: 3 link(s) to nothing"),
+            "{action} {args}: {said}"
+        );
+        assert!(!said.contains("not files"), "{action} {args}: {said}");
+    }
+}
+
 /// A binary file is skipped whole rather than answered with a line of object code, and the line
 /// that says it names the byte that made it one.
 ///

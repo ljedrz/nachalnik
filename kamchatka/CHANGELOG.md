@@ -180,6 +180,9 @@ minor bump may break you.
   line naming which lines it shows, so under `/limit fs:read 200` there was room for nothing:
   every file came back as a header calling its first line longer than the limit, with none of the
   file after it. The room kept back is at most half the limit now.
+- **A link to nothing is counted as one.** `grep` and `glob` counted a dangling link, and a loop
+  of links, among the paths that are not files - "a pipe, a socket, a device" - so a model was
+  told about a pipe that was not there. They have a count of their own: `link(s) to nothing`.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

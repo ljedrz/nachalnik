@@ -213,6 +213,8 @@ struct Skipped {
     unreadable: usize,
     /// Paths a walk passed over that are not files - a pipe, a socket, a device.
     elsewhere: usize,
+    /// Links to nothing: what they name is not there, or is a link back to themselves.
+    nowhere: usize,
 }
 
 impl Skipped {
@@ -230,6 +232,10 @@ impl Skipped {
             (
                 self.elsewhere,
                 "path(s) that are not files - a pipe, a socket, a device",
+            ),
+            (
+                self.nowhere,
+                "link(s) to nothing - what they name is not there",
             ),
         ]
         .iter()
@@ -327,6 +333,10 @@ fn walked(
                     skipped.elsewhere += 1;
                     continue;
                 }
+                Link::Nowhere => {
+                    skipped.nowhere += 1;
+                    continue;
+                }
                 Link::Refuse => {
                     skipped.links += 1;
                     continue;
@@ -387,6 +397,10 @@ enum Link {
     /// Something that is not a file at all - a pipe, a socket, a device: passed over, and counted
     /// as the thing itself would be.
     Elsewhere,
+    /// Nothing at all: a dangling link, or a loop of them. Counted apart from a pipe, because
+    /// calling one a pipe, a socket or a device sends a model looking for a thing that is not
+    /// there.
+    Nowhere,
     /// Somewhere this session does not reach: count it and say so.
     Refuse,
 }
@@ -396,6 +410,8 @@ fn followed(reach: &Reach, path: &Path) -> Link {
         Err(_) => Link::Refuse,
         Ok(resolved) if path.is_file() => Link::Read(resolved),
         Ok(_) if path.is_dir() => Link::Skip,
+        // `metadata` follows the link, so it fails where the chain ends at nothing
+        Ok(_) if std::fs::metadata(path).is_err() => Link::Nowhere,
         // a link to a pipe or a device is passed over as the thing itself would be
         Ok(_) => Link::Elsewhere,
     }
