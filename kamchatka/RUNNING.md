@@ -502,31 +502,28 @@ says how much of the total was the advisor's.
 
 The compactor sheds what the conversation is done with, by two rules. The first runs before every
 request, however empty the context is: a tool result whose turn is over — the model has answered
-you with it in front of it — goes to a marker, and so does a picture or a document the model has
-been shown, wherever it is. The second waits for room: once the context passes `--compact` (0.8 by
-default) of the limit, the oldest exchanges go whole — your message, the model's turns answering
-it, their results and any file you attached for it — until it is down to `--compact-target`.
-When no older exchange is left to drop, it elides what the model has already been shown of the turn
-in progress, oldest first: a result handed to it in an earlier request of the same turn, which it
-may not have made use of yet — which is why that marker asks for the part it needs rather than the
-whole. Left out, that is twenty points under `--compact` or half of it, whichever is more; the gap is what
+you with it in front of it, and you have said something since — goes to a marker, and so does a
+picture or a document the model has been shown in an exchange that is over. The second waits for
+room: once the context passes `--compact` (0.8 by default) of the limit, the oldest exchanges go
+whole — your message, the model's turns answering it, their results and any file you attached for
+it — until it is down to `--compact-target`. Left out, that is twenty points under `--compact` or half of it, whichever is more; the gap is what
 makes the drops come in bursts rather than an exchange before every turn, each of which would move
 the start of the request a provider's prompt cache keys on. Set the two equal for just enough each
 time.
 
-Neither rule drops anything of the turn in progress, takes anything that is pinned — the kernel
-refuses — or touches a note the model wrote for itself, and neither summarizes what it takes: it
-never read it. Every item is
-still on the context tab, still holding every byte it held: an elided one marked `…`, one
+Neither rule touches the turn in progress — what the model is in the middle of is what it has not
+finished using, and a result taken from under it was read again, and taken again — nor anything
+that is pinned, which the kernel refuses, nor a note the model wrote for itself, and neither
+summarizes what it takes: it never read it. Every item is still on the context tab, still holding every byte it held: an elided one marked `…`, one
 <kbd>space</kbd> from coming back, and a dropped one excluded, `/restore` from coming back. A result
 you bring back by hand is left alone by the first rule rather than elided again before the next
 request; when the context fills, it goes with its exchange like anything else, and a pin is what
 keeps it.
 
 Nothing either rule takes has gone unread, and the marker says so — a model reading a marker that
-said only "compacted" decided it had never seen the files it had just summarised. The one exception
-is a request that would not fit the limit at all: then results the model has not been shown yet go
-too, oldest first, rather than the request being refused, and the marker and the summary say which.
+said only "compacted" decided it had never seen the files it had just summarised. That holds when
+the request would not fit the limit, too: what the model has not been shown is never taken to make
+it fit, and the request is not sent.
 
 A marker costs something too — it is a line of text where the content was — so the compactor
 counts what each elision actually recovers and leaves alone any result no bigger than the marker
@@ -541,9 +538,8 @@ question, so the context tab is a keystroke away while it stands and <kbd>p</kbd
 answer to "not that one". Saying yes works the pass out again, so a pin made while reading the
 list is honoured rather than refused after the fact.
 
-The compactor drops nothing of the turn in progress and takes nothing that is pinned, so once what
-the model has been shown of the turn is elided, a context that is mostly those is one it can do
-nothing about. When the context is past `--compact` and there is
+The compactor keeps away from the turn in progress and from what is pinned, so a context that is
+mostly those is one it can do nothing about. When the context is past `--compact` and there is
 nothing left it may take, the session says the context is full, once, while there is still room
 under the limit: what is left is for you to `/exclude`, or for the model to exclude through its
 `context` tool. The model is told too, by a note put into the context before its next request —

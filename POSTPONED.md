@@ -230,18 +230,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   from when it is used to when the session starts, so a root that appears, moves or is relinked
   during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
 
-- **Whether the compactor elides what the model has read of the turn it is still in.** With no
-  older exchange left to drop, `Shedder` elides the results the model was handed in an earlier
-  request of the same turn, oldest first. Read means sent, not used: a model reading eight files in
-  one turn to answer at the end, or two at once and then two more, lost the first ones before it
-  had said anything about them, and then either read them again - each read elided again on the
-  next step - or answered from what it guessed. The marker asks for the part rather than the whole,
-  and a model that takes notes as it goes loses nothing. The other way is to leave the turn alone
-  until the request would not fit at all, and let the full notice, which the kernel puts in the
-  same turn, have the model make its own room. That trades a model that rereads for one that is
-  asked to tidy, and runs closer to the limit before anything is taken; which is better for a turn
-  nobody is watching is the decision.
-
 - **The full notice after `/tools toggle context`.** Which of its two sentences the model is told
   is fixed at startup by whether `context` is offered then. A session that toggled it off was told
   to `look` with a tool it did not have, and a model told so named a tool that does not exist.

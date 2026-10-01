@@ -44,12 +44,15 @@ async fn compaction_shortens_a_result_without_unasking_the_question() {
         Content::text("x".repeat(40_000)),
         false,
     ));
-    // read, so the pass may take it: one the model has not been shown is kept while it fits
+    // read, so the pass may take it: one the model has not been shown is kept
     kernel.push(ContextItem::assistant(
         Content::text("it is forty thousand x"),
         vec![],
     ));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.0,
         target: 0.0,
@@ -138,9 +141,12 @@ async fn a_compactor_with_nothing_left_to_elide_stops_asking() {
         "y".repeat(4_000),
         false,
     ));
-    // and read: what the model has not been shown is kept while the request fits
+    // and read: what the model has not been shown is kept
     kernel.push(ContextItem::assistant("it is all y", vec![]));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
@@ -304,6 +310,9 @@ async fn compaction_does_not_elide_a_result_smaller_than_the_marker_replacing_it
     ));
     kernel.push(ContextItem::assistant("read it", vec![]));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let with_big = budget().context_tokens;
     let plan = trim
         .plan(&kernel.items(), &budget())
@@ -443,6 +452,9 @@ async fn a_result_worth_more_than_its_marker_and_the_summary_is_still_taken() {
     ));
     kernel.push(ContextItem::assistant("read it", vec![]));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
@@ -470,66 +482,42 @@ async fn a_result_worth_more_than_its_marker_and_the_summary_is_still_taken() {
     );
 }
 
-/// A blob, and the sentence about the results, are counted in the same units as everything else -
-/// so a pass whose summary would outgrow what it freed is not run, and a picture is still taken
-/// whatever the arithmetic says of it.
+/// The summary a pass leaves counts only the exchanges a compactor dropped, not one the person took
+/// out by hand.
+///
+/// note: a message excluded by hand is out of the request too, and counting it would tell the
+/// model more had been dropped to make room than any pass had dropped.
 #[tokio::test]
-async fn a_summary_counts_only_what_this_compactor_elided() {
-    use nachalnik::{Budget, Compactor, Content};
+async fn a_summary_counts_only_what_this_compactor_dropped() {
+    use nachalnik::{Budget, Compactor};
 
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
-    kernel.push(ContextItem::file("big.txt", "x".repeat(2_600)).pinned());
-
-    // two results worth taking, one of them elided by the model rather than by a pass - the
-    // model's own `elide`, which writes its own reason onto the item and leaves a marker of a
-    // different kind behind
-    for (id, tool) in [("m1", "context:elide"), ("c1", "shell")] {
-        let asked = call(id, tool, json!({}));
-        kernel.push(ContextItem::assistant(
-            Content::text(""),
-            vec![asked.clone()],
-        ));
-        kernel.push(ContextItem::tool_result(
-            asked.id.clone(),
-            tool,
-            "y".repeat(2_000),
-            false,
-        ));
-    }
-    kernel.push(ContextItem::assistant("read both", vec![]));
-    let model_elided = kernel
-        .items()
-        .iter()
-        .find(|item| item.label == "context:elide")
-        .expect("the result is there")
-        .id;
-    kernel.set_state(
-        [model_elided],
-        ContextState::Elided,
-        Some("I have what I need from this one".to_owned()),
-    );
+    let by_hand = exchange(kernel, 0, &"an old question. ".repeat(100), "ok");
+    exchange(kernel, 1, &"another old question. ".repeat(100), "ok");
+    exchange(kernel, 2, &"the newest question. ".repeat(100), "ok");
+    kernel.set_state(by_hand, ContextState::Excluded, Some("not this".to_owned()));
 
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
     };
-    let budget = || Budget {
+    let budget = Budget {
         limit: Some(1_000),
         ..kernel.budget()
     };
     let plan = trim
-        .plan(&kernel.items(), &budget())
+        .plan(&kernel.items(), &budget)
         .await
-        .expect("the result the pass may take is worth taking");
+        .expect("over the threshold");
     let said = plan
         .summary
         .as_ref()
         .map(|summary| summary.content.to_text().into_owned());
     assert!(
         said.as_deref()
-            .is_some_and(|said| said.starts_with("1 tool result(s) you had already read")),
-        "the model elided one of the two itself, and this pass is not what took it: {said:?}"
+            .is_some_and(|said| said.starts_with("The 1 earliest exchange(s)")),
+        "the person took one out themselves, and this pass is not what took it: {said:?}"
     );
 }
 
@@ -584,6 +572,9 @@ async fn blobs_are_taken_before_anything_else() {
          600 KB picture as free"
     );
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
@@ -597,10 +588,11 @@ async fn blobs_are_taken_before_anything_else() {
         .plan(&kernel.items(), &budget())
         .await
         .expect("over the threshold on the text alone");
-    assert_eq!(
-        plan.elide,
-        vec![blob, text],
-        "the blob goes first, though it is the newest item and the one counted at nothing"
+    assert!(
+        plan.elide.contains(&blob) && plan.elide.contains(&text),
+        "the blob goes with the text, though it is the newest item and the one counted at \
+         nothing: {:?}",
+        plan.elide
     );
     assert!(
         plan.reason.starts_with("compacted after you had read it"),
@@ -655,6 +647,9 @@ async fn a_picture_not_yet_shown_is_kept_for_its_first_showing() {
         false,
     ));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
@@ -717,6 +712,9 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
     // the first turn excluded, which takes its result out of the request with it
     kernel.set_state([results[0].0], ContextState::Excluded, None);
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.1,
         target: 0.05,
@@ -730,15 +728,9 @@ async fn a_result_whose_call_is_not_sent_is_not_counted_as_elided() {
         .await
         .expect("the second result is over the threshold");
     assert_eq!(plan.elide, vec![results[1].1], "only what is sent");
-    let summary = plan
-        .summary
-        .as_ref()
-        .map(|s| s.content.to_text().into_owned());
     assert!(
-        summary
-            .as_deref()
-            .is_some_and(|s| s.starts_with("1 tool result(s) you had already read")),
-        "{summary:?}"
+        plan.summary.is_none(),
+        "and each marker says what it is, so there is no summary to miscount"
     );
     let report = kernel.apply_compaction(plan);
     assert_eq!(report.elided.len(), 1);
@@ -772,6 +764,9 @@ async fn a_blob_goes_even_when_the_count_says_there_is_room() {
         vec![],
     ));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder {
         threshold: 0.8,
         target: 0.5,
@@ -886,6 +881,9 @@ async fn a_share_that_rounds_to_nothing_is_said_as_under_one_percent() {
     ));
     kernel.push(ContextItem::assistant("it is all x", Vec::new()));
 
+    // and the person has asked something since, so the turn that read it is over: a pass leaves
+    // the turn in progress alone
+    kernel.push(ContextItem::user("and now?"));
     let trim = Shedder::under(0.001);
     let budget = Budget {
         limit: Some(1_000_000),
@@ -909,8 +907,8 @@ async fn a_share_that_rounds_to_nothing_is_said_as_under_one_percent() {
 /// note: found live. Against a real endpoint at a 6,000-token limit, a tool loop left **twenty-one
 /// identical summaries of 67 tokens each** - 1,407 tokens, a quarter of the budget, all of it the
 /// same sentence, in a context the compactor had been called on to make room in. Every pass wrote
-/// one and nothing ever took one back out: a summary is a `Reference`, and this pass only ever
-/// considers a tool result.
+/// one and nothing ever took one back out: a summary is a `Reference`, and the pass then only ever
+/// considered a tool result.
 #[tokio::test]
 async fn compaction_summaries_do_not_pile_up() {
     use nachalnik::{Budget, Compactor};
@@ -926,26 +924,17 @@ async fn compaction_summaries_do_not_pile_up() {
         ..kernel.budget()
     };
 
-    // four passes with something new each time, which is what a tool loop looks like. The newest
-    // result has not been shown yet and is kept, so the first pass has nothing it may take and
-    // every later one takes the one before
+    // five exchanges of words, each of which takes the context past the threshold once the second
+    // is in, so every pass after that drops the oldest left
     let mut passes = 0;
-    for n in 0..4 {
-        let call = call(&format!("c{n}"), "peek", json!({}));
-        kernel.push(ContextItem::assistant("looking", vec![call.clone()]));
-        kernel.push(ContextItem::tool_result(
-            call.id.clone(),
-            "peek",
-            "a line of routine diagnostic output. ".repeat(60),
-            false,
-        ));
-
+    for n in 0..5 {
+        exchange(kernel, n, &"a question of some length. ".repeat(60), "ok");
         if let Some(plan) = trim.plan(&kernel.items(), &budget()).await {
+            passes += plan.summary.is_some() as usize;
             kernel.apply_compaction(plan);
-            passes += 1;
         }
     }
-    assert_eq!(passes, 3, "every pass but the first had something to take");
+    assert!(passes >= 3, "only {passes} passes dropped anything");
 
     let items = kernel.items();
     let standing: Vec<_> = items
@@ -965,10 +954,15 @@ async fn compaction_summaries_do_not_pile_up() {
 
     // and it speaks for every pass, since it is the only one left saying anything
     let said = standing[0].content.to_text();
-    let elided = items.iter().filter(|item| item.state.is_elided()).count();
+    let dropped = items
+        .iter()
+        .filter(|item| {
+            item.kind == nachalnik::ContextKind::UserMessage && item.state == ContextState::Excluded
+        })
+        .count();
     assert!(
-        said.starts_with(&format!("{elided} ")),
-        "the standing sentence should count all {elided} of them: {said}"
+        said.starts_with(&format!("The {dropped} earliest exchange(s)")),
+        "the standing sentence should count all {dropped} of them: {said}"
     );
 
     // superseded rather than destroyed, like everything else here: the earlier ones are still
@@ -1282,11 +1276,13 @@ async fn ready_to_compact() -> (Harness, nachalnik::ContextId) {
         Content::text("x".repeat(40_000)),
         false,
     ));
-    // read, so the pass may take it: one the model has not been shown is kept while it fits
+    // read, so the pass may take it: one the model has not been shown is kept
     harness.app.kernel.push(ContextItem::assistant(
         Content::text("it is forty thousand x"),
         vec![],
     ));
+    // and asked something since, so that turn is over: a pass leaves the turn in progress alone
+    harness.app.kernel.push(ContextItem::user("and now?"));
     harness.drain();
 
     (harness, result)
@@ -1470,29 +1466,24 @@ fn a_compactor_aims_lower_than_the_point_it_starts_at() {
     );
 }
 
-/// A result the model has not been shown yet is kept while the request fits the limit, and taken
-/// only where it cannot.
+/// A result the model has not been shown yet is kept, whether or not the request fits the limit.
 ///
 /// note: found in a live session with a 12,000-token limit. Pass after pass at 84 to 90% of it
 /// elided the `grep` the model had just run - before the request that would have been the first
 /// to carry it - so the model read a marker and ran the search again, for a result that fitted.
+/// And where it did not fit, the pass that took it anyway left the model a marker for a file it
+/// had asked for and never seen.
 #[tokio::test]
-async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
+async fn a_result_not_yet_shown_is_kept_whether_or_not_it_fits() {
     use nachalnik::{Budget, Compactor, Content};
 
     let harness = Harness::new([]);
     let kernel = &harness.app.kernel;
 
-    // read, and answered since
-    let old = call("c1", "read", json!({"path": "old.rs"}));
-    kernel.push(ContextItem::assistant(Content::text(""), vec![old.clone()]));
-    let seen = kernel.push(ContextItem::tool_result(
-        old.id.clone(),
-        "read",
-        "x".repeat(4_000),
-        false,
-    ));
+    // read, and answered, in an exchange that is over
+    let seen = exchange(kernel, 0, "what is in old.rs?", &"x".repeat(4_000))[2];
     // read, and not yet answered: the request about to go is the first to carry it
+    kernel.push(ContextItem::user("and new.rs?"));
     let new = call("c2", "read", json!({"path": "new.rs"}));
     kernel.push(ContextItem::assistant(Content::text(""), vec![new.clone()]));
     let fresh = kernel.push(ContextItem::tool_result(
@@ -1518,37 +1509,20 @@ async fn a_result_not_yet_shown_is_kept_while_the_request_fits() {
         .expect("over the threshold");
     assert_eq!(plan.elide, vec![seen], "the one not yet read stays");
 
-    // and where the request cannot fit the limit even without the old one, the new one goes too
+    // and where the request cannot fit the limit even without the old one, it still stays
     let plan = trim
         .plan(&kernel.items(), &within(1_000))
         .await
         .expect("over the threshold");
-    assert_eq!(plan.elide, vec![seen, fresh]);
-    // and the marker says nothing about having read it, since it is the note on both and one of
-    // them was not; the summary says which, since it is the one place there is room to
-    assert!(
-        plan.reason
-            .starts_with("compacted because the request would not have fit"),
-        "{}",
-        plan.reason
-    );
-    let said = plan
-        .summary
-        .as_ref()
-        .map(|summary| summary.content.to_text().into_owned())
-        .unwrap_or_default();
-    assert!(
-        said.contains("1 of them before you could read them"),
-        "{said}"
-    );
+    assert_eq!(plan.elide, vec![seen]);
+    assert!(!plan.elide.contains(&fresh));
 }
 
 /// A context over the compactor's threshold that holds nothing it may take is said to be full,
 /// once, and the person is told what can still be done.
 ///
-/// note: `Shedder` keeps its promise and takes nothing pinned and drops nothing of the turn in
-/// progress, so a context that is those is one it can do nothing about once what was read of the
-/// turn is elided. It used to say nothing, and the session
+/// note: `Shedder` keeps its promise and takes neither what is pinned nor the turn in progress, so
+/// a context that is those is one it can do nothing about. It used to say nothing, and the session
 /// went on until the kernel refused a request over the limit - which a headless run did not come
 /// back from. The kernel measures it now, and this is the line it comes to.
 #[tokio::test]

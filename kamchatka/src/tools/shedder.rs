@@ -4,12 +4,18 @@
 //! note: two rules, and they answer different questions. The first is about *what has served its
 //! purpose*, and it runs before every request whether the context is full or not: a tool result
 //! the model has read and whose turn is over goes to a marker, and so does a picture the model has
-//! been shown, wherever it is. The second is about *room*: once the context reaches the threshold,
-//! the oldest exchanges with the person go whole - the message, the turns answering it and their
-//! results - until it is down to the target. The pair is a high- and a low-water mark, so the
-//! second rule runs in bursts rather than an exchange at a time before every turn.
+//! been shown, in an exchange before the one in progress. The second is about *room*: once the
+//! context reaches the threshold, the oldest exchanges with the person go whole - the message, the
+//! turns answering it and their results - until it is down to the target. The pair is a high- and
+//! a low-water mark, so the second rule runs in bursts rather than an exchange at a time before
+//! every turn.
 //!
-//! note: neither rule takes anything the model has not been shown. That is what lets the marker
+//! note: neither rule touches the turn in progress. What the model is in the middle of is what it
+//! has not finished using, and a result taken from under it - read once, never answered with -
+//! was read again, and elided again on the next step. A turn that fills the context is told so by
+//! the full notice, in the same turn, and what goes is for the model or the person to say.
+//!
+//! note: and neither takes anything the model has not been shown. That is what lets the marker
 //! say the model had read what it stands in for, which it needs to say: a model reading a marker
 //! that said only "compacted" decided it had never seen the files it had just summarised, called
 //! its own summaries fabricated and withdrew them.
@@ -108,14 +114,12 @@ impl Compactor for Shedder {
         // the marker. The model reads it too, in the brackets the projector puts round it, so each
         // is written to be read by both - what happened, why, and what to do about it
         //
-        // note: one reason for every item in a pass, so it has to be true of all of them. The
-        // first two say the model had read what they stand in for, and are only ever the reason
-        // on a pass that took nothing unread: a model reading a marker that said only "compacted"
-        // decided it had never seen the files it had just summarised, and withdrew its summaries.
-        // The third is the reason on the one pass that may take what has not been read, and says
-        // nothing about reading either way, since it is the note on both kinds
+        // note: one reason for every item in a pass, so it has to be true of all of them. Both say
+        // the model had read what they stand in for, which no pass takes anything but: a model
+        // reading a marker that said only "compacted" decided it had never seen the files it had
+        // just summarised, and withdrew its summaries
         //
-        // note: the two about room ask for the part rather than the whole, because a model told
+        // note: the one about room asks for the part rather than the whole, because a model told
         // only that it may read something again reads a file too big for the context again, and
         // again, every read discarded on arrival - and the part it needs is what `grep` is for
         //
@@ -140,13 +144,9 @@ impl Compactor for Shedder {
              {limit}-token limit. If you still need it, ask for the part you need rather than the \
              whole - there is little room for it"
         );
-        let no_fit = format!(
-            "{MARK} because the request would not have fit the {limit}-token limit with it. If \
-             you need it, ask for the part you need rather than the whole - there is no room for it"
-        );
-        // the longest of the three, so that whichever one the pass ends up with, nothing it takes
-        // is smaller than the line standing in for it
-        let marker = [&served, &room_made, &no_fit]
+        // the longer of the two, so that whichever one the pass ends up with, nothing it takes is
+        // smaller than the line standing in for it
+        let marker = [&served, &room_made]
             .into_iter()
             .map(|reason| marker_tokens(reason, scale))
             .max()
@@ -213,8 +213,8 @@ impl Compactor for Shedder {
             .rposition(|item| matches!(item.kind, ContextKind::AssistantMessage { .. }))
             .unwrap_or(0);
         let exchanges = exchanges(items);
-        // where the turn in progress starts, which nothing before the room rule's last resort
-        // reaches into; with no message from the person at all, everything is that turn
+        // where the turn in progress starts, which neither rule reaches into; with no message from
+        // the person at all, everything is that turn
         let current = exchanges.last().map_or(0, |turn| turn.start);
 
         let mut used = budget.used();
@@ -231,11 +231,16 @@ impl Compactor for Shedder {
             if index >= seen || !sheddable(item) || item.note.is_some() {
                 continue;
             }
+            // nothing of the turn in progress, a picture included: it is what the model is still
+            // working from
+            if index >= current {
+                continue;
+            }
             match carries_blob(&item.content) {
                 // what a blob recovers is credited as the counter has it - nothing, today - and is
                 // here for the counter behind `set_counter` that does know what a picture costs
                 true => used -= item.tokens.saturating_sub(marker).min(used),
-                false if index < current => {
+                false => {
                     // a result no bigger than the marker is not worth eliding at all: the pass
                     // would spend the person's undo and a line of the model's attention to make
                     // the request bigger
@@ -244,18 +249,15 @@ impl Compactor for Shedder {
                     };
                     used -= net.min(used);
                 }
-                false => continue,
             }
             routine.push(item.id);
         }
 
         let mut remove = Vec::new();
-        let mut room = Vec::new();
         let mut dropped = 0usize;
         // what the room half of the pass has freed, on the counter's scale and before its own
         // summary is paid for; the half that has not freed enough to be worth that is not run
         let mut recovered = 0usize;
-        let mut unread = Vec::new();
         if let Some(limit) = budget.limit.filter(|_| full) {
             let target = (limit as f64 * self.target) as usize;
             // what a pin holds on to: the kernel refuses to exclude either half of a pinned call
@@ -320,65 +322,12 @@ impl Compactor for Shedder {
                 }
                 dropped += took as usize;
             }
-            // the turn in progress, which is all that is left, and only what the model has already
-            // read of it - the results of this turn that came before its last request, oldest
-            // first. A turn that reads a great deal fills a context with no older exchange left
-            // to drop, and this is the only thing that can make room in it
-            for item in &items[current.min(seen)..seen] {
-                if used <= target {
-                    break;
-                }
-                if !sheddable(item) || routine.contains(&item.id) {
-                    continue;
-                }
-                let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
-                    continue;
-                };
-                used -= net.min(used);
-                recovered += net;
-                room.push(item.id);
-            }
-            // and the last resort, which is what the model has not been shown yet, and only where
-            // the request would not fit the limit without it. Kept, the kernel refuses to send a
-            // request over the limit at all, and the turn ends on a refusal the model never reads:
-            // a few results of 32,000 bytes each are past a 12,000-token limit on their own
-            //
-            // note: not for the target and not for the threshold, which is where a `grep` that
-            // fitted was elided on its way in, again and again, the model running it again for a
-            // marker each time
-            if used > limit {
-                for item in &items[seen.min(items.len())..] {
-                    if used <= limit {
-                        break;
-                    }
-                    // not one going with its exchange already, which is an unread result at the
-                    // end of an older one: nothing came after it before the next question
-                    if !sheddable(item) || carries_blob(&item.content) || remove.contains(&item.id)
-                    {
-                        continue;
-                    }
-                    let Some(net) = item.tokens.checked_sub(marker).filter(|net| *net != 0) else {
-                        continue;
-                    };
-                    used -= net.min(used);
-                    recovered += net;
-                    unread.push(item.id);
-                }
-            }
         }
 
         // the room half leaves a summary behind, because what it removes leaves nothing behind of
         // its own; the first rule does not, because every item it takes is a marker in its own
         // place, saying what happened to it
-        let summary = (dropped != 0 || !room.is_empty() || !unread.is_empty()).then(|| {
-            summary(
-                items,
-                current,
-                dropped,
-                room.len() + unread.len(),
-                unread.len(),
-            )
-        });
+        let summary = (dropped != 0).then(|| summary(items, dropped));
 
         // note: what the room half is worth is what it freed less what its summary costs, and one
         // that comes out under is not run. The margin is the summary again, so it has to free
@@ -391,16 +340,11 @@ impl Compactor for Shedder {
                 // elided as well
                 routine
                     .into_iter()
-                    .chain(room)
-                    .chain(unread.iter().copied())
                     .filter(|id| !remove.contains(id))
                     .collect(),
                 remove,
             ),
-            _ => {
-                unread.clear();
-                (None, routine, Vec::new())
-            }
+            _ => (None, routine, Vec::new()),
         };
         if elide.is_empty() && remove.is_empty() {
             return None;
@@ -429,11 +373,9 @@ impl Compactor for Shedder {
             None => remove,
         };
 
-        let reason = match (unread.is_empty(), summary.is_some()) {
-            (false, _) => no_fit,
-            (true, true) => room_made,
-            (true, false) if full => room_made,
-            (true, false) => served,
+        let reason = match summary.is_some() || full {
+            true => room_made,
+            false => served,
         };
 
         Some(CompactionPlan {
@@ -522,17 +464,11 @@ fn goes_with_its_exchange(item: &ContextItem) -> bool {
 /// hand is gone too, and counting it here would tell the model more had been dropped to make room
 /// than any pass had dropped. The kernel sets a removal's note to `compaction: ` and the reason,
 /// and the reason begins with [`MARK`].
-fn summary(
-    items: &[Arc<ContextItem>],
-    current: usize,
-    dropped: usize,
-    made_room: usize,
-    unread: usize,
-) -> String {
-    let ours = |item: &ContextItem, prefix: &str| {
+fn summary(items: &[Arc<ContextItem>], dropped: usize) -> String {
+    let ours = |item: &ContextItem| {
         item.note
             .as_deref()
-            .and_then(|note| note.strip_prefix(prefix))
+            .and_then(|note| note.strip_prefix("compaction: "))
             .is_some_and(|note| note.starts_with(MARK))
     };
     let exchanges = dropped
@@ -541,47 +477,15 @@ fn summary(
             .filter(|item| {
                 item.kind == ContextKind::UserMessage
                     && item.state == ContextState::Excluded
-                    && ours(item, "compaction: ")
-            })
-            .count();
-    // the results of this turn an earlier pass elided to make room, which the room sentence is the
-    // reason on; a result elided once its turn was over is in an earlier exchange by definition
-    let results = made_room
-        + items[current.min(items.len())..]
-            .iter()
-            .filter(|item| {
-                item.state.is_elided()
-                    && matches!(item.kind, ContextKind::ToolResult { .. })
-                    && !carries_blob(&item.content)
-                    && ours(item, "")
+                    && ours(item)
             })
             .count();
 
-    let mut said = Vec::new();
-    if exchanges != 0 {
-        said.push(format!(
-            "The {exchanges} earliest exchange(s) of this conversation - each a message from the \
-             person, your turns answering it and their tool results - have been excluded to make \
-             room. You can no longer read them, and nothing else stands in their place."
-        ));
-    }
-    // note: what had not been read is said here, by this pass, because no marker can say it: the
-    // one reason a pass has is on everything it elided, and the pass that takes what has not been
-    // read takes what has as well
-    match (results, unread) {
-        (0, _) => {}
-        (results, 0) => said.push(format!(
-            "{results} tool result(s) you had already read in this turn have been elided to make \
-             room: each is now a one-line marker where its content was."
-        )),
-        (results, unread) => said.push(format!(
-            "{results} tool result(s) of this turn have been elided to make room, {unread} of them \
-             before you could read them, because the request would not have fit the limit with \
-             them: each is now a one-line marker where its content was."
-        )),
-    }
-
-    said.join(" ")
+    format!(
+        "The {exchanges} earliest exchange(s) of this conversation - each a message from the \
+         person, your turns answering it and their tool results - have been excluded to make \
+         room. You can no longer read them, and nothing else stands in their place."
+    )
 }
 
 /// How many tokens the counter active here gives four bytes, taken from the items in hand.
