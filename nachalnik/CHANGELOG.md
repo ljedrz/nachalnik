@@ -42,6 +42,13 @@ minor bump may break you.
 
 ### fixed
 
+- **An undo names what it reverted, and counts what it brought back on the scale in force.** A
+  recount that moved a figure copied every item an undo checkpoint still shared, and
+  `context.undone` and `context.redone` named each copy as changed - so in a session that
+  recalibrates after every request, undoing one answer named most of the context. And what came
+  back carried the figures of the counter as it was when the checkpoint was taken. An item is
+  changed now when its state, note or content is, and `Kernel::undo` and `Kernel::redo` recount
+  what they restore, with a `context.recounted` after them where a figure moved.
 - **An answered question does not refill a turn's request budget.** `Kernel::turn` counted the
   requests it sent itself, so the `turn` called once a question was answered started from
   nothing, and a turn whose every call was asked about ran as many requests as it liked under

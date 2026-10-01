@@ -257,11 +257,17 @@ impl Kernel {
         if Self::holds_calls(&machine.state) {
             return Err(Error::Busy);
         }
+        // the counter between the two, for the lock order: what comes back was counted on the
+        // scale in force when its checkpoint was taken, and is counted again on this one
+        let held = self.0.counter.read();
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
-        let Some(diff) = context.undo().then(|| Self::diff(&before, context.items())) else {
+        if !context.undo() {
             return Ok(false);
-        };
+        }
+        let tokens_before = context.tokens();
+        let recounted = context.recount(&**held);
+        let diff = Self::diff(&before, context.items());
         let answer_gone =
             matches!(machine.state, State::Finished { item, .. } if diff.gone.contains(&item));
 
@@ -270,6 +276,7 @@ impl Kernel {
             removed: diff.gone,
             changed: diff.changed,
         });
+        self.recounted(recounted, tokens_before, &context);
         if answer_gone {
             self.transition(&mut machine, State::Idle);
         }
@@ -301,17 +308,22 @@ impl Kernel {
         if Self::holds_calls(&machine.state) {
             return Err(Error::Busy);
         }
+        let held = self.0.counter.read();
         let mut context = self.0.context.write();
         let before = context.items().to_vec();
-        let Some(diff) = context.redo().then(|| Self::diff(&before, context.items())) else {
+        if !context.redo() {
             return Ok(false);
-        };
+        }
+        let tokens_before = context.tokens();
+        let recounted = context.recount(&**held);
+        let diff = Self::diff(&before, context.items());
 
         self.emit(Event::ContextRedone {
             items: diff.items,
             restored: diff.appeared,
             changed: diff.changed,
         });
+        self.recounted(recounted, tokens_before, &context);
 
         Ok(true)
     }
@@ -326,12 +338,25 @@ impl Kernel {
     /// [`Kernel::recount`], for a caller already holding the context lock.
     pub(super) fn recount_in(&self, context: &mut Context, counter: &dyn TokenCounter) {
         let tokens_before = context.tokens();
-        context.recount(counter);
+        let _ = context.recount(counter);
 
         self.emit(Event::ContextRecounted {
             tokens_before,
             tokens_after: context.tokens(),
         });
+    }
+
+    /// Announces the recount an undo or a redo made of what it brought back, if it moved a figure.
+    ///
+    /// note: after the undo or redo itself, because that is the order they happened in: the
+    /// items as checkpointed, then those items counted on the scale in force.
+    fn recounted(&self, recounted: bool, tokens_before: usize, context: &Context) {
+        if recounted {
+            self.emit(Event::ContextRecounted {
+                tokens_before,
+                tokens_after: context.tokens(),
+            });
+        }
     }
 
     /// Returns how much room the next request would take, and how much there is.

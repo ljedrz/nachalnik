@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Config, ContextId, ContextItem, ContextState, Event, Kernel, ModelResponse,
+    BytesPerToken, Config, ContextId, ContextItem, ContextState, Event, Kernel, ModelResponse,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -112,6 +112,65 @@ fn a_recount_that_moves_no_figure_changes_nothing_an_undo_reports() {
     assert!(
         changed.is_empty(),
         "{a} was recounted to the figure it had, which is not a change: {changed:?}"
+    );
+}
+
+/// A recount that does move a figure is not something an undo reverts either, and what an undo
+/// or a redo brings back is counted by the counter in force rather than the one it was
+/// checkpointed under.
+///
+/// note: `kamchatka` recalibrates after every turn, which moves every figure, and the copies the
+/// recount made read as changed to every undo after it - undoing one answer named most of the
+/// context - while the items put back carried figures on a scale no longer in force.
+#[test]
+fn a_recount_that_moves_figures_is_not_what_an_undo_reverts() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    let b = kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+    let was = kernel.item(a).unwrap().tokens;
+    kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 1 }));
+    let counted = kernel.item(a).unwrap().tokens;
+    assert_ne!(
+        was, counted,
+        "the recount has to move a figure for this to test anything"
+    );
+
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    let Some(Event::ContextUndone {
+        removed, changed, ..
+    }) = events.try_recv().ok()
+    else {
+        panic!("an undo is a context change like any other")
+    };
+    assert_eq!(removed, vec![b]);
+    assert!(
+        changed.is_empty(),
+        "{a} was only recounted, which is not a change an undo reverts: {changed:?}"
+    );
+    assert_eq!(
+        kernel.item(a).unwrap().tokens,
+        counted,
+        "what came back is counted by the counter in force"
+    );
+
+    kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 2 }));
+    let counted = kernel.item(a).unwrap().tokens;
+    let mut events = kernel.subscribe();
+    assert!(kernel.redo().unwrap());
+    let Some(Event::ContextRedone {
+        restored, changed, ..
+    }) = events.try_recv().ok()
+    else {
+        panic!("a redo is a context change like any other")
+    };
+    assert_eq!(restored, vec![b]);
+    assert!(changed.is_empty(), "{changed:?}");
+    assert_eq!(kernel.item(a).unwrap().tokens, counted);
+    assert_eq!(
+        kernel.item(b).unwrap().tokens,
+        counted,
+        "and so is what a redo puts back"
     );
 }
 

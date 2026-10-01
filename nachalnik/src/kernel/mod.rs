@@ -1381,8 +1381,10 @@ impl Kernel {
 
     /// Returns what swapping one snapshot of the items for another did.
     ///
-    /// note: An item that survived but is no longer the same allocation is one the operation
-    /// touched, which `Arc::make_mut` makes exact and free to check. Both lists are in
+    /// note: An item that survived as the same allocation is one the operation did not touch,
+    /// which `Arc::make_mut` makes free to check. One that is a different allocation is looked
+    /// at, because a recount copies an item it moves a figure of, and a figure is the counter's
+    /// rather than a change of state, note or content that an undo reverts. Both lists are in
     /// identifier order, so the lookups are binary searches rather than a scan apiece.
     fn diff(before: &[Arc<ContextItem>], after: &[Arc<ContextItem>]) -> Diff {
         let find = |items: &[Arc<ContextItem>], id: ContextId| {
@@ -1396,7 +1398,9 @@ impl Kernel {
         let mut changed = Vec::new();
         for item in before {
             match find(after, item.id) {
-                Some(kept) if !Arc::ptr_eq(&kept, item) => changed.push(item.id),
+                Some(kept) if !Arc::ptr_eq(&kept, item) && !alike(&kept, item) => {
+                    changed.push(item.id);
+                }
                 Some(_) => {}
                 None => gone.push(item.id),
             }
@@ -1414,6 +1418,36 @@ impl Kernel {
             changed,
         }
     }
+}
+
+/// Whether two versions of an item differ in nothing but the counter's two figures.
+///
+/// note: every field named, so that one added to [`ContextItem`] has to be placed on one side of
+/// that line or the other before this compiles.
+fn alike(a: &ContextItem, b: &ContextItem) -> bool {
+    let ContextItem {
+        id,
+        kind,
+        source,
+        label,
+        content,
+        tokens: _,
+        uncounted: _,
+        state,
+        meta,
+        included_because,
+        note,
+    } = a;
+
+    *id == b.id
+        && *kind == b.kind
+        && *source == b.source
+        && *label == b.label
+        && *content == b.content
+        && *state == b.state
+        && *meta == b.meta
+        && *included_because == b.included_because
+        && *note == b.note
 }
 
 /// The event announcing an item that has just been added.
