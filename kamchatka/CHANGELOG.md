@@ -176,6 +176,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A small `fs:read` limit still shows the lines that fit.** `read` kept 256 bytes back for the
+  line naming which lines it shows, so under `/limit fs:read 200` there was room for nothing:
+  every file came back as a header calling its first line longer than the limit, with none of the
+  file after it. The room kept back is at most half the limit now.
 - **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
   turn was skipped, so that the question and the calls do not match themselves - and its results
   with it, so a model that read a file and then searched it for a function the file defines, in one

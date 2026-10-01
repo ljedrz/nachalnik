@@ -612,6 +612,26 @@ async fn a_long_file_stops_at_a_line_and_says_where_to_read_on() {
     assert!(calls > 1, "the file fitted, so nothing was stopped");
 }
 
+/// A limit smaller than the room kept for the header still shows lines, rather than calling a
+/// short first line longer than the limit and showing none of it.
+#[tokio::test]
+async fn a_small_limit_still_shows_the_lines_that_fit() {
+    let dir = scratch("files-small-limit");
+    std::fs::write(dir.join("long.txt"), numbered(100)).expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 200);
+
+    let said = ask_within(&dir, limits, "read", json!({ "path": "long.txt" })).await;
+    assert!(
+        said.len() <= 200,
+        "{} bytes past the limit: {said}",
+        said.len()
+    );
+    let (header, body) = said.split_once('\n').expect("a header, then the lines");
+    assert!(header.starts_with("[lines 1-"), "{header}");
+    assert!(body.starts_with("line 1\nline 2\n"), "{said}");
+}
+
 /// `from` and `lines` name the lines read, and the answer says which they are; a file read whole
 /// with room to spare comes back as it is, with nothing added.
 #[tokio::test]
