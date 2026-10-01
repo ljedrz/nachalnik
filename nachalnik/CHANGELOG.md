@@ -30,7 +30,8 @@ minor bump may break you.
 - **The caller's notice is put into the context as it becomes full.** `Kernel::set_full_notice`
   takes the item, whose words are the caller's; the kernel pushes it once per fill, before the
   next request, and excludes it as there is room again. A copy already standing - a session
-  resumed while full - is recognised by what it says and not placed twice.
+  resumed while full - is recognised by what it says and not placed twice. `Kernel::full_notice`
+  reads it back.
 
 ### changed
 
