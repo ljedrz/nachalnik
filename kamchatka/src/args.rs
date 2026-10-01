@@ -18,7 +18,7 @@ use nachalnik_providers::Dialect;
 
 use crate::{
     app::App,
-    config::{self, Settings},
+    config::{self, Compact, Settings},
     endpoint,
     tools::Subject,
     wiring::Setup,
@@ -132,14 +132,11 @@ pub struct Args {
     pub requests: usize,
 
     /// How full the context may get before its oldest exchanges are excluded, which they can be
-    /// restored from; `1` never compacts at all.
-    #[arg(long, value_name = "FRACTION", default_value_t = 0.8)]
-    pub compact: f64,
-
-    /// How far down a full context is taken once exchanges start going, at most `--compact`;
-    /// left out, twenty points under it or half of it, whichever is more.
-    #[arg(long, value_name = "FRACTION")]
-    pub compact_target: Option<f64>,
+    /// restored from; `1` never compacts at all. A second fraction after a comma is how far down a
+    /// full context is taken once they start going, at most the first; left out, twenty points
+    /// under it or half of it, whichever is more.
+    #[arg(long, value_name = "FRACTION[,TARGET]", default_value = "0.8")]
+    pub compact: Compact,
 
     /// Let the model's tool calls run at the same time, instead of in the order it asked.
     #[arg(long)]
@@ -315,7 +312,6 @@ impl Args {
             gemini,
             requests,
             compact,
-            compact_target,
             parallel,
             no_sandbox,
             sandbox_allow,
@@ -581,23 +577,23 @@ impl Args {
         // too. A fraction, and said so: `80`, meant as a percentage, would be no compactor at all,
         // and anything at or below zero one that took every tool result
         anyhow::ensure!(
-            self.compact > 0.0 && self.compact <= 1.0,
+            self.compact.threshold > 0.0 && self.compact.threshold <= 1.0,
             "{}`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
              `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
             at("compact").unwrap_or_default(),
-            self.compact
+            self.compact.threshold
         );
         // note: at most the threshold, because a target above it is a context that is over the
         // threshold and already under the target, which a pass answers by dropping nothing - before
         // every request, for as long as the context stays between the two. Equal is allowed: it is
         // the pass that drops just enough each time, which is a choice and not a mistake
-        if let Some(target) = self.compact_target {
+        if let Some(target) = self.compact.target {
             anyhow::ensure!(
-                target > 0.0 && target <= self.compact,
-                "{}`compact-target` is how far down a full context is taken, as a fraction above 0 \
-                 and at most `compact`, which is `{}` - and this was `{target}`",
-                at("compact_target").unwrap_or_default(),
-                self.compact
+                target > 0.0 && target <= self.compact.threshold,
+                "{}`compact`'s second fraction is how far down a full context is taken, above 0 \
+                 and at most its first, which is `{}` - and this was `{target}`",
+                at("compact").unwrap_or_default(),
+                self.compact.threshold
             );
         }
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
@@ -690,8 +686,8 @@ impl Args {
             keep_truncated: !self.forget_truncated,
             refuse_oversized: !self.send_oversized,
             record: !self.no_record,
-            compact: Some(self.compact),
-            compact_target: self.compact_target,
+            compact: Some(self.compact.threshold),
+            compact_target: self.compact.target,
             // note: `0` is no ceiling, as `/spend 0` and `--requests 0` say it: a ceiling of nothing
             // would be a session that refuses its first turn without saying why
             spend: self.spend.filter(|it| *it > 0),

@@ -229,13 +229,3 @@ Referenced from [AGENTS.md](AGENTS.md).
   over a large tree pays per file and per link. Resolving them once would move when a root is read
   from when it is used to when the session starts, so a root that appears, moves or is relinked
   during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
-
-- **A `--compact` beside the shipped settings file.** The shipped file names `compact-target: 0.6`,
-  what `0.8` derives, so that adopting it changes nothing - but it does change one thing: with the
-  file in place, `--compact 0.5` on the command line is refused, because the file's target is
-  above it, and `--compact 0.9` is held to `0.6` where with no file it derives `0.7`. RUNNING.md
-  says copying the file wholesale changes nothing at all. Deriving the target from `--compact`
-  whenever the target did not come from the command line too would make one key's value depend on
-  where another's came from; `null` in the shipped file was the other answer, and was taken out
-  because it said nothing about what the target then is. The refusal names the file and both
-  numbers, so nobody is misled, only stopped.
