@@ -1289,13 +1289,24 @@ async fn connect(address: &str) -> Result<super::Connection, String> {
 /// anything; see [`protocol::Line::clipped`].
 ///
 /// note: and the way to the rest where there is one, which is `?N` - the one command this client
-/// has for reading an item whole, and the one somebody holding a cut line wants next.
+/// has for reading an item whole, and the one somebody holding a cut line wants next. Except where
+/// the line alone is longer than a frame: no answer carries that, `?N` comes back refused, and
+/// pointing at it would be sending somebody round to be told no. What does hold it is a snapshot,
+/// so that is where this points instead. Measured on the text rather than as JSON, so it is only
+/// ever right to say - an item a little under the line can still be refused, and the refusal
+/// says so - and it never says it of one an answer could carry.
 fn clipped(line: &protocol::Line) -> String {
     let Some(gone) = line.clipped else {
         return String::new();
     };
     let rest = match line.item {
-        Some(id) => format!("; `?{id}` reads the whole of it"),
+        // a line of the limit exactly is past it as an answer, which wraps it in quotes and more
+        Some(_) if line.text.len() + gone >= protocol::MAX_LINE => {
+            "; that is more than any one answer carries, and `/save` writes a snapshot that holds \
+             it whole"
+                .to_owned()
+        }
+        Some(id) => format!("; `?{id}` asks for the whole of it"),
         None => String::new(),
     };
 

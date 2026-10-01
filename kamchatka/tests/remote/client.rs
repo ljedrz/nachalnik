@@ -1583,3 +1583,72 @@ async fn a_reset_after_the_session_finished_is_the_end() {
     assert!(!prose.contains("stopped talking"), "{prose}");
     assert!(prose.contains("the session has ended"), "{prose}");
 }
+
+/// A line the projection cut says so, and says where the rest is - `?N` where an answer can carry
+/// it, and a snapshot where none can - and `?N` then brings back the whole of it.
+///
+/// note: the two cases are the two a cut line can be in. A message of twenty megabytes fits in an
+/// answer of its own and is only cut because the projection carries it beside another; a message
+/// past the limit on its own is refused by any `inspect`, and a client pointing at `?N` for it
+/// would be sending somebody round to be told no - which is what this said, until it was asked.
+/// The second is the limit exactly, which is the edge: as an answer it is quoted, and over.
+#[tokio::test]
+async fn a_cut_line_says_where_the_rest_of_it_is() {
+    use crate::served_over_a_socket;
+    use nachalnik::ContextItem;
+
+    const FITS: usize = 20 * 1024 * 1024;
+    let session = served_over_a_socket("clipped-prose", Vec::new(), |app| {
+        app.kernel.push(ContextItem::user("a".repeat(FITS)));
+        app.kernel
+            .push(ContextItem::user("b".repeat(protocol::MAX_LINE)));
+    })
+    .await;
+    let ids: Vec<_> = session.kernel.items().iter().map(|item| item.id).collect();
+    let [fits, too_long] = ids[..] else {
+        panic!("the session is not the two messages: {ids:?}");
+    };
+    let typed = format!("?{fits}\n/quit\n");
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(typed.as_bytes()))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    let line = |starting: &str| {
+        prose
+            .lines()
+            .find(|line| line.starts_with(starting))
+            .unwrap_or_else(|| panic!("no line starts `{starting}`"))
+            .to_owned()
+    };
+
+    // both are cut, because together they are the problem, and each says by how much
+    let a = line("> aaa");
+    let b = line("> bbb");
+    for cut in [&a, &b] {
+        let tail = &cut[cut.len().saturating_sub(200)..];
+        assert!(tail.contains("not sent"), "{tail}");
+    }
+    let a_tail = &a[a.len() - 200..];
+    assert!(
+        a_tail.contains(&format!("`?{fits}` asks for the whole of it")),
+        "{a_tail}"
+    );
+    // and the one no answer carries is not pointed at `?N`, but at what does hold it
+    let b_tail = &b[b.len() - 200..];
+    assert!(
+        b_tail.contains("more than any one answer carries"),
+        "{b_tail}"
+    );
+    assert!(b_tail.contains("`/save`"), "{b_tail}");
+    assert!(!b_tail.contains(&format!("?{too_long}")), "{b_tail}");
+
+    // and `?N` is as good as its word: the whole of the first comes back, not the start of it
+    assert!(
+        prose.lines().any(|line| line.contains(&"a".repeat(FITS))),
+        "`?{fits}` did not bring the whole message back"
+    );
+
+    session.ended().await.1.expect("the session failed");
+}
