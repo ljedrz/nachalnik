@@ -1,7 +1,7 @@
 //! The third loop: a session with a socket in front of it.
 //!
 //! The loop in `main.rs` draws a frame and waits for a key, the one in `headless.rs` waits for a
-//! line, and this one waits for whichever of several clients says something first. Everything
+//! line, and this one waits for its client - one at a time - to say something. Everything
 //! between the three is the same [`App`]: `submit` takes the line somebody would have typed,
 //! `decide` answers the question a tool is waiting on, `on_event` takes what the kernel says back,
 //! and the session, the tools, the policy and the trace are where they always were.
@@ -12,12 +12,21 @@
 //! the channel at all - a projection, a line, an interrupt, a decision, a move, an edit, an earlier
 //! version of an item - and `apply` says which one does not. There is no outbound queue per client
 //! in here, for the reason [`crate::remote`] gives, and a slow client costs one socket buffer.
+//!
+//! note: **one client at a time**, and the newest one wins. A connection that attaches takes the
+//! session, and whichever had it is told it was replaced and let go of - see `Serving::seated`.
+//! Several clients driving one agent is a conversation nobody has designed: every one of them may
+//! submit, interrupt and answer questions, and a line queued into a running turn has room for one.
+//! And the newest rather than the first, because the ordinary second connection is the *same*
+//! client coming back - a laptop that changed access points, a browser tab reconnecting - while
+//! the server still holds its old one half-open, which keepalive takes minutes to notice. Refused,
+//! that client would be locked out of its own session for longer than it retries.
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use nachalnik::Event;
 use tokio::{
-    sync::{broadcast, mpsc, oneshot},
+    sync::{Notify, broadcast, mpsc, oneshot},
     task::JoinSet,
     time::MissedTickBehavior,
 };
@@ -467,8 +476,9 @@ impl Server {
                     // three arrive late either way and none of them is dropped, so taking them
                     // early would buy an ordering no client can tell apart.
                     //
-                    // note: what is still *held* is another client's command, because answering
-                    // one needs the `App` and the `App` is lent out. That is not a queue this can
+                    // note: what is still *held* is the next command - the client's own, or the
+                    // attach of one replacing it - because answering one needs the `App` and the
+                    // `App` is lent out. That is not a queue this can
                     // add; it is `App::submit` being `&mut self` for the length of a round trip,
                     // and `POSTPONED.md` has what splitting it would take.
                     let mut held = Vec::new();
@@ -637,6 +647,18 @@ pub struct Serving {
     reaching: Vec<crate::tools::Reached>,
     /// How many connections have arrived, which is what names them.
     clients: u64,
+    /// The client whose session this is at the moment: the last one to attach, until it leaves.
+    ///
+    /// note: an attach rather than an arrival, so that a connection that never says anything - a
+    /// port scan, a `nc` somebody forgot - takes nothing from anybody. A connection that has not
+    /// attached can do nothing else either; see `connection::attend`.
+    seated: Option<u64>,
+    /// How to tell each connection still open that it has been replaced.
+    ///
+    /// note: a `Notify` rather than a `oneshot`, because the connection waits on it in a `select!`
+    /// it goes round many times, and a `oneshot` polled again after it has fired panics. A
+    /// notification sent while the connection is busy elsewhere is kept for its next look.
+    replaced: HashMap<u64, Arc<Notify>>,
     /// The connections, so that the session can wait for them on the way out; see
     /// [`Serving::last`].
     connections: JoinSet<()>,
@@ -658,7 +680,27 @@ impl Serving {
             model: app.kernel.model_info(),
             reaching: app.policy.reaching().waiting(),
             clients: 0,
+            seated: None,
+            replaced: HashMap::new(),
             connections: JoinSet::new(),
+        }
+    }
+
+    /// Gives the session to the client that has just attached, and lets go of the one it had.
+    ///
+    /// note: before the attach is answered, so that there is no moment at which two clients both
+    /// hold it. The one replaced is told by its own connection, which flushes what it owes and
+    /// closes; a question it had not answered is left for the newcomer, as one is for anybody
+    /// arriving after a client that left.
+    fn seated(&mut self, app: &mut App, client: u64) {
+        if let Some(had) = self.seated.replace(client).filter(|had| *had != client) {
+            if let Some(replaced) = self.replaced.remove(&had) {
+                replaced.notify_one();
+            }
+            app.trace(
+                "client.replaced",
+                format!("client {had}, by client {client}; one client at a time is served"),
+            );
         }
     }
 
@@ -743,8 +785,8 @@ impl Serving {
     /// there is one of it, and answering anybody needs it. So a command that awaits an endpoint
     /// holds the loop: `/models` fetches a listing, `/compact` runs a whole pass, and
     /// [`App::submit`] awaits a switch still in flight before it reads the line at all. What that
-    /// costs is another client waiting for its turn, and a screen that does not redraw where the
-    /// loop is also drawing one.
+    /// costs is the client's next command waiting for its turn, and a screen that does not redraw
+    /// where the loop is also drawing one.
     ///
     /// note: what it does not cost is anything *lost*. Both loops that call this read the
     /// kernel's broadcast while they wait - see the branch in [`Server::run`] - because a
@@ -757,6 +799,10 @@ impl Serving {
     pub async fn answer(&mut self, app: &mut App, asked: Asked) {
         match asked.0 {
             FromClient::Left { client } => {
+                self.replaced.remove(&client);
+                if self.seated == Some(client) {
+                    self.seated = None;
+                }
                 app.trace(
                     "client.left",
                     format!("client {client}; the session carries on"),
@@ -776,6 +822,9 @@ impl Serving {
                     Command::Attach { since: Some(_), .. } => standing(app),
                     _ => Vec::new(),
                 };
+                if matches!(command, Command::Attach { .. }) {
+                    self.seated(app, client);
+                }
                 let _ = answer.send(Answered {
                     message: apply(app, client, command).await,
                     voice,
@@ -819,6 +868,8 @@ impl Serving {
         // trace tab of every client
         app.trace("client.attached", format!("client {}", self.clients));
         let (client, kernel, asks) = (self.clients, app.kernel.clone(), self.asks.clone());
+        let replaced = Arc::new(Notify::new());
+        self.replaced.insert(client, replaced.clone());
         // note: **not** subscribed here. The subscription is taken where the projection is, which
         // is the only place the two can be taken together - see `Answered`. A receiver taken here
         // would also catch a line the projection already carries, and print it twice
@@ -828,7 +879,7 @@ impl Serving {
         // list that only grows
         while self.connections.try_join_next().is_some() {}
         self.connections
-            .spawn(serve(client, arrived.0, kernel, asks));
+            .spawn(serve(client, arrived.0, kernel, asks, replaced));
     }
 
     /// The last of the voice, once the session has ended, and the connections let go of.
@@ -930,7 +981,7 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
         // note: answered with a projection, which is what `cycle` answers with and for its reason.
         // An edit changes what the item says, what it costs, and therefore what the next request
         // comes to - and a client could work out none of that from the `context.replaced` the
-        // stream is about to carry. The other clients get the record and ask for their own.
+        // stream is about to carry.
         //
         // note: a text that changes nothing is a `Done` rather than a projection, because nothing
         // moved: no record, no version page, no checkpoint. Saying so plainly is better than a
@@ -956,10 +1007,11 @@ async fn apply(app: &mut App, client: u64, command: Command) -> Option<Message> 
         }),
         Command::Submit { line } => {
             // note: read before the line goes in, because handing one in is what replaces it.
-            // There is room for exactly one queued message, so a second client typing during a turn
-            // silently takes the first one's place - see `App::queued`. Saying so is the least this
-            // can do about it, and it is said to everybody, because the person who lost a line is
-            // the one who is not asking
+            // There is room for exactly one queued message, so a second line during a turn - the
+            // client's, or the desk's where the session is drawn as well - silently takes the
+            // first one's place; see `App::queued`. Saying so is the least this can do about it,
+            // and it is said to everybody, because the person who lost a line may be the one who
+            // is not asking
             let replacing = app.queued().map(str::to_owned);
             // note: a client has no keys of this program's to press, whatever the loop driving the
             // session has, so `App::keys` is set around the one call that reads it rather than once

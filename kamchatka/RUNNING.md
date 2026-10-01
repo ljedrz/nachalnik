@@ -153,9 +153,9 @@ say, because [the log names things rather than copying them](#-a-session-on-disk
 that [reaches for the network](#-the-network-when-a-command-tries) is answered with the same three
 letters, once the kernel's own questions are.
 
-A question still open when a client's input closes is left for somebody else: another client, or
-this one coming back. Every attached client may answer, and a watcher cannot tell whose question
-it is, so answering it would be deciding for whoever was asked. A script that drives a session
+A question still open when a client's input closes is left for somebody else: the next client to
+attach, the desk where the session is drawn, or this one coming back. A client cannot tell whose
+question it is, so answering it would be deciding for whoever was asked. A script that drives a session
 alone and wants its questions answered on the way out says so with `--on-ask deny` or
 `--on-ask allow` on the `--connect` command line; a settings file's `on-ask` is for runs that have
 nobody else to ask, and `--connect` does not read it. `leave`, the `--connect` default, is refused
@@ -188,16 +188,25 @@ picked back up for a minute, backing off: a socket file's host either comes back
 coming back, but over a port the ordinary reason to lose a connection is a laptop changing access
 points, and getting it back takes seconds.
 
-Several clients can watch one session, and they see the same thing: the program has one voice, so
-what a command answers and what the runtime says about a turn reach all of them. What it is *not*
-yet is arbitration — every attached client may submit, interrupt and answer questions, there is
-room for exactly one message queued into a running turn, and when a second client's line replaces
-a first one's the session says so rather than letting a line disappear.
+**A session serves one client at a time, and the newest wins.** A client that attaches takes the
+session, and the one that had it is told it was replaced and let go of: `--connect` exits saying
+so, and the browser page stops reconnecting. Neither comes back by itself, because two clients that
+each reattached would trade the session back and forth; attaching again on purpose takes it back.
+The newest rather than the first, because the usual second connection is the same client coming
+back — a laptop that changed access points, a tab reconnecting — while the session still holds its
+old connection, which keepalive takes a couple of minutes to notice is gone. Refused, that client
+would be locked out of its own session for longer than it keeps trying.
+
+Several people driving one agent is not something this program has a design for, and one at a time
+is what stands in for one. A session drawn at a desk and served is still two ways in: both may
+submit, interrupt and answer questions, there is room for exactly one message queued into a running
+turn, and when the second line replaces the first the session says so rather than letting it
+disappear.
 
 **A command that reaches for the endpoint is answered before the next one is**, because there is
 one session and answering anybody needs it: `/models` fetches a listing, `/compact` runs a whole
-pass, and a `/model` still settling is waited for before the next line is read. So one client's
-`/models` at an endpoint that has gone quiet is every other client's wait, and where the session is
+pass, and a `/model` still settling is waited for before the next line is read. So a client's
+`/models` at an endpoint that has gone quiet is the client's own wait, and where the session is
 also drawn at a desk, the screen there does not redraw until it comes back. What that costs is
 patience and nothing else — the kernel's own stream is read throughout, so nothing that happened
 while it waited is lost to anybody.
@@ -1024,7 +1033,7 @@ $ kamchatka --headless --allow exec:run 'fetch the release notes'
 says on stderr which command reached out and what it was answered, and the tool result the model
 reads says it was asked and refused. A `--connect` client
 given `--on-ask` answers the same way once its input has closed, and leaves it for another client
-otherwise; a served session sends the question to every
+otherwise; a served session sends the question to its
 client as it waits: `reaching` is the list, whole each time it changes, and `reach` answers one of
 them the way `decide` answers the kernel's. They are two commands because the two questions are
 numbered by different things — the kernel's by the kernel, and a running command's by the policy

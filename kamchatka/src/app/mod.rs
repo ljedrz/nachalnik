@@ -1562,10 +1562,10 @@ impl App {
 
     /// The message waiting for the running turn to end, if there is one.
     ///
-    /// note: there is room for exactly one, which is a decision a prompt can live with and a
-    /// second client cannot. Two people attached to one session who both type during a turn
-    /// produce one message and two [`Did::Queued`]s, and the one whose line was replaced is never
-    /// told. Whoever hands a line in on somebody else's behalf reads this first and says so; see
+    /// note: there is room for exactly one, which is a decision a prompt can live with and two ways
+    /// into one session cannot. A person at the desk and a client attached to the same session who
+    /// both type during a turn produce one message and two [`Did::Queued`]s, and the one whose line
+    /// was replaced is never told. Whoever hands a line in on somebody else's behalf reads this first and says so; see
     /// [`crate::remote`], which is the caller that made it worth exposing.
     pub fn queued(&self) -> Option<&str> {
         self.typed_ahead.as_deref()

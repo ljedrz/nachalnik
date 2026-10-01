@@ -436,7 +436,33 @@ impl Provider for Trickle {
     }
 }
 
+/// Waits until the session itself says yes, without attaching to it.
+///
+/// note: for the tests that watch a turn while a client of their own drives it. A session serves
+/// one client at a time, so a second connection watching would take the session from the client
+/// under test - the kernel is asked instead, which is the session and not a client of it.
+async fn until_session(kernel: &nachalnik::Kernel, wanted: impl Fn(&nachalnik::Kernel) -> bool) {
+    tokio::time::timeout(PATIENCE, async {
+        while !wanted(kernel) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the session never got there");
+}
+
+/// Whether anything in the context says these words.
+fn says(kernel: &nachalnik::Kernel, words: &str) -> bool {
+    kernel
+        .items()
+        .iter()
+        .any(|item| item.content.to_text().contains(words))
+}
+
 /// Ends a session from a connection of its own, for the tests whose own peer has been closed.
+///
+/// note: and for the ones whose peer is still open, which this replaces - a session serves one
+/// client at a time, and the newest wins.
 async fn quit(at: &str) {
     let (mut peer, _) = Peer::attached(at).await;
     peer.send(Command::Submit {

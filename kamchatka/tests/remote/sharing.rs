@@ -1,8 +1,8 @@
-//! The session is not the client: it outlives one, and it serves several.
+//! The session is not the client: it outlives one, and it serves one at a time.
 //!
-//! note: what a turn does when the client that started it goes away, what two clients see of
-//! one session, and what happens to a line queued into a running turn when a second arrives -
-//! which is the one place this program takes something away, and says so.
+//! note: what a turn does when the client that started it goes away, what happens to a client when
+//! another attaches, and what happens to a line queued into a running turn when a second arrives -
+//! which are the two places this program takes something away, and says so.
 
 use std::sync::Arc;
 
@@ -71,19 +71,37 @@ async fn a_turn_outlives_the_client_that_started_it() {
     );
 }
 
-/// Two clients are two views of one session, and each sees what the other did.
+/// A client that attaches takes the session from the one that had it, which is told and let go of.
+///
+/// note: the newest rather than the first, because the ordinary second connection is the same
+/// client coming back while its old one is still open - see `remote::server`. What must not happen
+/// is the quiet version: a client left attached to a session somebody else is now driving, or one
+/// closed with nothing saying why, which a client reads as a drop and reconnects from.
 #[tokio::test]
-async fn two_clients_see_one_session() {
-    let session = served(vec![ModelResponse::text("both of you")], |_| {}).await;
+async fn a_client_that_attaches_replaces_the_one_attached() {
+    let session = served(vec![ModelResponse::text("only you")], |_| {}).await;
 
     let (mut one, _) = Peer::attached(&session.at).await;
     let (mut two, _) = Peer::attached(&session.at).await;
-    one.send(Command::Submit {
+
+    let heard = one
+        .until(|message| matches!(message, Message::Failed { .. }))
+        .await;
+    let Some(Message::Failed { about, error }) = heard.last() else {
+        unreachable!("just matched")
+    };
+    assert_eq!(about, "replaced", "{error}");
+    assert!(
+        one.next().await.is_none(),
+        "the replaced client was kept on"
+    );
+
+    // and the one that replaced it has the session to itself
+    two.send(Command::Submit {
         line: "ask".to_owned(),
     })
     .await;
-
-    let heard = two.until_words("both of you").await;
+    let heard = two.until_words("only you").await;
     assert!(records(&heard).contains(&"model.requested".to_owned()));
 
     two.send(Command::Submit {
@@ -96,9 +114,9 @@ async fn two_clients_see_one_session() {
 /// A second line typed into a running turn replaces the first, and the session says so.
 ///
 /// note: what this pins is an honest account of a limitation rather than the absence of one. There
-/// is room for exactly one queued message, which is a decision a single prompt can live with and
-/// two clients cannot - so the one thing that must not happen is the quiet version, where both
-/// clients are told `queued` and one of the two lines is never seen again by anybody.
+/// is room for exactly one queued message, which the desk and the client share where a session is
+/// drawn as well as served - so the one thing that must not happen is the quiet version, where both
+/// lines are answered `queued` and one of them is never seen again by anybody.
 #[tokio::test]
 async fn a_line_that_replaces_a_queued_one_says_so() {
     let script = vec![
@@ -111,7 +129,6 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
     .await;
 
     let (mut one, _) = Peer::attached(&session.at).await;
-    let (mut two, _) = Peer::attached(&session.at).await;
     one.send(Command::Submit {
         line: "go".to_owned(),
     })
@@ -147,16 +164,16 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         "a line sent into a running turn was not queued"
     );
     // a command is not a line that waits, and replaces nothing
-    two.send(Command::Submit {
+    one.send(Command::Submit {
         line: "/spend".to_owned(),
     })
     .await;
-    two.send(Command::Submit {
+    one.send(Command::Submit {
         line: "no, mine".to_owned(),
     })
     .await;
 
-    let heard = two
+    let heard = one
         .until(|message| matches!(message, Message::Said { text, .. } if text.contains("replaced")))
         .await;
     let Some(Message::Said { text, .. }) = heard.last() else {
@@ -171,7 +188,7 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
     .await;
     let heard = [
         heard,
-        two.until(
+        one.until(
             |message| matches!(message, Message::Said { text, .. } if text.contains("`no, mine`")),
         )
         .await,
@@ -186,7 +203,7 @@ async fn a_line_that_replaces_a_queued_one_says_so() {
         .collect();
     assert_eq!(replaced.len(), 2, "{replaced:#?}");
 
-    two.send(Command::Submit {
+    one.send(Command::Submit {
         line: "/quit".to_owned(),
     })
     .await;

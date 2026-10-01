@@ -384,7 +384,7 @@ async fn an_item_rewritten_twice_can_be_read_back_at_either_version() {
 /// own, and the one every other test in this file reaches is the first. `script(1)` is a pty and
 /// one process, and it ships with util-linux.
 ///
-/// note: the pair with `a_restart_from_a_client_ends_the_session_and_lets_go_of_everybody`, which
+/// note: the pair with `a_restart_from_a_client_ends_the_session_and_lets_go_of_it`, which
 /// makes the same claim about the other loop and can make it in-process. What cannot be shared is
 /// the reaching: `drawn` is in `main.rs`, so this one is about the program or it is about nothing.
 ///

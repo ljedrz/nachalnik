@@ -67,16 +67,17 @@
 //! configuration in which handing that to a network interface is what somebody meant. Across a
 //! network, tunnel something that does authenticate.
 //!
-//! **No arbitration between clients.** Every attached client may submit, interrupt and answer
-//! questions, and there is room for exactly one message queued into a running turn - so a second
-//! client typing during a turn takes the first one's place, and the session says so to everybody
-//! rather than letting a line disappear quietly. Nothing on the wire carries a client identifier,
-//! which is the first thing any answer to this would need. What several people driving one agent
-//! should *mean* is undecided rather than unbuilt; `POSTPONED.md` has it, along with the other
-//! things this module is knowingly without, among them a command that awaits the endpoint holding
-//! the whole loop, and a projection too large for [`protocol::MAX_LINE`], which no client can
-//! attach past. A single record that large is named rather than sent; see
-//! [`protocol::Message::Oversized`].
+//! **One client at a time, and no arbitration.** A client that attaches takes the session, and the
+//! one that had it is sent `Failed { about: "replaced" }` and let go of - the newest rather than
+//! the first, because the ordinary second connection is the same client coming back while its old
+//! one is still half-open; see [`server`]. What several people driving one agent should *mean* is
+//! undecided rather than unbuilt, and one at a time is what stands in for it. A session drawn at a
+//! desk still has two ways in, and the two share the one message that can be queued into a running
+//! turn: a second line takes the first one's place, and the session says so rather than letting it
+//! disappear quietly. `POSTPONED.md` has the other things this module is knowingly without, among
+//! them a command that awaits the endpoint holding the whole loop, and a projection too large for
+//! [`protocol::MAX_LINE`], which no client can attach past. A single record that large is named
+//! rather than sent; see [`protocol::Message::Oversized`].
 //!
 //! **Nothing in [`nachalnik`] knows any of this exists**, and that is the test this module was
 //! held to. `nachalnik-mcp`, `kamchatka`'s introspection tools and

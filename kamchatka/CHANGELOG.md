@@ -22,6 +22,14 @@ minor bump may break you.
 
 ### changed
 
+- **A served session has one client at a time, and the newest wins.** Every attached client could
+  submit, interrupt and answer questions, and a second one typing during a turn took the first
+  one's queued line. A client that attaches now takes the session, and the one that had it is sent
+  `Failed { about: "replaced" }` and its connection is closed: `--connect` exits saying so rather
+  than reconnecting, and the browser page stops its own reconnection. The newest rather than the
+  first, because the usual second connection is the same client coming back while the session
+  still holds its old, half-open one. A connection that never attaches replaces nobody. **Breaking**
+  for a client of the protocol that kept two connections to one session: the first is let go of.
 - **A compaction pass says what it could not price.** The line announcing one, and its row on
   the trace tab, add `1 → 0 piece(s) unpriced` beside the token totals wherever something in the
   request had no figure.

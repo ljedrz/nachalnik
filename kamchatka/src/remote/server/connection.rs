@@ -7,7 +7,7 @@ use std::sync::Arc;
 use nachalnik::{Event, Kernel};
 use tokio::{
     io::{AsyncRead, AsyncWrite, BufReader},
-    sync::{broadcast, mpsc, oneshot},
+    sync::{Notify, broadcast, mpsc, oneshot},
 };
 
 use crate::{
@@ -23,10 +23,11 @@ pub(super) async fn serve<S: AsyncRead + AsyncWrite + Unpin + Send + 'static>(
     stream: S,
     kernel: Kernel,
     asks: mpsc::UnboundedSender<FromClient>,
+    replaced: Arc<Notify>,
 ) {
     let (read, mut write) = tokio::io::split(stream);
     let mut frames = protocol::Frames::new(BufReader::new(read));
-    if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks).await {
+    if let Err(e) = attend(client, &mut frames, &mut write, &kernel, &asks, &replaced).await {
         // the connection is going either way; this is the last thing it is told, and it is written
         // on a best-effort basis because the usual way to be here is that it stopped listening
         //
@@ -63,6 +64,7 @@ async fn attend<R, W>(
     write: &mut W,
     kernel: &Kernel,
     asks: &mpsc::UnboundedSender<FromClient>,
+    replaced: &Notify,
 ) -> Result<(), String>
 where
     R: AsyncRead + Unpin,
@@ -103,6 +105,22 @@ where
 
     loop {
         tokio::select! {
+            // note: caught up first, so that a client replaced mid-turn has the records up to the
+            // moment it was let go of - what it does with them is its own business - and then
+            // named, so that it can tell being replaced from a drop. A client that read the close
+            // as a drop would come back and take the session from whoever has just taken it
+            () = replaced.notified() => {
+                flush(kernel, &mut last, write).await?;
+
+                return refuse(
+                    write,
+                    "replaced",
+                    "another client has attached to this session, and it serves one at a time; \
+                     attaching again takes it back"
+                        .to_owned(),
+                )
+                .await;
+            }
             command = protocol::read::<Command>(frames) => match command? {
                 None => return Ok(()),
                 // note: re-attaching on a live connection is allowed, and is the cheapest way for a

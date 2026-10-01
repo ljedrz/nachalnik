@@ -28,7 +28,8 @@
   * anything it finds it has no text for - an item added by somebody else, an answer it missed
     while it was away - it asks for with `inspect`. That is the other half of the same decision.
   * it never reconnects. `EventSource` does that by itself, and sends `Last-Event-ID`, which the
-    relay turns into `attach { since }`, so resuming takes no code here.
+    relay turns into `attach { since }`, so resuming takes no code here. What it does do is stop
+    when another client replaces it, since a session serves one at a time.
   * a permission question takes the prompt's place rather than stacking above it, which is what the
     terminal does and for the same reason: the box the keys are in should be the box on the screen.
   * the four views are the terminal's tabs, in the terminal's order, drawn from what the terminal
@@ -943,7 +944,19 @@ function heard(m) {
       break;
     }
     case "missed": say("note", `${m.frames} fragment(s) went past too fast; the records have what happened`); break;
-    case "failed": say("error", `${m.about}: ${m.error}`); break;
+    case "failed": {
+      say("error", `${m.about}: ${m.error}`);
+      // note: replaced by another client, which the session serves instead of this one. Left to
+      // reconnect by itself, this page would take the session back a second later, and the other
+      // client would take it back again, for as long as both were open - so it stops, and a reload
+      // is how somebody takes it back on purpose
+      if (m.about === "replaced") {
+        events.close();
+        adrift = true;
+        indicator();
+      }
+      break;
+    }
   }
 }
 
@@ -1055,7 +1068,8 @@ show("chat");
 
 const events = new EventSource(`/events?tab=${tab}`);
 events.onmessage = (e) => heard(JSON.parse(e.data));
-// note: no reconnection anywhere in this file. `EventSource` reconnects by itself and sends
+// note: no reconnection anywhere in this file, and one place that stops it - a page replaced by
+// another client, in `heard`. `EventSource` reconnects by itself and sends
 // `Last-Event-ID` - the last record this page was given - which the relay hands to the session as
 // `attach { since }`, so there is nothing to do here but say so. The saying is the dot going red,
 // because a page that looks exactly the same whether or not it is still attached is the thing the

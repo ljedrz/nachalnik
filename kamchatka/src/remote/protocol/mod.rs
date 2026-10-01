@@ -410,6 +410,13 @@ pub enum Message {
         frames: u64,
     },
     /// A command could not be done.
+    ///
+    /// note: `about` is a command's name, or a few that name something else. `version`,
+    /// `projection` and `attach` refuse an attach, for the reasons `connection::Refused` gives;
+    /// `the connection` is one that failed; and `replaced` is a client let go of because another
+    /// has attached. A session serves one client
+    /// at a time, and a client replaced should not come back by itself: it would take the session
+    /// from whoever has just taken it.
     Failed {
         /// Which command it was about.
         about: String,
@@ -808,7 +815,7 @@ impl Stanced {
 ///
 /// note: the overlay's two halves that are *about the text* and neither of the two that are about
 /// a window. Which page is open and how far down it is scrolled belong to whoever is reading, and
-/// a session with three clients attached has three answers to both.
+/// a session drawn at a desk with a client attached has two answers to both.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Printed {

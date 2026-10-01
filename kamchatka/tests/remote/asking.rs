@@ -206,7 +206,7 @@ async fn help_from_a_client_is_the_commands() {
     );
 }
 
-/// A client can stop a turn somebody else started.
+/// A client can stop a turn somebody else started - here the client it replaced.
 #[tokio::test]
 async fn an_interrupt_from_a_client_stops_the_turn() {
     let script = vec![
@@ -219,15 +219,15 @@ async fn an_interrupt_from_a_client_stops_the_turn() {
     .await;
 
     let (mut one, _) = Peer::attached(&session.at).await;
-    let (mut two, _) = Peer::attached(&session.at).await;
     one.send(Command::Submit {
         line: "go".to_owned(),
     })
     .await;
     one.until_record("tool.started").await;
+    let (mut two, _) = Peer::attached(&session.at).await;
     two.send(Command::Interrupt).await;
 
-    let heard = one.until_record("turn.interrupted").await;
+    let heard = two.until_record("turn.interrupted").await;
     assert!(records(&heard).contains(&"turn.interrupted".to_owned()));
 
     two.send(Command::Submit {
@@ -261,7 +261,8 @@ async fn a_client_can_arrive_in_the_middle_of_an_answer() {
     peer.until(|message| matches!(message, Message::Progress { .. }))
         .await;
 
-    // and now somebody else, with the answer already half written
+    // and now somebody else, with the answer already half written, which takes the session from
+    // the client that asked
     let (mut late, attached) = Peer::attached(&session.at).await;
     assert!(
         attached.busy,
@@ -283,7 +284,7 @@ async fn a_client_can_arrive_in_the_middle_of_an_answer() {
         "a fragment named a record the client had not seen"
     );
 
-    peer.send(Command::Submit {
+    late.send(Command::Submit {
         line: "/quit".to_owned(),
     })
     .await;
