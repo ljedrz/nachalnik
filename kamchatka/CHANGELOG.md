@@ -67,8 +67,11 @@ minor bump may break you.
   context is, a tool result whose turn is over goes to a marker, and so does a picture or a document
   the model has been shown, once its exchange is over. Once the context passes `--compact`, the oldest exchanges go
   whole - the person's message, the turns answering it, their results and a file attached for it -
-  until it is down to the new `--compact-target` (`compact-target` in a settings file), which is
-  at most `--compact` and is derived from it as before when left out. Neither rule touches the turn
+  until it is down to a target, which `--compact` now takes as a second fraction - `--compact
+  0.8,0.6`, `[0.8, 0.6]` in a settings file - at most the first and derived from it as before when
+  left out. The two are one setting so that a `--compact` typed beside a file that names both
+  replaces both, rather than being held to a target written for another threshold; the shipped
+  file says `[0.8, 0.6]`, and a settings file's `compact` may be either form. Neither rule touches the turn
   in progress, a pin, or a note the model wrote for itself, and a standing summary says how many
   exchanges have gone. Nothing either rule takes is unread, so the marker says the model had read
   it - a model reading one that said only "compacted" disowned its own summaries of the files
@@ -78,7 +81,8 @@ minor bump may break you.
   A result the person brings back is left alone until the context is full, where it was elided
   again before the next request: `/restore` and <kbd>space</kbd> leave a note saying who restored
   it. **Breaking** for the library: `tools::ToolTrimmer` is `tools::Shedder`, and it takes more than
-  tool results; `Setup` has `compact_target`.
+  tool results; `Setup` has `compact_target`, and `Args::compact` and `Settings::compact` are
+  the new `config::Compact`.
 
 - **A `/endpoint` that keeps the model's name is in the record.** It was in no record at all,
   since what the kernel compared to announce a switch carried no address; now `model.changed`

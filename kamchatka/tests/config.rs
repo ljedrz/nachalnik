@@ -418,8 +418,8 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         ("compact", r#"{ "compact": 2 }"#, "was `2`"),
         (
             "target",
-            r#"{ "compact": 0.5, "compact-target": 0.6 }"#,
-            "at most `compact`, which is `0.5`",
+            r#"{ "compact": [0.5, 0.6] }"#,
+            "at most its first, which is `0.5`",
         ),
         (
             "tools",
@@ -668,10 +668,10 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert_eq!(shipped["on-ask"], json!("deny"));
     assert_eq!(shipped["no-sandbox"], json!(false));
 
-    // and nothing is narrowed either. `requests`, `compact` and `compact-target` carry the
-    // program's own defaults, 8, 0.8 and the 0.6 the target is derived as from 0.8, which is what
-    // the file is for; the two that bound a session have no default at all, so a number here
-    // would be the file deciding something nobody asked it to
+    // and nothing is narrowed either. `requests` and `compact` carry the program's own defaults,
+    // 8, and 0.8 with the 0.6 the target is derived as from it, which is what the file is for; the
+    // two that bound a session have no default at all, so a number here would be the file
+    // deciding something nobody asked it to
     for key in ["deadline", "spend"] {
         assert_eq!(
             shipped[key],
@@ -680,8 +680,7 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
         );
     }
     assert_eq!(shipped["requests"], json!(8));
-    assert_eq!(shipped["compact"], json!(0.8));
-    assert_eq!(shipped["compact-target"], json!(0.6));
+    assert_eq!(shipped["compact"], json!([0.8, 0.6]));
     // to a rounding: what is derived is `0.8 - 0.2`, which is not quite `0.6` as a float
     assert!(
         (kamchatka::tools::Shedder::under(0.8).target - 0.6).abs() < 1e-9,
@@ -694,6 +693,11 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     let (ok, said) = run(&["--config-file", path], "/spend\n");
     assert!(ok, "{said}");
     assert!(said.contains("no ceiling"), "{said}");
+
+    // and a `--compact` typed beside it is taken as it is without the file: the pair is replaced
+    // whole, and the file's target does not hold the new threshold to itself
+    let (ok, said) = run(&["--config-file", path, "--compact", "0.5"], "/spend\n");
+    assert!(ok, "{said}");
 }
 
 /// `--send-oversized` reaches the kernel, from the command line and from a file.
@@ -1711,7 +1715,8 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
 }
 
-/// `--compact-target` reaches the session, at most `--compact` and derived from it when left out.
+/// `--compact`'s second fraction reaches the session as the target, at most the first and derived
+/// from it when left out.
 ///
 /// note: through `Args` rather than through the program, because what the target does is only on
 /// a screen once a pass runs, and a pass needs a model. What is under test is the wiring: a value
@@ -1727,9 +1732,12 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
             .setup()
     };
 
-    let given = setup(&["--compact", "0.8", "--compact-target", "0.4"]).expect("a setup");
-    assert_eq!(given.compact_target, Some(0.4));
-    let equal = setup(&["--compact", "0.8", "--compact-target", "0.8"]).expect("equal is a choice");
+    let given = setup(&["--compact", "0.8,0.4"]).expect("a setup");
+    assert_eq!(
+        (given.compact, given.compact_target),
+        (Some(0.8), Some(0.4))
+    );
+    let equal = setup(&["--compact", "0.8,0.8"]).expect("equal is a choice");
     assert_eq!(equal.compact_target, Some(0.8));
     assert_eq!(
         setup(&["--compact", "0.8"])
@@ -1741,13 +1749,25 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
 
     for (args, said) in [
         (
-            &["--compact", "0.5", "--compact-target", "0.6"][..],
-            "at most `compact`, which is `0.5`",
+            &["--compact", "0.5,0.6"][..],
+            "at most its first, which is `0.5`",
         ),
-        (&["--compact-target", "0"][..], "a fraction above 0"),
-        (&["--compact-target=-0.1"][..], "a fraction above 0"),
+        (&["--compact", "0.8,0"][..], "above 0"),
+        (&["--compact=0.8,-0.1"][..], "above 0"),
     ] {
         let refused = setup(args).err().map(|e| e.to_string()).unwrap_or_default();
         assert!(refused.contains(said), "{args:?}: {refused}");
     }
+
+    // and what is not one fraction or two is refused as it is typed, saying both forms
+    let typed = Args::try_parse_from(["kamchatka", "--compact", "0.8;0.6"])
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(typed.contains("`0.8,0.6`"), "{typed}");
+    let filed = serde_json::from_str::<kamchatka::config::Settings>(r#"{ "compact": [0.8] }"#)
+        .err()
+        .map(|e| e.to_string())
+        .unwrap_or_default();
+    assert!(filed.contains("`[0.8, 0.6]`"), "{filed}");
 }

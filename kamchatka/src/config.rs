@@ -57,11 +57,9 @@ pub struct Settings {
     pub mcp: Option<Vec<String>>,
     /// How many requests one turn may make before it stops; `0` is no limit.
     pub requests: Option<usize>,
-    /// How full the context may get before its oldest exchanges are excluded; `1` never compacts.
-    pub compact: Option<f64>,
-    /// How far down a full context is taken once exchanges start going; at most `compact`, and
-    /// derived from it when left out.
-    pub compact_target: Option<f64>,
+    /// How full the context may get before its oldest exchanges are excluded, and how far down it
+    /// is taken once they are: `0.8`, or `[0.8, 0.6]`; `1` never compacts.
+    pub compact: Option<Compact>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
     pub parallel: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
@@ -132,6 +130,97 @@ pub struct Settings {
 
 /// The colour a window's frame is drawn in when nothing says otherwise.
 pub const BORDER_COLOR: &str = "#1A936F";
+
+/// How full the context may get before its oldest exchanges go, and how far down it is taken once
+/// they start going: `--compact 0.8` or `--compact 0.8,0.6`, and `0.8` or `[0.8, 0.6]` in a file.
+///
+/// note: one setting and not two, because the second number is about the first. As two keys, a
+/// settings file that named both - the shipped one does, to say what the target is - held a
+/// `--compact` typed beside it to a target written for another threshold: `--compact 0.5` was
+/// refused for a target above it, and `--compact 0.9` aimed at the file's `0.6` rather than the
+/// `0.7` it derives on its own. One value is replaced whole, as a list on the command line replaces
+/// a file's, so a file that says what the program does unasked changes nothing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Compact {
+    /// How full the context may get, as a fraction of the limit.
+    pub threshold: f64,
+    /// How far down it is taken once exchanges start going; `None` is what `Shedder::under`
+    /// derives from the threshold.
+    pub target: Option<f64>,
+}
+
+impl Compact {
+    /// The threshold alone, with the target derived from it.
+    pub const fn at(threshold: f64) -> Self {
+        Self {
+            threshold,
+            target: None,
+        }
+    }
+}
+
+impl std::str::FromStr for Compact {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let fraction = |part: &str| {
+            part.trim().parse::<f64>().map_err(|_| {
+                format!(
+                    "`{text}` is not a fraction, or two of them: `0.8`, or `0.8,0.6` for where \
+                     compaction starts and how far down it takes the context"
+                )
+            })
+        };
+        match text.split_once(',') {
+            Some((threshold, target)) => Ok(Self {
+                threshold: fraction(threshold)?,
+                target: Some(fraction(target)?),
+            }),
+            None => Ok(Self::at(fraction(text)?)),
+        }
+    }
+}
+
+impl std::fmt::Display for Compact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.target {
+            Some(target) => write!(f, "{},{target}", self.threshold),
+            None => write!(f, "{}", self.threshold),
+        }
+    }
+}
+
+impl Serialize for Compact {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.target {
+            Some(target) => [self.threshold, target].serialize(serializer),
+            None => self.threshold.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Compact {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Written {
+            One(f64),
+            Two([f64; 2]),
+        }
+        match Written::deserialize(deserializer).map_err(|_| {
+            serde::de::Error::custom(
+                "`compact` is a fraction, or two of them: `0.8`, or `[0.8, 0.6]` for where \
+                 compaction starts and how far down it takes the context",
+            )
+        })? {
+            Written::One(threshold) => Ok(Self::at(threshold)),
+            Written::Two([threshold, target]) => Ok(Self {
+                threshold,
+                target: Some(target),
+            }),
+        }
+    }
+}
 
 /// `tools`, which may be left out but not given as `null`.
 ///

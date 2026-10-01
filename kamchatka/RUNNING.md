@@ -509,10 +509,12 @@ you with it in front of it, and you have said something since — goes to a mark
 picture or a document the model has been shown in an exchange that is over. The second waits for
 room: once the context passes `--compact` (0.8 by default) of the limit, the oldest exchanges go
 whole — your message, the model's turns answering it, their results and any file you attached for
-it — until it is down to `--compact-target`. Left out, that is twenty points under `--compact` or half of it, whichever is more; the gap is what
-makes the drops come in bursts rather than an exchange before every turn, each of which would move
-the start of the request a provider's prompt cache keys on. Set the two equal for just enough each
-time.
+it — until it is down to the target, the second fraction in `--compact 0.8,0.6` (`[0.8, 0.6]` in a
+settings file). Left out, that is twenty points under the first or half of it, whichever is more;
+the gap is what makes the drops come in bursts rather than an exchange before every turn, each of
+which would move the start of the request a provider's prompt cache keys on. Set the two equal for
+just enough each time. They are one setting because the second is about the first: a `--compact`
+typed beside a settings file that names both replaces both.
 
 Neither rule touches the turn in progress — what the model is in the middle of is what it has not
 finished using, and a result taken from under it was read again, and taken again — nor anything
@@ -747,9 +749,8 @@ A path you typed is not announced: you already know which file it was.
 archive a release attaches, beside the binary: every setting there is, so you edit rather than
 remember, and every one of them at the program's own default. `cargo install` copies no files, so
 the binary carries a copy too — `kamchatka --print-config > kamchatka.json` is the same bytes,
-wherever you installed from. Copying it wholesale changes nothing at all: it is the program you
-already have, written down. It grants nothing — `allow` is
-empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
+wherever you installed from. It holds the defaults, so a session run with it unchanged is the
+session run with no file, whatever is typed beside it. It grants nothing — `allow` is empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
 default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
 program deciding on your behalf the one kind of thing it exists not to decide on your behalf —
 and `~/.cargo` holds a registry token.
