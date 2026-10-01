@@ -150,6 +150,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A `context` search finds what a tool answered in the turn asking.** The whole of the asking
+  turn was skipped, so that the question and the calls do not match themselves - and its results
+  with it, so a model that read a file and then searched it for a function the file defines, in one
+  turn, was told no line of its context said the name. What a tool answered in that turn is read
+  now; what this session's own tools answered in it - `context`, `log`, `fork` and `setup`, each a
+  reading of the session that can quote the turn back - is still left out.
 - **A compaction at a share that rounds to nothing says under one percent.** The marker the model
   reads in place of what was elided said the context had reached `0%` of the limit, which reads as
   a pass run on an empty context; a threshold that low is a setting somebody can choose.

@@ -511,7 +511,8 @@ async fn search_finds_the_arguments_a_turn_called_a_tool_with() {
     assert!(!said.starts_with("no line of your context"), "{said}");
 }
 
-/// A search does not count the turn making the call, or anything else that turn said or thought.
+/// A search does not count the turn making the call, or anything else that turn said or thought -
+/// though what a tool answered in it is the context's, and counts.
 ///
 /// note: the call's own arguments are already skipped, because they carry the text being looked
 /// for - but the words beside them and the reasoning in front of them were not, so a search for
@@ -595,18 +596,21 @@ async fn a_search_does_not_count_the_turn_asking_the_question() {
 
     let said = answered.content.to_text();
     assert!(
-        said.starts_with("1 line(s) say `needle`"),
-        "only the earlier turn is the context the search reads: {said}"
+        said.starts_with("2 line(s) say `needle`"),
+        "the earlier turn, and what a tool answered in this one: {said}"
     );
     assert!(
         said.contains("it is on needle"),
-        "and the match is the one that was already there: {said}"
+        "the match that was already there: {said}"
+    );
+    assert!(
+        said.contains("the needle is a function"),
+        "and the file the turn read, which nobody in the turn wrote: {said}"
     );
     assert!(
         !said.contains("is in src/needle.rs - find it")
-            && !said.contains("reading it, then the needle")
-            && !said.contains("the needle is a function"),
-        "a match in the turn that asked is a match the model made itself: {said}"
+            && !said.contains("reading it, then the needle"),
+        "a match in what the turn said is a match the model made itself: {said}"
     );
     assert!(
         !said.contains("the needle, then") && !said.contains("searching for the needle"),
@@ -657,4 +661,136 @@ async fn a_word_the_question_itself_carries_is_not_in_the_context() {
         said.starts_with("no line of your context says `qqqzzz`"),
         "the only place that word is, is the question: {said}"
     );
+}
+
+/// A file read in the turn that searches it is in the context, and the search says so.
+///
+/// note: found live. A model read a source file and then searched for a function the file
+/// defines, in the same turn, and was told `no line of your context says` the name - the false
+/// "nothing" a search must not give - because the whole of the asking turn was skipped, its
+/// results with it. What a tool answered is not something the turn wrote.
+#[tokio::test]
+async fn a_file_read_in_the_turn_that_searches_it_is_found() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+
+    kernel.push(ContextItem::user("what does `reconcile_forks` do?"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call("r1", "fs", json!({ "path": "src/reconcile.rs" }))],
+    ));
+    kernel.push(ContextItem::tool_result(
+        nachalnik::ToolCallId::from("r1"),
+        "fs",
+        "pub fn merge_forks(a: Fork, b: Fork) -> Fork {",
+        false,
+    ));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "s1",
+            "context",
+            json!({ "action": "search", "text": "merge_forks" }),
+        )],
+    ));
+
+    let out = call(
+        "s1",
+        "context",
+        json!({ "action": "search", "text": "merge_forks", "take": 4 }),
+    );
+    let tool = kernel.tool("context").expect("it is installed");
+    let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+        .await
+        .expect("the call was answered");
+
+    let said = answered.content.to_text();
+    assert!(said.starts_with("1 line(s) say `merge_forks`"), "{said}");
+    assert!(said.contains("pub fn merge_forks"), "{said}");
+}
+
+/// What this session's own tools answered in the turn asking is still left out: each of them is a
+/// reading of the session, and it says back what the turn said.
+///
+/// note: the four of them, because each can carry the text being looked for without the context
+/// holding it anywhere else: an earlier search names it, `log` reads out the call that searched
+/// for it, a fork's answer may repeat the question, and `setup` reports on the session the same
+/// way. Results of every other tool count, as the test above shows.
+#[tokio::test]
+async fn what_this_sessions_own_tools_answered_in_the_turn_is_not_counted() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+
+    kernel.push(ContextItem::user("find qqqzzz"));
+    for (n, tool) in ["context", "log", "fork", "setup"].iter().enumerate() {
+        let id = format!("own{n}");
+        kernel.push(ContextItem::assistant(
+            "",
+            vec![call(
+                &id,
+                tool,
+                json!({ "action": "search", "text": "qqqzzz" }),
+            )],
+        ));
+        kernel.push(ContextItem::tool_result(
+            nachalnik::ToolCallId::from(id.as_str()),
+            *tool,
+            format!("{tool} says: qqqzzz was asked for"),
+            false,
+        ));
+    }
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "s1",
+            "context",
+            json!({ "action": "search", "text": "qqqzzz" }),
+        )],
+    ));
+
+    let out = call(
+        "s1",
+        "context",
+        json!({ "action": "search", "text": "qqqzzz" }),
+    );
+    let tool = kernel.tool("context").expect("it is installed");
+    let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+        .await
+        .expect("the call was answered");
+
+    let said = answered.content.to_text();
+    assert!(
+        said.starts_with("no line of your context says `qqqzzz`"),
+        "every place the word is, is the session reporting on the turn: {said}"
+    );
+
+    // and the same answers in an earlier turn are the context's like anything else
+    kernel.push(ContextItem::assistant("done", vec![]));
+    kernel.push(ContextItem::user("and again"));
+    kernel.push(ContextItem::assistant(
+        "",
+        vec![call(
+            "s2",
+            "context",
+            json!({ "action": "search", "text": "qqqzzz" }),
+        )],
+    ));
+    let out = call(
+        "s2",
+        "context",
+        json!({ "action": "search", "text": "qqqzzz" }),
+    );
+    let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+        .await
+        .expect("the call was answered");
+    let said = answered.content.to_text();
+    // the question, the four calls and their four answers, and the first search's call
+    assert!(
+        said.starts_with("10 line(s) say `qqqzzz`"),
+        "an earlier turn is the context, the session's reports in it included: {said}"
+    );
+    for tool in ["context", "log", "fork", "setup"] {
+        assert!(
+            said.contains(&format!("tool_result            1 line(s)  {tool}")),
+            "{tool}: {said}"
+        );
+    }
 }

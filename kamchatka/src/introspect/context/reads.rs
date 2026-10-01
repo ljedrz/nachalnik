@@ -490,6 +490,18 @@ fn full(
     out
 }
 
+/// The tools whose answers are about this session rather than about anything outside it.
+///
+/// note: the four this program installs to let a model look at itself. An answer from one of
+/// them is a reading of the context, the record or the setup, so in the turn that asked for it
+/// it can say back what the turn said - which is why a search leaves it out of that turn.
+const ABOUT_THE_SESSION: [&str; 4] = ["context", "fork", "log", "setup"];
+
+/// Whether this is what a tool said about something other than the session.
+fn told_by_the_world(item: &ContextItem) -> bool {
+    matches!(&item.kind, ContextKind::ToolResult { tool, .. } if !ABOUT_THE_SESSION.contains(&tool.as_str()))
+}
+
 /// Where a piece of text is in the context, and what reading it would cost - the count first.
 ///
 /// note: the thing `look` cannot do. An archived item is kept in full and never sent, and the only
@@ -533,15 +545,24 @@ pub(super) fn search(
         // started the turn, which is a context item of its own. So a search that read the rest of
         // the turn would find the needle in the question the model is in the middle of asking,
         // and report a match it made itself
-        let mut hay = match own.contains(&item.id) {
+        //
+        // note: except what a tool answered in it, which nobody in the turn wrote. A model that
+        // read a file and then searched it for a function the file defines was told no line of
+        // its context said the name - the false "nothing" the note above calls the one wrong
+        // answer - because the read was in the turn asking. What still goes unread is a report on
+        // the session itself, which quotes the turn back: a search's own answer names the text it
+        // looked for, `log` reads out the calls, a fork's answer may repeat what it was asked,
+        // and none of those is the context holding the text
+        let own = own.contains(&item.id) && !told_by_the_world(item);
+        let mut hay = match own {
             true => String::new(),
             false => item.content.to_text().into_owned(),
         };
-        if let Some(reasoning) = item.reasoning().filter(|_| !own.contains(&item.id)) {
+        if let Some(reasoning) = item.reasoning().filter(|_| !own) {
             hay.push('\n');
             hay.push_str(&reasoning.to_text());
         }
-        for asked in item.calls().filter(|_| !own.contains(&item.id)) {
+        for asked in item.calls().filter(|_| !own) {
             hay.push_str(&format!("\n{} {}", asked.tool, asked.args));
         }
         let lines: Vec<String> = hay
