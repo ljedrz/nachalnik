@@ -668,9 +668,10 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert_eq!(shipped["on-ask"], json!("deny"));
     assert_eq!(shipped["no-sandbox"], json!(false));
 
-    // and nothing is narrowed either. `requests` and `compact` carry the program's own defaults,
-    // 8 and 0.8, which is what the file is for; the two that bound a session have no default at
-    // all, so a number here would be the file deciding something nobody asked it to
+    // and nothing is narrowed either. `requests`, `compact` and `compact-target` carry the
+    // program's own defaults, 8, 0.8 and the 0.6 the target is derived as from 0.8, which is what
+    // the file is for; the two that bound a session have no default at all, so a number here
+    // would be the file deciding something nobody asked it to
     for key in ["deadline", "spend"] {
         assert_eq!(
             shipped[key],
@@ -680,6 +681,12 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     }
     assert_eq!(shipped["requests"], json!(8));
     assert_eq!(shipped["compact"], json!(0.8));
+    assert_eq!(shipped["compact-target"], json!(0.6));
+    // to a rounding: what is derived is `0.8 - 0.2`, which is not quite `0.6` as a float
+    assert!(
+        (kamchatka::tools::Shedder::under(0.8).target - 0.6).abs() < 1e-9,
+        "the file's target is what leaving it out would derive, or adopting the file changes it"
+    );
 
     // and a session starts under it, having narrowed nothing: `/spend` is the one worth asking,
     // because a ceiling is the setting a file could most plausibly be thought to be doing a
