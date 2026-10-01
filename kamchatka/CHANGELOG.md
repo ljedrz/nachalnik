@@ -44,6 +44,12 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.8, `nachalnik-mcp` 0.8 and `nachalnik-providers` 0.7. The runtime's
+  `Event::ContextFull` and `Kernel::set_full_notice` are how a full context is said and how the
+  model is told; `Compactor::wants_room` is what `Shedder` answers it with; a compaction report's
+  `uncounted_before` and `uncounted_after` are what its line says it could not price; and
+  `ModelInfo::with_context_limit` is how a limit from the environment reaches the model.
+
 - **An item that is out of the request is `excluded`, whoever took it out.** The context tab
   drew the whole of a shortened output as `▫ archived` and an item a newer one replaced as
   `~ superseded`; both are `- excluded` now, and the row's note says why, as it always did.
