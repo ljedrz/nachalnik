@@ -914,3 +914,30 @@ fn a_great_many_refusals_are_accounted_for_in_a_moment() {
     assert!(note.contains("/x/0") && note.contains("/x/2"), "{note}");
     assert!(!note.contains("/x/3"), "three are named: {note}");
 }
+
+/// What a confined command is said to reach names the ports closed to it, where TCP is otherwise
+/// open, and says nothing of them where TCP is refused anyway.
+///
+/// note: found live. A served session's shell was refused a connection to the session's own port,
+/// and the note on the refusal said the network was reachable - which left the one refusal that
+/// happened unexplained.
+#[test]
+fn a_closed_port_is_part_of_what_a_command_is_said_to_reach() {
+    let served = |network| Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network,
+        devices: Vec::new(),
+        closed: vec![18790],
+    };
+
+    let open = served(kamchatka::sandbox::Network::Open).to_string();
+    assert!(
+        open.ends_with("but for port 18790 on this machine, where this session is served"),
+        "{open}"
+    );
+    let shut = served(kamchatka::sandbox::Network::NoTcp).to_string();
+    assert!(!shut.contains("18790"), "{shut}");
+}
