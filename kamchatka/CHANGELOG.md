@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### added
 
+- **`kamchatka reconcile a.json b.json -o merged` folds several forks of one session into one.**
+  The items the forks share are kept whole, and from each fork's own part only the notes the
+  agent wrote down for itself, numbered past every identifier any fork handed out. A shared item
+  takes the most included state any fork left it in; one fork's revision of it is kept, and two
+  that differ are refused. Notes that share a label are all kept, and a pinned system item where
+  the forks parted names which came from which fork and which labels collide. The calibration is
+  summed where every fork's log names the same model and dropped otherwise, and a parameter the
+  forks disagree on is left out. What it writes is a fresh log, beginning with the resume of the
+  shared part, and a snapshot `-r` carries on from; it writes over nothing, and sends nothing to a
+  model. `reconcile` is the first command, so `kamchatka reconcile` alone is no longer a first
+  message, and there is no `help` command beside it.
 - **A context the compactor cannot help is said to be full.** `ToolTrimmer` takes tool results
   alone, so a conversation that is its own bulk grew in silence until the kernel refused a
   request over the limit. The session now says, once, that the context is full and nothing more
