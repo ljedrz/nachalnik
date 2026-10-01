@@ -258,3 +258,13 @@ Referenced from [AGENTS.md](AGENTS.md).
   where another's came from; `null` in the shipped file was the other answer, and was taken out
   because it said nothing about what the target then is. The refusal names the file and both
   numbers, so nobody is misled, only stopped.
+
+- **A job that leaves its command's group is not stopped at the end of a session.** What the end
+  of a session stops is the process group each `shell` call ran in, so `sleep 300 &` is stopped
+  and `setsid sleep 300 &` is not, nor is anything a daemon double-forks into a group of its own -
+  and nothing names it either. Found live: a model asked for a job that outlives its call wrapped
+  it in `setsid nohup`, said so, and the session ended with it still writing to a worktree that
+  had been removed. Making this program a child subreaper (`PR_SET_CHILD_SUBREAPER`) would have
+  every orphan of a command reparented to it rather than to init, so the end of a session could
+  find them all; it also makes this process the one that has to reap them for as long as it runs,
+  which is a change to what it is, not to what one tool does.
