@@ -268,15 +268,19 @@ impl Context {
     ///
     /// note: priced before it is touched, because `Arc::make_mut` copies an item the undo history
     /// shares, and a copy is what [`Kernel::undo`](crate::Kernel::undo) reads as a change. A
-    /// recount that moves no figure is not one.
-    pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) {
+    /// recount that moves no figure is not one. Returns whether any figure moved.
+    pub(crate) fn recount(&mut self, counter: &dyn TokenCounter) -> bool {
+        let mut moved = false;
         for item in &mut self.items {
             let figures = figures(item, counter);
             if figures != (item.tokens, item.uncounted) {
                 let item = Arc::make_mut(item);
                 (item.tokens, item.uncounted) = figures;
+                moved = true;
             }
         }
+
+        moved
     }
 
     /// Restores the previous state of the context, returning whether anything was restored.
