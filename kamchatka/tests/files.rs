@@ -1021,6 +1021,36 @@ async fn an_edit_of_a_missing_file_names_write() {
     assert!(!dir.join("missing.py").exists());
 }
 
+/// An edit whose arguments arrived nested inside `new` is told so, and not that `old` is missing.
+///
+/// note: the shape a model sent twice in one session, each time told `old` was required and how
+/// to add text - true of the call and no help with it.
+#[tokio::test]
+async fn an_edit_nested_inside_new_is_told_it_is_nested() {
+    let dir = scratch("files-edit-nested");
+    std::fs::write(dir.join("a.py"), "x = 1\n").expect("the scratch file is written");
+
+    // refused before the tool has a result to give, which the kernel hands the model as an error
+    // result like any other
+    let tools = common::builtin(&dir, true, Limits::default());
+    let fs = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+    let nested = call(
+        "c1",
+        "fs",
+        json!({ "action": "edit", "path": "a.py", "new": { "old": "x = 1", "new": "x = 2" } }),
+    );
+    let said = match fs.invoke(&nested, OutputSink::disconnected()).await {
+        Ok(output) => output.content.to_text().into_owned(),
+        Err(refused) => refused.to_string(),
+    };
+    assert!(said.contains("an object holding `new`, `old`"), "{said}");
+    assert!(!said.contains("to add text"), "{said}");
+    assert_eq!(held(&dir, "a.py"), "x = 1\n");
+}
+
 /// A path ending in a separator, where `shell` is refused, is not answered with a `mkdir` to run.
 ///
 /// note: the same stance the missing-directory answer reads, so a model is not sent to a tool the

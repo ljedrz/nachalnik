@@ -568,12 +568,17 @@ impl Edit {
         // note: said with how to add text, because that is what an `edit` with a `new` and no
         // `old` is almost always trying to do, and "required" alone sends a model back with the
         // same call and an `old` it has to invent
-        if args["old"].is_null() && !args["new"].is_null() {
+        //
+        // note: where `new` is text, and only there. A `new` that is an object is the rest of the
+        // call nested inside it, `old` included, and told `old` was missing and how to add text, a
+        // model sent the same nesting back. `new` is read first so that it is the one refused
+        if args["old"].is_null() && args["new"].is_string() {
             return Ok(ToolOutput::error(format!(
                 "the `old` argument is required, and nothing was done; {INSERTING}"
             )));
         }
-        let (old, new) = (arg(args, "old")?, arg(args, "new")?);
+        let new = arg(args, "new")?;
+        let old = arg(args, "old")?;
         let named = arg(args, "path")?;
         if let Some(refusal) = dir(named, "changed", &self.1) {
             return Ok(ToolOutput::error(refusal));

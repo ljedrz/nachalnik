@@ -82,10 +82,23 @@ use crate::tools::search::Looking;
 ///
 /// note: a value that is not text is refused as what it is rather than as missing. Told the
 /// argument is required, a model that wrote one goes looking for an argument it did not leave out.
+///
+/// note: an object is named by what it holds, because the usual one is the rest of the call nested
+/// a level down - `{"new": {"old": …, "new": …}}` - and "an object" alone does not say that the
+/// arguments it is looking for are inside it.
 fn arg<'a>(args: &'a Value, name: &str) -> Result<&'a str, BoxError> {
     match &args[name] {
         Value::String(text) => Ok(text),
         Value::Null => Err(format!("the `{name}` argument is required").into()),
+        Value::Object(held) if !held.is_empty() => Err(format!(
+            "`{name}` is text, and this one is an object holding {}: every argument goes beside \
+             the others rather than inside one, and nothing was done",
+            held.keys()
+                .map(|key| format!("`{key}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into()),
         other => Err(format!(
             "`{name}` is text, and this one is {}; nothing was done",
             what(other)
@@ -390,5 +403,23 @@ mod tests {
         assert_eq!(missing.to_string(), "the `path` argument is required");
 
         assert_eq!(arg(&json!({ "path": "a.rs" }), "path").ok(), Some("a.rs"));
+    }
+
+    /// An object is named by what it holds, which is how a call nested a level down shows itself.
+    #[test]
+    fn an_object_where_text_belongs_says_what_it_holds() {
+        let nested = arg(&json!({ "new": { "old": "a", "new": "b" } }), "new")
+            .expect_err("an object is not text");
+        assert_eq!(
+            nested.to_string(),
+            "`new` is text, and this one is an object holding `new`, `old`: every argument goes \
+             beside the others rather than inside one, and nothing was done"
+        );
+
+        let empty = arg(&json!({ "new": {} }), "new").expect_err("nor is an empty one");
+        assert_eq!(
+            empty.to_string(),
+            "`new` is text, and this one is an object; nothing was done"
+        );
     }
 }

@@ -109,6 +109,10 @@ minor bump may break you.
 
 ### fixed
 
+- **An argument nested inside another is told so.** A model that put the rest of an `edit` inside
+  `new` - `{"new": {"old": …, "new": …}}` - was told `old` was required and how to add text, and
+  sent the same nesting back. `new` is read first, and an object where text belongs is named by
+  the keys it holds, with a word that every argument goes beside the others.
 - **An `edit` of a file that is not there says so, and what makes one.** It answered with the
   system's `No such file or directory` and nothing else, which says neither that nothing was
   changed nor that `write` is the operation for a new file.
