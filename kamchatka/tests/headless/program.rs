@@ -1461,7 +1461,7 @@ async fn the_request_ceiling_stops_the_program_itself() {
 /// result follows the flag.
 ///
 /// note: `setup` reads it off the kernel's own configuration, and nothing else shows it before
-/// something is cut. A model told the whole is archived, in a session that forgets it, goes
+/// something is cut. A model told the whole is excluded, in a session that forgets it, goes
 /// looking for content that is not there.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
@@ -1511,11 +1511,11 @@ async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
     };
 
     let saved = run("kept-what-was-cut", &[]).await;
-    assert!(saved.contains("archived beside"), "{saved}");
+    assert!(saved.contains("excluded beside"), "{saved}");
 
     let saved = run("forgot-what-was-cut", &["--forget-truncated"]).await;
     assert!(saved.contains("not kept"), "{saved}");
-    assert!(!saved.contains("archived beside"), "{saved}");
+    assert!(!saved.contains("excluded beside"), "{saved}");
 }
 
 /// A run that was not told to keep quiet writes the session out, and says where.

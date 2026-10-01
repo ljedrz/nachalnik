@@ -40,7 +40,7 @@ is gone, so pruning cannot produce a request the provider will reject. It says s
 exactly the one you want to be able to ask about afterwards.
 
 **Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
-the whole of it, archived, and the truncated copy the model is shown. Putting the whole thing back
+the whole of it, excluded, and the truncated copy the model is shown. Putting the whole thing back
 in front of the model is a `set_state` like any other, rather than a re-run of the tool. Keeping
 it costs a pointer rather than a copy: content, tool-call arguments and tool schemas are all
 shared, so pruning a four-megabyte tool result moves a pointer, projecting it into a request moves

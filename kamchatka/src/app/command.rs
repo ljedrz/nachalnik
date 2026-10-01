@@ -355,7 +355,7 @@ impl App {
             },
             // note: the answer to a result the model has just reported as cut off. It changes the
             // *next* call rather than recovering that one, and does not need to recover it: the
-            // whole of a shortened result is archived beside the copy the model was shown, and
+            // whole of a shortened result is excluded beside the copy the model was shown, and
             // `space` on the context tab sends that instead
             "limit" => self.limit(rest),
             "spend" => self.spend_command(rest),
@@ -1175,7 +1175,7 @@ impl App {
     /// can live with it or lose the session.
     ///
     /// note: it changes the next call, not the one already shortened, and the message says which.
-    /// Nothing is lost either way: the whole of a shortened result is archived beside the copy the
+    /// Nothing is lost either way: the whole of a shortened result is excluded beside the copy the
     /// model was shown, and one keystroke on the context tab sends it instead.
     ///
     /// note: a row is a **subject** - `fs:read`, `context:look` - which is the same string the
@@ -1238,9 +1238,9 @@ impl App {
                 "{}\n\nhow much of a call's output the model is shown, keyed by the same subject \
                  its permission is. `/limit <subject> <bytes>` changes one, by name or by the \
                  number beside it, from the next call onwards; the whole of anything already \
-                 shortened is archived beside it, {} from being sent instead.{}",
+                 shortened is excluded beside it, {} from being sent instead.{}",
                 table(&self.limits),
-                // `/restore` is the same act as the key: both make the archived copy active
+                // `/restore` is the same act as the key: both make the excluded copy active
                 match self.keys {
                     true => "one `space` on the context tab away",
                     false => "one `/restore` with its number away",
@@ -1720,7 +1720,7 @@ impl App {
             // chat tab
             lines.push(format!(
                 "held back: {} tokens the next request does not carry, in {out} item(s) - \
-                 excluded, archived, elided to a marker, or thinking the endpoint will not take \
+                 excluded, elided to a marker, or thinking the endpoint will not take \
                  back",
                 thousands(withheld)
             ));

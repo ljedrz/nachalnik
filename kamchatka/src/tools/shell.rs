@@ -837,8 +837,8 @@ impl Tool for Shell {
         // note: standard error before standard output, for the reason everything above is up
         // here: an output limit cuts from the end, and a command that failed after printing a lot
         // would lose the line saying why. Errors are usually the shorter stream. A build whose
-        // warnings fill the limit pushes its output off the end instead, into the archive;
-        // cutting standard output here to make room would lose it outright, since the archive
+        // warnings fill the limit pushes its output off the end instead, into the excluded whole;
+        // cutting standard output here to make room would lose it outright, since the whole
         // holds only what the tool returned
         let text = format!(
             "{status}\n{reached}{note}{unkept}--- stderr ---\n{errors}\n--- stdout ---\n{collected}"

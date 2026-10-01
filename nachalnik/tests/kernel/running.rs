@@ -5,7 +5,7 @@
 //! an error tool result the model is shown, because that is information the model needs and a
 //! loop that stopped would be a loop the model cannot recover from. The output-limit tests are
 //! the other half of the same idea: what the model is shown is shortened, and the whole of it is
-//! archived beside the short copy rather than thrown away.
+//! excluded beside the short copy rather than thrown away.
 
 use std::sync::Arc;
 
@@ -338,13 +338,13 @@ async fn output_limits_are_enforced_and_admitted() {
     kernel.step().await.unwrap();
     assert!(matches!(kernel.step().await.unwrap(), State::Idle));
 
-    // a truncated output is recorded twice: the whole of it, archived, and the truncated copy
+    // a truncated output is recorded twice: the whole of it, excluded, and the truncated copy
     // the model is shown
     let results = tool_results(&kernel);
     assert_eq!(results.len(), 4, "three results, one of them a pair");
 
     let (whole, shown) = (results[0].clone(), results[1].clone());
-    assert_eq!(whole.state, ContextState::Archived);
+    assert_eq!(whole.state, ContextState::Excluded);
     assert!(!whole.is_projected(), "the model is not shown it");
     assert_eq!(
         whole.content.to_text().len(),
@@ -417,7 +417,7 @@ async fn output_limits_are_enforced_and_admitted() {
     // one undo takes the pair back together, rather than leaving half a tool call behind
     assert!(kernel.undo().unwrap());
     assert!(kernel.undo().unwrap());
-    assert_eq!(kernel.item(whole.id).unwrap().state, ContextState::Archived);
+    assert_eq!(kernel.item(whole.id).unwrap().state, ContextState::Excluded);
     assert!(kernel.item(shown.id).unwrap().is_projected());
 }
 
@@ -447,7 +447,7 @@ async fn the_whole_of_a_shortened_output_is_named_for_the_operation_too() {
         2,
         "the whole and the copy the model is shown"
     );
-    assert_eq!(results[0].state, ContextState::Archived);
+    assert_eq!(results[0].state, ContextState::Excluded);
     assert_eq!(
         (results[0].label.as_str(), results[1].label.as_str()),
         ("files:read", "files:read"),
@@ -527,8 +527,8 @@ impl nachalnik::Tool for Narrowing {
 /// sentence saying that item 54 was a short copy of item 53, destroyed by looking at it.
 ///
 /// note: so it lives in `included_because` now, which is why the item is in the context at all
-/// and which no state change touches. The archived half keeps a note as well, because "the model
-/// was shown a truncated copy" really is why *that* one is archived.
+/// and which no state change touches. The excluded half keeps a note as well, because "the model
+/// was shown a truncated copy" really is why *that* one is out.
 #[tokio::test]
 async fn what_a_shortened_result_is_survives_being_looked_at() {
     let kernel = Kernel::new(Config {
@@ -647,7 +647,7 @@ async fn the_default_output_limit_applies_to_tools_without_one() {
     assert_eq!(
         results[0].content.to_text().len(),
         1_000,
-        "the whole of it, archived"
+        "the whole of it, excluded"
     );
 
     let truncated = results[1].content.to_text().into_owned();

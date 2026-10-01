@@ -463,7 +463,7 @@ pub enum Event {
         tokens: usize,
         /// The context item the output was recorded as - the one the model is shown.
         item: ContextId,
-        /// The archived item holding the whole output, when it had to be shortened.
+        /// The excluded item holding the whole output, when it had to be shortened.
         ///
         /// note: An output limit decides what the model is shown; it is not permission to throw
         /// the rest away. See [`Config::keep_truncated_output`].

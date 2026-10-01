@@ -172,7 +172,7 @@ pub struct Args {
     pub sandbox_device: Vec<std::path::PathBuf>,
 
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
-    /// archived item that can still be read.
+    /// excluded item that can still be read.
     #[arg(long)]
     pub forget_truncated: bool,
 
@@ -684,7 +684,7 @@ impl Args {
             requests: (self.requests > 0).then_some(self.requests),
             parallel: self.parallel,
             // what the runtime keeps is a decision about retention, and retention here is a file
-            // somebody has to store: `/save` writes the snapshot, and an archived output goes into
+            // somebody has to store: `/save` writes the snapshot, and an excluded output goes into
             // it whole. One `grep` that wanders into `./target/` can be megabytes of build noise
             // nobody will read, and it is in every save of that session from then on
             keep_truncated: !self.forget_truncated,

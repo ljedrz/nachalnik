@@ -387,7 +387,7 @@ async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
 
     // editing decides what an item says, not whether it is sent. A supersession had to carry
     // this over by hand and twice did not - a pruned item came back Active and quietly put
-    // itself in the next request, an archived one promoted the whole of an oversized output
+    // itself in the next request, the excluded whole of one promoted all of an oversized output
     // into it - and a replacement never touches the state at all
     let items = harness.app.kernel.items();
     let edited = items.first().expect("the item that was edited");
@@ -978,8 +978,8 @@ async fn the_header_does_not_blame_f_for_rows_a_search_hid() {
 
 #[tokio::test]
 async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() {
-    // `keep_truncated_output` archives the whole of what a tool produced, and what a tool can
-    // produce has no ceiling: one `grep` that wandered into a build directory archived 11MB, and
+    // `keep_truncated_output` keeps the whole of what a tool produced, and what a tool can
+    // produce has no ceiling: one `grep` that wandered into a build directory kept 11MB, and
     // the pane put `3,370,258` into a column budgeted at seven. `{:>7}` pads and never truncates,
     // so the figure took nine columns, the `0` beside it lost its gap and read as `01,400,000`,
     // and the two characters came off the far end of the row.
@@ -997,7 +997,7 @@ async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() 
     harness
         .app
         .kernel
-        .set_state([big], ContextState::Archived, None);
+        .set_state([big], ContextState::Excluded, None);
     harness.drain();
     harness.tab(Tab::Context);
 
@@ -1024,7 +1024,7 @@ async fn a_figure_too_wide_for_its_column_does_not_run_into_the_one_beside_it() 
         "the exact figure does not fit seven columns and should not be printed in full: {row}"
     );
     assert!(
-        row.contains("archived"),
+        row.contains("excluded"),
         "the column past the figures is still on the same row as the item: {row}"
     );
     assert!(
@@ -1279,7 +1279,7 @@ async fn a_stopped_command_says_so_where_a_limit_cannot_cut_it() {
 /// rather than a table nobody reads - `Tool::spec` is called afresh for every request, which is
 /// what makes a change here land without a restart - and it has to say that it applies to the
 /// next call, because the one already shortened is recovered a different way: its whole is
-/// archived beside it and one `space` sends that instead.
+/// excluded beside it and one `space` sends that instead.
 #[tokio::test]
 async fn the_output_limit_can_be_raised_without_restarting() {
     let mut harness = Harness::new([]);
@@ -1505,9 +1505,9 @@ async fn an_item_the_projector_drops_says_what_it_is_holding() {
         "the fork's whole answer [... 900 bytes truncated by an output limit ...]",
         false,
     ));
-    kernel.set_state([whole], ContextState::Archived, None);
+    kernel.set_state([whole], ContextState::Excluded, None);
 
-    // `space` on the archived whole, which is how a person asks for all of it
+    // `space` on the excluded whole, which is how a person asks for all of it
     kernel.set_state([whole], ContextState::Active, None);
 
     harness.tab(Tab::Context);

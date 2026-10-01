@@ -352,7 +352,7 @@ pub(super) fn compact(n: usize) -> String {
 ///
 /// note: `held` is where an unbounded number can land. What is being *sent* is bounded by the
 /// window it is being sent to; what is being *held* is whatever a tool actually produced, since
-/// `keep_truncated_output` archives the whole of it - and a `grep` that wanders into a build
+/// `keep_truncated_output` keeps the whole of it - and a `grep` that wanders into a build
 /// directory holds millions. Seven columns stop at `999,999`, and a wider figure does not widen
 /// the column - `{:>7}` pads and never truncates, so it takes the columns it needs from its
 /// neighbours: `0` and `1,400,000` would arrive as `01,400,000`, and the row would lose its last

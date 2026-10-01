@@ -106,7 +106,7 @@ impl App {
     /// restart because that is what a swap is.
     ///
     /// note: so this is a context operation, and it follows the rule every other one here does:
-    /// nothing is destroyed. What was in the context is archived rather than dropped, keeps its
+    /// nothing is destroyed. What was in the context is excluded rather than dropped, keeps its
     /// numbers and its contents, and `/undo` twice puts the whole thing back - once for the items
     /// that came in and once for the ones that were set aside. The loaded items are new items
     /// and are numbered as such: they are what that session said, in this session.
@@ -172,14 +172,14 @@ impl App {
             return;
         }
 
-        // set aside first, so that the calls in the loaded turns are the only ones the projector
-        // can pair a loaded result with. Archived items are not projected, so an old copy of the
+        // excluded first, so that the calls in the loaded turns are the only ones the projector
+        // can pair a loaded result with. Excluded items are not projected, so an old copy of the
         // same conversation cannot answer the new one's calls
         //
         // note: except what is pinned. A pin is the person saying this stays, and `--system` is
-        // pinned - a load that quietly archived the system instruction would be answering a
+        // pinned - a load that quietly excluded the system instruction would be answering a
         // question about a saved conversation by revoking the one thing the session was told to
-        // hold on to. And with it what it is paired with: a pinned result whose call was archived
+        // hold on to. And with it what it is paired with: a pinned result whose call was excluded
         // goes out of the request as an orphan, and so does a pinned call's result, so the turn
         // asking a pinned call stays, whole, and so does every result answering one of its calls
         let items = self.kernel.items();
@@ -202,8 +202,8 @@ impl App {
             .collect();
         self.kernel.set_state(
             standing.iter().copied(),
-            ContextState::Archived,
-            Some(format!("set aside for the session loaded from {file}")),
+            ContextState::Excluded,
+            Some(format!("excluded for the session loaded from {file}")),
         );
 
         // what the counter had learned, which is the one piece of a seam's state a snapshot
@@ -245,7 +245,7 @@ impl App {
         self.say(
             Speaker::Note,
             format!(
-                "loaded {} from session `{}` ({file}); {} of your own {} archived, \
+                "loaded {} from session `{}` ({file}); {} of your own {} excluded, \
                  anything pinned stayed with the calls and results it is paired with, and {}",
                 plural(loaded.len(), "item"),
                 snapshot.session,
@@ -254,8 +254,8 @@ impl App {
                     1 => "was",
                     _ => "were",
                 },
-                // one undo for the push and one for the archiving, which is no undo at all when
-                // nothing was archived - and a second one then would take back something of the
+                // one undo for the push and one for the excluding, which is no undo at all when
+                // nothing was excluded - and a second one then would take back something of the
                 // person's own
                 match standing.len() {
                     0 => "`/undo` takes the loaded ones back out",

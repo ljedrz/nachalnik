@@ -279,7 +279,17 @@ async fn the_budget_counts_the_items_the_tokens_it_reports_belong_to() {
         !screen.contains("the projector is not sending"),
         "an elided item is in the request: {screen}"
     );
-    assert!(screen.contains("elided to a marker"), "{screen}");
+    // read off the panel's own text rather than the screen, where the clause can be broken
+    // across two of the panel's lines with whatever is behind the panel showing between them
+    let Some(kamchatka::app::Overlay::Text { pages, .. }) = &harness.app.overlay else {
+        panic!("`/budget` opened no panel: {screen}");
+    };
+    assert!(
+        pages
+            .iter()
+            .any(|page| page.body.contains("elided to a marker")),
+        "{screen}"
+    );
 }
 
 #[tokio::test]

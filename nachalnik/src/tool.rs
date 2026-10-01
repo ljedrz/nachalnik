@@ -155,8 +155,9 @@ pub trait Tool: Send + Sync {
     /// those and not to the other. Only the tool knows which call it was handed.
     ///
     /// note: what it decides is what the *model* is shown, never what is kept. Unless
-    /// [`Config::keep_truncated_output`] is turned off, the kernel archives the whole of anything
-    /// this shortens, so a tool narrowing its own answer is not a tool throwing part of it away.
+    /// [`Config::keep_truncated_output`] is turned off, the kernel keeps the whole of anything
+    /// this shortens, excluded, so a tool narrowing its own answer is not a tool throwing part
+    /// of it away.
     fn limit(&self, call: &ToolCall) -> Option<usize> {
         let _ = call;
         self.spec().output_limit

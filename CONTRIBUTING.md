@@ -314,8 +314,9 @@ for, so there is nothing for it to agree with.
   crate. A field on an `Event` variant is a break, it is rare, and the version number is where it
   is said.
 - **One word per mechanism, and it is the word the result is read back in.** An output limit
-  **truncates**, a compactor **elides**, `/exclude` **excludes**, `Kernel::supersede`
-  **supersedes**. A second word for something that already has one is a second thing to learn and
+  **truncates**, a compactor **elides**, `/exclude` **excludes**, and `Kernel::supersede` puts a
+  new item in and excludes the old one, which reads back as **excluded** with a note naming the
+  new. A second word for something that already has one is a second thing to learn and
   a thing two parts of the program can disagree about, and it always shows up in the same place:
   somebody does an operation under one name and reads the result under another. `context` had a
   `prune` action with a `state` argument, which put the word for *one* move over five of them -

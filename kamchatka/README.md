@@ -119,7 +119,7 @@ numbered, and changes one from its next call onward. The number is one the comma
 `/limit fs:read 64000` and the same line with `fs:read`'s number in its place are the same
 instruction.
 
-The result that has *already* been cut is recovered a different way: its whole is archived beside
+The result that has *already* been cut is recovered a different way: its whole is excluded beside
 the copy the model was given, and <kbd>space</kbd> on it sends that instead — the projector answers
 one call with one result, so the whole takes the call and the short copy drops out. The whole has a
 ceiling of its own, 8 MiB: past it a command's output is read and let go and the result says how

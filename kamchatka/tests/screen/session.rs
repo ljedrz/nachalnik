@@ -474,11 +474,11 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
     // what was here is set aside rather than dropped: same numbers, same contents, not going
     for id in mine.iter().filter(|id| **id != pinned) {
         let item = second.app.kernel.item(*id).expect("still there");
-        assert_eq!(item.state, ContextState::Archived, "[{id}] was dropped");
+        assert_eq!(item.state, ContextState::Excluded, "[{id}] was dropped");
         assert!(!item.content.to_text().is_empty());
     }
 
-    // a pin is the person saying this stays, and `--system` is pinned: a load that archived it
+    // a pin is the person saying this stays, and `--system` is pinned: a load that excluded it
     // would answer a question about a saved conversation by revoking the session's instructions
     let kept = second.app.kernel.item(pinned).expect("still there");
     assert_eq!(kept.state, ContextState::Pinned, "the pin was overruled");
@@ -684,18 +684,18 @@ async fn a_session_loaded_into_itself_asks_no_call_twice() {
     asks_each_once(&harness, 2, "with the originals pinned");
 
     // and nothing is destroyed: what the load set aside comes back beside the loaded copy
-    let archived: Vec<_> = harness
+    let excluded: Vec<_> = harness
         .app
         .kernel
         .items()
         .iter()
-        .filter(|item| item.state == ContextState::Archived)
+        .filter(|item| item.state == ContextState::Excluded)
         .map(|item| item.id)
         .collect();
     harness
         .app
         .kernel
-        .set_state(archived, ContextState::Active, None);
+        .set_state(excluded, ContextState::Active, None);
     asks_each_once(&harness, 2, "with everything put back");
 
     // and a second load of the same file does not answer to the first one's new names either; the
@@ -707,7 +707,7 @@ async fn a_session_loaded_into_itself_asks_no_call_twice() {
 }
 
 /// A pin is kept through a load, and a pinned tool result is kept with the turn that asked for it
-/// and that turn's other results: archived on its own, the turn would take the result out of the
+/// and that turn's other results: excluded on its own, the turn would take the result out of the
 /// request as an orphan, under a note saying anything pinned stayed.
 #[tokio::test]
 async fn a_load_keeps_what_a_pinned_result_answers() {
@@ -776,9 +776,9 @@ async fn a_load_keeps_what_a_pinned_result_answers() {
 }
 
 /// The note after a load says how many undos take it back, and with nothing of the session's own to
-/// archive that is one: a second would take back something the person did before it.
+/// exclude that is one: a second would take back something the person did before it.
 #[tokio::test]
-async fn a_load_that_archived_nothing_says_one_undo_takes_it_back() {
+async fn a_load_that_excluded_nothing_says_one_undo_takes_it_back() {
     let dir = common::scratch("load-one-undo");
     let saved = dir.join("other.json");
 
@@ -794,7 +794,7 @@ async fn a_load_that_archived_nothing_says_one_undo_takes_it_back() {
     harness.send(&format!("/load {}", saved.display())).await;
 
     let said = harness.flat();
-    assert!(said.contains("0 of your own were archived"), "{said}");
+    assert!(said.contains("0 of your own were excluded"), "{said}");
     assert!(
         said.contains("`/undo` takes the loaded ones back out"),
         "{said}"
@@ -871,10 +871,10 @@ async fn a_loaded_session_puts_every_figure_on_one_scale() {
         .into_iter()
         .find(|item| item.label == "mine.rs")
         .expect("still there");
-    assert_eq!(mine.state, ContextState::Archived);
+    assert_eq!(mine.state, ContextState::Excluded);
     assert!(
         mine.tokens as f64 > 100.0 * learned.scale * 0.9,
-        "the archived item is still on the old scale: {} tokens",
+        "the excluded item is still on the old scale: {} tokens",
         mine.tokens
     );
 

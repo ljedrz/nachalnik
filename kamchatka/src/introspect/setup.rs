@@ -302,7 +302,7 @@ fn tools(kernel: &Kernel, limits: &Limits) -> String {
     // session was told to drop
     out.push_str(match config.keep_truncated_output {
         true => {
-            "The whole of anything cut is archived beside what you were shown and can be \
+            "The whole of anything cut is excluded beside what you were shown and can be \
              restored. A tool that was taken away mid-session is not on this list.\n"
         }
         false => {
@@ -677,7 +677,7 @@ fn rules(kernel: &Kernel) -> String {
         "\na tool result longer than its limit is truncated, and {}\n",
         match config.keep_truncated_output {
             true =>
-                "the whole of it is archived beside the copy you were shown, so it is still \
+                "the whole of it is excluded beside the copy you were shown, so it is still \
                      here.",
             false => "the rest is not kept: this session was told to forget it.",
         },

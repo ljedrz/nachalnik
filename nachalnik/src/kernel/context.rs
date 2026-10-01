@@ -57,14 +57,16 @@ impl Kernel {
             .collect()
     }
 
-    /// Adds an item in place of an existing one, marking the old one
-    /// [`ContextState::Superseded`], as one undoable operation.
+    /// Adds an item in place of an existing one, excluding the old one with a note naming the
+    /// new, as one undoable operation.
     ///
-    /// note: This is the operation that state is for. [`Kernel::set_state`] can set it too, and
-    /// leaves saying what replaced the item to whoever did. It is explicit because the kernel
-    /// cannot tell whether a second read of a file replaces the first or stands beside it. The
-    /// old item keeps its identifier and its contents, and comes back with a
-    /// [`Kernel::set_state`] or a [`Kernel::undo`] like anything else.
+    /// note: not [`Kernel::replace`], which changes what an item says where it stands and keeps
+    /// its identifier. This puts a new item at the end of the context - of any kind, under any
+    /// label - and takes the old one out, which is the shape for a caller whose next round
+    /// replaces the last. It is explicit because the kernel cannot tell whether a second read of
+    /// a file replaces the first or stands beside it. The old item keeps its identifier and its
+    /// contents, and comes back with a [`Kernel::set_state`] or a [`Kernel::undo`] like anything
+    /// else.
     pub fn supersede(&self, old: ContextId, item: ContextItem) -> Result<ContextId> {
         // one lock for the check and both changes, so that an `undo` on another thread cannot take
         // `old` away in between and leave this answering `Ok` having superseded nothing
@@ -78,11 +80,11 @@ impl Kernel {
 
         let new = self.added(&mut context, item, counter);
         let note = Some(format!("replaced by item {new}"));
-        if let Some(from) = context.set_state(old, ContextState::Superseded, note.clone()) {
+        if let Some(from) = context.set_state(old, ContextState::Excluded, note.clone()) {
             self.emit(Event::ContextChanged {
                 id: old,
                 from,
-                to: ContextState::Superseded,
+                to: ContextState::Excluded,
                 note,
             });
         }

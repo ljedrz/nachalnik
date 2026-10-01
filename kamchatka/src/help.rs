@@ -150,8 +150,8 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
     space               cycle how much of it the model gets: all of it, then
                         a … marker where it was, then nothing, then all of it
     p                   pin it, so that compaction cannot touch it
-                        (on a ▫ archived row, either of those sends the whole
-                         of an output the model was shown a truncated copy of)
+                        (on the excluded whole of a shortened output, either
+                         of those sends it in place of the truncated copy)
     e                   change what it says; what it said before is kept
                         (what a turn *did* is not something it says, so a
                          turn that is only a tool call declines the key)
@@ -317,7 +317,7 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         KEY null takes one away
     /save [PATH]        the session log, and a snapshot to resume from
     /load [PATH]        that snapshot's context, into the session you are in.
-                        What is here is archived unless it is pinned, and u
+                        What is here is excluded unless it is pinned, and u
                         twice puts it back (kamchatka -r PATH is the other
                         answer to the same file: a fresh session from it)
     /restart            write this session out and start a fresh one, as if the

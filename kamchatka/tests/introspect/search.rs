@@ -1,4 +1,4 @@
-//! `context search`: finding text in what is being carried, the archive included, without
+//! `context search`: finding text in what is being carried, what is excluded included, without
 //! paying to carry it again.
 
 use crate::{agent, answered, answers_from, one_turn};
@@ -6,14 +6,14 @@ use nachalnik::{ContextItem, ContextKind, ContextState, test::call};
 use serde_json::json;
 use std::sync::Arc;
 
-/// The count and the price come before any line, and the archive is searchable at last.
+/// The count and the price come before any line, and what is excluded is searchable at last.
 ///
-/// note: what `look` cannot do. An archived item is kept in full and never sent, and reading one
+/// note: what `look` cannot do. An excluded item is kept in full and never sent, and reading one
 /// back copies it into the context - so a session that had put eleven megabytes away could not
 /// look inside any of it without undoing the saving it had just made. This is the read that does
 /// not cost what carrying it costs, and the header is what keeps it that way.
 #[tokio::test]
-async fn search_prices_the_matches_before_it_shows_one_and_reaches_the_archive() {
+async fn search_prices_the_matches_before_it_shows_one_and_reaches_what_is_excluded() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
         call(
             "c1",
@@ -34,7 +34,7 @@ async fn search_prices_the_matches_before_it_shows_one_and_reaches_the_archive()
     kernel.push(ContextItem::user("what did we say about the sandbox?"));
     kernel.set_state(
         [put_away],
-        ContextState::Archived,
+        ContextState::Excluded,
         Some("done with it".into()),
     );
 
@@ -51,8 +51,8 @@ async fn search_prices_the_matches_before_it_shows_one_and_reaches_the_archive()
         !counted.contains("refuses a connect"),
         "a bare search hands back the count, not the lines: {counted}"
     );
-    // case ignored, and an archived item is searched rather than skipped
-    assert!(counted.contains("archived"), "{counted}");
+    // case ignored, and an excluded item is searched rather than skipped
+    assert!(counted.contains("excluded"), "{counted}");
 
     // asked for, the line arrives
     assert!(
@@ -62,14 +62,14 @@ async fn search_prices_the_matches_before_it_shows_one_and_reaches_the_archive()
 
     // and the item is exactly where it was: searching is not a way to pay for something
     let item = kernel.item(put_away).expect("still there");
-    assert_eq!(item.state, ContextState::Archived);
+    assert_eq!(item.state, ContextState::Excluded);
     assert!(
         kernel.budget().used() > before,
         "the answers themselves are items and cost what they say"
     );
     assert!(
         !kernel.project().included.contains(&put_away),
-        "what was archived is still out of the request: searching it restored nothing"
+        "what was excluded is still out of the request: searching it restored nothing"
     );
 }
 
@@ -102,7 +102,7 @@ async fn a_search_with_no_matches_says_what_it_searched() {
         said[0]
     );
     assert!(
-        said[0].contains("archived and excluded items were searched"),
+        said[0].contains("excluded items were searched"),
         "{}",
         said[0]
     );

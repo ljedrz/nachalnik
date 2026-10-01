@@ -909,7 +909,7 @@ it — the way two hops back is the `.jsonl` you kept.
 
 `/load PATH` brings it into the session you are already in, which is the useful one. It is a
 context operation and it plays by the same rule as the rest of them — nothing is destroyed. What
-was in the context is **archived**, keeping its numbers and its contents; anything **pinned**
+was in the context is **excluded**, keeping its numbers and its contents; anything **pinned**
 stays where it is, because a pin is you saying so and `--system` is pinned; the loaded items come
 in as new items with new numbers, and the conversation they were is read back onto the chat tab.
 `/undo` twice puts the whole thing back — one <kbd>u</kbd> where there are keys to press. The
@@ -918,7 +918,7 @@ that changes them.
 
 That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless,
 `/load good`, and carry on from where it was still working — without losing the detour, which is
-sitting in the context marked `▫` if you want to read it.
+sitting in the context marked `-` excluded if you want to read it.
 
 ### starting again
 

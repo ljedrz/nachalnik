@@ -177,14 +177,15 @@ impl App {
     /// note: [`Kernel::replace`](nachalnik::Kernel::replace) rather than
     /// [`Kernel::supersede`](nachalnik::Kernel::supersede), so the item keeps its identifier, its
     /// kind, its state and its place in the conversation, and what it said before becomes a
-    /// version page like every other rewrite. Superseding would leave a second row marked `~`
+    /// version page like every other rewrite. Superseding would leave a second, excluded row
     /// saying what the `v1` page already says, and would need three things kept upright. A state
     /// carried over by hand, because a new item starts Active: an edit to a pruned one would
-    /// quietly come back into the request, and an archived one would promote the whole of an
-    /// oversized output into it. A kind rebuilt whole, because an assistant turn carries its tool
-    /// calls inside it and rebuilding it without them orphans their results. And a `replaces`
-    /// hint, so the conversation could read the new words back into the old place. Replacing needs
-    /// none of those: there is nothing to carry over, because nothing moved.
+    /// quietly come back into the request, and an edit to the excluded whole of a shortened output
+    /// would put all of an oversized output into it. A kind rebuilt whole, because an assistant
+    /// turn carries its tool calls inside it and rebuilding it without them orphans their results.
+    /// And a `replaces` hint, so the conversation could read the new words back into the old
+    /// place. Replacing needs none of those: there is nothing to carry over, because nothing
+    /// moved.
     ///
     /// note: [`Kernel::supersede`](nachalnik::Kernel::supersede) is the right shape for a caller
     /// whose next round replaces the last while the earlier ones stay readable -

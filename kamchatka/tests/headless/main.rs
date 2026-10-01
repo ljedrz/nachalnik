@@ -1400,7 +1400,7 @@ async fn help_with_no_keys_is_the_commands() {
 /// And what a command answers names the command for what a key would do, rather than the key.
 ///
 /// note: `/limit`, `/note`, `/copy`, `/request` and a bare `/exclude` each ended on a key of the
-/// context tab - the way back to an archived copy, a pin, a row to copy, an item to put back, a
+/// context tab - the way back to an excluded copy, a pin, a row to copy, an item to put back, a
 /// change to undo - down a pipe that has neither the tab nor the key. `/restore`, `/pin` and
 /// `/undo` are the same acts.
 #[tokio::test]

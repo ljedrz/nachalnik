@@ -169,8 +169,10 @@ the mistake it came from - which is the half that makes them stick.
   breaking change; adding a variant is not. It does not extend to an enum's variants: a field on
   one of those is a break, and the version number is where that is said.
 - **One word per mechanism, and it is the word the result is read back in.** Truncate, elide,
-  exclude, supersede. This is about what the program *says*: a synonym in a `match` is a kindness,
-  a synonym in an enum or a help line is the bug.
+  exclude - and `supersede`, which is an exclusion with a new item beside it and reads back as
+  one, with a note naming the new item. This is about what the program *says*: a synonym in a
+  `match` is a kindness, a synonym in an enum or a help line is the bug. A state with no
+  behaviour of its own is a synonym: why an item is out is its note, not a second word for out.
 - **Seams identify themselves.** Four of them carry a `name()`, so a client can put the six on a
   screen. For showing a person, not for matching on.
 - **A test's worth is measured, not assumed**, with `scripts/mutate.sh` and `--no-fail-fast`. The

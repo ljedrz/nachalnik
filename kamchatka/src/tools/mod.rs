@@ -210,11 +210,11 @@ pub(crate) const CEILING: usize = 32_000;
 /// The most of one call's output a tool here keeps, in bytes: what a command writes to each of its
 /// two streams, the largest file `fs` edits, and the largest `read` counts the lines of to the end.
 ///
-/// note: a limit decides what the model is shown, and the kernel archives the whole of what a tool
-/// returned - so without this the whole was whatever arrived: a `yes` nobody stopped, or a 2 GB
-/// log, held in this process, in the archive and in every save after it. Past this a command's
-/// output is read and let go, and the answer says how much at the top, where no limit cuts it; a
-/// file is refused an edit with a sentence saying how else to make one.
+/// note: a limit decides what the model is shown, and the kernel keeps the whole of what a tool
+/// returned, excluded - so without this the whole was whatever arrived: a `yes` nobody stopped,
+/// or a 2 GB log, held in this process, in the context and in every save after it. Past this a
+/// command's output is read and let go, and the answer says how much at the top, where no limit
+/// cuts it; a file is refused an edit with a sentence saying how else to make one.
 pub const KEPT: usize = 8 * 1024 * 1024;
 
 /// And what one is cut at whose answer is a report of a fixed shape rather than a piece of the
@@ -254,11 +254,11 @@ pub(crate) const REPORT: usize = 8_000;
 /// `/tools toggle` leans on.
 ///
 /// note: raising a limit does not recover a result that has already been shortened, and does not
-/// need to. The whole of that one is archived beside the copy the model was shown, and one
+/// need to. The whole of that one is excluded beside the copy the model was shown, and one
 /// keystroke on the context tab sends it instead - the projector pairs a call to one result, so
 /// the whole claims the call and the short copy is dropped. This is for the next call. `fs:read`
-/// is the exception to the archive, because it stops itself at a line under this limit and says
-/// where to read on from: the file is the whole, and nothing was cut to keep.
+/// is the exception to the excluded whole, because it stops itself at a line under this limit
+/// and says where to read on from: the file is the whole, and nothing was cut to keep.
 #[derive(Debug, Clone)]
 pub struct Limits(Arc<Mutex<BTreeMap<String, usize>>>);
 

@@ -820,12 +820,12 @@ async fn a_truncated_tool_result_is_still_a_valid_request() {
     let state = turn!(kernel);
     assert!(matches!(state, State::Finished { .. }), "{state:?}");
 
-    // the pair: the whole of what the tool said, archived, and the copy the model was shown
+    // the pair: the whole of what the tool said, excluded, and the copy the model was shown
     let recorded = results(&kernel);
     assert_eq!(recorded.len(), 2, "a limit shortens; it does not destroy");
 
     let (whole, shown) = (&recorded[0], &recorded[1]);
-    assert_eq!(whole.state, ContextState::Archived);
+    assert_eq!(whole.state, ContextState::Excluded);
     assert!(whole.content.to_text().contains("APRICOT"));
     assert!(whole.content.to_text().len() > 20_000);
 
@@ -852,7 +852,7 @@ async fn a_truncated_tool_result_is_still_a_valid_request() {
         .iter()
         .filter(|m| m.role == Role::Tool)
         .collect();
-    assert_eq!(tool_messages.len(), 1, "the archived copy is not sent");
+    assert_eq!(tool_messages.len(), 1, "the excluded copy is not sent");
     assert!(tool_messages[0].content.as_ref().unwrap().to_text().len() < 400);
 }
 
