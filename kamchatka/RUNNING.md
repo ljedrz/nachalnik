@@ -1029,6 +1029,12 @@ kernel there is no such right and every one of them was reachable all along. Und
 fs:write` a path given to `--sandbox-allow` is read-only, as the working directory is, and a
 socket among them is out of reach with the rest: refusing writes refuses the writing half here too.
 
+An abstract socket - one with no file, which the X server and some session buses listen on - made
+outside the confinement is refused too, on Linux 6.12 and up, and no flag hands one over: a
+command may reach only the abstract sockets it made itself. An X client that is refused the
+abstract one tries the file next, so `--sandbox-allow /tmp/.X11-unix/X0` is how a command gets a
+display back, and with it every window on that display.
+
 **Under `/dev` a command reaches five devices**, `null`, `zero`, `full`, `random` and `urandom`,
 and nothing else: the rest of `/dev` is your other terminals, which a command could read what you
 type into, shared memory, and on a desktop the camera and microphone. The list is
