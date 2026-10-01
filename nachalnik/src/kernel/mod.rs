@@ -1001,7 +1001,9 @@ impl Kernel {
     /// [`Event::ContextFull`] says the context is full, which is before a request, between a
     /// turn's tool results and the next request - so a tool loop that fills the context hears it
     /// in the same turn, while there is still room under the limit for the request that carries
-    /// it. It is pushed once per fill, and excluded again as the context has room.
+    /// it - and only where there is: a notice that would take that request over the limit is left
+    /// out, since the kernel would refuse the request and nobody would read it. It is pushed at
+    /// most once per fill, and excluded again as the context has room.
     ///
     /// note: the notice in the context is recognised by what it is - its kind, source, label and
     /// content - rather than by an identifier remembered here, so that a session resumed while

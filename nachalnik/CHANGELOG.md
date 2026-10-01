@@ -42,6 +42,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The full notice is left out where it would not fit.** `Kernel::set_full_notice` places its
+  item as the context becomes full, for the request that follows to carry - and placed it even
+  where that request was within the notice's own size of the limit, so the kernel then refused
+  the request and nobody read the notice. A tool result that filled a session's context to a
+  hundred tokens under the limit ended its turn with nothing sent. The notice goes in only where
+  the request still fits with it.
 - **An undo names what it reverted, and counts what it brought back on the scale in force.** A
   recount that moved a figure copied every item an undo checkpoint still shared, and
   `context.undone` and `context.redone` named each copy as changed - so in a session that
