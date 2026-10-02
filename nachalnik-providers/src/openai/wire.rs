@@ -93,12 +93,16 @@ impl Provider for OpenAiCompatible {
         // the turn. Held together in two orders, `context_limit` then `model` here and the reverse
         // there, the two threads waited on each other for ever at the start of a request
         let context_limit = *self.context_limit.lock();
-        let parameters = self.parameters.lock().clone();
+        let (parameters, max_output_tokens) = {
+            let listed = self.listed.lock();
+            (listed.parameters.clone(), listed.max_output_tokens)
+        };
         let model = self.model.lock().clone();
         let endpoint = crate::recorded(&self.base_url.lock());
 
         ModelInfo::new(self.label.clone(), model)
             .with_context_limit(context_limit)
+            .with_max_output_tokens(max_output_tokens)
             .with_tool_calling(true)
             .with_reasoning(true)
             .with_parameters(parameters)

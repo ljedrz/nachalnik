@@ -163,14 +163,17 @@ async fn an_address_that_lists_no_parameters_does_not_inherit_the_last_ones() {
     use nachalnik::Provider as _;
     use nachalnik_providers::Dialect as _;
 
-    const LISTS: &str =
-        r#"{"data":[{"id":"resident","supported_sampling_parameters":["temperature"]}]}"#;
+    const LISTS: &str = r#"{"data":[{"id":"resident",
+        "supported_sampling_parameters":["temperature"],"default_parameters":{"temperature":0.3},
+        "top_provider":{"max_completion_tokens":512}}]}"#;
     let provider =
         nachalnik_providers::OpenAiCompatible::new("resident", "http://127.0.0.1:1", "not-a-key");
 
     provider.set_endpoint(serving(LISTS).await, None).await;
     assert_eq!(provider.info().parameters, ["temperature"]);
     assert!(!provider.lists_every_parameter());
+    assert!(provider.published("temperature").default.is_some());
+    assert!(provider.published("max_tokens").maximum.is_some());
 
     provider.set_endpoint(serving(SERVES).await, None).await;
     assert!(
@@ -179,6 +182,15 @@ async fn an_address_that_lists_no_parameters_does_not_inherit_the_last_ones() {
         provider.info().parameters
     );
     assert!(provider.lists_every_parameter());
+    assert_eq!(
+        (
+            provider.published("temperature"),
+            provider.published("max_tokens"),
+            provider.info().max_output_tokens
+        ),
+        Default::default(),
+        "nor what it published about them"
+    );
 }
 
 /// A switch reads the listing once, for the limit and the names both.

@@ -12,9 +12,9 @@ use std::{
 
 use nachalnik::{ModelRequest, async_trait};
 use parking_lot::Mutex;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
-use crate::{Dialect, Endpoint, install_crypto, same_model, waiting::WHOLE_ANSWER};
+use crate::{Dialect, Endpoint, Published, install_crypto, same_model, waiting::WHOLE_ANSWER};
 
 mod wire;
 
@@ -52,12 +52,9 @@ pub struct OpenAiCompatible {
     api_key: String,
     model: Mutex<String>,
     context_limit: Mutex<Option<usize>>,
-    /// The parameter names the listing said this model takes, where it said anything. Learnt from
-    /// the same entry the context limit comes from, which is already being fetched and read.
-    parameters: Mutex<Vec<String>>,
-    /// Whether [`Self::parameters`] is the whole of what the model takes; see
-    /// [`Dialect::lists_every_parameter`](crate::Dialect::lists_every_parameter).
-    every_parameter: Mutex<bool>,
+    /// What the listing said about this model beyond its context limit, learnt from the same
+    /// entry the limit comes from, which is already being fetched and read.
+    listed: Mutex<Entry>,
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
     ///
@@ -149,8 +146,7 @@ impl OpenAiCompatible {
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
             configured: None,
-            parameters: Mutex::new(Vec::new()),
-            every_parameter: Mutex::new(true),
+            listed: Mutex::new(Entry::default()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
             attribution: None,
@@ -405,8 +401,7 @@ impl OpenAiCompatible {
         *self.context_limit.lock() = self.configured;
         // what the last address said its model takes is not something this one said, and `probe`
         // only overwrites the list where the new listing has one of its own
-        self.parameters.lock().clear();
-        *self.every_parameter.lock() = true;
+        *self.listed.lock() = Entry::default();
         self.switched().await;
     }
 
@@ -527,8 +522,7 @@ impl OpenAiCompatible {
     pub async fn set_model(&self, model: impl Into<String>) {
         *self.model.lock() = model.into();
         *self.context_limit.lock() = self.configured;
-        self.parameters.lock().clear();
-        *self.every_parameter.lock() = true;
+        *self.listed.lock() = Entry::default();
         self.switched().await;
     }
 
@@ -698,16 +692,31 @@ impl OpenAiCompatible {
         // and a client reading `lists_every_parameter` says such a parameter is unchecked rather
         // than ignored.
         let sampling_only = entry["supported_parameters"].is_null();
-        if let Some(listed) = entry["supported_parameters"]
+        let mut listed = self.listed.lock();
+        if let Some(names) = entry["supported_parameters"]
             .as_array()
             .or_else(|| entry["supported_sampling_parameters"].as_array())
         {
-            *self.every_parameter.lock() = !sampling_only;
-            *self.parameters.lock() = listed
+            listed.every_parameter = !sampling_only;
+            listed.parameters = names
                 .iter()
                 .filter_map(|name| name.as_str().map(str::to_owned))
                 .collect();
         }
+        // note: OpenRouter's `default_parameters` names most of what it lists and gives most of
+        // them as `null`, which is a default it does not know rather than one of nothing
+        if let Some(defaults) = entry["default_parameters"].as_object() {
+            listed.defaults = defaults
+                .iter()
+                .filter(|(_, value)| !value.is_null())
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect();
+        }
+        listed.max_output_tokens = entry["top_provider"]["max_completion_tokens"]
+            .as_u64()
+            .filter(|most| *most > 0)
+            .map(|most| most as usize);
+        drop(listed);
 
         // a limit of nothing is a listing that did not know, which the kernel already declines to
         // measure against - and reported as a limit it is a window of `0` on every screen
@@ -766,7 +775,46 @@ impl Endpoint for OpenAiCompatible {
 
 impl Dialect for OpenAiCompatible {
     fn lists_every_parameter(&self) -> bool {
-        *self.every_parameter.lock()
+        self.listed.lock().every_parameter
+    }
+
+    fn published(&self, parameter: &str) -> Published {
+        let listed = self.listed.lock();
+        let published = Published::default().with_default(listed.defaults.get(parameter).cloned());
+        match parameter {
+            // the two names this dialect has for the length of an answer
+            "max_tokens" | "max_completion_tokens" => {
+                published.with_maximum(listed.max_output_tokens.map(Into::into))
+            }
+            _ => published,
+        }
+    }
+}
+
+/// What a listing's entry said about the model beyond its context limit.
+///
+/// note: one lock for all of it, because it is learnt from one entry and forgotten on one switch,
+/// and a part of it a switch forgot to forget is the last model's answer given for this one.
+struct Entry {
+    /// The parameter names it said the model takes, where it said anything.
+    parameters: Vec<String>,
+    /// Whether `parameters` is the whole of what the model takes; see
+    /// [`Dialect::lists_every_parameter`].
+    every_parameter: bool,
+    /// The defaults it published for them, without the ones it published as `null`.
+    defaults: Map<String, Value>,
+    /// The most the model will write in one answer.
+    max_output_tokens: Option<usize>,
+}
+
+impl Default for Entry {
+    fn default() -> Self {
+        Self {
+            parameters: Vec::new(),
+            every_parameter: true,
+            defaults: Map::new(),
+            max_output_tokens: None,
+        }
     }
 }
 
@@ -923,6 +971,31 @@ mod tests {
             assert_eq!(info.context_limit, Some(limit), "{shape}");
             assert_eq!(info.parameters, takes, "{shape}");
         }
+    }
+
+    /// A default published as `null` is one the listing does not know, and the cap on an answer
+    /// is a bound on both of this dialect's names for it.
+    #[tokio::test]
+    async fn a_listing_says_what_it_publishes_about_each_parameter() {
+        let body = r#"{"data":[{"id":"m","context_length":128000,
+            "top_provider":{"context_length":128000,"max_completion_tokens":32768},
+            "supported_parameters":["max_tokens","temperature","top_p"],
+            "default_parameters":{"temperature":1,"top_p":null}}]}"#;
+        let provider =
+            OpenAiCompatible::new("m", routed(&[("/models", body)]).await, "no key needed");
+        provider.probe().await;
+
+        assert_eq!(provider.published("temperature").default, Some(json!(1)));
+        assert_eq!(provider.published("top_p"), Published::default());
+        for name in ["max_tokens", "max_completion_tokens"] {
+            assert_eq!(
+                provider.published(name).maximum,
+                Some(32768.into()),
+                "{name}"
+            );
+        }
+        assert_eq!(provider.published("temperature").maximum, None);
+        assert_eq!(provider.info().max_output_tokens, Some(32768));
     }
 
     /// An endpoint that publishes neither name says nothing, and silence is not a claim that the
