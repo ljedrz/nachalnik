@@ -74,6 +74,33 @@ async fn a_tool_that_needs_permission_stops_the_turn_and_puts_the_question_on_th
     assert!(harness.app.overlay.is_none());
 }
 
+/// A question takes the letters its help lines name, and not their capitals.
+#[tokio::test]
+async fn a_capital_letter_does_not_answer_a_question() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    for capital in ['Y', 'A', 'N', 'D', 'I'] {
+        harness.answer(KeyCode::Char(capital)).await;
+        assert!(
+            harness.app.overlay.is_none() && harness.screen().contains("dig wants: exec:run"),
+            "{capital} did something: {}",
+            harness.screen()
+        );
+    }
+
+    harness.answer(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert!(harness.screen().contains("dug"), "{}", harness.screen());
+}
+
 /// An answer of "always" is in the record as a rule, tied to the question it answered.
 ///
 /// note: the rule went into the policy's table and nowhere else, so every later call it let

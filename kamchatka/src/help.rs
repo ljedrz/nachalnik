@@ -122,7 +122,8 @@ pub fn everything() -> String {
 /// sat indented.
 pub const CHAT: &str =
     "  THE PROMPT, which is on the chat tab, and wherever an item is being edited
-    enter               send
+    enter               send; with an item being edited, put it in
+    esc                 with an item being edited, leave it as it was
     shift+enter         a new line; alt+enter where the terminal cannot tell
                         shift+enter from enter
     up                  in an empty prompt, the last message back: the one
@@ -130,12 +131,16 @@ pub const CHAT: &str =
                         last one sent. With anything typed it moves the cursor
     down                puts a recalled line away again, while the prompt still
                         says exactly what `up` put there
+                        (on the first line typed and the last, up and down go
+                         on to scroll the conversation)
     pgup / pgdn         scroll the conversation; where you leave it is where
                         it stays, however much arrives underneath
     ctrl+home           the beginning of the conversation
     ctrl+end            the end of it, and following the newest again
     ctrl+e              follow the newest again, from wherever you are
-    home / end          the prompt's own, as in any other line editor
+    left / right        move the cursor
+    home / end          the start / the end of the line
+    backspace / delete  take out the character before / after the cursor
     (a message sent while a turn is running waits for the end of it, and
      then gets a turn of its own; `up` is how it is changed or dropped while
      it waits. A turn that stops to ask about a tool has to be answered
@@ -145,7 +150,7 @@ pub const CHAT: &str =
 pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is open
     up / down, j / k    pick an item
     pgup / pgdn         a screenful at a time
-    g / G               the first item / the last
+    g / G, home / end   the first item / the last
     23G                 the item numbered 23
     space               cycle how much of it the model gets: all of it, then
                         a … marker where it was, then nothing, then all of it
@@ -154,7 +159,9 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                          of those sends it in place of the truncated copy)
     e                   change what it says; what it said before is kept
                         (what a turn *did* is not something it says, so a
-                         turn that is only a tool call declines the key)
+                         turn that is only a tool call declines the key;
+                         esc here leaves it as it was, as it does in the
+                         prompt)
     f                   list only what the next request carries, or everything
     y                   hand the whole of what it says to the terminal, for the
                         clipboard - unwrapped, and with no frame down the sides
@@ -176,7 +183,7 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
 pub const TRACE: &str = "  THE TRACE TAB, which has the keys whenever it is open
     up / down, j / k    read back through it
     pgup / pgdn         a screenful at a time
-    g / G               the oldest it still holds / the newest
+    g / G, home / end   the oldest it still holds / the newest
     /                   filter the rows: fuzzy, over the name, the detail and
                         the clock, so an hour or a date finds what happened in
                         it. Reading keys still work while the box is open, and
@@ -187,7 +194,7 @@ pub const TRACE: &str = "  THE TRACE TAB, which has the keys whenever it is open
 /// The permissions tab's own keys.
 pub const PERMISSIONS: &str = "  THE PERMISSIONS TAB, which has the keys whenever it is open
     up / down, j / k    pick a capability, or one of the path rules under them
-    g / G               the first / the last
+    g / G, home / end   the first / the last
     space               cycle it: ask, then allow, then deny
     a / n / r           allow it / never allow it / ask about it again
                         (backspace does what r does)
@@ -246,11 +253,14 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
                         with. The conversation stays, because it is the
                         context; the trace keeps what happened either way
     f1                  this, opened at whichever tab you are on; also ? on any
-                        tab but the chat one, and ← → for the rest of it
-    esc                 close this, or stop what is running; in ready, drop the
-                        calls waiting to run
+                        tab but the chat one
+    esc                 stop what is running; in ready, drop the calls waiting
+                        to run
     ctrl+c              stop what is running; again to leave
-    ctrl+d              leave";
+    ctrl+d              leave
+    (over the screen - this, the request, an item read whole - up / down and
+     pgup / pgdn scroll, left / right turn to its other pages where it has
+     them, and any other key closes it)";
 
 /// Everything that can be typed at the prompt with a `/` in front of it.
 pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab

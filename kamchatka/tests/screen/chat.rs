@@ -1956,3 +1956,39 @@ async fn a_conversation_past_sixty_five_thousand_rows_still_shows_its_end() {
     assert!(harness.app.follow);
     assert!(screen.contains("the newest line"), "{screen}");
 }
+
+/// The prompt has the keys its help lines name and no others.
+///
+/// note: the text box's own keymap came along with it - `ctrl+u` undoing, `ctrl+k` cutting to the
+/// end of the line, `ctrl+a` jumping to its start, `alt+backspace` taking out a word - and none of
+/// it was on a help line. A chord pressed by mistake changed the message with nothing on the
+/// screen to say why.
+#[tokio::test]
+async fn the_prompt_has_no_keys_the_help_does_not_name() {
+    let mut harness = Harness::new([]);
+    for c in "one two".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+
+    for chord in ['u', 'w', 'a', 'k', 'y', 'x', 'h', 'b', 'f'] {
+        harness.chord(KeyCode::Char(chord)).await;
+    }
+    for chord in [KeyCode::Char('b'), KeyCode::Char('<'), KeyCode::Backspace] {
+        harness.alt(chord).await;
+    }
+    // and the cursor did not move either, or this would not land on the end
+    harness.press(KeyCode::Char('!')).await;
+    assert_eq!(harness.app.input.lines(), ["one two!"]);
+
+    // what the help does name still works
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Delete).await;
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Left).await;
+    harness.press(KeyCode::Left).await;
+    harness.press(KeyCode::Backspace).await;
+    harness.press(KeyCode::Right).await;
+    harness.press(KeyCode::Char('?')).await;
+    assert_eq!(harness.app.input.lines(), ["ne w?o"]);
+}
