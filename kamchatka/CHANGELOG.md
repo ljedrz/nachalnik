@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **`/params` lists what else the model takes one to a line, with what the endpoint publishes
+  about each beside it**: its default and the most it takes, where the listing gives them, which
+  on OpenRouter is a default for some models and the cap on an answer for most. A parameter set
+  over the published maximum is noted. No type or range is shown that the endpoint did not
+  publish.
+
 ## [0.17.0] - 2026-10-02
 
 ### added

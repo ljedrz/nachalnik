@@ -313,8 +313,9 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         the model with it. The key is the one this started
                         with
     /params [KEY JSON]  show or set a model parameter, and what else this model
-                        takes. One it does not take is sent and ignored, and
-                        KEY null takes one away
+                        takes, with any default or maximum it publishes. One
+                        it does not take is sent and ignored, and KEY null
+                        takes one away
     /save [PATH]        the session log, and a snapshot to resume from
     /load [PATH]        that snapshot's context, into the session you are in.
                         What is here is excluded unless it is pinned, and u
