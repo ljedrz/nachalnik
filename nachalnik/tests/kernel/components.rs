@@ -636,3 +636,46 @@ async fn a_standing_notice_is_not_placed_twice() {
         .count();
     assert_eq!(standing, 1);
 }
+
+/// What only resembles the notice does not stand in for it.
+///
+/// note: the notice is recognised by its kind, source, label and content together. An item of
+/// the same kind from the same source says something else, and the person's own message in the
+/// notice's words is not the notice either - so with both pinned in the context as it fills, the
+/// notice is still placed.
+#[tokio::test]
+async fn a_notice_is_recognised_by_all_of_what_it_is() {
+    let kernel = limited(1);
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    let words = "the context is full";
+    kernel.set_full_notice(Some(ContextItem::new(
+        nachalnik::ContextKind::Reference,
+        "client",
+        "context full",
+        words,
+    )));
+    kernel.push(ContextItem::file("kept.txt", "k".repeat(2_400)).pinned());
+    kernel.push(
+        ContextItem::new(
+            nachalnik::ContextKind::Reference,
+            "client",
+            "a note",
+            "something else",
+        )
+        .pinned(),
+    );
+    kernel.push(ContextItem::user(words).pinned());
+    kernel.push(ContextItem::user("go on"));
+
+    kernel.turn().await.unwrap();
+
+    let placed = kernel
+        .items()
+        .iter()
+        .filter(|item| item.label == "context full" && item.state == ContextState::Active)
+        .count();
+    assert_eq!(placed, 1, "a lookalike was taken for the notice");
+}
