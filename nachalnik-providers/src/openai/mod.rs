@@ -1056,6 +1056,85 @@ mod tests {
         assert!(asked.lock().contains(&"/api/ps".to_owned()));
     }
 
+    /// An ollama holding no model is asked to load it, and a load that takes its time is waited
+    /// out: the limit the loaded model is served with is what the session is measured against.
+    ///
+    /// note: on the real clock, since what is held is a bound on a socket. The load takes four
+    /// seconds, against the two minutes loading is given and the under two seconds a bound cut
+    /// down to a listing's would be, so the margin is wide either way.
+    #[tokio::test]
+    async fn an_ollama_is_asked_to_load_a_model_that_takes_its_time() {
+        // the load: longer than a listing is given, shorter than loading a model is given
+        const LOADING: Duration = Duration::from_secs(4);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        // cold until the empty prompt has been answered, which is what makes `/api/ps` report
+        // nothing the first time it is asked
+        let loaded = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let warming = loaded.clone();
+        tokio::spawn(async move {
+            use std::sync::atomic::Ordering;
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut socket, _)) = listener.accept().await {
+                let mut head = Vec::new();
+                let mut chunk = [0u8; 4096];
+                while !head.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match socket.read(&mut chunk).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                let path = String::from_utf8_lossy(&head)
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or_default()
+                    .to_owned();
+
+                let body = match path.as_str() {
+                    "/v1/models" => r#"{"data":[{"id":"m"}]}"#,
+                    "/api/version" => r#"{"version":"0.12.0"}"#,
+                    // the model is loaded here, and only says so afterwards
+                    "/api/generate" => {
+                        tokio::time::sleep(LOADING).await;
+                        warming.store(true, Ordering::SeqCst);
+                        r#"{"done":true}"#
+                    }
+                    // nothing while the model is cold, which is what sends `loaded_limit` to the
+                    // empty prompt in the first place
+                    "/api/ps" => match loaded.load(Ordering::SeqCst) {
+                        true => r#"{"models":[{"name":"m:latest","context_length":4096}]}"#,
+                        false => r#"{"models":[]}"#,
+                    },
+                    _ => "{}",
+                };
+
+                let _ = socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                             Content-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        let provider = OpenAiCompatible::new("m", format!("http://{at}/v1"), "no key needed");
+        provider.probe().await;
+
+        assert_eq!(
+            provider.info().context_limit,
+            Some(4096),
+            "the limit the loaded model is served with, or none where the load was given up on"
+        );
+    }
+
     /// A `/v1` address whose listing names no context length is asked whether it is an ollama, and
     /// one that does not answer like one is left alone: nothing asks it for `/api/ps`, and nothing
     /// sends it the empty prompt that loads a model - the second given two minutes to load a model
