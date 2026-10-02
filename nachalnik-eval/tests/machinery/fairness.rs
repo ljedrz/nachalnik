@@ -134,6 +134,34 @@ fn an_experiment_of_this_crates_says_what_it_measures() {
     }
 }
 
+/// What the suite calls each of its experiments.
+///
+/// note: pinned, because a name is what a report is filed under and what `bench -e` selects by,
+/// so an experiment renamed is one the runs that measured it cannot be read back by. A rename is
+/// somebody's decision, and this is where it says so.
+#[test]
+fn the_suite_names_each_of_its_experiments() {
+    let names: Vec<String> = suite::all()
+        .iter()
+        .map(|experiment| experiment.name().to_owned())
+        .collect();
+
+    assert_eq!(
+        names,
+        [
+            "attribution",
+            "recursion",
+            "lie",
+            "conflict",
+            "provenance",
+            "privilege",
+            "instrumented",
+            "repair",
+            "feedback",
+        ]
+    );
+}
+
 #[test]
 fn a_bare_confidence_of_one_is_read_as_certainty_and_that_is_a_choice() {
     // note: pinned rather than fixed. `CONFIDENCE:` is asked for on a 0-100 scale, and the reader
