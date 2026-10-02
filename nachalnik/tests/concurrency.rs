@@ -556,6 +556,82 @@ fn run_together_a_call_its_runtime_cancelled_is_recorded_as_not_having_run() {
     );
 }
 
+/// A policy that refuses everything and panics while explaining itself.
+///
+/// note: `why` is asked only for a call this policy refused, and it is asked before the kernel
+/// starts polling the tool - so the panic is inside the call's task and outside the
+/// `catch_unwind` a tool's own panic is caught at. The tool itself is never reached; what this
+/// reaches is the `JoinSet` the kernel is joining, which is where a panic has to be handed on.
+struct ExplainsByPanicking;
+
+#[nachalnik::async_trait]
+impl nachalnik::PermissionPolicy for ExplainsByPanicking {
+    async fn evaluate(&self, _request: &nachalnik::PermissionRequest) -> nachalnik::Verdict {
+        nachalnik::Verdict::Deny
+    }
+
+    fn why(&self, _request: &nachalnik::PermissionRequest) -> Option<String> {
+        panic!("this policy cannot say why")
+    }
+}
+
+/// A panic inside a call unwinds the step, run together or one at a time.
+///
+/// note: the kernel's own panics cannot be reached from outside - a claimed call has always had
+/// its grant - so a seam that reaches them is what makes this worth a test. A policy asked to
+/// explain a refusal answers with a panic instead of a sentence: run one at a time that panic is
+/// raised on the caller's own task, and run together it is raised inside a spawned task. The
+/// step has to hand the second on as the first, because the alternative is worse than losing the
+/// panic - the call is answered with `the call did not run to completion`, which says the call was
+/// cut short rather than that something inside it panicked, and a client awaiting the step on a
+/// task of its own is handed a state in place of the panic that ended it.
+#[test]
+fn a_panic_in_a_call_unwinds_the_step_however_the_calls_run() {
+    for parallel in [false, true] {
+        let kernel = Kernel::new(Config {
+            parallel_tool_calls: parallel,
+            ..Default::default()
+        });
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::tool_calls(vec![call("c1", "slow", json!({}))]),
+            ModelResponse::text("done"),
+        ])));
+        kernel.set_policy(Arc::new(ExplainsByPanicking));
+        kernel.add_tool(Arc::new(ConstTool::new("slow", "ran")));
+        kernel.push(ContextItem::user("go"));
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            runtime.block_on(kernel.turn())
+        }));
+
+        match unwound {
+            Err(payload) => {
+                let said = payload
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or_else(|| payload.downcast_ref::<&str>().copied())
+                    .unwrap_or_default();
+                assert!(
+                    said.contains("cannot say why"),
+                    "parallel: {parallel}, the step unwound with something else: {said}"
+                );
+            }
+            Ok(Ok(state)) => panic!(
+                "parallel: {parallel}, the step came back {state:?} rather than unwinding, and \
+                 the call was answered: {:?}",
+                tool_results_text(&kernel)
+            ),
+            Ok(Err(e)) => panic!(
+                "parallel: {parallel}, the step failed with {e} rather than unwinding: {:?}",
+                tool_results_text(&kernel)
+            ),
+        }
+    }
+}
+
 /// A provider whose `info` waits the second time it is asked, so that a second setter can be let
 /// in while the first is still describing what it replaced.
 ///
