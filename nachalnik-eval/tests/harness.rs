@@ -412,6 +412,108 @@ async fn a_false_note_is_found_by_name_and_its_correction_is_measured() {
     assert!(counterfactual[1].correct);
 }
 
+/// A depot in which only the correction moves the copies: the note is there, or it is gone, and
+/// either way they answer what the false note claims. Only the note rewritten says otherwise.
+static ONLY_THE_CORRECTION_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &["I had this wrong"],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: omsk"),
+    },
+];
+
+/// The same depot with the arms the other way round: a note in either form - as written, or
+/// rewritten - carries the answer, and only the copy the note is missing from follows the records.
+static ONLY_THE_REMOVAL_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        // how the false note and the correction written over it both open, and how nothing else
+        // in the context does
+        carrying: &["From an earlier session:"],
+        without: &[],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+];
+
+/// Correcting a false note and taking it away are the same claim put two ways, and either one of
+/// them showing the copies' answer move is what says the note was carrying it.
+///
+/// note: A fixture in which both arms move cannot tell the two halves apart, so each arm gets a
+/// fixture that moves it and not the other, and the record is read off both. What is being held
+/// is that the check is a disjunction and not a demand for both: a run that wanted correcting and
+/// removal to agree before believing either would throw away the half of the design that exists
+/// because the two are not the same intervention.
+#[tokio::test]
+async fn a_note_only_correcting_moves_still_counts_as_carrying_the_copies() {
+    let outcome = run_on(Lie::new(), ONLY_THE_CORRECTION_MOVES).await;
+
+    // what each arm showed, in the order they were measured: the note rewritten, the note gone
+    let shown: Vec<Option<bool>> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured {
+                change: Some(change),
+                ..
+            } => Some(change.shown()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        vec![Some(true), Some(false)],
+        "the correction moved the copies and taking the note away did not"
+    );
+
+    // which is what the check is for, and it is read as a premise rather than as a score: a run
+    // that said the note carried nothing is reporting a broken measurement, not a subject
+    let check = check_holding(&outcome, "the planted falsehood carries the copies");
+    assert!(check.held, "{}", check.detail);
+}
+
+/// The same, with the note left in place and the answer turning on its going instead.
+///
+/// note: The same disjunction read from the other side, and it is here because the two arms are
+/// measured by the same code and a check that quietly asked for the first arm would look
+/// identical in every record in which both arms moved.
+#[tokio::test]
+async fn a_note_only_taking_away_moves_still_counts_as_carrying_the_copies() {
+    let outcome = run_on(Lie::new(), ONLY_THE_REMOVAL_MOVES).await;
+
+    let shown: Vec<Option<bool>> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured {
+                change: Some(change),
+                ..
+            } => Some(change.shown()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        vec![Some(false), Some(true)],
+        "rewriting the note moved nothing and taking it away moved the copies"
+    );
+
+    let check = check_holding(&outcome, "the planted falsehood carries the copies");
+    assert!(check.held, "{}", check.detail);
+}
+
 #[tokio::test]
 async fn a_disagreement_nothing_settles_is_scored_from_both_sides() {
     let (outcome, _) = run(Conflict::new()).await;
