@@ -1552,6 +1552,145 @@ mod tests {
         );
     }
 
+    /// A `null` in the arguments is nothing written, and does not become the word `null`.
+    ///
+    /// note: `null` and the empty string are both how this dialect spells a call to a tool that
+    /// takes no arguments. Read as a fragment like any other value that is not a string, it would
+    /// be written into the call's arguments as the four letters, and a call that takes nothing
+    /// would come back as JSON the model was told it got wrong.
+    #[test]
+    fn null_arguments_are_nothing_written_and_not_the_word_null() {
+        let mut gathering = Gathering::default();
+        let deltas = DeltaSink::disconnected();
+        gathering.fold(
+            &json!({ "index": 0, "id": "c1", "function": { "name": "now", "arguments": null } }),
+            &deltas,
+        );
+
+        assert_eq!(
+            gathering.calls[0].args, "",
+            "a field present and empty is not text to be appended"
+        );
+        assert_eq!(gathering.calls[0].name, "now");
+    }
+
+    /// A fragment carrying a provider's own state is kept, and one carrying none leaves the
+    /// call's as it was.
+    ///
+    /// note: some APIs hand back a signature per call and reject the next request without it, so
+    /// what arrived is carried on the call and sent back verbatim - which it cannot be if a
+    /// fragment with none clears it, or one with a signature is passed over.
+    #[test]
+    fn a_providers_state_on_a_fragment_is_kept_and_its_absence_changes_nothing() {
+        let deltas = DeltaSink::disconnected();
+        let mut gathering = Gathering::default();
+
+        gathering.fold(
+            &json!({ "index": 0, "id": "c1", "function": { "name": "look", "arguments": "{}" } }),
+            &deltas,
+        );
+        assert!(
+            gathering.calls[0].extra.is_null(),
+            "nothing arrived, so nothing is written over the call"
+        );
+
+        gathering.fold(
+            &json!({ "index": 0, "id": "c1", "function": { "arguments": "" },
+                "extra_content": { "sig": "abc" } }),
+            &deltas,
+        );
+        assert_eq!(gathering.calls[0].extra, json!({ "sig": "abc" }));
+
+        // and a later fragment with none of its own does not clear what an earlier one said
+        gathering.fold(
+            &json!({ "index": 0, "id": "c1", "function": { "arguments": "" } }),
+            &deltas,
+        );
+        assert_eq!(gathering.calls[0].extra, json!({ "sig": "abc" }));
+    }
+
+    /// A fragment continuing a call whose arguments are already whole still continues it.
+    ///
+    /// note: a fragment is a whole call again only with a name, arguments that parse, *and* a
+    /// call whose own arguments already do. Arguments that parse are not enough on their own: a
+    /// fragment naming no tool that arrives after them continues the call, and taken for a new
+    /// one it would run the tool twice for a model that asked once.
+    #[test]
+    fn a_fragment_continuing_a_call_whose_arguments_already_parse_still_continues_it() {
+        let deltas = DeltaSink::disconnected();
+        let mut gathering = Gathering::default();
+
+        // the whole of the arguments, in two fragments, which parse once they are together
+        gathering.fold(
+            &json!({ "id": "n1", "function": { "name": "fs", "arguments": "{\"path\":" } }),
+            &deltas,
+        );
+        gathering.fold(
+            &json!({ "id": "n1", "function": { "name": "fs", "arguments": "\"a.txt\"}" } }),
+            &deltas,
+        );
+        assert_eq!(gathering.calls.len(), 1, "one call, and it is complete");
+        assert_eq!(
+            arguments_of(&gathering.calls[0].args),
+            json!({ "path": "a.txt" })
+        );
+
+        // and then a further fragment under the same identifier, carrying no name of its own: a
+        // continuation of the arguments in hand, not a call the model asked for again
+        gathering.fold(
+            &json!({ "id": "n1", "function": { "arguments": " " } }),
+            &deltas,
+        );
+
+        assert_eq!(
+            gathering.calls.len(),
+            1,
+            "a fragment naming no tool continues the call it belongs to"
+        );
+        assert_eq!(
+            arguments_of(&gathering.calls[0].args),
+            json!({ "path": "a.txt" }),
+            "and what it carries is added to that call"
+        );
+    }
+
+    /// A turn that asked for a tool goes out with its calls, and one that said only words goes
+    /// out with no `tool_calls` at all - not an empty one.
+    #[test]
+    fn calls_go_out_where_the_model_asked_for_them_and_nowhere_else() {
+        let words = to_wire(&Message::assistant(
+            Some(Content::text("reading it")),
+            Vec::new(),
+        ));
+        assert!(words.get("tool_calls").is_none(), "{words}");
+
+        let call = ToolCall::new("c1", "fs", json!({ "path": "a.txt" }));
+        let asked = to_wire(&Message::assistant(
+            Some(Content::text("reading it")),
+            vec![call],
+        ));
+        assert_eq!(asked["tool_calls"][0]["id"], "c1");
+        assert_eq!(asked["tool_calls"][0]["function"]["name"], "fs");
+    }
+
+    /// A call's own provider state goes back on it as it arrived, and a call with none carries no
+    /// field for one.
+    #[test]
+    fn a_calls_own_state_goes_back_on_it_and_nowhere_else() {
+        let signed = ToolCall::new("c1", "fs", json!({})).with_extra(json!({ "sig": "abc" }));
+        let plain = ToolCall::new("c2", "fs", json!({}));
+        let wire = to_wire(&Message::assistant(None, vec![signed, plain]));
+
+        assert_eq!(
+            wire["tool_calls"][0]["extra_content"],
+            json!({ "sig": "abc" })
+        );
+        assert!(
+            wire["tool_calls"][1].get("extra_content").is_none(),
+            "{wire}"
+        );
+    }
+
     /// And turned off, nothing is moved at all.
     #[test]
     fn nothing_is_taken_out_of_the_content_when_it_is_turned_off() {
