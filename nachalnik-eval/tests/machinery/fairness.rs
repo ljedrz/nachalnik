@@ -83,6 +83,10 @@ fn every_experiment_states_the_templates_it_asks() {
 /// note: `instrument` is read back into every report, so an unstated one has to say so rather
 /// than read as blank; and a default `asks` naming any template would put one of this crate's own
 /// into a third party's list.
+///
+/// note: and a default `about` naming anything at all puts a claim into a third party's report
+/// that names something this experiment knows nothing about. Empty is what an experiment that has
+/// not said what it measures has to read back as.
 #[test]
 fn an_experiment_that_states_nothing_asks_nothing_and_is_told_so() {
     let unstated = ThirdParty.instrument();
@@ -94,6 +98,8 @@ fn an_experiment_that_states_nothing_asks_nothing_and_is_told_so() {
     let asked = ThirdParty.asks();
 
     assert!(asked.is_empty(), "{asked:?}");
+
+    assert_eq!(ThirdParty.about(), "");
 }
 
 #[test]
