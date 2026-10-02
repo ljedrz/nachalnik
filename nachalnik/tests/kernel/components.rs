@@ -404,6 +404,100 @@ async fn a_context_nothing_more_can_be_taken_from_is_full() {
     );
 }
 
+/// Whether the context is full is asked of the compactor after a pass, not decided by the pass
+/// having happened - and by default the question is the one it was asked before it, asked again
+/// of the budget the pass left behind.
+///
+/// note: the default is what keeps the answer honest in both directions. A compactor asked to pass
+/// over half a limit and left a request under a fifth of it says no, and no `context.full` is
+/// emitted for a context with room in it; and the override is there for the compactor that wants a
+/// pass for some other reason - a look at something it cannot price - which does not thereby find
+/// the context full, and is believed when it says the context still is.
+#[tokio::test]
+async fn a_compactor_that_made_room_does_not_find_the_context_full() {
+    /// The compactor the tests above use, insisting afterwards that the context is still full.
+    struct AlwaysFull(LargestFirstCompactor);
+
+    #[async_trait::async_trait]
+    impl nachalnik::Compactor for AlwaysFull {
+        fn should_compact(&self, budget: &nachalnik::Budget) -> bool {
+            self.0.should_compact(budget)
+        }
+
+        fn wants_room(&self, _budget: &nachalnik::Budget) -> bool {
+            true
+        }
+
+        async fn plan(
+            &self,
+            items: &[Arc<ContextItem>],
+            budget: &nachalnik::Budget,
+        ) -> Option<nachalnik::CompactionPlan> {
+            self.0.plan(items, budget).await
+        }
+    }
+
+    /// A tool result over half the limit, and the turn that asked for it.
+    fn push_a_big_result(kernel: &Kernel) {
+        let call = call("c1", "grep", json!({}));
+        kernel.push(ContextItem::user("go on"));
+        kernel.push(ContextItem::assistant("looking", vec![call.clone()]));
+        kernel.push(ContextItem::tool_result(
+            call.id,
+            "grep",
+            "x".repeat(2_400),
+            false,
+        ));
+    }
+
+    let kernel = limited(1);
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    push_a_big_result(&kernel);
+    assert!(
+        kernel.budget().fraction_used().unwrap() >= 0.5,
+        "which is over the threshold the compactor works at"
+    );
+
+    let mut events = kernel.subscribe();
+    kernel.turn().await.unwrap();
+
+    // the pass took the result, and what is left is a fraction of the limit - so no request has
+    // found the context full
+    let full = drain(&mut events)
+        .into_iter()
+        .filter(|event| event.name() == "context.full")
+        .collect::<Vec<_>>();
+    assert!(full.is_empty(), "{full:?}");
+    assert!(
+        kernel.budget().fraction_used().unwrap() < 0.2,
+        "the pass made room, and there was room to make"
+    );
+
+    // while a compactor that says the context is too full for its liking is believed, on the
+    // budget the pass left behind rather than on the one it answered
+    let full = limited(1);
+    full.set_compactor(Some(Arc::new(AlwaysFull(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    }))));
+    push_a_big_result(&full);
+
+    let mut full_events = full.subscribe();
+    full.turn().await.unwrap();
+    assert!(
+        full.budget().fraction_used().unwrap() < 0.2,
+        "and there was room to make"
+    );
+    assert_eq!(
+        crate::common::count(&drain(&mut full_events), "context.full"),
+        1,
+        "a compactor that says so is not overruled"
+    );
+}
+
 /// The caller's notice is put into the context as it becomes full, carried by the request that
 /// follows, placed once for as long as it stays full, and excluded as there is room again.
 ///
