@@ -98,16 +98,15 @@ const STAGE: &str = "stage";
 
 /// The top of that rubric, asked again as a claim rather than as a position on it.
 ///
-/// note: both, and folded, because the two engines are good at different halves of it. An ordinal
-/// `score` is the primitive laya's own card calls its weakest, and asked the same reading as a
-/// `noul` it finds destructive commands the rubric misses, with fewer false alarms; `jev` reads
-/// the rubric well and misses some of those commands when the rubric is taken away. Folded with
-/// [`Rated::worst_of`], the one that is right about a command carries it, and neither engine is
-/// asked to answer in the shape it is worse at.
+/// note: both, and folded, because engines are good at different halves of it. An ordinal `score`
+/// is the primitive some read worst - laya's own card calls it its weakest - and asked the same
+/// reading as a `noul` they find destructive commands the rubric misses; others read the rubric
+/// well and miss some of those commands when it is taken away. Folded with [`Rated::worst_of`],
+/// the reading that is right about a command carries it, whichever engine is asked.
 ///
 /// note: it costs a question and not a round trip. Every question in a call is answered in one
-/// pass at both engines - which is also what makes placing a command stage by stage affordable -
-/// so doubling them costs milliseconds rather than a wait.
+/// pass - which is also what makes placing a command stage by stage affordable - so doubling them
+/// costs milliseconds rather than a wait.
 const DANGER: &str = "danger";
 
 /// The most stages one command line is taken apart into before it is judged whole instead.
@@ -363,7 +362,7 @@ pub struct Advised {
     careful: Arc<Careful>,
     /// The engine asked for the rating: a service over HTTP, or a process on this machine.
     /// Nothing in here finds out which - see [`SystemOne`].
-    jev: Arc<dyn SystemOne>,
+    engine: Arc<dyn SystemOne>,
     /// Where it put each command it was asked to rate, or why it could not, for the question to
     /// draw.
     readings: Mutex<VecDeque<(ToolCallId, Result<Rated, String>)>>,
@@ -375,10 +374,10 @@ pub struct Advised {
 
 impl Advised {
     /// Wraps a policy, rating the commands it asks about.
-    pub fn new(careful: Arc<Careful>, jev: Arc<dyn SystemOne>) -> Self {
+    pub fn new(careful: Arc<Careful>, engine: Arc<dyn SystemOne>) -> Self {
         Self {
             careful,
-            jev,
+            engine,
             readings: Mutex::new(VecDeque::new()),
             spent: AtomicU64::new(0),
             stopped: tokio::sync::watch::Sender::new(false),
@@ -425,7 +424,7 @@ impl Advised {
     /// it is backing off. Both have to reach a screen during the session and not only at startup,
     /// or an advisor that stops working mid-session stops silently.
     pub fn notice(&self) -> Option<String> {
-        self.jev.notice()
+        self.engine.notice()
     }
 
     /// The standing rules underneath, which the tools and the permissions tab hold directly.
@@ -510,7 +509,7 @@ impl Advised {
 
         let mut stopped = self.stopped.subscribe();
         let answers = tokio::select! {
-            asked = self.jev.ask(state(request), questions) => {
+            asked = self.engine.ask(state(request), questions) => {
                 asked.map_err(|e| cut(&e.to_string()))?
             }
             _ = stopped.wait_for(|stopped| *stopped) => return Err(NOT_WAITED.to_owned()),
@@ -755,9 +754,9 @@ mod tests {
     /// note: port 1, which is refused rather than filtered - the same distinction
     /// `waiting::tests::nobody_home` is careful about. A refused connection is not a timeout, so
     /// this also pins that the failure is not retried four times on the way to being ignored.
-    fn unreachable() -> Arc<nachalnik_providers::system1::Jev> {
-        Arc::new(nachalnik_providers::system1::Jev::new(
-            "jev-latest",
+    fn unreachable() -> Arc<nachalnik_providers::system1::Client> {
+        Arc::new(nachalnik_providers::system1::Client::new(
+            "vendor/decider",
             "http://127.0.0.1:1",
             "not-a-key",
         ))
@@ -778,12 +777,12 @@ mod tests {
     #[tokio::test]
     async fn a_call_already_going_to_be_asked_about_is_not_sent_anywhere() {
         // nothing set, so `fs:read` is `ask` - and the rubric is written about a command
-        let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
+        let engine = unreachable();
+        let advised = Advised::new(Arc::new(Careful::new()), engine.clone());
         let request = asking("read", Capability::fs("read"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
-        assert_eq!(jev.attempts(), 0, "nothing should have left the machine");
+        assert_eq!(engine.attempts(), 0, "nothing should have left the machine");
     }
 
     /// An allowed command runs, and nothing about it leaves the machine.
@@ -799,12 +798,12 @@ mod tests {
             Verdict::Allow,
         );
 
-        let jev = unreachable();
-        let advised = Advised::new(careful, jev.clone());
+        let engine = unreachable();
+        let advised = Advised::new(careful, engine.clone());
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Allow);
-        assert_eq!(jev.attempts(), 0, "nothing should have left the machine");
+        assert_eq!(engine.attempts(), 0, "nothing should have left the machine");
         assert!(advised.rating(&request.call).is_none());
     }
 
@@ -857,8 +856,8 @@ mod tests {
 
     /// The two readings of one command fold, and either alone is enough to draw a line.
     ///
-    /// note: the property the second question is there for. `jev` reads the rubric and misses
-    /// destructive commands when it is taken away; `laya` finds more of them by the claim than by
+    /// note: the property the second question is there for. One engine reads the rubric and misses
+    /// destructive commands when it is taken away; another finds more of them by the claim than by
     /// the rubric. Folding them means a command either is right about carries it, and the fold is
     /// over `shown` for the reason `worst_of` documents.
     #[test]
@@ -867,7 +866,7 @@ mod tests {
         let folded = Rated::worst_of([Rated::of(0.1, 0.99), Rated::claimed(0.95)]);
         assert_eq!(folded.expect("it folds").shown(), Rating::Grave);
 
-        // and the other way round, which is the case that keeps `jev` where it was
+        // and the other way round, which is the case for an engine that reads the rubric well
         let folded = Rated::worst_of([Rated::of(2.0, 0.99), Rated::claimed(0.05)]);
         assert_eq!(folded.expect("it folds").shown(), Rating::Grave);
 
@@ -906,12 +905,12 @@ mod tests {
         let careful = Arc::new(Careful::new());
         careful.set(&Subject::Capability(Capability::exec("run")), Verdict::Deny);
 
-        let jev = unreachable();
-        let advised = Advised::new(careful, jev.clone());
+        let engine = unreachable();
+        let advised = Advised::new(careful, engine.clone());
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Deny);
-        assert_eq!(jev.attempts(), 0, "nothing should have left the machine");
+        assert_eq!(engine.attempts(), 0, "nothing should have left the machine");
         assert!(advised.rating(&request.call).is_none());
     }
 
@@ -923,12 +922,12 @@ mod tests {
     /// about `fs:read`; this one is what `exec:run` changes.
     #[tokio::test]
     async fn a_command_somebody_is_about_to_be_asked_about_is_rated() {
-        let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
+        let engine = unreachable();
+        let advised = Advised::new(Arc::new(Careful::new()), engine.clone());
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
-        assert_eq!(jev.attempts(), 1, "the rating was asked for");
+        assert_eq!(engine.attempts(), 1, "the rating was asked for");
         // and an advisor that could not be reached leaves no rating rather than a reassuring one,
         // and a reason where the rating would have been
         assert!(
@@ -1092,8 +1091,8 @@ mod tests {
     /// trips in front of somebody waiting to press `y`, and nobody would keep the feature.
     #[tokio::test]
     async fn every_stage_of_a_command_is_asked_about_in_one_request() {
-        let jev = unreachable();
-        let advised = Advised::new(Arc::new(Careful::new()), jev.clone());
+        let engine = unreachable();
+        let advised = Advised::new(Arc::new(Careful::new()), engine.clone());
 
         let mut request = asking("shell", Capability::exec("run"));
         let cmd = ["true"; STAGES].join(" && ");
@@ -1101,7 +1100,7 @@ mod tests {
         assert_eq!(stages(request.args["cmd"].as_str().unwrap()).len(), STAGES);
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
-        assert_eq!(jev.attempts(), 1, "one request, however many stages");
+        assert_eq!(engine.attempts(), 1, "one request, however many stages");
     }
 
     /// The fold is over what each stage is *shown* as, and taking the scores first loses the

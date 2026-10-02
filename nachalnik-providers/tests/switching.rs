@@ -213,24 +213,24 @@ async fn a_switch_reads_the_listing_once() {
     assert_eq!(answered.load(Ordering::SeqCst), 2);
 }
 
-/// `jev` is moved the way the two dialects are, through the trait, and says the same thing when
-/// the new address does not list its model.
+/// A System One client is moved the way the two dialects are, through the trait, and says the
+/// same thing when the new address does not list its model.
 ///
 /// note: it has no turns, so only the `Endpoint` half of this file's promise applies to it - and
-/// that half is all read through the trait, whose methods share their names with `Jev`'s own.
+/// that half is all read through the trait, whose methods share their names with `Client`'s own.
 #[cfg(feature = "system1")]
 #[tokio::test]
 async fn the_decisions_model_says_it_too_when_the_address_changes() {
-    use nachalnik_providers::system1::Jev;
+    use nachalnik_providers::system1::Client;
 
-    let jev = Jev::new("stranger", "http://unused.invalid", "no key needed");
+    let engine = Client::new("stranger", "http://unused.invalid", "no key needed");
     let address = serving(SERVES).await;
-    let said = moved_to(&jev, address.clone())
+    let said = moved_to(&engine, address.clone())
         .await
         .expect("an address that does not serve it is worth saying");
     assert!(said.contains("stranger"), "{said}");
 
-    let moved: &dyn Endpoint = &jev;
+    let moved: &dyn Endpoint = &engine;
     assert_eq!(moved.endpoint(), address);
     assert_eq!(moved.model(), "stranger");
 }
@@ -257,7 +257,7 @@ async fn an_address_is_used_without_its_trailing_slash() {
             "no key",
         )),
         #[cfg(feature = "system1")]
-        Box::new(nachalnik_providers::system1::Jev::new(
+        Box::new(nachalnik_providers::system1::Client::new(
             "resident",
             "http://unused.invalid/v1/",
             "no key",
@@ -289,7 +289,7 @@ async fn a_switch_that_finds_its_model_takes_down_the_last_ones_notice() {
             "resident", &address, "no key",
         )),
         #[cfg(feature = "system1")]
-        Box::new(nachalnik_providers::system1::Jev::new(
+        Box::new(nachalnik_providers::system1::Client::new(
             "resident", &address, "no key",
         )),
     ];

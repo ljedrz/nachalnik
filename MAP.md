@@ -193,9 +193,9 @@ endpoint says it serves), `openai/wire.rs` (one request sent and read back, stre
 trait both answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
 `reading.rs` (a stream read an event at a time, and a server's sentence out of its error object),
 `markup.rs` (the words out of a body that is not JSON, which `system1.rs` reads too),
-`conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Jev`,
-TypeSafe's engine for typed questions answered with numbers, and the one thing here that is not a
-`Dialect` - it drives no turn). Each dialect is a feature, and what it owns is what its events
+`conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Client`,
+for any System One model - typed questions answered with numbers - and the one thing here that is
+not a `Dialect`: it drives no turn). Each dialect is a feature, and what it owns is what its events
 *say*; `waiting.rs`, `reading.rs` and `markup.rs` are everything else, crate-private and shared,
 which is what makes them one crate rather than two.
 
@@ -307,8 +307,8 @@ session; `phone.rs` is a session and a relay in one process, for when there is n
 machine. The HTTP half of both is `relay/mod.rs` - `mod relay;` from each, the way `tests/common`
 is included, and cargo builds no example out of a directory with no `main.rs` in it - and the page
 it serves is `browser.html`, compiled in.
-`jev_assisted_compaction.rs` (feature `advise`) asks TypeSafe's `jev` which tool results a full
-context can afford to lose, against the compactor's oldest-first.
+`system1_assisted_compaction.rs` (feature `advise`) asks a System One model which tool results a
+full context can afford to lose, against the compactor's oldest-first.
 
 `kamchatka/examples/recorded.rs` runs a session headless and writes it out four ways - readable,
 as events, as a snapshot, as the raw stream. It takes a brief and two tasks rather than a

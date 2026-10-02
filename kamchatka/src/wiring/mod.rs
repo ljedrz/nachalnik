@@ -669,7 +669,7 @@ impl Setup {
         #[cfg(feature = "shell-advisor")]
         let advisor = self
             .advisor
-            .map(|jev| Arc::new(tools::Advised::new(policy.clone(), jev)));
+            .map(|engine| Arc::new(tools::Advised::new(policy.clone(), engine)));
         #[cfg(feature = "shell-advisor")]
         let decides: Arc<dyn nachalnik::PermissionPolicy> = match &advisor {
             Some(advised) => advised.clone(),

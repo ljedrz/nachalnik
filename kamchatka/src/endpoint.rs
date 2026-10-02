@@ -118,12 +118,11 @@ pub fn api_key() -> Result<String, BoxError> {
 /// note: the shell only. An MCP server is a program the person chose, running unconfined with
 /// everything they can read, and a server that calls an API of its own may read one of these names
 /// for its own key; taking them from it would be a nuisance and not a boundary.
-pub const KEYS: [&str; 5] = [
+pub const KEYS: [&str; 4] = [
     "KAMCHATKA_API_KEY",
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
     "KAMCHATKA_SYSTEM1_API_KEY",
-    "TYPESAFE_API_KEY",
 ];
 
 /// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, a host, and
@@ -237,24 +236,25 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
     Ok(provider)
 }
 
-/// The advisor: a second model, asked about tool calls rather than about turns - see
-/// `tools::advice` for what the program asks it, and `jev_assisted_compaction` for another use.
+/// The advisor: a System One model, asked about tool calls rather than about turns - see
+/// `tools::advice` for what the program asks it, and `system1_assisted_compaction` for another use.
 ///
-/// note: its own key under its own name first, and this program's own only where there is no
-/// second one and the session is already talking to OpenRouter. That second condition is the whole
-/// of what makes the fallback safe, because a key is an OpenRouter key by virtue of being sent to
-/// OpenRouter and not by virtue of the variable it was read from. A session pointed at ollama, at
-/// Google with `--gemini`, or at any gateway of somebody's own holds a key that service issued,
-/// and borrowing it here would hand a third party a credential that has no business with them.
+/// note: any of the ones OpenRouter serves, named by `KAMCHATKA_SYSTEM1_MODEL` and with no default,
+/// so that no vendor's is chosen for anybody. A provider OpenRouter does not list is reached
+/// through its bring-your-own-key; `KAMCHATKA_SYSTEM1_BASE_URL` is for an engine of one's own.
 ///
-/// note: so `--advise` still asks for a dedicated key everywhere except the one configuration
-/// where there is nothing to disclose: the requests already go to OpenRouter, and the advice goes
-/// to OpenRouter. A dedicated key is checked first, so a session holding both pays TypeSafe.
+/// note: its own key under its own name first, and otherwise an OpenRouter key this session already
+/// has - its own where the session talks to OpenRouter, or `OPENROUTER_API_KEY` - and only where
+/// the advice goes to OpenRouter. That condition is the whole of what makes the fallback safe,
+/// because a key is an OpenRouter key by virtue of being sent to OpenRouter and not by virtue of
+/// the variable it was read from. A session pointed at ollama, at Google with `--gemini`, or at
+/// any gateway of somebody's own holds a key that service issued, and borrowing it here would hand
+/// a third party a credential that has no business with them.
 ///
 /// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
-/// `--advise` already sends a command's arguments off the machine; without a dedicated key they
-/// go to OpenRouter as well as to the model behind it. Nothing in here is read unless `--advise`
-/// was asked for - the flag is what decides whether they leave at all, and a key sitting in the
+/// `--advise` sends a command's arguments off the machine, to OpenRouter as well as to the model
+/// behind it, unless `KAMCHATKA_SYSTEM1_BASE_URL` points at an engine of one's own. Nothing in here
+/// is read unless `--advise` was asked for - the flag is what decides whether they leave at all, and a key sitting in the
 /// environment is not a decision to send them.
 #[cfg(feature = "advise")]
 pub mod advise {
@@ -262,33 +262,29 @@ pub mod advise {
 
     use nachalnik_providers::{
         is_openrouter,
-        system1::{self, Jev, SystemOne},
+        system1::{self, Client, SystemOne},
     };
 
     use super::*;
 
-    /// Which account pays for the advice, and the key that proves it.
+    /// Where the decision models are listed, for a refusal that has to say where to pick one.
+    pub const LISTING: &str = "https://openrouter.ai/api/v1/models?output_modalities=decisions";
+
+    /// Which key pays for the advice.
     ///
-    /// note: a key and a service together, because the three settings have to agree and three
-    /// variables read on their own would not. A key for the decision service sent to OpenRouter
-    /// is a 401, `jev-latest` asked of OpenRouter is a name it does not serve, and the address
-    /// decides which of the two shapes the request even has. So the choice is made once - is
-    /// there a key of the service's own - and the endpoint and the model follow from it.
+    /// note: named for *whose key it is*, because that is what carries a rule about where it may
+    /// go. A key held for this goes wherever `KAMCHATKA_SYSTEM1_BASE_URL` points it, since the
+    /// person who set both decided that; a borrowed one is an OpenRouter key and goes to OpenRouter
+    /// and nowhere else.
     ///
-    /// note: named for *whose key it is* rather than for which company issued it, as the variables
-    /// underneath are. `KAMCHATKA_SYSTEM1_BASE_URL` may point at anything that answers a System
-    /// One question, so a variant called `TypeSafe` would name the default rather than the case.
-    /// The two cases are a key held for this and a key borrowed from the conversation, and only
-    /// the second one carries a rule about where it may go.
-    ///
-    /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries. A
-    /// third service serving the same model should be a patch rather than a break.
+    /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
     #[non_exhaustive]
     pub enum Account {
-        /// A key held for the decision service itself, under either of the documented names.
+        /// `KAMCHATKA_SYSTEM1_API_KEY`, held for the advisor itself.
         Dedicated(String),
-        /// The key that already pays for the conversation, which pays for this too. A session that
-        /// was not given a second key is not thereby a session that cannot have an advisor.
+        /// An OpenRouter key this session already has: its own, where the conversation goes to
+        /// OpenRouter too, or `OPENROUTER_API_KEY`. A session that was not given a second key is
+        /// not thereby a session that cannot have an advisor.
         Borrowed(String),
     }
 
@@ -316,45 +312,32 @@ pub mod advise {
                 Self::Dedicated(key) | Self::Borrowed(key) => key,
             }
         }
+    }
 
-        /// The endpoint to talk to; the one this account is with unless told otherwise.
-        ///
-        /// note: `KAMCHATKA_SYSTEM1_BASE_URL` moves the address and does not move the account.
-        /// It is for a proxy in front of one of the two, and somebody pointing it at the *other*
-        /// service is setting the model by hand as well. A borrowed key never reaches an address
-        /// here that is not OpenRouter's, because `chosen` refuses to borrow for one.
-        ///
-        /// note: and it is the whole of what a *third* service takes, which is why the variables
-        /// are named for the kind of model rather than for the company that sells one. Anything
-        /// answering a `state` and a map of typed questions at the path [`Jev`] posts to is
-        /// reachable from here with these two set and no code at all - an address this program
-        /// does not recognise is read as keeping TypeSafe's paths, because that is the shape a
-        /// self-hosted thing has. It is how an engine on this machine is reached: `laya-serve`
-        /// answers at that path. What it does not buy is a *different* wire format.
-        pub fn base_url(&self) -> String {
-            env::var("KAMCHATKA_SYSTEM1_BASE_URL").unwrap_or_else(|_| {
-                match self {
-                    Self::Dedicated(_) => system1::DEFAULT_BASE_URL,
-                    Self::Borrowed(_) => system1::OPENROUTER_BASE_URL,
-                }
-                .to_owned()
-            })
-        }
+    /// Where the advisor's questions go: OpenRouter, unless `KAMCHATKA_SYSTEM1_BASE_URL` names
+    /// something else.
+    ///
+    /// note: what something else is for is an engine of one's own - `laya-serve` on this machine
+    /// answers the same route. A provider that sells a System One model and is not on OpenRouter's
+    /// list is reached through OpenRouter's bring-your-own-key, so it needs nothing here.
+    pub fn base_url() -> String {
+        env::var("KAMCHATKA_SYSTEM1_BASE_URL")
+            .unwrap_or_else(|_| system1::DEFAULT_BASE_URL.to_owned())
+    }
 
-        /// Which model answers; the name the service it is with knows it by.
-        ///
-        /// note: the two do not call it the same thing. TypeSafe resolves `jev-latest` to whatever
-        /// version is current; OpenRouter lists the versions it serves and has no moving name
-        /// among them, so what goes there names one version.
-        pub fn model(&self) -> String {
-            env::var("KAMCHATKA_SYSTEM1_MODEL").unwrap_or_else(|_| {
-                match self {
-                    Self::Dedicated(_) => system1::DEFAULT_MODEL,
-                    Self::Borrowed(_) => system1::OPENROUTER_MODEL,
-                }
-                .to_owned()
-            })
-        }
+    /// Which model answers: `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
+    ///
+    /// note: no default, because a default would be one vendor's model chosen for everybody who
+    /// asked for advice. A session asked for with `--advise` and no model is refused at startup,
+    /// with the listing to pick one from.
+    pub fn model() -> Result<String, BoxError> {
+        env::var("KAMCHATKA_SYSTEM1_MODEL").map_err(|_| {
+            format!(
+                "--advise needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the System One \
+                 models at {LISTING}"
+            )
+            .into()
+        })
     }
 
     /// Whose key is available to pay for it, given where this session's own requests go.
@@ -365,58 +348,55 @@ pub mod advise {
     /// accident: the answer decides whether somebody's credential is sent to a third party.
     pub fn account(session_endpoint: &str) -> Result<Account, BoxError> {
         chosen(
-            env::var("KAMCHATKA_SYSTEM1_API_KEY")
-                .or_else(|_| env::var("TYPESAFE_API_KEY"))
-                .ok(),
+            env::var("KAMCHATKA_SYSTEM1_API_KEY").ok(),
             api_key().ok(),
+            env::var("OPENROUTER_API_KEY").ok(),
             session_endpoint,
-            env::var("KAMCHATKA_SYSTEM1_BASE_URL").ok().as_deref(),
+            &base_url(),
         )
     }
 
-    /// Which of the two keys may pay, and whether either may.
+    /// Which key may pay, and whether any may.
     ///
     /// note: split out from [`account`] so the rule can be checked without the environment - what
     /// is left above reads the environment and decides nothing. The rule is the one thing here
     /// that can leak a credential, so it is the one thing that wants a test with no key in it.
     ///
-    /// note: `advisor_endpoint` is `KAMCHATKA_SYSTEM1_BASE_URL`, and it is here because a borrowed
-    /// key goes wherever that names - [`Account::base_url`] prefers it to OpenRouter's. A session
-    /// talking to OpenRouter with the advisor pointed at a local `laya-serve` would otherwise hand
-    /// that server an OpenRouter credential, so the key is borrowed only where *both* ends are
-    /// OpenRouter's.
+    /// note: a borrowed key is borrowed only where *both* ends are OpenRouter's. `own` is whatever
+    /// the conversation's endpoint issued, so it is OpenRouter's only where the conversation goes
+    /// there; and an advisor pointed at a local engine would otherwise be handed an OpenRouter
+    /// credential it has no business with. `OPENROUTER_API_KEY` is OpenRouter's by its name.
     fn chosen(
         dedicated: Option<String>,
         own: Option<String>,
+        openrouter: Option<String>,
         session_endpoint: &str,
-        advisor_endpoint: Option<&str>,
+        advisor_endpoint: &str,
     ) -> Result<Account, BoxError> {
         if let Some(key) = dedicated {
             return Ok(Account::Dedicated(key));
         }
 
-        if !is_openrouter(session_endpoint) {
+        if !is_openrouter(advisor_endpoint) {
             return Err(format!(
-                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). This \
-                 session talks to {session_endpoint}, so its own key is not OpenRouter's to borrow"
+                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY. Its questions go to \
+                 {advisor_endpoint}, so no OpenRouter key is borrowed for them; any value will do \
+                 where that service checks no key"
             )
             .into());
         }
 
-        if let Some(advisor) = advisor_endpoint.filter(|advisor| !is_openrouter(advisor)) {
-            return Err(format!(
-                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY). Its \
-                 questions go to {advisor}, so this session's OpenRouter key is not borrowed for \
-                 them; any value will do where that service checks no key"
-            )
-            .into());
-        }
-
-        own.map(Account::Borrowed).ok_or_else(|| {
-            "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY (or TYPESAFE_API_KEY) for \
-             TypeSafe's own API, or KAMCHATKA_API_KEY to ask the same model through OpenRouter"
+        own.filter(|_| is_openrouter(session_endpoint))
+            .or(openrouter)
+            .map(Account::Borrowed)
+            .ok_or_else(|| {
+                format!(
+                    "--advise needs an OpenRouter key: set OPENROUTER_API_KEY, or \
+                     KAMCHATKA_SYSTEM1_API_KEY. This session talks to {session_endpoint}, so its \
+                     own key is not OpenRouter's to borrow"
+                )
                 .into()
-        })
+            })
     }
 
     /// Builds the advisor from the environment, checking that the model it names is served.
@@ -424,19 +404,14 @@ pub mod advise {
     /// note: the listing is asked for here rather than on the first refusal, for the reason
     /// `Gemini::probe` is called at startup: a model name that is not served comes back a 400,
     /// and the moment to find that out is before a session is running rather than the first time
-    /// a permission question depends on it. OpenRouter publishes no listing for this model, so a
-    /// session paying through it gets no such warning - which is why the identifier this program
-    /// sends there by default is a constant rather than something a person types.
+    /// a permission question depends on it.
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
+        let model = model()?;
         let account = account(session_endpoint)?;
-        let jev = Arc::new(Jev::new(
-            account.model(),
-            account.base_url(),
-            account.api_key(),
-        ));
-        jev.probe().await;
+        let engine = Arc::new(Client::new(model, base_url(), account.api_key()));
+        engine.probe().await;
 
-        Ok(jev)
+        Ok(engine)
     }
 
     #[cfg(test)]
@@ -451,74 +426,71 @@ pub mod advise {
         /// points at issued, and every address below is one this program documents somebody
         /// pointing it at.
         #[test]
-        fn a_session_key_is_only_borrowed_where_it_was_already_going() {
-            let dedicated = || Some("apikey_typesafe".to_owned());
+        fn a_key_is_only_borrowed_where_it_is_openrouters() {
+            let openrouter = "https://openrouter.ai/api/v1";
+            let dedicated = || Some("sk-held-for-advice".to_owned());
             let own = || Some("sk-the-session-key".to_owned());
+            let named = || Some("sk-or-by-name".to_owned());
 
-            // a dedicated key pays wherever the session is pointed, and is the only thing that
-            // reaches TypeSafe at all
-            for anywhere in ["https://openrouter.ai/api/v1", "http://localhost:11434/v1"] {
-                let account =
-                    chosen(dedicated(), own(), anywhere, None).expect("a dedicated key pays");
-                assert!(matches!(&account, Account::Dedicated(_)), "{anywhere}");
-                assert_eq!(account.api_key(), "apikey_typesafe");
+            // a dedicated key pays wherever the session and the advisor are pointed
+            for (session, advisor) in [
+                (openrouter, openrouter),
+                ("http://localhost:11434/v1", openrouter),
+                (openrouter, "http://127.0.0.1:8000/v1"),
+            ] {
+                let account = chosen(dedicated(), own(), named(), session, advisor)
+                    .expect("a dedicated key pays");
+                assert!(
+                    matches!(&account, Account::Dedicated(_)),
+                    "{session} {advisor}"
+                );
+                assert_eq!(account.api_key(), "sk-held-for-advice");
             }
 
-            // without one, the session's own key pays where it is already being sent
-            let borrowed = chosen(None, own(), "https://openrouter.ai/api/v1", None)
+            // without one, the session's own key pays where it is OpenRouter's, ahead of the one
+            // by name
+            let borrowed = chosen(None, own(), named(), openrouter, openrouter)
                 .expect("an OpenRouter session may spend its own key at OpenRouter");
             assert!(matches!(&borrowed, Account::Borrowed(_)));
             assert_eq!(borrowed.api_key(), "sk-the-session-key");
 
-            // and nowhere else. Each of these holds a key somebody other than OpenRouter issued,
-            // and borrowing it would hand a third party a credential with no business with them -
-            // the last one because a host is not a suffix match
+            // and where it is not - each of these holds a key somebody else issued, the last one
+            // because a host is not a suffix match - `OPENROUTER_API_KEY` pays, or nothing does
             for elsewhere in [
                 "http://localhost:11434/v1",
                 "https://generativelanguage.googleapis.com/v1beta",
                 "https://api.openai.com/v1",
                 "https://openrouter.ai.example.com/api/v1",
             ] {
-                let refused = chosen(None, own(), elsewhere, None)
+                let named_pays = chosen(None, own(), named(), elsewhere, openrouter)
+                    .expect("an OpenRouter key by name pays at OpenRouter");
+                assert_eq!(named_pays.api_key(), "sk-or-by-name", "{elsewhere}");
+
+                let refused = chosen(None, own(), None, elsewhere, openrouter)
                     .expect_err("a key that is not OpenRouter's is not spent there");
                 let said = refused.to_string();
-                assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
+                assert!(said.contains("OPENROUTER_API_KEY"), "{said}");
                 // and it names the address it refused over, since the alternative is somebody
                 // reading "needs a key" while holding one
                 assert!(said.contains(elsewhere), "{said}");
             }
 
-            // and an OpenRouter session whose advisor is pointed somewhere else keeps its key: the
-            // address the key would travel to is the advisor's, not the conversation's. A proxy
-            // in front of OpenRouter itself is still OpenRouter's address
-            let openrouter = "https://openrouter.ai/api/v1";
+            // and an advisor pointed somewhere other than OpenRouter is handed no OpenRouter key
+            // at all, the session's or the named one
             for advisor in [
                 "http://127.0.0.1:8000/v1",
-                "https://api.typesafe.ai/v1",
                 "https://openrouter.ai.example.com/api/v1",
             ] {
-                let refused = chosen(None, own(), openrouter, Some(advisor))
+                let refused = chosen(None, own(), named(), openrouter, advisor)
                     .expect_err("a borrowed key is not sent past OpenRouter");
                 let said = refused.to_string();
                 assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
                 assert!(said.contains(advisor), "{said}");
             }
-            let proxied = chosen(None, own(), openrouter, Some(openrouter))
-                .expect("OpenRouter's own address named by hand is still OpenRouter's");
-            assert!(matches!(&proxied, Account::Borrowed(_)));
-            // a dedicated key is the person's to send where they point it
-            let local = chosen(
-                dedicated(),
-                own(),
-                openrouter,
-                Some("http://127.0.0.1:8000/v1"),
-            )
-            .expect("a dedicated key pays wherever the advisor is pointed");
-            assert!(matches!(&local, Account::Dedicated(_)));
 
             // a session with no key at all is refused whatever it is pointed at
-            assert!(chosen(None, None, "https://openrouter.ai/api/v1", None).is_err());
-            assert!(chosen(None, None, "http://localhost:11434/v1", None).is_err());
+            assert!(chosen(None, None, None, openrouter, openrouter).is_err());
+            assert!(chosen(None, None, None, "http://localhost:11434/v1", openrouter).is_err());
         }
     }
 }

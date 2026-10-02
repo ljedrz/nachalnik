@@ -35,31 +35,31 @@ Referenced from [AGENTS.md](AGENTS.md).
   about the one that goes out. That is the only place in this workspace where those two differ
   in a way a figure can see.
 
-- **Whether `laya-serve`'s `confidence` is the one `Jev` reads.**
+- **Whether `laya-serve`'s `confidence` is the one `system1::Client` reads.**
   [`laya`](https://github.com/NandhaKishorM/laya) is reached over HTTP: `laya-serve` answers
   `POST /v1/systemone`, and
   `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` beside any `KAMCHATKA_SYSTEM1_API_KEY`
-  reaches it through `Jev` - RUNNING.md has the commands. The script that spoke to it over a pipe
+  reaches it through `system1::Client` - RUNNING.md has the commands. The script that spoke to it over a pipe
   is gone, and with it what that script did to laya's answer: it built the answer rather than
   passing laya's through, because laya's `confidence` was its own quantity and read as this
   program's it drew every command yellow; and it refitted laya's temperatures on sixty labelled
   commands, raised its token budget and chose its checkpoint by script alone.
 
-  `laya-serve` passes `predict()` through and says that is `Jev`'s shape. Whether its
-  `confidence` is the one `Jev` reads has not been tried against a running server, and is the
-  thing to check first. If it is not, the recalibration belongs upstream or in `Jev`, and which is
-  the decision. The script and its sixty commands are in git history, last at `bcb9a2df`, for
+  `laya-serve` passes `predict()` through and says that is the TypeSafe SDKs' shape, which is the
+  one OpenRouter's System One route takes too. Whether its `confidence` is the one the client reads
+  has not been tried against a running server, and is the thing to check first. If it is not, the
+  recalibration belongs upstream or in the client, and which is the decision. The script and its sixty commands are in git history, last at `bcb9a2df`, for
   whoever takes the working upstream.
 
-- **Naming this program to OpenRouter when the *advisor* is what is calling it.** `Jev` sends no
-  app headers, so a session that borrows its own key for `--advise` is attributed for the
+- **Naming this program to OpenRouter when the *advisor* is what is calling it.** The System One
+  client sends no app headers, so a session that asks OpenRouter for advice is attributed for the
   conversation and anonymous for the advice, out of the same account on the same service. The
   headers themselves are a solved problem - `OpenAiCompatible::on_behalf_of` and `filed_under`
   build them, and `kamchatka::endpoint` already holds the URL, the title and the categories to
   pass.
 
-  What stops it being three lines is that `Attribution` is an inherent part of one client, and `Jev`
-  is deliberately not a `Dialect`. Two unrelated clients now want the same pair of headers, and
+  What stops it being three lines is that `Attribution` is an inherent part of one client, and the
+  System One client is deliberately not a `Dialect`. Two unrelated clients now want the same pair of headers, and
   copying them onto the second would be the third copy of one thing in this workspace, which is what
   `is_openrouter` was consolidated out of. So what would unblock it is deciding **where the pair
   lives** now that it is not one client's business: a builder the crate offers, rather than a method
@@ -69,8 +69,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   turned attribution off for their conversation has not agreed to be named by a second client on
   the same account, and two switches would be a way to be half off without noticing.
 
-  Worth knowing for whoever picks this up: it is only ever half applicable. TypeSafe's own API
-  keeps no ranking of the apps calling it, so a `Jev` pointed there has nothing to send and must
+  Worth knowing for whoever picks this up: it is only ever half applicable. An engine of one's own
+  keeps no ranking of the apps calling it, so a client pointed at one has nothing to send and must
   not send it - `is_openrouter` is already the test for that, and it is the same test the request
   path uses.
 

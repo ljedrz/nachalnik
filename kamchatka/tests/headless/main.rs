@@ -1782,7 +1782,7 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
 #[cfg(feature = "shell-advisor")]
 #[tokio::test]
 async fn the_advisor_says_what_it_has_to_say_to_the_session() {
-    use nachalnik_providers::system1::Jev;
+    use nachalnik_providers::system1::Client;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
@@ -1790,7 +1790,7 @@ async fn the_advisor_says_what_it_has_to_say_to_the_session() {
 
     // an endpoint that lists a model other than the one asked for: what the advisor reports is
     // the notice its probe left at startup, before the session could read it
-    let body = "{\"models\":[{\"name\":\"jev-1\"}]}";
+    let body = "{\"data\":[{\"id\":\"vendor/decider\"}]}";
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
     tokio::spawn(async move {
@@ -1810,11 +1810,11 @@ async fn the_advisor_says_what_it_has_to_say_to_the_session() {
             let _ = socket.shutdown().await;
         }
     });
-    let jev = Jev::new("jev-9", format!("http://{address}"), "k");
-    jev.probe().await;
+    let engine = Client::new("vendor/nope", format!("http://{address}"), "k");
+    engine.probe().await;
 
     let wired = Setup {
-        advisor: Some(Arc::new(jev)),
+        advisor: Some(Arc::new(engine)),
         ..Default::default()
     }
     .wire(Arc::new(OpenAiCompatible::new(
@@ -1837,7 +1837,8 @@ async fn the_advisor_says_what_it_has_to_say_to_the_session() {
 
     let said: Vec<String> = app.notes(0).map(|note| note.text.to_string()).collect();
     assert!(
-        said.iter().any(|line| line.contains("does not list jev-9")),
+        said.iter()
+            .any(|line| line.contains("does not list vendor/nope")),
         "the advisor's own first line should be in the session: {said:?}"
     );
 }
@@ -1853,13 +1854,13 @@ async fn the_advisor_says_what_it_has_to_say_to_the_session() {
 async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
     use kamchatka::tools::Rating;
     use nachalnik::ContextItem;
-    use nachalnik_providers::system1::Jev;
+    use nachalnik_providers::system1::Client;
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
 
-    let body = "{\"model\":\"jev-1\",\"answers\":{\"rating\":{\"type\":\"score\",\
+    let body = "{\"model\":\"vendor/decider\",\"answers\":{\"rating\":{\"type\":\"score\",\
                 \"score\":1.9,\"confidence\":0.93,\"legend\":{},\"probabilities\":{}}}}";
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
@@ -1885,8 +1886,8 @@ async fn a_wired_session_draws_the_rating_the_kernel_asked_for() {
         tools: Some(vec!["shell".to_owned()]),
         compact: None,
         confine: false,
-        advisor: Some(Arc::new(Jev::new(
-            "jev-latest",
+        advisor: Some(Arc::new(Client::new(
+            "vendor/decider",
             format!("http://{address}"),
             "k",
         ))),

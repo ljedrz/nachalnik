@@ -1,10 +1,11 @@
 //! The rating, against the real advisor.
 //!
-//! They are skipped unless a key is in the environment - either the dedicated one, which asks
-//! TypeSafe's own API, or `KAMCHATKA_API_KEY`, which asks the same model through OpenRouter:
+//! They are skipped unless a System One model and a key for it are in the environment - any model
+//! on `https://openrouter.ai/api/v1/models?output_modalities=decisions`, since none is the default:
 //!
 //! ```text
-//! TYPESAFE_API_KEY=apikey_... cargo test -p kamchatka --features shell-advisor --test advise -- --nocapture
+//! OPENROUTER_API_KEY=sk-or-... KAMCHATKA_SYSTEM1_MODEL=liquid/d1 \
+//!     cargo test -p kamchatka --features shell-advisor --test advise -- --nocapture
 //! ```
 //!
 //! note: the offline tests beside `Rated` check the banding and the never-greener-than-unsure
@@ -47,20 +48,22 @@ fn running(id: &str, command: &str) -> PermissionRequest {
 /// A policy that will ask about a command, advised by the real endpoint - or a skipped test.
 macro_rules! rating {
     () => {{
-        if endpoint::advise::account(&endpoint::base_url()).is_err() {
+        if endpoint::advise::model().is_err()
+            || endpoint::advise::account(&endpoint::base_url()).is_err()
+        {
             eprintln!(
-                "skipped: set TYPESAFE_API_KEY or KAMCHATKA_API_KEY to run the live advisor \
-                 tests"
+                "skipped: set KAMCHATKA_SYSTEM1_MODEL and OPENROUTER_API_KEY to run the live \
+                 advisor tests"
             );
             return;
         }
 
         // nothing set, so `exec:run` is `ask` - which is the branch a rating is asked on
-        let jev = endpoint::advise::connect(&endpoint::base_url())
+        let engine = endpoint::advise::connect(&endpoint::base_url())
             .await
             .expect("the advisor connects");
 
-        Advised::new(Arc::new(Careful::new()), jev)
+        Advised::new(Arc::new(Careful::new()), engine)
     }};
 }
 

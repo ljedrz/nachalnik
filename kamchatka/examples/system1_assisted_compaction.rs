@@ -1,13 +1,13 @@
-//! Deciding what a full context can afford to lose, with TypeSafe's `jev`.
+//! Deciding what a full context can afford to lose, with a System One model.
 //!
 //! ```console
-//! TYPESAFE_API_KEY=apikey_... \
-//!   cargo run -p kamchatka --features advise --example jev_assisted_compaction
+//! OPENROUTER_API_KEY=sk-or-... KAMCHATKA_SYSTEM1_MODEL=liquid/d1 \
+//!   cargo run -p kamchatka --features advise --example system1_assisted_compaction
 //! ```
 //!
-//! note: or `KAMCHATKA_API_KEY`, which asks the same model through OpenRouter. It goes through
-//! [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the two
-//! choose the account and the model the same way.
+//! note: any model on `https://openrouter.ai/api/v1/models?output_modalities=decisions`. It goes
+//! through [`endpoint::advise::connect`], which is what `--advise` itself goes through, so the
+//! two choose the key, the address and the model the same way.
 //!
 //! An agent's context fills up, and something has to go. `kamchatka` ships [`Shedder`], which takes
 //! what is oldest - and age is a *proxy*. Nobody wants the oldest gone; they want the
@@ -15,7 +15,7 @@
 //! to do. Nothing in a terminal client could evaluate that, so the pass answers the question it
 //! can instead.
 //!
-//! [`Jev`] can answer the real one. It is a System One model: it takes a state and a map of typed
+//! A System One model can answer the real one: it takes a state and a map of typed
 //! questions and returns numbers - no text, no tool calls, nothing to parse. Here the state is
 //! everything the user typed over the session plus a digest of each candidate result, and there is
 //! one `score` question per candidate against an ordered rubric. All of them go in **one
@@ -252,11 +252,10 @@ fn excerpt(text: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
-    // the program's own path to an advisor, so that a key this feature accepts is a key this
-    // example accepts. It reads `KAMCHATKA_SYSTEM1_API_KEY`, `TYPESAFE_API_KEY` and
-    // `KAMCHATKA_API_KEY` in that order and picks the endpoint and the model to match
-    let jev = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
-    if let Some(notice) = jev.notice() {
+    // the program's own path to an advisor, so that what `--advise` accepts is what this example
+    // accepts: `KAMCHATKA_SYSTEM1_MODEL`, and a key for wherever its questions go
+    let engine = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
+    if let Some(notice) = engine.notice() {
         eprintln!("advisor: {notice}");
     }
 
@@ -309,7 +308,7 @@ async fn main() -> Result<(), BoxError> {
         .await
         .ok_or("the context was not full enough to compact")?;
 
-    // ---- and the same decision put to `jev`: one `score` per candidate, all in one request
+    // ---- and the same decision put to the System One model: one `score` per candidate, all in one request
     let state = json!({
         "the_user_said": said,
         "results": candidates
@@ -344,7 +343,7 @@ async fn main() -> Result<(), BoxError> {
         .collect();
 
     let started = std::time::Instant::now();
-    let answers = jev.ask(state, questions).await?;
+    let answers = engine.ask(state, questions).await?;
     let took = started.elapsed();
 
     let mut ranked: Vec<_> = candidates
@@ -364,7 +363,7 @@ async fn main() -> Result<(), BoxError> {
     // bottom of the ranking, so the two are choosing between the same alternatives
     let going = by_age.elide.len();
     let cut_by_age: BTreeSet<_> = by_age.elide.iter().copied().collect();
-    let cut_by_jev: BTreeSet<_> = ranked.iter().take(going).map(|(item, _)| item.id).collect();
+    let cut_by_engine: BTreeSet<_> = ranked.iter().take(going).map(|(item, _)| item.id).collect();
     let scored: BTreeMap<_, _> = ranked
         .iter()
         .map(|(item, score)| (item.id, *score))
@@ -375,7 +374,7 @@ async fn main() -> Result<(), BoxError> {
         candidates.len()
     );
     println!(
-        "  {:>5}  {:<11} {:<30}  age  jev",
+        "  {:>5}  {:<11} {:<30}  age  sys1",
         "score", "level", "result"
     );
     // in the order the session happened, so the age pass can be seen working down from the top
@@ -391,7 +390,7 @@ async fn main() -> Result<(), BoxError> {
             "  {score:>5.2}  {level:<11} {:<30}  {}    {}",
             item.label,
             mark(cut_by_age.contains(&item.id)),
-            mark(cut_by_jev.contains(&item.id)),
+            mark(cut_by_engine.contains(&item.id)),
         );
     }
 
@@ -399,7 +398,7 @@ async fn main() -> Result<(), BoxError> {
     // passes actually disagreed about
     let saved: Vec<&str> = candidates
         .iter()
-        .filter(|item| cut_by_age.contains(&item.id) && !cut_by_jev.contains(&item.id))
+        .filter(|item| cut_by_age.contains(&item.id) && !cut_by_engine.contains(&item.id))
         .map(|item| item.label.as_str())
         .collect();
     if let Some((last, rest)) = saved.split_last() {
@@ -422,15 +421,15 @@ async fn main() -> Result<(), BoxError> {
         took.as_secs_f64(),
     );
     if let Some(usage) = answers.usage {
-        // whoever actually answered, rather than the service that makes the model: the same
-        // `jev` is served by TypeSafe's own API and by OpenRouter, and a line naming the wrong
-        // one is a line about somebody else's bill
+        // whoever actually answered, rather than the company that makes the model: a model is
+        // served by OpenRouter or by an engine of one's own, and a line naming the wrong one is a
+        // line about somebody else's bill
         println!(
             "It cost {} in / {} out at {} to decide which of {} tokens of the agent's own \
              context to keep.",
             usage.input_tokens.unwrap_or_default(),
             usage.output_tokens.unwrap_or_default(),
-            jev.named(),
+            engine.named(),
             budget.used(),
         );
     }

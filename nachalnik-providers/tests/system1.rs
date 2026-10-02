@@ -1,9 +1,11 @@
-//! What TypeSafe's `jev` makes of a question, over the real wire.
+//! What a System One model makes of a question, over the real wire.
 //!
-//! They are skipped unless a key is in the environment:
+//! They are skipped unless an OpenRouter key and a model are in the environment - any model on
+//! `https://openrouter.ai/api/v1/models?output_modalities=decisions`, since none is the default:
 //!
 //! ```text
-//! TYPESAFE_API_KEY=apikey_... cargo test -p nachalnik-providers --features system1 --test system1 -- --nocapture
+//! OPENROUTER_API_KEY=sk-or-... NACHALNIK_SYSTEM1_MODEL=liquid/d1 \
+//!     cargo test -p nachalnik-providers --features system1 --test system1 -- --nocapture
 //! ```
 //!
 //! note: live rather than over a socket serving a recorded body, which is what the unit tests in
@@ -15,7 +17,8 @@
 //!
 //! note: assertion-light about the numbers and assertion-heavy about structure, for the same
 //! reason `nachalnik`'s own live suite is. `rm -rf /` really does come back `deny` at 0.99, and
-//! asserting on that figure would be asserting on somebody else's model weights. What is
+//! asserting on that figure would be asserting on somebody else's model weights - and on one
+//! vendor's, where these are meant to hold for whichever model is named. What is
 //! asserted is that a distribution sums to one, that a score lands inside its own rubric, and
 //! that the three types come back as the three types.
 
@@ -25,7 +28,7 @@ use std::env;
 
 use nachalnik_providers::{
     Endpoint,
-    system1::{Answer, DEFAULT_MODEL, Jev, Question},
+    system1::{Answer, Client, DEFAULT_BASE_URL, Question},
 };
 
 /// Live tests take turns, so that a rate limit is never what is being measured.
@@ -34,10 +37,16 @@ static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 /// A client for the live endpoint, or a skipped test.
 macro_rules! live {
     () => {
-        match env::var("TYPESAFE_API_KEY") {
-            Ok(key) => Jev::latest(key),
-            Err(_) => {
-                eprintln!("skipped: set TYPESAFE_API_KEY to run the live tests");
+        match (
+            env::var("OPENROUTER_API_KEY"),
+            env::var("NACHALNIK_SYSTEM1_MODEL"),
+        ) {
+            (Ok(key), Ok(model)) => Client::new(model, DEFAULT_BASE_URL, key),
+            _ => {
+                eprintln!(
+                    "skipped: set OPENROUTER_API_KEY and NACHALNIK_SYSTEM1_MODEL to run the live \
+                     tests"
+                );
                 return;
             }
         }
@@ -55,9 +64,9 @@ fn sums_to_one(probabilities: &std::collections::BTreeMap<String, f64>) -> bool 
 #[tokio::test]
 async fn the_three_question_types_go_out_together_and_come_back_as_three_answers() {
     let _serial = SERIAL.lock().await;
-    let jev = live!();
+    let engine = live!();
 
-    let answers = jev
+    let answers = engine
         .ask(
             "The agent wants to run `rm -rf /` through its shell tool.",
             [
@@ -92,16 +101,8 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
     // one answer per question, under the name it was asked under
     assert_eq!(answers.answers.len(), 3, "{:?}", answers.answers.keys());
 
-    // the version that answered, which is not the `jev-latest` that was asked for
-    assert!(
-        answers.model.starts_with("jev-"),
-        "the model names itself: {}",
-        answers.model
-    );
-    assert_ne!(
-        answers.model, DEFAULT_MODEL,
-        "an alias should resolve to a version on the way through"
-    );
+    // the model that answered names itself, which may be a version of the one asked for
+    assert!(!answers.model.is_empty(), "the model names itself");
 
     // a noul is a probability, and nothing else is reported about it
     let noul = answers
@@ -166,7 +167,7 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
     assert!(usage.output_tokens.is_some_and(|it| it > 0), "{usage:?}");
 
     // one request, whatever the questions in it
-    assert_eq!(jev.attempts(), 1);
+    assert_eq!(engine.attempts(), 1);
 }
 
 /// The payload that was previewed is the payload that was sent.
@@ -176,7 +177,7 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
 #[tokio::test]
 async fn the_rendered_payload_is_the_one_the_service_accepts() {
     let _serial = SERIAL.lock().await;
-    let jev = live!();
+    let engine = live!();
 
     let asked = vec![(
         "structured".to_owned(),
@@ -188,11 +189,11 @@ async fn the_rendered_payload_is_the_one_the_service_accepts() {
     });
 
     // an object state and an object-shaped question, which the reference allows for both
-    let rendered = jev.render(&state, &asked);
+    let rendered = engine.render(&state, &asked);
     assert_eq!(rendered["state"]["tool"], "fs:write");
     assert_eq!(rendered["questions"]["structured"]["type"], "noul");
 
-    let answers = jev
+    let answers = engine
         .ask(state, asked)
         .await
         .expect("an object state is accepted");
@@ -207,51 +208,55 @@ async fn the_rendered_payload_is_the_one_the_service_accepts() {
 #[tokio::test]
 async fn the_listing_names_the_models_and_an_unknown_one_is_reported() {
     let _serial = SERIAL.lock().await;
-    let jev = live!();
+    let engine = live!();
 
-    let listed = jev.models().await;
+    let listed = engine.models().await;
+    let asked = engine.model();
     assert!(
-        listed.iter().any(|it| it == DEFAULT_MODEL),
-        "the default should be on the listing: {listed:?}"
+        listed.iter().any(|it| it == &asked),
+        "the model being asked should be on the listing: {listed:?}"
     );
 
     // nothing to say while the model being asked for is one of them
-    assert_eq!(jev.take_notice(), None);
+    assert_eq!(engine.take_notice(), None);
 
     // and a notice rather than a silent 400 on the next request, which is where this would
     // otherwise be found out
-    jev.set_model("jev-nope".to_owned()).await;
-    let notice = jev
+    engine.set_model("vendor/nope".to_owned()).await;
+    let notice = engine
         .take_notice()
         .expect("a model that is not served is worth saying out loud");
-    assert!(notice.contains("jev-nope"), "{notice}");
-    assert!(notice.contains(DEFAULT_MODEL), "{notice}");
+    assert!(notice.contains("vendor/nope"), "{notice}");
 
-    // and asking anyway is a refusal that names itself, rather than an empty answer
-    let refused = jev
+    // and asking anyway is a refusal, rather than an empty answer - and not sent again, since a
+    // model that does not exist is a decision rather than a delay
+    let sent = engine.attempts();
+    engine
         .ask("anything", [("q", Question::noul("Is this fine?"))])
         .await
         .expect_err("an unknown model is refused");
-    let said = refused.to_string();
-    assert!(said.contains("jev-nope"), "{said}");
-    assert!(said.contains("api_usage_error"), "{said}");
+    assert_eq!(engine.attempts(), sent + 1);
 }
 
 /// A key that is not a key is reported as one, rather than as an empty answer.
 #[tokio::test]
 async fn a_bad_key_is_reported_in_the_service_s_own_words() {
     let _serial = SERIAL.lock().await;
-    // note: no `live!` - this one needs no valid key, only the endpoint. It is the one live test
-    // that costs nothing and can always run
-    let jev = Jev::latest("apikey_not_a_key");
+    // note: no `live!` - this one needs no valid key and no particular model, only the endpoint.
+    // It is the one live test that costs nothing and can always run
+    let engine = Client::new("vendor/decider", DEFAULT_BASE_URL, "sk-or-v1-not-a-key");
 
-    let refused = jev
+    let refused = engine
         .ask("anything", [("q", Question::noul("Is this fine?"))])
         .await
         .expect_err("a bad key is refused");
     let said = refused.to_string();
-    assert!(said.contains("authentication_error"), "{said}");
+    assert!(said.starts_with("401: "), "{said}");
 
     // and it is not retried: a key is a decision, not a delay
-    assert_eq!(jev.attempts(), 1, "a refused key should not be sent again");
+    assert_eq!(
+        engine.attempts(),
+        1,
+        "a refused key should not be sent again"
+    );
 }

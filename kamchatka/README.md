@@ -152,9 +152,10 @@ Four features, two of them on by default. `--no-default-features --features tui`
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
 keys: without it you get the same program, headless, and none of the crates that draw it.
 
-`advise` is the third and is **off**. It is the client for a System One model — TypeSafe's `jev`,
-which answers typed questions rather than writing text, or an engine on this machine — and nothing
-in the program asks it anything unless the fourth is on too.
+`advise` is the third and is **off**. It is the client for a System One model, which answers
+typed questions rather than writing text: any of the ones OpenRouter serves, named by
+`KAMCHATKA_SYSTEM1_MODEL`, or an engine on this machine. Nothing in the program asks it anything
+unless the fourth is on too.
 
 `shell-advisor` is the fourth, also **off**, and it adds `--advise`. It asks the advisor where each
 shell command you are about to be asked about lands on a three-level rubric, and colours the
