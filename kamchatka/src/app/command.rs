@@ -219,6 +219,15 @@ impl App {
         }
     }
 
+    /// Runs the rest of the turn, unless there is nothing for it to answer: `/continue`, and
+    /// `ctrl+r` where there are keys to press.
+    pub(super) fn carry_on(&mut self) {
+        match self.nothing_to_answer() {
+            Some(why) => self.say(Speaker::Note, why),
+            None => self.start_turn(),
+        }
+    }
+
     /// Runs one slash command.
     async fn command(&mut self, line: &str) {
         let (command, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -241,10 +250,7 @@ impl App {
             "redo" => self.undo(true),
             // note: not where there is nothing new for the model to answer; see
             // `App::nothing_to_answer`
-            "continue" => match self.nothing_to_answer() {
-                Some(why) => self.say(Speaker::Note, why),
-                None => self.start_turn(),
-            },
+            "continue" => self.carry_on(),
             // note: the same act as `esc` and `ctrl+c`, reached by typing, which is the only way
             // to reach it from a browser: a page has no keys to send and `Command::Interrupt` is
             // a button nothing was obliged to draw. Two loops here have a line and nothing else,

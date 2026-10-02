@@ -2012,6 +2012,9 @@ impl App {
             // gesture most people will find first; this is the one for a turn that wrote a
             // thousand lines while somebody was looking at the twelfth
             (KeyCode::Char('e'), true) => self.follow = true,
+            // `/continue`, `r` for resume. Taken from the prompt, whose redo of typing it was and
+            // said so nowhere, because carrying on a turn is wanted on every tab
+            (KeyCode::Char('r'), true) => self.carry_on(),
             // `ctrl+l` is what it is in every shell, narrowed to the only thing on this screen
             // that is safe to clear: the program's own lines. Everything else on the chat is the
             // context, and a key that took *that* off the screen would be hiding the thing the

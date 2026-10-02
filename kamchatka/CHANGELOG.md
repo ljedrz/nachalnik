@@ -21,6 +21,9 @@ minor bump may break you.
   emphasis, lists, quotes, rules, inline code, fenced blocks and tables, while it streams and once
   it is recorded. Built from elements and text nodes, so nothing a model writes becomes HTML, and a
   link is one only to `http`, `https` or `mailto`. A fenced block is not highlighted.
+- **`ctrl+r` is `/continue`**, on every tab - `r` for resume - and says why it does nothing where
+  the command would. It was the prompt's redo of typing, which no help line named; `ctrl+u` still
+  undoes.
 
 ### changed
 

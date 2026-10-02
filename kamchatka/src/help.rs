@@ -240,6 +240,7 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
                         the screen wants them; from a tab that has no prompt,
                         back to the conversation
     ctrl+p              the exact request that would be sent next
+    ctrl+r              run the rest of the turn, as /continue does
     ctrl+l              take this program's own lines off the chat - what it
                         said about what it did, and what it answered a key
                         with. The conversation stays, because it is the
@@ -260,7 +261,8 @@ pub const COMMANDS: &str = "  COMMANDS, typed at the prompt on the chat tab
                         context; the record keeps what happened either way.
                         ctrl+l where there are keys to press
     /step [MESSAGE]     one transition of the state machine, and stop
-    /continue           run the rest of the turn
+    /continue           run the rest of the turn; ctrl+r where there are keys to
+                        press
     /stop               stop what is running, keeping whatever arrived; in
                         ready, drop the calls waiting to run. esc where there
                         are keys to press, and ctrl+c for a running turn;
