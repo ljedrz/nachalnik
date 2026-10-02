@@ -1161,8 +1161,13 @@ mod tests {
 
     /// What no command of this session started is left alone at its end - a process of this user's
     /// with no mark, and one carrying another session's - and is not named as stopped.
+    ///
+    /// note: under the signal scope a session runs under, on this test's thread, which is the one
+    /// `stop` signals from. Without it `call_of` answering for every process - a mutant did - stops
+    /// everything the person has, the desktop with it, and the test passing or failing is moot.
     #[test]
     fn what_this_session_did_not_start_is_left_alone() {
+        crate::sandbox::scope_signals();
         let somebody = |mark: Option<&str>| {
             let mut sleep = std::process::Command::new("sleep");
             sleep.arg("30").env_remove(CALL_VAR);

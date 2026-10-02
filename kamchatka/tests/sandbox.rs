@@ -2088,6 +2088,8 @@ fn under_a_terminal(argv: &[std::ffi::OsString], dir: &Path, leading: bool) -> S
 /// process, once the list has stopped it.
 #[tokio::test]
 async fn what_a_command_leaves_running_is_remembered_and_stopped() {
+    // see `what_this_session_did_not_start_is_left_alone`: `stop` signals from this thread
+    kamchatka::sandbox::scope_signals();
     let dir = common::workdir("stragglers");
     let stragglers = kamchatka::tools::Stragglers::default();
     let shell = Shell {
@@ -2136,6 +2138,8 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
 /// session and its own group, it was in no group a command had been run in.
 #[tokio::test]
 async fn a_job_that_left_its_group_is_stopped_too() {
+    // see `what_this_session_did_not_start_is_left_alone`: `stop` signals from this thread
+    kamchatka::sandbox::scope_signals();
     let dir = common::workdir("stragglers-setsid");
     let stragglers = kamchatka::tools::Stragglers::default();
     let shell = Shell {
@@ -2206,4 +2210,63 @@ async fn a_job_that_left_its_group_is_stopped_too() {
         !jobs.iter().any(|job| running(*job)),
         "a job outlived being stopped"
     );
+}
+
+/// A confinement run by hand may signal what it started and nothing else, and one of a session's
+/// leaves signals to the session's own layer.
+///
+/// note: found live: `--confine-and-run` around a whole agent left signals unscoped, since the
+/// scope is put on by the session and there was none, and a mutated test inside it that took every
+/// process for one of its own stopped the person's desktop. The session's half - its commands
+/// signalling each other and nothing outside - is a test in `headless/program.rs`; this process
+/// holds no scope, so here the session's word is what lets the signal out.
+#[test]
+fn a_confinement_run_by_hand_signals_nothing_it_did_not_start() {
+    if !enforced() {
+        return;
+    }
+    if !kamchatka::sandbox::confines_signals() {
+        eprintln!("skipped: no Landlock scope for a signal here, which is ABI 6");
+        return;
+    }
+    let mut outside = Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("a process outside the confinement");
+    let cmd = format!(
+        "sleep 30 & kill -0 $! && echo own=reached; \
+         kill -0 {} 2>/dev/null && echo outside=reached || echo outside=refused; kill $!",
+        outside.id()
+    );
+    let confined = sandbox(common::workdir("by-hand"), true, Network::Open);
+    let said = |argv: Vec<std::ffi::OsString>| {
+        let child = common::command()
+            .args(argv)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the binary under test is built");
+        let scratch = kamchatka::sandbox::scratch_for(child.id());
+        let output = child.wait_with_output().expect("it was spawned");
+        let _ = std::fs::remove_dir_all(&scratch);
+        String::from_utf8_lossy(&output.stdout).into_owned()
+            + &String::from_utf8_lossy(&output.stderr)
+    };
+
+    let session = confined.argv(&cmd);
+    let by_hand: Vec<_> = session
+        .iter()
+        .filter(|word| *word != kamchatka::sandbox::SESSION_FLAG)
+        .cloned()
+        .collect();
+    assert_eq!(by_hand.len() + 1, session.len(), "{session:?}");
+    let by_hand = said(by_hand);
+    let session = said(session);
+    outside.kill().expect("it is still there to kill");
+    outside.wait().expect("and to reap");
+
+    assert!(by_hand.contains("own=reached"), "{by_hand}");
+    assert!(by_hand.contains("outside=refused"), "{by_hand}");
+    assert!(session.contains("own=reached"), "{session}");
+    assert!(session.contains("outside=reached"), "{session}");
 }
