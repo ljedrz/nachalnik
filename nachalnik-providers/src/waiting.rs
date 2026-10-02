@@ -757,6 +757,47 @@ mod tests {
         assert_ne!(hung_up, never_spoke);
     }
 
+    /// The error for a request nobody answered says how many tries it was given, and only once
+    /// there has been more than one.
+    ///
+    /// note: the count is in the sentence because the wait is each try's - four tries of a stream
+    /// that never started are ten minutes, and a sentence naming one try's two and a half reads
+    /// as a clock that is wrong. A first try has no count worth naming: there was one.
+    #[test]
+    fn giving_up_says_how_many_tries_there_were() {
+        let once = Unsent::Silent(PATIENCE).giving_up("a-model", 1).to_string();
+        assert!(
+            once.contains("a-model") && once.contains(&format!("{}s", PATIENCE.as_secs())),
+            "{once}"
+        );
+        assert!(
+            !once.contains("asked") && !once.contains("times"),
+            "one try is not a number of tries: {once}"
+        );
+
+        // and once there were several, the sentence says how many and what each of them waited
+        for tried in 2..=RETRIES {
+            let said = Unsent::Silent(PATIENCE)
+                .giving_up("a-model", tried)
+                .to_string();
+            assert!(
+                said.contains(&format!("asked {tried} times")),
+                "the count is what says the wait was more than one try's: {said}"
+            );
+            assert!(
+                said.contains(&format!("given {}s each", PATIENCE.as_secs())),
+                "each try waited the whole patience, so each try's wait is the number: {said}"
+            );
+            assert!(said.contains("a-model"), "{said}");
+        }
+
+        // an interrupt and a transport both say what they are rather than counting tries
+        assert_eq!(
+            Unsent::Interrupted.giving_up("a-model", 4).to_string(),
+            "interrupted"
+        );
+    }
+
     /// A server that is busy or failing is asked again, and one saying what it does not do is not.
     #[test]
     fn a_server_that_does_not_do_this_is_not_asked_again() {
