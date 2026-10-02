@@ -255,3 +255,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   the old words and an undo brings them back - but every later request reads the person as having
   said something they did not. Refusing it is one more case in `protected`; whether the model may
   tidy the person's words at all is the decision.
+
+- **A reasoning count of zero the OpenAI dialect reports is read as none.** `usage_of` keeps
+  `reasoning_tokens` only when it is above zero, so an endpoint that says
+  `"reasoning_tokens": 0` - the model reasoned, for nothing - comes back as `None`, which
+  `Usage::reasoning_tokens` documents as the provider not having said, "not the same as zero and
+  must not be shown as it". Gemini's dialect keeps a reported `thoughtsTokenCount` of zero as
+  `Some(0)`, so the two disagree on the same fact. The filter does earn its place on the figure
+  inferred as a residual, where zero is no evidence of reasoning at all. Keeping a reported zero is
+  a one-line change, and it changes what a client shows; whether a zero from a model that cannot
+  reason is worth showing is the decision. `cargo mutants` found it: `> 0` replaced with `>= 0`
+  survives every test, and a test pinning either answer would be choosing one.

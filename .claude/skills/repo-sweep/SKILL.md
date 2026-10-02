@@ -199,19 +199,38 @@ draft the tests, and agents verify them. Everything below `target/agents/` is gi
 disk; keep it there rather than on `/tmp`, which is a tmpfs.
 
 1. **Run the crate against its own tests first**, then iterate over the survivors against the whole
-   workspace, since a mutant another crate's tests catch is not a gap:
+   workspace, since a mutant another crate's tests catch is not a gap. One crate at a time, and
+   one run at a time:
    ```sh
-   $SKILL/mutants.sh X-own -p <crate> --all-features -j 6
-   cp -r target/agents/out/X-own target/agents/out/X
-   $SKILL/mutants.sh X --workspace --file '<crate>/src/**/*.rs' --all-features \
-       --test-workspace=true --iterate --timeout 300 -j 4
+   $SKILL/shards.sh X-own 4 -p <crate> --all-features --timeout 300
+   python3 $SKILL/merge.py target/agents/out/X-own-merged target/agents/out/X-own-{1,2,3,4}
+   SEED=X-own-merged $SKILL/shards.sh X 4 --workspace --file '<crate>/src/**/*.rs' \
+       --all-features --test-workspace=true --iterate --timeout 300
+   python3 $SKILL/merge.py target/agents/out/X-merged target/agents/out/X-{1,2,3,4}
    ```
-   `mutants.sh` prints how many outcomes are tainted. Anything but `0 tainted, 0 untested` means
-   `python3 $SKILL/tainted.py target/agents/out/X --strip` and the same `--iterate` run again,
-   until it is. Check the "Found N mutants to test" line against what was expected, and spot-check
-   a few `log/*.log`: `Compiling <crate>` for the mutated crate, and failures that are about the
-   mutated code.
-2. **Sessions**: `python3 $SKILL/mutants_tasks.py target/agents/out/X/mutants.out $SWEEPS/tasks/X 8`,
+   `shards.sh` runs cargo-mutants `--in-place`, one `--shard` in each of the worktrees
+   `$REPO/w1`..`wN` (kept out of `git status` by `.git/info/exclude`), under one `guard.py`. Not
+   `mutants.sh`'s copies: a copy is at `target/agents/mt/cargo-mutants-PKG-XXXXXX.tmp`, and
+   kamchatka's served-session tests bind a unix socket under the copy's own target directory -
+   118 bytes there, over the 107 a socket path may be - so they fail unmutated and every mutant
+   in a workspace pass looks caught. Nothing under the repository is short enough for a copy,
+   and nothing outside it is writable. A worktree at `$REPO/wI` is. cargo-mutants' copies also
+   take the worktrees along, since it does not read `.git/info/exclude`: once they exist, every
+   run is a sharded one.
+
+   The shards of a later `--iterate` run have to skip the same mutants, or each divides a
+   different list and some are tested twice and others never: seed every shard from the merged
+   output (`SEED`), and before a retry of tainted shards `merge.py --unify` them. `--iterate`
+   rewrites `outcomes.json` with only what it tested again, so copy a shard aside before
+   retrying it, and merge the copy first and the shard last (the last outcome wins).
+
+   Each shard prints how many outcomes are tainted. Anything but `0 tainted, 0 untested` means
+   `python3 $SKILL/tainted.py target/agents/out/X-I --strip`, `--unify`, and the same `--iterate`
+   run again, until it is. A shard that drew no mutants writes no `outcomes.json`, and is clean.
+   Check the "Found N mutants to test" lines against what was expected, and spot-check a few
+   `log/*.log`: `Compiling <crate>` for the mutated crate, and failures that are about the
+   mutated code - a `path must be shorter than SUN_LEN` is the long path, not a catch.
+2. **Sessions**: `python3 $SKILL/mutants_tasks.py target/agents/out/X-merged/mutants.out $SWEEPS/tasks/X 8`,
    then `queue.sh 4 $SWEEPS/tasks/X/*.txt`, with `SWEEPS=target/agents/sw` and the key sourced.
    `$SWEEPS/mt.json` is the session settings: every tool but `fs`, `shell` and `context` off, and a
    `sandbox-read` naming this session's `$CARGO_HOME`, `~/.rustup` and the repository's `.git`.
@@ -234,7 +253,12 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   `--timeout 300` with `--test-workspace`.
 - A copy's path is long enough that seven tests fail unmutated, over the unix socket path limit
   or reading a `.gitignore` above the copy. `mutants.sh` skips them and passes `--no-fail-fast`, so
-  one failing test binary does not stop the suite.
+  one failing test binary does not stop the suite - but the served-session tests added since are
+  more than seven, which is why runs are sharded now (step 1). In the worktrees two fail
+  unmutated, the pty test this machine refuses and the `.gitignore` one, and `shards.sh` skips
+  just those.
+- `tainted.py` looks for EAGAIN as `os error 11` exactly: tests make `os error 111`, a refused
+  connection, on purpose.
 - A whole-workspace copy is about 3 GB. Put the copies in the repository's `target/agents`
   (`mutants.sh` does), not in a temporary directory with a quota.
 - **A mutant can spawn without end** and fill the user's process limit, and then this session
@@ -242,6 +266,23 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   run with `ulimit -u`. A runaway then starves the rest of its own run instead, whose builds fail
   to fork and are recorded as Unviable, and **`--iterate` skips an Unviable mutant forever**.
   That is what `tainted.py --strip` undoes.
+- **The process cap is not a memory cap.** A thousand start-ups of the program exhaust RAM well
+  under it, and three runs at once did once take the machine down. `mutants.sh` runs `guard.py`
+  beside each run: it SIGKILLs orphaned mutated binaries, kills alone a binary built in a copy
+  that passes `MAX_RSS_GIB` (8) - `Context::undo` replaced with `true` under a test that undoes
+  until it cannot grew one to 44 GB; killed, its test fails and the mutant is caught - and kills
+  the whole run when
+  MemAvailable falls under `MIN_AVAIL_GIB` (10) or the run passes `MAX_PROCS` (4000) processes,
+  logging the top consumers to `out/NAME.guard`. Run one `cargo mutants` at a time regardless.
+- **A mutant can signal everything the person has.** `Stragglers::call_of` replaced with
+  `Some(0)` made a unit test's `stop` take every process for its own, and SIGTERM then SIGKILL
+  ended the desktop, the session driving the run and the run with it - no OOM, and the guard,
+  dying with the rest, logged nothing. `.cargo/mutants.toml` excludes those mutants, and the tests
+  that reach `stop` scope their own thread's signals. The confinement a sweep runs under used to
+  scope nothing, `--confine-and-run` by hand having no session above it; it scopes signals itself
+  now, so a run under it can still stop the session driving it, and nothing outside. A run that
+  ends with every shard `ERROR interrupted` at the same second was signalled: look at what the
+  mutants in flight do with signals before resuming.
 - Mutated `kamchatka --headless` binaries ignore SIGTERM and outlive the run. Look for processes
   under `target/agents/mt/cargo-mutants-*` afterwards and SIGKILL them by pid.
 - The sessions' network gate refuses loopback, so they cannot run a test that serves anything,

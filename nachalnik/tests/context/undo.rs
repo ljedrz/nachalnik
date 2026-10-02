@@ -12,7 +12,7 @@ use nachalnik::{
     BytesPerToken, Config, ContextId, ContextItem, ContextState, Event, Kernel, ModelResponse,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{common::drain, kernel, select};
 
@@ -174,6 +174,61 @@ fn a_recount_that_moves_figures_is_not_what_an_undo_reverts() {
     );
 }
 
+/// What an undo or a redo counts is said out loud, and only when the count moved.
+///
+/// note: the items a checkpoint holds were counted by the counter in force when they were pushed,
+/// and a session that recalibrates counts them on a scale that has moved since - so what comes
+/// back is a different figure, written to the items without a word about it. The two halves go
+/// together: a recount that moved nothing is silence, because a client told the figures had
+/// changed when they had not learns to ignore the event.
+#[test]
+fn an_undo_says_it_recounted_only_when_a_figure_moved() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+    let was = kernel.item(a).unwrap().tokens;
+    kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 1 }));
+    let counted = kernel.item(a).unwrap().tokens;
+    assert_ne!(
+        was, counted,
+        "the recount has to move a figure for this to test anything"
+    );
+
+    // what came back carries the figure it was checkpointed under, and the figure it is counted at
+    // now - and a client reading the log has to be told the two differ rather than left holding
+    // the first without knowing about the second. The undo leaves one item, so the two figures
+    // are that item's: the one on the checkpoint `set_counter` did not reach, and the one the
+    // counter in force puts there instead.
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    assert_eq!(kernel.items().len(), 1);
+    let said = drain(&mut events);
+    let recount = said
+        .iter()
+        .find_map(|event| match event {
+            Event::ContextRecounted {
+                tokens_before,
+                tokens_after,
+            } => Some((*tokens_before, *tokens_after)),
+            _ => None,
+        })
+        .expect("an undo that recounted says so");
+    assert_eq!(recount.0, was, "the items as they were checkpointed");
+    assert_eq!(recount.1, counted, "and counted on the scale in force");
+
+    // and one that moved no figure is not announced, so an undo restoring what is already there
+    // does not spend a recount saying the figures did not change
+    kernel.push(ContextItem::file("src/c.rs", "c".repeat(400)));
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    assert!(
+        !drain(&mut events)
+            .iter()
+            .any(|event| matches!(event, Event::ContextRecounted { .. })),
+        "a recount that moved nothing is not something to say out loud"
+    );
+}
+
 #[test]
 fn an_undo_says_what_it_did() {
     let kernel = kernel();
@@ -220,6 +275,35 @@ fn an_undo_says_what_it_did() {
         let _ = events.try_recv();
     }
     assert!(events.try_recv().is_err());
+}
+
+/// An item whose metadata an undo put back is one it changed, though nothing else about it moved.
+///
+/// note: `annotate` takes no checkpoint of its own, so the annotation rides with the operation
+/// before it, and one undo takes back both. Only `meta` differs on the item it was on, so this
+/// holds every field of the comparison an undo makes to say what it changed, not only the state.
+#[test]
+fn an_undo_names_an_item_whose_metadata_it_put_back() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.annotate(a, json!({ "expendable": true })).unwrap();
+
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    let Some(Event::ContextUndone {
+        removed, changed, ..
+    }) = events.try_recv().ok()
+    else {
+        panic!("an undo is a context change like any other")
+    };
+    assert_eq!(removed, vec![ContextId(2)], "b was never annotated");
+    assert_eq!(
+        changed,
+        vec![a],
+        "the metadata came back to what it was, so the item did change"
+    );
+    assert_eq!(kernel.item(a).unwrap().meta, Value::Null);
 }
 
 #[test]

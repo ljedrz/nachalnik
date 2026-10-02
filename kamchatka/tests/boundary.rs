@@ -635,6 +635,19 @@ fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
 
         assert_eq!(read_back, sandbox, "a path with a space in it survives");
         assert_eq!(cmd, "echo 'hello world'; ls");
+
+        // and the same without the session's word, as somebody running it by hand writes it
+        let by_hand: Vec<_> = argv
+            .iter()
+            .filter(|word| *word != kamchatka::sandbox::SESSION_FLAG)
+            .cloned()
+            .collect();
+        assert_eq!(
+            by_hand.len() + 1,
+            argv.len(),
+            "the word was there to take out"
+        );
+        assert_eq!(Sandbox::from_argv(&by_hand), Some((sandbox, cmd)));
     }
     assert!(Sandbox::from_argv(&[]).is_none());
     assert!(Sandbox::from_argv(&["--help".into()]).is_none());

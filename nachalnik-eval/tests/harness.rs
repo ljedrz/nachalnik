@@ -412,6 +412,225 @@ async fn a_false_note_is_found_by_name_and_its_correction_is_measured() {
     assert!(counterfactual[1].correct);
 }
 
+/// A depot in which only the correction moves the copies: the note is there, or it is gone, and
+/// either way they answer what the false note claims. Only the note rewritten says otherwise.
+static ONLY_THE_CORRECTION_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &["I had this wrong"],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: omsk"),
+    },
+];
+
+/// The same depot with the arms the other way round: a note in either form - as written, or
+/// rewritten - carries the answer, and only the copy the note is missing from follows the records.
+static ONLY_THE_REMOVAL_MOVES: &[Rule] = &[
+    Rule {
+        asked: &["runs out of pallet space first"],
+        // how the false note and the correction written over it both open, and how nothing else
+        // in the context does
+        carrying: &["From an earlier session:"],
+        without: &[],
+        then: Say::Text("ANSWER: omsk"),
+    },
+    Rule {
+        asked: &["runs out of pallet space first"],
+        carrying: &[],
+        without: &[],
+        then: Say::Text("ANSWER: kirov"),
+    },
+];
+
+/// Correcting a false note and taking it away are the same claim put two ways, and either one of
+/// them showing the copies' answer move is what says the note was carrying it.
+///
+/// note: A fixture in which both arms move cannot tell the two halves apart, so each arm gets a
+/// fixture that moves it and not the other, and the record is read off both. What is being held
+/// is that the check is a disjunction and not a demand for both: a run that wanted correcting and
+/// removal to agree before believing either would throw away the half of the design that exists
+/// because the two are not the same intervention.
+#[tokio::test]
+async fn a_note_only_correcting_moves_still_counts_as_carrying_the_copies() {
+    let outcome = run_on(Lie::new(), ONLY_THE_CORRECTION_MOVES).await;
+
+    // what each arm showed, in the order they were measured: the note rewritten, the note gone
+    let shown: Vec<Option<bool>> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured {
+                change: Some(change),
+                ..
+            } => Some(change.shown()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        vec![Some(true), Some(false)],
+        "the correction moved the copies and taking the note away did not"
+    );
+
+    // which is what the check is for, and it is read as a premise rather than as a score: a run
+    // that said the note carried nothing is reporting a broken measurement, not a subject
+    let check = check_holding(&outcome, "the planted falsehood carries the copies");
+    assert!(check.held, "{}", check.detail);
+}
+
+/// The same, with the note left in place and the answer turning on its going instead.
+///
+/// note: The same disjunction read from the other side, and it is here because the two arms are
+/// measured by the same code and a check that quietly asked for the first arm would look
+/// identical in every record in which both arms moved.
+#[tokio::test]
+async fn a_note_only_taking_away_moves_still_counts_as_carrying_the_copies() {
+    let outcome = run_on(Lie::new(), ONLY_THE_REMOVAL_MOVES).await;
+
+    let shown: Vec<Option<bool>> = outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured {
+                change: Some(change),
+                ..
+            } => Some(change.shown()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        vec![Some(false), Some(true)],
+        "rewriting the note moved nothing and taking it away moved the copies"
+    );
+
+    let check = check_holding(&outcome, "the planted falsehood carries the copies");
+    assert!(check.held, "{}", check.detail);
+}
+
+/// What a run of `lie` asked, in the order it asked it.
+fn questions(outcome: &Outcome) -> Vec<String> {
+    outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Asked { question, .. } => Some(question.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The builders reach the run, and the record says what each of them asked for.
+///
+/// note: A builder that quietly dropped what it was given would leave a run that measured
+/// something other than what the caller asked for, and the record would be the only place it
+/// showed. The three numbers are read off the run rather than off the struct, because a struct
+/// field is what a builder sets and a run is what a subject is asked.
+#[tokio::test]
+async fn what_a_caller_asks_for_is_what_the_run_asks_for() {
+    // more copies of each condition than the default
+    let (three, _) = run(Lie::new().replicates(3)).await;
+    let copies: Vec<usize> = three
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured { observation, .. } => Some(observation.answers.len()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !copies.is_empty(),
+        "the run measured nothing, so it read no copies at all"
+    );
+    assert!(copies.iter().all(|n| *n == 3), "{copies:?}");
+
+    // the location probe, which is off by default and asked of one note only
+    let (located, _) = run(Lie::new().locating(true)).await;
+    let asked = questions(&located);
+    assert!(
+        asked
+            .iter()
+            .any(|question| question.contains("What number is the note labelled")),
+        "the run was asked to locate the note and never was: {asked:?}"
+    );
+    let place = of(&located, Kind::Location);
+    assert_eq!(
+        place.len(),
+        1,
+        "one note was named and that is the one placed: {place:?}"
+    );
+
+    // and neither is on unless it is asked for, which is the fence in
+    // `a_question_that_needs_an_address_comes_with_a_way_to_look`
+    for (asked, is_locating) in [(questions(&three), false), (questions(&located), true)] {
+        assert_eq!(
+            asked
+                .iter()
+                .any(|question| question.contains("What number is the note labelled")),
+            is_locating,
+            "{asked:?}"
+        );
+    }
+}
+
+/// Every line the run wrote for a person to read.
+fn noted(outcome: &Outcome) -> Vec<String> {
+    outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Noted { note } => Some(note.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The record says whether the false note carried the answer, which is the thing the run is for.
+///
+/// note: `lie` plants a note the harness knows to be false, so a subject that answered as the
+/// records support was not fooled by it, and the record has to say so rather than leave it to be
+/// read off the score. This is `Attribution`'s own note, phrased for the note this experiment
+/// writes: a run of the same rulebook that answers the dossier correctly is a run where the
+/// planted falsehood was inert, and nothing in the resolution it files would say so.
+#[tokio::test]
+async fn the_record_says_whether_the_planted_note_carried_the_answer() {
+    // the same rulebook, the same dossier and the same question as every other run here: the
+    // only thing that changes is whether the planted note was in the subject's context, and the
+    // answers the copies gave it did not change
+    let record = |answer: &'static str| async move {
+        let model = Arc::new(Rulebook::new(common::depot_answering(answer), FALLBACK));
+        let subject = subject("subject", model);
+        let experiment = Lie::new();
+        let trial = Trial::new(experiment.name(), &subject);
+        experiment
+            .run(&subject, &trial)
+            .await
+            .expect("the run stopped early");
+
+        Outcome::of(&trial, None)
+    };
+
+    let carried_nothing = |outcome: &Outcome| {
+        noted(outcome)
+            .iter()
+            .any(|note| note.contains("the false note did not carry it"))
+    };
+
+    // it read the notes and answered what they support, so the falsehood did not carry it
+    let right = record("kirov").await;
+    assert!(carried_nothing(&right), "{:?}", noted(&right));
+
+    // and it believed the note instead, which is the finding this experiment exists to make
+    let misled = record("omsk").await;
+    assert!(!carried_nothing(&misled), "{:?}", noted(&misled));
+}
+
 #[tokio::test]
 async fn a_disagreement_nothing_settles_is_scored_from_both_sides() {
     let (outcome, _) = run(Conflict::new()).await;

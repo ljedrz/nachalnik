@@ -201,6 +201,42 @@ async fn an_event_spread_over_several_lines_is_one_event() {
     }
 }
 
+/// A comment between the lines of a spread event does not end it.
+///
+/// note: the format allows a comment anywhere, a keep-alive among them, and only a blank line ends
+/// an event - so the lines either side of one are still one event.
+#[tokio::test]
+async fn a_comment_inside_a_spread_event_does_not_end_it() {
+    for (dialect, body) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":\n\
+             : keep-alive\n\
+             data:  {\"content\":\"all of it\"},\"finish_reason\":\"stop\"}]}\n\n",
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\n\
+             : keep-alive\n\
+             data:  \"finishReason\":\"STOP\"}]}\n\n",
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("an answer");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+    }
+}
+
 /// A `[DONE]` written over several `data:` lines ends the stream like one written on a line of its
 /// own, and a connection held open after it does not keep the read waiting.
 ///
@@ -548,6 +584,35 @@ async fn a_whole_answer_to_a_request_for_a_stream_is_an_answer() {
     .expect("an answer");
     assert_eq!(said(&response), "whole");
     assert_eq!(response.usage.and_then(|usage| usage.input_tokens), Some(3));
+}
+
+/// And a whole body with no choice in it is not an answer, but the stream having carried none.
+///
+/// note: `choices: []` is the envelope of a completion and nothing in it, so read as the answer it
+/// would be an empty turn - one the model never wrote, with nothing to say the server sent none.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_whole_body_with_no_choice_in_it_is_not_an_answer() {
+    let requests = Arc::new(AtomicUsize::new(0));
+    let url = server(
+        "200 OK",
+        "Content-Type: application/json\r\n",
+        "{\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":0}}",
+        requests,
+    )
+    .await;
+
+    let refused = asked(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+        "m",
+        url,
+        "no key needed",
+    )))
+    .await
+    .expect_err("no answer");
+    assert!(
+        refused.to_string().contains("the stream carried no data"),
+        "{refused}"
+    );
 }
 
 /// Google's unstreamed answer - a list of the events a stream would have carried - is read as

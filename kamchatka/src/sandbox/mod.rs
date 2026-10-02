@@ -46,7 +46,8 @@
 //! layer every command shares - this program's own, put on by [`scope_signals`] before it starts
 //! anything - and a command may signal this program and whatever it started, and nothing else.
 //! This program itself is inside that boundary, which keeping out would take a process of its own
-//! for every command to be started from.
+//! for every command to be started from. A confinement run by hand, with no session above it, has
+//! no such layer, and puts the scope on its own; see [`SESSION_FLAG`].
 //!
 //! note: it is applied by re-executing *this program* in a mode that confines itself and then runs
 //! the command. The alternative is `CommandExt::pre_exec`, which runs between `fork` and `exec` in
@@ -73,6 +74,16 @@ pub use reach::{Access, Reach};
 
 /// The argument that puts this program into the mode that confines itself and runs a command.
 pub const EXEC_FLAG: &str = "--confine-and-run";
+
+/// The word after [`EXEC_FLAG`] that says the command is a session's, under the layer that scopes
+/// its signals - see [`scope_signals`] - so the confinement leaves signals to that layer.
+///
+/// note: without it the confinement scopes signals itself, because then nothing above does.
+/// `--confine-and-run` by hand, around a whole agent, was a domain whose processes could signal
+/// everything the person had: a test under it stopping what it took for its own left-over jobs
+/// stopped the desktop. A forged word buys nothing: inside a session the session's layer still
+/// binds, and outside one it takes the scope from nobody but the caller.
+pub const SESSION_FLAG: &str = "--in-a-session";
 
 /// What the `shell` tool is allowed to reach.
 ///
@@ -220,10 +231,12 @@ impl Sandbox {
         }
     }
 
-    /// The arguments that ask this program to confine itself this way and run `cmd`.
+    /// The arguments that ask this program to confine itself this way and run `cmd`, as one of a
+    /// session's commands; see [`SESSION_FLAG`].
     pub fn argv(&self, cmd: &str) -> Vec<OsString> {
         let mut argv = vec![
             OsString::from(EXEC_FLAG),
+            OsString::from(SESSION_FLAG),
             self.workdir.clone().into(),
             OsString::from(match self.writable {
                 true => "rw",
@@ -249,11 +262,15 @@ impl Sandbox {
     }
 
     /// Reads back what [`Sandbox::argv`] wrote, plus the command; `None` if this is not one.
+    ///
+    /// note: [`SESSION_FLAG`] is read past rather than required, so that the same arguments
+    /// without it - a confinement somebody runs by hand - read back as the same sandbox.
     pub fn from_argv(argv: &[OsString]) -> Option<(Self, OsString)> {
-        let mut argv = argv.iter();
+        let mut argv = argv.iter().peekable();
         if argv.next()? != EXEC_FLAG {
             return None;
         }
+        argv.next_if(|word| *word == SESSION_FLAG);
         let workdir = PathBuf::from(argv.next()?);
         let writable = argv.next()? == "rw";
         let network = Network::from_word(argv.next()?)?;
@@ -1344,6 +1361,11 @@ pub fn run_if_asked() -> Option<i32> {
     let scratch = make_scratch(&scratch_for(std::process::id()));
 
     let (confinement, why) = confine_saying(&sandbox, scratch.as_deref());
+    // note: a layer of its own, and only where no session's is above; see `SESSION_FLAG`. Taken
+    // where the kernel has it and gone without where it does not, as the session's is in `main`
+    if argv.get(1).is_none_or(|word| word != SESSION_FLAG) {
+        scope_signals();
+    }
     // note: after the ruleset, so that nothing the gate does is outside it, and before the command,
     // which inherits the filter across `exec` and into everything it starts
     let gated = match sandbox.network {

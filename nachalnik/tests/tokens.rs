@@ -513,6 +513,24 @@ fn a_request_too_small_to_have_a_bias_in_it_teaches_nothing() {
     assert_eq!(counter.calibration().scale, 1.25);
 }
 
+/// A request too small on either side teaches nothing, though the other side is large.
+///
+/// note: both ratios here are well inside the bounds, so the size of each side is all that
+/// refuses them - a small report against a large estimate is not a bias the estimate has, and a
+/// small estimate is not a request with a systematic error in it, whatever it was charged.
+#[test]
+fn a_request_small_on_either_side_teaches_nothing() {
+    for (estimated, reported) in [(1_000, 200), (200, 1_000)] {
+        let counter = calibrating();
+        counter.observe(estimated, reported);
+        assert_eq!(
+            counter.calibration(),
+            Calibration::default(),
+            "{estimated} estimated against {reported} reported was learned from"
+        );
+    }
+}
+
 #[test]
 fn what_an_endpoint_charges_for_its_own_framing_is_not_a_bias_to_learn() {
     let counter = calibrating();
