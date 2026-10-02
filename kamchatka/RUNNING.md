@@ -290,7 +290,11 @@ to a log is which step was slow. Nothing under a tenth of a second gets a figure
 a line that ended a wait for a *person*: however long you took to answer a question, it is not a
 step the program spent. The **permissions** view is the rules the policy holds and what each
 covers, with the confinement over the top and a count of the subjects nobody has decided, which are
-the ones that will be asked about.
+the ones that will be asked about. Each row carries **allow**, **ask** and **deny**, with the one it
+holds pressed in: <kbd>a</kbd>, <kbd>r</kbd> and <kbd>n</kbd> on the permissions tab, through the
+same function, so the change is recorded and said the same way. **ask** is the way back from an
+`always`, and takes the row off the list, since a question is not a decision. That is `rule` on the
+wire.
 
 Switching to context or permissions asks the session for a fresh projection rather than adding up
 the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
@@ -304,6 +308,12 @@ rather than following you about — the same thing the tab strip does by going r
 reason: from another view, the question is not what you are looking at. A mark in the top left
 blinks while a turn is running, because a turn can be a minute of nothing arriving and a still page
 is otherwise indistinguishable from a dead connection.
+
+A model's answer is rendered as markdown, as the terminal renders it — headings, emphasis, lists,
+quotes, rules, code and tables — and only the model's: a call, a result and the program's own lines
+are drawn as they came. A fenced block keeps a rule down its left and is not highlighted, which the
+terminal does with a highlighter the page has no copy of. Nothing in an answer becomes HTML, and a
+link is a link only to `http`, `https` or `mailto`.
 
 A model's answer streams in as it is written and is then **replaced by what was recorded**, which
 is the rule the terminal follows: the fragments are the live half and the item is what was kept.

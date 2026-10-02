@@ -465,21 +465,7 @@ impl App {
             _ => return,
         };
 
-        // and recorded, because the rule is what a later call is allowed or refused by, and the
-        // record otherwise says only that the policy decided
-        self.kernel
-            .record_rule(subject.to_string(), decided, None, false);
-        self.refresh_full_notice();
-        // said out loud, because this is a decision about what may happen later and the tab it
-        // was made on is not the one somebody will be looking at when it does
-        self.say(
-            Speaker::Note,
-            match decided {
-                Verdict::Allow => format!("`{subject}` runs without asking, from now on"),
-                Verdict::Deny => format!("`{subject}` is refused, from now on"),
-                Verdict::Ask => format!("`{subject}` is a question again"),
-            },
-        );
+        self.ruled(&subject, decided);
     }
 
     /// Keys the search box wants while it is open; `false` to let the pane underneath have it.

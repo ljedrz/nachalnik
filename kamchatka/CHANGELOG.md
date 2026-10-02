@@ -7,6 +7,21 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`rule` on the wire changes a row of the permissions tab**, as <kbd>a</kbd>, <kbd>r</kbd> and
+  <kbd>n</kbd> do there, through one function, `App::rule`, so the change is recorded and said the
+  same way from either. It takes a row by the spelling `Stanced::subject` gives it and a verdict,
+  refuses a subject that is not a row, and is answered with the projection. `ask` puts a rule
+  answered `always` or `never` back to a question.
+- **`examples/browser.html` changes a rule.** Each row of its permissions view carries `allow`,
+  `ask` and `deny`, with the one it holds pressed in, and the view asks for a fresh projection on
+  any `policy.` record, so a rule changed at the terminal shows there too.
+- **`examples/browser.html` renders a model's answer as markdown**, as the terminal does: headings,
+  emphasis, lists, quotes, rules, inline code, fenced blocks and tables, while it streams and once
+  it is recorded. Built from elements and text nodes, so nothing a model writes becomes HTML, and a
+  link is one only to `http`, `https` or `mailto`. A fenced block is not highlighted.
+
 ### changed
 
 - **`/params` lists what else the model takes one to a line, with what the endpoint publishes

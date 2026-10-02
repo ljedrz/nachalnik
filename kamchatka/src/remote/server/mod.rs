@@ -982,6 +982,16 @@ async fn apply(app: &mut App, command: Command) -> Option<Message> {
                 error,
             },
         }),
+        // note: answered with the projection, for `cycle`'s reason: the answer to "change this
+        // rule" is the list of rules as it now stands, and a row put back to a question is not on
+        // it any more
+        Command::Rule { subject, verdict } => Some(match app.rule(&subject, verdict) {
+            Ok(()) => Message::Projected(Box::new(project(app))),
+            Err(error) => Message::Failed {
+                about: "rule".to_owned(),
+                error,
+            },
+        }),
         // note: answered with a projection, which is what `cycle` answers with and for its reason.
         // An edit changes what the item says, what it costs, and therefore what the next request
         // comes to - and a client could work out none of that from the `context.replaced` the
@@ -1282,6 +1292,7 @@ fn name(command: &Command) -> &'static str {
         Command::Inspect { .. } => "inspect",
         Command::Project => "project",
         Command::Cycle { .. } => "cycle",
+        Command::Rule { .. } => "rule",
         Command::Revise { .. } => "revise",
         Command::Unknown => "unknown",
     }

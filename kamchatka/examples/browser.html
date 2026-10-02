@@ -50,13 +50,13 @@
     --user: #2d4f6b; --note: #6b6862; --call: #6b4f2d; --bad: #8c2f22;
     /* the advisor's two lower bands; the top one is `--bad`, which is the page's one red and is
        the colour the terminal draws a grave command in too */
-    --reads: #2f6b3d; --changes: #7a5512;
+    --reads: #2f6b3d; --changes: #7a5512; --code: #1f5f6b;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #161513; --fg: #e8e4dc; --dim: #8a867e; --line: #4a443b;
       --user: #8fb8d8; --note: #8a867e; --call: #d0a878; --bad: #e08074;
-      --reads: #86c396; --changes: #d8b45c;
+      --reads: #86c396; --changes: #d8b45c; --code: #7cc4cf;
     }
   }
   /* note: `--line` is every border on the page - the header, the footer, a row's rule, the box you
@@ -161,6 +161,18 @@
   /* the figure being looked for, so it keeps the right-hand edge and a colour of its own */
   .gap { font-size: 12px; color: var(--call); white-space: nowrap; flex: none; }
   .allowed { color: var(--user); } .denied { color: var(--bad); } .asks { color: var(--call); }
+  /* the three answers a row can be given, with the one it has pressed in. The words are the
+     verdicts', since that is what the row reads back in */
+  .rules { display: flex; flex: none; }
+  .rules button {
+    font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 0; color: var(--dim);
+  }
+  .rules button + button { border-left: 0; }
+  .rules button:first-child { border-radius: 4px 0 0 4px; }
+  .rules button:last-child { border-radius: 0 4px 4px 0; }
+  .rules button[aria-pressed="true"] { opacity: 1; font-weight: 600; border-color: currentColor; }
+  .rules button.allowed[aria-pressed="true"] { color: var(--user); }
+  .rules button.denied[aria-pressed="true"] { color: var(--bad); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .line::before { color: var(--dim); }
   .user { color: var(--user); } .user::before { content: "> "; }
@@ -171,6 +183,32 @@
   .note { color: var(--note); } .note::before { content: "\00b7 "; }
   .error { color: var(--bad); } .error::before { content: "! "; }
   .pending { opacity: .45; }
+  /* a model's answer, rendered as the terminal renders one: what the punctuation means rather than
+     the punctuation. Weight and colour rather than slabs behind things, for the terminal's reason -
+     a slab chosen against one background is a bruise on the other. `pre-wrap` stays on a
+     paragraph, so a line the model broke is a line here too */
+  .model > * { margin: 0 0 8px; }
+  .model > :last-child { margin-bottom: 0; }
+  .model p, .model li { white-space: pre-wrap; }
+  .model .h1, .model .h2 { color: var(--changes); font-weight: 700; }
+  .model .h1 { text-decoration: underline; }
+  .model .h3 { font-weight: 700; }
+  .model code { color: var(--code); }
+  /* a rule down the left of a block rather than a slab behind it, which is the terminal's gutter */
+  .model pre {
+    white-space: pre; overflow-x: auto; padding: 2px 0 2px 10px;
+    border-left: 2px solid var(--line); font: inherit;
+  }
+  .model pre code { color: inherit; }
+  .model blockquote { margin-left: 0; padding-left: 10px; color: var(--dim); font-style: italic; }
+  .model hr { border: 0; border-top: 1px solid var(--line); }
+  .model ul, .model ol { padding-left: 2ch; }
+  .model :is(li, blockquote) > * { margin: 0; }
+  .model a { color: var(--user); }
+  .model .table { overflow-x: auto; }
+  .model table { border-collapse: collapse; }
+  .model th, .model td { border: 1px solid var(--line); padding: 2px 8px; vertical-align: top; }
+  .model th { font-weight: 700; }
   /* the program's voice on the end of somebody's line, so drawn the way a note is and not the way
      a thought is: on a reasoning line a dim italic would read as more of what the model thought */
   .clipped { color: var(--note); font-style: normal; font-size: 12px; }
@@ -405,13 +443,230 @@ async function send(command) {
 /** Adds a line, keeping the view at the bottom if it was already there. */
 function say(kind, text, item) {
   const stuck = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
-  const el = document.createElement("p");
+  // a model's line holds blocks once it is rendered, and a `p` cannot
+  const el = document.createElement(kind === "model" ? "div" : "p");
   el.className = "line " + kind;
-  el.textContent = text;
+  fill(el, text);
   if (item !== undefined) el.dataset.item = item;
   log.append(el);
   if (stuck) log.scrollTop = log.scrollHeight;
   return el;
+}
+
+/**
+ * Puts a text into a line: as markdown if the line is the model's, and as it came otherwise.
+ *
+ * note: the model's lines only, which is what the terminal renders. A call's arguments, a result
+ * and the program's own notes are not markdown, and rendering them as if they were would turn a
+ * `*` in a glob into emphasis. `raw` keeps what was said, so a fragment arriving is appended to
+ * the text rather than to whatever the text was drawn as.
+ */
+function fill(el, text) {
+  el.raw = text;
+  if (el.classList.contains("model")) el.replaceChildren(markdown(text));
+  else el.textContent = text;
+}
+
+/** A line that a fragment has just grown, drawn again once per frame however many arrive in it. */
+function grown(el) {
+  if (el.owed) return;
+  el.owed = true;
+  requestAnimationFrame(() => {
+    el.owed = false;
+    fill(el, el.raw);
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+/**
+ * Markdown, as the terminal renders a model's answer: headings, emphasis, rules, lists, quotes,
+ * code and tables, and nothing beyond them.
+ *
+ * note: built out of elements and text nodes, never out of a string of HTML. What is being drawn
+ * was written by a model, which has read whatever its tools fetched, so a renderer that could be
+ * talked into writing a tag would be a page anybody could script. A link is a link only where it
+ * is `http`, `https` or `mailto`; anything else is its text.
+ *
+ * note: no highlighting in a fenced block, which the terminal does with a highlighter this page
+ * has no copy of; the block keeps the rule down its left. An unterminated fence runs to the end,
+ * because every block is unterminated for as long as it is still arriving.
+ */
+function markdown(text) {
+  const out = document.createDocumentFragment();
+  const lines = text.split("\n");
+  const fence = (l) => l.match(/^ {0,3}(`{3,}|~{3,})\s*([^`\s]*)/);
+  const heading = (l) => l.match(/^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/);
+  const rule = (l) => /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(l);
+  const item = (l) => l.match(/^(\s*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/);
+  const quote = (l) => /^ {0,3}>/.test(l);
+  // the terminal's `is_delimiter`: a row of dashes, colons and pipes, with a pipe in it
+  const delimiter = (l) => l.includes("|") && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(l);
+  const starts = (at) =>
+    fence(lines[at]) || heading(lines[at]) || rule(lines[at]) || item(lines[at]) ||
+    quote(lines[at]) || (lines[at].includes("|") && at + 1 < lines.length && delimiter(lines[at + 1]));
+
+  let at = 0;
+  while (at < lines.length) {
+    const l = lines[at];
+    if (!l.trim()) { at++; continue; }
+
+    let m;
+    if ((m = fence(l))) {
+      const [marker, language] = [m[1], m[2]];
+      const body = [];
+      let closed = false;
+      for (at++; at < lines.length && !closed; at++) {
+        const closes = lines[at].match(/^ {0,3}(`{3,}|~{3,})\s*$/);
+        closed = Boolean(closes && closes[1][0] === marker[0] && closes[1].length >= marker.length);
+        if (!closed) body.push(lines[at]);
+      }
+      // a block still arriving ends wherever the text has got to, which is often a newline
+      if (!closed && body.length && !body[body.length - 1].trim()) body.pop();
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      if (language) code.dataset.language = language;
+      code.textContent = body.join("\n");
+      pre.append(code);
+      out.append(pre);
+      continue;
+    }
+    if ((m = heading(l))) {
+      const el = document.createElement("div");
+      el.className = "h" + Math.min(m[1].length, 3);
+      el.append(inline(m[2] ?? ""));
+      out.append(el);
+      at++;
+      continue;
+    }
+    if (rule(l)) { out.append(document.createElement("hr")); at++; continue; }
+    if (quote(l)) {
+      const body = [];
+      while (at < lines.length && quote(lines[at])) body.push(lines[at++].replace(/^ {0,3}> ?/, ""));
+      const el = document.createElement("blockquote");
+      el.append(markdown(body.join("\n")));
+      out.append(el);
+      continue;
+    }
+    if (l.includes("|") && at + 1 < lines.length && delimiter(lines[at + 1])) {
+      const cells = (row) => row.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+      const table = document.createElement("table");
+      const head = document.createElement("tr");
+      for (const c of cells(l)) {
+        const th = document.createElement("th");
+        th.append(inline(c));
+        head.append(th);
+      }
+      table.append(head);
+      // a table runs until a line with no pipe in it, which is where the terminal ends one too
+      for (at += 2; at < lines.length && lines[at].includes("|"); at++) {
+        const tr = document.createElement("tr");
+        for (const c of cells(lines[at])) {
+          const td = document.createElement("td");
+          td.append(inline(c));
+          tr.append(td);
+        }
+        table.append(tr);
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "table";
+      wrap.append(table);
+      out.append(wrap);
+      continue;
+    }
+    if ((m = item(l))) {
+      // one list for a run of items, nested by how far each is indented; a line under an item
+      // that starts nothing of its own is more of that item
+      const ordered = /\d/.test(m[2]);
+      const list = document.createElement(ordered ? "ol" : "ul");
+      if (ordered && parseInt(m[2], 10) !== 1) list.start = parseInt(m[2], 10);
+      const indent = m[1].length;
+      // the same list goes on only as long as the items are the same kind at the same depth
+      const same = (l) => {
+        const it = item(l);
+        return it && it[1].length === indent && /\d/.test(it[2]) === ordered ? it : null;
+      };
+      while (at < lines.length) {
+        const here = same(lines[at]);
+        if (!here) break;
+        const body = [here[3]];
+        for (at++; at < lines.length; at++) {
+          const next = lines[at];
+          const deeper = next.match(/^\s*/)[0].length > indent;
+          if (!next.trim() || (item(next) && !deeper) || (!deeper && starts(at))) break;
+          body.push(deeper ? next.slice(Math.min(next.match(/^\s*/)[0].length, indent + here[2].length + 1)) : next);
+        }
+        const li = document.createElement("li");
+        li.append(markdown(body.join("\n")));
+        // a single paragraph in an item is the item, not a paragraph inside one
+        if (li.childNodes.length === 1 && li.firstChild.nodeName === "P") {
+          li.replaceChildren(...li.firstChild.childNodes);
+        }
+        list.append(li);
+        // a blank line between two items of one list does not end it
+        while (at + 1 < lines.length && !lines[at].trim() && same(lines[at + 1])) at++;
+      }
+      out.append(list);
+      continue;
+    }
+    // a paragraph, to a blank line or to the start of anything else
+    const body = [l];
+    for (at++; at < lines.length && lines[at].trim() && !starts(at); at++) body.push(lines[at]);
+    const p = document.createElement("p");
+    p.append(inline(body.join("\n")));
+    out.append(p);
+  }
+  return out;
+}
+
+/** The inside of a line: code, links, emphasis and escapes. */
+function inline(text) {
+  const out = document.createDocumentFragment();
+  let plain = "";
+  const flush = () => { if (plain) out.append(document.createTextNode(plain)); plain = ""; };
+  const wrapped = (tag, inner) => {
+    flush();
+    const el = document.createElement(tag);
+    el.append(inline(inner));
+    out.append(el);
+  };
+  // an underscore inside a word is part of the word - `snake_case` is not emphasis
+  const word = (c) => c !== undefined && /[\p{L}\p{N}_]/u.test(c);
+  const patterns = [
+    [/\\([\\`*_{}\[\]()#+\-.!|~>])/y, (m) => { plain += m[1]; }],
+    [/(`+)([\s\S]*?[^`])\1(?!`)/y, (m) => {
+      flush();
+      const el = document.createElement("code");
+      const body = m[2];
+      el.textContent = /^ .* $/.test(body) ? body.slice(1, -1) : body;
+      out.append(el);
+    }],
+    [/\[([^\]]*)\]\(\s*<?([^)\s>]*)>?(?:\s+"[^"]*")?\s*\)/y, (m) => {
+      if (!/^(https?:|mailto:)/i.test(m[2])) { wrapped("span", m[1]); return; }
+      flush();
+      const a = document.createElement("a");
+      a.href = m[2];
+      a.rel = "noopener noreferrer";
+      a.target = "_blank";
+      a.append(inline(m[1]));
+      out.append(a);
+    }],
+    [/\*\*(?=\S)([\s\S]*?\S)\*\*/y, (m) => wrapped("strong", m[1])],
+    [/__(?=\S)([\s\S]*?\S)__(?![\p{L}\p{N}])/uy, (m, before) => word(before) ? false : wrapped("strong", m[1])],
+    [/~~(?=\S)([\s\S]*?\S)~~/y, (m) => wrapped("del", m[1])],
+    [/\*(?=[^\s*])([\s\S]*?[^\s*])\*/y, (m) => wrapped("em", m[1])],
+    [/_(?=\S)([\s\S]*?\S)_(?![\p{L}\p{N}])/uy, (m, before) => word(before) ? false : wrapped("em", m[1])],
+  ];
+  let at = 0;
+  next: while (at < text.length) {
+    for (const [pattern, draw] of patterns) {
+      pattern.lastIndex = at;
+      const m = pattern.exec(text);
+      if (m && draw(m, text[at - 1]) !== false) { at += m[0].length; continue next; }
+    }
+    plain += text[at++];
+  }
+  flush();
+  return out;
 }
 
 /**
@@ -717,8 +972,8 @@ function draw() {
     aside(
       panel,
       "nothing has been decided yet, which is why this list is empty rather than permissive.\n\n" +
-        "Answer a question `always` and everything it was judged by arrives here; the " +
-        "terminal's permissions tab is where a row is changed. A fresh policy also holds a rule " +
+        "Answer a question `always` and everything it was judged by arrives here, where it can " +
+        "be changed or made a question again, as on the terminal's permissions tab. A fresh policy also holds a rule " +
         "for each of a handful of paths that are credentials by convention, and those are " +
         "questions too, so they are not rows either - the line along the bottom is what counts " +
         "them. They begin to earn their keep the moment a capability is answered `always`: the " +
@@ -732,10 +987,23 @@ function draw() {
     const covers = rule.tools.length ? rule.tools.join(", ") : "nothing registered needs it";
     const sometimes = rule.sometimes.length ? ` · sometimes ${rule.sometimes.join(", ")}` : "";
     const el = row(panel, rule.subject, `${covers}${sometimes}`);
-    const verdict = document.createElement("span");
-    verdict.className = verdicts[rule.verdict] ?? "asks";
-    verdict.textContent = ` ${rule.verdict}`;
-    el.querySelector(".name").append(verdict);
+    // note: the three the tab's `a`, `r` and `n` give, with the one the row has pressed in. `ask`
+    // is the way back from an `always`: the row leaves the list, since a question is not a
+    // decision, and the session answers with the list as it now stands - see `Command::Rule`
+    const answers = document.createElement("div");
+    answers.className = "rules";
+    for (const verdict of ["allow", "ask", "deny"]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = verdict;
+      button.className = verdicts[verdict];
+      const held = rule.verdict === verdict;
+      button.setAttribute("aria-pressed", String(held));
+      button.disabled = held;
+      button.onclick = () => send({ do: "rule", subject: rule.subject, verdict });
+      answers.append(button);
+    }
+    el.querySelector(".head").append(answers);
   }
 
   // and the footer the tab has, in the tab's order. The sandbox line comes first because it is the
@@ -908,8 +1176,8 @@ function heard(m) {
       // exists, the item is what says what was said
       if (m.event.event === "model.delta" && m.event.delta.text !== undefined && streaming) {
         if (!open) open = say("model", "");
-        open.textContent += m.event.delta.text;
-        log.scrollTop = log.scrollHeight;
+        open.raw += m.event.delta.text;
+        grown(open);
       }
       break;
     }
@@ -958,7 +1226,7 @@ function heard(m) {
       // filled whichever it matched would put one in the other's place
       if (!m.raw) {
         for (const el of log.querySelectorAll(`[data-item="${m.id}"]`)) {
-          el.textContent = m.body;
+          fill(el, m.body);
           el.classList.remove("pending");
         }
       }
@@ -1009,7 +1277,11 @@ function happened(e) {
   // this page, somebody at the terminal, or the model through its own `context` tool - and the
   // trace on anything at all, because every record is a line of it. Asked for rather than patched
   // in, because what the columns say is worked out by projecting
-  if (showing === "events" || (showing === "context" && e.event.startsWith("context."))) {
+  if (
+    showing === "events" ||
+    (showing === "context" && e.event.startsWith("context.")) ||
+    (showing === "permissions" && e.event.startsWith("policy."))
+  ) {
     send({ do: "project" });
   }
   // and a subset of those changed the *conversation*, which the chat owes a rebuild. Not
