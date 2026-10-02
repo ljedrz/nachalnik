@@ -43,10 +43,10 @@ pub const VERSION: u32 = 1;
 
 /// What a client asks a session to do.
 ///
-/// note: nine, and the set is meant to stay about this size. Seven of them are things a person at
+/// note: ten, and the set is meant to stay about this size. Eight of them are things a person at
 /// the terminal does with a *key* rather than with a line - hand in a line, stop the turn, answer
-/// either kind of question, move an item, read one, rewrite one - and the other two are the
-/// connection itself.
+/// either kind of question, move an item, read one, rewrite one, change a rule - and the other two
+/// are the connection itself.
 /// Anything a person types is a slash command, which is [`Command::Submit`]: every verb this
 /// program has goes through [`App::submit`], so a protocol with a message per verb would be a
 /// second vocabulary to keep in step with the first. The test for anything new is whether a person
@@ -154,6 +154,21 @@ pub enum Command {
         id: ContextId,
         /// What it should say now.
         text: String,
+    },
+    /// Tell the policy what to answer about one row of the permissions tab from here on.
+    ///
+    /// note: a command of its own rather than a [`Command::Submit`] of a line, on the grounds
+    /// [`Command::Cycle`] gives: `a`, `n` and `r` on the permissions tab are what do this at a
+    /// terminal, and there is no line a person types for it.
+    ///
+    /// note: only a row the tab draws, which is a subject somebody has decided, and the session
+    /// answers with the projection the rows come from. See [`crate::app::App::rule`], which the
+    /// keys and this both go through.
+    Rule {
+        /// Which row, spelled as [`Stanced::subject`] spells it.
+        subject: String,
+        /// What the policy answers about it from here on; `ask` makes it a question again.
+        verdict: nachalnik::Verdict,
     },
     /// Ask for the projection again, as it stands now.
     ///

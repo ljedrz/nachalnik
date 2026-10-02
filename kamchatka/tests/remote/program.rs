@@ -1331,6 +1331,85 @@ async fn cycling_an_item_that_is_not_there_says_so() {
     served.ended().await.1.expect("the session failed");
 }
 
+/// `rule` changes a row of the permissions tab the way the tab's keys change it, and a row put
+/// back to a question leaves the list.
+///
+/// note: what a phone has no other way to do. The rows came over the wire and the keys that change
+/// them did not, so a rule answered `always` from a page could be taken back only at the terminal.
+#[tokio::test]
+async fn a_rule_can_be_put_back_to_a_question_from_a_client() {
+    use kamchatka::tools::Subject;
+    use nachalnik::{Event, Verdict};
+
+    let served = served(vec![], |app| {
+        app.policy.set(&Subject::parse("fs:read"), Verdict::Allow);
+        app.policy.set(&Subject::parse("exec:run"), Verdict::Deny);
+    })
+    .await;
+    let (mut peer, first) = Peer::attached(&served.at).await;
+    let row = |rows: &[protocol::Stanced], subject: &str| {
+        rows.iter()
+            .find(|row| row.subject == subject)
+            .map(|row| row.verdict)
+    };
+    assert_eq!(row(&first.permissions, "fs:read"), Some(Verdict::Allow));
+
+    peer.send(Command::Rule {
+        subject: "exec:run".to_owned(),
+        verdict: Verdict::Allow,
+    })
+    .await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("the loop above only ends on one");
+    };
+    assert_eq!(row(&now.permissions, "exec:run"), Some(Verdict::Allow));
+
+    peer.send(Command::Rule {
+        subject: "fs:read".to_owned(),
+        verdict: Verdict::Ask,
+    })
+    .await;
+    let heard = peer.until(|m| matches!(m, Message::Projected(_))).await;
+    let Some(Message::Projected(now)) = heard.last() else {
+        unreachable!("the loop above only ends on one");
+    };
+    assert_eq!(
+        row(&now.permissions, "fs:read"),
+        None,
+        "a question is not a row: {:?}",
+        now.permissions
+    );
+    assert!(
+        heard.iter().any(|m| matches!(
+            m,
+            Message::Record(record) if matches!(
+                &record.event,
+                Event::PolicyRuled { subject, verdict: Verdict::Ask, .. } if subject == "fs:read"
+            )
+        )),
+        "and it is in the record, as a rule changed at the terminal is: {heard:?}"
+    );
+
+    // and a row that is not there any more is refused rather than ignored
+    peer.send(Command::Rule {
+        subject: "fs:read".to_owned(),
+        verdict: Verdict::Deny,
+    })
+    .await;
+    let heard = peer.until(|m| matches!(m, Message::Failed { .. })).await;
+    assert!(
+        matches!(heard.last(), Some(Message::Failed { about, .. }) if about == "rule"),
+        "{heard:?}"
+    );
+
+    peer.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    served.ended().await.1.expect("the session failed");
+}
+
 /// An elided item reads as its marker in the conversation, not as the content it still holds.
 ///
 /// note: the bug this is here for was invisible from the terminal, which is the shape of thing a

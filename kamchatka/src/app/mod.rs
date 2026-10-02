@@ -2106,6 +2106,46 @@ impl App {
         self.cleared += 1;
     }
 
+    /// Tells the policy what to answer about one of the permissions tab's rows from here on.
+    ///
+    /// note: here rather than in `keys.rs`, for the reason [`App::cycle`] is: the tab's keys and a
+    /// client's `rule` change the same rows, and the record and the line saying so are the half
+    /// that must not be copied.
+    ///
+    /// note: by the row's own spelling, and only for a row the tab draws, which is what a client
+    /// was shown. Read back with `Subject::parse` instead, a server's row - `server files` - would
+    /// be refused, and a rule about something nobody has decided is a flag's to write, not a row's.
+    pub fn rule(&mut self, subject: &str, verdict: Verdict) -> Result<(), String> {
+        let Some(row) =
+            (self.permissions().into_iter()).find(|row| row.subject.to_string() == subject)
+        else {
+            return Err(format!("`{subject}` is not a row on the permissions tab"));
+        };
+        self.policy.set(&row.subject, verdict);
+        self.ruled(&row.subject, verdict);
+
+        Ok(())
+    }
+
+    /// Records a rule the policy has just been given, and says it.
+    pub(super) fn ruled(&mut self, subject: &Subject, verdict: Verdict) {
+        // recorded, because the rule is what a later call is allowed or refused by, and the record
+        // otherwise says only that the policy decided
+        self.kernel
+            .record_rule(subject.to_string(), verdict, None, false);
+        self.refresh_full_notice();
+        // said out loud, because this is a decision about what may happen later and the tab it
+        // was made on is not the one somebody will be looking at when it does
+        self.say(
+            Speaker::Note,
+            match verdict {
+                Verdict::Allow => format!("`{subject}` runs without asking, from now on"),
+                Verdict::Deny => format!("`{subject}` is refused, from now on"),
+                Verdict::Ask => format!("`{subject}` is a question again"),
+            },
+        );
+    }
+
     /// Moves one item to the next state in the ring: seen, then a marker where it was, then
     /// nothing at all, then seen again.
     ///
