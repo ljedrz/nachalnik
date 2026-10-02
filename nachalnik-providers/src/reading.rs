@@ -660,6 +660,18 @@ mod tests {
         );
         assert_eq!(script, "405 Method Not Allowed: This site has moved.");
 
+        // and so does one written with the `/` against the name, with or without a space
+        for page in [
+            r#"<style/>body{color:red}</style><p>This site has moved.</p>"#,
+            r#"<style />body{color:red}</style><p>This site has moved.</p>"#,
+        ] {
+            let self_closed = complaint(reqwest::StatusCode::METHOD_NOT_ALLOWED, page);
+            assert_eq!(
+                self_closed, "405 Method Not Allowed: This site has moved.",
+                "{page}"
+            );
+        }
+
         // a tag whose name only starts with one of theirs is a tag like any other
         let named = complaint(
             reqwest::StatusCode::FORBIDDEN,
