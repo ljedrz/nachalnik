@@ -32,7 +32,17 @@ cap=$(($(ps -u "$(id -u)" -L --no-headers | wc -l) + 20000))
 cd "$REPO"
 (
     ulimit -u "$cap"
-    exec env -u CARGO_TARGET_DIR TMPDIR="$MUTANTS/mt" cargo mutants "$@" \
-        --output "$MUTANTS/out/$out" -- --no-fail-fast -- "${skip_args[@]}"
-) > "$MUTANTS/out/$out.log" 2>&1
+    exec env -u CARGO_TARGET_DIR TMPDIR="$MUTANTS/mt" RUST_TEST_THREADS=${RUST_TEST_THREADS:-8} \
+        cargo mutants "$@" --output "$MUTANTS/out/$out" -- --no-fail-fast -- "${skip_args[@]}"
+) > "$MUTANTS/out/$out.log" 2>&1 &
+run=$!
+# the cap bounds the count of processes, not their memory: guard.py kills the run when memory
+# runs low (MIN_AVAIL_GIB) or the run grows past MAX_PROCS, kills a built binary alone past
+# MAX_RSS_GIB, and reaps orphaned mutated binaries
+python3 "$(dirname "$0")/guard.py" "$run" "$MUTANTS/mt" "$MUTANTS/out/$out.guard" \
+    --min-avail-gib "${MIN_AVAIL_GIB:-10}" --max-procs "${MAX_PROCS:-4000}" \
+    --max-rss-gib "${MAX_RSS_GIB:-8}" &
+guard=$!
+wait "$run"
+wait "$guard" || echo "guard.py killed the run: see $MUTANTS/out/$out.guard" >&2
 python3 "$(dirname "$0")/tainted.py" "$MUTANTS/out/$out" > /dev/null

@@ -14,12 +14,17 @@ missed and timeout counts.
 """
 import json
 import os
+import re
 import shutil
 import sys
 
 out = sys.argv[1]
 strip = "--strip" in sys.argv[2:]
 d = os.path.join(out, "mutants.out")
+# a shard of a sharded run that drew no mutants writes no outcomes at all
+if not os.path.exists(os.path.join(d, "outcomes.json")) and not json.load(open(os.path.join(d, "mutants.json"))):
+    print("0 tainted, 0 untested, of 0", file=sys.stderr)
+    sys.exit(0)
 outcomes = json.load(open(os.path.join(d, "outcomes.json")))["outcomes"]
 every = [m["name"] for m in json.load(open(os.path.join(d, "mutants.json")))]
 
@@ -30,7 +35,8 @@ for o in outcomes:
     name = o["scenario"]["Mutant"]["name"]
     seen.add(name)
     log = open(os.path.join(d, o["log_path"]), errors="replace").read()
-    if "os error 11" in log or "Resource temporarily unavailable" in log:
+    # EAGAIN exactly: "os error 111" is a refused connection, which tests make on purpose
+    if re.search(r"os error 11\b", log) or "Resource temporarily unavailable" in log:
         tainted.append((o["summary"], name))
 untested = [n for n in every if n not in seen]
 
