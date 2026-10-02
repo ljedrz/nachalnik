@@ -14,9 +14,9 @@ use serde_json::{Number, Value};
 /// business knowing that one exists.
 ///
 /// note: [`Provider`] is deliberately *not* a supertrait, because a model can answer every
-/// question below and none of the questions a turn is made of. TypeSafe's
-/// [`Jev`](crate::system1::Jev) has an address, a key, a model identifier, a listing and a usage
-/// report, and it generates no text and calls no tools, so there is no turn for it to drive.
+/// question below and none of the questions a turn is made of. A System One
+/// [`Client`](crate::system1::Client) has an address, a key, a model identifier, a listing and a
+/// usage report, and it generates no text and calls no tools, so there is no turn for it to drive.
 /// Requiring one of everything in here would mean either shutting it out of the crate or handing
 /// the kernel an assistant turn manufactured out of probabilities. The turn-driving half is
 /// [`Dialect`], and it is the one that carries the `Provider` bound.

@@ -85,7 +85,8 @@ fn spawn(
         // and the same for an advisor, which would otherwise be found where no test put one
         .env_remove("KAMCHATKA_SYSTEM1_BASE_URL")
         .env_remove("KAMCHATKA_SYSTEM1_API_KEY")
-        .env_remove("TYPESAFE_API_KEY")
+        .env_remove("KAMCHATKA_SYSTEM1_MODEL")
+        .env_remove("OPENROUTER_API_KEY")
         .envs(env.iter().copied())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1028,8 +1029,12 @@ fn help_names_the_variables_the_program_reads() {
     ] {
         assert!(help.contains(variable), "no {variable}: {help}");
     }
-    // the two of the advisor's four that `--advise`'s own line does not name
-    for variable in ["KAMCHATKA_SYSTEM1_BASE_URL", "KAMCHATKA_SYSTEM1_MODEL"] {
+    // the advisor's three, which a build with no `--advise` reads nowhere
+    for variable in [
+        "KAMCHATKA_SYSTEM1_API_KEY",
+        "KAMCHATKA_SYSTEM1_BASE_URL",
+        "KAMCHATKA_SYSTEM1_MODEL",
+    ] {
         assert_eq!(
             help.contains(variable),
             cfg!(feature = "shell-advisor"),
@@ -1376,7 +1381,7 @@ fn a_typed_advise_beats_the_file() {
     let (ok, said) = run(&["--config-file", &path, "--advise"], "");
 
     assert!(!ok, "{said}");
-    assert!(said.contains("--advise needs a key"), "{said}");
+    assert!(said.contains("--advise needs a model"), "{said}");
 }
 
 /// `--advise` puts the advisor in front of the standing rules, and a session that did not ask for
@@ -1391,6 +1396,7 @@ fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
     let local = [
         ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
         ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
+        ("KAMCHATKA_SYSTEM1_MODEL", "vendor/decider"),
     ];
 
     let (ok, said) = run_with(&["--advise"], "", &local);
@@ -1400,6 +1406,25 @@ fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
     let (ok, said) = run_with(&[], "", &local);
     assert!(ok, "{said}");
     assert!(!said.contains("tools::advice::Advised"), "{said}");
+}
+
+/// `--advise` with no model named is refused, and says where to pick one.
+///
+/// note: no default, because a default would be one vendor's model chosen for everybody who asked
+/// for advice. Refused at startup rather than at the first question, which is the moment a person
+/// would otherwise find out - with a rating missing from the one decision they wanted it for.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn an_advisor_with_no_model_is_refused_with_where_to_find_one() {
+    let unnamed = [
+        ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
+        ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
+    ];
+
+    let (ok, said) = run_with(&["--advise"], "", &unnamed);
+    assert!(!ok, "{said}");
+    assert!(said.contains("KAMCHATKA_SYSTEM1_MODEL"), "{said}");
+    assert!(said.contains("output_modalities=decisions"), "{said}");
 }
 
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.

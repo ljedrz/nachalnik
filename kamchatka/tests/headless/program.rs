@@ -853,7 +853,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
 async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
     let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENROUTER_API_KEY:-none} \
                ${OPENAI_API_KEY:-none} ${KAMCHATKA_SYSTEM1_API_KEY:-none} \
-               ${TYPESAFE_API_KEY:-none} ${HOME:+home}\" > seen.txt";
+               ${HOME:+home}\" > seen.txt";
     for confined in [true, false] {
         let dir = common::scratch(&format!("keys-{confined}"));
         let base = common::endpoint(vec![
@@ -890,7 +890,6 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
             .env("OPENROUTER_API_KEY", "sk-the-router-key")
             .env("OPENAI_API_KEY", "sk-another-key")
             .env("KAMCHATKA_SYSTEM1_API_KEY", "sk-the-system1-key")
-            .env("TYPESAFE_API_KEY", "sk-the-advisor-key")
             .stdin(std::process::Stdio::null())
             .output()
             .expect("the binary under test is built");
@@ -908,7 +907,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
         });
         assert_eq!(
             seen.trim(),
-            "none none none none none home",
+            "none none none none home",
             "confined: {confined}"
         );
     }

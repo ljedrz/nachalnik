@@ -21,10 +21,10 @@
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
 //!
-//! - [`system1`] - System One models, behind the `system1` feature, of which this speaks to
-//!   TypeSafe's `jev`. Typed questions put to a state and answered with probabilities: no text,
-//!   no tool calls, nothing to stream. It is for the decisions a program makes *around* a
-//!   conversation rather than the conversation itself.
+//! - [`system1`] - System One models, behind the `system1` feature: any of the ones OpenRouter
+//!   serves, or a self-hosted engine answering the same route. Typed questions put to a state and
+//!   answered with probabilities: no text, no tool calls, nothing to stream. It is for the
+//!   decisions a program makes *around* a conversation rather than the conversation itself.
 //!
 //! ```no_run
 //! # use std::sync::Arc;
@@ -112,7 +112,7 @@ pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]
 pub use crate::openai::OpenAiCompatible;
 #[cfg(feature = "system1")]
-pub use crate::system1::{Jev, SystemOne};
+pub use crate::system1::SystemOne;
 
 /// A transport's failure, with every cause under it.
 ///
@@ -242,11 +242,11 @@ pub fn same_model(listed: &str, model: &str) -> bool {
 
 /// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.
 ///
-/// note: one rule, in one place, because three things in this workspace need it and each one is a
-/// decision about somebody's credentials or about somebody's data. Whether to send the app headers
-/// that put a program in a public ranking; which of the two services serving `jev` a question is
-/// shaped for; and, in `kamchatka`, whether a session's own key may be spent on anything else.
-/// Three copies of a host test can drift apart and still be read as the same rule.
+/// note: one rule, in one place, because more than one thing in this workspace needs it and each
+/// one is a decision about somebody's credentials or about somebody's data: whether to send the
+/// app headers that put a program in a public ranking, and, in `kamchatka`, whether a session's
+/// own key may be spent on advice. Two copies of a host test can drift apart and still be read as
+/// the same rule.
 ///
 /// note: on the authority alone, so a path, a port and a regional subdomain all still count, and
 /// `openrouter.ai.example.com` does not. A `contains` would match that last one, which is why
@@ -366,15 +366,13 @@ mod tests {
 
     /// Whose address it is, from either a whole URL or a bare authority.
     ///
-    /// note: three things turn this into a decision - app attribution, which of two services a
-    /// `jev` question is shaped for, and whether `kamchatka` may spend a session's key on advice -
-    /// and the third is the reason the URL forms are here: `ranks_apps` passes a bare host, and
-    /// `kamchatka` passes the whole address.
+    /// note: two things turn this into a decision - app attribution, and whether `kamchatka` may
+    /// spend a session's key on advice - and the second is the reason the URL forms are here:
+    /// `ranks_apps` passes a bare host, and `kamchatka` passes the whole address.
     ///
     /// note: `openrouter.ai.example.com` decides the shape of the function. A `contains` or a
-    /// suffix test over the raw address would match it, and the three callers
-    /// would then name a program, shape a request and spend a key against a host that merely put
-    /// somebody else's name in front of its own.
+    /// suffix test over the raw address would match it, and the callers would then name a program
+    /// and spend a key against a host that merely put somebody else's name in front of its own.
     #[test]
     fn an_address_is_openrouters_by_its_authority_and_nothing_else() {
         for theirs in [

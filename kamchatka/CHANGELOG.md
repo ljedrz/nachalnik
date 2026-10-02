@@ -14,6 +14,18 @@ minor bump may break you.
   on OpenRouter is a default for some models and the cap on an answer for most. A parameter set
   over the published maximum is noted. No type or range is shown that the endpoint did not
   publish.
+- **`--advise` asks whichever System One model you name, and names none of its own.**
+  `KAMCHATKA_SYSTEM1_MODEL` is required, and a session asked for with `--advise` and no model stops
+  before it begins, pointing at `https://openrouter.ai/api/v1/models?output_modalities=decisions`.
+  The questions go to OpenRouter's `/api/v1/systemone` unless `KAMCHATKA_SYSTEM1_BASE_URL` points
+  at an engine of one's own; a provider OpenRouter does not list is reached through its
+  bring-your-own-key.
+- **An OpenRouter key pays for the advice**: `KAMCHATKA_SYSTEM1_API_KEY`, else the session's own key
+  where the session talks to OpenRouter, else `OPENROUTER_API_KEY` - and the last two only for
+  questions going to OpenRouter. `TYPESAFE_API_KEY` is no longer read, nor kept from a shell
+  command, since nothing here reads it.
+- **`examples/jev_assisted_compaction` is `examples/system1_assisted_compaction`**, and asks the
+  model `--advise` would.
 
 ## [0.17.0] - 2026-10-02
 

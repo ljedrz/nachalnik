@@ -31,9 +31,9 @@ path = "src/main.rs"
 
 [features]
 default = ["mcp", "tui"]
-# the client for a System One model - TypeSafe's `jev`, or anything answering its typed questions
-# over HTTP - and nothing in the program that asks it anything. `shell-advisor` is what does, and
-# `jev_assisted_compaction` shows another use.
+# the client for a System One model - any of the ones OpenRouter serves, or an engine of one's own
+# answering the same typed questions over HTTP - and nothing in the program that asks it anything.
+# `shell-advisor` is what does, and `system1_assisted_compaction` shows another use.
 advise = ["nachalnik-providers/system1"]
 # `--advise`: the advisor is asked where each `shell` command a question is about lands on a
 # three-level rubric, drawn in the question in green, yellow or red so that somebody deciding
@@ -193,13 +193,13 @@ libc = "0.2"
 # the screen, through `crossterm`; this names it for the build without one
 rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 
-# using TypeSafe's `jev` to decide what a full context can afford to lose, against the age order
+# using a System One model to decide what a full context can afford to lose, against the age order
 # `ToolTrimmer` really uses. Nothing in the crate does this - it is here to be read and run by somebody
 # wondering what a System One model is for. It wants a real endpoint, so it rides on the feature
 # that brings that client in
 [[example]]
-name = "jev_assisted_compaction"
-path = "examples/jev_assisted_compaction.rs"
+name = "system1_assisted_compaction"
+path = "examples/system1_assisted_compaction.rs"
 required-features = ["advise"]
 
 # some of the suites are the terminal's: they draw a frame and read the characters back, or press a

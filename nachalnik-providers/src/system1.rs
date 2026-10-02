@@ -1,5 +1,5 @@
-//! System One models: typed questions put to a state, answered with numbers. [`Jev`] is the one
-//! this crate speaks to.
+//! System One models: typed questions put to a state, answered with numbers. [`Client`] speaks to
+//! any of them.
 //!
 //! note: the one thing in this crate that is not a [`Dialect`](crate::Dialect). It generates no
 //! text, calls no tools and streams nothing, so there is no turn for it to drive and no
@@ -7,32 +7,30 @@
 //! is the question a program asks *around* a conversation: whether to run that command, which of
 //! four branches this is, how bad the thing it just read is.
 //!
-//! note: named for the kind of model rather than for the company selling one. The three question
-//! types are the category's and not this vendor's: `laya`, the open one, has the same three under
-//! the same names.
+//! note: named for the kind of model rather than for any company selling one, and favouring none
+//! of them. OpenRouter serves a family of these under one API - TypeSafe's, Liquid's, Inception's,
+//! Upstage's and more, listed at `/models?output_modalities=decisions` - so a client takes a model
+//! identifier from that listing and has no default of its own. A provider that sells one and is not
+//! on OpenRouter's list is reached through OpenRouter's bring-your-own-key, rather than by a path
+//! of its own in here.
 //!
-//! note: what a second engine takes is an address and nothing else. Anything answering a `state`
-//! and a map of typed questions at the path below works through [`Jev`] with
-//! [`crate::Endpoint::set_endpoint`] and a model name, because an address this does not recognise
-//! is read as keeping TypeSafe's paths - which is the shape a self-hosted one has, `laya-serve`'s
-//! among them. [`SystemOne`] is the seam a caller holds as `dyn`, so that what it asks with is
-//! decided in one place and a test can answer in its place.
+//! note: one route, `/systemone` under the base URL, and the request body is the same wherever it
+//! goes. That is OpenRouter's path under its ordinary `/api/v1`, so a session and its advisor can
+//! share an address and a key; it is also the path a self-hosted engine keeps - `laya-serve`
+//! answers there - which is what [`crate::Endpoint::set_endpoint`] is for. [`SystemOne`] is the
+//! seam a caller holds as `dyn`, so that what it asks with is decided in one place and a test can
+//! answer in its place.
 //!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
 //! bundled sentence: the answers do not interfere, and the round trip is paid for once.
 //!
-//! note: two services serve it, and the request body is the same at both. TypeSafe's own API takes
-//! it at `/systemone`; OpenRouter resells it behind `/decisions`, on an `/api/alpha` path of its
-//! own rather than the `/api/v1` the rest of that service lives on. Which one a client is talking
-//! to is read off the address it was given, so a caller chooses by handing over a base URL and a
-//! key that belong together - [`Jev::latest`] and [`Jev::through_openrouter`] are the pairs.
-//!
 //! ```no_run
-//! # use nachalnik_providers::system1::{Jev, Question};
+//! # use nachalnik_providers::system1::{Client, DEFAULT_BASE_URL, Question};
 //! # async fn go() -> Result<(), nachalnik::BoxError> {
-//! let jev = Jev::latest(std::env::var("TYPESAFE_API_KEY")?);
-//! let answers = jev
+//! let model = std::env::var("SYSTEM1_MODEL")?;
+//! let engine = Client::new(model, DEFAULT_BASE_URL, std::env::var("OPENROUTER_API_KEY")?);
+//! let answers = engine
 //!     .ask(
 //!         "rm -rf /",
 //!         [
@@ -61,81 +59,19 @@ use serde_json::{Value, json};
 
 use crate::{Endpoint, RETRIES, install_crypto, same_model};
 
-/// Where `jev` lives.
-pub const DEFAULT_BASE_URL: &str = "https://api.typesafe.ai/v1";
+/// Where the questions go unless a caller says otherwise: OpenRouter, which serves every System
+/// One model on its list from the same `/api/v1` its chat completions are on.
+pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
-/// The model identifier the documentation tells a caller to use.
+/// The path a question is posted to, under the base URL.
+const ROUTE: &str = "systemone";
+
+/// What a listing is asked for, so that one carrying every chat model answers with these alone.
 ///
-/// note: it resolves to a version on the way through - a request naming this one comes back
-/// naming a version, such as `jev-1.13.0` - so [`Answers::model`] is what actually answered, and
-/// is the one worth recording rather than what was asked for.
-pub const DEFAULT_MODEL: &str = "jev-latest";
-
-/// Where OpenRouter takes these, which is not where it takes everything else.
-///
-/// note: `/api/alpha`, not the `/api/v1` its chat endpoint is on. The two halves of that service
-/// do not overlap in either direction: a decision sent to `/api/v1` is a 404, and this model sent
-/// to `/chat/completions` is refused for being a decisions model.
-pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/alpha";
-
-/// And what the model is called there.
-///
-/// note: a version rather than a moving name, because there is no moving name to use. TypeSafe's
-/// own API resolves `jev-latest`; OpenRouter lists the versions it serves, `typesafe/jev-latest`
-/// is not one of them, and this is the identifier its own documentation uses. So it is a constant
-/// somebody has to bump, and [`Answers::model`] is what says which version actually answered.
-pub const OPENROUTER_MODEL: &str = "typesafe/jev-1.13";
-
-/// Which of the two services serving `jev` an address belongs to.
-///
-/// note: the model is the same one and the request body is the same JSON, so what this decides is
-/// only the paperwork around it: the path a question goes to, whether there is a listing to ask
-/// for, and which envelope a refusal arrives in. Getting any of them from the wrong service is a
-/// 404 or an unreadable error rather than a wrong answer.
-///
-/// note: read off the address rather than passed in beside it, for the reason
-/// `openai::ranks_apps` is: the two cannot then disagree, and [`Endpoint::set_endpoint`] moving a
-/// live client from one service to the other moves the path with it. What that costs is a gateway
-/// standing in front of OpenRouter under somebody else's name: it is read as TypeSafe's own API
-/// and asked for `/systemone`. Reading it the other way round would be wrong for a proxy of
-/// TypeSafe, which keeps TypeSafe's paths.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Service {
-    /// TypeSafe's own API.
-    TypeSafe,
-    /// OpenRouter, which resells it.
-    OpenRouter,
-}
-
-impl Service {
-    /// Which one an address belongs to.
-    ///
-    /// note: anything that is not OpenRouter's is read as TypeSafe's own API rather than refused,
-    /// because that is the shape a self-hosted proxy of it has - a proxy keeps the upstream's
-    /// paths.
-    fn of(address: &str) -> Self {
-        match crate::is_openrouter(address) {
-            true => Self::OpenRouter,
-            false => Self::TypeSafe,
-        }
-    }
-
-    /// The path a question goes to, under the base URL.
-    ///
-    /// note: each service's own word for the same API, which is why this is not one name with two
-    /// spellings. TypeSafe calls it System One; OpenRouter calls it Decisions.
-    fn route(self) -> &'static str {
-        match self {
-            Self::TypeSafe => "systemone",
-            Self::OpenRouter => "decisions",
-        }
-    }
-
-    /// Whether there is a listing of what it serves to ask for.
-    fn publishes_a_listing(self) -> bool {
-        self == Self::TypeSafe
-    }
-}
+/// note: OpenRouter's `/models` lists the chat models and none of these unless asked, and a model
+/// missing from a listing is reported as not served. A self-hosted engine with a listing of its own
+/// ignores the query.
+const LISTING: &str = "models?output_modalities=decisions";
 
 /// The documented request body: a model, a state, and the questions put to it by name.
 ///
@@ -304,7 +240,7 @@ impl Question {
     /// The payload for this one question, as the documented request shape has it.
     ///
     /// note: public for the reason [`render`] is: two renderers for one documented format
-    /// eventually disagree. [`Jev::render`] is the whole body; this is one question of it.
+    /// eventually disagree. [`Client::render`] is the whole body; this is one question of it.
     pub fn to_wire(&self) -> Value {
         match self {
             Self::Noul {
@@ -468,7 +404,8 @@ impl Answer {
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Answers {
-    /// The version that actually answered - `jev-1.13.0` for a request naming `jev-latest`.
+    /// The version that actually answered, which an engine may resolve the name asked for to -
+    /// `typesafe/jev-1.13-20260917` for a request naming `typesafe/jev-1.13`.
     pub model: String,
     /// One answer per question, under the name it was asked under.
     pub answers: BTreeMap<String, Answer>,
@@ -543,12 +480,12 @@ impl Answers {
 
 /// Anything that answers typed questions put to a state.
 ///
-/// note: [`SystemOne::ask`] is the whole of what a caller of this module does. [`Jev`] is the
+/// note: [`SystemOne::ask`] is the whole of what a caller of this module does. [`Client`] is the
 /// implementation here, and every engine is reached through it; the trait is what a caller holds,
 /// so that code downstream of the one place an advisor is built finds out nothing about it, and a
 /// test can stand in for the engine without a socket.
 ///
-/// note: concrete argument types where [`Jev::ask`] takes `impl Into<Value>` and an iterator,
+/// note: concrete argument types where [`Client::ask`] takes `impl Into<Value>` and an iterator,
 /// because a trait with generic methods is not one a caller can hold as `dyn`, and a caller has
 /// to: what decides which engine answers is an environment variable read at startup, and every
 /// caller downstream of that is written against this and finds out nothing.
@@ -583,13 +520,13 @@ pub trait SystemOne: Send + Sync {
 }
 
 #[async_trait]
-impl SystemOne for Jev {
+impl SystemOne for Client {
     async fn ask(
         &self,
         state: Value,
         questions: Vec<(String, Question)>,
     ) -> Result<Answers, BoxError> {
-        Jev::ask(self, state, questions).await
+        Client::ask(self, state, questions).await
     }
 
     fn notice(&self) -> Option<String> {
@@ -601,8 +538,9 @@ impl SystemOne for Jev {
     }
 }
 
-/// TypeSafe's `jev`: an [`Endpoint`] that answers typed questions rather than turns.
-pub struct Jev {
+/// Any System One model at an address answering `/systemone`: an [`Endpoint`] that answers typed
+/// questions rather than turns.
+pub struct Client {
     client: reqwest::Client,
     base_url: Mutex<String>,
     api_key: String,
@@ -612,7 +550,7 @@ pub struct Jev {
     notice: Mutex<Option<String>>,
 }
 
-impl Jev {
+impl Client {
     /// Builds a client for one model at one address.
     pub fn new(
         model: impl Into<String>,
@@ -633,36 +571,18 @@ impl Jev {
         }
     }
 
-    /// [`DEFAULT_MODEL`] at [`DEFAULT_BASE_URL`], which is what a caller with a TypeSafe key and
-    /// no opinions wants.
-    pub fn latest(api_key: impl Into<String>) -> Self {
-        Self::new(DEFAULT_MODEL, DEFAULT_BASE_URL, api_key)
-    }
-
-    /// [`OPENROUTER_MODEL`] at [`OPENROUTER_BASE_URL`], for a caller whose key is an OpenRouter
-    /// one.
-    pub fn through_openrouter(api_key: impl Into<String>) -> Self {
-        Self::new(OPENROUTER_MODEL, OPENROUTER_BASE_URL, api_key)
-    }
-
     /// Where the requests are going.
     pub fn endpoint(&self) -> String {
         self.base_url.lock().clone()
     }
 
-    /// Which of the two services that address belongs to.
-    fn service(&self) -> Service {
-        Service::of(&self.host())
-    }
-
     /// The address one question is posted to.
     ///
-    /// note: separate from [`Jev::send`] so the path can be checked without a socket. It is the
-    /// one part of a request that differs between the two services, and the failure it produces
-    /// when it is wrong - a 404 from a service that does serve the model - is the kind that reads
-    /// as an outage.
+    /// note: separate from [`Client::send`] so the path can be checked without a socket. The
+    /// failure it produces when it is wrong - a 404 from a service that does serve the model - is
+    /// the kind that reads as an outage.
     fn url(&self) -> String {
-        format!("{}/{}", self.endpoint(), self.service().route())
+        format!("{}/{ROUTE}", self.endpoint())
     }
 
     /// Which model is being asked.
@@ -681,7 +601,7 @@ impl Jev {
         self.notice.lock().take()
     }
 
-    /// The payload [`Jev::ask`] would send for these questions.
+    /// The payload [`Client::ask`] would send for these questions.
     ///
     /// note: `ask` renders through this rather than building a second one, for the reason
     /// [`nachalnik::Provider::render`] gives: two code paths that are supposed to agree
@@ -718,7 +638,8 @@ impl Jev {
 
         // note: `RETRIES`, counted the way the dialects count it - the first send
         // included. The documentation asks for an exponential backoff and does not say how far,
-        // and a question put to `jev` has no better reason to be sent more often than a turn
+        // and a question put to one of these has no better reason to be sent more often than a
+        // turn
         for attempt in 1..=RETRIES {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let sent = self
@@ -850,11 +771,12 @@ impl Jev {
 
 /// What a request that was refused said about itself, in whichever envelope it arrived in.
 ///
-/// note: two, because the services do not agree on one. TypeSafe's is `detail`, carrying an
-/// `error_type` beside the sentence - `authentication_error` for a key, `api_usage_error` for a
-/// model that does not exist. OpenRouter's is the `error` the rest of its API and most of this
-/// crate's endpoints use, carrying a `code`. Both are read here rather than at the call site,
-/// which does not know and has no reason to learn which service answered.
+/// note: two, because the engines do not agree on one. OpenRouter's is the `error` the rest of
+/// its API and most of this crate's endpoints use, carrying a `code`. The TypeSafe SDKs' is
+/// `detail`, carrying an `error_type` beside the sentence - `authentication_error` for a key,
+/// `api_usage_error` for a model that does not exist - which an engine written against them
+/// answers in. Both are read here rather than at the call site, which does not know and has no
+/// reason to learn which one answered.
 ///
 /// note: the label is kept wherever there is one, and it is the part that does not get reworded.
 /// A `code` is a number at one service and a string at the other, so both are read; what is never
@@ -910,7 +832,7 @@ fn read_usage(usage: &Value) -> Option<Usage> {
 }
 
 #[async_trait]
-impl Endpoint for Jev {
+impl Endpoint for Client {
     fn endpoint(&self) -> String {
         self.endpoint()
     }
@@ -919,25 +841,19 @@ impl Endpoint for Jev {
         self.model()
     }
 
-    /// What the endpoint serves, which TypeSafe publishes at `/models`.
+    /// What the endpoint serves: the System One models on OpenRouter's list, or whatever a
+    /// self-hosted engine lists.
     ///
-    /// note: `models[].name`, and the listing carries a description and a release date beside it
-    /// that nothing here reads.
-    ///
-    /// note: nothing is asked of OpenRouter, which publishes no listing on the path it takes these
-    /// on - and the listing it publishes elsewhere does not carry this model at all, since it is
-    /// served out of an alpha route `/api/v1/models` does not report. Answering with that one would
-    /// report a model that *is* served as missing. An empty answer does not:
-    /// `say_if_the_model_is_not_there` reads it as nothing having been said.
+    /// note: two shapes, because the two kinds of address publish different ones. OpenRouter's is
+    /// its usual `data[].id`, asked for the decision models alone; one written against the
+    /// TypeSafe SDKs answers `models[].name`. An address that answers neither says nothing, which
+    /// `say_if_the_model_is_not_there` reads as nothing having been said rather than as every
+    /// model missing.
     async fn models(&self) -> Vec<String> {
-        if !self.service().publishes_a_listing() {
-            return Vec::new();
-        }
-
         let base = self.endpoint();
         let Ok(response) = self
             .client
-            .get(format!("{base}/models"))
+            .get(format!("{base}/{LISTING}"))
             .bearer_auth(&self.api_key)
             .send()
             .await
@@ -948,16 +864,17 @@ impl Endpoint for Jev {
             return Vec::new();
         };
 
-        body["models"]
-            .as_array()
-            .map(|listed| {
-                listed
-                    .iter()
-                    .filter_map(|model| model["name"].as_str())
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default()
+        let (listed, named) = match (body["data"].as_array(), body["models"].as_array()) {
+            (Some(listed), _) => (listed, "id"),
+            (None, Some(listed)) => (listed, "name"),
+            (None, None) => return Vec::new(),
+        };
+
+        listed
+            .iter()
+            .filter_map(|model| model[named].as_str())
+            .map(str::to_owned)
+            .collect()
     }
 
     async fn set_model(&self, model: String) {
@@ -985,7 +902,7 @@ mod tests {
     /// The payload, against the shapes the API reference documents for the three question types.
     #[test]
     fn each_question_goes_out_in_the_shape_its_type_is_documented_with() {
-        let jev = Jev::new("jev-latest", DEFAULT_BASE_URL, "k");
+        let engine = Client::new("vendor/decider", DEFAULT_BASE_URL, "k");
         let asked = vec![
             ("plain".to_owned(), Question::noul("Is this destructive?")),
             (
@@ -1006,8 +923,8 @@ mod tests {
             ),
         ];
 
-        let body = jev.render(&"rm -rf /".into(), &asked);
-        assert_eq!(body["model"], "jev-latest");
+        let body = engine.render(&"rm -rf /".into(), &asked);
+        assert_eq!(body["model"], "vendor/decider");
         assert_eq!(body["state"], "rm -rf /");
 
         let questions = &body["questions"];
@@ -1098,49 +1015,27 @@ mod tests {
         );
     }
 
-    /// Which service an address belongs to, and what follows from it.
+    /// Every question goes to `/systemone` under whatever address the client was given.
     ///
-    /// note: the addresses, not the enum. What this is actually holding is that a client built the
-    /// way each service documents posts to the path that service serves - the failure otherwise is
-    /// a 404 from a service that does serve the model, which reads as an outage and is not one.
+    /// note: OpenRouter's own path for these under its ordinary `/api/v1`, and the one a
+    /// self-hosted engine keeps. A wrong path is a 404 from a service that does serve the model,
+    /// which reads as an outage and is not one.
     #[test]
-    fn the_address_decides_which_service_a_question_goes_to() {
-        let url = |base| Jev::new("jev-latest", base, "k").url();
+    fn every_question_goes_to_one_route_wherever_it_goes() {
+        let url = |base| Client::new("vendor/decider", base, "k").url();
 
         assert_eq!(
             url(DEFAULT_BASE_URL),
-            "https://api.typesafe.ai/v1/systemone"
+            "https://openrouter.ai/api/v1/systemone"
         );
         assert_eq!(
-            url(OPENROUTER_BASE_URL),
-            "https://openrouter.ai/api/alpha/decisions"
-        );
-        // and the constructors, since each names one of the two and nothing checks that they agree
-        assert_eq!(Jev::latest("k").url(), url(DEFAULT_BASE_URL));
-        assert_eq!(Jev::through_openrouter("k").url(), url(OPENROUTER_BASE_URL));
-
-        // a self-hosted proxy of TypeSafe keeps TypeSafe's paths, which is why anything
-        // unrecognised is read as that one rather than refused
-        assert_eq!(
-            url("http://127.0.0.1:8080/v1"),
+            url("http://127.0.0.1:8080/v1/"),
             "http://127.0.0.1:8080/v1/systemone"
         );
-
-        // the authority alone, the way `openai::ranks_apps` reads one: a port and a subdomain
-        // still count, and a host that merely ends in those letters does not
-        assert_eq!(Service::of("openrouter.ai:443"), Service::OpenRouter);
-        assert_eq!(Service::of("api.openrouter.ai"), Service::OpenRouter);
-        assert_eq!(Service::of("openrouter.ai.example.com"), Service::TypeSafe);
-        assert_eq!(Service::of("notopenrouter.ai"), Service::TypeSafe);
-
-        // and only one of the two has a listing to ask for. OpenRouter publishes none on this
-        // path, and the one it publishes elsewhere does not carry this model - asking it would
-        // report a model that is served as missing
-        assert!(Service::TypeSafe.publishes_a_listing());
-        assert!(!Service::OpenRouter.publishes_a_listing());
     }
 
-    /// The two refusals the endpoint actually sends, which use `detail` rather than `error`.
+    /// The two envelopes a refusal arrives in: `detail`, as the TypeSafe SDKs have it, and the
+    /// `error` OpenRouter uses.
     #[test]
     fn a_refusal_is_read_out_of_the_envelope_this_endpoint_uses() {
         let auth: Value = serde_json::from_str(
@@ -1162,7 +1057,7 @@ mod tests {
 
         // and OpenRouter's, which is the `error` envelope with a numeric code rather than a named
         // type. Read by the same function, because nothing holding one of these knows or needs to
-        // know which of the two services answered
+        // know which engine answered
         let router: Value = serde_json::from_str(
             r#"{"error":{"code":401,"message":"No auth credentials found"},"user_id":null}"#,
         )
@@ -1172,7 +1067,7 @@ mod tests {
             Some("401: No auth credentials found")
         );
 
-        // a code is a number at one service and a string at the other, and a refusal that carried
+        // a code is a number at one engine and a string at another, and a refusal that carried
         // no label at all is the sentence on its own rather than an invented one
         let worded: Value = serde_json::from_str(
             r#"{"error":{"code":"context_length_exceeded","message":"too long"}}"#,
@@ -1233,22 +1128,22 @@ mod tests {
         );
     }
 
-    /// `jev` is called by the host it asks, on a screen and in a line saying what advice cost.
+    /// An engine is called by the host it asks, on a screen and in a line saying what advice cost.
     #[test]
     fn the_engine_is_named_for_the_host_it_asks() {
-        let named = |base| SystemOne::named(&Jev::new("jev-latest", base, "k"));
+        let named = |base| SystemOne::named(&Client::new("vendor/decider", base, "k"));
 
-        assert_eq!(named(DEFAULT_BASE_URL), "api.typesafe.ai");
-        assert_eq!(named(OPENROUTER_BASE_URL), "openrouter.ai");
+        assert_eq!(named(DEFAULT_BASE_URL), "openrouter.ai");
+        assert_eq!(named("http://127.0.0.1:8080/v1"), "127.0.0.1:8080");
     }
 
     /// Asking nothing is a caller's mistake, and is refused before a request is made.
     #[tokio::test]
     async fn a_request_with_no_questions_in_it_is_not_sent() {
-        let jev = Jev::new("jev-latest", "http://127.0.0.1:1", "k");
+        let engine = Client::new("vendor/decider", "http://127.0.0.1:1", "k");
         let empty: Vec<(String, Question)> = Vec::new();
-        assert!(jev.ask("anything", empty).await.is_err());
-        assert_eq!(jev.attempts(), 0, "nothing should have gone out");
+        assert!(engine.ask("anything", empty).await.is_err());
+        assert_eq!(engine.attempts(), 0, "nothing should have gone out");
     }
 
     /// An address that answers every request with the same bytes, whatever was asked.
@@ -1290,21 +1185,22 @@ mod tests {
         )
         .await;
 
-        let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
-        assert_eq!(SystemOne::notice(&jev), None, "nothing has happened yet");
+        let engine = Client::new("vendor/decider", format!("http://{at}"), "k");
+        assert_eq!(SystemOne::notice(&engine), None, "nothing has happened yet");
         assert!(
-            jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+            engine
+                .ask("anything", [("q", Question::noul("Is this fine?"))])
                 .await
                 .is_err()
         );
-        assert_eq!(jev.attempts(), RETRIES);
+        assert_eq!(engine.attempts(), RETRIES);
 
         let longest = BACKOFF * 2u32.pow(RETRIES as u32 - 2);
         assert_eq!(
-            SystemOne::notice(&jev),
-            Some(busy("jev-latest", "429", longest))
+            SystemOne::notice(&engine),
+            Some(busy("vendor/decider", "429", longest))
         );
-        assert_eq!(SystemOne::notice(&jev), None, "a notice is said once");
+        assert_eq!(SystemOne::notice(&engine), None, "a notice is said once");
     }
 
     /// A 502 or a 503 is asked once more and no more, and any other 5xx is not asked again.
@@ -1320,14 +1216,14 @@ mod tests {
             (&b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"[..], 1),
         ] {
             let at = answering(raw).await;
-            let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+            let engine = Client::new("vendor/decider", format!("http://{at}"), "k");
             assert!(
-                jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+                engine.ask("anything", [("q", Question::noul("Is this fine?"))])
                     .await
                     .is_err()
             );
             assert_eq!(
-                jev.attempts(),
+                engine.attempts(),
                 attempts,
                 "{}",
                 String::from_utf8_lossy(raw).lines().next().unwrap_or_default()
@@ -1348,21 +1244,24 @@ mod tests {
             .expect("a port");
         let at = deaf.local_addr().expect("its address");
 
-        let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
+        let engine = Client::new("vendor/decider", format!("http://{at}"), "k");
         assert!(
-            jev.ask("anything", [("q", Question::noul("Is this fine?"))])
+            engine
+                .ask("anything", [("q", Question::noul("Is this fine?"))])
                 .await
                 .is_err()
         );
-        assert_eq!(jev.attempts(), RETRIES);
+        assert_eq!(engine.attempts(), RETRIES);
 
         let longest = BACKOFF * 2u32.pow(RETRIES as u32 - 2);
-        let said = jev.take_notice().expect("the last wait is on the notice");
-        assert_eq!(said, busy("jev-latest", "timed out", longest));
+        let said = engine
+            .take_notice()
+            .expect("the last wait is on the notice");
+        assert_eq!(said, busy("vendor/decider", "timed out", longest));
 
         // and it is a sentence a person can act on: which model, what happened, how long the wait
         for part in [
-            "jev-latest",
+            "vendor/decider",
             "timed out",
             &format!("{}ms", longest.as_millis()),
         ] {
@@ -1374,10 +1273,10 @@ mod tests {
     #[tokio::test]
     async fn a_question_nobody_could_take_says_why() {
         install_crypto();
-        let jev = Jev::new("jev-latest", "http://127.0.0.1:1", "k");
+        let engine = Client::new("vendor/decider", "http://127.0.0.1:1", "k");
         let asked = vec![("q".to_owned(), Question::noul("Is this fine?"))];
 
-        let said = jev
+        let said = engine
             .ask(json!({"tool": "shell"}), asked)
             .await
             .expect_err("nothing listens there")
@@ -1392,41 +1291,81 @@ mod tests {
     /// nothing, so what is left to see is the name itself.
     #[tokio::test]
     async fn a_model_named_through_the_endpoint_is_the_one_asked() {
-        let jev = Jev::new("jev-latest", "http://127.0.0.1:1", "k");
+        let engine = Client::new("vendor/decider", "http://127.0.0.1:1", "k");
 
-        jev.set_model("jev-1.13.0".to_owned()).await;
+        engine.set_model("jev-1.13.0".to_owned()).await;
 
-        assert_eq!(jev.model(), "jev-1.13.0");
+        assert_eq!(engine.model(), "jev-1.13.0");
         let asked = [("q".to_owned(), Question::noul("Is this fine?"))];
         assert_eq!(
-            jev.render(&"anything".into(), &asked)["model"],
+            engine.render(&"anything".into(), &asked)["model"],
             "jev-1.13.0"
         );
     }
 
-    /// A probe says so when the address does not list the model being asked for, and only then.
+    /// A probe says so when the address does not list the model being asked for, and only then -
+    /// in either shape a listing comes in.
     ///
     /// note: a name that is not listed comes back a 400 on the next question, which is a worse
     /// place to find out; a name that is listed buys silence, or the notice means nothing.
     #[tokio::test]
     async fn a_probe_says_when_the_address_does_not_list_the_model() {
-        let at = answering(
-            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
-              {\"models\":[{\"name\":\"jev-latest\"},{\"name\":\"jev-1.13.0\"}]}",
-        )
-        .await;
+        for listing in [
+            // OpenRouter's
+            r#"{"data":[{"id":"liquid/d1"},{"id":"vendor/decider"}]}"#,
+            // and one written against the TypeSafe SDKs
+            r#"{"models":[{"name":"liquid/d1"},{"name":"vendor/decider"}]}"#,
+        ] {
+            let raw = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n\
+                 {listing}"
+            );
+            let at = answering(raw.leak().as_bytes()).await;
 
-        let stranger = Jev::new("jev-nope", format!("http://{at}"), "k");
-        stranger.probe().await;
-        let said = stranger
-            .take_notice()
-            .expect("an unlisted model is worth saying");
-        assert!(said.contains("jev-nope"), "the model asked for: {said}");
-        assert!(said.contains("jev-1.13.0"), "what is served: {said}");
+            let stranger = Client::new("vendor/nope", format!("http://{at}"), "k");
+            stranger.probe().await;
+            let said = stranger
+                .take_notice()
+                .expect("an unlisted model is worth saying");
+            assert!(said.contains("vendor/nope"), "the model asked for: {said}");
+            assert!(said.contains("liquid/d1"), "what is served: {said}");
 
-        let resident = Jev::new("jev-latest", format!("http://{at}"), "k");
-        resident.probe().await;
-        assert_eq!(resident.take_notice(), None);
+            let resident = Client::new("vendor/decider", format!("http://{at}"), "k");
+            resident.probe().await;
+            assert_eq!(resident.take_notice(), None, "{listing}");
+        }
+    }
+
+    /// The listing is asked for the decision models alone.
+    ///
+    /// note: OpenRouter's `/models` without the filter lists every chat model and none of these, so
+    /// every model this client could be asking would be reported as not served.
+    #[tokio::test]
+    async fn the_listing_is_asked_for_decision_models() {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        let heard = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("a request");
+            let mut asked = [0u8; 1024];
+            let read = socket.read(&mut asked).await.unwrap_or(0);
+            let _ = socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .await;
+            String::from_utf8_lossy(&asked[..read]).into_owned()
+        });
+
+        Client::new("vendor/decider", format!("http://{at}/api/v1"), "k")
+            .models()
+            .await;
+        let heard = heard.await.expect("the listener");
+        assert!(
+            heard.starts_with("GET /api/v1/models?output_modalities=decisions "),
+            "{heard}"
+        );
     }
 
     /// A probe names three of what an address serves, and how many, rather than all of them.
@@ -1439,7 +1378,7 @@ mod tests {
         )
         .await;
 
-        let stranger = Jev::new("jev-nope", format!("http://{at}"), "k");
+        let stranger = Client::new("vendor/nope", format!("http://{at}"), "k");
         stranger.probe().await;
         let said = stranger.take_notice().expect("an unlisted model");
         assert!(said.contains("5 models (a, b, c, …)"), "{said}");
@@ -1464,12 +1403,12 @@ mod tests {
         .await;
 
         for at in [page, cut] {
-            let jev = Jev::new("jev-latest", format!("http://{at}"), "k");
-            let asked = jev
+            let engine = Client::new("vendor/decider", format!("http://{at}"), "k");
+            let asked = engine
                 .ask("anything", [("q", Question::noul("Is this fine?"))])
                 .await;
             assert!(asked.is_err(), "{at} answered nothing, and got {asked:?}");
-            assert_eq!(jev.attempts(), 1, "a 200 is not worth asking again");
+            assert_eq!(engine.attempts(), 1, "a 200 is not worth asking again");
         }
     }
 
@@ -1493,7 +1432,7 @@ mod tests {
         )
         .await;
         let ask = |at| async move {
-            Jev::new("jev-latest", format!("http://{at}"), "k")
+            Client::new("vendor/decider", format!("http://{at}"), "k")
                 .ask("anything", [("q", Question::noul("Is this fine?"))])
                 .await
                 .expect_err("nothing whole came back")

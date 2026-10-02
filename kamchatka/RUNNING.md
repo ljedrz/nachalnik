@@ -784,60 +784,49 @@ has an `--advise` to use them and by no other.
 ### a colour on the question
 
 `--advise` is off unless the program was built with `--features shell-advisor`, and then it still
-has to be asked for. What it adds is a question put to [TypeSafe](https://docs.typesafe.ai)'s
-`jev` — a model that answers typed questions rather than writing text — about every shell command
-you are about to be **asked** about, and its answer drawn in that question:
+has to be asked for. What it adds is a question put to a **System One model** — a model that
+answers typed questions rather than writing text — about every shell command you are about to be
+**asked** about, and its answer drawn in that question:
 
 ```console
-$ export KAMCHATKA_SYSTEM1_API_KEY=apikey_...
+$ export KAMCHATKA_SYSTEM1_MODEL=liquid/d1
 $ kamchatka --advise "tidy up the build artifacts"
 ```
 
+**Which model is yours to name, and there is no default.** OpenRouter serves a family of them —
+TypeSafe's, Liquid's, Inception's, Upstage's and more — and lists them at
+`https://openrouter.ai/api/v1/models?output_modalities=decisions`. `--advise` without
+`KAMCHATKA_SYSTEM1_MODEL` stops before the session begins and says where that list is. A provider
+that sells one of these and is not on it is reached through OpenRouter's bring-your-own-key, which
+needs nothing from this program.
+
 The feature puts the advisor in the binary and the flag is what starts one, so a build with
-`shell-advisor` and a key in the environment but no `--advise` draws no ratings at all. The
+`shell-advisor` and a model in the environment but no `--advise` draws no ratings at all. The
 permissions tab says so when that is the case, rather than leaving you to work it out from your
 own build flags.
 
-**Without a dedicated key it can borrow yours, in one case.** `jev` is served through OpenRouter as
-well as by TypeSafe, so a session whose requests *already go to OpenRouter* can have an advisor
-with only `KAMCHATKA_API_KEY` set — it asks `typesafe/jev-1.13` at
-`https://openrouter.ai/api/alpha`, and the key paying for the conversation pays for the questions
-too.
-
-Any other session is refused and told why. A key is an OpenRouter key because it is being sent to
-OpenRouter, not because of the variable it was read from — so a session pointed at ollama, at
-Google with `--gemini`, or at a gateway of your own holds a key that service issued, and spending
-it here would hand a third party a credential with no business with them. Those need
-`KAMCHATKA_SYSTEM1_API_KEY`, and one started without it
+**The questions go to OpenRouter, and an OpenRouter key pays for them.** `KAMCHATKA_SYSTEM1_API_KEY`
+if it is set; otherwise the session's own key, where the session already talks to OpenRouter; and
+otherwise `OPENROUTER_API_KEY`. A key is an OpenRouter key because it is being sent to OpenRouter,
+not because of the variable it was read from — so a session pointed at ollama, at Google with
+`--gemini`, or at a gateway of your own holds a key that service issued, and spending it here
+would hand a third party a credential with no business with them. Such a session with neither of
+the other two set
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
 ```
 
-stops before the session begins, saying that it could not reach the advisor, which key to set,
-and which address the session talks to.
+stops before it begins, saying that it could not reach the advisor, which key to set, and which
+address the session talks to. What a borrowed key changes is who is told: the arguments below go
+to OpenRouter as well as to the model behind it.
 
-The dedicated key is checked first, so setting it is what moves the questions to TypeSafe's own API
-from anywhere. What the fallback changes is who is told: the arguments below go to OpenRouter as
-well as to the model behind it.
-
-`KAMCHATKA_SYSTEM1_BASE_URL` and `KAMCHATKA_SYSTEM1_MODEL` follow whichever key was found, and the
-first moves the address without moving the account — pointing it at the other service means
-naming that service's model with the second as well. TypeSafe resolves `jev-latest` to whatever
-version is current; OpenRouter serves versions under their own names, which is why the identifier
-this program sends there names one.
-
-A borrowed key is only ever sent to OpenRouter. With `KAMCHATKA_SYSTEM1_BASE_URL` pointing anywhere
-else - a local `laya-serve`, a proxy of your own - the advisor needs a dedicated key, and the
-session stops before it begins saying so rather than hand that address the conversation's
-OpenRouter key. Where the service there checks no key, any value will do.
-
-Those two are also the whole of what a *third* service takes. The variables say `SYSTEM1` rather
-than naming a company because the three question types are the category's — a claim to weigh, a
-closed set, an ordered rubric — and an address this program does not recognise is read as keeping
-TypeSafe's paths, which is the shape a self-hosted one has. So anything answering a `state` and a
-map of typed questions there is reachable with those two set and nothing built. A service with a
-*different* request shape is not, and is not planned; see [POSTPONED.md](../POSTPONED.md).
+`KAMCHATKA_SYSTEM1_BASE_URL` moves the questions somewhere else: an engine of your own that
+answers the same route, `/systemone`, which is the one OpenRouter takes them on. A borrowed key is
+only ever sent to OpenRouter, so an advisor pointed anywhere else needs `KAMCHATKA_SYSTEM1_API_KEY`,
+and the session stops before it begins saying so rather than hand that address an OpenRouter key.
+Where the service there checks no key, any value will do. A service with a *different* request
+shape is not reachable.
 
 It **decides nothing**. What the standing rules allow runs without a question and without
 anything being sent, what they refuse is refused, and what they ask about is asked about — an
@@ -845,9 +834,9 @@ anything being sent, what they refuse is refused, and what they ask about is ask
 unreachable, out of quota or unparseable costs the colour and nothing else, and the question says
 so where the colour would have been: `the advisor could not rate this`, and why.
 
-**Some commands are refused before the advisor reads them.** TypeSafe's API and OpenRouter's both
-sit behind a firewall that turns a request away by what is in it, and what it turns away is the
-command an advisor is most for: anything naming `/etc/shadow`, even in an `echo`, and a pipeline
+**Some commands are refused before the advisor reads them.** The hosted endpoints have sat behind
+a firewall that turns a request away by what is in it, and what it turns away is the command an
+advisor is most for: anything naming `/etc/shadow`, even in an `echo`, and a pipeline
 that reads a secret into `curl`. The question says the advisor could not rate it and quotes the
 firewall's page, so what is missing is the colour rather than the fact that it is missing. An
 advisor on this machine, below, has no firewall in front of it.
@@ -862,14 +851,15 @@ environment.
 
 ### an advisor on this machine
 
-An engine running here is reached the way a third service is: `KAMCHATKA_SYSTEM1_BASE_URL` pointed
-at it. [`laya`](https://github.com/NandhaKishorM/laya) serves itself over HTTP at the path the
-hosted engine uses:
+An engine running here is reached with `KAMCHATKA_SYSTEM1_BASE_URL` pointed at it.
+[`laya`](https://github.com/NandhaKishorM/laya) serves itself over HTTP at the route OpenRouter
+uses:
 
 ```console
 $ pip install "laya[serve]"
 $ laya-serve
 $ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1 KAMCHATKA_SYSTEM1_API_KEY=local
+$ export KAMCHATKA_SYSTEM1_MODEL=<the model laya-serve lists>
 $ kamchatka --advise -m qwen/qwen3-coder
 ```
 
@@ -896,13 +886,13 @@ is for. What the colour buys is the half-second before that: whether this is the
 `cargo test` of the afternoon or the one call in fifty worth stopping on.
 
 **The top of that rubric is asked a second time, as a claim rather than as a position**, and the
-worse of the two answers is what gets drawn. The two engines are good at different halves of it:
-an ordinal `score` is the primitive laya's own card calls its weakest, and asking the same reading
-as a yes-or-no finds destructive commands the rubric misses; `jev` reads the rubric well and
-misses some of them when the rubric is taken away. Folded, each draws at least as many of them
-red as either reading alone. It costs a question and not a round trip — every question in a call
-is answered in one pass at both engines, which is the same property that makes placing a command
-stage by stage affordable.
+worse of the two answers is what gets drawn. Engines are good at different halves of it: an
+ordinal `score` is the primitive some read worst — laya's own card calls it its weakest — and
+asking the same reading as a yes-or-no finds destructive commands the rubric misses; others read
+the rubric well and miss some of them when the rubric is taken away. Folded, whichever model is
+asked draws at least as many of them red as either reading alone. It costs a question and not a
+round trip — every question in a call is answered in one pass, which is the same property that
+makes placing a command stage by stage affordable.
 
 Two rules keep it honest: a score is read by the level it is nearest rather than the one it has
 passed, and a rating the advisor was not sure of is never drawn green and never drawn safer than it

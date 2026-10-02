@@ -17,6 +17,24 @@ minor bump may break you.
   The same cap is now its `ModelInfo::max_output_tokens`. A switch of model or address forgets all
   of it, as it forgets the list of names.
 
+### changed
+
+- **`system1` speaks to any System One model, and favours none.** `system1::Jev` is
+  `system1::Client`, and the crate root no longer re-exports it. OpenRouter serves a family of
+  these models, so the client has no model of its own: `Jev::latest`, `Jev::through_openrouter`,
+  `DEFAULT_MODEL`, `OPENROUTER_BASE_URL` and `OPENROUTER_MODEL` are gone, and `DEFAULT_BASE_URL` is
+  OpenRouter's `https://openrouter.ai/api/v1`. A provider OpenRouter does not list is reached
+  through its bring-your-own-key.
+- **Every question goes to `{base}/systemone`**, which is OpenRouter's route under its ordinary
+  `/api/v1` and the one a self-hosted engine such as `laya-serve` keeps. The alpha `/decisions`
+  route and the rule that chose between two services by the address are gone, so a session and its
+  advisor can share one address and one key.
+- **The listing is asked for the decision models** - `models?output_modalities=decisions`, read as
+  OpenRouter's `data[].id` or an engine's `models[].name` - so a model OpenRouter does not serve is
+  now reported at the probe, where before nothing was asked of OpenRouter at all.
+- The live suite reads `OPENROUTER_API_KEY` and `NACHALNIK_SYSTEM1_MODEL` in place of
+  `TYPESAFE_API_KEY`.
+
 ## [0.7.0] - 2026-10-02
 
 ### changed

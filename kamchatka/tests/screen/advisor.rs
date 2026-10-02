@@ -13,7 +13,7 @@ use nachalnik::{
     Capability, ModelResponse, PermissionPolicy,
     test::{ConstTool, call},
 };
-use nachalnik_providers::system1::Jev;
+use nachalnik_providers::system1::Client;
 use ratatui::style::{Color, Modifier};
 use serde_json::json;
 use tokio::{
@@ -39,7 +39,7 @@ async fn placing(score: f64, confidence: f64) -> String {
 /// An endpoint that answers every request with the same body.
 async fn answering(answers: &[String]) -> String {
     let body = format!(
-        "{{\"model\":\"jev-1\",\"answers\":{{{}}}}}",
+        "{{\"model\":\"vendor/decider\",\"answers\":{{{}}}}}",
         answers.join(",")
     );
     serving("200 OK", "application/json", body).await
@@ -95,8 +95,8 @@ async fn asked_by(endpoint: String) -> Harness {
 
     // the advisor wrapped around the harness's own standing rules, and held by both the
     // kernel and the screen - which is what `wiring` does, and the reason it builds one
-    let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
-    let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
+    let engine = Arc::new(Client::new("vendor/decider", endpoint, "k"));
+    let advised = Arc::new(Advised::new(harness.app.policy.clone(), engine));
     harness
         .app
         .kernel
@@ -328,7 +328,7 @@ async fn what_the_advisor_spends_is_counted_against_the_ceiling() {
         "200 OK",
         "application/json",
         format!(
-            "{{\"model\":\"jev-1\",\"answers\":{{{}}},\
+            "{{\"model\":\"vendor/decider\",\"answers\":{{{}}},\
              \"usage\":{{\"input_tokens\":300,\"output_tokens\":20}}}}",
             scored("rating", 1.9, 0.93)
         ),
@@ -387,8 +387,8 @@ async fn a_stop_does_not_wait_for_the_advisor() {
     harness.app.kernel.add_tool(Arc::new(
         ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
     ));
-    let jev = Arc::new(Jev::new("jev-latest", endpoint, "k"));
-    let advised = Arc::new(Advised::new(harness.app.policy.clone(), jev));
+    let engine = Arc::new(Client::new("vendor/decider", endpoint, "k"));
+    let advised = Arc::new(Advised::new(harness.app.policy.clone(), engine));
     harness
         .app
         .kernel

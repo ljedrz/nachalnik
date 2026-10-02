@@ -42,16 +42,15 @@ pub fn environment() -> String {
     const ADVISOR: &str = "
 
 The advisor, which is only ever asked when --advise is given:
-  KAMCHATKA_SYSTEM1_API_KEY   its key; or TYPESAFE_API_KEY. Without one it borrows
-                              KAMCHATKA_API_KEY, but only where this session already
-                              talks to OpenRouter, which serves jev too, and the
-                              questions go there as well
-  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; the endpoint of whichever of
-                              those two keys was found, or any other service that
-                              answers the same typed questions, such as laya-serve
-                              on this machine
-  KAMCHATKA_SYSTEM1_MODEL     which model answers them; jev-latest at TypeSafe,
-                              typesafe/jev-1.13 through OpenRouter";
+  KAMCHATKA_SYSTEM1_MODEL     which System One model answers; required, and any of
+                              openrouter.ai/api/v1/models?output_modalities=decisions
+  KAMCHATKA_SYSTEM1_API_KEY   its key. Without one it borrows an OpenRouter key -
+                              this session's own where it talks to OpenRouter, or
+                              OPENROUTER_API_KEY - but only for questions that go
+                              to OpenRouter
+  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; OpenRouter, or an engine of
+                              your own that answers the same route, such as
+                              laya-serve on this machine";
     #[cfg(not(feature = "shell-advisor"))]
     const ADVISOR: &str = "";
 
@@ -102,9 +101,9 @@ pub struct Args {
     /// rubric, and colour the question by the answer - a command joined at its `|`, `&&` or `;`
     /// is asked about stage by stage and rated by its worst one, underlined where it is worse than
     /// the rest. The rating decides nothing: what the rules allow runs and what they refuse is
-    /// refused. Sends the call's tool name, capabilities and arguments to the advisor; see
-    /// KAMCHATKA_SYSTEM1_API_KEY for the hosted default, and KAMCHATKA_SYSTEM1_BASE_URL for one on
-    /// this machine, where nothing leaves it.
+    /// refused. Sends the call's tool name, capabilities and arguments to the advisor, a System
+    /// One model named by KAMCHATKA_SYSTEM1_MODEL; see KAMCHATKA_SYSTEM1_BASE_URL for one on this
+    /// machine, where nothing leaves it.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
     pub advise: bool,
@@ -749,12 +748,12 @@ impl Args {
             return Ok(setup);
         }
 
-        let jev = endpoint::advise::connect(&endpoint::session_endpoint(self.gemini))
+        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.gemini))
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;
         Ok(Setup {
-            advisor: Some(jev),
+            advisor: Some(engine),
             ..setup
         })
     }
