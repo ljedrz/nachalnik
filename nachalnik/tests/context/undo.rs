@@ -12,7 +12,7 @@ use nachalnik::{
     BytesPerToken, Config, ContextId, ContextItem, ContextState, Event, Kernel, ModelResponse,
     test::{AllowAll, ConstTool, ScriptedProvider, call},
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{common::drain, kernel, select};
 
@@ -275,6 +275,35 @@ fn an_undo_says_what_it_did() {
         let _ = events.try_recv();
     }
     assert!(events.try_recv().is_err());
+}
+
+/// An item whose metadata an undo put back is one it changed, though nothing else about it moved.
+///
+/// note: `annotate` takes no checkpoint of its own, so the annotation rides with the operation
+/// before it, and one undo takes back both. Only `meta` differs on the item it was on, so this
+/// holds every field of the comparison an undo makes to say what it changed, not only the state.
+#[test]
+fn an_undo_names_an_item_whose_metadata_it_put_back() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a"));
+    kernel.push(ContextItem::file("src/b.rs", "b"));
+    kernel.annotate(a, json!({ "expendable": true })).unwrap();
+
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    let Some(Event::ContextUndone {
+        removed, changed, ..
+    }) = events.try_recv().ok()
+    else {
+        panic!("an undo is a context change like any other")
+    };
+    assert_eq!(removed, vec![ContextId(2)], "b was never annotated");
+    assert_eq!(
+        changed,
+        vec![a],
+        "the metadata came back to what it was, so the item did change"
+    );
+    assert_eq!(kernel.item(a).unwrap().meta, Value::Null);
 }
 
 #[test]
