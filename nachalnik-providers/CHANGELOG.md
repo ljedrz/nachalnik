@@ -5,6 +5,18 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### added
+
+- **`Dialect::published` says what an endpoint publishes about a parameter beyond its name** - a
+  default, and the largest value it takes - as a `Published`, and nothing where it publishes
+  nothing, which is the default. `OpenAiCompatible` reads both from the entry the context limit
+  comes from: OpenRouter's `default_parameters`, without the ones it gives as `null`, and
+  `top_provider.max_completion_tokens` as the most `max_tokens` and `max_completion_tokens` take.
+  The same cap is now its `ModelInfo::max_output_tokens`. A switch of model or address forgets all
+  of it, as it forgets the list of names.
+
 ## [0.7.0] - 2026-10-02
 
 ### changed

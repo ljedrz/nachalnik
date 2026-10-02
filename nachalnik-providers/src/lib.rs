@@ -106,7 +106,7 @@ pub mod system1;
 #[cfg(any(feature = "gemini", feature = "openai"))]
 pub(crate) mod waiting;
 
-pub use crate::endpoint::{Dialect, Endpoint};
+pub use crate::endpoint::{Dialect, Endpoint, Published};
 #[cfg(feature = "gemini")]
 pub use crate::gemini::Gemini;
 #[cfg(feature = "openai")]

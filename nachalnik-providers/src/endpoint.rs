@@ -1,6 +1,7 @@
 //! The half of a model's service the person driving it asks about, rather than the kernel.
 
 use nachalnik::{LinearProjector, Provider, async_trait};
+use serde_json::{Number, Value};
 
 /// The half of a model's service its user drives, rather than the kernel.
 ///
@@ -98,6 +99,20 @@ pub trait Dialect: Endpoint + Provider {
         true
     }
 
+    /// What the endpoint publishes about one of [`nachalnik::ModelInfo::parameters`] beyond its
+    /// name, where it publishes anything.
+    ///
+    /// note: read from the listing and from nothing else. No endpoint here publishes a
+    /// parameter's type or its range, and a table of them kept in this crate would be somebody's
+    /// documentation as of the day it was copied, said of a model it may not describe. A default
+    /// is a value, so its type is in it.
+    ///
+    /// note: defaulted to nothing, which is what an endpoint that publishes nothing has said.
+    fn published(&self, parameter: &str) -> Published {
+        let _ = parameter;
+        Published::default()
+    }
+
     /// The projection this dialect can carry.
     ///
     /// note: it is answered here, beside the `to_wire` that has to honour it, because the two drift
@@ -116,6 +131,33 @@ pub trait Dialect: Endpoint + Provider {
             send_reasoning: false,
             ..Default::default()
         }
+    }
+}
+
+/// What an endpoint publishes about one parameter beyond its name; see [`Dialect::published`].
+///
+/// note: `#[non_exhaustive]`, so that what a listing says about a parameter can grow. Build one
+/// with [`Published::default`] and the `with_` methods.
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct Published {
+    /// The value the endpoint publishes as the model's default.
+    pub default: Option<Value>,
+    /// The largest value the endpoint publishes the model taking.
+    pub maximum: Option<Number>,
+}
+
+impl Published {
+    /// The same, with the published default.
+    pub fn with_default(mut self, default: impl Into<Option<Value>>) -> Self {
+        self.default = default.into();
+        self
+    }
+
+    /// The same, with the published maximum.
+    pub fn with_maximum(mut self, maximum: impl Into<Option<Number>>) -> Self {
+        self.maximum = maximum.into();
+        self
     }
 }
 
