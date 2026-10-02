@@ -834,12 +834,12 @@ anything being sent, what they refuse is refused, and what they ask about is ask
 unreachable, out of quota or unparseable costs the colour and nothing else, and the question says
 so where the colour would have been: `the advisor could not rate this`, and why.
 
-**Some commands are refused before the advisor reads them.** The hosted endpoints have sat behind
-a firewall that turns a request away by what is in it, and what it turns away is the command an
-advisor is most for: anything naming `/etc/shadow`, even in an `echo`, and a pipeline
-that reads a secret into `curl`. The question says the advisor could not rate it and quotes the
-firewall's page, so what is missing is the colour rather than the fact that it is missing. An
-advisor on this machine, below, has no firewall in front of it.
+**Not every model on the list answers what `--advise` asks.** Respan's take only plain `noul`
+questions about a conversation, so every command comes back unrated, with Respan's own refusal
+quoted where the colour would have been. And the models that do answer place commands differently:
+one draws `rm -rf target` red where another draws it yellow. The colour is the model's reading, and
+`tests/advise.rs`, run with `KAMCHATKA_SYSTEM1_MODEL` set, is how to see what one makes of the
+rubric before relying on it.
 
 **What leaves the machine**: for each shell command you are about to be asked about — which in a
 default session is every command the model writes, since `exec:run` is a question by default — the

