@@ -274,6 +274,15 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   the whole run when
   MemAvailable falls under `MIN_AVAIL_GIB` (10) or the run passes `MAX_PROCS` (4000) processes,
   logging the top consumers to `out/NAME.guard`. Run one `cargo mutants` at a time regardless.
+- **A mutant can signal everything the person has.** `Stragglers::call_of` replaced with
+  `Some(0)` made a unit test's `stop` take every process for its own, and SIGTERM then SIGKILL
+  ended the desktop, the session driving the run and the run with it - no OOM, and the guard,
+  dying with the rest, logged nothing. `.cargo/mutants.toml` excludes those mutants, and the tests
+  that reach `stop` scope their own thread's signals. The confinement a sweep runs under used to
+  scope nothing, `--confine-and-run` by hand having no session above it; it scopes signals itself
+  now, so a run under it can still stop the session driving it, and nothing outside. A run that
+  ends with every shard `ERROR interrupted` at the same second was signalled: look at what the
+  mutants in flight do with signals before resuming.
 - Mutated `kamchatka --headless` binaries ignore SIGTERM and outlive the run. Look for processes
   under `target/agents/mt/cargo-mutants-*` afterwards and SIGKILL them by pid.
 - The sessions' network gate refuses loopback, so they cannot run a test that serves anything,

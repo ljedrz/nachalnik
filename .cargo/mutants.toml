@@ -1,0 +1,11 @@
+# Mutants that are never generated, for every `cargo mutants` run in this repository.
+#
+# `Stragglers::call_of` decides which processes the end of a session stops. Answering for every
+# process - `Some(_)` - or for every process another session marked - `!=` against the session -
+# has the end of a test stop everything the person running it has, the desktop and the run among
+# them. The tests that reach it put their own thread under the signal scope a session runs under,
+# which contains that on Linux 6.12 and later; this is for wherever the scope is not there.
+exclude_re = [
+    'replace Stragglers::call_of -> Option<usize> with Some',
+    'replace == with != in Stragglers::call_of',
+]
