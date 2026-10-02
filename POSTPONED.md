@@ -255,3 +255,17 @@ Referenced from [AGENTS.md](AGENTS.md).
   the old words and an undo brings them back - but every later request reads the person as having
   said something they did not. Refusing it is one more case in `protected`; whether the model may
   tidy the person's words at all is the decision.
+
+- **`/params` showing a parameter's type and range.** It shows the default and the maximum where
+  the listing publishes them, and nothing else, because nothing else is published: OpenRouter's
+  `/models` and its per-model `/endpoints` give names, some defaults and the cap on an answer,
+  and Inception's gives names. A table of types and ranges kept in this workspace would be a
+  gateway's documentation as of the day it was copied, said of whichever model is behind it -
+  the restriction invented out of silence that `/params` already refuses to invent. What would
+  unblock it is an endpoint that publishes them, read as `Published` reads the rest.
+
+  `--gemini` says nothing beside its parameters at all. Its native listing has `temperature`,
+  `topP`, `topK`, `maxTemperature` and `outputTokenLimit`, but no list of what a request may
+  carry, and those five go under `generationConfig` rather than beside it, so there is no list
+  for `/params` to put them on. Reading them needs `/params` to say something about a key inside
+  a parameter, which is a decision about the command rather than the dialect.

@@ -442,9 +442,14 @@ from the `thinkingConfig` a `--gemini` request asks for its thinking with, and a
 silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
 
 Where the listing is everything the model takes, a parameter you set that is not on it is named as
-sent and ignored, and the ones it takes that you have not set follow. Where the endpoint publishes
-its sampling parameters only, the same absence settles nothing, so it is named as sent and
-unchecked instead.
+sent and ignored, and the ones it takes that you have not set follow, one to a line, with the
+default and the most each takes beside it where the listing publishes them. A value you set over a
+published maximum is noted; what the endpoint does with it is the endpoint's to say. Where the
+endpoint publishes its sampling parameters only, the same absence settles nothing, so it is named
+as sent and unchecked instead.
+
+No endpoint publishes a parameter's type or its range, so neither is shown: a default is a value,
+and its type is in it.
 
 A parameter named after something the request is built from — `messages`, `tools`, `model`, and
 `contents` or `systemInstruction` under `--gemini` — is refused. Those are the context's, the

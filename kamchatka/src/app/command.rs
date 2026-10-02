@@ -647,6 +647,23 @@ impl App {
                     self.say(speaker, said);
                 }
 
+                // a bound is worth saying of one that is set, too, since that is where it can be
+                // crossed; what becomes of a value over it is the endpoint's to say, not this
+                for (name, set) in &params {
+                    let over = self.provider.published(name).maximum.filter(|most| {
+                        matches!((set.as_f64(), most.as_f64()), (Some(set), Some(most)) if set > most)
+                    });
+                    if let Some(most) = over {
+                        self.say(
+                            Speaker::Note,
+                            format!(
+                                "{name} is {set}, and {} publishes at most {most}",
+                                info.model
+                            ),
+                        );
+                    }
+                }
+
                 let spare: Vec<&str> = info
                     .parameters
                     .iter()
@@ -660,10 +677,27 @@ impl App {
                         true => "also takes",
                         false => "also takes, of the ones it publishes",
                     };
-                    self.say(
-                        Speaker::Note,
-                        format!("{} {all}: {}", info.model, spare.join(", ")),
-                    );
+                    // note: one to a line, with what the endpoint published about each beside it.
+                    // A type or a range it did not publish is not made up here: a default is a
+                    // value, so its type shows in it, and that is all there is to go on
+                    let wide = spare.iter().map(|name| name.len()).max().unwrap_or(0) + 2;
+                    let rows = spare
+                        .iter()
+                        .map(|name| {
+                            let published = self.provider.published(name);
+                            let facts = [
+                                published.default.map(|it| format!("default {it}")),
+                                published.maximum.map(|it| format!("at most {it}")),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                            format!("  {name:<wide$}{facts}").trim_end().to_owned()
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.say(Speaker::Note, format!("{} {all}:\n{rows}", info.model));
                 }
             }
             "save" => self.save(rest),

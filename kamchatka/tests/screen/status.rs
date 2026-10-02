@@ -426,26 +426,43 @@ async fn params_says_what_this_model_takes_and_what_it_will_quietly_ignore() {
         screen.contains("does not list seed"),
         "the one that will do nothing is named: {screen}"
     );
-    assert!(
-        screen.contains("also takes: temperature, top_p"),
-        "and so is what it would have taken instead: {screen}"
-    );
-    assert!(
-        !screen.contains("top_p, tools"),
-        "but not a field the request is built from, which `/params` refuses: {screen}"
+    // and so is what it would have taken instead, but not a field the request is built from,
+    // which `/params` refuses
+    assert_eq!(
+        listed(&screen, "a/model also takes:"),
+        ["temperature", "top_p"],
+        "{screen}"
     );
 
     // one that *is* listed draws no complaint, and drops out of what is left to try
     harness.send("/params temperature 0.2").await;
     let screen = harness.screen();
-    assert!(
-        screen.contains("also takes: top_p"),
+    assert_eq!(
+        listed(&screen, "a/model also takes:"),
+        ["top_p"],
         "a parameter already set is not still on offer: {screen}"
     );
     assert!(
         !screen.contains("does not list temperature"),
         "and it is not complained about: {screen}"
     );
+}
+
+/// The rows of the last list on `screen` that opens with `opening`, one to a parameter.
+fn listed(screen: &str, opening: &str) -> Vec<String> {
+    screen
+        .lines()
+        .rev()
+        .take_while(|row| !row.contains(opening))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|row| {
+            row.trim_matches(|c: char| c == '│' || c.is_whitespace())
+                .to_owned()
+        })
+        .take_while(|row| !row.is_empty())
+        .collect()
 }
 
 /// Serves `listing` to whatever asks for it, and, where there is a `refusal`, refuses every other
@@ -496,6 +513,43 @@ async fn sampling_only() -> Arc<OpenAiCompatible> {
         "supported_sampling_parameters":["temperature","stop"],
         "supported_features":["tools","json_mode","structured_outputs"]}]}"#;
     serving(listing, None).await
+}
+
+#[tokio::test]
+async fn params_lists_what_the_endpoint_publishes_beside_each_parameter() {
+    // trimmed from what openrouter.ai answers: most defaults published as `null`, which is a
+    // default it does not know
+    let listing = r#"{"data":[{"id":"mercury-2.5","context_length":262144,
+        "top_provider":{"context_length":262144,"max_completion_tokens":32768},
+        "supported_parameters":["max_tokens","seed","temperature","top_p"],
+        "default_parameters":{"temperature":0.3,"top_p":null}}]}"#;
+    let mut harness = Harness::served_by([], serving(listing, None).await);
+
+    harness.send("/params").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("max_tokens   at most 32768")
+            && screen.contains("temperature  default 0.3"),
+        "each published fact is beside the parameter it is about: {screen}"
+    );
+    assert!(
+        !screen.contains("null"),
+        "and a default published as `null` is not one: {screen}"
+    );
+
+    // a bound is said of one that is set as well, which is where it can be crossed
+    harness.send("/params max_tokens 100000").await;
+    let screen = harness.screen();
+    assert!(
+        screen.contains("max_tokens is 100000, and mercury-2.5 publishes at most 32768"),
+        "{screen}"
+    );
+    harness.send("/params max_tokens 1000").await;
+    assert!(
+        !harness.screen().contains("max_tokens is 1000,"),
+        "and one under it is not remarked on: {}",
+        harness.screen()
+    );
 }
 
 /// `stream` is not a parameter a model lists, and is not ignored for being missing from the list.
@@ -549,8 +603,9 @@ async fn a_sampling_only_listing_does_not_claim_a_parameter_missing_from_it_is_i
         !screen.contains("what becomes of temperature"),
         "a listed parameter is not remarked on: {screen}"
     );
-    assert!(
-        screen.contains("also takes, of the ones it publishes: stop"),
+    assert_eq!(
+        listed(&screen, "also takes, of the ones it publishes:"),
+        ["stop"],
         "and it is no longer on offer: {screen}"
     );
 }
