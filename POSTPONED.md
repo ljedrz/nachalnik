@@ -280,3 +280,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   rewording the levels and the claim until the suite passes across the list, measured with that
   suite, or naming in RUNNING.md the models it has been checked against and leaving the rest to
   whoever picks one.
+
+- **A reasoning count of zero the OpenAI dialect reports is read as none.** `usage_of` keeps
+  `reasoning_tokens` only when it is above zero, so an endpoint that says
+  `"reasoning_tokens": 0` - the model reasoned, for nothing - comes back as `None`, which
+  `Usage::reasoning_tokens` documents as the provider not having said, "not the same as zero and
+  must not be shown as it". Gemini's dialect keeps a reported `thoughtsTokenCount` of zero as
+  `Some(0)`, so the two disagree on the same fact. The filter does earn its place on the figure
+  inferred as a residual, where zero is no evidence of reasoning at all. Keeping a reported zero is
+  a one-line change, and it changes what a client shows; whether a zero from a model that cannot
+  reason is worth showing is the decision. `cargo mutants` found it: `> 0` replaced with `>= 0`
+  survives every test, and a test pinning either answer would be choosing one.
