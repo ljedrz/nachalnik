@@ -174,6 +174,61 @@ fn a_recount_that_moves_figures_is_not_what_an_undo_reverts() {
     );
 }
 
+/// What an undo or a redo counts is said out loud, and only when the count moved.
+///
+/// note: the items a checkpoint holds were counted by the counter in force when they were pushed,
+/// and a session that recalibrates counts them on a scale that has moved since - so what comes
+/// back is a different figure, written to the items without a word about it. The two halves go
+/// together: a recount that moved nothing is silence, because a client told the figures had
+/// changed when they had not learns to ignore the event.
+#[test]
+fn an_undo_says_it_recounted_only_when_a_figure_moved() {
+    let kernel = kernel();
+    let a = kernel.push(ContextItem::file("src/a.rs", "a".repeat(400)));
+    kernel.push(ContextItem::file("src/b.rs", "b".repeat(400)));
+    let was = kernel.item(a).unwrap().tokens;
+    kernel.set_counter(Arc::new(BytesPerToken { bytes_per_token: 1 }));
+    let counted = kernel.item(a).unwrap().tokens;
+    assert_ne!(
+        was, counted,
+        "the recount has to move a figure for this to test anything"
+    );
+
+    // what came back carries the figure it was checkpointed under, and the figure it is counted at
+    // now - and a client reading the log has to be told the two differ rather than left holding
+    // the first without knowing about the second. The undo leaves one item, so the two figures
+    // are that item's: the one on the checkpoint `set_counter` did not reach, and the one the
+    // counter in force puts there instead.
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    assert_eq!(kernel.items().len(), 1);
+    let said = drain(&mut events);
+    let recount = said
+        .iter()
+        .find_map(|event| match event {
+            Event::ContextRecounted {
+                tokens_before,
+                tokens_after,
+            } => Some((*tokens_before, *tokens_after)),
+            _ => None,
+        })
+        .expect("an undo that recounted says so");
+    assert_eq!(recount.0, was, "the items as they were checkpointed");
+    assert_eq!(recount.1, counted, "and counted on the scale in force");
+
+    // and one that moved no figure is not announced, so an undo restoring what is already there
+    // does not spend a recount saying the figures did not change
+    kernel.push(ContextItem::file("src/c.rs", "c".repeat(400)));
+    let mut events = kernel.subscribe();
+    assert!(kernel.undo().unwrap());
+    assert!(
+        !drain(&mut events)
+            .iter()
+            .any(|event| matches!(event, Event::ContextRecounted { .. })),
+        "a recount that moved nothing is not something to say out loud"
+    );
+}
+
 #[test]
 fn an_undo_says_what_it_did() {
     let kernel = kernel();
