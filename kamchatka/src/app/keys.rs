@@ -93,7 +93,7 @@ impl App {
             // the cursor is on sent `up` to the conversation from anywhere in it
             KeyCode::Up | KeyCode::Down => {
                 let was = self.input.cursor();
-                self.input.input(key);
+                self.edit(key);
                 if self.input.cursor() == was {
                     self.scroll_by(match key.code {
                         KeyCode::Up => -1,
@@ -103,10 +103,39 @@ impl App {
             }
             KeyCode::PageUp => self.scroll_by(-(self.viewport as isize / 2)),
             KeyCode::PageDown => self.scroll_by(self.viewport as isize / 2),
-            _ => {
-                self.input.input(key);
-            }
+            _ => self.edit(key),
         }
+    }
+
+    /// What the prompt does with a key nothing above took: types it, or moves the cursor with it.
+    ///
+    /// note: these keys and no others, because a key the help does not name should do nothing.
+    /// `TextArea::input` brings an emacs keymap with it - `ctrl+u` undoing, `ctrl+k` cutting to
+    /// the end of the line, `alt+<` jumping to the top, a shift-arrow selection only its own
+    /// `ctrl+x` could use - and none of it was ever on a help line, so a chord pressed by mistake
+    /// changed the message in a way nothing on the screen could account for. A chord is dropped,
+    /// as it is on the tabs.
+    fn edit(&mut self, key: KeyEvent) {
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            return;
+        }
+        let moved = match key.code {
+            KeyCode::Left => CursorMove::Back,
+            KeyCode::Right => CursorMove::Forward,
+            KeyCode::Up => CursorMove::Up,
+            KeyCode::Down => CursorMove::Down,
+            KeyCode::Home => CursorMove::Head,
+            KeyCode::End => CursorMove::End,
+            // a character, backspace and delete, and nothing that is a shortcut
+            _ => {
+                self.input.input_without_shortcuts(key);
+                return;
+            }
+        };
+        self.input.move_cursor(moved);
     }
 
     /// Puts the last line back in the prompt: the message still waiting, if one is, and otherwise
@@ -620,9 +649,9 @@ impl App {
             && let Some(reached) = self.reached()
         {
             let (grant, remembered) = match key.code {
-                KeyCode::Char('y') | KeyCode::Char('Y') => (Grant::Allow, false),
-                KeyCode::Char('a') | KeyCode::Char('A') => (Grant::Allow, true),
-                KeyCode::Char('n') | KeyCode::Char('N') => (Grant::Deny, false),
+                KeyCode::Char('y') => (Grant::Allow, false),
+                KeyCode::Char('a') => (Grant::Allow, true),
+                KeyCode::Char('n') => (Grant::Deny, false),
                 _ => return,
             };
             if let Err(e) = self.decide_reach(reached.id, grant, remembered) {
@@ -688,12 +717,12 @@ impl App {
 
         let mut remembered = false;
         let grant = match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => Grant::Allow,
-            KeyCode::Char('a') | KeyCode::Char('A') => {
+            KeyCode::Char('y') => Grant::Allow,
+            KeyCode::Char('a') => {
                 remembered = true;
                 Grant::Allow
             }
-            KeyCode::Char('i') | KeyCode::Char('I') => {
+            KeyCode::Char('i') => {
                 let spec = self
                     .kernel
                     .tool(&request.tool)
@@ -707,8 +736,8 @@ impl App {
 
                 return;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Grant::Deny,
-            KeyCode::Char('d') | KeyCode::Char('D') => {
+            KeyCode::Char('n') | KeyCode::Esc => Grant::Deny,
+            KeyCode::Char('d') => {
                 self.drop_pending();
                 return;
             }

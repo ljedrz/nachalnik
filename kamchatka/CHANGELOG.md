@@ -22,10 +22,21 @@ minor bump may break you.
   it is recorded. Built from elements and text nodes, so nothing a model writes becomes HTML, and a
   link is one only to `http`, `https` or `mailto`. A fenced block is not highlighted.
 - **`ctrl+r` is `/continue`**, on every tab - `r` for resume - and says why it does nothing where
-  the command would. It was the prompt's redo of typing, which no help line named; `ctrl+u` still
-  undoes.
+  the command would.
 
 ### changed
+
+- **A key the help does not name does nothing.** The prompt took every key nothing else did to
+  its text box's own keymap, which is emacs's and was on no help line: `ctrl+u` and `ctrl+r`
+  undoing and redoing, `ctrl+k` and `ctrl+w` cutting, `ctrl+a` and `alt+<` moving the cursor,
+  `shift` and an arrow selecting. It now types, moves the cursor with the arrows, `home` and
+  `end`, and takes out a character with `backspace` and `delete`, and drops every chord. A
+  question no longer takes the capitals of its answers.
+- **The help names the keys that were already there**: `home` and `end` beside `g` and `G` on the
+  three tabs, which are what reaches either end while the search box takes letters; `enter` and
+  `esc` with an item being edited; the arrows going on to scroll the conversation from the edges
+  of the prompt; and the keys of whatever is open over the screen, of which every one but the
+  scrolling and the paging closes it.
 
 - **`/params` lists what else the model takes one to a line, with what the endpoint publishes
   about each beside it**: its default and the most it takes, where the listing gives them, which
