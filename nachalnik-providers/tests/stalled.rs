@@ -423,6 +423,68 @@ async fn a_stream_nobody_answers_is_asked_for_once() {
     assert!(said.contains("never answered; giving up after"), "{said}");
 }
 
+/// A client whose DNS never answers, so that every attempt fails before a connection is made.
+///
+/// note: a resolver that hangs rather than one that fails, because the answer has to be the one a
+/// loaded resolver gives: `is_timeout` and `is_connect` both true, which is what
+/// `worth_waiting_out` reads and what `may_have_been_heard` reads it not to be. A name that did
+/// not resolve would be `is_dns` instead, which is a definite answer and a different path. No
+/// socket is involved, and none can be: this is the failure before one would be opened.
+#[cfg(feature = "openai")]
+#[derive(Clone, Copy)]
+struct SilentResolver;
+
+#[cfg(feature = "openai")]
+impl reqwest::dns::Resolve for SilentResolver {
+    fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        Box::pin(std::future::pending())
+    }
+}
+
+/// A connection that never reached anybody is asked again, and then given up on.
+///
+/// note: a connect timeout is the one failure certain not to have reached a server, so sending it
+/// again cannot pay for it twice - a timeout after connecting may be a server already working on
+/// the request. On a paused clock, since the doublings between tries are waited out on tokio's.
+#[cfg(feature = "openai")]
+#[tokio::test(start_paused = true)]
+async fn a_connection_never_made_is_asked_again_and_then_given_up_on() {
+    let provider = Arc::new(
+        nachalnik_providers::OpenAiCompatible::new(
+            "unreachable",
+            "http://nowhere.invalid/v1",
+            "no key needed",
+        )
+        .with_client(
+            reqwest::Client::builder()
+                .dns_resolver(Arc::new(SilentResolver))
+                // under the stream's own patience, so that what ends each try is the transport's
+                // connect timeout rather than the silence
+                .connect_timeout(Duration::from_secs(30))
+                .build()
+                .expect("a client"),
+        ),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("are you there?"));
+
+    let failed = tokio::time::timeout(Duration::from_secs(3600), kernel.turn())
+        .await
+        .expect("it gave up")
+        .expect_err("a connection that was never made is a failure");
+
+    // asked again, and then given up on: how many tries is the crate's own figure
+    assert!(
+        provider.attempts() > 1,
+        "a connection that was never made is worth another try"
+    );
+    assert!(
+        failed.to_string().contains("Connect"),
+        "and it says what it was: {failed}"
+    );
+}
+
 /// Takes every request, counts it, and never answers any.
 #[cfg(feature = "openai")]
 async fn counting_deaf_server(requests: Arc<std::sync::atomic::AtomicUsize>) -> String {
