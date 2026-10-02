@@ -201,6 +201,42 @@ async fn an_event_spread_over_several_lines_is_one_event() {
     }
 }
 
+/// A comment between the lines of a spread event does not end it.
+///
+/// note: the format allows a comment anywhere, a keep-alive among them, and only a blank line ends
+/// an event - so the lines either side of one are still one event.
+#[tokio::test]
+async fn a_comment_inside_a_spread_event_does_not_end_it() {
+    for (dialect, body) in [
+        (
+            "openai",
+            "data: {\"choices\":[{\"delta\":\n\
+             : keep-alive\n\
+             data:  {\"content\":\"all of it\"},\"finish_reason\":\"stop\"}]}\n\n",
+        ),
+        (
+            "gemini",
+            "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"all of it\"}]},\n\
+             : keep-alive\n\
+             data:  \"finishReason\":\"STOP\"}]}\n\n",
+        ),
+    ] {
+        let url = server(
+            "200 OK",
+            "Content-Type: text/event-stream\r\n",
+            body,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .await;
+        let Some((_, provider)) = dialects(&url).into_iter().find(|(d, _)| *d == dialect) else {
+            continue;
+        };
+
+        let response = asked(provider).await.expect("an answer");
+        assert_eq!(said(&response), "all of it", "{dialect}");
+    }
+}
+
 /// A `[DONE]` written over several `data:` lines ends the stream like one written on a line of its
 /// own, and a connection held open after it does not keep the read waiting.
 ///
