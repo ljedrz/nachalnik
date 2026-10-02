@@ -140,6 +140,9 @@ fn a_separator_is_one_between_digits_and_nothing_else() {
 
     assert_eq!(probe.read("ANSWER: 3,593"), Answer::Number(3593));
     assert_eq!(probe.read("ANSWER: 1_000"), Answer::Number(1000));
+    // one arriving before any digit is not between two of them, so nothing is read through, and
+    // the sign it stood between is dropped with it rather than read as a minus
+    assert_eq!(probe.read("ANSWER: -,5"), Answer::Number(5));
 }
 
 /// A number is read up to the first word after it.
