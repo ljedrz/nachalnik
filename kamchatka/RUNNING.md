@@ -21,9 +21,9 @@ $ printf 'what is 2+2? answer with just the number\n/budget\n' \
 `jq 'select(.event.event == "tool.requested")' session.jsonl` is the whole of reading a run back.
 **stderr is a person's half**: what the model said, what a tool was asked to do, and what any
 command you sent answered. Every verb is there, because a command was never the keyboard's to
-begin with. A key with a command behind it — <kbd>u</kbd> and <kbd>U</kbd> being
-`/undo` and `/redo`, <kbd>ctrl+l</kbd> being `/cleanup` — is the shorthand, and the line is what
-works down a pipe.
+begin with. A key with a command behind it — <kbd>u</kbd> and <kbd>U</kbd> being `/undo` and
+`/redo`, <kbd>ctrl+l</kbd> being `/cleanup`, <kbd>ctrl+r</kbd> being `/continue` — is the
+shorthand, and the line is what works down a pipe.
 
 Nothing can be asked at a prompt that is not there, so the answers are given in advance:
 

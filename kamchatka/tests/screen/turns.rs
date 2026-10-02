@@ -313,6 +313,47 @@ async fn a_turn_that_runs_out_of_requests_says_so_instead_of_looking_finished() 
     assert!(harness.screen().contains("and there it was"));
 }
 
+/// `ctrl+r` is `/continue`, from whichever tab it is pressed on.
+#[tokio::test]
+async fn ctrl_r_carries_on_a_paused_turn_from_any_tab() {
+    let mut harness = Harness::configured(
+        [
+            ModelResponse::tool_calls(vec![call("c1", "look", json!({}))]),
+            ModelResponse::text("and there it was"),
+        ],
+        Config {
+            max_requests_per_turn: Some(1),
+            ..Default::default()
+        },
+    );
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing")));
+
+    // with nothing to answer it says why, as the command does, rather than sending a request
+    harness.chord(KeyCode::Char('r')).await;
+    assert!(
+        harness.screen().contains("nothing to answer"),
+        "{}",
+        harness.screen()
+    );
+
+    harness.send("look around").await;
+    harness.settle().await;
+    assert!(harness.screen().contains("paused after 1 request;"));
+
+    harness.tab(Tab::Context);
+    harness.chord(KeyCode::Char('r')).await;
+    harness.settle().await;
+    harness.tab(Tab::Chat);
+    assert!(
+        harness.screen().contains("and there it was"),
+        "{}",
+        harness.screen()
+    );
+}
+
 /// `/step` with a message, typed into a running turn, puts nothing into the context.
 ///
 /// note: the text was pushed before `start_step` had said whether it could step at all, so it
