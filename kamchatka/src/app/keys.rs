@@ -502,14 +502,12 @@ impl App {
     /// note: `up`, `down` and the paging are deliberately *not* taken. The point of filtering eight
     /// hundred events down to nine is to then read the nine, and a box that swallowed the scroll
     /// keys would mean closing the search - and so losing the filter - to look at what it found.
-    /// `home` and `end` stay with the pane for the same reason and one more: `g` and `G`, which are
-    /// what jumps to either end of a list everywhere else here, are letters, and while the box is
-    /// open a letter is a letter. They are the only way left to reach the ends.
     ///
-    /// note: `left` and `right` *are* taken, because neither pane uses them - the one place they
-    /// mean something on the context tab is an open item, and an overlay takes the keys above
-    /// this. Without them a query could only be amended by rubbing out everything back to the
-    /// mistake.
+    /// note: `left`, `right`, `home` and `end` *are* taken, because in a box being typed into they
+    /// are the box's, as they are in the prompt. What it costs is the ends of the list while the
+    /// box is open: `g` and `G` are letters there too, so the rows are reached by `up`, `down` and
+    /// the paging until it is closed. With a modifier, `home` and `end` are the keys that work
+    /// everywhere, and go past it.
     pub(super) fn search_key(&mut self, key: KeyEvent) -> bool {
         let Some(search) = &mut self.search else {
             return false;
@@ -534,6 +532,17 @@ impl App {
             }
             KeyCode::Right => {
                 search.right();
+                true
+            }
+            KeyCode::Home | KeyCode::End
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                match key.code {
+                    KeyCode::Home => search.home(),
+                    _ => search.end(),
+                }
                 true
             }
             // a modifier means it is somebody reaching past the box for one of the keys that work

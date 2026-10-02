@@ -128,11 +128,11 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     assert!(kept.len() < all, "and the user turn should not");
 
     // the row the keys are on is a row that is still on the screen
-    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::PageDown).await;
     assert_eq!(
         harness.app.selected,
         kept.len() - 1,
-        "end is the last of {} filtered row(s)",
+        "a page down is the last of {} filtered row(s)",
         kept.len()
     );
     harness.press(KeyCode::Down).await;
@@ -327,11 +327,12 @@ async fn backspace_and_delete_take_out_either_side_of_the_cursor() {
     );
 }
 
-/// The keys the panes need while the box is open are still the panes'.
+/// The keys the panes need while the box is open are still the panes', and the keys of a text
+/// field are the box's.
 ///
-/// note: this is the half of the feature that is about what was *not* taken. `left` and `right`
-/// were free; `up`, `down` and the paging are how somebody reads what a filter found, and `home`
-/// and `end` are all that is left of `g` and `G` while every letter is going into the query.
+/// note: this is the half of the feature that is about what was *not* taken: `up`, `down` and the
+/// paging are how somebody reads what a filter found. `home` and `end` are the query's, as they
+/// are the prompt's.
 #[tokio::test]
 async fn the_box_leaves_the_rows_their_own_keys() {
     let mut harness = Harness::new([ModelResponse::text("done")]);
@@ -345,18 +346,21 @@ async fn the_box_leaves_the_rows_their_own_keys() {
 
     harness.press(KeyCode::Down).await;
     assert_eq!(harness.app.selected, 1, "down still moves between rows");
-    harness.press(KeyCode::Home).await;
-    assert_eq!(
-        harness.app.selected, 0,
-        "and home is still the first of them"
-    );
-    harness.press(KeyCode::End).await;
-    assert_eq!(harness.app.selected, rows - 1, "and end the last");
-
     assert_eq!(
         harness.app.search.as_ref().map(|s| s.query.as_str()),
         Some(""),
-        "none of which typed anything into the query"
+        "without typing anything into the query"
+    );
+
+    // the query's own start and end, and not the list's
+    type_in(&mut harness, "bc").await;
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('a')).await;
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char('d')).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.query.as_str()),
+        Some("abcd")
     );
 }
 

@@ -27,7 +27,7 @@ pub struct Search {
     ///
     /// note: a byte offset rather than a character index, because every use of it is a slice of
     /// the query and a character index would be converted at each one. It is kept on a character
-    /// boundary by the only four methods that move it, which is what makes those slices safe.
+    /// boundary by the only six methods that move it, which is what makes those slices safe.
     at: usize,
     /// The parsed form of it, rebuilt whenever the query changes.
     pattern: Pattern,
@@ -98,6 +98,16 @@ impl Search {
         if let Some(c) = self.query[self.at..].chars().next() {
             self.at += c.len_utf8();
         }
+    }
+
+    /// Moves the cursor to the start of the query.
+    pub fn home(&mut self) {
+        self.at = 0;
+    }
+
+    /// Moves the cursor to the end of the query.
+    pub fn end(&mut self) {
+        self.at = self.query.len();
     }
 
     /// The query on either side of the cursor, for whatever is drawing it.

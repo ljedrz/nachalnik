@@ -32,9 +32,10 @@ minor bump may break you.
   `shift` and an arrow selecting. It now types, moves the cursor with the arrows, `home` and
   `end`, and takes out a character with `backspace` and `delete`, and drops every chord. A
   question no longer takes the capitals of its answers.
+- **`home` and `end` in the search box move within the query**, as they do in the prompt, rather
+  than to either end of the rows under it. With the box closed they are still `g` and `G`.
 - **The help names the keys that were already there**: `home` and `end` beside `g` and `G` on the
-  three tabs, which are what reaches either end while the search box takes letters; `enter` and
-  `esc` with an item being edited; the arrows going on to scroll the conversation from the edges
+  three tabs; `enter` and `esc` with an item being edited; the arrows going on to scroll the conversation from the edges
   of the prompt; and the keys of whatever is open over the screen, of which every one but the
   scrolling and the paging closes it.
 
