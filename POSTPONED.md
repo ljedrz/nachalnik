@@ -269,3 +269,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   carry, and those five go under `generationConfig` rather than beside it, so there is no list
   for `/params` to put them on. Reading them needs `/params` to say something about a key inside
   a parameter, which is a decision about the command rather than the dialect.
+
+- **The advisor's rubric is worded for the models it was written against.** `tests/advise.rs`
+  passes whole against TypeSafe's and Liquid's models on OpenRouter; others place a command a level
+  away from what it asserts - `rm -rf target` drawn red rather than yellow, `cd /tmp && ls` yellow
+  rather than green - and one reads every stage of a chain by the whole command, so no stage is
+  underlined. Respan's answer none of it, taking only plain `noul` questions about a conversation.
+  None of that is the client's: every model that answers gets the same request and is read the
+  same way. What would unblock a change is a decision about **whose reading the wording is for** -
+  rewording the levels and the claim until the suite passes across the list, measured with that
+  suite, or naming in RUNNING.md the models it has been checked against and leaving the rest to
+  whoever picks one.

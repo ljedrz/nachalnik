@@ -161,10 +161,11 @@ async fn the_three_question_types_go_out_together_and_come_back_as_three_answers
     assert_eq!(probabilities.len(), 4, "{probabilities:?}");
     assert!(sums_to_one(probabilities), "{probabilities:?}");
 
-    // and the request was priced
+    // and the request was priced. Output is reported and may be nothing: some engines price an
+    // answer by its input alone and say so with a `0`
     let usage = answers.usage.expect("the endpoint reports what it cost");
     assert!(usage.input_tokens.is_some_and(|it| it > 0), "{usage:?}");
-    assert!(usage.output_tokens.is_some_and(|it| it > 0), "{usage:?}");
+    assert!(usage.output_tokens.is_some(), "{usage:?}");
 
     // one request, whatever the questions in it
     assert_eq!(engine.attempts(), 1);
