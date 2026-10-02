@@ -102,6 +102,38 @@ fn an_experiment_that_states_nothing_asks_nothing_and_is_told_so() {
     assert_eq!(ThirdParty.about(), "");
 }
 
+/// An experiment of this crate's says what it measures, and says it as a line.
+///
+/// note: the empty default is right for a third-party experiment, which has not said what it
+/// measures, and wrong for one this crate wrote: every experiment in `suite::all` is run by
+/// somebody who did not read the source, and this line is what they get instead of the source. A
+/// blank there reads as an experiment that measures nothing, and a bare word reads as no better.
+/// The check is that there is a line and that it is words rather than a token - what it says is
+/// the suite's to say.
+#[test]
+fn an_experiment_of_this_crates_says_what_it_measures() {
+    for experiment in suite::all() {
+        let about = experiment.about().trim();
+
+        assert!(
+            !about.is_empty(),
+            "{} states nothing about what it measures, which is what an experiment that has not \
+             said anything reads as",
+            experiment.name()
+        );
+        assert!(
+            about.contains(' '),
+            "{} measures things in one word: {about}",
+            experiment.name()
+        );
+        assert!(
+            !about.contains('\n'),
+            "{} measures things in more than the one line: {about}",
+            experiment.name()
+        );
+    }
+}
+
 #[test]
 fn a_bare_confidence_of_one_is_read_as_certainty_and_that_is_a_choice() {
     // note: pinned rather than fixed. `CONFIDENCE:` is asked for on a 0-100 scale, and the reader
