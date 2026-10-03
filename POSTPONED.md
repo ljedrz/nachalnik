@@ -146,9 +146,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   further means the tool reading a file the kernel does not hold, and every answer saying which of
   its records came from there.
 
-- **Two runs of the live suite at once.** `live.rs` works in `live-{name}` directories under the
-  target directory, so two runs against one `CARGO_TARGET_DIR` at the same moment clear each other's
-  files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the
+- **Two runs of the live suite at once.** `kamchatka`'s `live.rs` works in `live-{name}`
+  directories under the target directory, so two runs against one `CARGO_TARGET_DIR` at the same
+  moment clear each other's files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the
   process id back in that one name, is the way round it if concurrent runs are wanted.
 
 - **No bound on an MCP server's first answers.** The handshake, `tools/list` and `resources/read`
