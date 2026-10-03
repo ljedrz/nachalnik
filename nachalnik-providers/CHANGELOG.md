@@ -35,6 +35,12 @@ minor bump may break you.
 - The live suite reads `OPENROUTER_API_KEY` and `NACHALNIK_SYSTEM1_MODEL` in place of
   `TYPESAFE_API_KEY`.
 
+### fixed
+
+- **The conformance suite asks why a turn with calls ended.** `two_calls` read the calls and not
+  `stop`, so a provider that reported `EndTurn` for a turn the server ended with `tool_calls` passed
+  every case. It now has to say `ToolUse`, in both dialects.
+
 ## [0.7.0] - 2026-10-02
 
 ### changed
