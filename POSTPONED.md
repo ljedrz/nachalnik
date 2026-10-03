@@ -280,3 +280,41 @@ Referenced from [AGENTS.md](AGENTS.md).
   rewording the levels and the claim until the suite passes across the list, measured with that
   suite, or naming in RUNNING.md the models it has been checked against and leaving the rest to
   whoever picks one.
+
+- **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That
+  is the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
+  there. A model can copy it: `inclusionai/ling-3.1-flash`, after one broken call, wrapped every
+  call after it in the same key and made no call that worked again. `kamchatka` now reads a
+  wrapper whose text parses as the call inside it, which ends the loop without touching the wire.
+  Sending back the text the model wrote would be the honest echo, and Novita answers it with a
+  400, so one broken call would refuse every request after it; sending `{}` is valid everywhere
+  and leaves the account of what arrived to the tool result, which already quotes it. What would
+  settle it is a decision about what the history should claim the model said, and a live run of
+  the choice on the endpoints that are strict about it.
+
+- **A headless run whose session record could not be written still exits as it would have.**
+  `finish` says `the session was not written` on stderr and returns the run's own outcome, so a
+  script that reads the status as "the session is saved" is wrong once. The note on
+  `start_recording` makes a record that cannot be written a thing said rather than fatal, and the
+  exit statuses in `--help` have no word for it. Unblocking it is a choice between leaving it, a
+  status of its own for "done, but not recorded", and folding it into `1`, and the last two are a
+  change a script would notice.
+
+- **A `Retry-After` given as a date is not read.** The dialects read it as a number of seconds,
+  and a date falls through to the doubling a server that said nothing gets. Nothing tested here
+  sends a date; an endpoint that does is what would make it worth the parse, which needs no new
+  dependency - an IMF date is one fixed shape - and would be held to `LINGER` like the seconds are.
+
+- **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
+  doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
+  to be carried on with `-r`. A free model on OpenRouter that is "temporarily rate-limited
+  upstream" stays so for longer than that when several sessions share it. Waiting longer is a trade
+  against a person at the screen, who would rather be told; what would settle it is whether a
+  headless run should wait out a rate limit its own `--deadline` bounds anyway.
+
+- **The relays hold a browser that sends no `Sec-Fetch-Site` only to its `Origin`.** A frame, an
+  image or a no-cors fetch from another site carries no `Origin`, and with fetch metadata the relay
+  refuses it; a browser old enough to send neither gets through to `GET /events` and takes the
+  session from the tab that had it. Closing that for every browser is a header that forbids
+  framing on `GET /`, which stops the frame and not the image, or a token in the page's address
+  that `/events` asks for, which changes how the page is opened.
