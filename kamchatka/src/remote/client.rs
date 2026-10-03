@@ -1307,7 +1307,7 @@ async fn connect(address: &str) -> Result<super::Connection, String> {
             // cannot tell a wrong path from a path nothing is listening at
             Some(bytes) => Err(format!(
                 "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
-                 has to be shorter than {} bytes - ask for the socket under `$XDG_RUNTIME_DIR` or \
+                 can be at most {} bytes - ask for the socket under `$XDG_RUNTIME_DIR` or \
                  in `/tmp`",
                 protocol::MAX_PATH
             )),

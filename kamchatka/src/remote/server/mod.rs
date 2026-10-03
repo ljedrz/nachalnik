@@ -233,7 +233,7 @@ impl Server {
         if let Some(bytes) = protocol::overlong_path(&path.to_string_lossy()) {
             return Err(format!(
                 "a socket file cannot be named by {bytes} bytes, and this one is; a `unix:` path \
-                 has to be shorter than {} bytes - put it under `$XDG_RUNTIME_DIR` or in `/tmp`, or \
+                 can be at most {} bytes - put it under `$XDG_RUNTIME_DIR` or in `/tmp`, or \
                  serve on `--serve tcp:127.0.0.1:PORT`",
                 protocol::MAX_PATH
             ));
