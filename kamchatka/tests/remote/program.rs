@@ -242,13 +242,13 @@ fn the_phone_example_writes_every_session_out() {
 
     // and a page somewhere else is refused, whichever door it tries. Each would end the session
     // if it were taken, so a refusal missed here fails everything after it too
-    let foreign = |extra: &str, host: &str| -> String {
+    let foreign = |line: &str, extra: &str, host: &str| -> String {
         let body = json!({ "do": "submit", "line": "/quit" }).to_string();
         let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
         stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
         write!(
             stream,
-            "POST /do?tab=first HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {}\r\n\
+            "{line} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {}\r\n\
              Connection: close\r\n\r\n{body}",
             body.len()
         )
@@ -257,18 +257,31 @@ fn the_phone_example_writes_every_session_out() {
         let _ = stream.read_to_string(&mut answer);
         answer
     };
-    for (extra, host) in [
+    let post_first = "POST /do?tab=first";
+    for (line, extra, host) in [
         (
+            post_first,
             "Content-Type: application/json\r\nOrigin: http://elsewhere.example\r\n",
             page.as_str(),
         ),
-        ("Content-Type: text/plain\r\n", page.as_str()),
-        ("Content-Type: application/json\r\n", "elsewhere.example"),
+        (post_first, "Content-Type: text/plain\r\n", page.as_str()),
+        (
+            post_first,
+            "Content-Type: application/json\r\n",
+            "elsewhere.example",
+        ),
+        // a frame or an image somewhere else, which carries no `Origin`, taking the session
+        // from the tab that has it
+        (
+            "GET /events?tab=elsewhere",
+            "Sec-Fetch-Site: cross-site\r\n",
+            page.as_str(),
+        ),
     ] {
-        let answer = foreign(extra, host);
+        let answer = foreign(line, extra, host);
         assert!(
             answer.starts_with("HTTP/1.1 403"),
-            "a request from somewhere else was taken: {extra}{host}\n{answer}"
+            "a request from somewhere else was taken: {line} {extra}{host}\n{answer}"
         );
     }
 
