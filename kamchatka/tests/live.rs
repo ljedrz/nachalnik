@@ -826,29 +826,21 @@ async fn a_real_turn_is_recorded_in_the_order_it_was_produced() {
 /// A real turn carries its thinking in the order it was produced, beside what else it holds.
 ///
 /// note: what it looks for is one turn holding more than one kind of thing with thinking among
-/// them, and what it no longer demands is the particular shape the note it replaces named -
-/// thinking, then speech, then a call, in that order. Whether a summary arrives at all is the
-/// endpoint's business and it is not promised; what is this crate's business is that the parts
+/// them, not a particular order of thinking, speech and a call. Whether a summary arrives at all is
+/// the endpoint's business and it is not promised; what is this crate's business is that the parts
 /// arrive where a turn keeps them, in the order they came, and that is what is asserted wherever
 /// one of them turns up.
 ///
-/// note: measured on 2026-09-11, because the last note's measurement had gone stale and a stale
-/// one is worse than none. Through this harness against `gemini-3.5-flash`, three runs gave
-/// `[reasoning, call]`, `[reasoning, call]` and no summary at all; the same harness against
-/// `gemini-3.5-flash-lite` gave none in any of four turns, twice. By hand against the streaming
-/// endpoint with `includeThoughts: true`, five requests a condition: with a tool declared and no
-/// result yet in the conversation, no summary in ten of ten across those two models, and
-/// `gemini-3.6-flash` and `gemini-3.8-flash` answered the same way once each; with nothing
-/// declared, four of five on `gemini-3.5-flash` and none of five on the lite one.
-///
-/// note: so a hand-built request of apparently the same shape summarises where this harness does,
-/// and does not where it does. **I did not isolate why**, and the number of declared tools is not
-/// it - one and three answered alike, five requests each. It is written down rather than guessed
-/// at because the next person to read a skip here should know how far the ground has been covered.
+/// note: whether one arrives is not settled by the request alone. Through this harness,
+/// `gemini-3.5-flash` summarises on some runs and not on others. By hand, with a tool declared and
+/// no result yet in the conversation, no model summarised; with nothing declared, that one mostly
+/// did. What sets this harness's requests apart from a hand-built one is not known, and the number
+/// of declared tools is not it. It is written down so that a skip here is read against what has
+/// already been ruled out.
 ///
 /// note: the lite models return no summary in any condition, so this skips there - and says which
 /// condition it was in when it did. A test that skips for a reason nobody wrote down reads as a
-/// model's whim, which is what the last one did for however long the endpoint had been like this.
+/// model's whim.
 #[tokio::test]
 async fn a_real_turn_carries_its_thinking_in_the_order_it_was_produced() {
     let _serial = SERIAL.lock().await;
