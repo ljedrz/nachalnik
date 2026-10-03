@@ -10,10 +10,10 @@ minor bump may break you.
 ### added
 
 - **`rule` on the wire changes a row of the permissions tab**, as <kbd>a</kbd>, <kbd>r</kbd> and
-  <kbd>n</kbd> do there, through one function, `App::rule`, so the change is recorded and said the
-  same way from either. It takes a row by the spelling `Stanced::subject` gives it and a verdict,
-  refuses a subject that is not a row, and is answered with the projection. `ask` puts a rule
-  answered `always` or `never` back to a question.
+  <kbd>n</kbd> do there, and the change is recorded and said the same way from either. It takes a
+  row by the spelling `Stanced::subject` gives it and a verdict, refuses a subject that is not a
+  row, and is answered with the projection. `ask` puts a rule answered `always` or `never` back to
+  a question.
 - **`examples/browser.html` changes a rule.** Each row of its permissions view carries `allow`,
   `ask` and `deny`, with the one it holds pressed in, and the view asks for a fresh projection on
   any `policy.` record, so a rule changed at the terminal shows there too.
