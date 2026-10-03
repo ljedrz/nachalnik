@@ -784,12 +784,6 @@ impl Args {
     }
 }
 
-/// Whether the settings file found underfoot may be read, asked of the terminal, and a refusal
-/// where there is nobody at one.
-///
-/// note: a refusal rather than a run without the file, because a file carrying `deadline` or
-/// `spend` is a script's bounds, and a script that quietly lost them would run unbounded. Naming
-/// the file with `--config-file` is how a run nobody can ask says it is meant.
 /// Moves a snapshot's numbering past everything the log beside it numbered after it was taken.
 ///
 /// note: the snapshot is rewritten when a turn begins and when the session rests, and the log is
@@ -883,6 +877,12 @@ pub(crate) fn talked_to(records: &[nachalnik::Record]) -> Option<nachalnik::Mode
         .flatten()
 }
 
+/// Whether the settings file found underfoot may be read, asked of the terminal, and a refusal
+/// where there is nobody at one.
+///
+/// note: a refusal rather than a run without the file, because a file carrying `deadline` or
+/// `spend` is a script's bounds, and a script that quietly lost them would run unbounded. Naming
+/// the file with `--config-file` is how a run nobody can ask says it is meant.
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
     use std::io::IsTerminal as _;
 
