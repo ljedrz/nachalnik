@@ -68,6 +68,11 @@ minor bump may break you.
   site passed the relay's checks and, the newest client winning, stopped the tab that had the
   session for good. A request whose `Sec-Fetch-Site` names another site is refused on every route;
   the relay's own page and an address typed or opened from the terminal still get through.
+- **A call a model wrapped in `_unparsed` itself is read as the call inside.** A call whose
+  arguments did not parse goes back to the model under that key, and a model can copy the shape
+  onto every call after it, each valid inside the wrapper - and each was answered as not JSON, so
+  the session made no call that worked again. The provider only puts text there that does not
+  parse, so text that parses to an object, alone under the key, is the model's and is read.
 - **The record directory under the temporary one is made `0700`**, rather than made with the
   umask's mode and then changed, so nobody can open it in between.
 

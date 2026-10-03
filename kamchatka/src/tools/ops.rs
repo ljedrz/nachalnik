@@ -253,6 +253,23 @@ fn branch(op: &Op) -> Value {
 /// one the provider already knew.
 const UNPARSED: &str = "_unparsed";
 
+/// The text of arguments that never parsed, where that is what is under [`UNPARSED`].
+///
+/// note: only where the text does not read as an object on its own. The provider puts text it
+/// could not parse under [`UNPARSED`], and sends the call back to the model in the same shape, so
+/// a model can copy that shape onto its next call - the call it meant, whole and valid, written
+/// inside a wrapper of its own. Answered as not JSON, it is copied again on every call after, and a
+/// session makes no call that works. The provider only ever puts text there that does not parse, so
+/// text that does is the model's wrapper, and the call inside it is read.
+fn unparsed(args: &Value) -> Option<&str> {
+    let written = args.get(UNPARSED)?.as_str()?;
+    let alone = args.as_object().is_some_and(|entries| entries.len() == 1);
+    match serde_json::from_str::<Value>(written) {
+        Ok(Value::Object(_)) if alone => None,
+        _ => Some(written),
+    }
+}
+
 /// How much of a payload to quote back: enough to see the fault in its sentence, and not so much
 /// that a long command is copied into the context twice over.
 const SHOWN: usize = 200;
@@ -351,7 +368,13 @@ fn around(written: &str, at: usize, width: usize) -> String {
 /// to fix an argument it did write.
 pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
-        return Err(unreadable(written));
+        return match serde_json::from_str::<Value>(written) {
+            // the model's own wrapper round the call it meant; see [`unparsed`]
+            Ok(wrapped) if unparsed(args).is_none() => {
+                inner(&wrapped).map(|call| Cow::Owned(call.into_owned()))
+            }
+            _ => Err(unreadable(written)),
+        };
     }
 
     let inside = match args.get(WRAPPER) {
@@ -449,7 +472,7 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
     // refuses the widened call is answered before the tool is handed it, so the tool's own sentence
     // about them is never read, and "names no operation" beside `{"call":` - which does not look
     // like a call naming nothing to whoever wrote it - was sent again unchanged, over and over
-    if let Some(written) = request.args.get(UNPARSED).and_then(Value::as_str) {
+    if let Some(written) = unparsed(&request.args) {
         return Some(format!(
             "the arguments were not JSON - what arrived was `{}` - so no operation could be read \
              from them, and the call is judged against all {} `{}` has; send it again as one JSON \
@@ -832,6 +855,15 @@ mod tests {
             said.contains("`{\"call\": {\"action\"`"),
             "and it says what arrived, which is the thing to fix: {said}"
         );
+        // and a call the model wrapped in that key itself names its operation, which is read
+        // through it
+        assert_eq!(
+            unnamed_operation(
+                &spec,
+                &asking(json!({ UNPARSED: "{\"call\": {\"action\": \"read\"}}" })),
+            ),
+            None
+        );
 
         let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
             .expect("`fly` is not one of these");
@@ -934,6 +966,32 @@ mod tests {
             refusal.contains("</arg_key>"),
             "and it says what arrived, because that is the part to look at: {refusal}"
         );
+    }
+
+    /// Arguments a model wrote under `_unparsed` itself are read as the call inside them.
+    ///
+    /// note: `inclusionai/ling-3.1-flash` copied the shape its one broken call was sent back in onto
+    /// every call after it, each one valid inside the wrapper, and was told each time that its
+    /// arguments were not JSON. Text there that does not parse, or that sits beside something else,
+    /// is still the provider's, and still answered as not JSON.
+    #[test]
+    fn a_call_the_model_wrapped_as_unparsed_is_still_a_call() {
+        let copied = json!({ UNPARSED: "{\"call\": {\"action\": \"read\", \"path\": \"x\"}}" });
+        let read = inner(&copied).expect("a call inside the model's own wrapper");
+        assert_eq!(read["action"], json!("read"));
+        assert_eq!(read["path"], json!("x"));
+
+        let flat = json!({ UNPARSED: "{\"action\": \"read\", \"path\": \"x\"}" });
+        assert_eq!(inner(&flat).expect("flat inside it")["path"], json!("x"));
+
+        for still in [
+            json!({ UNPARSED: "{\"call\": read}" }),
+            json!({ UNPARSED: "42" }),
+            json!({ UNPARSED: "{\"action\": \"read\"}", "path": "x" }),
+        ] {
+            let refusal = inner(&still).expect_err("not a call");
+            assert!(refusal.contains("nothing was done"), "{refusal}");
+        }
     }
 
     /// A payload that never parsed says what is wrong with it and shows that part.
