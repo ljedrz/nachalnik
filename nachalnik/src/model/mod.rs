@@ -152,15 +152,7 @@ impl Message {
     /// most APIs reject and which is very hard to see afterwards. Blocks win where there are
     /// any - there is never both.
     pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
-        let blocks = self.blocks();
-        let flat = match blocks {
-            Some(_) => None,
-            None => Some(&self.tool_calls[..]),
-        };
-
-        flat.into_iter()
-            .flatten()
-            .chain(blocks.into_iter().flatten().filter_map(Block::call))
+        calls_in(self.blocks(), &self.tool_calls)
     }
 
     /// Returns the ordered blocks of this message, if it is carrying any.
@@ -559,15 +551,10 @@ impl ModelResponse {
     /// provider which reports an ordered turn gets its calls gated, run and recorded like any
     /// other. See [`Message::calls`].
     pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
-        let blocks = self.content.as_ref().and_then(Content::as_blocks);
-        let flat = match blocks {
-            Some(_) => None,
-            None => Some(&self.tool_calls[..]),
-        };
-
-        flat.into_iter()
-            .flatten()
-            .chain(blocks.into_iter().flatten().filter_map(Block::call))
+        calls_in(
+            self.content.as_ref().and_then(Content::as_blocks),
+            &self.tool_calls,
+        )
     }
 
     /// Returns what the model thought, wherever it is recorded.
@@ -579,20 +566,51 @@ impl ModelResponse {
     /// field directly is right on one dialect only; this reads both, as [`ModelResponse::calls`]
     /// does.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
-        let blocks = self.content.as_ref().and_then(Content::as_blocks);
-        let flat = match blocks {
-            Some(_) => None,
-            None => self.reasoning.as_ref(),
-        };
-
-        flat.into_iter().chain(
-            blocks
-                .into_iter()
-                .flatten()
-                .filter_map(Block::thought)
-                .map(|part| &part.content),
+        thinking_in(
+            self.content.as_ref().and_then(Content::as_blocks),
+            self.reasoning.as_ref(),
         )
     }
+}
+
+/// The calls a turn asked for: the ones among its ordered blocks where it has blocks, and its flat
+/// list where it has none.
+///
+/// note: one function for [`Message`], [`ModelResponse`] and
+/// [`ContextItem`](crate::ContextItem), because it is one rule about one turn seen as three types,
+/// and a copy that came to read the flat list beside the blocks would give a second account of what
+/// the model asked for.
+pub(crate) fn calls_in<'a>(
+    blocks: Option<&'a [Block]>,
+    flat: &'a [ToolCall],
+) -> impl Iterator<Item = &'a ToolCall> {
+    let flat = match blocks {
+        Some(_) => None,
+        None => Some(flat),
+    };
+
+    flat.into_iter()
+        .flatten()
+        .chain(blocks.into_iter().flatten().filter_map(Block::call))
+}
+
+/// What a turn thought, by the rule [`calls_in`] reads its calls by.
+pub(crate) fn thinking_in<'a>(
+    blocks: Option<&'a [Block]>,
+    flat: Option<&'a Content>,
+) -> impl Iterator<Item = &'a Content> {
+    let flat = match blocks {
+        Some(_) => None,
+        None => flat,
+    };
+
+    flat.into_iter().chain(
+        blocks
+            .into_iter()
+            .flatten()
+            .filter_map(Block::thought)
+            .map(|part| &part.content),
+    )
 }
 
 /// The identity and capabilities of the model behind a [`Provider`], as reported by it.
