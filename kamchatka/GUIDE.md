@@ -812,10 +812,11 @@ conclusion, a thing not to try again. A note is attributed to `agent`, so the ch
 it and `look` can say who put it there, and it can be pinned so compaction cannot take it. Saying
 the same thing out loud in a turn is not a promise about anything; a pin is.
 
-`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
-<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
-for the call: one step would erase the model's own question and orphan the answer it is waiting
-for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
+`undo` walks back and `redo` forward again — deliberately *not* through the kernel's undo stack.
+That stack is yours, bound to <kbd>u</kbd>, and the top of it while a tool is running is always
+the assistant turn that asked for the call: one step would erase the model's own question and
+orphan the answer it is waiting for. So the tool keeps a journal of what *it* did, and that is what
+the two walk. A `reason` is
 required by every one of the eight that change something, and it is what you read in the context
 pane.
 
