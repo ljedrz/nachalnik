@@ -166,6 +166,17 @@ fn a_response_of_blocks_derives_its_stop_reason_and_finds_its_calls() {
     assert!(response.tool_calls.is_empty());
     assert!(response.reasoning.is_none());
 
+    // and one built with both anyway is read by its blocks alone, so nothing it asked for or
+    // thought is counted twice
+    let both = ModelResponse {
+        tool_calls: vec![call("stale", "x", json!({}))],
+        reasoning: Some(Content::text("stale")),
+        ..ModelResponse::blocks(interleaved())
+    };
+    let ids: Vec<_> = both.calls().map(|call| call.id.0.as_str()).collect();
+    assert_eq!(ids, ["c1", "c2"]);
+    assert_eq!(both.thinking().count(), 1);
+
     let quiet = ModelResponse::blocks([Block::text(Content::text("nothing to do"))]);
     assert_eq!(quiet.stop, nachalnik::StopReason::EndTurn);
     assert_eq!(quiet.calls().count(), 0);
