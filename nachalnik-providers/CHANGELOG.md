@@ -40,6 +40,9 @@ minor bump may break you.
 - **The conformance suite asks why a turn with calls ended.** `two_calls` read the calls and not
   `stop`, so a provider that reported `EndTurn` for a turn the server ended with `tool_calls` passed
   every case. It now has to say `ToolUse`, in both dialects.
+- **`Gemini`'s notice about a model the address does not list names three of those it does**, and
+  counts the rest, as `OpenAiCompatible`'s does. It gave only the count, which left a mistyped
+  name nothing to be corrected by.
 
 ## [0.7.0] - 2026-10-02
 
