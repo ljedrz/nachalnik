@@ -300,9 +300,11 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   return types mostly have no `Default`.
 - The runaway is `Sandbox::argv` replaced with `vec![]` or `vec![Default::default()]`. At start-up
   `sandbox::available` probes the confinement by running the program with `argv("exit 0")`, and
-  with those arguments gone the child is a whole start-up of its own, which probes again. It is
-  caught, as a timeout, with the cap holding at about a thousand processes. Run `sandbox.rs` alone
-  at `-j 1`, and leave it out of the `--iterate` runs over the rest, or the two run again.
+  with those arguments gone the child is a whole start-up of its own, which probes again. Under
+  `mutants.sh` at `-j 1` the cap held it at about a thousand processes; under eight shards it
+  outgrew the guard (see "A mutant can start the program over and over" above), so
+  `.cargo/mutants.toml` no longer generates either. Before a run, read this section and the notes
+  above for every mutant they name, and check `mutants.toml` still excludes the dangerous ones.
 - `--iterate` rewrites `outcomes.json`, `missed.txt` and `mutants.json` with the current run's
   mutants only, and `mutants_tasks.py` reads `outcomes.json`. Copy the output directory aside
   before each further run over it, and make tasks from every copy that still has a miss.
