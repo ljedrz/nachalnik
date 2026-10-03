@@ -57,6 +57,13 @@ minor bump may break you.
 - **`examples/jev_assisted_compaction` is `examples/system1_assisted_compaction`**, and asks the
   model `--advise` would.
 
+### fixed
+
+- **Two MCP servers under one name are refused, whatever they offer.** Two `npx` lines with no
+  `name=` both took the name `npx`, and where their tools did not clash both were let in - so
+  `--allow-server npx`, or an `always` answered for one of them, granted both. It is refused
+  before anything is spawned, naming both lines and saying to give each its own `name=`.
+
 ## [0.17.0] - 2026-10-02
 
 ### added

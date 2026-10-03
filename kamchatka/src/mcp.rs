@@ -5,7 +5,10 @@
 //! `main.rs` because an embedder that wants somebody else's tools should not have to re-derive the
 //! one part of this that is not obvious: the name.
 
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use nachalnik::{Kernel, Tool};
 use nachalnik_mcp::Server;
@@ -39,6 +42,21 @@ pub async fn attach(
     let mut offered = Vec::new();
     let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
 
+    // note: refused before anything is spawned, whatever the servers offer. The name is what
+    // `--allow-server` grants and what answering "always" at the prompt answers for, so two
+    // servers under one - two `npx` lines with no `name=` - would be granted together whichever
+    // of them was meant
+    let mut names = HashMap::new();
+    for spec in specs {
+        let (name, line) = named(spec);
+        if let Some(first) = names.insert(name.clone(), line) {
+            return Err(format!(
+                "`{first}` and `{line}` are both named `{name}`; give each server its own with \
+                 `name=command`"
+            ));
+        }
+    }
+
     for spec in specs {
         let (name, line) = named(spec);
         let mut words = line.split_whitespace();
@@ -60,9 +78,10 @@ pub async fn attach(
             .tools()
             .await
             .map_err(|e| format!("`{line}` would not list its tools: {e}"))?;
-        // note: refused rather than let stand, as a failed handshake is. Two servers under one
-        // name - two `npx` lines with no `name=` - offer their tools under the same identifiers,
-        // and installing the second would quietly take the first one's out from under it
+        // note: refused rather than let stand, as a failed handshake is. Two names can still put
+        // two tools under one identifier - `a` offering `b__c` and `a__b` offering `c`, or two long
+        // ones cut short to fit - and installing the second would quietly take the first one's out
+        // from under it
         //
         // note: and a server offering one name twice is refused as well, and said as that. Nothing
         // `name=command` does can separate its two tools
