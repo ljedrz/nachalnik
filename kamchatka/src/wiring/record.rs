@@ -208,9 +208,17 @@ impl Recorder {
 
 /// The directory under the temporary one that a record goes in, made and checked.
 fn private_dir() -> Result<std::path::PathBuf, String> {
+    use std::os::unix::fs::DirBuilderExt as _;
+
     let mut dir = std::env::temp_dir();
     dir.push("kamchatka");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not make {}: {e}", dir.display()))?;
+    // note: made `0700` rather than made and then chmodded, because in between it is open to
+    // anybody, and a directory somebody opened then can be listed through that descriptor after
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|e| format!("could not make {}: {e}", dir.display()))?;
     private(&dir)?;
 
     Ok(dir)
