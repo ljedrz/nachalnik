@@ -328,6 +328,11 @@ async fn load_refuses_what_is_not_a_file() {
 #[tokio::test]
 async fn saving_into_a_directory_names_the_session_rather_than_writing_a_dotfile() {
     let dir = common::scratch("save-dir");
+    // `scratch` clears the directory and not its siblings, which the last assertion is about: a
+    // run that wrote them - an earlier version of `/save`, or a mutant of it - would fail every
+    // run after it
+    let _ = std::fs::remove_file(dir.with_extension("json"));
+    let _ = std::fs::remove_file(dir.with_extension("jsonl"));
 
     let mut harness = Harness::new([ModelResponse::text("noted")]);
     harness.send("remember 4817").await;
