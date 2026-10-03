@@ -83,6 +83,8 @@ minor bump may break you.
   onto every call after it, each valid inside the wrapper - and each was answered as not JSON, so
   the session made no call that worked again. The provider only puts text there that does not
   parse, so text that parses to an object, alone under the key, is the model's and is read.
+- **A `unix:` path too long for a socket is refused with the limit it actually has**: at most 107
+  bytes, where the refusal said shorter than 107 and a path of exactly that length works.
 - **The record directory under the temporary one is made `0700`**, rather than made with the
   umask's mode and then changed, so nobody can open it in between.
 
