@@ -318,3 +318,13 @@ Referenced from [AGENTS.md](AGENTS.md).
   session from the tab that had it. Closing that for every browser is a header that forbids
   framing on `GET /`, which stops the frame and not the image, or a token in the page's address
   that `/events` asks for, which changes how the page is opened.
+
+- **The largest source files are not split.** `kamchatka`'s `app/mod.rs`, `app/command.rs`,
+  `sandbox/mod.rs` and `remote/protocol/mod.rs`, and `nachalnik`'s `kernel/mod.rs`, are each
+  longer than can be read at once, and each has a seam that is already marked: the kernel's own
+  section comments, the sandbox's policy model beside its Landlock probing, the application's turn
+  machinery beside its answering of questions. Moving a section to a file of its own is mechanical,
+  and it costs the history `git blame` reads and the layout MAP.md describes, and for the kernel
+  the one-file account of every public operation that AGENTS.md gives. Whether a reader's time is
+  worth that is the decision; a change that has to touch a whole one of these files is what would
+  make it.
