@@ -152,12 +152,16 @@ async fn live() -> Option<(Kernel, Arc<OpenAiCompatible>)> {
 
 /// The same, for a test that needs the kernel configured differently.
 async fn live_with(config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    let model = nachalnik_utils::test_model(DEFAULT_MODEL);
+    wired(&nachalnik_utils::test_model(DEFAULT_MODEL), config).await
+}
+
+/// A kernel wired to this model, or `None` when there is no API key to use.
+async fn wired(model: &str, config: Config) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
     // no key means no live tests, which is how this suite skips itself. `streaming(false)` because
     // most of these are about what goes out rather than how it comes back; the one that is about
     // streaming turns it on through `params`, the same way a user would
     let provider = Arc::new(
-        nachalnik_utils::provider(&model)
+        nachalnik_utils::provider(model)
             .ok()?
             .labelled("openrouter")
             .streaming(false)
@@ -1775,22 +1779,7 @@ async fn a_document_goes_out_as_a_document() {
 /// and an endpoint that hands PDFs to a parser charges for that - so each is opted into by name
 /// and skipped by default.
 async fn wired_to(var: &str) -> Option<(Kernel, Arc<OpenAiCompatible>)> {
-    let model = env::var(var).ok()?;
-    let provider = Arc::new(
-        nachalnik_utils::provider(&model)
-            .ok()?
-            .labelled("openrouter")
-            .streaming(false)
-            .recording(true),
-    );
-    provider.probe().await;
-
-    let kernel = Kernel::new(Config::default());
-    kernel.set_provider(provider.clone());
-    kernel.set_policy(Arc::new(AllowAll));
-    kernel.set_params(params(500));
-
-    Some((kernel, provider))
+    wired(&env::var(var).ok()?, Config::default()).await
 }
 
 /// Several calls run at once, and the request that follows still pairs each with its answer.
