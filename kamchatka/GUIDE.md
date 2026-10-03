@@ -618,12 +618,13 @@ out of reach, a binary file, one that could not be read, and a path that is not 
 pipe, a socket, a device. A binary file is named by the byte that made it one, so the line joins up
 with what `read` did with the same file: a NUL is a character to `read`, and where the search stops.
 
-The rules it walks by, all of which are said in the tool's own description so the model is not
-guessing: what a `.gitignore` hides is skipped, `.git` always; hidden files **are** searched, since
-a model that cannot find `.github/workflows` concludes the file is not there; a symbolic link is
-read where it points inside the working directory and counted where it points out; and a path rule
-that is not `allow` stops a walk opening that file, because "ask me first" is not a thing a walk of
-nine hundred files can honour. The path the call *names* is judged the way `read`'s is, so
+The rules it walks by: what a `.gitignore` hides is skipped, `.git` always; hidden files **are**
+searched, since a model that cannot find `.github/workflows` concludes the file is not there; a
+symbolic link is read where it points inside the working directory and counted where it points
+out; and a path rule that is not `allow` stops a walk opening that file, because "ask me first" is
+not a thing a walk of nine hundred files can honour. The first three are in the tool's own
+description, so the model is not guessing; the last two are counted on the answer's `skipped:`
+line when they come up. The path the call *names* is judged the way `read`'s is, so
 `grep` in `.env` is a question exactly as reading it is.
 
 `glob` is the same walk with a different question: `**/*.rs` in, matching paths out, in the shape
