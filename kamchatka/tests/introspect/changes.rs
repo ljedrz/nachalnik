@@ -1662,10 +1662,6 @@ async fn a_note_is_written_down_where_compaction_cannot_reach_it() {
         written.included_because.as_deref(),
         Some("so it outlives this turn")
     );
-    assert_eq!(
-        written.included_because.as_deref(),
-        Some("so it outlives this turn")
-    );
 
     // and it is one of its own changes, so it can walk it back - which excludes it rather than
     // destroying it, like everything else here
