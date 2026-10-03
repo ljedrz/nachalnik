@@ -25,18 +25,7 @@ use nachalnik_eval::{
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say};
-
-/// A subject wired to the rulebook, in a session called `name`.
-fn subject(name: &str, model: Arc<Rulebook>) -> Subject {
-    let kernel = Kernel::new(Config {
-        session_name: Some(name.to_owned()),
-        ..Config::default()
-    });
-    kernel.set_provider(model);
-
-    Subject::new(kernel)
-}
+use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say, subject};
 
 /// Runs one experiment on a fresh subject and scores it.
 async fn run(experiment: impl Experiment) -> (Outcome, Arc<Rulebook>) {
@@ -863,17 +852,6 @@ impl Provider for SilentWithoutTheCallersNote {
     }
 }
 
-/// A subject on a provider of the test's own, in a session called `name`.
-fn subject_on(name: &str, model: Arc<dyn Provider>) -> Subject {
-    let kernel = Kernel::new(Config {
-        session_name: Some(name.to_owned()),
-        ..Config::default()
-    });
-    kernel.set_provider(model);
-
-    Subject::new(kernel)
-}
-
 /// The check a run recorded, by what it says it was checking.
 fn check_holding<'a>(outcome: &'a Outcome, what: &str) -> &'a nachalnik_eval::Check {
     outcome
@@ -1058,7 +1036,7 @@ async fn a_ladder_whose_second_session_did_not_agree_says_so() {
         rulebook: Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
         of_the_callers: CALLERS,
     });
-    let subject = subject_on("subject", model.clone());
+    let subject = subject("subject", model.clone());
     subject
         .kernel()
         .push(ContextItem::memory("caller", CALLERS).because("put by the test"));
@@ -1104,7 +1082,7 @@ async fn a_ladder_whose_second_session_did_not_agree_says_so() {
 /// used them fails.
 #[tokio::test]
 async fn a_subject_that_never_reached_for_the_handles_is_told_it_tested_nothing() {
-    let subject = subject_on("subject", Arc::new(InWordsOnly));
+    let subject = subject("subject", Arc::new(InWordsOnly));
     let experiment = Instrumented::new().on(&DEPOT).battery(2).tests(1);
     let trial = Trial::new(experiment.name(), &subject);
     experiment
