@@ -556,7 +556,15 @@ impl Conformance {
             }
         }
 
-        Outcome::Passed
+        // note: a turn that asked for tools says so in both dialects, though Google's spells it
+        // `STOP`. The kernel runs the calls either way; what reads this is a caller or a record
+        // asking why the turn ended
+        match &response.stop {
+            StopReason::ToolUse => Outcome::Passed,
+            other => Outcome::Failed(format!(
+                "a turn that asked for two tools came back as {other:?}"
+            )),
+        }
     }
 
     /// An index that starts at one leaves no unfilled call at zero.
