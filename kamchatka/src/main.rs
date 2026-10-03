@@ -895,6 +895,27 @@ async fn drawn(
     outcome
 }
 
+/// Hands one event off the kernel's broadcast to the screen, or says how many went by unread;
+/// `false` once the broadcast has closed and nothing more will come.
+///
+/// note: the screen is the live view, and the session log is the one that keeps everything, so
+/// what lagged is said rather than recovered.
+#[cfg(feature = "tui")]
+fn taken(app: &mut App, event: Result<Event, tokio::sync::broadcast::error::RecvError>) -> bool {
+    use tokio::sync::broadcast::error::RecvError;
+
+    match event {
+        Ok(event) => app.on_event(event),
+        Err(RecvError::Lagged(missed)) => app.say(
+            Speaker::Note,
+            format!("{missed} events went by too fast to draw; /save has them all"),
+        ),
+        Err(RecvError::Closed) => return false,
+    }
+
+    true
+}
+
 /// Draws, waits for whichever of the things that can happen happens first, and does it again.
 ///
 /// note: `server` is the half that makes this the same session from two places at once. The keys
@@ -973,15 +994,8 @@ async fn run(
                 let queued = events.len();
                 let mut event = event;
                 for _ in 0..=queued {
-                    match event {
-                        Ok(event) => app.on_event(event),
-                        // the screen is the live view; the session log is the one that keeps
-                        // everything
-                        Err(RecvError::Lagged(missed)) => app.say(
-                            Speaker::Note,
-                            format!("{missed} events went by too fast to draw; /save has them all"),
-                        ),
-                        Err(RecvError::Closed) => return Ok(()),
+                    if !taken(app, event) {
+                        return Ok(());
                     }
                     match events.try_recv() {
                         Ok(next) => event = Ok(next),
@@ -1042,13 +1056,8 @@ async fn run(
                     }
                 }
                 for event in held {
-                    match event {
-                        Ok(event) => app.on_event(event),
-                        Err(RecvError::Lagged(missed)) => app.say(
-                            Speaker::Note,
-                            format!("{missed} events went by too fast to draw; /save has them all"),
-                        ),
-                        Err(RecvError::Closed) => return Ok(()),
+                    if !taken(app, event) {
+                        return Ok(());
                     }
                 }
             }
