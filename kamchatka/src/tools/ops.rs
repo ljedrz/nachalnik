@@ -473,11 +473,18 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
     // about them is never read, and "names no operation" beside `{"call":` - which does not look
     // like a call naming nothing to whoever wrote it - was sent again unchanged, over and over
     if let Some(written) = unparsed(&request.args) {
+        // note: with what is wrong and the part of it to look at, as `unreadable` gives them. Told
+        // only that it was not JSON and shown the end of the payload, a model whose fault is in the
+        // middle of it - a `\(` in a pattern - has nothing to change, and sends the same call again
+        let (why, at) = match serde_json::from_str::<Value>(written) {
+            Err(e) => (format!(" ({e})"), at(written, e.line(), e.column())),
+            Ok(_) => (String::new(), written.len()),
+        };
         return Some(format!(
-            "the arguments were not JSON - what arrived was `{}` - so no operation could be read \
-             from them, and the call is judged against all {} `{}` has; send it again as one JSON \
-             object",
-            around(written, written.len(), SHOWN),
+            "the arguments were not JSON{why} - what arrived there was `{}` - so no operation \
+             could be read from them, and the call is judged against all {} `{}` has; send it \
+             again as one JSON object",
+            around(written, at, SHOWN),
             ops.len(),
             spec.id
         ));
@@ -854,6 +861,18 @@ mod tests {
         assert!(
             said.contains("`{\"call\": {\"action\"`"),
             "and it says what arrived, which is the thing to fix: {said}"
+        );
+        // and the fault is named and shown where it is, not only the end of what arrived
+        let escaped = format!(
+            "{{\"call\": {{\"action\": \"grep\", \"pattern\": \"problems\\(\", \"path\": \"{}\"}}}}",
+            "x".repeat(300)
+        );
+        let said = unnamed_operation(&spec, &asking(json!({ UNPARSED: escaped })))
+            .expect("arguments that never parsed name nothing");
+        assert!(said.contains("invalid escape"), "{said}");
+        assert!(
+            said.contains("problems\\("),
+            "and it shows the fault: {said}"
         );
         // and a call the model wrapped in that key itself names its operation, which is read
         // through it

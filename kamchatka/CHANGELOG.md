@@ -75,6 +75,11 @@ minor bump may break you.
   parse, so text that parses to an object, alone under the key, is the model's and is read.
 - **A `unix:` path too long for a socket is refused with the limit it actually has**: at most 107
   bytes, where the refusal said shorter than 107 and a path of exactly that length works.
+- **A call refused for arguments that are not JSON says what is wrong with them, and where.** The
+  refusal a policy gives before the tool is reached showed the end of what arrived and nothing of
+  why, so a fault in the middle - a `\(` in a pattern - left a model nothing to change, and it sent
+  the same call again. It now names the fault and shows the text around it, as the tool's own
+  answer does.
 - **The record directory under the temporary one is made `0700`**, rather than made with the
   umask's mode and then changed, so nobody can open it in between.
 
