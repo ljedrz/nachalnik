@@ -511,16 +511,8 @@ pub(super) fn draw_context(
 
     app.selected = app.selected.min(items.len() - 1);
     app.list.select(Some(app.selected));
-    let highlight = match app.focus == Focus::Body {
-        true => Style::default().add_modifier(Modifier::REVERSED),
-        // note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
-        // background this program does not know it has - it reads as barely-there on a dark theme
-        // and as a black bar on a light one, which is the same mistake the code blocks avoid
-        false => Style::default().add_modifier(Modifier::UNDERLINED),
-    };
-
     frame.render_stateful_widget(
-        List::new(rows).highlight_style(highlight),
+        List::new(rows).highlight_style(highlight(app)),
         inner,
         &mut app.list,
     );
@@ -575,6 +567,19 @@ fn unrated(app: &App) -> Vec<Line<'static>> {
 #[cfg(not(feature = "shell-advisor"))]
 fn unrated(_: &App) -> Vec<Line<'static>> {
     Vec::new()
+}
+
+/// How a list marks its selected row: reversed while the keys are on it, underlined while they
+/// are not.
+///
+/// note: underlined rather than a dark slab behind it. `Rgb(40, 40, 40)` is a shade of the
+/// background this program does not know it has - it reads as barely-there on a dark theme and as
+/// a black bar on a light one, which is the same mistake the code blocks avoid.
+fn highlight(app: &App) -> Style {
+    match app.focus == Focus::Body {
+        true => Style::default().add_modifier(Modifier::REVERSED),
+        false => Style::default().add_modifier(Modifier::UNDERLINED),
+    }
 }
 
 /// What the policy will answer about each capability, and which tools that covers.
@@ -681,14 +686,8 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
 
     app.chosen = app.chosen.min(rows.len() - 1);
     app.grants.select(Some(app.chosen));
-    let highlight = match app.focus == Focus::Body {
-        true => Style::default().add_modifier(Modifier::REVERSED),
-        // underlined, for the reason the context tab's selected row is
-        false => Style::default().add_modifier(Modifier::UNDERLINED),
-    };
-
     frame.render_stateful_widget(
-        List::new(listed).highlight_style(highlight),
+        List::new(listed).highlight_style(highlight(app)),
         inner,
         &mut app.grants,
     );
