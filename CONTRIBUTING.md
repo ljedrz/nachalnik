@@ -206,14 +206,16 @@ Its own live suite is about thirty requests; the whole experiment suite is a tho
 Test files: `nachalnik/tests/` is `kernel/` (what gets sent, what gets run, who decides, the
 record, and the seams - a file each), `context/` (items, undo, compaction, and what the context
 projects to), `state`, `session`, `tokens`, `concurrency`, `blocks`, `crash` (a dropped kernel and
-a resume from what was written down), `invariants` (what holds after every operation of a
-generated sequence) and `live`. In `concurrency`, a claim about ordering is tested by holding the
+a resume from what was written down), `records` (the log and the snapshot as they look on disk,
+held to the fixtures under `records/` in both directions), `invariants` (what holds after every
+operation of a generated sequence) and `live`. In `concurrency`, a claim about ordering is tested by holding the
 kernel at one moment through a seam - a counter or a provider that waits to be let go - and doing
 the other thing while it is there, rather than by racing threads and hoping.
 
 `nachalnik-eval/tests/` is `machinery` (the readings, the arithmetic and the pinned instrument
-digests), `harness`, `abreast` and `paced` (the combinator independent work runs on, and that a
-run asked to go abreast never goes wider than it was told) and `live`. `harness` runs the whole
+digests), `harness`, `attribution_record` (what `attribution` puts on the record beside its
+scores), `abreast` and `paced` (the combinator independent work runs on, and that a run asked to go
+abreast never goes wider than it was told) and `live`. `harness` runs the whole
 loop against a provider whose causal structure the test wrote. It is the only way to check that
 the harness recovers an influence nobody told it about and, since the rulebook can emit tool
 calls, the only way to check the handles without paying a model to use them.
@@ -237,8 +239,8 @@ file, a signal, a pty, and a session written where it said it was. The program b
 provider out of two environment variables in a process of its own, so a scripted one cannot be
 swapped into it. `common::endpoint` answers on a socket instead, which is the only seam a child
 process has, and is what lets a tool call, a spend ceiling and a recorded session be driven
-without a key. `config` is the settings file through the same door, and `mcp` is somebody else's
-server spawned as a child.
+without a key. `config` is the settings file through the same door, `mcp` is somebody else's
+server spawned as a child, and `reconcile` folds real forks of one session back into one.
 
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
 back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
