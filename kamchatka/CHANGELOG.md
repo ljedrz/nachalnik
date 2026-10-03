@@ -68,6 +68,8 @@ minor bump may break you.
   site passed the relay's checks and, the newest client winning, stopped the tab that had the
   session for good. A request whose `Sec-Fetch-Site` names another site is refused on every route;
   the relay's own page and an address typed or opened from the terminal still get through.
+- **The record directory under the temporary one is made `0700`**, rather than made with the
+  umask's mode and then changed, so nobody can open it in between.
 
 ## [0.17.0] - 2026-10-02
 
