@@ -86,12 +86,7 @@ fn question_parts(
     // start being true
     let answers = format!(
         "{}[y] once   [a] always, for {}   [n] no\n[i] the exact JSON   [d] {}{}{}",
-        // the same reading `draw_question` colours the border by, so the panel cannot be counted
-        // one way and drawn the other
-        match app.focus == Focus::Body && app.tab == Tab::Chat {
-            true => "",
-            false => "[tab] puts the keys here, and then:\n",
-        },
+        until_keys(app),
         judged.join(" and "),
         match waiting > 1 {
             true => "drop them all",
@@ -258,10 +253,7 @@ fn reach_parts(
 
     let answers = format!(
         "{}[y] this command   [a] always, for net:reach   [n] no{}",
-        match app.focus == Focus::Body && app.tab == Tab::Chat {
-            true => "",
-            false => "[tab] puts the keys here, and then:\n",
-        },
+        until_keys(app),
         match waiting > 1 {
             true => format!("\n\n{} more after this one", waiting - 1),
             false => String::new(),
@@ -299,10 +291,7 @@ fn compaction_parts(
 
     let answers = format!(
         "{}[y] take it   [n] leave it{}",
-        match app.focus == Focus::Body && app.tab == Tab::Chat {
-            true => "",
-            false => "[tab] puts the keys here, and then:\n",
-        },
+        until_keys(app),
         match cut {
             true => "   pgup / pgdn for the rest",
             false => "",
@@ -377,6 +366,23 @@ pub(super) fn question_rows(app: &App, columns: usize) -> u16 {
 /// A tool is waiting to be told whether it may run, in the prompt's place.
 ///
 /// Returns the offset the arguments were really drawn at.
+/// Whether the keys reach what is open over the screen: the chat tab, with the prompt's keys
+/// handed to the body.
+///
+/// note: one reading for the border of a question and for the lines counted in every panel, so
+/// that a panel cannot be measured one way and drawn the other.
+fn answering(app: &App) -> bool {
+    app.focus == Focus::Body && app.tab == Tab::Chat
+}
+
+/// The line above a panel's answers while the keys are elsewhere, and nothing once they are here.
+fn until_keys(app: &App) -> &'static str {
+    match answering(app) {
+        true => "",
+        false => "[tab] puts the keys here, and then:\n",
+    }
+}
+
 pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     let columns = area.width.saturating_sub(4) as usize;
     let Some((head, args, foot)) = question_parts(app, columns, false) else {
@@ -390,7 +396,7 @@ pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     // note: red stays red whatever the frame is. It is the one colour here that is not saying
     // where the keys are - it is saying a tool is waiting on somebody - and a person who set the
     // frame red would otherwise have configured that distinction away
-    let asking = app.focus == Focus::Body && app.tab == Tab::Chat;
+    let asking = answering(app);
     let style = match asking {
         true => Style::default().fg(app.accent),
         false => Style::default().fg(Color::Red),
