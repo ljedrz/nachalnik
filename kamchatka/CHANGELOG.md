@@ -73,6 +73,11 @@ minor bump may break you.
   `name=` both took the name `npx`, and where their tools did not clash both were let in - so
   `--allow-server npx`, or an `always` answered for one of them, granted both. It is refused
   before anything is spawned, naming both lines and saying to give each its own `name=`.
+- **A page on another site cannot take the session from the `gateway` or `phone` relay's tab.** A
+  browser sends no `Origin` on a frame, an image or a no-cors fetch, so a `GET /events` from any
+  site passed the relay's checks and, the newest client winning, stopped the tab that had the
+  session for good. A request whose `Sec-Fetch-Site` names another site is refused on every route;
+  the relay's own page and an address typed or opened from the terminal still get through.
 
 ## [0.17.0] - 2026-10-02
 

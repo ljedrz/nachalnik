@@ -181,6 +181,12 @@ async fn serve(browser: TcpStream, session: &str, tabs: Tabs, named: Named) -> R
 /// host has to be an address or `localhost` rather than a name, which is what a rebinding needs; a
 /// request that says where it came from has to have come from here; and a command has to say it is
 /// JSON, which a page elsewhere cannot send without a preflight this server never answers.
+///
+/// note: `Origin` is not on every request. A browser leaves it off a page's own `EventSource`, and
+/// off a frame, an image or a no-cors fetch from anywhere else, so it cannot tell those apart; and
+/// opening `/events` takes the session from the tab that had it, which stops for good. A browser
+/// that says where a request came from with `Sec-Fetch-Site` is held to it: this page, or nowhere
+/// at all, which is an address typed or opened from the terminal.
 fn foreign(request: &Request) -> Option<&'static str> {
     let Some(host) = request.header("host") else {
         return Some("a request names the host it is for");
@@ -195,6 +201,12 @@ fn foreign(request: &Request) -> Option<&'static str> {
     if request
         .header("origin")
         .is_some_and(|origin| origin != format!("http://{host}"))
+    {
+        return Some("this answers its own page and no other");
+    }
+    if request
+        .header("sec-fetch-site")
+        .is_some_and(|site| site != "same-origin" && site != "none")
     {
         return Some("this answers its own page and no other");
     }
