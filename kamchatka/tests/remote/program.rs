@@ -49,13 +49,10 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
         .expect("the host did not start");
 
     // the socket appears when the session is ready for somebody, and not before
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let client = tokio::task::spawn_blocking({
         let socket = socket.clone();
@@ -459,14 +456,8 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
         .kill_on_drop(true)
         .spawn()
         .expect("the program did not start");
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
     assert!(
-        socket.exists(),
+        crate::listening(&socket).await,
         "a file carrying only the defaults was refused, so the file `--print-config` writes \
          cannot be used to serve"
     );
@@ -992,13 +983,10 @@ async fn a_served_run_whose_stdout_nobody_is_reading_still_serves() {
     // the address went into a pipe nobody is going to read, and the run carries on regardless
     drop(host.stdout.take().expect("a pipe"));
 
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let mut peer = tokio::net::UnixStream::connect(&socket)
         .await
@@ -1947,13 +1935,10 @@ async fn a_session_out_of_descriptors_says_so_once() {
         .kill_on_drop(true)
         .spawn()
         .expect("the host did not start");
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let mut idle = Vec::new();
     for _ in 0..100 {
@@ -2029,13 +2014,10 @@ async fn a_served_session_a_signal_ended_says_so_in_its_status() {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .expect("the program did not start");
-        for _ in 0..100 {
-            if socket.exists() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        assert!(socket.exists(), "SIG{signal}: nothing listened");
+        assert!(
+            crate::listening(&socket).await,
+            "SIG{signal}: nothing listened"
+        );
 
         let sent = std::process::Command::new("kill")
             .args([&format!("-{signal}"), &host.id().to_string()])

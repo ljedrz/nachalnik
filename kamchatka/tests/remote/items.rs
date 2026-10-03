@@ -428,13 +428,10 @@ async fn a_restart_on_the_drawn_loop_lets_go_of_its_clients_too() {
         .spawn()
         .expect("the host did not start");
 
-    for _ in 0..200 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     // note: the stdin of this one is held open on purpose, and it is the whole of how the claim is
     // made. A client that closed its input would leave of its own accord - which is what every
