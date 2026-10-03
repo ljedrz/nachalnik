@@ -240,6 +240,30 @@ pub fn same_model(listed: &str, model: &str) -> bool {
         || listed.strip_suffix(":latest") == Some(model)
 }
 
+/// Three of the names a listing gives, and an ellipsis where it gives more.
+///
+/// note: three, because an endpoint that lists hundreds - OpenRouter does - would otherwise put
+/// every one of them on one line, and none leaves somebody who mistyped a name nothing to correct
+/// it by.
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+pub(crate) fn some_of(listed: &[String]) -> String {
+    let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
+    match listed.len() > some.len() {
+        true => format!("{}, …", some.join(", ")),
+        false => some.join(", "),
+    }
+}
+
+/// What a dialect says when the address it was sent to does not list the model it asks for.
+#[cfg(any(feature = "gemini", feature = "openai"))]
+pub(crate) fn unlisted(model: &str, listed: &[String]) -> String {
+    format!(
+        "{model} is not one of the {} models this address lists ({})",
+        listed.len(),
+        some_of(listed)
+    )
+}
+
 /// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.
 ///
 /// note: one rule, in one place, because more than one thing in this workspace needs it and each
