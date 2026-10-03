@@ -260,16 +260,17 @@ whether or not the column is on screen; it is dropped below 84 columns, and a fi
 less on a narrow terminal would be the worse surprise. A trace row matches on the name, the detail
 and the clock, so an hour or a date finds what happened in it.
 
-<kbd>←</kbd> and <kbd>→</kbd> move within the query, so a mistake four letters back is one you can
-go to and fix — <kbd>backspace</kbd> takes out what is behind the cursor and <kbd>delete</kbd> what
-is in front of it, and typing goes in where the cursor is. Everything else stays with the pane,
-deliberately: the point of filtering four hundred events down to nine is to read the nine, and a
-box that swallowed the scroll keys would mean closing the search, and so losing the filter, to look
-at what it found. So <kbd>↑</kbd> <kbd>↓</kbd> and the paging still move between the rows
-underneath, and so do <kbd>home</kbd> and <kbd>end</kbd> — which are all that is left of
-<kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it,
-and closing clears it: a filter that outlived its box would leave a window quietly showing four rows
-of hundreds with nothing on screen saying why. Changing tabs clears it for the same reason.
+<kbd>←</kbd> <kbd>→</kbd> <kbd>home</kbd> and <kbd>end</kbd> move within the query, as they do in
+the prompt, so a mistake four letters back is one you can go to and fix — <kbd>backspace</kbd>
+takes out what is behind the cursor and <kbd>delete</kbd> what is in front of it, and typing goes
+in where the cursor is. Everything else stays with the pane, deliberately: the point of filtering
+four hundred events down to nine is to read the nine, and a box that swallowed the scroll keys
+would mean closing the search, and so losing the filter, to look at what it found. So <kbd>↑</kbd>
+<kbd>↓</kbd> and the paging still move between the rows underneath. What it costs is the ends of
+the list: <kbd>g</kbd> and <kbd>G</kbd> are letters while the box is open, so the first and last
+rows are reached by those until it is closed. <kbd>esc</kbd> closes it, and closing clears it: a
+filter that outlived its box would leave a window quietly showing four rows of hundreds with
+nothing on screen saying why. Changing tabs clears it for the same reason.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, under a header that counts the items in and out, names each
@@ -618,12 +619,13 @@ out of reach, a binary file, one that could not be read, and a path that is not 
 pipe, a socket, a device. A binary file is named by the byte that made it one, so the line joins up
 with what `read` did with the same file: a NUL is a character to `read`, and where the search stops.
 
-The rules it walks by, all of which are said in the tool's own description so the model is not
-guessing: what a `.gitignore` hides is skipped, `.git` always; hidden files **are** searched, since
-a model that cannot find `.github/workflows` concludes the file is not there; a symbolic link is
-read where it points inside the working directory and counted where it points out; and a path rule
-that is not `allow` stops a walk opening that file, because "ask me first" is not a thing a walk of
-nine hundred files can honour. The path the call *names* is judged the way `read`'s is, so
+The rules it walks by: what a `.gitignore` hides is skipped, `.git` always; hidden files **are**
+searched, since a model that cannot find `.github/workflows` concludes the file is not there; a
+symbolic link is read where it points inside the working directory and counted where it points
+out; and a path rule that is not `allow` stops a walk opening that file, because "ask me first" is
+not a thing a walk of nine hundred files can honour. The first three are in the tool's own
+description, so the model is not guessing; the last two are counted on the answer's `skipped:`
+line when they come up. The path the call *names* is judged the way `read`'s is, so
 `grep` in `.env` is a question exactly as reading it is.
 
 `glob` is the same walk with a different question: `**/*.rs` in, matching paths out, in the shape
@@ -810,10 +812,11 @@ conclusion, a thing not to try again. A note is attributed to `agent`, so the ch
 it and `look` can say who put it there, and it can be pinned so compaction cannot take it. Saying
 the same thing out loud in a turn is not a promise about anything; a pin is.
 
-`undo` walks back — deliberately *not* the kernel's undo stack. That stack is yours, bound to
-<kbd>u</kbd>, and the top of it while a tool is running is always the assistant turn that asked
-for the call: one step would erase the model's own question and orphan the answer it is waiting
-for. So the tool keeps a journal of what *it* did, and that is what it walks. A `reason` is
+`undo` walks back and `redo` forward again — deliberately *not* through the kernel's undo stack.
+That stack is yours, bound to <kbd>u</kbd>, and the top of it while a tool is running is always
+the assistant turn that asked for the call: one step would erase the model's own question and
+orphan the answer it is waiting for. So the tool keeps a journal of what *it* did, and that is what
+the two walk. A `reason` is
 required by every one of the eight that change something, and it is what you read in the context
 pane.
 

@@ -10,10 +10,10 @@ minor bump may break you.
 ### added
 
 - **`rule` on the wire changes a row of the permissions tab**, as <kbd>a</kbd>, <kbd>r</kbd> and
-  <kbd>n</kbd> do there, through one function, `App::rule`, so the change is recorded and said the
-  same way from either. It takes a row by the spelling `Stanced::subject` gives it and a verdict,
-  refuses a subject that is not a row, and is answered with the projection. `ask` puts a rule
-  answered `always` or `never` back to a question.
+  <kbd>n</kbd> do there, and the change is recorded and said the same way from either. It takes a
+  row by the spelling `Stanced::subject` gives it and a verdict, refuses a subject that is not a
+  row, and is answered with the projection. `ask` puts a rule answered `always` or `never` back to
+  a question.
 - **`examples/browser.html` changes a rule.** Each row of its permissions view carries `allow`,
   `ask` and `deny`, with the one it holds pressed in, and the view asks for a fresh projection on
   any `policy.` record, so a rule changed at the terminal shows there too.
@@ -56,6 +56,35 @@ minor bump may break you.
   command, since nothing here reads it.
 - **`examples/jev_assisted_compaction` is `examples/system1_assisted_compaction`**, and asks the
   model `--advise` would.
+
+### fixed
+
+- **Two MCP servers under one name are refused, whatever they offer.** Two `npx` lines with no
+  `name=` both took the name `npx`, and where their tools did not clash both were let in - so
+  `--allow-server npx`, or an `always` answered for one of them, granted both. It is refused
+  before anything is spawned, naming both lines and saying to give each its own `name=`.
+- **A page on another site cannot take the session from the `gateway` or `phone` relay's tab.** A
+  browser sends no `Origin` on a frame, an image or a no-cors fetch, so a `GET /events` from any
+  site passed the relay's checks and, the newest client winning, stopped the tab that had the
+  session for good. A request whose `Sec-Fetch-Site` names another site is refused on every route;
+  the relay's own page and an address typed or opened from the terminal still get through.
+- **A call a model wrapped in `_unparsed` itself is read as the call inside.** A call whose
+  arguments did not parse goes back to the model under that key, and a model can copy the shape
+  onto every call after it, each valid inside the wrapper - and each was answered as not JSON, so
+  the session made no call that worked again. The provider only puts text there that does not
+  parse, so text that parses to an object, alone under the key, is the model's and is read.
+- **A `unix:` path too long for a socket is refused with the limit it actually has**: at most 107
+  bytes, where the refusal said shorter than 107 and a path of exactly that length works.
+- **A call refused for arguments that are not JSON says what is wrong with them, and where.** The
+  refusal a policy gives before the tool is reached showed the end of what arrived and nothing of
+  why, so a fault in the middle - a `\(` in a pattern - left a model nothing to change, and it sent
+  the same call again. It now names the fault and shows the text around it, as the tool's own
+  answer does.
+- **A command answered at the network gate is said to be answered for that command alone**, on the
+  trace and in what `log` reads to a model. Its `policy.ruled` was drawn as `deny from now on`, and
+  a model reading it took one refused command for a standing rule and stopped trying.
+- **The record directory under the temporary one is made `0700`**, rather than made with the
+  umask's mode and then changed, so nobody can open it in between.
 
 ## [0.17.0] - 2026-10-02
 

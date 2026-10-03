@@ -25,22 +25,16 @@ use nachalnik_eval::{
 #[path = "common/mod.rs"]
 mod common;
 
-use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say};
-
-/// A subject wired to the rulebook, in a session called `name`.
-fn subject(name: &str, model: Arc<Rulebook>) -> Subject {
-    let kernel = Kernel::new(Config {
-        session_name: Some(name.to_owned()),
-        ..Config::default()
-    });
-    kernel.set_provider(model);
-
-    Subject::new(kernel)
-}
+use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say, subject};
 
 /// Runs one experiment on a fresh subject and scores it.
 async fn run(experiment: impl Experiment) -> (Outcome, Arc<Rulebook>) {
-    let model = Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK));
+    run_on(experiment, DEPOT_RULES).await
+}
+
+/// The same, under a model of the test's own.
+async fn run_on(experiment: impl Experiment, rules: &'static [Rule]) -> (Outcome, Arc<Rulebook>) {
+    let model = Arc::new(Rulebook::new(rules, FALLBACK));
     let subject = subject("subject", model.clone());
     let trial = Trial::new(experiment.name(), &subject);
     let failed = experiment
@@ -863,17 +857,6 @@ impl Provider for SilentWithoutTheCallersNote {
     }
 }
 
-/// A subject on a provider of the test's own, in a session called `name`.
-fn subject_on(name: &str, model: Arc<dyn Provider>) -> Subject {
-    let kernel = Kernel::new(Config {
-        session_name: Some(name.to_owned()),
-        ..Config::default()
-    });
-    kernel.set_provider(model);
-
-    Subject::new(kernel)
-}
-
 /// The check a run recorded, by what it says it was checking.
 fn check_holding<'a>(outcome: &'a Outcome, what: &str) -> &'a nachalnik_eval::Check {
     outcome
@@ -1058,7 +1041,7 @@ async fn a_ladder_whose_second_session_did_not_agree_says_so() {
         rulebook: Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK)),
         of_the_callers: CALLERS,
     });
-    let subject = subject_on("subject", model.clone());
+    let subject = subject("subject", model.clone());
     subject
         .kernel()
         .push(ContextItem::memory("caller", CALLERS).because("put by the test"));
@@ -1104,7 +1087,7 @@ async fn a_ladder_whose_second_session_did_not_agree_says_so() {
 /// used them fails.
 #[tokio::test]
 async fn a_subject_that_never_reached_for_the_handles_is_told_it_tested_nothing() {
-    let subject = subject_on("subject", Arc::new(InWordsOnly));
+    let subject = subject("subject", Arc::new(InWordsOnly));
     let experiment = Instrumented::new().on(&DEPOT).battery(2).tests(1);
     let trial = Trial::new(experiment.name(), &subject);
     experiment
@@ -1707,19 +1690,6 @@ static NO_NOTE_MOVES: &[Rule] = &[
     },
 ];
 
-/// Runs one experiment on a fresh subject under a model of the test's own.
-async fn run_on(experiment: impl Experiment, rules: &'static [Rule]) -> Outcome {
-    let model = Arc::new(Rulebook::new(rules, FALLBACK));
-    let subject = subject("subject", model);
-    let trial = Trial::new(experiment.name(), &subject);
-    experiment
-        .run(&subject, &trial)
-        .await
-        .expect("the experiment ran to the end");
-
-    Outcome::of(&trial, None)
-}
-
 /// The verdicts of the battery over `material`, in the order they were measured.
 fn verdicts_on<'a>(outcome: &'a Outcome, material: &str) -> Vec<&'a nachalnik_eval::Resolution> {
     outcome
@@ -1751,7 +1721,7 @@ fn degeneracy_of(outcome: &Outcome) -> Vec<bool> {
 /// The check is the only thing standing between a subject and a battery it was handed.
 #[tokio::test]
 async fn a_battery_where_everything_moved_is_reported_as_degenerate() {
-    let outcome = run_on(Feedback::new(), EVERY_NOTE_MOVES).await;
+    let (outcome, _) = run_on(Feedback::new(), EVERY_NOTE_MOVES).await;
 
     // the measure itself is sound - six notes a battery, and every one of them turned the
     // copies' answer, which is the only thing a battery must not be
@@ -1775,7 +1745,7 @@ async fn a_battery_where_everything_moved_is_reported_as_degenerate() {
 /// were all `no` scores beautifully and measures nothing.
 #[tokio::test]
 async fn a_battery_where_nothing_moved_is_reported_as_degenerate() {
-    let outcome = run_on(Feedback::new(), NO_NOTE_MOVES).await;
+    let (outcome, _) = run_on(Feedback::new(), NO_NOTE_MOVES).await;
 
     for material in ["depot", "orchard"] {
         let verdicts = verdicts_on(&outcome, material);

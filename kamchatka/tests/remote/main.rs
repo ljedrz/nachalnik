@@ -470,6 +470,23 @@ async fn until_session(kernel: &nachalnik::Kernel, wanted: impl Fn(&nachalnik::K
     .expect("the session never got there");
 }
 
+/// Whether a program started to serve on this socket file is listening yet, waiting up to ten
+/// seconds for it.
+///
+/// note: longer than [`PATIENCE`], because what it waits on is a whole program starting up, and a
+/// drawn one under `script` is the slowest of them. The wait only runs to the end when nothing
+/// ever listens.
+async fn listening(socket: &std::path::Path) -> bool {
+    for _ in 0..200 {
+        if socket.exists() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    socket.exists()
+}
+
 /// Whether anything in the context says these words.
 fn says(kernel: &nachalnik::Kernel, words: &str) -> bool {
     kernel

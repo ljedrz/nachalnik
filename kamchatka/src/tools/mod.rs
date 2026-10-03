@@ -8,8 +8,8 @@
 //! note: a file each, because they answer to three different traits and are read at three
 //! different moments. `fs` and `shell` are the tools themselves - `fs` dispatching to `files` and
 //! `search` for the operations that open one file and the ones that walk many - `policy` is what
-//! decides whether one of them runs, and `trim` is what happens when there is no room left for the
-//! results. `ops` is under all of them: what a tool that does several things declares, and the
+//! decides whether one of them runs, and `shedder` is what happens to results the conversation is
+//! done with, and to whole exchanges once there is no room left. `ops` is under all of them: what a tool that does several things declares, and the
 //! schema a model is shown for it.
 
 use std::{collections::BTreeMap, sync::Arc};

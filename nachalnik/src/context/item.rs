@@ -8,7 +8,7 @@ use serde_json::Value;
 
 #[cfg(doc)]
 use super::Context;
-use crate::model::{Block, Content, ToolCall, ToolCallId};
+use crate::model::{Content, ToolCall, ToolCallId};
 #[cfg(doc)]
 use crate::{Compactor, Event, Kernel, Projector, TokenCounter};
 
@@ -386,7 +386,7 @@ impl ContextItem {
     /// Returns the model's thinking, wherever it is recorded, in the order it was produced.
     ///
     /// note: the counterpart of [`ContextItem::calls`], and it exists for the same reason: an
-    /// ordered turn keeps its thinking in [`Block::Reasoning`]s inside its content, and a client
+    /// ordered turn keeps its thinking in [`Block::Reasoning`](crate::Block::Reasoning)s inside its content, and a client
     /// that only knew about the conventional slot would show a reasoning model as having done no
     /// reasoning at all.
     ///
@@ -395,22 +395,14 @@ impl ContextItem {
     /// thinking block is reachable through the blocks themselves, and belongs to the provider
     /// rather than to a client showing somebody what the model thought.
     pub fn thinking(&self) -> impl Iterator<Item = &Content> {
-        let ordered = match &self.kind {
-            ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
-            _ => None,
-        };
-        let flat = match (&self.kind, ordered) {
-            (ContextKind::AssistantMessage { reasoning, .. }, None) => reasoning.as_ref(),
-            _ => None,
+        let (ordered, flat) = match &self.kind {
+            ContextKind::AssistantMessage { reasoning, .. } => {
+                (self.content.as_blocks(), reasoning.as_ref())
+            }
+            _ => (None, None),
         };
 
-        flat.into_iter().chain(
-            ordered
-                .into_iter()
-                .flatten()
-                .filter_map(Block::thought)
-                .map(|part| &part.content),
-        )
+        crate::model::thinking_in(ordered, flat)
     }
 
     /// Attaches metadata for a [`Compactor`] or a [`Projector`].
@@ -434,22 +426,18 @@ impl ContextItem {
     ///
     /// note: an assistant turn records its calls *either* in
     /// [`ContextKind::AssistantMessage::tool_calls`] *or*, when the order they came in is part of
-    /// the turn, as [`Block::Call`]s inside a [`Content::Blocks`] - never both, so that there is
+    /// the turn, as [`Block::Call`](crate::Block::Call)s inside a [`Content::Blocks`] - never both, so that there is
     /// never a second account of what the model asked for. This reads whichever is in use, and it
     /// is what a [`Projector`] pairing calls with results should be reading; matching on the kind
     /// alone would silently find no calls at all in an ordered turn.
     pub fn calls(&self) -> impl Iterator<Item = &ToolCall> {
-        let ordered = match &self.kind {
-            ContextKind::AssistantMessage { .. } => self.content.as_blocks(),
-            _ => None,
-        };
-        let flat = match (&self.kind, ordered) {
-            (ContextKind::AssistantMessage { tool_calls, .. }, None) => Some(&tool_calls[..]),
-            _ => None,
+        let (ordered, flat) = match &self.kind {
+            ContextKind::AssistantMessage { tool_calls, .. } => {
+                (self.content.as_blocks(), &tool_calls[..])
+            }
+            _ => (None, &[][..]),
         };
 
-        flat.into_iter()
-            .flatten()
-            .chain(ordered.into_iter().flatten().filter_map(Block::call))
+        crate::model::calls_in(ordered, flat)
     }
 }

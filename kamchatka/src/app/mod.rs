@@ -1038,6 +1038,16 @@ impl App {
         self.busy || self.in_flight()
     }
 
+    /// Whether a turn is running or a call is waiting to be answered: what
+    /// [`text::MID_TURN`] says.
+    ///
+    /// note: a turn resting on a question is not `busy`, and it is still mid-turn: the call it is
+    /// waiting on has a result to come, and anything put in the context now lands between the
+    /// two.
+    fn mid_turn(&self) -> bool {
+        self.busy || !self.kernel.pending_permissions().is_empty()
+    }
+
     /// Whether there is anything for [`App::interrupt`] to stop: a turn, or a listing or a pass
     /// being worked out.
     #[cfg(feature = "tui")]
@@ -1736,17 +1746,7 @@ impl App {
         else {
             return Err(format!("there is no question {id} waiting to be answered"));
         };
-        // `always` is an allow. What it remembers is every subject the policy consulted, because
-        // that is what it takes to let such a call through; a refusal has no such set, and
-        // refusing every one of them would refuse every call sharing any. Taken as it came, a
-        // client asking never to allow this wrote the rules that allow it
-        if remember && grant != Grant::Allow {
-            return Err(
-                "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
-                 or `--deny`"
-                    .to_owned(),
-            );
-        }
+        rememberable(grant, remember)?;
 
         if remember {
             // everything the policy actually consulted, not just what the tool declared - and
@@ -1806,13 +1806,7 @@ impl App {
     /// note: the command reads the answer, not the model: its sockets open or come back
     /// `Permission denied`, and the result it hands the model says which was answered.
     pub fn decide_reach(&mut self, id: u64, grant: Grant, remember: bool) -> Result<(), String> {
-        if remember && grant != Grant::Allow {
-            return Err(
-                "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
-                 or `--deny`"
-                    .to_owned(),
-            );
-        }
+        rememberable(grant, remember)?;
         let allow = grant == Grant::Allow;
         self.policy.reaching().answer(id, allow)?;
 
@@ -2359,5 +2353,22 @@ impl App {
     #[cfg(not(feature = "tui"))]
     fn draft(&self) -> String {
         String::new()
+    }
+}
+
+/// Refuses `remember` on anything but an allow, for both kinds of question.
+///
+/// note: `always` is an allow. What it remembers is every subject the policy consulted, because
+/// that is what it takes to let such a call through; a refusal has no such set, and refusing
+/// every one of them would refuse every call sharing any. Taken as it came, a client asking never
+/// to allow this wrote the rules that allow it.
+fn rememberable(grant: Grant, remember: bool) -> Result<(), String> {
+    match remember && grant != Grant::Allow {
+        true => Err(
+            "only an allow is remembered; a standing refusal is a rule, on the permissions tab \
+             or `--deny`"
+                .to_owned(),
+        ),
+        false => Ok(()),
     }
 }

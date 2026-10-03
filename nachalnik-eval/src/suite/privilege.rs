@@ -7,13 +7,14 @@ use crate::{
     async_trait,
     error::Result,
     experiment::{Experiment, Instrument},
-    fork::{Ablation, Origin},
+    fork::Origin,
     intervene::Intervention,
     probe::{Answer, Probe},
     subject::Subject,
     suite::{
+        controlled,
         dossier::{DEPOT, Dossier, ORCHARD, id_of},
-        excluding, instrument, note_drift, script,
+        excluding, instrument, script,
     },
     trial::{Kind, Resolution, Step, Trial},
 };
@@ -211,19 +212,17 @@ impl Experiment for Privilege {
         }
 
         // ---------------------------------------------------------------------------- observe
-        let here = Ablation::new(question)
-            .replicates(self.replicates)
-            .blind_to(blind);
-        let control = here.observe(&origin, Intervention::Nothing).await?;
-        note_drift(trial, &answer, &control);
-        trial.measured(control.clone(), None);
-
-        let there = Ablation::new(their_question)
-            .replicates(self.replicates)
-            .blind_to(their_blind);
-        let their_control = there.observe(&their_origin, Intervention::Nothing).await?;
-        note_drift(trial, &their_answer, &their_control);
-        trial.measured(their_control.clone(), None);
+        let (here, control) =
+            controlled(trial, &origin, question, self.replicates, blind, &answer).await?;
+        let (there, their_control) = controlled(
+            trial,
+            &their_origin,
+            their_question,
+            self.replicates,
+            their_blind,
+            &their_answer,
+        )
+        .await?;
 
         for (kind, label, claim, asked) in claims {
             let (notes, origin, ablation, control, dossier) = match kind {

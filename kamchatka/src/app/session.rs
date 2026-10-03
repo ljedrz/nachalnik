@@ -119,10 +119,7 @@ impl App {
             );
             return;
         }
-        if self.busy
-            || !self.kernel.pending_permissions().is_empty()
-            || !self.kernel.pending_calls().is_empty()
-        {
+        if self.mid_turn() || !self.kernel.pending_calls().is_empty() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }

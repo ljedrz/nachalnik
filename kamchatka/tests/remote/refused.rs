@@ -164,8 +164,8 @@ async fn a_path_too_long_for_a_socket_is_refused_with_the_limit_and_a_way_out() 
     // the count, the limit, and the two answers - a shorter place on disk or a port
     assert!(refused.contains("205 bytes"), "{refused}");
     assert!(
-        refused.contains(&protocol::MAX_PATH.to_string()),
-        "it refused without saying the limit: {refused}"
+        refused.contains(&format!("at most {} bytes", protocol::MAX_PATH)),
+        "it refused without saying the limit, or said it one byte out: {refused}"
     );
     assert!(refused.contains("$XDG_RUNTIME_DIR"), "{refused}");
     assert!(refused.contains("tcp:127.0.0.1:PORT"), "{refused}");
@@ -184,8 +184,8 @@ async fn a_path_too_long_for_a_socket_is_refused_with_the_limit_and_a_way_out() 
         .expect_err("it connected to a path that cannot hold a socket");
     assert!(refused.contains("205 bytes"), "{refused}");
     assert!(
-        refused.contains(&protocol::MAX_PATH.to_string()),
-        "it refused without saying the limit: {refused}"
+        refused.contains(&format!("at most {} bytes", protocol::MAX_PATH)),
+        "it refused without saying the limit, or said it one byte out: {refused}"
     );
 }
 

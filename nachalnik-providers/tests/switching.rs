@@ -101,6 +101,8 @@ async fn the_native_dialect_says_it_too_when_the_address_changes_on_its_own() {
         .await
         .expect("an address that does not serve it is worth saying");
     assert!(said.contains("stranger"), "{said}");
+    // with what it does serve, as the other dialect says it, so a mistyped name can be put right
+    assert!(said.contains("resident"), "{said}");
 
     let resident = Gemini::new("resident", "http://unused.invalid", "no key needed");
     let address = serving(SERVES).await;

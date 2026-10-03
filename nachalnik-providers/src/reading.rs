@@ -384,8 +384,8 @@ pub(crate) fn compressed(model: &str, headers: &reqwest::header::HeaderMap) -> O
 /// note: one reading of one body, shared by the two paths that meet it. A web page where an
 /// answer was asked for is the case - what a mistyped `base_url` produces - and the first three
 /// hundred characters of a page are its doctype, its tags and the opening of a stylesheet, which
-/// go into the conversation, the session log and any file a user is invited to send on. The
-/// words are the account of what happened; the markup is not.
+/// quoted as they stand would go into the conversation, the session log and any file a user is
+/// invited to send on. The words are the account of what happened; the markup is not.
 pub(crate) fn not_json(e: &serde_json::Error, body: &str) -> BoxError {
     let short = quoted(&unmarked(body));
     format!("the answer was not JSON ({e}): {short}").into()

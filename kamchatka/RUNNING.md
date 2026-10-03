@@ -91,10 +91,10 @@ reading the run as bounded.
 
 `--deadline` is the one that needs nobody's cooperation — of the model, at least. It counts from
 the moment the program starts, so an endpoint that never answers and an MCP server that never
-finishes its handshake are held to it too, and a `/restart` does not start it again. What it cannot
-cut short is a command of your own that is waiting on the endpoint: `/models` fetches a list, and
-`/model` and `/endpoint` finish their switch before the next line is read, so a deadline that
-falls during one of those is served when it returns.
+finishes its handshake are held to it too, and a `/restart` does not start it again. A command of
+your own waiting on the endpoint — a `/models` listing, a compaction pass — is stopped with the
+turn. What it cannot cut short is a switch: `/model` and `/endpoint` finish theirs before the next
+line is read, so a deadline that falls during one is served when it returns.
 
 A job a command put in the background — `sleep 300 &`, a server it started, one it put in a
 session of its own with `setsid` — outlives its call, and is stopped when the session ends:
@@ -469,7 +469,7 @@ tools' and the session's, and neither dialect lets a parameter replace them.
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
 it is written `~2,460` for that reason. The percentage beside it names the total it is a
-percentage of (`0.9% (128k)`), because a fraction of an unstated number is not something anybody
+percentage of (`1.9% (128k)`), because a fraction of an unstated number is not something anybody
 can act on, and it turns yellow past 70% and red past 90%. Then comes what the provider actually
 charged for the last request, and `/budget` is where all of it is reconciled: the next request,
 split into context and tool definitions; the same request anchored on the last response; the limit

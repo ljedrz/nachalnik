@@ -111,7 +111,7 @@ impl App {
         // note: checked before the line is said rather than after, so that the one path which
         // says a message *without* an item to tie it to is the one path that has no item yet.
         // Everywhere else goes through `App::ask`, which cannot forget the third step
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.typed_ahead.push_back(line.to_owned());
             self.follow = true;
             // said out loud, because until the turn ends this is the one thing on the screen that
@@ -470,242 +470,8 @@ impl App {
             // the other half of `/model`: the same model name means a different model at a
             // different address, and comparing what is hosted with what is on this machine is two
             // endpoints rather than two names
-            "endpoint" => {
-                if rest.is_empty() {
-                    let endpoint = crate::endpoint::shown(&self.provider.endpoint());
-                    self.say(Speaker::Note, format!("requests go to {endpoint}"));
-                    return;
-                }
-                // `URL MODEL`, because a model belongs to the address that serves it: switching
-                // one and keeping the other is how a session ends up asking the ollama on this
-                // machine for `gemini-3.6-flash`. Given no model the old name is kept, and the new
-                // endpoint is asked whether it has one by that name
-                let (url, model) = match rest.split_once(char::is_whitespace) {
-                    Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
-                    None => (rest.to_owned(), None),
-                };
-                // refused before anything is announced or changed, so the session keeps talking to
-                // the address it had rather than to one no request can reach
-                if !crate::endpoint::is_an_address(&url) {
-                    self.say(
-                        Speaker::Error,
-                        format!(
-                            "`{url}` is not an address: it wants http:// or https:// and a host, \
-                             and no `?` or `#`, as in `/endpoint http://localhost:11434/v1`; \
-                             requests still go to {}",
-                            crate::endpoint::shown(&self.provider.endpoint())
-                        ),
-                    );
-                    return;
-                }
-                let provider = self.provider.clone();
-                // the address the requests will go to, which is this without the trailing `/` a
-                // copied address often carries - said as typed, it named one the provider trims
-                let shown = crate::endpoint::shown(url.trim_end_matches('/'));
-                self.say(
-                    Speaker::Note,
-                    match (&model, self.kernel.model_info()) {
-                        (Some(model), _) => format!("{model} at {shown}, from now on"),
-                        (None, Some(info)) => format!(
-                            "requests now go to {shown}, still asking for {}; the key is the one \
-                             this started with",
-                            info.model
-                        ),
-                        // a session that has not picked one yet: there is no name to carry over,
-                        // and saying it is "still asking for" nothing reads as a model called
-                        // nothing rather than as the gap it is
-                        (None, None) => format!(
-                            "requests now go to {shown}; there is still no model, and `/models` \
-                             lists what this one serves"
-                        ),
-                    },
-                );
-                // for the reason `/model` drops them, and more so: the same name at a different
-                // address is a different model, and this is the command that says so
-                self.forget_the_last_model();
-                // the new endpoint has a context limit of its own, and a list of what it serves;
-                // both are round trips, the screen should not stop for them, and the next line does
-                // and then the kernel is told, as `/model` tells it
-                //
-                // note: which compares what the provider reports about itself, the address among
-                // it - so a `/endpoint` that keeps the model's name is a `model.changed` in the
-                // record like one that does not, and a session resumed from it can say where it
-                // had been talking
-                let kernel = self.kernel.clone();
-                self.switch(async move {
-                    provider.set_endpoint(url, model).await;
-                    kernel.provider_changed();
-                });
-            }
-            "params" => {
-                // a key alone is half a command, and taken as `/params` it listed the parameters
-                // as if it had done something - which reads as the key having been set, or taken
-                // away, depending on what was meant
-                let named = rest.trim();
-                if !named.is_empty() && !named.contains(char::is_whitespace) {
-                    self.say(
-                        Speaker::Error,
-                        format!(
-                            "`/params {named}` needs a JSON value after it; `/params {named} \
-                             null` takes it away, and `/params` on its own lists them"
-                        ),
-                    );
-                    return;
-                }
-                if let Some((key, value)) = rest.split_once(' ') {
-                    let key = key.trim();
-                    let value = match serde_json::from_str(value.trim()) {
-                        Ok(value) => value,
-                        Err(e) => {
-                            self.say(Speaker::Error, format!("{key} needs a JSON value: {e}"));
-                            return;
-                        }
-                    };
-                    let mut params = self.kernel.params();
-                    match value {
-                        // note: `null` takes a parameter away rather than sending one. An absent
-                        // field leaves the choice to the endpoint, which is what a null asks for
-                        // where one is taken at all, and without this nothing once set could be
-                        // taken back short of `/restart`. Ahead of the refusal below, so that one
-                        // arriving in a snapshot can be taken away too
-                        serde_json::Value::Null => {
-                            params.remove(key);
-                        }
-                        _ if BUILT.contains(&key) => {
-                            self.say(
-                                Speaker::Error,
-                                format!(
-                                    "{key} is built from the session rather than set, so a \
-                                     parameter of that name is not sent"
-                                ),
-                            );
-                            return;
-                        }
-                        value => {
-                            params.insert(key.to_owned(), value);
-                        }
-                    }
-                    self.kernel.set_params(params);
-                }
-                let params = self.kernel.params();
-                let json = serde_json::to_string(&params).unwrap_or_default();
-                self.say(Speaker::Note, format!("parameters: {json}"));
-
-                // note: before the listing is consulted, because this is not a claim about what
-                // the model takes - it is one about what this program can read back. A parameter
-                // that makes the stream send the whole answer again is one whose effect lands in
-                // the transcript, the context and the log, and an endpoint publishing no list at
-                // all (ollama, a bare proxy) returns early below and would never have been told
-                for (name, does) in nachalnik_providers::openai::NOT_A_STREAM {
-                    if params.get(name).is_some_and(|set| set != false) {
-                        self.say(Speaker::Error, format!("{name} {does}"));
-                    }
-                }
-
-                // an empty list means the endpoint published none, not that the model takes none;
-                // ollama and a bare OpenAI-compatible proxy both say nothing here, and inventing
-                // a restriction out of their silence would be worse than saying nothing back
-                let Some(info) = self
-                    .kernel
-                    .model_info()
-                    .filter(|it| !it.parameters.is_empty())
-                else {
-                    return;
-                };
-                let takes = |key: &str| info.parameters.iter().any(|name| name == key);
-
-                // the failure worth naming: a parameter the model does not take is not refused.
-                // It is sent, it is ignored, and the run it was supposed to change is the same
-                // run it would have been - a `seed` that buys no reproducibility, silently
-                let ignored: Vec<&str> = params
-                    .keys()
-                    .map(String::as_str)
-                    .filter(|key| !takes(key) && !TRANSPORT.contains(key))
-                    .collect();
-                if !ignored.is_empty() {
-                    // note: two messages, because the list supports two different claims. Where it
-                    // is everything the model takes, a parameter missing from it is sent and
-                    // ignored, and that is what the error says. Where the endpoint published its
-                    // *sampling* parameters only, the same absence settles nothing:
-                    // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so
-                    // reporting it as ignored would be this program inventing a restriction out of
-                    // a list that never claimed to be complete. It says what it actually knows,
-                    // and an error is downgraded to a note with it - not knowing is not a fault
-                    let (speaker, said) = match self.provider.lists_every_parameter() {
-                        true => (
-                            Speaker::Error,
-                            format!(
-                                "{} does not list {}: sent, and ignored",
-                                info.model,
-                                ignored.join(", ")
-                            ),
-                        ),
-                        false => (
-                            Speaker::Note,
-                            format!(
-                                "{} publishes its sampling parameters only, so nothing here says \
-                                 what becomes of {}: sent, and unchecked",
-                                info.model,
-                                ignored.join(", ")
-                            ),
-                        ),
-                    };
-                    self.say(speaker, said);
-                }
-
-                // a bound is worth saying of one that is set, too, since that is where it can be
-                // crossed; what becomes of a value over it is the endpoint's to say, not this
-                for (name, set) in &params {
-                    let over = self.provider.published(name).maximum.filter(|most| {
-                        matches!((set.as_f64(), most.as_f64()), (Some(set), Some(most)) if set > most)
-                    });
-                    if let Some(most) = over {
-                        self.say(
-                            Speaker::Note,
-                            format!(
-                                "{name} is {set}, and {} publishes at most {most}",
-                                info.model
-                            ),
-                        );
-                    }
-                }
-
-                let spare: Vec<&str> = info
-                    .parameters
-                    .iter()
-                    .map(String::as_str)
-                    // `tools` is on some endpoints' lists, and offering one this command refuses
-                    // would be a line contradicting the next
-                    .filter(|name| !params.contains_key(*name) && !BUILT.contains(name))
-                    .collect();
-                if !spare.is_empty() {
-                    let all = match self.provider.lists_every_parameter() {
-                        true => "also takes",
-                        false => "also takes, of the ones it publishes",
-                    };
-                    // note: one to a line, with what the endpoint published about each beside it.
-                    // A type or a range it did not publish is not made up here: a default is a
-                    // value, so its type shows in it, and that is all there is to go on
-                    let wide = spare.iter().map(|name| name.len()).max().unwrap_or(0) + 2;
-                    let rows = spare
-                        .iter()
-                        .map(|name| {
-                            let published = self.provider.published(name);
-                            let facts = [
-                                published.default.map(|it| format!("default {it}")),
-                                published.maximum.map(|it| format!("at most {it}")),
-                            ]
-                            .into_iter()
-                            .flatten()
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                            format!("  {name:<wide$}{facts}").trim_end().to_owned()
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    self.say(Speaker::Note, format!("{} {all}:\n{rows}", info.model));
-                }
-            }
+            "endpoint" => self.endpoint(rest),
+            "params" => self.params(rest),
             "save" => self.save(rest),
             // note: not aliased `/resume`. `--resume` at startup is the *other* answer to the
             // same file - a fresh session built around the snapshot - and two things a keystroke
@@ -716,6 +482,248 @@ impl App {
             // and there is no function key down a pipe - so an answer naming `F1` would point
             // somewhere that run cannot go
             other => self.say(Speaker::Error, no_such_command(other)),
+        }
+    }
+
+    /// `/endpoint`: where requests go, said with nothing given, or moved to an address and
+    /// optionally a model there.
+    fn endpoint(&mut self, rest: &str) {
+        if rest.is_empty() {
+            let endpoint = crate::endpoint::shown(&self.provider.endpoint());
+            self.say(Speaker::Note, format!("requests go to {endpoint}"));
+            return;
+        }
+        // `URL MODEL`, because a model belongs to the address that serves it: switching
+        // one and keeping the other is how a session ends up asking the ollama on this
+        // machine for `gemini-3.6-flash`. Given no model the old name is kept, and the new
+        // endpoint is asked whether it has one by that name
+        let (url, model) = match rest.split_once(char::is_whitespace) {
+            Some((url, model)) => (url.to_owned(), Some(model.trim().to_owned())),
+            None => (rest.to_owned(), None),
+        };
+        // refused before anything is announced or changed, so the session keeps talking to
+        // the address it had rather than to one no request can reach
+        if !crate::endpoint::is_an_address(&url) {
+            self.say(
+                Speaker::Error,
+                format!(
+                    "`{url}` is not an address: it wants http:// or https:// and a host, \
+                     and no `?` or `#`, as in `/endpoint http://localhost:11434/v1`; \
+                     requests still go to {}",
+                    crate::endpoint::shown(&self.provider.endpoint())
+                ),
+            );
+            return;
+        }
+        let provider = self.provider.clone();
+        // the address the requests will go to, which is this without the trailing `/` a
+        // copied address often carries - said as typed, it named one the provider trims
+        let shown = crate::endpoint::shown(url.trim_end_matches('/'));
+        self.say(
+            Speaker::Note,
+            match (&model, self.kernel.model_info()) {
+                (Some(model), _) => format!("{model} at {shown}, from now on"),
+                (None, Some(info)) => format!(
+                    "requests now go to {shown}, still asking for {}; the key is the one \
+                     this started with",
+                    info.model
+                ),
+                // a session that has not picked one yet: there is no name to carry over,
+                // and saying it is "still asking for" nothing reads as a model called
+                // nothing rather than as the gap it is
+                (None, None) => format!(
+                    "requests now go to {shown}; there is still no model, and `/models` \
+                     lists what this one serves"
+                ),
+            },
+        );
+        // for the reason `/model` drops them, and more so: the same name at a different
+        // address is a different model, and this is the command that says so
+        self.forget_the_last_model();
+        // the new endpoint has a context limit of its own, and a list of what it serves;
+        // both are round trips, the screen should not stop for them, and the next line does
+        // and then the kernel is told, as `/model` tells it
+        //
+        // note: which compares what the provider reports about itself, the address among
+        // it - so a `/endpoint` that keeps the model's name is a `model.changed` in the
+        // record like one that does not, and a session resumed from it can say where it
+        // had been talking
+        let kernel = self.kernel.clone();
+        self.switch(async move {
+            provider.set_endpoint(url, model).await;
+            kernel.provider_changed();
+        });
+    }
+
+    /// `/params`: one parameter set to a JSON value or taken away with `null`, and then what is
+    /// set and what the model makes of it.
+    fn params(&mut self, rest: &str) {
+        // a key alone is half a command, and taken as `/params` it listed the parameters
+        // as if it had done something - which reads as the key having been set, or taken
+        // away, depending on what was meant
+        let named = rest.trim();
+        if !named.is_empty() && !named.contains(char::is_whitespace) {
+            self.say(
+                Speaker::Error,
+                format!(
+                    "`/params {named}` needs a JSON value after it; `/params {named} \
+                     null` takes it away, and `/params` on its own lists them"
+                ),
+            );
+            return;
+        }
+        if let Some((key, value)) = rest.split_once(' ') {
+            let key = key.trim();
+            let value = match serde_json::from_str(value.trim()) {
+                Ok(value) => value,
+                Err(e) => {
+                    self.say(Speaker::Error, format!("{key} needs a JSON value: {e}"));
+                    return;
+                }
+            };
+            let mut params = self.kernel.params();
+            match value {
+                // note: `null` takes a parameter away rather than sending one. An absent
+                // field leaves the choice to the endpoint, which is what a null asks for
+                // where one is taken at all, and without this nothing once set could be
+                // taken back short of `/restart`. Ahead of the refusal below, so that one
+                // arriving in a snapshot can be taken away too
+                serde_json::Value::Null => {
+                    params.remove(key);
+                }
+                _ if BUILT.contains(&key) => {
+                    self.say(
+                        Speaker::Error,
+                        format!(
+                            "{key} is built from the session rather than set, so a \
+                             parameter of that name is not sent"
+                        ),
+                    );
+                    return;
+                }
+                value => {
+                    params.insert(key.to_owned(), value);
+                }
+            }
+            self.kernel.set_params(params);
+        }
+        let params = self.kernel.params();
+        let json = serde_json::to_string(&params).unwrap_or_default();
+        self.say(Speaker::Note, format!("parameters: {json}"));
+
+        // note: before the listing is consulted, because this is not a claim about what
+        // the model takes - it is one about what this program can read back. A parameter
+        // that makes the stream send the whole answer again is one whose effect lands in
+        // the transcript, the context and the log, and an endpoint publishing no list at
+        // all (ollama, a bare proxy) returns early below and would never have been told
+        for (name, does) in nachalnik_providers::openai::NOT_A_STREAM {
+            if params.get(name).is_some_and(|set| set != false) {
+                self.say(Speaker::Error, format!("{name} {does}"));
+            }
+        }
+
+        // an empty list means the endpoint published none, not that the model takes none;
+        // ollama and a bare OpenAI-compatible proxy both say nothing here, and inventing
+        // a restriction out of their silence would be worse than saying nothing back
+        let Some(info) = self
+            .kernel
+            .model_info()
+            .filter(|it| !it.parameters.is_empty())
+        else {
+            return;
+        };
+        let takes = |key: &str| info.parameters.iter().any(|name| name == key);
+
+        // the failure worth naming: a parameter the model does not take is not refused.
+        // It is sent, it is ignored, and the run it was supposed to change is the same
+        // run it would have been - a `seed` that buys no reproducibility, silently
+        let ignored: Vec<&str> = params
+            .keys()
+            .map(String::as_str)
+            .filter(|key| !takes(key) && !TRANSPORT.contains(key))
+            .collect();
+        if !ignored.is_empty() {
+            // note: two messages, because the list supports two different claims. Where it
+            // is everything the model takes, a parameter missing from it is sent and
+            // ignored, and that is what the error says. Where the endpoint published its
+            // *sampling* parameters only, the same absence settles nothing:
+            // `reasoning_effort` is not among `mercury-2.5`'s and is read anyway, so
+            // reporting it as ignored would be this program inventing a restriction out of
+            // a list that never claimed to be complete. It says what it actually knows,
+            // and an error is downgraded to a note with it - not knowing is not a fault
+            let (speaker, said) = match self.provider.lists_every_parameter() {
+                true => (
+                    Speaker::Error,
+                    format!(
+                        "{} does not list {}: sent, and ignored",
+                        info.model,
+                        ignored.join(", ")
+                    ),
+                ),
+                false => (
+                    Speaker::Note,
+                    format!(
+                        "{} publishes its sampling parameters only, so nothing here says \
+                         what becomes of {}: sent, and unchecked",
+                        info.model,
+                        ignored.join(", ")
+                    ),
+                ),
+            };
+            self.say(speaker, said);
+        }
+
+        // a bound is worth saying of one that is set, too, since that is where it can be
+        // crossed; what becomes of a value over it is the endpoint's to say, not this
+        for (name, set) in &params {
+            let over = self.provider.published(name).maximum.filter(|most| {
+                matches!((set.as_f64(), most.as_f64()), (Some(set), Some(most)) if set > most)
+            });
+            if let Some(most) = over {
+                self.say(
+                    Speaker::Note,
+                    format!(
+                        "{name} is {set}, and {} publishes at most {most}",
+                        info.model
+                    ),
+                );
+            }
+        }
+
+        let spare: Vec<&str> = info
+            .parameters
+            .iter()
+            .map(String::as_str)
+            // `tools` is on some endpoints' lists, and offering one this command refuses
+            // would be a line contradicting the next
+            .filter(|name| !params.contains_key(*name) && !BUILT.contains(name))
+            .collect();
+        if !spare.is_empty() {
+            let all = match self.provider.lists_every_parameter() {
+                true => "also takes",
+                false => "also takes, of the ones it publishes",
+            };
+            // note: one to a line, with what the endpoint published about each beside it.
+            // A type or a range it did not publish is not made up here: a default is a
+            // value, so its type shows in it, and that is all there is to go on
+            let wide = spare.iter().map(|name| name.len()).max().unwrap_or(0) + 2;
+            let rows = spare
+                .iter()
+                .map(|name| {
+                    let published = self.provider.published(name);
+                    let facts = [
+                        published.default.map(|it| format!("default {it}")),
+                        published.maximum.map(|it| format!("at most {it}")),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                    format!("  {name:<wide$}{facts}").trim_end().to_owned()
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            self.say(Speaker::Note, format!("{} {all}:\n{rows}", info.model));
         }
     }
 
@@ -908,7 +916,7 @@ impl App {
             );
             return;
         }
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }
@@ -1006,7 +1014,7 @@ impl App {
         }
         // the same refusal `/attach` gives, for the same reason: an item pushed mid-turn changes
         // the request the model is already answering
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }

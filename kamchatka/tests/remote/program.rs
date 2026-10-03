@@ -49,13 +49,10 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
         .expect("the host did not start");
 
     // the socket appears when the session is ready for somebody, and not before
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let client = tokio::task::spawn_blocking({
         let socket = socket.clone();
@@ -242,13 +239,13 @@ fn the_phone_example_writes_every_session_out() {
 
     // and a page somewhere else is refused, whichever door it tries. Each would end the session
     // if it were taken, so a refusal missed here fails everything after it too
-    let foreign = |extra: &str, host: &str| -> String {
+    let foreign = |line: &str, extra: &str, host: &str| -> String {
         let body = json!({ "do": "submit", "line": "/quit" }).to_string();
         let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
         stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
         write!(
             stream,
-            "POST /do?tab=first HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {}\r\n\
+            "{line} HTTP/1.1\r\nHost: {host}\r\n{extra}Content-Length: {}\r\n\
              Connection: close\r\n\r\n{body}",
             body.len()
         )
@@ -257,18 +254,31 @@ fn the_phone_example_writes_every_session_out() {
         let _ = stream.read_to_string(&mut answer);
         answer
     };
-    for (extra, host) in [
+    let post_first = "POST /do?tab=first";
+    for (line, extra, host) in [
         (
+            post_first,
             "Content-Type: application/json\r\nOrigin: http://elsewhere.example\r\n",
             page.as_str(),
         ),
-        ("Content-Type: text/plain\r\n", page.as_str()),
-        ("Content-Type: application/json\r\n", "elsewhere.example"),
+        (post_first, "Content-Type: text/plain\r\n", page.as_str()),
+        (
+            post_first,
+            "Content-Type: application/json\r\n",
+            "elsewhere.example",
+        ),
+        // a frame or an image somewhere else, which carries no `Origin`, taking the session
+        // from the tab that has it
+        (
+            "GET /events?tab=elsewhere",
+            "Sec-Fetch-Site: cross-site\r\n",
+            page.as_str(),
+        ),
     ] {
-        let answer = foreign(extra, host);
+        let answer = foreign(line, extra, host);
         assert!(
             answer.starts_with("HTTP/1.1 403"),
-            "a request from somewhere else was taken: {extra}{host}\n{answer}"
+            "a request from somewhere else was taken: {line} {extra}{host}\n{answer}"
         );
     }
 
@@ -446,14 +456,8 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
         .kill_on_drop(true)
         .spawn()
         .expect("the program did not start");
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
     assert!(
-        socket.exists(),
+        crate::listening(&socket).await,
         "a file carrying only the defaults was refused, so the file `--print-config` writes \
          cannot be used to serve"
     );
@@ -979,13 +983,10 @@ async fn a_served_run_whose_stdout_nobody_is_reading_still_serves() {
     // the address went into a pipe nobody is going to read, and the run carries on regardless
     drop(host.stdout.take().expect("a pipe"));
 
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let mut peer = tokio::net::UnixStream::connect(&socket)
         .await
@@ -1934,13 +1935,10 @@ async fn a_session_out_of_descriptors_says_so_once() {
         .kill_on_drop(true)
         .spawn()
         .expect("the host did not start");
-    for _ in 0..100 {
-        if socket.exists() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    assert!(
+        crate::listening(&socket).await,
+        "nothing ever listened at {socket:?}"
+    );
 
     let mut idle = Vec::new();
     for _ in 0..100 {
@@ -2016,13 +2014,10 @@ async fn a_served_session_a_signal_ended_says_so_in_its_status() {
             .stderr(std::process::Stdio::piped())
             .spawn()
             .expect("the program did not start");
-        for _ in 0..100 {
-            if socket.exists() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        assert!(socket.exists(), "SIG{signal}: nothing listened");
+        assert!(
+            crate::listening(&socket).await,
+            "SIG{signal}: nothing listened"
+        );
 
         let sent = std::process::Command::new("kill")
             .args([&format!("-{signal}"), &host.id().to_string()])
