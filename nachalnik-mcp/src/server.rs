@@ -100,11 +100,11 @@ impl Server {
     /// separately: the runtime spawns no processes.
     ///
     /// note: its standard error is held and read rather than inherited, whatever the `Command`
-    /// says - the transport sets all three streams, and inherits standard error by default.
-    /// Inherited, a server that logs a line per request writes it across whatever the caller has
-    /// on the terminal, a drawn screen included, and no caller can stop it. What it says is kept,
-    /// a few lines of it, for the one moment it is worth reading: a handshake that failed, where
-    /// it is the reason.
+    /// says - all three streams are set to pipes below, over whatever it asked for. Inherited, a
+    /// server that logs a line per request writes it across whatever the caller has on the
+    /// terminal, a drawn screen included, and no caller can stop it. What it says is kept, a few
+    /// lines of it, for the one moment it is worth reading: a handshake that failed, where it is
+    /// the reason.
     ///
     /// note: and spawned here rather than by `rmcp`, so that the process is this value's and goes
     /// when it does. `rmcp`'s own transport kills a child it drops from a task it spawns, and a
