@@ -29,7 +29,12 @@ use common::{DEPOT_RULES, FALLBACK, Rule, Rulebook, Say, subject};
 
 /// Runs one experiment on a fresh subject and scores it.
 async fn run(experiment: impl Experiment) -> (Outcome, Arc<Rulebook>) {
-    let model = Arc::new(Rulebook::new(DEPOT_RULES, FALLBACK));
+    run_on(experiment, DEPOT_RULES).await
+}
+
+/// The same, under a model of the test's own.
+async fn run_on(experiment: impl Experiment, rules: &'static [Rule]) -> (Outcome, Arc<Rulebook>) {
+    let model = Arc::new(Rulebook::new(rules, FALLBACK));
     let subject = subject("subject", model.clone());
     let trial = Trial::new(experiment.name(), &subject);
     let failed = experiment
@@ -1685,19 +1690,6 @@ static NO_NOTE_MOVES: &[Rule] = &[
     },
 ];
 
-/// Runs one experiment on a fresh subject under a model of the test's own.
-async fn run_on(experiment: impl Experiment, rules: &'static [Rule]) -> Outcome {
-    let model = Arc::new(Rulebook::new(rules, FALLBACK));
-    let subject = subject("subject", model);
-    let trial = Trial::new(experiment.name(), &subject);
-    experiment
-        .run(&subject, &trial)
-        .await
-        .expect("the experiment ran to the end");
-
-    Outcome::of(&trial, None)
-}
-
 /// The verdicts of the battery over `material`, in the order they were measured.
 fn verdicts_on<'a>(outcome: &'a Outcome, material: &str) -> Vec<&'a nachalnik_eval::Resolution> {
     outcome
@@ -1729,7 +1721,7 @@ fn degeneracy_of(outcome: &Outcome) -> Vec<bool> {
 /// The check is the only thing standing between a subject and a battery it was handed.
 #[tokio::test]
 async fn a_battery_where_everything_moved_is_reported_as_degenerate() {
-    let outcome = run_on(Feedback::new(), EVERY_NOTE_MOVES).await;
+    let (outcome, _) = run_on(Feedback::new(), EVERY_NOTE_MOVES).await;
 
     // the measure itself is sound - six notes a battery, and every one of them turned the
     // copies' answer, which is the only thing a battery must not be
@@ -1753,7 +1745,7 @@ async fn a_battery_where_everything_moved_is_reported_as_degenerate() {
 /// were all `no` scores beautifully and measures nothing.
 #[tokio::test]
 async fn a_battery_where_nothing_moved_is_reported_as_degenerate() {
-    let outcome = run_on(Feedback::new(), NO_NOTE_MOVES).await;
+    let (outcome, _) = run_on(Feedback::new(), NO_NOTE_MOVES).await;
 
     for material in ["depot", "orchard"] {
         let verdicts = verdicts_on(&outcome, material);
