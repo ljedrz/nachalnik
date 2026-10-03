@@ -379,8 +379,8 @@ impl Sandbox {
 
     /// [`Sandbox::note_for`], for a command that was handed `scratch` as its `TMPDIR`.
     ///
-    /// note: [`confine`] grants that directory what it grants the working directory, so a refusal
-    /// in it is the file's own permissions and blaming the confinement for one is the hedge
+    /// note: [`confine`] grants that directory reading and writing, even where the working
+    /// directory is only read, so a refusal in it is the file's own permissions and blaming the confinement for one is the hedge
     /// `note_for` exists not to make. It is the caller's to name, because only whoever spawned the
     /// command knows which directory it was given, and it has to still be there to be compared.
     pub(crate) fn note_for_in(&self, stderr: &str, scratch: Option<&Path>) -> Option<String> {
