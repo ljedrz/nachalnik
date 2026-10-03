@@ -294,13 +294,15 @@ for, so there is nothing for it to agree with.
   is an ordering over exactly three.
 
   **And on a struct the kernel answers with, which is the half that is easy to miss.** `Budget`,
-  `Usage`, `ModelInfo`, `ToolOutput`, `CompactionPlan`, `Projection` and `Skipped` all look like
-  answers and are not: each is built by somebody implementing one of the six traits, and closing
-  them would mean a downstream crate needing a core change to do an ordinary thing. What is left -
-  `StateChange`, `Record`, `Removed`, `CompactionReport`, and `Going` over in `kamchatka` - is
-  produced here and read there, so the attribute costs nothing and makes the next field a patch.
-  The question to ask is not "is this an output" but **"does anything outside this crate build
-  one"**, and `grep` answers it.
+  `Usage`, `ToolOutput`, `CompactionPlan`, `Projection` and `Skipped` all look like answers and
+  are not: each is built by somebody implementing one of the six traits, and closing them would
+  mean a downstream crate needing a core change to do an ordinary thing. What is left -
+  `StateChange`, `Record`, `Snapshot`, `Removed`, `CompactionReport`, and `Going` over in
+  `kamchatka` - is produced here and read there, so the attribute costs nothing and makes the next
+  field a patch. The question to ask is not "is this an output" but **"does anything outside this
+  crate build one"**, and `grep` answers it. `ModelInfo` is closed although every provider builds
+  one, because it is built through `ModelInfo::new` and the `with_` methods, which lets a field be
+  added without breaking them.
 
   **The rule is the workspace's rather than `nachalnik`'s.** In `nachalnik-providers`,
   `system1::Question` and `system1::Answer` carry it because they name the shapes a System One
