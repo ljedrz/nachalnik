@@ -1247,10 +1247,15 @@ mod tests {
     }
 
     /// Runs one command, and gives up on it rather than on the suite.
+    ///
+    /// note: ten seconds was not enough for `yes | head -c 9388608` on a loaded machine - a
+    /// mutants run in several worktrees at once - and a test that fails for the load passes a
+    /// mutant off as caught. Under the `sleep 30` of the tests that leave something running, so
+    /// a call that waits for them is still one that never answers.
     async fn ran(command: &str) -> String {
         let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": command }));
         tokio::time::timeout(
-            Duration::from_secs(10),
+            Duration::from_secs(25),
             unconfined().invoke(&call, OutputSink::disconnected()),
         )
         .await
