@@ -80,6 +80,9 @@ minor bump may break you.
   why, so a fault in the middle - a `\(` in a pattern - left a model nothing to change, and it sent
   the same call again. It now names the fault and shows the text around it, as the tool's own
   answer does.
+- **A command answered at the network gate is said to be answered for that command alone**, on the
+  trace and in what `log` reads to a model. Its `policy.ruled` was drawn as `deny from now on`, and
+  a model reading it took one refused command for a standing rule and stopped trying.
 - **The record directory under the temporary one is made `0700`**, rather than made with the
   umask's mode and then changed, so nobody can open it in between.
 
