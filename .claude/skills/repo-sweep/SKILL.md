@@ -283,6 +283,13 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
   now, so a run under it can still stop the session driving it, and nothing outside. A run that
   ends with every shard `ERROR interrupted` at the same second was signalled: look at what the
   mutants in flight do with signals before resuming.
+- **A mutant can start the program over and over.** `Sandbox::argv` emptied made the sandbox
+  probe a session runs at its start start a session instead, which probed again: 5566 processes
+  when the guard fired, and what its path sweep missed in the `cargo test`'s process group grew
+  back to 14601 after it had gone, asleep and so quiet. `.cargo/mutants.toml` excludes it, and
+  the guard now freezes the run, kills the process groups cargo-mutants made under it as well as
+  what is under ROOT, and sweeps until nothing is left. After an EMERGENCY in a `.guard` log,
+  count what is still there (`pgrep -fc '^/home/.*/w[0-9]+/target/'`) before anything else.
 - Mutated `kamchatka --headless` binaries ignore SIGTERM and outlive the run. Look for processes
   under `target/agents/mt/cargo-mutants-*` afterwards and SIGKILL them by pid.
 - The sessions' network gate refuses loopback, so they cannot run a test that serves anything,

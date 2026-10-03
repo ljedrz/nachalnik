@@ -5,7 +5,12 @@
 # has the end of a test stop everything the person running it has, the desktop and the run among
 # them. The tests that reach it put their own thread under the signal scope a session runs under,
 # which contains that on Linux 6.12 and later; this is for wherever the scope is not there.
+#
+# `Sandbox::argv` is what the program confines itself by. Empty, or one empty argument, the probe
+# a session runs at its start (`sandbox::available`) starts a whole session instead, which probes
+# again, and so on: under a test, 14601 processes in a few minutes.
 exclude_re = [
     'replace Stragglers::call_of -> Option<usize> with Some',
     'replace == with != in Stragglers::call_of',
+    'replace Sandbox::argv -> Vec<OsString> with',
 ]
