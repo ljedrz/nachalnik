@@ -469,7 +469,7 @@ tools' and the session's, and neither dialect lets a parameter replace them.
 
 Nothing here has the model's tokenizer, so the figure the status line leads with is an estimate —
 it is written `~2,460` for that reason. The percentage beside it names the total it is a
-percentage of (`0.9% (128k)`), because a fraction of an unstated number is not something anybody
+percentage of (`1.9% (128k)`), because a fraction of an unstated number is not something anybody
 can act on, and it turns yellow past 70% and red past 90%. Then comes what the provider actually
 charged for the last request, and `/budget` is where all of it is reconciled: the next request,
 split into context and tool definitions; the same request anchored on the last response; the limit
