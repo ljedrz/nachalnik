@@ -1251,8 +1251,9 @@ impl Kernel {
     /// from `Deciding` or `Ready` - carries on counting from where the last one left off. Counted
     /// per call, every answered question was a fresh budget, so a turn whose calls were all asked
     /// about ran as many requests as it liked under any limit. A `turn` called from anywhere else
-    /// is a new turn, or somebody carrying on past a budget that ran out, and starts from nothing. An interrupt stops it too, in whatever resting
-    /// state the loop had reached: [`State::Ready`] or [`State::Idle`] as often as not.
+    /// is a new turn, or somebody carrying on past a budget that ran out, and starts from nothing.
+    /// An interrupt stops it too, in whatever resting state the loop had reached: [`State::Ready`]
+    /// or [`State::Idle`] as often as not.
     pub async fn turn(&self) -> Result<State> {
         let mut requests = match self.state() {
             State::Deciding { .. } | State::Ready { .. } => self.0.turn_requests.load(SeqCst),
