@@ -232,9 +232,9 @@ what stands in the way, and what does not.
   a page in front of a session and will listen wherever they are told: whoever reaches that page
   drives the session, the same as the person at the keyboard. A web page open in a browser on the
   same machine is refused - the relay takes only requests whose host is an address or `localhost`,
-  that name no origin but its own, and that post JSON - so a site cannot drive a session through the
-  visitor's browser. A client may answer the permission questions, so the session's own commands are
-  kept out too. A port the session is served on is closed to every command confined while it is,
+  that name no origin or site but its own, and that post JSON - so a site cannot drive a session
+  through the visitor's browser, nor take it from the tab that has it. A client may answer the
+  permission questions, so the session's own commands are kept out too. A port the session is served on is closed to every command confined while it is,
   under an open network as under a held one. A socket file is reachable by every confined command
   below Linux 7.1, and from 7.1 by one that may write where it is, so a connection is refused when
   the peer is in the session of a command this process confined - each runs in one of its own -
