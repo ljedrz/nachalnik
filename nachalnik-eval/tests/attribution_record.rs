@@ -7,16 +7,16 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use nachalnik::{Config, Event, Kernel};
+use nachalnik::Event;
 
 use nachalnik_eval::{
-    Answer, Experiment, Kind, Outcome, Step, Subject, Trial, suite, suite::dossier::Expected,
+    Answer, Experiment, Kind, Outcome, Step, Trial, suite, suite::dossier::Expected,
     suite::dossier::Note,
 };
 
 mod common;
 
-use common::{Rule, Rulebook, Say};
+use common::{Rule, Rulebook, Say, subject};
 
 /// A counting house's three yards, and a return that is missing three of the month's invoices.
 ///
@@ -130,16 +130,6 @@ static BLIND_RULES: &[Rule] = &[
         then: Say::Text("ANSWER: birch"),
     },
 ];
-
-fn subject(name: &str, model: Arc<Rulebook>) -> Subject {
-    let kernel = Kernel::new(Config {
-        session_name: Some(name.to_owned()),
-        ..Config::default()
-    });
-    kernel.set_provider(model);
-
-    Subject::new(kernel)
-}
 
 /// Runs one experiment on a fresh subject, on this model, and scores it.
 async fn run_on(model: Arc<Rulebook>, experiment: impl Experiment) -> Outcome {

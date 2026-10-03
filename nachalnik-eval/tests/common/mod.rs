@@ -16,8 +16,10 @@ use nachalnik::{
     BoxError, Content, DeltaSink, ModelInfo, ModelRequest, ModelResponse, Provider, Role,
     StopReason, ToolCall, Usage, async_trait,
 };
+use nachalnik::{Config, Kernel};
+use nachalnik_eval::Subject;
 use parking_lot::Mutex;
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::Arc};
 
 use serde_json::Value;
 
@@ -421,4 +423,15 @@ fn label_in(question: &str) -> Option<String> {
     }
 
     None
+}
+
+/// A subject on `model`, in a session called `name`.
+pub fn subject(name: &str, model: Arc<dyn Provider>) -> Subject {
+    let kernel = Kernel::new(Config {
+        session_name: Some(name.to_owned()),
+        ..Config::default()
+    });
+    kernel.set_provider(model);
+
+    Subject::new(kernel)
 }
