@@ -347,16 +347,15 @@ fn the_program_offers_a_spawned_servers_tools() {
     assert!(installed, "the tools arriving is not on the record stream");
 }
 
-/// Two servers that would offer tools under the same names are refused, rather than one quietly
-/// taking the other's place - and the refusal leaves the kernel as it found it.
+/// Two servers under one name are refused, even when their tools would not clash - and the
+/// refusal leaves the kernel as it found it.
 ///
-/// note: the same server twice is the plainest way to get there, and two `npx` lines with no
-/// `name=` are the commonest: both are named for their program.
-///
-/// note: the first server's tools are the ones that would be left behind, registered under a
-/// server the `Err` has already dropped.
+/// note: two `npx` lines with no `name=` are the commonest way to get there: both are named for
+/// their program. The name is what `--allow-server` grants, so letting both in would grant them
+/// together.
 #[tokio::test]
 async fn two_servers_under_one_name_are_refused() {
+    let spec = spec!();
     let wired = Setup {
         tools: Some(Vec::new()),
         compact: None,
@@ -369,17 +368,58 @@ async fn two_servers_under_one_name_are_refused() {
     )))
     .expect("the wiring failed");
 
-    let refused = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[spec!(), spec!()])
+    let refused = kamchatka::mcp::attach(
+        &wired.app.kernel,
+        &wired.app.policy,
+        &[format!("{spec} --only hang"), format!("{spec} --only add")],
+    )
+    .await
+    .map(|servers| servers.len());
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|why| why.contains("both named `py`") && why.contains("name=command")),
+        "{refused:?}"
+    );
+    let left = wired.app.kernel.tool_ids();
+    assert!(left.is_empty(), "{left:?}");
+}
+
+/// A server whose tools would take identifiers something else already has is refused, rather
+/// than quietly take its place - and the refusal leaves the kernel as it found it.
+///
+/// note: a server before it that was let in is what would be left behind, its tools registered
+/// under a server the `Err` has already dropped.
+#[tokio::test]
+async fn a_server_whose_tools_would_displace_another_is_refused() {
+    let spec = spec!();
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    wired
+        .app
+        .kernel
+        .add_tool(Arc::new(nachalnik::test::ConstTool::new("py__add", "")));
+
+    let first = spec.replacen("py=", "first=", 1);
+    let refused = kamchatka::mcp::attach(&wired.app.kernel, &wired.app.policy, &[first, spec])
         .await
         .map(|servers| servers.len());
     assert!(
         refused
             .as_ref()
-            .is_err_and(|why| why.contains("name=command")),
+            .is_err_and(|why| why.contains("py__add") && why.contains("already have")),
         "{refused:?}"
     );
-    let left = wired.app.kernel.tool_ids();
-    assert!(left.is_empty(), "{left:?}");
+    assert_eq!(wired.app.kernel.tool_ids(), ["py__add"]);
 }
 
 /// A server offering one name twice is refused as that, a program that is not there as one that

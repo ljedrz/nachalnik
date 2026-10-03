@@ -69,6 +69,10 @@ minor bump may break you.
   an interrupt says that what is below is what it had said by then, and a line it had not ended -
   `printf 'downloading 45%'`, the progress line a slow command is stopped during - was dropped, so
   the answer under that sentence could be empty.
+- **Two MCP servers under one name are refused, whatever they offer.** Two `npx` lines with no
+  `name=` both took the name `npx`, and where their tools did not clash both were let in - so
+  `--allow-server npx`, or an `always` answered for one of them, granted both. It is refused
+  before anything is spawned, naming both lines and saying to give each its own `name=`.
 
 ## [0.17.0] - 2026-10-02
 
