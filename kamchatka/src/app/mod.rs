@@ -1038,6 +1038,16 @@ impl App {
         self.busy || self.in_flight()
     }
 
+    /// Whether a turn is running or a call is waiting to be answered: what
+    /// [`text::MID_TURN`] says.
+    ///
+    /// note: a turn resting on a question is not `busy`, and it is still mid-turn: the call it is
+    /// waiting on has a result to come, and anything put in the context now lands between the
+    /// two.
+    fn mid_turn(&self) -> bool {
+        self.busy || !self.kernel.pending_permissions().is_empty()
+    }
+
     /// Whether there is anything for [`App::interrupt`] to stop: a turn, or a listing or a pass
     /// being worked out.
     #[cfg(feature = "tui")]
