@@ -26,7 +26,7 @@ use serde_json::Value;
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    app::text::{short, thousands},
+    app::text::{short, thousands, verdict_word},
     tools::{
         Careful, Limits, Subject, domains,
         ops::{Op, action_of, actions, inner, schema},
@@ -503,7 +503,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
             out.push_str(&format!(
                 "{:<28}  {:<8}  {}\n",
                 capability.to_string(),
-                said(verdict),
+                verdict_word(verdict),
                 match tools.is_empty() {
                     true => "nothing here is judged by it".to_owned(),
                     // note: the clause the operator's own view puts beside that row, so a model
@@ -535,7 +535,7 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
     if !decided.is_empty() {
         out.push_str("\nand rules about paths, which bind the tools handed one:\n");
         for (pattern, verdict) in &decided {
-            out.push_str(&format!("{:<28}  {}\n", pattern, said(*verdict)));
+            out.push_str(&format!("{:<28}  {}\n", pattern, verdict_word(*verdict)));
         }
     }
     if !undecided.is_empty() {
@@ -564,7 +564,10 @@ fn permissions(kernel: &Kernel, policy: &Careful) -> String {
         // log` is every operation in `log`, and `server big` names no tool at all
         out.push_str("\nand the broader rules, which have no row of their own above:\n");
         for (rule, covers, verdict, _) in &decided {
-            out.push_str(&format!("{rule:<28}  {:<8}  {covers}\n", said(*verdict)));
+            out.push_str(&format!(
+                "{rule:<28}  {:<8}  {covers}\n",
+                verdict_word(*verdict)
+            ));
         }
     }
     let (servers, domains): (Vec<_>, Vec<_>) = undecided.iter().partition(|(.., server)| *server);
@@ -704,15 +707,6 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
     ));
 
     out
-}
-
-/// A verdict, in the word a person would use about it.
-fn said(verdict: Verdict) -> &'static str {
-    match verdict {
-        Verdict::Allow => "allow",
-        Verdict::Deny => "deny",
-        Verdict::Ask => "ask",
-    }
 }
 
 /// The first sentence of a tool's description, which is the part that says what it is.
