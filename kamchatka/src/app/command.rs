@@ -111,7 +111,7 @@ impl App {
         // note: checked before the line is said rather than after, so that the one path which
         // says a message *without* an item to tie it to is the one path that has no item yet.
         // Everywhere else goes through `App::ask`, which cannot forget the third step
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.typed_ahead.push_back(line.to_owned());
             self.follow = true;
             // said out loud, because until the turn ends this is the one thing on the screen that
@@ -916,7 +916,7 @@ impl App {
             );
             return;
         }
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }
@@ -1014,7 +1014,7 @@ impl App {
         }
         // the same refusal `/attach` gives, for the same reason: an item pushed mid-turn changes
         // the request the model is already answering
-        if self.busy || !self.kernel.pending_permissions().is_empty() {
+        if self.mid_turn() {
             self.say(Speaker::Error, MID_TURN);
             return;
         }
