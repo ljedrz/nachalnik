@@ -481,16 +481,7 @@ impl OpenAiCompatible {
             return;
         }
 
-        let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
-        *self.notice.lock() = Some(format!(
-            "{model} is not one of the {} models this address lists ({}{})",
-            listed.len(),
-            some.join(", "),
-            match listed.len() > some.len() {
-                true => ", …",
-                false => "",
-            }
-        ));
+        *self.notice.lock() = Some(crate::unlisted(&model, listed));
     }
 
     /// A model listing, if the address answers with one.

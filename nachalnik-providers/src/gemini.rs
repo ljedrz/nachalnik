@@ -160,10 +160,7 @@ impl Gemini {
             return;
         }
 
-        *self.notice.lock() = Some(format!(
-            "{model} is not one of the {} models this address lists",
-            listed.len()
-        ));
+        *self.notice.lock() = Some(crate::unlisted(&model, &listed));
     }
 
     /// Everything in a part except the fields this provider understands.

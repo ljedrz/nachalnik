@@ -753,18 +753,11 @@ impl Client {
             return;
         }
 
-        // three of them and how many, as the OpenAI dialect says it: an endpoint that lists
-        // hundreds would otherwise put every one of them on one line
-        let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
         *self.notice.lock() = Some(format!(
-            "{} does not list {model}; it serves {} models ({}{})",
+            "{} does not list {model}; it serves {} models ({})",
             self.host(),
             listed.len(),
-            some.join(", "),
-            match listed.len() > some.len() {
-                true => ", …",
-                false => "",
-            }
+            crate::some_of(&listed)
         ));
     }
 }
