@@ -80,7 +80,11 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
             (Some(id), false) => {
                 format!("{subject}: {verdict} from now on, answering question {id}")
             }
-            (None, _) => format!("{subject}: {verdict} from now on"),
+            // note: a ruling for no question is a command answered at the network gate, which
+            // asks about the command rather than a call. Read as a standing rule, it tells a model
+            // whose one command was refused that every command after it will be refused too
+            (None, true) => format!("{subject}: {verdict}, for one command alone"),
+            (None, false) => format!("{subject}: {verdict} from now on"),
         },
         // note: the reason as well as the figures, because the report carries one. A pass
         // announced as `1 out, 4 elided, 8863 → 725 tokens` says what moved and not what moved it;
@@ -865,6 +869,26 @@ mod tests {
     use nachalnik::{ContextId, ContextState, Params, PermissionId, PermissionRequest, ToolCallId};
 
     use super::*;
+
+    /// A rule is said to stand from now on only where it does, and an answer for one call or one
+    /// command is said to be that.
+    #[test]
+    fn a_ruling_says_how_long_it_holds() {
+        let ruled = |answering: Option<u64>, once| {
+            trace_line(&Event::PolicyRuled {
+                subject: "net:reach".to_owned(),
+                verdict: nachalnik::Verdict::Deny,
+                answering: answering.map(nachalnik::PermissionId),
+                once,
+            })
+            .1
+        };
+
+        assert_eq!(ruled(None, false), "net:reach: deny from now on");
+        assert_eq!(ruled(None, true), "net:reach: deny, for one command alone");
+        assert!(ruled(Some(3), false).contains("from now on, answering question 3"));
+        assert!(ruled(Some(3), true).contains("for question 3's call alone"));
+    }
 
     /// A tool result's first lines carry a mark when there were more, and none when there were not.
     #[test]
