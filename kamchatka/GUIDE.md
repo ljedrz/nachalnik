@@ -260,16 +260,17 @@ whether or not the column is on screen; it is dropped below 84 columns, and a fi
 less on a narrow terminal would be the worse surprise. A trace row matches on the name, the detail
 and the clock, so an hour or a date finds what happened in it.
 
-<kbd>←</kbd> and <kbd>→</kbd> move within the query, so a mistake four letters back is one you can
-go to and fix — <kbd>backspace</kbd> takes out what is behind the cursor and <kbd>delete</kbd> what
-is in front of it, and typing goes in where the cursor is. Everything else stays with the pane,
-deliberately: the point of filtering four hundred events down to nine is to read the nine, and a
-box that swallowed the scroll keys would mean closing the search, and so losing the filter, to look
-at what it found. So <kbd>↑</kbd> <kbd>↓</kbd> and the paging still move between the rows
-underneath, and so do <kbd>home</kbd> and <kbd>end</kbd> — which are all that is left of
-<kbd>g</kbd> and <kbd>G</kbd> while every letter is going into the box. <kbd>esc</kbd> closes it,
-and closing clears it: a filter that outlived its box would leave a window quietly showing four rows
-of hundreds with nothing on screen saying why. Changing tabs clears it for the same reason.
+<kbd>←</kbd> <kbd>→</kbd> <kbd>home</kbd> and <kbd>end</kbd> move within the query, as they do in
+the prompt, so a mistake four letters back is one you can go to and fix — <kbd>backspace</kbd>
+takes out what is behind the cursor and <kbd>delete</kbd> what is in front of it, and typing goes
+in where the cursor is. Everything else stays with the pane, deliberately: the point of filtering
+four hundred events down to nine is to read the nine, and a box that swallowed the scroll keys
+would mean closing the search, and so losing the filter, to look at what it found. So <kbd>↑</kbd>
+<kbd>↓</kbd> and the paging still move between the rows underneath. What it costs is the ends of
+the list: <kbd>g</kbd> and <kbd>G</kbd> are letters while the box is open, so the first and last
+rows are reached by those until it is closed. <kbd>esc</kbd> closes it, and closing clears it: a
+filter that outlived its box would leave a window quietly showing four rows of hundreds with
+nothing on screen saying why. Changing tabs clears it for the same reason.
 
 And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
 rendering of it, not a description, under a header that counts the items in and out, names each
