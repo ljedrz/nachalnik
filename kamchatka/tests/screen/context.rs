@@ -687,6 +687,38 @@ async fn editing_an_elided_item_does_not_quietly_send_the_edit() {
     assert!(sent.contains("shorter wall"), "{sent}");
 }
 
+/// `esc` puts an edited item back the way it was, which is the other half of `enter` committing
+/// it: the prompt is holding somebody's sentence in place of the item's, and every key that does
+/// not commit it has to be able to take it away again.
+#[tokio::test]
+async fn esc_puts_an_edited_item_back_the_way_it_was() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "the original"));
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some());
+
+    for c in "something else".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    harness.press(KeyCode::Esc).await;
+
+    assert!(harness.app.editing.is_none(), "the edit was abandoned");
+    assert_eq!(harness.app.input.lines(), [""], "and the prompt is empty");
+    assert_eq!(harness.app.focus, Focus::Body, "and the keys went back");
+    // and the item says what it said: a sentence somebody typed and then withdrew is not a
+    // rewrite, which is the whole difference between abandoning an edit and making one
+    assert_eq!(
+        harness.app.kernel.items()[0].content.to_text(),
+        "the original"
+    );
+    assert!(harness.app.kernel.items()[0].meta.get("revised").is_none());
+}
+
 #[tokio::test]
 async fn an_item_that_was_rewritten_can_still_be_read_as_it_was() {
     let mut harness = Harness::new([]);

@@ -1022,6 +1022,31 @@ async fn up_with_nothing_to_recall_scrolls_the_conversation() {
     assert_eq!(harness.app.input.lines(), [""]);
 }
 
+/// And `pgdn` pages the conversation from wherever it has been put, rather than being read as the
+/// prompt's own page key and nothing else.
+#[tokio::test]
+async fn pgdn_pages_the_conversation_from_the_top() {
+    let mut harness = Harness::new([]);
+    for n in 0..80 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+    // drawn, because a page is half of what fitted last time and a window that has not been drawn
+    // has no rows to count
+    harness.screen();
+    harness.chord(KeyCode::Home).await;
+    let top = harness.screen();
+    assert!(top.contains("line 0"), "{top}");
+
+    harness.press(KeyCode::PageDown).await;
+    let moved = harness.screen();
+    assert!(
+        !moved.contains("line 0"),
+        "a page down from the top did not move the conversation: {moved}"
+    );
+}
+
 #[tokio::test]
 async fn a_conversation_stays_where_somebody_scrolled_it_while_the_model_keeps_writing() {
     let mut harness = Harness::new([]);
