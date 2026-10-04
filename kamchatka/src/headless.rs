@@ -988,3 +988,45 @@ pub fn opening(app: &mut App, on_ask: Grant) {
         ),
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::AsyncWriteExt as _;
+
+    use super::*;
+
+    /// Half a line read before the input closed is the last line, not the end of the input.
+    ///
+    /// note: `read_until` keeps what it read in the buffer when the call is dropped part-way, so
+    /// the next call can come back with nothing new and a line already half there - and a reader
+    /// that took that for the end would drop what somebody had typed last.
+    #[tokio::test]
+    async fn half_a_line_left_when_the_input_closes_is_the_last_line() {
+        let (mut typing, read) = tokio::io::duplex(64);
+        let mut typed = Typed::new(tokio::io::BufReader::new(read));
+
+        typing.write_all(b"look at the").await.expect("typed");
+        let waited =
+            tokio::time::timeout(std::time::Duration::from_millis(50), typed.next_line()).await;
+        assert!(waited.is_err(), "a line with no end yet is not a line");
+
+        drop(typing);
+        let last = typed.next_line().await.expect("read");
+        assert_eq!(last, Some(("look at the".to_owned(), false)));
+        assert_eq!(typed.next_line().await.expect("read"), None);
+    }
+
+    /// Bytes that are not text still lose their control characters, and keep their lines and tabs.
+    ///
+    /// note: an escape sequence in prose is somebody's terminal being driven by a model's words,
+    /// whatever else the bytes around it are.
+    #[test]
+    fn bytes_that_are_not_text_lose_their_control_characters() {
+        let mut printed = Printable(Vec::new());
+        printed
+            .write_all(b"\x1b[2Jred\xff\tand\nmore")
+            .expect("written");
+
+        assert_eq!(printed.0, b"[2Jred\xff\tand\nmore");
+    }
+}
