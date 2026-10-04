@@ -995,6 +995,53 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
     assert!(made.contains("/dev/made-up-by-a-test"), "{made}");
 }
 
+/// What the kernel says about a scope, asked out of the crate rather than out of the program.
+///
+/// note: the crate's own spelling deliberately - a hard requirement, and a ruleset that is only
+/// built, which restricts no process. `landlock` is a dependency of the crate rather than of its
+/// tests, and the question has to be put to the kernel rather than read off a version number for
+/// either of these to mean anything.
+fn the_kernel_has(scope: landlock::Scope) -> bool {
+    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr};
+
+    Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .scope(scope)
+        .is_ok()
+}
+
+/// What this program says about a Landlock scope is what the kernel says about it.
+///
+/// note: neither answer is skipped and neither is loose. A `false` where the kernel has the scope
+/// leaves a confined command free to reach an abstract socket made outside it: the X server's,
+/// which takes a connection from any process of the user's and can type into the person's
+/// terminal. A `true` where it does not has `scope()` come back `Err` over a scope the kernel
+/// never heard of, which is a `Confinement::Unavailable` and every command refused with nothing
+/// run. One is a hole and the other is a program that does nothing, and on a kernel that confines
+/// at all neither is a failure the suite would see.
+#[test]
+fn what_this_program_says_about_a_scope_is_what_the_kernel_says() {
+    for (claimed, scope, what) in [
+        (
+            kamchatka::sandbox::confines_abstract_sockets as fn() -> bool,
+            landlock::Scope::AbstractUnixSocket,
+            "an abstract socket",
+        ),
+        (
+            kamchatka::sandbox::confines_signals as fn() -> bool,
+            landlock::Scope::Signal,
+            "a signal",
+        ),
+    ] {
+        let (said, kernel) = (claimed(), the_kernel_has(scope));
+        assert_eq!(
+            said, kernel,
+            "{what} is scoped here or nowhere, and this program says {said} where the kernel says \
+             {kernel}"
+        );
+    }
+}
+
 /// A refused connection to a socket outside what the session may write is the confinement where the
 /// kernel governs sockets, and the socket's own permissions where it does not; one the session may
 /// write is never the confinement.
