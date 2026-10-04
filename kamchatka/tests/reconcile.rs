@@ -77,6 +77,35 @@ fn item(reconciled: &Reconciled, id: u64) -> &ContextItem {
         .unwrap_or_else(|| panic!("no item {id}: {:?}", reconciled.snapshot.items))
 }
 
+/// A session with no log beside it is still a fork: there is no record of what it was talking to
+/// and nothing is made up about it.
+///
+/// note: no log and an unreadable log are told apart, since a fork that had a log and lost it is
+/// not a fork that never had one.
+#[test]
+fn a_fork_with_no_log_beside_it_is_read_and_an_unreadable_one_is_refused() {
+    let dir = common::scratch("reconcile-fork-read");
+    let path = dir.join("fork.json");
+    std::fs::write(&path, serde_json::to_vec(&ancestor()).expect("rendered")).expect("written");
+    let path = path.to_str().expect("a path");
+
+    let read = Fork::read(path).expect("a session with no log beside it is still a fork");
+    assert_eq!(read.snapshot.items.len(), 3);
+    assert!(read.log.is_empty());
+
+    // where the log is named but is not a thing to read: refused, and not taken for one that was
+    // never there
+    std::fs::create_dir(dir.join("fork.jsonl")).expect("made");
+    let refused = Fork::read(path).unwrap_err();
+    assert!(
+        refused.starts_with(&format!(
+            "could not read {}",
+            dir.join("fork.jsonl").display()
+        )),
+        "{refused}"
+    );
+}
+
 /// The shared part comes through whole, each fork brings only its notes, and two notes under one
 /// label are both there and named.
 #[test]
@@ -131,6 +160,15 @@ fn the_shared_part_is_kept_and_only_the_notes_come_from_each_fork() {
         reconciled.said
     );
     assert_eq!(reconciled.snapshot.session, "merged");
+    // nothing the forks left differ, so nothing is said about it
+    assert!(
+        !reconciled
+            .said
+            .iter()
+            .any(|line| line.contains("different state")),
+        "{:?}",
+        reconciled.said
+    );
 }
 
 /// The fresh log begins with the resume of the shared part, names each item taken and where it
@@ -351,6 +389,14 @@ fn the_calibration_is_summed_for_one_model_and_dropped_for_two() {
     );
     assert_eq!(calibration.scale, 1.5);
     assert_eq!(one.model.as_deref(), Some("m1"));
+    // the sentence names the model the correction was learned against, and not the forks
+    assert!(
+        one.said
+            .iter()
+            .any(|line| line == "the token counter's correction is summed: every fork talked to m1"),
+        "{:?}",
+        one.said
+    );
 
     talking_to(&b, "m2");
     let forks = [
@@ -366,6 +412,26 @@ fn the_calibration_is_summed_for_one_model_and_dropped_for_two() {
             == "the token counter's correction is dropped: a talked to m1 and b talked to m2"),
         "{:?}",
         two.said
+    );
+}
+
+/// A counter that learned nothing is not carried, and nothing is said about it: what the forks
+/// have to sum is nothing.
+///
+/// note: the calibration an untouched snapshot holds is an empty one - `observations` at nothing -
+/// so this is what a fork that has never sent anything carries, not a figure made up for here.
+#[test]
+fn a_calibration_with_nothing_learned_in_it_is_not_summed_or_said() {
+    let (a, b) = two_forks();
+    let reconciled = merged(&[read("a", &a), read("b", &b)]);
+
+    assert!(
+        !reconciled
+            .said
+            .iter()
+            .any(|line| line.starts_with("the token counter's correction")),
+        "{:?}",
+        reconciled.said
     );
 }
 
@@ -960,6 +1026,40 @@ fn a_revision_the_next_item_vouches_for_needs_no_log() {
     assert_eq!(
         item(&reconciled, 2).content.to_text(),
         "where should the annex and the shed go?"
+    );
+}
+
+/// What one fork's log says about an item it overwrote is that fork's to say: another fork's log
+/// is not read as covering for it.
+///
+/// note: the log beside a fork is optional, so a fork can hold a revision whose overwrite nothing
+/// records. The forks part there, rather than one fork's log vouching for a revision the other
+/// has no record of.
+#[test]
+fn one_forks_log_does_not_vouch_for_what_another_fork_overwrote() {
+    let (a, b) = two_forks();
+    revise(&a, 3, "I will look at the north side first");
+    revise(&b, 3, "I will look at the south side first");
+
+    // a's log holds the overwrite and b's holds none, so nothing says item 3 was one item
+    let reconciled = merged(&[
+        Fork::new("a", a.snapshot(), a.history()),
+        Fork::new("b", b.snapshot(), Vec::new()),
+    ]);
+    assert_eq!(reconciled.shared_through, ContextId(2));
+    assert!(
+        reconciled.said.iter().any(|line| line
+            .starts_with("item 3 is revised in a fork, and taken for where the forks part")),
+        "{:?}",
+        reconciled.said
+    );
+    // and with both logs, the two revisions are a refusal naming both
+    let refused = reconcile(&[read("a", &a), read("b", &b)], "merged").unwrap_err();
+    assert_eq!(
+        refused,
+        "item 3 is shared by the forks and says something different in a and b, so there is no one \
+         version of it to carry on from. Undo all but one of the revisions, or make them say the \
+         same, and reconcile again"
     );
 }
 
