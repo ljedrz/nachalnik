@@ -34,7 +34,7 @@ use serde_json::{Map, Value, json};
 use crate::{
     Dialect, Endpoint, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
-    refused, same_model,
+    refused,
     waiting::{Asking, Sent, interrupted, sent},
 };
 
@@ -155,12 +155,7 @@ impl Gemini {
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model.lock().clone();
         let listed = self.models().await;
-        if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
-            *self.notice.lock() = None;
-            return;
-        }
-
-        *self.notice.lock() = Some(crate::unlisted(&model, &listed));
+        *self.notice.lock() = crate::unlisted(&model, &listed);
     }
 
     /// Everything in a part except the fields this provider understands.
