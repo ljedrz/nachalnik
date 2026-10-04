@@ -679,29 +679,16 @@ impl<'a> Client<'a> {
             }
             Message::Failed { about, error } => {
                 self.answered();
-                // note: a version refusal is the one failure nothing here can mend. Attaching
-                // afresh says the same thing and is refused for the same reason, so a client that
-                // retried it would spend a minute on it and leave saying the session had not
-                // answered, when it answered at once with the sentence below
-                if about == "version" {
-                    self.prose.fresh_line()?;
-
-                    return Err(format!("{about}: {error}"));
-                }
-                // a projection too large to send is the same shape for the same reason: the
-                // session answered, and attaching again gets the identical answer, so a client that
-                // retried it would read a refused frame as a drop and spend a minute against a
-                // session that is answering perfectly well. What a client *can* do is read the
-                // records, and the sentence says so
-                if about == "projection" {
-                    self.prose.fresh_line()?;
-
-                    return Err(format!("{about}: {error}"));
-                }
-                // and being replaced is the end of this client by design. The session serves one
-                // client at a time, so coming back by itself would take it from whoever just did,
-                // and two clients each reconnecting would trade it back and forth for a minute
-                if about == "replaced" {
+                // note: three failures nothing here can mend. A version refusal is said again,
+                // for the same reason, on attaching afresh, so a client that retried it would
+                // spend a minute on it and leave saying the session had not answered, when it
+                // answered at once with the sentence below. A projection too large to send is the
+                // same shape: the session answered, a retry would read the refused frame as a drop,
+                // and what a client *can* do is read the records, which the sentence says. And
+                // being replaced is the end of this client by design: the session serves one client
+                // at a time, so coming back by itself would take it from whoever just did, and two
+                // clients each reconnecting would trade it back and forth for a minute
+                if matches!(about.as_str(), "version" | "projection" | "replaced") {
                     self.prose.fresh_line()?;
 
                     return Err(format!("{about}: {error}"));
