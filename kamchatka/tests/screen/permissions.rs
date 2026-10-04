@@ -772,6 +772,43 @@ async fn the_permissions_tab_says_which_policy_is_deciding() {
     assert_eq!(kamchatka::tools::Careful::untold(), Verdict::Ask);
 }
 
+/// The line saying which policy is deciding stands above the table by exactly one blank row.
+///
+/// note: the block holding it is sized from what is in it - the policy's line, and in a build that
+/// can rate commands a second line saying that nothing is rating them - and from nothing else. A
+/// row too tall pushes the table down the screen for no reason, and a row too short draws the
+/// heading over the line saying what the table is. That line is what somebody reads first.
+#[tokio::test]
+async fn the_policy_line_is_the_only_row_above_the_table() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
+    ));
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.tab(Tab::Permissions);
+
+    let screen = harness.sized(60, 12);
+    let rows: Vec<&str> = screen.lines().collect();
+
+    // the strip of tabs, then what is deciding, then the one blank row that keeps the table off it
+    assert!(
+        rows[1].starts_with("│Careful"),
+        "what is deciding is the first thing under the strip: {screen}"
+    );
+    assert!(
+        rows[2].replace('│', "").trim().is_empty(),
+        "and nothing is said under it but the gap: {screen}"
+    );
+    // the heading is the row after that, which is where somebody looking for the answers looks
+    assert!(
+        rows[3].contains("capability or path"),
+        "the heading, on the row below the gap: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn the_permissions_tab_draws_the_path_rules_too() {
     let mut harness = Harness::new([]);
