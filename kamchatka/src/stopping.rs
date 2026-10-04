@@ -90,3 +90,45 @@ pub enum Ending {
     /// `SIGHUP`.
     HungUp,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    /// `arrived` waits for a signal, and is still waiting after one has been dropped.
+    ///
+    /// note: it is [`Terminated::which_arrived`] with the answer thrown away, and the one loop
+    /// that waits on it decides whether a session is over - so a future that completed at once
+    /// would end every drawn session the moment it drew. Both halves are here because either
+    /// alone is half a claim: a future that never completed would pass a check that only watched
+    /// it wait. The signal is sent to this process, because `Terminated::new` is what installs
+    /// the handler and a subscription nothing sends anything to cannot be told from a wait.
+    ///
+    /// note: the first wait is dropped by its timeout, and the second still catches what was
+    /// sent - which is what the cancel-safety the note on `pressed` claims, read rather than
+    /// believed.
+    #[tokio::test]
+    async fn arrived_waits_for_a_signal_and_survives_the_wait_being_dropped() {
+        for signal in ["TERM", "HUP"] {
+            let mut terminations = Terminated::new().expect("the subscription");
+            assert!(
+                tokio::time::timeout(Duration::from_millis(200), terminations.arrived())
+                    .await
+                    .is_err(),
+                "SIG{signal}: nothing was sent to this process and one arrived"
+            );
+
+            let sent = std::process::Command::new("kill")
+                .args([&format!("-{signal}"), &std::process::id().to_string()])
+                .status()
+                .expect("`kill` is on the path");
+            assert!(sent.success(), "SIG{signal} did not reach this process");
+
+            tokio::time::timeout(Duration::from_secs(5), terminations.arrived())
+                .await
+                .unwrap_or_else(|_| panic!("SIG{signal} arrived and nothing said so"));
+        }
+    }
+}
