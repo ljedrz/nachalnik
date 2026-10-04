@@ -247,6 +247,12 @@ async fn send(
     while let Ok(event) = events.try_recv() {
         app.on_event(event);
     }
+    // note: a turn the endpoint refused fails the test here, as what it is. Passed on without a
+    // look, it leaves the next assertion to report a model that would not play along, or a later
+    // turn that went through to hide it
+    if let kamchatka::app::Outcome::Failed(why) = &outcome {
+        panic!("the turn for {line:?} failed: {why}");
+    }
     app.on_outcome(outcome);
 }
 
@@ -1639,6 +1645,17 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
         "Read big.txt with the read tool, then say the single word: ready.",
     )
     .await;
+    // the first read has to be in the first exchange: only an exchange that is over has results
+    // the compactor may take, so a model that put both reads in the second turn leaves the
+    // context over the threshold with nothing to elide, and nothing about compaction is wrong
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| matches!(item.kind, ContextKind::ToolResult { .. })),
+        "the first turn read nothing, so nothing will be over by the second; it said: {}",
+        what_went_wrong(&app, &answer(&app))
+    );
     send(
         &mut app,
         &mut finished,
@@ -1653,29 +1670,52 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
         budget.limit,
         budget.fraction_used().unwrap_or_default() * 100.0
     );
-    let elided: Vec<_> = app
+    // what compaction took, either way it takes it: a result elided in its place, or a whole
+    // exchange removed for room, which is what a full context gets once eliding alone cannot
+    // bring it under the target - the tool definitions are past this run's target by themselves.
+    // A removal is told apart by the note the kernel gives it
+    let taken: Vec<_> = app
         .kernel
         .items()
         .into_iter()
-        .filter(|item| item.state.is_elided())
+        .filter(|item| {
+            item.state.is_elided()
+                || item
+                    .note
+                    .as_deref()
+                    .is_some_and(|note| note.starts_with("compaction: "))
+        })
         .collect();
-    for item in &elided {
-        println!("    elided [{}] {} · {:?}", item.id, item.label, item.note);
+    for item in &taken {
+        println!(
+            "    {:?} [{}] {} · {:?}",
+            item.state, item.id, item.label, item.note
+        );
     }
     // the figures, because the way this fails is by not reaching the threshold at all - and
     // "the compactor fired" on its own sends the reader to the compactor rather than to the
-    // limit the run was given
+    // limit the run was given. Only under the threshold is that the reading, though
+    let used = budget.fraction_used().unwrap_or_default();
+    let reading = match used < 0.5 {
+        true => {
+            "That is this run's sizing rather than a fault in compaction - \
+             KAMCHATKA_CONTEXT_LIMIT has to be small enough for the fixture to breach"
+        }
+        false => {
+            "Over it, with every turn answered and a read in an exchange that was over, it had \
+             something to take and took nothing"
+        }
+    };
     assert!(
-        !elided.is_empty(),
+        !taken.is_empty(),
         "the compactor did not fire: the context reached {} of {:?} ({:.0}%) against a threshold \
-         of 50%, so there was nothing for it to do. That is this run's sizing rather than a fault \
-         in compaction - KAMCHATKA_CONTEXT_LIMIT has to be small enough for the fixture to breach",
+         of 50%. {reading}",
         budget.used(),
         budget.limit,
-        budget.fraction_used().unwrap_or_default() * 100.0,
+        used * 100.0,
     );
     assert!(
-        elided
+        taken
             .iter()
             .all(|item| item.note.as_deref().unwrap_or_default().contains("%")),
         "and each marker carries the reason it gave"
