@@ -622,3 +622,51 @@ async fn the_gap_column_says_nothing_about_how_long_a_person_took() {
         "the wall clock stays: {decided}"
     );
 }
+
+/// A switch of model says the address beside each name, and only where the two differ by it.
+///
+/// note: the address is the only thing telling a switch that kept the model's name but moved to
+/// another endpoint from one that changed model where it was. Printing both addresses on every
+/// switch is noise the great majority of the time; printing neither loses the switch entirely,
+/// and this pane is where somebody reading a session finds out what it was talking to.
+#[tokio::test]
+async fn a_switch_of_model_names_the_address_only_where_the_two_differ_by_it() {
+    let mut harness = Harness::new([]);
+    let info = |model: &str, endpoint: &str| {
+        Some(
+            nachalnik::ModelInfo::new("openai-compatible", model)
+                .with_endpoint(endpoint.to_owned()),
+        )
+    };
+
+    // the name went and the address stayed, which is the switch that needs no address saying
+    harness.app.on_event(Event::ModelChanged {
+        from: info("first", "http://one.test/v1"),
+        to: info("second", "http://one.test/v1"),
+    });
+    // and the other way about: the name held and the endpoint moved
+    harness.app.on_event(Event::ModelChanged {
+        from: info("kept", "http://one.test/v1"),
+        to: info("kept", "http://two.test/v1"),
+    });
+
+    harness.tab(Tab::Trace);
+    let screen = harness.sized(120, 30);
+    let row = |wanted: &str| {
+        screen
+            .lines()
+            .find(|line| line.contains(wanted))
+            .unwrap_or_else(|| panic!("`{wanted}` is not on the trace: {screen}"))
+    };
+
+    let named = row("first → second");
+    assert!(
+        !named.contains("http://"),
+        "one address for the two names, said neither of the times: {named}"
+    );
+    let moved = row("kept at http://one.test/v1");
+    assert!(
+        moved.contains("http://two.test/v1"),
+        "a switch that kept the name has to say where it went: {moved}"
+    );
+}

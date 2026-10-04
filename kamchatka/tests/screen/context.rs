@@ -306,6 +306,46 @@ async fn editing_an_item_changes_what_the_model_reads_and_keeps_what_it_said() {
     assert!(screen.contains("rewritten by `user`"), "{screen}");
 }
 
+/// An ordered turn is read back with its call among its blocks, and its text block beside it.
+///
+/// note: `Content::to_text` is the *text* of such a turn, which is right on the wire and wrong on
+/// this page, which exists to show what the item holds. Without the arm for a call block the row
+/// reads `call:` and nothing - the block's own name, and no trace of the tool, the arguments or
+/// the identifier it will be answered under.
+#[tokio::test]
+async fn an_ordered_turn_is_read_back_with_its_call_and_its_text() {
+    let mut harness = Harness::new([ModelResponse::blocks(vec![
+        nachalnik::Block::text(nachalnik::Content::text("reading both of them")),
+        nachalnik::Block::Call(call("r1", "dig", json!({ "where": "here" }))),
+    ])]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("go").await;
+    harness.settle().await;
+
+    // the turn is the second item, and `enter` opens the faces of it
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Down).await;
+    harness.press(KeyCode::Enter).await;
+    let screen = harness.flat();
+
+    assert!(
+        screen.contains(r#"call: dig({"where":"here"})"#),
+        "a call block reads as the call it is, and not as its name alone: {screen}"
+    );
+    assert!(
+        screen.contains("reading both of them"),
+        "and the text block beside it is still read: {screen}"
+    );
+    assert!(
+        !screen.contains("text: reading both of them"),
+        "a text block is the turn speaking, and does not name itself for nothing: {screen}"
+    );
+}
+
 /// `e` on a turn that is nothing but a tool call says why it cannot, rather than opening an
 /// empty prompt over it.
 ///
@@ -388,6 +428,36 @@ async fn a_turn_that_is_only_a_tool_call_cannot_be_edited_and_says_so() {
     harness.press(KeyCode::Char('e')).await;
     assert!(harness.app.editing.is_some(), "a tool result is text");
     assert_eq!(harness.app.input.lines(), ["a bone"]);
+}
+
+/// A turn that said something *and* asked for a call can still be edited, because what `e` writes
+/// is the sentence.
+///
+/// note: the call is on the item's kind and editing writes content, so what an edit cannot reach is
+/// the call and not the turn. Refusing the whole turn because it carries a call would refuse the
+/// half of it a person can reach, over a turn that is mostly words.
+#[tokio::test]
+async fn a_turn_that_also_said_something_can_be_edited() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::assistant(
+        "let me look",
+        vec![nachalnik::ToolCall::new(
+            "c1",
+            "dig",
+            json!({ "where": "here" }),
+        )],
+    ));
+
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Char('e')).await;
+
+    assert!(
+        harness.app.editing.is_some(),
+        "a turn with words in it has a box to edit them in: {}",
+        harness.flat()
+    );
+    assert_eq!(harness.app.input.lines(), ["let me look"]);
 }
 
 #[tokio::test]

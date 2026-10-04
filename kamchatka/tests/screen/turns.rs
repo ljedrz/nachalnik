@@ -749,6 +749,33 @@ async fn a_picture_is_named_in_the_previews_rather_than_printed_into_them() {
     );
 }
 
+/// A string that only looks like a base64 payload is shown as it is.
+///
+/// note: the elision is by shape, and a `data:` URI is that shape rather than anything carrying
+/// `;base64,` - the marker a shell command, a data file or a line of somebody's prose can carry
+/// without being a picture. A dialect nobody here speaks is the right failure: showing too much
+/// rather than replacing the words somebody asked about.
+#[tokio::test]
+async fn a_string_that_only_looks_like_a_payload_is_left_alone() {
+    let mut harness = Harness::new([]);
+
+    harness.app.kernel.push(ContextItem::user(
+        "see notes.txt;base64,QUJDREVG for the bytes",
+    ));
+    harness.drain();
+    harness.send("/request").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("notes.txt;base64,QUJDREVG"),
+        "a `data:` URI is the shape being elided, and this is not one: {screen}"
+    );
+    assert!(
+        !screen.contains("base64 blob"),
+        "nothing here is a blob: {screen}"
+    );
+}
+
 /// `/raw` after a request that failed says it failed, rather than showing the answer before it as
 /// the provider's last.
 ///
