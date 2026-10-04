@@ -56,11 +56,12 @@ minor bump may break you.
   command, since nothing here reads it.
 - **`examples/jev_assisted_compaction` is `examples/system1_assisted_compaction`**, and asks the
   model `--advise` would.
-- **Arguments that are not JSON because of how a string was written say how to write it.** An
+- **Arguments that are not JSON for a reason a model does not see say what to write instead.** An
   invalid escape - a regex's `\(` put into a pattern as it stands - is answered with every
-  backslash inside a string written twice, and a line break typed into a string with `\n`, both
-  in the policy's refusal and in the tool's own answer. Told only where the parse failed, a model
-  sent the same pattern again.
+  backslash inside a string written twice, a line break typed into a string with `\n`, and an
+  action written bare where the wrapper's object goes, as in `{"call": glob, ...}`, with the
+  object it belongs in and the word in it - both in the policy's refusal and in the tool's own
+  answer. Told only where the parse failed, a model sent the same call again.
 
 ### fixed
 
