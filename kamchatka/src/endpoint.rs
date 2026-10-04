@@ -492,6 +492,35 @@ pub mod advise {
             assert!(chosen(None, None, None, openrouter, openrouter).is_err());
             assert!(chosen(None, None, None, "http://localhost:11434/v1", openrouter).is_err());
         }
+
+        /// Which account is which, said out loud, and the key never is.
+        ///
+        /// note: an account is decided in an `assert_eq!`, a panic message or a log line sooner
+        /// or later, and the field is a credential - so a `Debug` that named it would put somebody's
+        /// key wherever such a line ends up. What a reader needs is which of the two accounts was
+        /// chosen, and which is the answer either word carries.
+        #[test]
+        fn an_account_says_which_it_is_and_never_says_its_key() {
+            let held = [
+                (
+                    Account::Dedicated("apikey_typesafe".to_owned()),
+                    "Dedicated",
+                ),
+                (
+                    Account::Borrowed("sk-the-session-key".to_owned()),
+                    "Borrowed",
+                ),
+            ];
+
+            for (account, which) in held {
+                let said = format!("{account:?}");
+                assert_eq!(said, format!("Account::{which}(<key>)"), "{said}");
+                // and the whole of it, in the shapes a key is written in
+                for key in ["apikey_typesafe", "sk-the-session-key"] {
+                    assert!(!said.contains(key), "the key is in `{said}`");
+                }
+            }
+        }
     }
 }
 

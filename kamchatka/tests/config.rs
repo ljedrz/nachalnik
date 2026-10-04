@@ -45,7 +45,7 @@ fn run(args: &[&str], lines: &str) -> (bool, String) {
 /// The same, standing in a directory of the test's choosing - which is what decides whether a
 /// settings file is found underfoot.
 fn run_from(dir: &Path, args: &[&str], lines: &str) -> (bool, String) {
-    spawn(dir, args, lines, &[], true)
+    spawn(dir, args, lines, &[], true, true)
 }
 
 /// The same with no API key anywhere, which is what somebody trying this for the first time has.
@@ -53,12 +53,23 @@ fn run_from(dir: &Path, args: &[&str], lines: &str) -> (bool, String) {
 /// note: removed rather than set empty, because an empty variable is a variable: `endpoint::connect`
 /// reads one and only fails where there is none, which is the case this is about.
 fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
-    spawn(elsewhere(), args, lines, &[], false)
+    spawn(elsewhere(), args, lines, &[], false, true)
 }
 
 /// The same, with these environment variables set over the top.
 fn run_with(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
-    spawn(elsewhere(), args, lines, env, true)
+    spawn(elsewhere(), args, lines, env, true, true)
+}
+
+/// The same, with no `KAMCHATKA_BASE_URL` at all, so that the address is whichever one this
+/// program defaults to.
+///
+/// note: every other run here is pointed at a closed port on this machine, and a question about
+/// which service a session talks to has to be asked of the defaults - where the two dialects
+/// point at two different ones.
+#[cfg(feature = "shell-advisor")]
+fn run_where_defaulted(args: &[&str], lines: &str, env: &[(&str, &str)]) -> (bool, String) {
+    spawn(elsewhere(), args, lines, env, true, false)
 }
 
 /// One run of the program: where it stands, what it was given, and what a person read.
@@ -72,12 +83,15 @@ fn spawn(
     lines: &str,
     env: &[(&str, &str)],
     keyed: bool,
+    addressed: bool,
 ) -> (bool, String) {
     let mut command = common::command();
     command
         .current_dir(dir)
         .args(["--no-record"])
         .args(args)
+        // or the address is OpenRouter's whatever the run meant to ask about, and every run here
+        // stands in for a session that does not reach a model
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         // or the model is whatever somebody running the suite has in their environment, and the
         // settings file under test would be overridden by it
@@ -91,6 +105,12 @@ fn spawn(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
+    match addressed {
+        true => {}
+        false => {
+            command.env_remove("KAMCHATKA_BASE_URL");
+        }
+    }
     match keyed {
         true => command.env("KAMCHATKA_API_KEY", "not-a-key"),
         false => command
@@ -991,6 +1011,7 @@ fn a_run_that_assembles_no_session_reads_no_settings_file() {
         "",
         &[],
         true,
+        true,
     );
     assert!(!ok, "{said}");
     assert!(
@@ -1547,6 +1568,36 @@ fn an_advisor_with_no_model_is_refused_with_where_to_find_one() {
     assert!(said.contains("output_modalities=decisions"), "{said}");
 }
 
+/// A session's own key is borrowed for the advisor only when the session is talking to OpenRouter,
+/// and the dialect is half of which address that is.
+///
+/// note: read off the refusal rather than off the code: a session pointed at OpenRouter may spend
+/// its key at OpenRouter and runs, and a `--gemini` session is refused by name because its key is
+/// Google's. Both runs hold the same key and set neither variable, so the only thing between them
+/// is the address - and a `--gemini` session reporting OpenRouter's would borrow a Google-issued
+/// credential for a third party.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn a_dialect_is_half_of_which_service_a_session_talks_to() {
+    // a model named, since `--advise` names none of its own and this is about the key
+    let model = [("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model")];
+    let (ok, said) = run_where_defaulted(&["--advise"], "", &model);
+    assert!(
+        ok,
+        "a session at OpenRouter may spend its own key there: {said}"
+    );
+
+    let (ok, said) = run_where_defaulted(&["--advise", "--gemini"], "", &model);
+    assert!(
+        !ok,
+        "a `--gemini` session's own key is not OpenRouter's: {said}"
+    );
+    assert!(
+        said.contains("https://generativelanguage.googleapis.com/v1beta"),
+        "and the refusal does not say which service it refused over: {said}"
+    );
+}
+
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
 ///
 /// note: it was a ceiling of nothing, reached before the first request: a headless run read no
@@ -1660,6 +1711,7 @@ fn a_context_limit_that_is_not_a_number_of_tokens_is_refused() {
         "",
         &[("KAMCHATKA_CONTEXT_LIMIT", "abc")],
         false,
+        true,
     );
     assert!(!ok, "{said}");
     assert!(
