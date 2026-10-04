@@ -749,3 +749,90 @@ async fn setup_permissions_does_not_credit_mcp_with_a_server_s_tools() {
     );
     assert!(row.contains("loose"), "and this one it decides: {row}");
 }
+
+/// A call of the model's that is waiting on somebody is named, so it can go and do something else.
+///
+/// note: shown on purpose. An agent that can see it is blocked on an answer is an agent that can
+/// decide to do something else with the turn; where the call is not named the model has a turn in
+/// which nothing is happening and no way of finding out why.
+///
+/// note: asked by hand once the turn has stopped in `Deciding`, because there is no other way to
+/// get at it: the kernel holds the whole batch, so a `setup` call made alongside the undecided one
+/// waits behind it exactly as the model does. What the model reads is the tool result either way.
+#[tokio::test]
+async fn setup_permissions_names_the_calls_waiting_on_an_answer() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(vec![
+        ModelResponse::tool_calls(vec![call("c1", "danger", json!({ "where": "one" }))]),
+        ModelResponse::text("done"),
+    ])));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    // a call nobody has answered for, and which therefore leaves the turn in `Deciding`
+    kernel.add_tool(Arc::new(
+        nachalnik::test::ConstTool::new("danger", "did it")
+            .with_capabilities([nachalnik::Capability::exec("run")]),
+    ));
+
+    kernel.push(ContextItem::user("do something rash"));
+    kernel.turn().await.expect("the turn failed");
+
+    // the question is still standing, or there is nothing here for the answer to have said
+    assert_eq!(
+        kernel.pending_permissions().len(),
+        1,
+        "the call nobody decided about is waiting"
+    );
+
+    let asked = call("c2", "setup", json!({ "action": "permissions" }));
+    let out = nachalnik::Tool::invoke(
+        &*kernel.tool("setup").expect("it is installed"),
+        &asked,
+        nachalnik::OutputSink::disconnected(),
+    )
+    .await
+    .expect("the call ran");
+    let said = out.content.to_text().into_owned();
+    assert!(
+        said.contains("waiting on somebody to answer"),
+        "an agent blocked on a person has to be able to see it: {said}"
+    );
+    assert!(
+        said.contains("danger"),
+        "and which call it is, which is what lets it give up on that one and ask for something \
+         else: {said}"
+    );
+}
+
+/// Every tool on the list says what it is, in the first sentence of its own description.
+///
+/// note: the whole sentence, however long, rather than cut to fit the column. A clipped
+/// description is a tool result that looks like the answer and is not one - a model has no way to
+/// tell a description that ends there from one that was clipped, and nothing on the line says which
+/// it is, so the list goes on naming tools whose only description of what they are is blank.
+#[tokio::test]
+async fn setup_tools_says_what_each_tool_is() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "tools" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what are you offered?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    // the description of `context` is on this list, and its first sentence is what says it is the
+    // model's own context
+    assert!(
+        said.contains("your own context: what is in it, what it costs"),
+        "the whole first sentence, not a clipped one and not a blank: {said}"
+    );
+}
