@@ -557,4 +557,70 @@ mod tests {
             );
         }
     }
+
+    /// A line of a block with nothing in it is drawn as the rule and nothing beside it.
+    ///
+    /// note: a model puts an empty line inside a block to space two pieces of code apart, and
+    /// dropping the row would show the block one line shorter than the model wrote it. An empty
+    /// line elsewhere in the same block arriving whole is what says it was not a row that fell off
+    /// the end.
+    #[test]
+    fn a_blank_line_inside_a_block_is_drawn() {
+        let drawn: Vec<String> = highlighted("rust", "fn main() {\n\n    let x = 1;\n}\n", 40)
+            .iter()
+            .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+
+        assert_eq!(drawn, ["│ fn main() {", "│ ", "│     let x = 1;", "│ }"]);
+    }
+
+    /// Three spaces of indent is a fence; four is an indented block, and nothing here.
+    ///
+    /// note: CommonMark's boundary, and it is a real one - a list's contents are indented four and
+    /// their fences are not fences. Read the other way round, a block the model indented by three
+    /// arrives as prose, so the answer loses its rule down the left and its colours, and the code
+    /// is set as an indented block instead.
+    #[test]
+    fn a_fence_indented_by_three_spaces_is_still_a_fence() {
+        assert_eq!(
+            chunks("intro\n\n   ```rust\nfn main() {}\n   ```\n"),
+            [
+                Chunk::Prose("intro\n\n"),
+                Chunk::Code {
+                    language: "rust",
+                    body: "fn main() {}\n",
+                },
+            ],
+            "three spaces of indent",
+        );
+        assert_eq!(
+            chunks("intro\n\n    ```rust\nfn main() {}\n    ```\n"),
+            [Chunk::Prose(
+                "intro\n\n    ```rust\nfn main() {}\n    ```\n",
+            )],
+            "four spaces of indent",
+        );
+    }
+
+    /// The prose in front of a table is a chunk, and the table starts at the header's own line.
+    ///
+    /// note: a table is only recognised because of the delimiter row under its header, so the
+    /// header is a line back from the line that makes the decision - and the prose before it has
+    /// to be handed over as text of its own. Losing it leaves the answer starting at the table,
+    /// which is the model reading a document rather than a person being answered.
+    #[test]
+    fn the_prose_in_front_of_a_table_is_a_chunk_of_its_own() {
+        assert_eq!(
+            chunks("what it does:\n\n| a | b |\n| - | - |\n| 1 | 2 |\n"),
+            [
+                Chunk::Prose("what it does:\n\n"),
+                Chunk::Table("| a | b |\n| - | - |\n| 1 | 2 |\n"),
+            ],
+        );
+        assert_eq!(
+            chunks("| a | b |\n| - | - |\n| 1 | 2 |\n"),
+            [Chunk::Table("| a | b |\n| - | - |\n| 1 | 2 |\n")],
+            "a table with nothing in front of it",
+        );
+    }
 }
