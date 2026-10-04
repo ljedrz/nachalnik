@@ -20,7 +20,7 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{CLOSED, PATIENCE, Peer, quit, served, served_at};
+use crate::{CLOSED, PATIENCE, Peer, Reacher, quit, served, served_at};
 
 /// The two flags, the socket file, and a whole session driven from one process to another.
 ///
@@ -680,6 +680,130 @@ async fn a_line_held_behind_a_question_it_leaves_does_not_keep_the_client() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A client that leaves its questions, with none waiting, says nothing about leaving any.
+///
+/// note: the line is a claim about what happened, and what it says is that the session is asking
+/// something and this client is going away without answering it. A session asking nothing has
+/// nothing to leave, and a client that says it anyway has told the person reading its stderr that
+/// somebody else's session is waiting for an answer - which is the one thing `--connect` reports to
+/// somebody who has come to look after a client that was doing nothing.
+#[tokio::test]
+async fn a_client_leaving_no_question_waiting_says_it_left_none() {
+    let session = crate::served_over_a_socket("leaves-nothing-waiting", Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .leaves_questions()
+            .run(&session.at, tokio::io::empty()),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        !prose.contains("it is left for another client"),
+        "it said it left a question behind, and none was waiting: {prose}"
+    );
+
+    crate::quit_over_a_socket(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A client that leaves its questions leaves a command waiting for the network gate as well as the
+/// kernel's own, and says so.
+///
+/// note: two questions, and they are not the same one. The kernel's is a question about a tool,
+/// asked with a turn paused behind it; the network gate's is asked while the command is still
+/// running, is in no record, and reaches a client only in the list the session sends. A client
+/// that leaves the first and not the second holds a command open with nobody left to answer it -
+/// which is the whole of what it is for, said about the other kind.
+#[tokio::test]
+async fn a_client_leaving_a_command_waiting_for_the_network_says_it_left_it() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "reacher", json!({}))]),
+        ModelResponse::text("it went"),
+    ];
+    let session = crate::served_over_a_socket("leaves-a-reacher", script, |app| {
+        app.kernel.add_tool(Arc::new(Reacher(app.policy.clone())));
+    })
+    .await;
+
+    // note: the input closes only once the question has been put to the client, so this is a
+    // client leaving a question it has been shown rather than one that happened to be waiting by
+    // the time its input ended. A test that closed it at once would pass or fail on how fast the
+    // two raced, which is not the claim.
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"go\n").await.expect("could not type");
+    let heard = crate::Heard::default();
+    let waiting = heard.clone();
+    tokio::spawn(async move {
+        while !waiting.text().contains("is running and has reached") {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .leaves_questions()
+            .run(&session.at, tokio::io::BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = heard.text();
+
+    assert!(
+        prose.contains("`curl x` is running and has reached"),
+        "the question was never put to the client: {prose}"
+    );
+    assert!(
+        prose.contains("it is left for another client"),
+        "it left a command waiting and did not say so: {prose}"
+    );
+    assert!(
+        !prose.contains("nobody is here to answer whether"),
+        "it answered a question it was to leave: {prose}"
+    );
+
+    // and the next client is the somebody it left the question to, which is what makes the claim
+    // above one about the command rather than about a line of prose
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, tokio::io::empty()),
+    )
+    .await
+    .expect("the second client never left")
+    .expect("the second client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains(
+            "nobody is here to answer whether `curl x` may reach the network, so it is answered \
+             `deny`"
+        ),
+        "the question was not waiting for it: {prose}"
+    );
+
+    crate::quit_over_a_socket(&session.at).await;
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("answered Some(false)")),
+        "the command was let through by a client that was to leave it: {:?}",
+        app.kernel.items()
+    );
 }
 
 /// A session speaking a version this client does not is left rather than attached to again.

@@ -414,6 +414,34 @@ fn streamed(heard: &[Message]) -> String {
         .collect()
 }
 
+/// Prose a test can read while the client is still writing it.
+///
+/// note: for the tests whose claim is about something the client says while it is still attached -
+/// what it printed before it left, and when. A `Vec<u8>` the test owns is no use to a test that
+/// has to read it before `run` has returned.
+#[derive(Clone, Default)]
+pub(crate) struct Heard(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl Heard {
+    pub(crate) fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("not poisoned")).into_owned()
+    }
+}
+
+impl std::io::Write for Heard {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .expect("not poisoned")
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
 /// A tool that takes a moment, so that a turn is still running while a test looks at it.
 struct Slow;
 

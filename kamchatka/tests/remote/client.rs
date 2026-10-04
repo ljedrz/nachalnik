@@ -26,7 +26,8 @@ use tokio::{
 };
 
 use crate::{
-    PATIENCE, Peer, Reacher, Trickle, quit, records, says, served, served_as, until_session, wired,
+    Heard, PATIENCE, Peer, Reacher, Trickle, quit, records, says, served, served_as, until_session,
+    wired,
 };
 
 /// The client's own two streams are the ones `--headless` writes.
@@ -847,30 +848,6 @@ async fn a_session_that_went_is_waited_for_longer_each_time() {
     session.ended().await.1.expect("the session failed");
 }
 
-/// Prose a test can read while the client is still writing it.
-#[derive(Clone, Default)]
-struct Heard(Arc<std::sync::Mutex<Vec<u8>>>);
-
-impl Heard {
-    fn text(&self) -> String {
-        String::from_utf8_lossy(&self.0.lock().expect("not poisoned")).into_owned()
-    }
-}
-
-impl std::io::Write for Heard {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .expect("not poisoned")
-            .extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 /// The client answers a question with the same three letters the terminal's panel takes.
 #[tokio::test]
 async fn the_client_answers_a_question_with_the_keys_the_panel_uses() {
@@ -1651,4 +1628,84 @@ async fn a_cut_line_says_where_the_rest_of_it_is() {
     );
 
     session.ended().await.1.expect("the session failed");
+}
+
+/// A piped client's next line is read while a command of its own waits for the network gate, as it
+/// is while the kernel asks something.
+///
+/// note: the two questions are read the same way and paced differently. The kernel's question holds
+/// a turn in `Deciding`, so `busy` is false and the input is open by the ordinary rule; the network
+/// gate asks while the command is *still running*, so `busy` is true and opening the input for it is
+/// a separate clause. A script's `y` answers such a command or it answers nothing: the line waits in
+/// the pipe, the command waits for it, and the turn waits for the command - which is a `--connect`
+/// in a script that hangs rather than one that lets a command through.
+///
+/// note: both lines are in the pipe from the start, because a client that waits for turns reads the
+/// next line only when it is ready for it, and a line written after the question is a line written
+/// after a turn this test cannot see the end of.
+#[tokio::test]
+async fn a_piped_client_answers_a_running_command_waiting_for_the_network() {
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "reacher", json!({}))]),
+        ModelResponse::text("it went"),
+    ];
+    let session = crate::served_over_a_socket("piped-network-gate", script, |app| {
+        app.kernel.add_tool(Arc::new(Reacher(app.policy.clone())));
+    })
+    .await;
+
+    let kernel = session.kernel.clone();
+    let (mut feed, input) = tokio::io::duplex(256);
+    feed.write_all(b"go\ny\n").await.expect("could not type");
+    // and the input closes once the command has its answer, which is the only thing that lets this
+    // client leave - a turn waiting on the gate never finishes on its own
+    tokio::spawn(async move {
+        until_session(&kernel, |kernel| {
+            kernel
+                .items()
+                .iter()
+                .any(|item| item.content.to_text().contains("answered Some(true)"))
+        })
+        .await;
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .waits_for_turns()
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client left the command waiting")
+    .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("`curl x` is running and has reached"),
+        "the question was never put to the client: {prose}"
+    );
+    assert!(
+        prose.contains("it went"),
+        "the turn did not finish: {prose}"
+    );
+
+    crate::quit_over_a_socket(&session.at).await;
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("answered Some(true)")),
+        "the piped `y` never reached the command"
+    );
+    assert!(
+        !app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().trim() == "y"),
+        "the `y` was sent to the model as a message rather than answering the gate"
+    );
 }
