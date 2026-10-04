@@ -775,6 +775,12 @@ async fn ctrl_l_clears_what_the_program_said_and_keeps_what_was_said_to_it() {
     harness.settle().await;
     harness.app.kernel.push(ContextItem::file("a.rs", "one"));
     harness.send("/exclude files").await;
+    // a line the program said that is nobody's turn: what a tool wrote, which is not the
+    // program's own chrome and is not a notice either
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("the tool got there first".to_owned()),
+    });
+    harness.app.say(Speaker::Result, "a tool's own line");
 
     let screen = harness.screen();
     assert!(screen.contains("1 item(s) are now excluded"), "{screen}");
@@ -785,6 +791,16 @@ async fn ctrl_l_clears_what_the_program_said_and_keeps_what_was_said_to_it() {
     assert!(
         !cleared.contains("now excluded"),
         "the notice is gone: {cleared}"
+    );
+    // and everything that was not a notice is where it was, the answer that has arrived but is
+    // not yet an item as much as the tool's own line
+    assert!(
+        cleared.contains("the tool got there first"),
+        "a line that is not a notice was cleared too: {cleared}"
+    );
+    assert!(
+        cleared.contains("a tool's own line"),
+        "a tool's own line was cleared too: {cleared}"
     );
     // and the conversation is where it was, because the conversation is the context and nothing
     // here changed the context

@@ -5,14 +5,20 @@
 //! so the geometry is worth its own tests - and `tests/edges.rs` sweeps every window size that
 //! these do not.
 
+use std::sync::Arc;
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
     app::{Focus, Speaker, Tab},
     tools::Limits,
     ui,
 };
-use nachalnik::{ContextItem, ModelResponse};
+use nachalnik::{
+    Capability, ContextItem, ModelResponse,
+    test::{ConstTool, call},
+};
 use ratatui::style::Color;
+use serde_json::json;
 
 use crate::harness::Harness;
 
@@ -94,6 +100,87 @@ async fn the_next_tab_is_one_keystroke_and_each_of_them_is_two() {
         .on_key(KeyEvent::new(KeyCode::Char('3'), KeyModifiers::ALT))
         .await;
     assert_eq!(harness.app.tab, Tab::Trace);
+
+    // and the fourth is the permissions tab, reached by the same two keys as the others
+    harness
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('4'), KeyModifiers::ALT))
+        .await;
+    assert_eq!(harness.app.tab, Tab::Permissions);
+}
+
+/// `tab` moves the keys to a waiting question and nowhere else.
+///
+/// note: on the chat tab there are two things a `tab` could answer - a question standing in the
+/// prompt's place, and the prompt itself. Only the question takes them, and only while there is
+/// one: the conversation is read rather than operated, so a `tab` with nothing waiting leaves
+/// them where they are rather than handing them to a body with nothing to answer.
+#[tokio::test]
+async fn tab_moves_the_keys_to_a_waiting_question_and_nowhere_else() {
+    let mut harness = Harness::new([ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))])]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("tidy up").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "a question is up");
+
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(
+        harness.app.focus,
+        Focus::Body,
+        "the question has the keys, and only while it is there"
+    );
+
+    // answered, the panel is gone, so there is nothing for `tab` to hand them to
+    harness.press(KeyCode::Char('y')).await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_none());
+
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(
+        harness.app.focus,
+        Focus::Input,
+        "and with nothing waiting, the prompt keeps them"
+    );
+    assert_eq!(harness.app.tab, Tab::Chat);
+}
+
+/// `?` is the keys' own key, so it is asked for on the tabs whose keys are not a prompt.
+///
+/// note: on the chat tab it is the end of a sentence, and at a question it is the question's.
+#[tokio::test]
+async fn a_question_mark_is_a_key_only_where_there_is_no_prompt_under_it() {
+    let mut harness = Harness::new([]);
+
+    // on the chat tab it is a character: it goes into the message being written
+    harness.press(KeyCode::Char('?')).await;
+    assert!(
+        harness.app.overlay.is_none(),
+        "a `?` of a sentence is not a request for the keys"
+    );
+    assert_eq!(harness.app.input.lines(), ["?"]);
+
+    // and while the keys are on a question, it is the question's: a `?` pressed to ask what to do
+    // about it must not open a panel over the prompt the question is standing in
+    let mut asked = Harness::new([ModelResponse::tool_calls(vec![call("c1", "rm", json!({}))])]);
+    asked.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+    asked.send("tidy up").await;
+    asked.settle().await;
+    assert!(asked.app.asked().is_some(), "a question is up");
+    asked.press(KeyCode::Tab).await;
+    asked.press(KeyCode::Char('?')).await;
+    assert!(
+        asked.app.overlay.is_none(),
+        "a `?` at a question is not a request for the keys"
+    );
+    assert!(
+        asked.app.asked().is_some(),
+        "and it did not answer the question either"
+    );
 }
 
 /// The panel used to be the same eight sections wherever it was pressed from, six of which were

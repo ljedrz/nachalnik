@@ -331,6 +331,29 @@ async fn a_command_needs_no_keys_and_is_not_silent() {
     assert!(!run.names().contains(&"model.requested".to_owned()));
 }
 
+/// A run with no screen still says what `/budget` is about, and counts no draft.
+///
+/// note: `App::drafted` is a figure rather than a `#[cfg]` away in a build with no prompt: `/budget`
+/// reports it and the status line adds it in, so the empty answer is what both of them print.
+/// A run with nothing half-typed saying that a message is waiting to be sent is a figure for a
+/// message nobody can type.
+#[tokio::test]
+async fn a_run_with_no_screen_counts_no_draft() {
+    let run = run("/budget\n", Vec::new(), |_| {}).await;
+
+    assert!(
+        run.prose.contains("the next request:"),
+        "`/budget` said nothing about the request: {}",
+        run.prose
+    );
+    assert!(
+        !run.prose.contains("typed but not sent"),
+        "a run with no prompt has nothing half-typed: {}",
+        run.prose
+    );
+    assert_eq!(run.app.drafted(), 0, "and nothing is counted for one");
+}
+
 /// A name no command answers to is cut before it is quoted back, as every other line is.
 ///
 /// note: the dispatch splits on the first space, so a name given with arguments was short by

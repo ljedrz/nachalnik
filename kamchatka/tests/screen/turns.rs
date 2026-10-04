@@ -446,6 +446,26 @@ async fn stepping_stops_where_a_turn_walks_straight_through() {
     assert!(after.contains("nothing to see"), "{after}");
 }
 
+/// `esc` stops a turn that is running, wherever on the screen it is pressed.
+///
+/// note: it is the second gesture for what `ctrl+c` does, and it reaches the places `ctrl+c` does
+/// not: `ctrl+c` is swallowed by a search box on some terminals, and `esc` is the key everybody
+/// presses when a model has gone off down a path. Both halves matter - a search box takes `esc`
+/// to close itself, and that is not a loss of the gesture, since `ctrl+c` is answered above it.
+#[tokio::test]
+async fn esc_stops_a_turn_that_is_running() {
+    let mut harness = Harness::new([ModelResponse::text("an answer")]);
+    harness.app.busy = true;
+
+    harness.press(KeyCode::Esc).await;
+
+    assert!(
+        harness.app.kernel.is_interrupted(),
+        "`esc` did not stop the running turn"
+    );
+    assert!(!harness.app.quit, "and it is not the leaving key");
+}
+
 /// `esc` in `ready` drops the calls waiting to run, which is what `/stop` does there.
 #[tokio::test]
 async fn esc_in_ready_drops_the_calls_waiting_to_run() {
