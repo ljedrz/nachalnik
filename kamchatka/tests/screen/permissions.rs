@@ -2322,3 +2322,61 @@ async fn a_decision_taken_back_does_not_leave_the_keys_on_a_row_that_is_not_ther
         "and the answer says which subject it was about: {said:?}"
     );
 }
+
+/// A question in the prompt's place takes the prompt's keys and leaves the conversation's.
+///
+/// note: the guard is not a freeze. Somebody answering a tool call is often looking at what the
+/// call is about, and the panel is pinned rather than laid over the screen for exactly that - so
+/// the four keys that move the conversation are the ones still working, while the answers wait
+/// for `tab`. Read on `app.scroll`, which is what the transcript is drawn from and what the keys
+/// work against.
+#[tokio::test]
+async fn the_conversation_still_scrolls_while_a_question_waits() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("dug"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    // enough conversation that the transcript has somewhere to go
+    for n in 0..80 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::assistant(format!("line {n}"), vec![]));
+    }
+
+    harness.send("dig").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "a question is waiting");
+    // the keys are still on the prompt, which is not on the screen - that is what makes this the
+    // guard rather than the question
+    assert_eq!(harness.app.focus, Focus::Input);
+
+    // a frame first, since what it measured is what the paging keys work against
+    harness.screen();
+    let bottom = harness.app.rendered.saturating_sub(harness.app.viewport);
+    assert!(bottom > 0, "there is a conversation to move through");
+    assert_eq!(harness.app.scroll, bottom, "and it starts at the bottom");
+
+    // each of the four in turn, from wherever the last one left it: up and down a line, and the
+    // paging keys half a screen, which is what `input_key` does with the same keys
+    let half = (harness.app.viewport / 2) as isize;
+    for (key, step) in [
+        (KeyCode::Up, -1),
+        (KeyCode::Down, 1),
+        (KeyCode::PageUp, -half),
+        (KeyCode::PageDown, half),
+    ] {
+        let was = harness.app.scroll;
+        harness.press(key).await;
+        let now = harness.app.scroll;
+        assert_eq!(
+            now,
+            was.saturating_add_signed(step).min(bottom),
+            "{key:?} did not move the conversation where it should: {was} -> {now}"
+        );
+    }
+}
