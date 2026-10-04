@@ -1261,6 +1261,20 @@ mod tests {
         assert_eq!(usage.output_tokens, Some(100), "{usage:?}");
     }
 
+    /// Reasoning inferred as the residual of nothing is no reasoning at all.
+    ///
+    /// note: the residual is what the total has left once the prompt and the completion are taken
+    /// off, and a total that is exactly the two of them is evidence of no thinking - not of a
+    /// thinking that cost nothing. A reasoning count of zero the endpoint reports by name is the
+    /// other half, and an open question in POSTPONED.md.
+    #[test]
+    fn a_residual_of_nothing_is_no_reasoning() {
+        let left_over =
+            usage_of(&json!({ "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }));
+        assert_eq!(left_over.reasoning_tokens, None, "{left_over:?}");
+        assert_eq!(left_over.output_tokens, Some(5), "{left_over:?}");
+    }
+
     /// A request's tools go out as functions, and a request with none carries no `tools` at all.
     ///
     /// note: absent rather than empty. `"tools": []` is a different request from one with no
