@@ -3357,6 +3357,202 @@ fn a_resumed_record_checks_clean_and_a_miscounted_one_does_not() {
             .any(|it| it.contains("the log leaves 3 items") && it.contains("the snapshot has 2")),
         "{findings:?}"
     );
+
+    // a snapshot taken past the end of the log beside it says so, and says where the log ends:
+    // the record it was taken at is in neither, which is a different thing from a log that has
+    // run past the snapshot
+    let mut ahead = serde_json::to_value(&snapshot).unwrap();
+    ahead["last_seq"] = json!(snapshot.last_seq + 5);
+    let findings = check(Some(&log), Some(&ahead.to_string())).findings;
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("the log ends at record")
+                && it.contains(&snapshot.last_seq.to_string())),
+        "{findings:?}"
+    );
+}
+
+/// A finding says which line of the log it is about, counting from one.
+///
+/// note: written rather than run, because the claim is about how a reader numbers: a person
+/// reading the sentence goes to the line it names and finds the record there.
+#[test]
+fn a_finding_names_the_line_it_is_about() {
+    use kamchatka::check::check;
+
+    let line = |seq: u64, event: serde_json::Value| {
+        serde_json::to_string(&json!({"seq": seq, "at": 1, "event": event})).unwrap()
+    };
+    // a good record, then a line that is not one, then a good one again: the second is named by
+    // the line it is on, and the walk carries on to the third rather than stopping
+    let log = [
+        line(
+            1,
+            json!({"event": "session.started", "session": "s", "format": 1}),
+        ),
+        line(
+            2,
+            json!({"event": "tool.requested", "call": "c1", "tool": "peek", "args": {}}),
+        ),
+        "{not json at all".to_owned(),
+        line(
+            3,
+            json!({"event": "tool.finished", "call": "c1", "tool": "peek", "is_error":
+                false, "truncated": null, "tokens": 1, "item": 1}),
+        ),
+    ]
+    .join("\n");
+
+    let checked = check(Some(&log), None);
+    assert_eq!(checked.records, 3, "{:?}", checked.findings);
+    assert!(
+        checked
+            .findings
+            .iter()
+            .any(|it| it.starts_with("line 3 is not a record")),
+        "{:?}",
+        checked.findings
+    );
+}
+
+/// A log written in a later format than this reads is named, and one written in this one is not.
+///
+/// note: `0` is what a record written before formats were numbered reads as, so it is the case on
+/// the other side of the number from the one this finds.
+#[test]
+fn a_record_in_a_later_format_is_named_and_one_in_this_one_is_not() {
+    use kamchatka::check::check;
+    use nachalnik::FORMAT;
+
+    let begun = |format: u32| {
+        format!(
+            "{{\"format\": {format}, \"seq\": 1, \"at\": 1, \"event\": {{\"event\": \
+             \"session.started\", \"session\": \"s\"}}}}\n"
+        )
+    };
+
+    let later = check(Some(&begun(FORMAT + 1)), None);
+    assert!(
+        later
+            .findings
+            .iter()
+            .any(|it| it.contains(&format!("written in format {}", FORMAT + 1))),
+        "{:?}",
+        later.findings
+    );
+
+    for format in [FORMAT, 0] {
+        let current = check(Some(&begun(format)), None);
+        assert!(
+            current.findings.is_empty(),
+            "format {format}: {:?}",
+            current.findings
+        );
+    }
+}
+
+/// A call left open when the next session begins is said to be, and what the earlier session asked
+/// for is not held against the later one.
+///
+/// note: written rather than run, because the case needs a log holding two sessions and a call
+/// still open across the join - a log carried on after a resume is exactly that, and whether this
+/// program produces one is not what is being claimed.
+#[test]
+fn a_call_left_open_across_a_resume_is_said_to_be() {
+    use kamchatka::check::check;
+
+    let line = |seq: u64, event: serde_json::Value| {
+        serde_json::to_string(&json!({"seq": seq, "at": 1, "event": event})).unwrap()
+    };
+    let log = [
+        line(
+            1,
+            json!({"event": "session.started", "session": "one", "format": 1}),
+        ),
+        line(
+            2,
+            json!({"event": "tool.requested", "call": "c1", "tool": "peek", "args": {}}),
+        ),
+        // nothing finished the call, and the next session begins
+        line(
+            3,
+            json!({"event": "session.resumed", "session": "two", "items": 0, "tokens": 0,
+            "format": 1}),
+        ),
+        // the same call asked for and finished again, under the session that resumed: nothing
+        // waiting is carried across a resume, so this is a call this session asked for itself
+        line(
+            4,
+            json!({"event": "tool.requested", "call": "c1", "tool": "peek", "args": {}}),
+        ),
+        line(
+            5,
+            json!({"event": "tool.finished", "call": "c1", "tool": "peek", "is_error": false,
+            "truncated": null, "tokens": 1, "item": 1}),
+        ),
+    ]
+    .join("\n");
+
+    let findings = check(Some(&log), None).findings;
+    assert!(
+        findings.iter().any(|it| it.contains("`c1`")
+            && it.contains("never finished")
+            && it.contains("another session begins after it")),
+        "{findings:?}"
+    );
+    // and the re-request under the new session is a first request there, not a second one
+    assert!(
+        !findings.iter().any(|it| it.contains("a second time")),
+        "{findings:?}"
+    );
+}
+
+/// A log that begins part way through a session is not held to the calls before the cut, and one
+/// that begins where a session does is.
+///
+/// note: the two are told apart by what came before the log begins, which is what `begins` reads.
+/// A call finished for a call this log never asked for is named when the log begins at a session,
+/// and passed over when it begins in the middle of one, where the request may be in a log nobody
+/// has.
+#[test]
+fn a_log_cut_part_way_through_is_not_held_to_the_calls_before_the_cut() {
+    use kamchatka::check::check;
+
+    let line = |seq: u64, event: serde_json::Value| {
+        serde_json::to_string(&json!({"seq": seq, "at": 1, "event": event})).unwrap()
+    };
+    // the tail of a session: a call asked for and finished before the cut, and this log finishing
+    // that call again, which is only unremarkable because the request may be in the log before it
+    let cut = [line(
+        2,
+        json!({"event": "tool.finished", "call": "c1", "tool": "peek", "is_error": false,
+            "truncated": null, "tokens": 1, "item": 1}),
+    )]
+    .join("\n");
+    let whole = [
+        line(
+            1,
+            json!({"event": "session.started", "session": "one", "format": 1}),
+        ),
+        line(
+            2,
+            json!({"event": "tool.finished", "call": "c1", "tool": "peek", "is_error": false,
+            "truncated": null, "tokens": 1, "item": 1}),
+        ),
+    ]
+    .join("\n");
+
+    assert!(
+        check(Some(&cut), None).findings.is_empty(),
+        "{:?}",
+        check(Some(&cut), None).findings
+    );
+    let findings = check(Some(&whole), None).findings;
+    assert!(
+        findings.iter().any(|it| it.contains("never asked for")),
+        "{findings:?}"
+    );
 }
 
 /// A page a line opened while a command was out is said to whoever has no screen to open it on.
