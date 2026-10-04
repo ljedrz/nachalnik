@@ -106,6 +106,23 @@ async fn a_search_with_no_matches_says_what_it_searched() {
         "{}",
         said[0]
     );
+
+    // and how many items that was, which is the count of what the loop read rather than the
+    // length of whatever it was handed - the figure a model reads as "the whole context"
+    let looked = said[0]
+        .rsplit(" and ")
+        .next()
+        .unwrap_or_default()
+        .split(" item(s) were looked at")
+        .next()
+        .and_then(|figure| figure.trim().parse::<usize>().ok())
+        .unwrap_or_else(|| panic!("a nil result says how much it looked at: {}", said[0]));
+    assert!(
+        looked >= 2,
+        "every item the context holds was read, so the figure is not zero: {}",
+        said[0]
+    );
+
     // and a search with nothing to search for is a mistake to correct
     assert!(said[1].contains("needs the `text`"), "{}", said[1]);
 }
@@ -128,6 +145,11 @@ async fn search_can_be_held_to_the_items_it_was_given() {
     let said = answered(&kernel);
     assert!(said.starts_with("1 line(s)"), "{said}");
     assert!(said.contains("looking only in 2"), "{said}");
+    // every id named something, so nothing about the call is left unreported
+    assert!(
+        !said.contains("There is no item") && !said.contains("There are no items"),
+        "an id that named something gets no sentence about one that did not: {said}"
+    );
 }
 
 /// `search`'s `take` is read the way `log`'s is, rather than by a bare `as_u64` that swallows it.
@@ -387,6 +409,89 @@ async fn a_take_under_the_ceiling_is_not_announced_as_one() {
     assert!(
         !said.contains("`take` is at most"),
         "the ceiling is said where it stopped the answer short, and nowhere else: {said}"
+    );
+}
+
+/// A `take` that covers every match says so, and says nothing about what it left behind.
+///
+/// note: the other branch of the same heading. Where a `take` stopped the answer short the
+/// sentence says how many are not here, and where it did not, saying so would put a number and a
+/// column in the answer that is not there. A `take` of ten over ten matches is not a truncated
+/// answer.
+#[tokio::test]
+async fn a_take_that_covers_every_match_says_all_of_them() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    for n in 0..10 {
+        kernel.push(ContextItem::file(format!("f{n}.txt"), "hay\n"));
+    }
+    kernel.push(ContextItem::user("go"));
+
+    // the search is reached by hand, so that the first answer is not in the context the second
+    // one counts - an answer names the text it looked for
+    let tool = kernel.tool("context").expect("it is installed");
+    let mut answers = Vec::new();
+    for (id, take) in [("c1", 10), ("c2", 100_000)] {
+        let out = call(
+            id,
+            "context",
+            json!({ "action": "search", "text": "hay", "take": take }),
+        );
+        let answered = nachalnik::Tool::invoke(&*tool, &out, nachalnik::OutputSink::disconnected())
+            .await
+            .expect("the call was answered");
+        answers.push(answered.content.to_text().into_owned());
+    }
+
+    for (which, said) in ["a `take` over every match", "a `take` past the ceiling"]
+        .into_iter()
+        .zip(answers)
+    {
+        assert!(
+            said.contains("all 10 of them:"),
+            "{which} showed all ten, so it does not say some are missing: {said}"
+        );
+        assert!(
+            !said.contains("more match and are not here"),
+            "{which} left nothing out, and says so: {said}"
+        );
+        assert!(
+            !said.contains("`take` is at most"),
+            "and the ceiling, which is not what shortened it, is not named: {said}"
+        );
+    }
+}
+
+/// A matching line shorter than the window comes back whole, and unmarked.
+///
+/// note: the window is for the minified line and the log line, where the first hundred
+/// characters are the part nobody asked about. A short line has no such tail, and trimming it
+/// takes off the part before the match as well - so a line of ninety characters with the match at
+/// the end comes back as a fragment behind an ellipsis that says it was cut.
+#[tokio::test]
+async fn a_line_shorter_than_the_window_is_not_cut_around_the_match() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "needle", "take": 5 }),
+    )]));
+
+    // short enough to be shown whole, with the match at the far end of it
+    kernel.push(ContextItem::file(
+        "short.txt",
+        format!("{}needle", "a".repeat(90)),
+    ));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains(&format!("{}needle", "a".repeat(90))),
+        "a line that fits the window comes back whole: {said}"
+    );
+    assert!(
+        !said.contains('…'),
+        "and is not marked as trimmed, because nothing was taken off it: {said}"
     );
 }
 

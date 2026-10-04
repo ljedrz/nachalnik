@@ -402,6 +402,53 @@ async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() 
     assert!(listed.contains("not yours"), "{listed}");
 }
 
+/// The fifth column of the expensive list is the running total of the fourth.
+///
+/// note: what the model is asked to read the list for. `budget` exists so a compaction decision
+/// can be made, and the decision is "where do I cut" - which is a question about the sum of the
+/// costs above a row, not about the cost of the row. A column that stopped adding said a drop
+/// would free nothing.
+#[tokio::test]
+async fn the_running_column_of_the_expensive_list_is_the_sum_of_the_one_beside_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "budget" }),
+    )]));
+
+    // three files, so the list has three rows and their totals are told apart from one another
+    kernel.push(ContextItem::file("a.rs", "a".repeat(4_000)));
+    kernel.push(ContextItem::file("b.rs", "b".repeat(2_000)));
+    kernel.push(ContextItem::file("c.rs", "c".repeat(8_000)));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn ran");
+
+    let figure = |it: &str| it.replace(',', "").parse::<usize>();
+    let rows: Vec<(usize, usize)> = answered(&kernel)
+        .lines()
+        .filter(|line| line.contains("active"))
+        .filter_map(|line| {
+            // id, state, kind, sending, if all go, and what the row is holding
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            Some((figure(columns.get(3)?).ok()?, figure(columns.get(4)?).ok()?))
+        })
+        .collect();
+    assert!(
+        rows.len() >= 3,
+        "three items are going into the request, so each has a row: {rows:?}"
+    );
+
+    let mut sum = 0;
+    for (sending, running) in &rows {
+        sum += sending;
+        assert_eq!(
+            *running, sum,
+            "eliding everything down to this row frees what the rows above it send"
+        );
+    }
+}
+
 /// Every state `budget` says the model sets is one this tool has an action for.
 ///
 /// note: `budget` named `archived` among "three states you set" for as long as `archive` was an
