@@ -107,6 +107,28 @@ async fn run(input: &str, script: Vec<ModelResponse>, setup: impl FnOnce(&App)) 
     run_with(input, script, Grant::Deny, setup).await
 }
 
+/// The same, for a run whose turn was refused for length: that turn fails, and the exit code is
+/// not what this is about.
+async fn tolerate(input: &str, script: Vec<ModelResponse>, setup: impl FnOnce(&App)) -> Run {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, None);
+    setup(&app);
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let _ = Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, input.as_bytes())
+        .await;
+
+    Run {
+        app,
+        records: String::from_utf8(records).expect("the records are text"),
+        prose: String::from_utf8(prose).expect("the prose is text"),
+    }
+}
+
 /// The same, saying what an unanswerable question is answered with.
 async fn run_with(
     input: &str,
@@ -1070,6 +1092,71 @@ async fn a_deadline_past_the_end_of_time_is_none() {
     let prose = String::from_utf8(prose).expect("the prose is text");
     assert!(prose.contains("in time"), "{prose}");
     assert!(!prose.contains("out of time"), "{prose}");
+}
+
+/// A counter that puts one token on every piece, so a request can be made to land exactly on the
+/// model's limit rather than near it.
+///
+/// note: `BytesPerToken` divides, so a figure tuned to sit on a limit is a figure tuned to sit on
+/// it by luck. What is under test below is the comparison at the limit itself, and this is the
+/// way to reach it.
+struct OneEach;
+
+impl nachalnik::TokenCounter for OneEach {
+    fn count(&self, _content: &nachalnik::Content) -> usize {
+        1
+    }
+}
+
+/// A refusal stands only while the next request would be too long, and room to the token is room.
+///
+/// note: the refusal is about a request longer than the model takes, and it goes when the next
+/// request is one the model will read - a compactor runs before every request and may bring it
+/// under, and `/exclude` is somebody's decision. The test below is the standing half of that;
+/// this is its boundary. What is left after the exclusion is exactly the limit, which the model
+/// will read, so a session refusing there passes over every message it is handed while the
+/// request would have gone out.
+#[tokio::test]
+async fn a_refusal_stands_only_while_the_next_request_is_too_long() {
+    // two tokens of room: the question and one file, so the first request is a token over with
+    // both of them there and exactly the limit with one excluded
+    let run = tolerate("first\n/exclude file:a.rs\nsecond\n", Vec::new(), |app| {
+        app.kernel.set_counter(Arc::new(OneEach));
+        app.kernel.set_provider(Arc::new(
+            ScriptedProvider::new(vec![ModelResponse::text("asked again")])
+                .with_info(ModelInfo::new("scripted", "scripted").with_context_limit(2)),
+        ));
+        for name in ["a.rs", "b.rs"] {
+            app.kernel
+                .push(ContextItem::file(name, "a large file").pinned());
+        }
+    })
+    .await;
+
+    assert!(
+        run.prose.contains("the model takes 2"),
+        "nothing was refused, so this test is not where it thinks it is: {}",
+        run.prose
+    );
+    let asked: Vec<String> = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        asked,
+        ["first", "second"],
+        "a refusal outlived the request it was about: {}",
+        run.prose
+    );
+    assert!(
+        !run.prose.contains("passed over unsent"),
+        "a message was passed over while the next request would have been sent: {}",
+        run.prose
+    );
 }
 
 /// A session refused for a request longer than the model takes passes the next messages over

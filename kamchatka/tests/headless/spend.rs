@@ -492,6 +492,31 @@ async fn a_usage_without_its_figures_says_so() {
     assert_eq!(run.app.spent(), 400);
 }
 
+/// Half a figure is only said where there is a ceiling for it to fall short of.
+///
+/// note: the figure is counted either way - `a_usage_without_its_figures_says_so` holds that -
+/// but the complaint is about a ceiling being counted against less than was spent. With no
+/// ceiling set, nothing here is counted against anything, and a session that reported half of a
+/// bill would be told its accounting is short when it is not short of a figure.
+#[tokio::test]
+async fn half_a_figure_is_not_complained_about_with_no_ceiling_to_be_short_of() {
+    let half = ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(400),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("half on this one")
+    };
+    let run = run("go\n", vec![half], |_| {}).await;
+
+    assert_eq!(run.app.spent(), 400, "it is counted either way");
+    assert!(
+        !run.prose.contains("only half"),
+        "a session with no ceiling was told what was missing: {}",
+        run.prose
+    );
+}
+
 /// A figure no endpoint would send does not wrap the total round to nothing.
 #[tokio::test]
 async fn a_bill_past_counting_is_counted_as_everything() {
@@ -499,6 +524,48 @@ async fn a_bill_past_counting_is_counted_as_everything() {
     let run = run("go\n", script, |_| {}).await;
 
     assert_eq!(run.app.spent(), u64::MAX);
+}
+
+/// A response that lands on the ceiling exactly reaches it, and the next message is passed over.
+///
+/// note: the test above crosses it, which is the ordinary way a run ends. Landing on it is the
+/// same thing said differently: a ceiling is reached when the total is not under it, so a run
+/// billed for exactly what it was given stops rather than asking once more for a request it has
+/// no money for.
+#[tokio::test]
+async fn a_ceiling_landed_on_exactly_is_reached() {
+    let script = vec![
+        priced(ModelResponse::text("one"), 400, 600),
+        priced(ModelResponse::text("never reached"), 0, 0),
+    ];
+    let run = run_capped("first\nsecond\n", script, 1000, |_| {}).await;
+
+    assert_eq!(run.app.spent(), 1000, "the bill should be the ceiling");
+    assert!(
+        run.app.overspent(),
+        "a session that has spent exactly what it was given is not stopped: {}",
+        run.prose
+    );
+    assert!(
+        run.prose.contains("spent 1,000 tokens of 1,000; stopping"),
+        "{}",
+        run.prose
+    );
+    assert!(
+        !run.prose.contains("never reached"),
+        "a request went out after the ceiling was reached: {}",
+        run.prose
+    );
+    assert_eq!(
+        run.app
+            .kernel
+            .items()
+            .iter()
+            .filter(|item| matches!(item.kind, nachalnik::ContextKind::UserMessage))
+            .count(),
+        1,
+        "the message after the ceiling went into the context unsent"
+    );
 }
 
 /// A ceiling set under what has already gone stops a turn that is running, as crossing it does.
