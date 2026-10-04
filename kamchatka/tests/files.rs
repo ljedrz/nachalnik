@@ -1055,6 +1055,101 @@ async fn a_file_whose_group_is_not_the_writers_is_written_where_it_is() {
     assert_eq!(after.ino(), before.ino(), "and as the same file");
 }
 
+/// A name the temporary would carry is one it steps over rather than takes, so a file left behind
+/// by a run that was killed keeps what it holds.
+///
+/// note: the temporary is named after the file, the process and a counter, so a run killed between
+/// making one and renaming it leaves a file saying whose it was. `O_EXCL` is what makes the next
+/// run walk past that name to one of its own rather than open it - and an open that finds a file
+/// there without `O_TRUNC` is not a truncation, so the new contents go over the front of the old
+/// ones and what the caller reads back has the tail of the previous run left in it.
+#[tokio::test]
+async fn a_temporary_a_left_over_file_already_holds_is_stepped_over() {
+    let dir = scratch("files-left-behind");
+
+    // every name the counter could carry while this suite runs, so that whichever one it is handed
+    // is one that is already there
+    let pid = std::process::id();
+    let decoys: Vec<String> = (0..=256)
+        .map(|count| format!(".notes.txt.{pid}.{count}.kamchatka"))
+        .collect();
+    for decoy in &decoys {
+        std::fs::write(dir.join(decoy), "from a run that was killed\n").expect("a left-over");
+    }
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "notes.txt", "content": "mine\n" }),
+    )
+    .await;
+    assert!(said.contains("wrote 5 bytes"), "{said}");
+    assert_eq!(
+        held(&dir, "notes.txt"),
+        "mine\n",
+        "the file holds what was written and nothing of what was there before it"
+    );
+    let taken: Vec<&String> = decoys
+        .iter()
+        .filter(|name| !dir.join(name).exists())
+        .collect();
+    assert!(
+        taken.is_empty(),
+        "a left-over that says whose it was is not this run's to take: {taken:?}"
+    );
+}
+
+/// A write that cannot stand a new file in the file's place leaves nothing beside it either.
+///
+/// note: the other half of the temporary's life, which `Reach::replace` reaches when the rename
+/// would change more than the contents - here the owner and group, because the new file is made
+/// with the group's the directory carries and only root could give it the old one's. The write
+/// lands all the same, written over the file that is there, and the file made for the rename is
+/// taken away again; a caller looking at the directory afterwards should find the file it asked
+/// for and nothing else.
+///
+/// note: a setgid directory and a second group, which a machine with one group does not have, so
+/// this stands down rather than fails on one.
+#[tokio::test]
+async fn a_write_that_cannot_rename_over_the_file_leaves_nothing_beside_it() {
+    let dir = scratch("files-not-renamed");
+    let mine = rustix::process::getgid();
+    let Some(other) = rustix::process::getgroups()
+        .unwrap()
+        .into_iter()
+        .find(|group| *group != mine)
+    else {
+        eprintln!("skipped: no second group for a setgid directory to hand a new file");
+        return;
+    };
+    rustix::fs::chown(&dir, None, Some(other)).expect("the directory is the group's");
+    rustix::fs::chmod(&dir, rustix::fs::Mode::from_raw_mode(0o2775)).expect("and setgid");
+    let file = dir.join("run.sh");
+    std::fs::write(&file, "echo one\n").expect("a file");
+    rustix::fs::chown(&file, None, Some(mine)).expect("in the group this process is in");
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "run.sh", "content": "echo two\n" }),
+    )
+    .await;
+    assert!(said.contains("wrote 9 bytes"), "{said}");
+    assert_eq!(held(&dir, "run.sh"), "echo two\n");
+
+    let entries: Vec<String> = std::fs::read_dir(&dir)
+        .expect("the directory")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    assert_eq!(entries, ["run.sh"], "nothing is left beside it");
+}
+
 /// A file another hard link shares is written where it is, so both names still show one file.
 ///
 /// note: a rename would give this name a new file and leave the other name holding the old

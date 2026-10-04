@@ -332,6 +332,20 @@ fn a_refusal_names_what_was_opened_up() {
         !refused.contains("/usr/lib read-only"),
         "it offered the path it had just refused: {refused}"
     );
+
+    // and a write to a path that is in no root at all is refused as outside the reach rather
+    // than as one of the read-only ones, which would name a path it is not under
+    let refused = reach
+        .allows("/nowhere/in/particular", Access::Writing)
+        .expect_err("it is outside everything");
+    assert!(
+        refused.contains("outside what this session reaches"),
+        "a path in no root is not read-only, it is out of reach: {refused}"
+    );
+    assert!(
+        !refused.contains("reading only"),
+        "it named a read-only root the path is not under: {refused}"
+    );
 }
 
 /// Under a refused `fs:write` the refusal calls the reach read-only, in the words the confinement
