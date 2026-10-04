@@ -242,5 +242,6 @@ proptest = { workspace = true }
 # is asserted against
 nachalnik = { workspace = true, features = ["selectors", "test"] }
 # `net` for the one test that needs a real socket: an endpoint that lists what its model takes,
-# which is where the status line's parameter row comes from
-tokio = { workspace = true, features = ["net"] }
+# which is where the status line's parameter row comes from; `test-util` for the paused clock a
+# client's minute of giving up on a session that has gone is waited out on
+tokio = { workspace = true, features = ["net", "test-util"] }

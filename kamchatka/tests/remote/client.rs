@@ -373,6 +373,67 @@ async fn what_a_command_put_in_is_said() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A refusal is marked as one, rather than arriving as one more thing the session said.
+///
+/// note: the program has one voice and it says which of its lines are errors. A client draws what
+/// it is handed, so a refusal that arrived unmarked read as an ordinary note - and a note is the
+/// shape of the lines that carry the program's own account of what it did, so a client reading for
+/// those would keep the refusal and drop the notes around it. The wire's own speaker is asserted in
+/// `the_program_has_one_voice_and_the_client_hears_it_once`; this is the same claim about what a
+/// person reads.
+///
+/// note: over a socket file, so a machine that cannot bind a loopback port can still run it.
+#[tokio::test]
+async fn a_refusal_reaches_a_client_marked_as_an_error() {
+    use crate::{quit_over_a_socket, served_over_a_socket};
+
+    let session = served_over_a_socket("refusal-marked", Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"/spend nonsense\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        prose.contains("error: `nonsense` is not a number of tokens"),
+        "a refusal arrived as one more line of the program's own: {prose}"
+    );
+
+    quit_over_a_socket(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A page of one is printed as the page, without a heading naming which page it is.
+///
+/// note: the heading is there to tell pages of a reference apart, and a client is handed the whole
+/// of every page rather than one to turn to - there is no key to press down a socket. A reference
+/// of one page headed with the page's own name says nothing the title above it has not said, and
+/// says it on every command that opens one, which is most of them.
+#[tokio::test]
+async fn a_page_of_one_comes_without_a_heading() {
+    use crate::{quit_over_a_socket, served_over_a_socket};
+
+    let session = served_over_a_socket("one-page", Vec::new(), |_| {}).await;
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"/help\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(prose.contains("--- the commands ---"), "{prose}");
+    assert!(
+        !prose.contains("-- commands --"),
+        "a page of one is headed with the name of the only page: {prose}"
+    );
+
+    quit_over_a_socket(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A client whose socket is pulled out from under it picks the session back up, and still leaves
 /// when it is done.
 ///
@@ -776,6 +837,138 @@ async fn an_answer_the_dead_socket_took_with_it_is_asked_again() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// And a question this client answered, and was then told the session had decided, is not asked
+/// again when the socket comes back.
+///
+/// note: the other half of the question above, and the half a proxy that swallows the `decide`
+/// cannot reach: a client keeps what it has answered until it sees the decision, and a decision
+/// it did see takes the question off that list as well as off the open one. A resume asks again
+/// only what the session never said - so a question kept after a decision it had arrived put a
+/// question on the screen for a call that had already run, and answered it again with `--on-ask`.
+///
+/// note: the socket goes *after* the decision has been through, so what the client comes back
+/// holding is a question it knows the answer to. Nothing is lost here for the client to catch up
+/// on, which is the point: a resume with nothing to ask is the ordinary case, and it must leave
+/// the client silent.
+#[tokio::test]
+async fn a_question_decided_before_the_socket_went_is_not_asked_again() {
+    use crate::{Socket, served_over_a_socket};
+
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+        ModelResponse::text("allowed"),
+    ];
+    let session = served_over_a_socket("decided-then-cut", script, |app| {
+        app.kernel.add_tool(Arc::new(
+            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+        ));
+    })
+    .await;
+    let Ok(Address::Unix(path)) = protocol::address(&session.at) else {
+        panic!("the suite serves a socket file");
+    };
+    let served_at = std::path::PathBuf::from(path);
+
+    // a socket in front of the session, which lets go of the client once the decision has gone by
+    let front = crate::common::scratch("decided-then-cut-front");
+    let socket = front.join("p.sock");
+    let proxy = tokio::net::UnixListener::bind(&socket).expect("a socket");
+    let at = format!("unix:{}", socket.display());
+    let (arrived, mut reconnected) = tokio::sync::mpsc::unbounded_channel::<u32>();
+    tokio::spawn(async move {
+        let mut nth = 0;
+        while let Ok((down, _)) = proxy.accept().await {
+            let up = tokio::net::UnixStream::connect(&served_at)
+                .await
+                .expect("the session went");
+            nth += 1;
+            let armed = nth == 1;
+            let _ = arrived.send(nth);
+            let (down_r, mut down_w) = down.into_split();
+            let (up_r, mut up_w) = up.into_split();
+            // one task for both directions, so that letting go of one lets go of the other: a
+            // client that saw the decision and then a closed read end would call it a reset
+            tokio::spawn(async move {
+                let mut up = BufReader::new(up_r).lines();
+                let mut down = BufReader::new(down_r).lines();
+                loop {
+                    tokio::select! {
+                        line = up.next_line() => match line {
+                            Ok(Some(line)) => {
+                                if down_w
+                                    .write_all(format!("{line}\n").as_bytes())
+                                    .await
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                                if armed && line.contains("\"permission.decided\"") {
+                                    return;
+                                }
+                            }
+                            _ => return,
+                        },
+                        line = down.next_line() => match line {
+                            Ok(Some(line)) => {
+                                if up_w
+                                    .write_all(format!("{line}\n").as_bytes())
+                                    .await
+                                    .is_err()
+                                {
+                                    return;
+                                }
+                            }
+                            _ => return,
+                        },
+                    }
+                }
+            });
+        }
+    });
+
+    let heard = Heard::default();
+    let waiting_on = heard.clone();
+    let (mut feed, input) = tokio::io::duplex(256);
+    tokio::spawn(async move {
+        feed.write_all(b"go\n").await.expect("could not type");
+        // on what *this client* has been shown, rather than on what the session is holding: a `y`
+        // typed before the question is on the wire is a message of `y`
+        until_heard(&waiting_on, "wants to run peek").await;
+        feed.write_all(b"y\n").await.expect("could not type");
+        while reconnected.recv().await != Some(2) {}
+        drop(feed);
+    });
+
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client never left")
+    .expect("the client failed");
+    let prose = heard.text();
+
+    assert!(
+        prose.contains("the connection went; attaching again from record"),
+        "the socket was never cut: {prose}"
+    );
+    assert!(
+        !prose.contains("nobody is here to answer"),
+        "a question the session had already decided was asked again: {prose}"
+    );
+
+    let mut back = Socket::connect(&session.at).await;
+    back.send(crate::attaching(None, None)).await;
+    while !matches!(back.recv().await, Message::Attached(_)) {}
+    back.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A session that has gone is waited for longer each time, rather than every quarter of a second.
 ///
 /// note: what the waits growing stands for is `GIVE_UP`, which is a minute and too long to wait
@@ -846,6 +1039,95 @@ async fn a_session_that_went_is_waited_for_longer_each_time() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// And a session that has been gone for a minute is given up on, rather than waited for for ever.
+///
+/// note: `GIVE_UP` is the answer to "a client that cannot stop is a process somebody has to notice
+/// and kill", and it is only an answer if something actually counts towards it. Without the check
+/// the client attached again for as long as it was left running, every five seconds, writing a
+/// line each time - which on a laptop somebody had forgotten about is a process that outlives the
+/// session and the terminal.
+///
+/// note: on tokio's own clock, which `start_paused` advances when every task is idle, so the minute
+/// is waited out in the couple of dozen attempts it takes rather than in a minute of the machine's
+/// time. The attempts are counted anyway, and that is what fails the test under a build that never
+/// gives up: no clock is involved in the count, so the loop cannot outrun it.
+///
+/// note: the input is held open throughout, so nothing but the giving up can be what ends this
+/// client - a client whose input closed would leave as soon as the session was quiet, and pass
+/// without ever waiting.
+#[tokio::test(start_paused = true)]
+async fn a_session_that_stays_gone_is_given_up_on() {
+    let socket = crate::common::scratch("gave-up").join("g.sock");
+    let listener = tokio::net::UnixListener::bind(&socket).expect("a socket");
+    let at = format!("unix:{}", socket.display());
+    let (arrived, mut attempts) = tokio::sync::mpsc::unbounded_channel::<()>();
+    tokio::spawn(async move {
+        while let Ok((connection, _)) = listener.accept().await {
+            let _ = arrived.send(());
+            // nothing is said and the connection is hung up on, which is a session that has gone
+            drop(connection);
+        }
+    });
+
+    let (_feed, input) = tokio::io::duplex(256);
+    let mut client = Box::pin(async move {
+        let (mut records, mut prose) = (Vec::new(), Vec::new());
+        let mut client = kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose);
+        let left = client.run(&at, BufReader::new(input)).await;
+        let prose = String::from_utf8_lossy(&prose).into_owned();
+
+        (left, prose)
+    });
+
+    // sixty seconds of waits at most five seconds long is under twenty attempts; four times that
+    // is well past a minute of clock and well before this could be slow
+    let for_ever = async {
+        let mut seen = 0;
+        while seen < 80 {
+            if attempts.try_recv().is_ok() {
+                seen += 1;
+            } else {
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
+        }
+    };
+    let (left, prose) = tokio::select! {
+        left = client.as_mut() => left,
+        () = for_ever => panic!("the client was still waiting for a session that had gone"),
+    };
+
+    let gave_up = left.expect_err("waiting for a session that had gone read as success");
+    assert!(
+        gave_up.contains("the session has not answered for"),
+        "{gave_up}"
+    );
+    assert!(
+        gave_up.contains("picks up from there if it comes back"),
+        "{gave_up}"
+    );
+    // and the waits that went before it are what the minute is: a client that gave up at once
+    // would have said the same words about a session that had been gone a second
+    assert!(
+        prose.contains("the connection went; attaching again from record"),
+        "it gave up without trying: {prose}"
+    );
+}
+
+/// Waits for the client to have written these words.
+///
+/// note: rather than for the session to have done something, where a test can wait on both. What
+/// the client answers next is decided by what it has been shown, and it is a socket further away
+/// from the session than the kernel is.
+async fn until_heard(heard: &Heard, wanted: &str) {
+    tokio::time::timeout(PATIENCE, async {
+        while !heard.text().contains(wanted) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("the client never wrote {wanted:?}"));
 }
 
 /// The client answers a question with the same three letters the terminal's panel takes.
@@ -1293,6 +1575,49 @@ async fn a_command_piped_in_leaves_its_records_behind_before_the_client_goes() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A client that leaves while the session is still there does not say it ended.
+///
+/// note: a line saying so is told on the way out by a client that is leaving, and what makes it
+/// honest is that the session said `session.finished` rather than that the connection ended: a
+/// `/quit` and a `/restart` end it, and the line carries the only advice anybody can act on. A
+/// client whose input closed on a session that is still running is the other case - it detaches,
+/// which is not an ending of anything - and saying it there told whoever read the transcript that
+/// a session had ended which had not, and sent them to attach to it again.
+#[tokio::test]
+async fn a_client_that_detaches_does_not_say_the_session_ended() {
+    use crate::{Socket, served_over_a_socket};
+
+    let session = served_over_a_socket("detach-said", Vec::new(), |_| {}).await;
+
+    // the input closes behind the command, which is the shape that ends a client rather than the
+    // session: the client stays for the turn it started and leaves when the session goes quiet
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+        .run(&session.at, BufReader::new(&b"/note still here\n"[..]))
+        .await
+        .expect("the client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+
+    assert!(
+        !prose.contains("the session has ended"),
+        "a client that detached said the session had ended: {prose}"
+    );
+    assert!(
+        !String::from_utf8_lossy(&records).contains("session.finished"),
+        "the session was finished after all"
+    );
+
+    // and it was not: the session is there to be attached to again
+    let mut back = Socket::connect(&session.at).await;
+    back.send(crate::attaching(None, None)).await;
+    while !matches!(back.recv().await, Message::Attached(_)) {}
+    back.send(Command::Submit {
+        line: "/quit".to_owned(),
+    })
+    .await;
+    session.ended().await.1.expect("the session failed");
+}
+
 /// A blank line is nothing and spaces round a line are not part of it, as they are headless.
 ///
 /// note: the client sent each line with only its end trimmed, so a blank one was a message - a
@@ -1411,6 +1736,75 @@ async fn two_answers_typed_together_answer_two_questions() {
     assert!(prose.contains("poke: allow"), "{prose}");
 
     quit(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// A question decided is gone from the ones this client is still offering, and the others stay.
+///
+/// note: two questions in one turn, answered one at a time with the client watching, because the
+/// pair is what makes this a claim about the list rather than about one question. A decision
+/// removes the question it names and nothing else - it did not settle the turn - so a client that
+/// took the list for "the one that was just decided" either forgot a question nobody had answered,
+/// and went on waiting for it, or offered a question that was settled, and answered it again.
+#[tokio::test]
+async fn deciding_one_question_leaves_the_others_open() {
+    use crate::{quit_over_a_socket, served_over_a_socket};
+
+    let script = vec![
+        ModelResponse::tool_calls(vec![
+            call("c1", "peek", json!({})),
+            call("c2", "poke", json!({})),
+        ]),
+        ModelResponse::text("allowed"),
+    ];
+    let session = served_over_a_socket("one-of-two", script, |app| {
+        for name in ["peek", "poke"] {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new(name, "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        }
+    })
+    .await;
+
+    let (mut feed, input) = tokio::io::duplex(256);
+    // the second answer is typed only once the decision on the first has reached this client, so
+    // what is being asked is what the list holds at that moment rather than what order the
+    // records happened to arrive in
+    let heard = Heard::default();
+    let waiting_on = heard.clone();
+    tokio::spawn(async move {
+        feed.write_all(b"go\n").await.expect("could not type");
+        // on what this client has been shown, rather than on what the session is holding: a `y`
+        // typed while one question is on the wire and one still in the session is a message of `y`
+        // rather than an answer, and the test would be about that
+        until_heard(&waiting_on, "2 wants to run poke").await;
+        feed.write_all(b"y\n").await.expect("could not type");
+        // and the second only once the decision on the first has landed, so what is being asked is
+        // what the list holds at that moment rather than what order the records arrived in
+        until_heard(&waiting_on, "peek: allow").await;
+        feed.write_all(b"y\n").await.expect("could not type");
+    });
+
+    let (mut records, mut prose) = (Vec::new(), heard.clone());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(input)),
+    )
+    .await
+    .expect("the client left a question nobody had answered")
+    .expect("the client failed");
+    let prose = heard.text();
+
+    // both were answered, and the model got its turn
+    assert!(prose.contains("peek: allow"), "{prose}");
+    assert!(
+        prose.contains("poke: allow"),
+        "a decision on one question took the other with it: {prose}"
+    );
+    assert!(prose.contains("allowed"), "{prose}");
+
+    quit_over_a_socket(&session.at).await;
     session.ended().await.1.expect("the session failed");
 }
 
