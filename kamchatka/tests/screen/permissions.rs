@@ -2216,6 +2216,62 @@ async fn a_command_reaching_for_the_network_is_asked_about_where_the_prompt_was(
     );
 }
 
+/// A question that has exactly its minimum and no more gets the minimum, rather than the screen.
+///
+/// note: the minimum is a floor the conversation argues against - a question may take the last of a
+/// short window when it cannot be answered otherwise, and not one row before that. The case here
+/// is the boundary between the two, which is the only place they can be told apart: a window that
+/// leaves the question its seven rows exactly, and a question wanting eleven. Taking the
+/// conversation's row as well would leave a window answering a question about a command with
+/// nothing of the command on it, and the question is pinned under the conversation rather than
+/// over it for exactly that reason.
+#[tokio::test]
+async fn a_question_taking_exactly_its_minimum_leaves_the_conversation_its_row() {
+    let mut harness = Harness::new(Vec::new());
+    // a command long enough that the question wants eleven rows of a hundred-column window, and a
+    // second one behind it so the answers take a row of their own
+    let _first = reaching(
+        &harness,
+        "c1",
+        "curl -sSL https://example.com/a/b/c | tar xz -C /srv && systemctl restart thing && echo done",
+    );
+    let _second = reaching(
+        &harness,
+        "c2",
+        "wget https://example.org/some/quite/long/path/here",
+    );
+    until_reached(&harness, 2).await;
+
+    // thirteen rows: a row of conversation and the status line are what a question has to leave
+    // behind, which leaves it seven - and seven is exactly the fewest a question is drawn in
+    let screen = harness.sized(100, 13);
+    let question = screen
+        .lines()
+        .skip_while(|line| !line.contains("wants the network"))
+        .position(|line| line.contains('└'))
+        .expect("the question is boxed")
+        + 1;
+    assert_eq!(question, 7, "the minimum, and no more: {screen}");
+    assert!(
+        !screen.contains("│ curl"),
+        "and the command itself waits for a window with room for it: {screen}"
+    );
+
+    // a row taller and the question grows into it, which is the bargain the minimum is the other
+    // side of: the two are one rule rather than two, and the seven is a floor and not a cap
+    let taller = harness.sized(100, 14);
+    assert_eq!(
+        taller
+            .lines()
+            .skip_while(|line| !line.contains("wants the network"))
+            .position(|line| line.contains('└'))
+            .expect("the question is boxed")
+            + 1,
+        8,
+        "one row more is one row more question: {taller}"
+    );
+}
+
 /// `always` allows the network from here on, and lets through every command already waiting on
 /// the same question; `n` refuses one command and no more.
 #[tokio::test]

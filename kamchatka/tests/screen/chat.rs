@@ -1083,10 +1083,21 @@ async fn a_conversation_stays_where_somebody_scrolled_it_while_the_model_keeps_w
     // to the newest of them, which made reading anything it had said earlier impossible until the
     // turn was over
     write(&mut harness, 80, 160);
+    // the footer is built from what the last frame measured, so it takes one more frame for the
+    // line and the app's own figures to be talking about the same conversation
+    harness.screen();
     let after = harness.screen();
     assert!(after.contains(&anchor), "the view moved: {after}");
     assert!(!after.contains("line 159"), "{after}");
-    // and the window says there is more underneath, rather than just stopping
+    // and the window says how much of it is underneath, rather than just stopping - one figure
+    // for somebody to judge the walk down by, rather than two numbers they would have to put
+    // together: the window they are looking at, and how far back from the end they are
+    let below = harness.app.rendered - (harness.app.viewport + harness.app.scroll);
+    assert!(below > 1, "there is something down there to count: {after}");
+    assert!(
+        after.contains(&format!("{below} line(s) below")),
+        "{below} lines are underneath the window: {after}"
+    );
     assert!(after.contains("ctrl+e follows"), "{after}");
 
     // ctrl+e is the way back down without paging through what arrived in between

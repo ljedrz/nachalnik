@@ -691,6 +691,62 @@ async fn a_tab_that_fits_draws_no_bar_at_all() {
     );
 }
 
+/// The bar is sized out of the scroll *positions* rather than the rows, and the two are one apart.
+///
+/// note: a pane of `n` rows in a window of `v` has `n - v + 1` positions - it stops at the last
+/// full page, so the last position shows the final row at the top - and `content_length` is a
+/// count of those. Handing ratatui the row count instead puts the last position a page further
+/// down than anything here reaches, and the thumb stops short of the bottom. The two counts are
+/// close enough that nothing short of a pane a page or two deep tells them apart by where the
+/// thumb sits, and close enough that being one out the other way stops the bar being drawn at
+/// all: a pane one row past the fold would answer with nothing, which is what a pane that fits
+/// says, and those are opposites.
+#[tokio::test]
+async fn the_bar_measures_scroll_positions_and_a_pane_one_row_over_is_still_scrolling() {
+    /// How many rows of thumb there are with `n` items in the context, and where it ends.
+    fn thumb(n: usize) -> (usize, u16) {
+        let mut harness = Harness::new([]);
+        for i in 0..n {
+            harness
+                .app
+                .kernel
+                .push(ContextItem::file(format!("src/f{i}.rs"), "fn f() {}"));
+        }
+        harness.tab(Tab::Context);
+
+        let screen = harness.sized(100, 30);
+        let rows: Vec<u16> = screen
+            .lines()
+            .enumerate()
+            .filter(|(_, line)| line.ends_with('█'))
+            .map(|(y, _)| y as u16)
+            .collect();
+        (
+            rows.len(),
+            *rows
+                .last()
+                .expect("a thumb to have reached the bottom of its track"),
+        )
+    }
+
+    // twenty-six rows fit on this window and the track runs from the first under the header to the
+    // bottom border, so it is twenty-six rows long. One item more and the pane scrolls
+    let (one_over, bottom_of_one) = thumb(27);
+    assert_eq!(one_over, 25, "a pane one row over is still scrolling");
+    assert_eq!(bottom_of_one, 26, "and the thumb is on the track");
+
+    // its thumb is a row shorter than the track, because the row underneath is the part of the
+    // content the window cannot show - and a pane two rows over is one row shorter again, which
+    // is the whole of what the count between the two has to be for
+    let (two_over, _) = thumb(28);
+    assert_eq!(two_over, 24, "two rows over, and two fewer rows of thumb");
+    assert_eq!(
+        one_over - two_over,
+        1,
+        "one row further to scroll, one row of thumb shorter"
+    );
+}
+
 /// Every command the prompt answers to is in the help.
 ///
 /// note: read out of the source rather than listed here. A list in a test is one more copy for

@@ -153,6 +153,41 @@ async fn an_item_that_is_not_going_into_the_request_says_why_where_it_is_listed(
     );
 }
 
+/// The tab's footer says how much of the context the model is *not* being shown.
+///
+/// note: counted by what the request carries rather than by what it does not, because the row
+/// beside each item has to agree with it and the two are read off different things - the state
+/// and the projection. A tab holding three items with one excluded says `1 not going`, and a
+/// count that had the two the other way round would say `2` and blame two items that are going.
+#[tokio::test]
+async fn the_context_footer_counts_what_is_not_going_rather_than_what_is() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::file("a.rs", "one"));
+    harness.app.kernel.push(ContextItem::file("b.rs", "two"));
+    harness.app.kernel.push(ContextItem::file("c.rs", "three"));
+
+    harness.tab(Tab::Context);
+    assert!(
+        harness.screen().contains("3 items, all going"),
+        "nothing has been taken out yet: {}",
+        harness.screen()
+    );
+
+    let b = harness.app.kernel.items()[1].id;
+    harness
+        .app
+        .kernel
+        .set_state([b], ContextState::Excluded, Some("by hand".into()));
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("3 items, 1 not going"),
+        "one of three is out, and the line names that one: {screen}"
+    );
+    // and the other way round is a different sentence, not the same figure
+    assert!(!screen.contains("2 not going"), "{screen}");
+}
+
 #[tokio::test]
 async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     let mut harness = Harness::new([]);

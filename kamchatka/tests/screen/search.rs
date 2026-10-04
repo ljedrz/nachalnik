@@ -107,6 +107,58 @@ async fn the_trace_can_be_searched_by_the_hour_it_happened() {
     );
 }
 
+/// The search box counts *events*, which is not the number of rows they were drawn in.
+///
+/// note: the two are read out of different places and only one of them is the right answer. The
+/// pane wraps a detail over as many rows as it takes, so a count taken off the drawn rows says a
+/// filter found twenty-two when it found three - and a person reading that has no way to tell it
+/// from a real twenty-two. It is the same number the keys move through, which is the claim the
+/// other half of this file is about, and the `of` beside it is what is in the pane rather than in
+/// the context, which is a different list on a different tab.
+#[tokio::test]
+async fn the_search_box_counts_events_and_not_the_rows_they_wrapped_into() {
+    use std::time::{Duration, SystemTime};
+
+    use kamchatka::app::Traced;
+
+    let mut harness = Harness::new([ModelResponse::text("done")]);
+    harness.send("go").await;
+    harness.settle().await;
+    harness.tab(Tab::Trace);
+
+    // three events, and one of them a detail long enough to run over several rows of a
+    // hundred-column window - which is what a real `model.requested` looks like
+    harness.app.trace.clear();
+    for (n, name) in ["model.requested", "model.delta", "state.changed"]
+        .into_iter()
+        .enumerate()
+    {
+        harness.app.trace.push_back(Traced {
+            name: name.to_owned(),
+            detail: "mreq".repeat(60 * (n + 1)),
+            at: std::time::Instant::now(),
+            wall: SystemTime::UNIX_EPOCH + Duration::from_secs(1_789_171_201),
+            after_a_person: false,
+        });
+    }
+    let events = harness.app.trace.len();
+    assert_eq!(events, 3, "three events, and no context behind them");
+
+    harness.press(KeyCode::Char('/')).await;
+    type_in(&mut harness, "mreq").await;
+    assert_eq!(
+        harness.app.traced().len(),
+        events,
+        "every one of them mentions the query"
+    );
+
+    let screen = harness.sized(120, 30);
+    assert!(
+        screen.contains(&format!("{events} of {events}")),
+        "three events of three, however many rows they wrapped into: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
     let mut harness = Harness::new([ModelResponse::text("done")]);

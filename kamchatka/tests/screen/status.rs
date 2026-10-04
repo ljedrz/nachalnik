@@ -297,7 +297,12 @@ async fn the_budget_counts_the_items_the_tokens_it_reports_belong_to() {
 #[tokio::test]
 async fn the_status_line_says_what_the_budget_is_measured_against() {
     let mut harness = Harness::new([]);
-    harness.app.kernel.push(ContextItem::user("hello"));
+    // a context big enough that its share of the limit is a figure with a decimal place in it,
+    // rather than the `0.0%` a two-token context rounds to
+    harness.app.kernel.push(ContextItem::file(
+        "haystack.txt",
+        "a needle in it. ".repeat(400),
+    ));
 
     let screen = harness.screen();
     let status = screen.lines().last().expect("a status line");
@@ -308,6 +313,22 @@ async fn the_status_line_says_what_the_budget_is_measured_against() {
     // not something anybody can act on
     assert!(status.contains("~"), "{status}");
     assert!(status.contains("% (128k)"), "{status}");
+
+    // and the percentage is a *share* of that limit rather than the figure itself. The two are
+    // one keystroke apart in the source - a quotient and a remainder over the same pair - and
+    // only reading the line tells them apart, because a remainder where a quotient belongs
+    // comes out as the figure again with a per cent on the end
+    let (_, rest) = status.split_once('~').expect("an estimate");
+    let (used, rest) = rest.split_once(" tokens, ").expect("a count");
+    let (percent, _) = rest.split_once('%').expect("a percentage");
+    let used: f64 = used.replace(',', "").parse().expect("a count");
+    let percent: f64 = percent.parse().expect("a percentage");
+    assert!(used > 1_000.0, "a figure worth a percentage: {status}");
+    assert!(
+        (percent - used / 128_000.0 * 100.0).abs() < 0.05,
+        "{used} of 128,000 is {:.1}%, and the line says {percent}%: {status}",
+        used / 128_000.0 * 100.0
+    );
 }
 
 #[tokio::test]
