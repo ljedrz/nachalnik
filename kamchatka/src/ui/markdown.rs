@@ -623,4 +623,87 @@ mod tests {
             "a table with nothing in front of it",
         );
     }
+
+    /// A drawn block's tokens wear the colours [`token`] gives those names.
+    ///
+    /// note: through [`highlighted`] rather than by asking `token` directly, because a colour the
+    /// highlighter never emits is a colour nothing can observe - the names here are chosen to be
+    /// the ones a fence declaring that language actually produces, and the claim under test is
+    /// that each of them arrives in its own colour on the row it is drawn in.
+    #[test]
+    fn a_fenced_blocks_tokens_are_drawn_in_their_own_colours() {
+        for (language, body, token, colour) in [
+            // a diff's removed line: the only name that means red
+            ("diff", "-removed", "-removed", Color::Red),
+            // and its added line, so the two halves of a diff are told apart
+            ("diff", "+added", "+added", Color::Green),
+            // markdown's link and list markers: the names that mean cyan here
+            ("md", "- item", "-", Color::Cyan),
+            ("md", "[text](url)", "[text]", Color::Cyan),
+        ] {
+            let drawn: Vec<(String, Style)> = highlighted(language, body, 80)
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .map(|span| (span.content.to_string(), span.style))
+                .collect();
+            let hit = drawn
+                .iter()
+                .find(|(text, _)| text == token)
+                .unwrap_or_else(|| panic!("{token:?} was not drawn out of {body:?}"));
+            assert_eq!(hit.1, Style::default().fg(colour), "{token:?} in {body:?}");
+        }
+    }
+
+    /// A grapheme that will not fit in what is left of the row closes the row rather than
+    /// over-running it.
+    ///
+    /// note: `used != 0` is the whole of the second half of that condition. On an empty row there
+    /// is nothing to over-run - the row has all the room there is - so the character goes in at
+    /// its full width and the row is a cell over rather than the character being dropped.
+    #[test]
+    fn a_wide_character_never_starts_a_row_it_does_not_fit_in() {
+        // eight cells of room, three taken: `de` fits, and `一` needs two more than are left
+        assert_eq!(rows_of(&["abc", "de一丁"], 8), ["abcde一", "丁"]);
+        // the same text a cell wider and it is one row, which is what the room is for
+        assert_eq!(rows_of(&["abc", "de一丁"], 9), ["abcde一丁"]);
+    }
+
+    /// A row is closed when it is full and there is more to come, and not one character sooner.
+    ///
+    /// note: the zero-width space is the case here. It is a character that occupies no cells, so
+    /// `used >= room` is false after it and `used < room` is true - the row must *not* be closed
+    /// on it, or a row with a cell free comes out empty and the text after it is pushed down a
+    /// row for nothing.
+    #[test]
+    fn a_row_is_not_closed_before_it_is_full() {
+        // eight cells exactly, then a character that takes none of them, then two more
+        assert_eq!(
+            rows_of(&["abcdefgh", "\u{200b}ij"], 8),
+            ["abcdefgh\u{200b}", "ij"],
+            "a row with a cell free is not full"
+        );
+        // and a zero-width character after a full row of wide ones keeps the row it is on
+        assert_eq!(
+            rows_of(&["ab", "de一丁", "\u{200b}"], 8),
+            ["abde一丁\u{200b}"],
+            "nothing is pushed down a row for a character that takes no cells"
+        );
+    }
+
+    /// What [`fit`] draws for one body at one width, as its rows of text.
+    ///
+    /// note: the pieces go in as one call rather than several, because a row can be filled across
+    /// a boundary between two of the highlighter's tokens, and a helper that fitted each piece on
+    /// its own would never put them in the same row.
+    fn rows_of(pieces: &[&str], room: usize) -> Vec<String> {
+        let style = Style::default();
+        let spans: Vec<(String, Style)> = pieces
+            .iter()
+            .map(|text| (text.to_string(), style))
+            .collect();
+        fit(spans, room)
+            .into_iter()
+            .map(|row| row.iter().map(|span| span.content.to_string()).collect())
+            .collect()
+    }
 }
