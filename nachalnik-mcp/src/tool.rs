@@ -219,24 +219,11 @@ fn output_of(result: CallToolResult) -> ToolOutput {
     for block in &result.content {
         parts.push(match block {
             ContentBlock::Text(text) => text.text.clone(),
-            ContentBlock::Image(image) => {
-                format!(
-                    "[an image ({}), not carried into the context]",
-                    image.mime_type
-                )
-            }
-            ContentBlock::Audio(audio) => {
-                format!(
-                    "[audio ({}), not carried into the context]",
-                    audio.mime_type
-                )
-            }
+            ContentBlock::Image(image) => left_out("an image", Some(&image.mime_type)),
+            ContentBlock::Audio(audio) => left_out("audio", Some(&audio.mime_type)),
             ContentBlock::Resource(resource) => match text_of(&resource.resource) {
                 Ok(text) => text.to_owned(),
-                Err(media) => format!(
-                    "[an embedded resource ({}), not carried into the context]",
-                    media.unwrap_or("no media type given")
-                ),
+                Err(media) => left_out("an embedded resource", media),
             },
             ContentBlock::ResourceLink(link) => format!("[a resource: {}]", link.uri),
             // `ContentBlock` is `#[non_exhaustive]`: a kind of content this crate has not heard
@@ -256,6 +243,14 @@ fn output_of(result: CallToolResult) -> ToolOutput {
         true => ToolOutput::error(text),
         false => ToolOutput::new(text),
     }
+}
+
+/// What stands in for a part that is not text: what it was, and the type it said it had.
+pub(crate) fn left_out(what: &str, media: Option<&str>) -> String {
+    format!(
+        "[{what} ({}), not carried into the context]",
+        media.unwrap_or("no media type given")
+    )
 }
 
 /// The text of one part of a resource, or the media type of a part that has none.
