@@ -2596,3 +2596,140 @@ async fn a_served_session_a_signal_ended_says_so_in_its_status() {
         );
     }
 }
+
+/// A served run's parting lines are stdout's, where a headless run's are not.
+///
+/// note: `finish` decides by whether standard output is carrying the records, because a sentence
+/// in the middle of a stream of JSON is the one thing that would make it unparseable. A served run
+/// has no record stream on stdout - it has a supervisor's - so the line saying where the session
+/// got to belongs beside `serving on` rather than on the standard error of the process driving
+/// it. A headless run puts the same line on standard error, and that is what tells the two apart.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_run_leaves_its_parting_lines_on_standard_output() {
+    let dir = crate::common::scratch("parting");
+    let socket = dir.join("k.sock");
+    let host = crate::common::command()
+        .args(["--no-record", "-m", "nothing", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the host did not start");
+
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+
+    let quitter = tokio::task::spawn_blocking({
+        let socket = socket.clone();
+        move || crate::connect(&socket, b"/quit\n")
+    })
+    .await
+    .expect("the client panicked");
+
+    let host = tokio::task::spawn_blocking(move || host.wait_with_output())
+        .await
+        .expect("the host panicked")
+        .expect("the host did not finish");
+    assert!(
+        quitter.status.success() && host.status.success(),
+        "the session did not end: {}{}",
+        String::from_utf8_lossy(&host.stdout),
+        String::from_utf8_lossy(&host.stderr)
+    );
+
+    let out = String::from_utf8_lossy(&host.stdout);
+    let err = String::from_utf8_lossy(&host.stderr);
+    assert!(
+        out.contains("events recorded"),
+        "the parting lines did not go to stdout, beside the address: {out}{err}"
+    );
+    assert!(
+        !err.contains("events recorded"),
+        "the parting lines went to standard error, which is where a run whose stdout carries the \
+         records puts them: {err}"
+    );
+}
+
+/// The settings a served session was started with are said to the clients that attach to it.
+///
+/// note: a served run says the file on standard error before anything is wired, and a screen
+/// covers that line while it is up. The conversation says it again, and a served session's
+/// conversation is what every client that ever attaches is handed - so a client an hour later,
+/// reading a projection, finds out where its settings came from without anybody having to leave
+/// the line on the desk the session was started at.
+///
+/// note: the file is in the config directory rather than underfoot, because a file underfoot is
+/// only read once somebody at a terminal says so and there is nobody here to say.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_session_tells_its_clients_which_settings_it_read() {
+    use crate::connect;
+
+    let config = crate::common::scratch("owned-config");
+    let home = config.join("xdg").join("kamchatka");
+    std::fs::create_dir_all(&home).expect("a config directory to stand in for a person's");
+    std::fs::write(
+        home.join("kamchatka.json"),
+        r#"{ "model": "a-model-from-ones-own-config" }"#,
+    )
+    .expect("written");
+
+    let dir = crate::common::scratch("cfg");
+    let socket = dir.join("k.sock");
+    let host = crate::common::command()
+        .args(["--no-record", "-m", "nothing", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        .env("XDG_CONFIG_HOME", config.join("xdg"))
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the host did not start");
+
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+
+    // note: nothing typed, because the run is a pipe and a message would be a turn against an
+    // endpoint that is not there. What this client is here for is to be told something.
+    let reader = tokio::task::spawn_blocking({
+        let socket = socket.clone();
+        move || connect(&socket, b"")
+    })
+    .await
+    .expect("the client panicked");
+    let said = String::from_utf8_lossy(&reader.stderr);
+    assert!(
+        said.contains("settings read from"),
+        "a client of a served session was not told where its settings came from: {said}"
+    );
+
+    // the second client ends it, so the host is not left serving after the suite finishes
+    tokio::task::spawn_blocking({
+        let socket = socket.clone();
+        move || connect(&socket, b"/quit\n")
+    })
+    .await
+    .expect("the second client panicked");
+    let host = tokio::task::spawn_blocking(move || host.wait_with_output())
+        .await
+        .expect("the host panicked")
+        .expect("the host did not finish");
+    assert!(
+        host.status.success(),
+        "the host did not end: {}{}",
+        String::from_utf8_lossy(&host.stdout),
+        String::from_utf8_lossy(&host.stderr)
+    );
+}

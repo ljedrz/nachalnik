@@ -969,6 +969,20 @@ fn a_file_in_this_persons_config_directory_is_read_without_asking() {
         !said.contains("--config-file"),
         "nobody is asked about a file in their own configuration: {said}"
     );
+    // and it is named once. There are two doors - the line written on standard error before the
+    // session is wired, and the conversation, which a screen draws and a served session's clients
+    // are handed - and which of them a run needs is the question of whether anybody is at a
+    // terminal at all. A piped run's conversation is printed to the stream the first line already
+    // went to, so a line said there as well is the same line twice.
+    assert!(
+        said.contains("settings read from"),
+        "a file that was read was not named: {said}"
+    );
+    assert_eq!(
+        said.matches("settings read from").count(),
+        1,
+        "the file was named once on standard error and again in the conversation: {said}"
+    );
 }
 
 /// Standing nowhere in particular, nothing is read and nothing is said.
