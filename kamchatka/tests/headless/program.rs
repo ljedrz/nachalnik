@@ -913,6 +913,57 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
     }
 }
 
+/// A session run inside another one's command keeps that command's mark and adds its own, and a
+/// mark set to nothing is not an entry.
+///
+/// note: what the end of the outer session looks for. Its stragglers are found by their mark, so
+/// a mark the inner session wrote over would leave everything it started outside the reach of the
+/// session that started it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_command_carries_the_mark_of_the_command_it_runs_inside() {
+    let cmd = "echo \"$KAMCHATKA_CALL\" > seen.txt";
+    for (outer, starts) in [("elsewhere-0-0.4", "elsewhere-0-0.4;"), ("", "")] {
+        let dir = common::scratch(&format!("mark-{}", outer.is_empty()));
+        let base = common::endpoint(vec![
+            format!(
+                "data: {}",
+                json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                    "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                    "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
+                ]}, "finish_reason": "tool_calls"}]})
+            ),
+            common::answer("done"),
+        ])
+        .await;
+
+        let ran = common::command()
+            .args(["--headless", "--no-record", "--no-sandbox", "-m", "nothing"])
+            .args(["--allow", "exec:run,fs:write", "go"])
+            .current_dir(&dir)
+            .env("KAMCHATKA_BASE_URL", &base)
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .env("KAMCHATKA_CALL", outer)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+        assert!(
+            ran.status.success(),
+            "{}",
+            String::from_utf8_lossy(&ran.stderr)
+        );
+
+        let seen = std::fs::read_to_string(dir.join("seen.txt")).expect("the command ran");
+        let ours = seen
+            .trim()
+            .strip_prefix(starts)
+            .unwrap_or_else(|| panic!("outside {outer:?}, the command carried {seen:?}"));
+        assert!(
+            !ours.is_empty() && !ours.contains(';'),
+            "outside {outer:?}, the command carried {seen:?}"
+        );
+    }
+}
+
 /// Reads a child's output into a string as it arrives, so that a test can look at it without
 /// blocking on a pipe that may never say another word.
 fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String>> {
