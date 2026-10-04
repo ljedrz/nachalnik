@@ -91,6 +91,12 @@ pub struct Server {
     /// reached, and a signal sent between the two ended the process where it stood - status
     /// `SIGTERM` rather than `143`, and a socket file left for every later `--serve` to refuse.
     terminations: tokio::sync::Mutex<crate::stopping::Terminated>,
+    /// `ctrl+c`, subscribed before the socket exists for the reason `terminations` is, and taken
+    /// by [`Server::run`] for as long as it runs.
+    ///
+    /// note: subscribed in `run`, a press between the socket appearing and the loop starting met
+    /// the default action, and the process died of `SIGINT` with no record written.
+    presses: Option<crate::stopping::Stopping>,
 }
 
 /// Whichever kind of socket this is listening on.
@@ -161,10 +167,15 @@ impl Server {
     pub async fn bind(address: &str) -> Result<Self, String> {
         let terminations = crate::stopping::Terminated::new()
             .map_err(|e| format!("could not listen for a request to end: {e}"))?;
-        match protocol::address(address)? {
+        let presses = crate::stopping::Stopping::new()
+            .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
+        let mut server = match protocol::address(address)? {
             Address::Unix(path) => Self::unix(path, terminations).await,
             Address::Tcp(host) => Self::tcp(host, terminations).await,
-        }
+        }?;
+        server.presses = Some(presses);
+
+        Ok(server)
     }
 
     /// A socket file, made `0600` the moment it exists.
@@ -263,6 +274,7 @@ impl Server {
             resting: std::sync::Mutex::new(None),
             stopped: None,
             terminations: tokio::sync::Mutex::new(terminations),
+            presses: None,
         })
     }
 
@@ -301,6 +313,7 @@ impl Server {
             resting: std::sync::Mutex::new(None),
             stopped: None,
             terminations: tokio::sync::Mutex::new(terminations),
+            presses: None,
         })
     }
 
@@ -435,10 +448,14 @@ impl Server {
         // `pump` at the top is what tells the clients
         let mut reaching = app.policy.reaching().subscribe();
         let mut failed = None;
-        // subscribed once, because a second press arriving while the first is being handled is the
-        // one that means leave; see `crate::stopping`
-        let mut presses = crate::stopping::Stopping::new()
-            .map_err(|e| format!("could not listen for ctrl+c: {e}"))?;
+        // subscribed once, in `bind`, because a second press arriving while the first is being
+        // handled is the one that means leave; see `crate::stopping`. A second `run` after the
+        // first took it back gets it again, and only one that failed before then subscribes anew
+        let mut presses = match self.presses.take() {
+            Some(presses) => presses,
+            None => crate::stopping::Stopping::new()
+                .map_err(|e| format!("could not listen for ctrl+c: {e}"))?,
+        };
 
         // set by whichever branch found a reason to stop, rather than each of them breaking where
         // it stands: one of them is nested inside a second `select!`, and a `break` there ends the
@@ -531,6 +548,7 @@ impl Server {
         // this returned would have written every record but the last one
         app.kernel.finish();
         serving.last(app).await;
+        self.presses = Some(presses);
 
         match failed {
             Some(_) => Err("the last turn failed".to_owned()),
