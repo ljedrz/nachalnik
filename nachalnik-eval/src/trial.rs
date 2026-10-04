@@ -793,4 +793,68 @@ mod tests {
 
         assert_eq!(trial.spend().requests, 2);
     }
+
+    /// A family is named by its name, and shown by it too.
+    #[test]
+    fn a_family_is_named_and_shown_by_its_name() {
+        assert_eq!(Kind::Counterfactual.name(), "counterfactual");
+        assert_eq!(Kind::Recursive.to_string(), "recursive");
+    }
+
+    /// The record keeps the parameters the subject was run with, and every comparison made in it.
+    #[test]
+    fn a_trial_keeps_its_parameters_and_its_comparisons() {
+        let kernel = Kernel::new(Config::default());
+        let params = serde_json::json!({ "temperature": 0.25 })
+            .as_object()
+            .expect("an object")
+            .clone();
+        kernel.set_params(params.clone());
+        let trial = Trial::new("kept", &Subject::new(kernel));
+        assert_eq!(trial.params(), &params);
+
+        let resolution =
+            Resolution::new(Kind::Counterfactual, Answer::yes(true), Answer::yes(true));
+        trial.record(Step::Resolved(resolution.clone()));
+        assert_eq!(trial.resolutions(), [resolution]);
+        assert_eq!(trial.scores().n, 1);
+    }
+
+    /// The probability a claim put on what happened is its confidence when it was right and the
+    /// rest when it was wrong.
+    #[test]
+    fn a_wrong_claim_put_the_rest_of_its_confidence_on_what_happened() {
+        let sure = |yes| Answer::Claim {
+            yes,
+            confidence: Some(0.75),
+        };
+        let right = Resolution::new(Kind::Counterfactual, sure(true), Answer::yes(true));
+        let wrong = Resolution::new(Kind::Counterfactual, sure(false), Answer::yes(true));
+        assert_eq!(right.probability(), Some(0.75));
+        assert_eq!(wrong.probability(), Some(0.25));
+    }
+
+    /// A claim taken again works out afresh how sure it was and whether it was measured.
+    #[test]
+    fn a_claim_taken_again_is_measured_and_weighed_afresh() {
+        let first = Resolution::new(
+            Kind::Counterfactual,
+            Answer::Claim {
+                yes: true,
+                confidence: Some(0.75),
+            },
+            Answer::yes(true),
+        );
+        assert!(
+            first.measured && first.confidence == Some(0.75),
+            "{first:?}"
+        );
+
+        let again = first.reclaimed(Answer::Cut);
+        assert!(
+            !again.measured,
+            "a claim that never arrived is not measured: {again:?}"
+        );
+        assert_eq!(again.confidence, None, "nor sure of anything: {again:?}");
+    }
 }

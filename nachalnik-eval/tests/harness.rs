@@ -2205,3 +2205,114 @@ async fn the_counterbalance_puts_the_other_dossier_where_the_subject_cannot_see_
         materials(Kind::Foreign)
     );
 }
+
+/// Every check a run made, as what it was about and whether it held.
+fn checks(outcome: &Outcome) -> Vec<(String, bool)> {
+    outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Checked(check) => Some((check.what.clone(), check.held)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// How many copies answered each measurement a run made.
+fn copies(outcome: &Outcome) -> Vec<usize> {
+    outcome
+        .steps
+        .iter()
+        .filter_map(|step| match step {
+            Step::Measured { observation, .. } => Some(observation.answers.len()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A run of `provenance` holds the checks it makes about the projector, and asks each condition of
+/// as many copies as it was told to.
+///
+/// note: the checks are the run's own account of whether its arms are the arms it says they are -
+/// an elided result still in the request, an excluded one taken down with its call - and a check
+/// that fails on a projector doing exactly that would file every number beside a false alarm.
+#[tokio::test]
+async fn a_run_of_provenance_holds_its_checks_and_its_copies() {
+    let (outcome, _) = run(suite::Provenance::new().replicates(2)).await;
+
+    // the two about the projector rather than about an answer: the fixture answers from its rules,
+    // and whether a copy reports the call in front of it is the fixture's to say
+    let made = checks(&outcome);
+    for what in [
+        "excluding the result takes the call down with it",
+        "an untouched copy does not report tampering",
+    ] {
+        assert!(made.contains(&(what.to_owned(), true)), "{what}: {made:?}");
+    }
+
+    let answered = copies(&outcome);
+    assert!(!answered.is_empty(), "the run measured nothing");
+    assert!(answered.iter().all(|n| *n == 2), "{answered:?}");
+}
+
+/// The builders of `recursion` reach the run, each read off what the run did; the run holds its
+/// checks, and says at level one what a copy said beside what the subject did.
+///
+/// note: `on` last, and every value off its default, so that a builder which put back the
+/// defaults would show in what was set before it as much as in what it set itself.
+#[tokio::test]
+async fn what_a_caller_asks_of_recursion_is_what_the_run_does() {
+    let (outcome, _) = run(Recursion::new().depth(2).replicates(2).on(&DEPOT)).await;
+
+    let depths: Vec<usize> = outcome.depths.0.iter().map(|depth| depth.depth).collect();
+    assert_eq!(depths, vec![1, 2]);
+    let answered = copies(&outcome);
+    assert!(
+        !answered.is_empty() && answered.iter().all(|n| *n == 2),
+        "{answered:?}"
+    );
+
+    let made = checks(&outcome);
+    assert!(made.iter().all(|(_, held)| *held), "{made:?}");
+
+    // one line per ladder, at level one and only there
+    let said: Vec<String> = noted(&outcome)
+        .into_iter()
+        .filter(|note| note.contains("at level 1 and a copy of it said"))
+        .collect();
+    assert_eq!(said.len(), outcome.depths.0[0].scores.n, "{said:?}");
+}
+
+/// The builders of `privilege` reach the run: how many notes each battery asks about, and how
+/// many copies each condition gets.
+#[tokio::test]
+async fn what_a_caller_asks_of_privilege_is_what_the_run_does() {
+    let (outcome, _) = run(Privilege::new().battery(3).replicates(2)).await;
+
+    assert_eq!(of(&outcome, Kind::Counterfactual).len(), 3);
+    assert_eq!(of(&outcome, Kind::Foreign).len(), 3);
+    let answered = copies(&outcome);
+    assert!(
+        !answered.is_empty() && answered.iter().all(|n| *n == 2),
+        "{answered:?}"
+    );
+}
+
+/// The plants `repair` is given are the ones it runs over, and its checks name the run they
+/// belong to, counted from one.
+#[tokio::test]
+async fn what_a_caller_asks_of_repair_is_what_the_run_does() {
+    let (outcome, _) = run(Repair::new().replicates(1).over(&[(&DEPOT, &CANCELLED)])).await;
+
+    // one plant and one ladder: five rungs, one task answer each
+    assert_eq!(of(&outcome, Kind::Task).len(), 5);
+    let made = checks(&outcome);
+    assert!(
+        made.iter().any(|(what, _)| what.contains("(run 1)")),
+        "{made:?}"
+    );
+    assert!(
+        !made.iter().any(|(what, _)| what.contains("(run 0)")),
+        "{made:?}"
+    );
+}
