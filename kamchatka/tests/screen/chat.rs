@@ -292,6 +292,8 @@ async fn a_fenced_block_is_coloured_by_what_the_tokens_are() {
 ```rust
 // the loop
 fn step() { let x = 1; }
+struct Loop { name: String }
+fn say() { let _ = "hi"; }
 ```
 "#;
     let mut harness = Harness::new([ModelResponse::text(answer)]);
@@ -315,6 +317,37 @@ fn step() { let x = 1; }
     assert_eq!(keyword, Color::Magenta);
     assert_eq!(digit, Color::Yellow);
     assert_eq!(comment, Color::Gray);
+
+    // and so is a string, a type name and a name being called: green, cyan and blue, none of them
+    // the colour of the plain text around them, or a block of declarations would come out as one
+    // flat run of the terminal's own foreground
+    let (string, _) = harness.style_of("\"hi\"");
+    let (ty, _) = harness.style_of("Loop ");
+    let (call, _) = harness.style_of("step() {");
+    assert_eq!(string, Color::Green, "a string is green");
+    assert_eq!(ty, Color::Cyan, "a type name is cyan");
+    assert_eq!(call, Color::Blue, "the name being called is blue");
+}
+
+#[tokio::test]
+async fn markdown_within_a_fenced_block_keeps_its_weight() {
+    // note: weight and colour are two channels, and a markdown block is told apart by the first:
+    // `#` and `**` are the syntax, and a line carrying either is not plain text
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "here:\n\n```markdown\n# Title\n**bold**\n```\n",
+    );
+
+    let (heading, bold) = (harness.style_of("# Title"), harness.style_of("**bold**"));
+    assert!(
+        heading.1.contains(Modifier::BOLD),
+        "a heading in a fenced block is still a heading: {heading:?}"
+    );
+    assert!(
+        bold.1.contains(Modifier::BOLD),
+        "and `**bold**` is still bold: {bold:?}"
+    );
 }
 
 /// A fenced block is one blank row away from the prose either side of it.
@@ -362,8 +395,9 @@ async fn a_fenced_block_is_a_blank_row_away_from_the_prose() {
 /// note: models write `rust` and `python` where the highlighter thinks in `rs` and `py`, so there
 /// is a table between them. A block that came out with nothing coloured in it because of a
 /// spelling in that table looks like the highlighter had failed, and these are the spellings that
-/// come back: `python`, `javascript`, `typescript` and `c#`, with `node` and `csharp` being two of
-/// them under another name. (`yaml` and `c++` the highlighter reads as they are.)
+/// come back: `python`, `javascript`, `typescript`, `c#`, `golang` and `makefile`, with `node` and
+/// `csharp` being two of them under another name. (`yaml`, `c++` and `ruby` the highlighter reads
+/// as they are.)
 ///
 /// note: what is asserted is that the two words are two colours apart, not which colours they
 /// are. A block nothing recognises is drawn all in cyan, so in one of those a comment and a
@@ -378,6 +412,8 @@ async fn a_language_named_in_words_is_coloured_as_the_language_it_names() {
         ("typescript", "// a comment", "let x"),
         ("c#", "// a comment", "int x"),
         ("csharp", "// a comment", "int x"),
+        ("golang", "// a comment", "var x"),
+        ("makefile", "# a comment", "echo x"),
     ] {
         let mut harness = Harness::new([]);
         harness.app.say(
