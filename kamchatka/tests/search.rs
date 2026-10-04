@@ -14,7 +14,7 @@ mod common;
 use std::{path::Path, sync::Arc};
 
 use common::scratch;
-use kamchatka::tools::Limits;
+use kamchatka::tools::{Careful, Limits};
 use nachalnik::{OutputSink, Tool, ToolCall, test::call};
 use serde_json::{Value, json};
 
@@ -51,6 +51,45 @@ async fn answered(dir: &Path, confined: bool, action: &str, mut args: Value) -> 
         .content
         .to_text()
         .into_owned()
+}
+
+/// [`ask`], with the output limits a session has after `/limit`.
+async fn ask_within(dir: &Path, limits: Limits, action: &str, args: Value) -> String {
+    called_in(common::builtin(dir, true, limits), action, args).await
+}
+
+/// [`ask`], under path rules of the test's own rather than a fresh policy's.
+async fn ask_under(dir: &Path, policy: Arc<Careful>, action: &str, args: Value) -> String {
+    called_in(
+        common::builtin_under(dir, true, Limits::default(), policy),
+        action,
+        args,
+    )
+    .await
+}
+
+/// Calls `fs` out of a built session's tools and hands back what the model would read.
+async fn called_in(tools: Vec<Arc<dyn Tool>>, action: &str, args: Value) -> String {
+    let found = tools
+        .iter()
+        .find(|it| it.spec().id == "fs")
+        .expect("`fs` should be one of the built-in tools");
+
+    found
+        .invoke(&called(action, args), OutputSink::disconnected())
+        .await
+        .expect("the tool answers the call either way")
+        .content
+        .to_text()
+        .into_owned()
+}
+
+/// One `fs` call, with the action in beside the rest of the arguments.
+fn called(action: &str, mut args: Value) -> ToolCall {
+    // note: the action goes in beside the rest, because searching is one of the things `fs` does
+    // rather than a tool of its own. Every test below still names the act it is about
+    args["action"] = Value::String(action.to_owned());
+    call("c1", "fs", args)
 }
 
 /// Writes a file, making the directories above it.
@@ -221,6 +260,38 @@ async fn a_path_rule_keeps_a_walk_out_of_a_file() {
     // same way `read` of it is - the rule is about what a walk wanders into
     let named = ask(&dir, "grep", json!({ "pattern": "Kernel", "path": ".env" })).await;
     assert!(named.contains(".env:1:TOKEN=Kernel-of-a-secret"), "{named}");
+}
+
+/// The rules are consulted refusals first, so a link that lands under two of them is reported by
+/// the one that refuses - and the refusal is the one a model must not be offered a way round.
+///
+/// note: the order somebody typed the rules in is a fact about the table rather than about the
+/// tree, so which of two rules a path falls under cannot depend on it. The link is called `alias`
+/// and the target `secret/plan.txt` deliberately: a rule that matched the name the call used is
+/// not consulted again for where it leads, so a link named `alias.txt` would be answered the same
+/// either way and the order would go untested.
+#[tokio::test]
+async fn a_refusal_is_reported_before_a_rule_that_would_ask() {
+    use kamchatka::tools::Subject;
+    use nachalnik::Verdict;
+
+    let dir = scratch("walk-refused-first");
+    put(&dir, "secret/plan.txt", "Kernel of a plan\n");
+    std::os::unix::fs::symlink("secret/plan.txt", dir.join("alias")).expect("a link");
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::Path("*.txt".to_owned()), Verdict::Ask);
+    policy.set(&Subject::Path("secret/".to_owned()), Verdict::Deny);
+
+    let said = ask_under(&dir, policy, "read", json!({ "path": "alias" })).await;
+
+    assert!(
+        said.contains("leads to `secret/plan.txt`") && said.contains("refused"),
+        "the refusal is the one that decides, whichever was typed first: {said}"
+    );
+    assert!(
+        !said.contains("name it as"),
+        "a rule that asks is not offered as a way round: {said}"
+    );
 }
 
 /// A file a rule refuses is counted as refused, not as one to ask about, by both walks.
@@ -444,6 +515,46 @@ async fn too_many_matches_stop_and_say_they_stopped() {
         said.lines().skip(1).count(),
         100,
         "a hundred lines under the one that says so"
+    );
+}
+
+/// The cap is on the whole answer, not on one file: the room a file is given is what the answer
+/// has left, so the second file of a search is cut where the first left off.
+///
+/// note: a hundred matches in one file is a hundred matches whichever way the room is worked out,
+/// because the room is read before that file is searched and nothing has been found yet. Two
+/// files is where the arithmetic shows: a search that gave the second file the room the whole
+/// answer has, rather than what was left of it, keeps going past the hundred and answers with a
+/// search nobody asked to run to the end.
+#[tokio::test]
+async fn the_cap_is_on_the_whole_answer_and_not_on_one_file() {
+    let dir = scratch("grep-cap-across-files");
+    for name in ["a.rs", "b.rs"] {
+        put(
+            &dir,
+            name,
+            &(0..60)
+                .map(|n| format!("let x{n} = Kernel;\n"))
+                .collect::<String>(),
+        );
+    }
+
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    let (header, body) = said.split_once('\n').expect("a header, then the lines");
+
+    assert!(
+        header.starts_with("100 match(es) in 2 file(s) · that is as many as this answers with"),
+        "{header}"
+    );
+    assert_eq!(
+        body.lines().filter(|line| line.starts_with("a.rs")).count(),
+        60,
+        "the first file is not cut short to leave room"
+    );
+    assert_eq!(
+        body.lines().filter(|line| line.starts_with("b.rs")).count(),
+        40,
+        "and the second is given what the first left: {header}"
     );
 }
 
@@ -1015,6 +1126,38 @@ async fn lines_that_will_not_fit_come_back_as_the_files_they_were_in() {
     );
 }
 
+/// An answer of exactly the limit's length is still the lines it found, and one byte more is
+/// answered as the files those lines were in.
+///
+/// note: the cut is a byte count and the answer is a string, so the line either side of it is a
+/// real case rather than a rounding argument: `/limit fs:grep <n>` is a number somebody typed, and
+/// an answer of exactly that many bytes is the largest one that fits. Swapping `>` for `>=` turns
+/// every limit into one below the size of what it admits, which is a search that reports it ran
+/// out of room on a call that did not.
+#[tokio::test]
+async fn an_answer_of_exactly_the_limit_is_left_as_the_lines_it_found() {
+    let dir = tree("grep-at-the-limit");
+    let lines = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    let exact_limits = Limits::default();
+    exact_limits.set("fs:grep", lines.len());
+    let exact = ask_within(&dir, exact_limits, "grep", json!({ "pattern": "Kernel" })).await;
+
+    assert_eq!(
+        exact, lines,
+        "an answer that is exactly the limit fits, and it is the lines it found"
+    );
+
+    // and one byte shorter is over the limit, which is the other side of the same comparison
+    let limits = Limits::default();
+    limits.set("fs:grep", lines.len() - 1);
+    let over = ask_within(&dir, limits, "grep", json!({ "pattern": "Kernel" })).await;
+    assert!(
+        over.contains("more than this answers with, so here is where they are"),
+        "a byte past the limit is a lines answer that does not fit: {over}"
+    );
+    assert!(!over.contains("src/kernel.rs:1:"), "{over}");
+}
+
 /// An answer that fits is left exactly as it was.
 #[tokio::test]
 async fn lines_that_fit_are_still_the_lines() {
@@ -1085,6 +1228,85 @@ async fn an_argument_no_action_here_has_is_refused_with_the_ones_that_are() {
     assert!(
         !said.contains("src/kernel.rs:1:"),
         "and it did not search: {said}"
+    );
+}
+
+/// A root that is there but cannot be read is walked and counted, not called absent.
+///
+/// note: the other half of the sentence above, and the one the guard in `Looking::root` draws: a
+/// path is only "not there" when the filesystem says it is not there. A path under a directory
+/// somebody has shut is present and unreadable, which is a permission problem and not an absent
+/// path, and the two ask different things of whoever is reading the answer. The root is named
+/// under the shut directory rather than as it, because the question is about the error the
+/// filesystem gives - a `chmod 000` directory can be had by `stat` and not be listed, so the
+/// refusal has to come from a path that cannot be reached at all.
+#[tokio::test]
+async fn a_root_that_cannot_be_read_is_counted_rather_than_called_absent() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = tree("search-unreadable-root");
+    let shut = dir.join("shut");
+    // opened again before anything else: a run that panicked inside the tool leaves a directory
+    // nobody can list, and `scratch` cannot remove what it cannot read
+    let _ = std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700));
+    std::fs::create_dir_all(&shut).expect("a directory");
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
+
+    let mut answers = Vec::new();
+    for (action, args) in [
+        (
+            "grep",
+            json!({ "pattern": "Kernel", "path": "shut/inside" }),
+        ),
+        ("glob", json!({ "pattern": "*", "path": "shut/inside" })),
+    ] {
+        answers.push((action, ask(&dir, action, args).await));
+    }
+    // opened again before anything is asserted: a run that failed in between would leave a
+    // directory nobody can list, and the next run's `scratch` cannot remove what it cannot read
+    let _ = std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o700));
+
+    for (action, said) in answers {
+        assert!(
+            said.contains("1 file(s) that could not be read"),
+            "{action}: {said}"
+        );
+        assert!(
+            !said.contains("is not there"),
+            "a path nobody can reach is present, and saying otherwise sends the caller looking \
+             for the path rather than the permissions: {action}: {said}"
+        );
+    }
+}
+
+/// A file a walk came to that would not open is counted as unreadable, and not as a file it read.
+///
+/// note: the same count a walk of a directory nobody can enter adds, seen from the other side: a
+/// file the searcher was handed and could not read is a file it did not search, and an answer
+/// that counts it among the files read through is an answer that adds up to the wrong thing.
+#[tokio::test]
+async fn a_file_the_search_could_not_read_is_counted_as_unreadable() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = scratch("search-unreadable-file");
+    let shut = dir.join("shut.txt");
+    std::fs::write(&shut, "pub struct Kernel;\n").expect("a file");
+    std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).expect("shut it");
+
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    // opened again before anything is asserted, so a run that fails here leaves nothing behind
+    let _ = std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o600));
+
+    assert!(
+        said.contains("1 file(s) that could not be read"),
+        "the two numbers have to add up: {said}"
+    );
+    // the file was not searched, so it is neither a match nor one of the files read through
+    assert!(!said.contains("shut.txt"), "{said}");
+    assert!(
+        said.starts_with("no matches") && said.contains("0 file(s) searched"),
+        "and nothing matched in it, which is a fact about the search and not about the file: \
+         {said}"
     );
 }
 
