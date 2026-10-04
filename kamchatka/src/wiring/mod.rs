@@ -987,4 +987,101 @@ mod tests {
         );
         assert!(ended(&kernel), "a record after the end undid it");
     }
+
+    /// A session wired the way the tests here wire one: no tools, so nothing is built and
+    /// nothing is asked of the sandbox, and a provider that reaches nothing.
+    fn wired(setup: Setup) -> Wired {
+        setup
+            .wire(Arc::new(nachalnik_providers::OpenAiCompatible::new(
+                "scripted",
+                "http://127.0.0.1:1",
+                "",
+            )))
+            .expect("the wiring failed")
+    }
+
+    /// A snapshot of a session that has said something, which is what `-r` hands the wiring.
+    fn said_something() -> Snapshot {
+        let app = wired(Setup {
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        })
+        .app;
+        app.kernel
+            .push(ContextItem::user("something said before the restart"));
+        app.kernel.snapshot()
+    }
+
+    /// A restart starts a session of its own rather than carrying the old one on a second time.
+    ///
+    /// note: `resume` and `session_name` are the two settings a restart does not take at their
+    /// word, and this is the half that is about the context. A snapshot is where the *run*
+    /// started and a restart is somebody leaving it, so a session begun out of one is the same
+    /// conversation twice - the old session's items, its parameters and its spent ceiling in it,
+    /// and a second `session.resumed` in the log where a session that has never been resumed
+    /// belongs.
+    #[test]
+    fn a_restart_starts_a_session_rather_than_carrying_the_last_one_on() {
+        let base = Setup {
+            resume: Some(said_something()),
+            record: false,
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        };
+        let old = wired(base.clone()).app;
+        let (fresh, _) = base.relaunch(&old, provider()).expect("a fresh session");
+
+        assert_eq!(
+            fresh.app.kernel.items().len(),
+            0,
+            "the session before the restart is in the one after it"
+        );
+        assert!(
+            !fresh.app.kernel.with_history(|log| log
+                .records()
+                .any(|record| matches!(record.event, Event::SessionResumed { .. }))),
+            "the fresh session is a resumption of the one before it"
+        );
+    }
+
+    /// The session a restart starts is stamped fresh, and does not carry the name of the one it
+    /// replaces.
+    ///
+    /// note: a name carried over would give two sessions of one run the same identity and put
+    /// both records under one stem, where `record` settles that by writing the second beside the
+    /// first - so the two logs are told apart by a `-2` rather than by the session they belong
+    /// to, and the trace shows one session name for both. `None` would be worse and is why the
+    /// stamp is set rather than the name cleared: the runtime's own counter restarts at 0 with
+    /// the process, which is fine as an identity and useless as a filename.
+    #[test]
+    fn the_session_a_restart_starts_is_not_the_one_it_replaced() {
+        let base = Setup {
+            session_name: Some("before-the-restart".to_owned()),
+            record: false,
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        };
+        let old = wired(base.clone()).app;
+        let (fresh, _) = base.relaunch(&old, provider()).expect("a fresh session");
+
+        let name = fresh.app.kernel.session_name();
+        assert_ne!(name, "before-the-restart", "the name carried over");
+        assert!(
+            name.contains('T') && name.ends_with('Z'),
+            "{name} is not a session's own stamp"
+        );
+    }
+
+    /// The provider the wiring is handed, which reaches nothing: what these tests assert is about
+    /// the session the wiring builds, not about an answer.
+    fn provider() -> Arc<dyn Dialect> {
+        Arc::new(nachalnik_providers::OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        ))
+    }
 }
