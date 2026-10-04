@@ -254,14 +254,19 @@ pub(crate) fn some_of(listed: &[String]) -> String {
     }
 }
 
-/// What a dialect says when the address it was sent to does not list the model it asks for.
+/// What a dialect says when the address it was sent to does not list the model it asks for, and
+/// nothing when it does - or lists nothing at all, which is no evidence either way.
 #[cfg(any(feature = "gemini", feature = "openai"))]
-pub(crate) fn unlisted(model: &str, listed: &[String]) -> String {
-    format!(
+pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
+    if listed.is_empty() || listed.iter().any(|name| same_model(name, model)) {
+        return None;
+    }
+
+    Some(format!(
         "{model} is not one of the {} models this address lists ({})",
         listed.len(),
         some_of(listed)
-    )
+    ))
 }
 
 /// Whether an address is OpenRouter's. Takes a whole URL or a bare authority.

@@ -476,12 +476,7 @@ impl OpenAiCompatible {
     /// it afterwards would blame the model it has just moved away from.
     fn say_if_the_model_is_not_there(&self, listed: &[String]) {
         let model = self.model.lock().clone();
-        if listed.is_empty() || listed.iter().any(|name| same_model(name, &model)) {
-            *self.notice.lock() = None;
-            return;
-        }
-
-        *self.notice.lock() = Some(crate::unlisted(&model, listed));
+        *self.notice.lock() = crate::unlisted(&model, listed);
     }
 
     /// A model listing, if the address answers with one.
