@@ -526,6 +526,22 @@ async fn models_marks_the_one_in_use_where_the_endpoint_put_it() {
         marked > screen.find("another").expect(&screen),
         "the list kept the order the endpoint gave: {screen}"
     );
+    // and only that one: the mark is how the single row to hand `/model` is found
+    assert!(!screen.contains("▸ another"), "{screen}");
+}
+
+/// `/models` given a word lists only what names it.
+#[tokio::test]
+async fn models_filters_the_listing_to_what_is_named() {
+    let listing = r#"{"data":[{"id":"vendor/one"},{"id":"mercury-2.5"},{"id":"vendor/two"}]}"#;
+    let mut harness = Harness::served_by([], serving(listing, None).await);
+
+    harness.send("/models two").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("vendor/two"), "{screen}");
+    assert!(!screen.contains("vendor/one"), "{screen}");
 }
 
 /// Serves one model listing, in the shape of an endpoint that publishes its *sampling* parameters
@@ -1538,5 +1554,39 @@ async fn a_message_typed_before_a_model_is_picked_is_not_sent() {
     assert_eq!(
         harness.app.kernel.items()[0].content.to_text(),
         "what is 2+2"
+    );
+}
+
+/// Nothing was spent on advice, and `/spend` says nothing about advice.
+///
+/// note: the split is a line of its own, said only when there is a figure to split. In a session
+/// with no advisor the figure is nothing at all, and `0 of it the advisor's` would name an
+/// advisor that was never asked and a share of the total that does not exist - on every `/spend`,
+/// which is the line somebody reads to find out what a session has cost. The other side of it is
+/// `tests/screen/advisor.rs`, which is where the figure is there to be split.
+#[tokio::test]
+async fn spend_does_not_mention_an_advisor_nothing_was_spent_on() {
+    let mut harness = Harness::new([]);
+
+    assert_eq!(
+        harness.app.spent_on_advice(),
+        0,
+        "nothing was asked, so nothing was charged"
+    );
+    harness.send("/spend").await;
+
+    let said = harness.flat();
+    assert!(said.contains("this run has spent"), "{said}");
+    assert!(
+        !said.contains("the advisor's"),
+        "there is no split to report: {said}"
+    );
+
+    // and none when a ceiling is set either, which is the other sentence this figure rides on
+    harness.send("/spend 5000").await;
+    assert!(
+        !harness.flat().contains("the advisor's"),
+        "{}",
+        harness.flat()
     );
 }

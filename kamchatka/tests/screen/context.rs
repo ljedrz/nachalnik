@@ -184,6 +184,35 @@ async fn a_command_that_names_items_by_selector_reports_what_it_matched() {
     );
 }
 
+/// `/pin` pins, which is the one state `/exclude` and `/restore` cannot reach, and it says so.
+///
+/// note: the three commands are one function and one match on the verb, so a verb that stops
+/// matching does not stop - it falls to the last arm and does that instead. `/pin` on an item
+/// would have reported a line, said the right count, and left the item restored, which is what
+/// `/restore` was asked to do. The state is the whole of what a pin is, so that is what is read
+/// back.
+#[tokio::test]
+async fn a_pin_pins() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "worth keeping"));
+
+    harness.send("/pin 1").await;
+
+    assert_eq!(
+        harness.app.kernel.items()[0].state,
+        ContextState::Pinned,
+        "pinned, rather than restored or left as it was"
+    );
+    assert!(
+        harness.screen().contains("1 item(s) are now pinned"),
+        "{}",
+        harness.screen()
+    );
+}
+
 /// An edit changes what the model reads, in place, and what it said is still readable.
 ///
 /// note: it used to supersede - a second item, with the old one left marked `~` - and what
@@ -1386,6 +1415,50 @@ async fn the_output_limit_can_be_raised_without_restarting() {
     );
     // numbered, so that the number the command takes is one somebody can read off the screen
     assert!(screen.contains("[19] fs:read"), "{screen}");
+}
+
+/// The limit table gives every subject the same room, so a two-digit row number does not push the
+/// subjects beside it out of line.
+///
+/// note: the row number is padded to the width of the widest number in the table, so `[1]` and
+/// `[10]` are the same width and every subject begins in the same cell. That is what a person
+/// reading down a list is for, and the padding is arithmetic on the number of rows: a width that
+/// does not grow with it puts `[10]` one cell to the left of `[9]` and the whole column steps in
+/// at the tenth row. What is asserted is that the column does not move there.
+#[tokio::test]
+async fn the_limit_table_lines_its_subjects_up() {
+    let mut harness = Harness::new([]);
+
+    harness.send("/limit").await;
+
+    // where each subject begins, read off the drawing rather than off the format
+    let column = |harness: &mut Harness| {
+        harness
+            .sized(120, 60)
+            .lines()
+            // only the rows themselves: the sentence under the table names `bytes` in prose
+            .filter_map(|line| {
+                let closed = line.find(']')?;
+                let after = &line[closed + 1..];
+                let name = after.split(':').next()?.trim();
+                assert!(!name.is_empty(), "a row with a subject: {line:?}");
+                assert!(line.contains("bytes"), "a row with a figure: {line:?}");
+                // where the subject sits in the row, which is what the padding of the label
+                // beside it decides
+                Some((
+                    line.find(name).expect("the subject is on the row"),
+                    name.to_owned(),
+                ))
+            })
+            .collect::<Vec<(usize, String)>>()
+    };
+
+    let columns = column(&mut harness);
+    assert!(columns.len() > 1, "the whole table is on the screen");
+    assert!(
+        columns.windows(2).all(|pair| pair[0].0 == pair[1].0),
+        "every subject begins in the same column, and these do not: {columns:?}"
+    );
 }
 
 /// A limit nothing in this session declares says so, in the listing and on the change.

@@ -358,6 +358,27 @@ async fn the_ceiling_can_be_raised_and_taken_away() {
         "{:?}",
         reply.said
     );
+
+    // and the other way round: a ceiling above what has gone leaves the session able to send, and
+    // is reported as one rather than as the end of it. Both sentences carry the figure and the
+    // ceiling, so what separates them is this half - and a reader told a running session has
+    // stopped would stop typing at it
+    let reply = app.submit("/spend 5000").await;
+    assert!(!app.overspent(), "raising it lets the session go again");
+    assert!(
+        reply.said[0].text.contains("the ceiling is 5,000 tokens;"),
+        "{:?}",
+        reply.said
+    );
+    assert!(
+        !reply
+            .said
+            .iter()
+            .any(|said| said.text.contains("nothing more")),
+        "and it did not say the session is over: {:?}",
+        reply.said
+    );
+
     // a count and the thing counted agree, which is the smallest number anybody sets it to
     let reply = app.submit("/spend 1").await;
     assert!(

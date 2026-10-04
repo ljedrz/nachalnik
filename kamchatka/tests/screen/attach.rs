@@ -326,6 +326,84 @@ async fn an_empty_note_is_an_explanation_rather_than_an_item() {
     );
 }
 
+/// A note is refused while a turn is *waiting on an answer*, which is not the same as a turn
+/// running.
+///
+/// note: the state in which the turn has stopped to ask but has not ended, and the half of the
+/// guard it is easy to lose. `/attach` and `/note` both refuse a push into a running turn because
+/// an item that lands there sits between a call and the result that has to follow it, which is a
+/// shape most APIs reject outright - and a turn parked on a question is in the middle of exactly
+/// such a pair. It is the second half of the condition, checked here on its own: the turn is
+/// resting, so `busy` is false, and only the pending call says no.
+#[tokio::test]
+async fn a_note_waits_for_a_question_to_be_answered() {
+    use crossterm::event::KeyCode;
+    use nachalnik::{Capability, test::call};
+    use serde_json::json;
+    use std::sync::Arc;
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        nachalnik::test::ConstTool::new("dig", "a bone")
+            .with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig somewhere").await;
+    harness.settle().await;
+
+    // the turn is parked on the question rather than running: this is the half of the guard that
+    // has to hold on its own
+    assert!(!harness.app.busy, "the turn is waiting, not running");
+    assert_eq!(
+        harness.app.kernel.pending_permissions().len(),
+        1,
+        "and a call is still unanswered"
+    );
+
+    // the same line handed straight in, which is what a client down a pipe does and what the
+    // keys cannot do here: a question takes them
+    let reply = harness
+        .app
+        .submit("/note something the model should have")
+        .await;
+    let said = reply
+        .said
+        .iter()
+        .map(|entry| entry.text.to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        said.iter()
+            .any(|line| line.contains("not while a turn is running")),
+        "the note was refused: {said:?}"
+    );
+    assert!(
+        !harness
+            .app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.label == "note"),
+        "and nothing went in beside a call waiting for its result"
+    );
+
+    // the same line once the question is answered, which is the other half of the command's job
+    harness.answer(KeyCode::Char('n')).await;
+    harness.settle().await;
+    harness.send("/note something the model should have").await;
+    assert!(
+        harness
+            .app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.label == "note"),
+        "once the turn is over it goes in"
+    );
+}
+
 /// Nothing is attached in the middle of a turn, for the reason a message is not sent into one.
 #[tokio::test]
 async fn an_attachment_waits_for_the_turn_to_end() {
