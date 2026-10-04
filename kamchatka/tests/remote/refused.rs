@@ -461,11 +461,15 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
 async fn something_that_is_not_a_socket_is_named_rather_than_a_stale_one() {
     let dir = crate::common::scratch("not-a-socket");
 
-    for (what, path) in [
-        ("a file", dir.join("a.file")),
-        ("a directory", dir.join("a.dir")),
-        ("a link", dir.join("a.link")),
-        ("a link that points nowhere", dir.join("a.nowhere")),
+    for (what, noun, path) in [
+        ("a file", "a file", dir.join("a.file")),
+        ("a directory", "a directory", dir.join("a.dir")),
+        ("a link", "a link", dir.join("a.link")),
+        (
+            "a link that points nowhere",
+            "a link",
+            dir.join("a.nowhere"),
+        ),
     ] {
         match path.extension().and_then(|it| it.to_str()) {
             Some("dir") => {
@@ -489,6 +493,13 @@ async fn something_that_is_not_a_socket_is_named_rather_than_a_stale_one() {
         assert!(
             refused.contains("not a socket"),
             "{what} was called a socket somebody should remove: {refused}"
+        );
+        // and named as the thing that is actually there, which is the half that decides what
+        // somebody does about it: the sentence for a stale socket ends in "remove it" and is
+        // the wrong instruction for a mistyped path, and these four have to be told apart
+        assert!(
+            refused.contains(&format!("there is {noun} at {}", path.display())),
+            "{what} was not named as itself: {refused}"
         );
         assert!(
             !refused.contains("remove it"),

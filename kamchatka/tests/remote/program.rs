@@ -11,7 +11,7 @@ use kamchatka::{
     remote::protocol::{self, Address, Command, Message},
 };
 use nachalnik::{
-    Capability, ContextId, Grant, ModelResponse,
+    Capability, ContextId, ContextItem, Grant, ModelResponse,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -20,7 +20,9 @@ use tokio::{
     net::TcpStream,
 };
 
-use crate::{CLOSED, PATIENCE, Peer, Reacher, quit, served, served_at};
+use crate::{
+    CLOSED, PATIENCE, Peer, Reacher, Socket, quit, served, served_at, served_over_a_socket,
+};
 
 /// The two flags, the socket file, and a whole session driven from one process to another.
 ///
@@ -1856,6 +1858,88 @@ async fn a_line_sent_while_a_command_is_out_waits_for_it() {
     session.ended().await.1.expect("the session failed");
 }
 
+/// A command coming back after a turn failed does not make the session say it finished.
+///
+/// note: `Server::run` reports the last turn's failure as its own, and that is the difference
+/// between `--serve` leaving on `1` and on `0`. A command's answer rides the same channel as a
+/// turn's end and is not a turn ending - a compaction pass coming back says nothing about how the
+/// last turn went - so it must leave the failure where it was. Read as one arm short it clears
+/// it: a turn that failed, then any command at all, and the session reports a session that
+/// finished its work.
+///
+/// note: a compaction pass rather than `/models`, because a pass is asked of the compactor and
+/// needs no endpoint. Both halves here are bookkeeping, and neither request is the thing under
+/// test.
+#[tokio::test]
+async fn a_command_coming_back_does_not_call_a_failed_turn_a_finished_one() {
+    let session = served_over_a_socket("returned-after-failure", Vec::new(), |app| {
+        app.kernel
+            .set_compactor(Some(Arc::new(kamchatka::tools::Shedder {
+                threshold: 0.0,
+                target: 0.0,
+            })));
+        app.kernel.push(ContextItem::user("what is in big.rs?"));
+    })
+    .await;
+    let mut socket = Socket::connect(&session.at).await;
+    socket.send(crate::attaching(None, None)).await;
+    while !matches!(socket.recv().await, Message::Attached(_)) {}
+
+    socket
+        .send(Command::Submit {
+            line: "go".to_owned(),
+        })
+        .await;
+    // the turn failed at the provider: the refusal goes to the model as an error item, and what
+    // the session says about it is the line this waits for
+    let mut failed = false;
+    for _ in 0..24 {
+        if matches!(
+            socket.recv().await,
+            Message::Said { speaker, .. } if speaker == Speaker::Error
+        ) {
+            failed = true;
+            break;
+        }
+    }
+    assert!(failed, "the turn did not fail, so nothing followed it");
+
+    // and now a command's answer comes back over the same channel. The line saying what the pass
+    // found is said by the command coming back - `Outcome::Returned` finishing it - so this is
+    // where the loop has been told something is not a turn ending.
+    socket
+        .send(Command::Submit {
+            line: "/compact".to_owned(),
+        })
+        .await;
+    let mut came_back = false;
+    for _ in 0..24 {
+        if matches!(
+            socket.recv().await,
+            Message::Said { text, .. } if text.contains("Shedder")
+        ) {
+            came_back = true;
+            break;
+        }
+    }
+    assert!(
+        came_back,
+        "the command never came back, so nothing followed it"
+    );
+
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    let (_, outcome) = session.ended().await;
+    assert_eq!(
+        outcome,
+        Err("the last turn failed".to_owned()),
+        "a command coming back called a failed turn a finished one"
+    );
+}
+
 /// `/stop` is not held behind a command waiting on an endpoint: it is what ends the wait.
 ///
 /// note: found live. Every line was held while a command was out, `/stop` among them, so it
@@ -1884,6 +1968,157 @@ async fn a_stop_is_not_held_behind_the_command_it_stops() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// A `ctrl+c` at a served session ends it, and the turn it interrupted was really stopped.
+///
+/// note: a child process, because `ctrl+c` is a *signal* and there is no other way to send one -
+/// the same shape as the headless suite's. What is under test is `Server::run`'s own handling of
+/// it, which is not the headless driver's: one press interrupts and says so, and the session
+/// leaves once whatever was running has stopped, on `130`.
+///
+/// note: a turn that has to be interrupted rather than waited out, so that "leaves once the turn
+/// has stopped" has something to be true about. The provider is an endpoint that has gone quiet,
+/// which is a turn a single interrupt ends and a second would leave at once - the case the two
+/// stages are for.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ctrl_c_at_a_served_session_stops_the_turn_and_ends_it() {
+    let endpoint = crate::common::endpoint(vec![
+        // a tool call, and then nothing at all: the turn is running and waiting for the model
+        format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                "function": {"name": "wait", "arguments": "{}"}}]},
+                "finish_reason": "tool_calls"}]})
+        ),
+    ])
+    .await;
+    let dir = crate::common::scratch("ctrlc");
+
+    let mut host = crate::common::command()
+        .args(["--no-record", "-m", "nothing", "--serve", "unix:s.sock"])
+        .env("KAMCHATKA_BASE_URL", &endpoint)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the program did not start");
+    for _ in 0..100 {
+        if dir.join("s.sock").exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(dir.join("s.sock").exists(), "nothing ever listened");
+
+    // a client that starts a turn and then goes quiet, so the turn is running when the signal
+    // arrives and the press has something to stop
+    let mut client = tokio::process::Command::from(crate::common::command())
+        .args(["--connect", "unix:s.sock"])
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the client did not start");
+    let mut read = BufReader::new(client.stderr.take().expect("a pipe")).lines();
+    let mut prose = String::new();
+    while !prose.contains("a line is a message") {
+        let line = tokio::time::timeout(PATIENCE, read.next_line())
+            .await
+            .expect("the client said nothing")
+            .expect("the client's output stopped")
+            .expect("the client ended before it was attached");
+        prose.push_str(&line);
+        prose.push('\n');
+    }
+    client
+        .stdin
+        .as_mut()
+        .expect("a pipe")
+        .write_all(b"go\n")
+        .await
+        .expect("the line was not sent");
+    // the turn has started and the tool is in it
+    let deadline = std::time::Instant::now() + PATIENCE;
+    while !prose.contains("wait") && std::time::Instant::now() < deadline {
+        let line = read.next_line().await.expect("a line").expect("a line");
+        prose.push_str(&line);
+        prose.push('\n');
+    }
+
+    let sent = std::process::Command::new("kill")
+        .args(["-INT", &host.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+
+    let status = {
+        let deadline = std::time::Instant::now() + PATIENCE;
+        loop {
+            match host.try_wait().expect("it was spawned") {
+                Some(status) => break status,
+                None if std::time::Instant::now() > deadline => {
+                    let _ = host.kill();
+                    panic!("the session did not end on a `ctrl+c`: {prose}");
+                }
+                None => tokio::time::sleep(Duration::from_millis(50)).await,
+            }
+        }
+    };
+    assert_eq!(status.code(), Some(130), "a `ctrl+c` leaves with 130");
+    drop(client);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A `ctrl+c` at a served session with nothing running ends it, rather than waiting for a turn.
+///
+/// note: the press leaves once whatever was running has stopped, and with nothing running that is
+/// at once - a session that waited for a turn to stop before leaving would wait for ever.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ctrl_c_at_a_quiet_served_session_ends_it() {
+    let dir = crate::common::scratch("ctrlc-quiet");
+    let mut host = crate::common::command()
+        .args(["--no-record", "-m", "nothing", "--serve", "unix:s.sock"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the program did not start");
+    for _ in 0..100 {
+        if dir.join("s.sock").exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(dir.join("s.sock").exists(), "nothing ever listened");
+
+    let sent = std::process::Command::new("kill")
+        .args(["-INT", &host.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let status = loop {
+        match host.try_wait().expect("it was spawned") {
+            Some(status) => break status,
+            None if std::time::Instant::now() > deadline => {
+                let _ = host.kill();
+                panic!("a `ctrl+c` with nothing running did not end the session");
+            }
+            None => tokio::time::sleep(Duration::from_millis(50)).await,
+        }
+    };
+    assert_eq!(status.code(), Some(130));
 }
 
 /// A piped `--connect` that asks for `/models` stays for the list.
