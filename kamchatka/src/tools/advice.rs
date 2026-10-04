@@ -807,6 +807,17 @@ mod tests {
         assert!(advised.rating(&request.call).is_none());
     }
 
+    /// A reason too long for the question's header is cut and says it was, and a short one is
+    /// left whole.
+    #[test]
+    fn a_long_reason_is_cut_and_says_so() {
+        assert_eq!(cut("the endpoint refused it"), "the endpoint refused it");
+
+        let long = cut(&"a firewall's page about it ".repeat(20));
+        assert!(long.ends_with('…'), "{long}");
+        assert!(long.chars().count() <= SAID + 1, "{long}");
+    }
+
     /// The rubric is read by the nearest level, not by the one it has passed.
     #[test]
     fn a_score_lands_on_the_band_it_is_nearest() {
