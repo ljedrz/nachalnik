@@ -564,6 +564,36 @@ async fn a_table_is_a_blank_row_away_from_the_prose_either_side_of_it() {
     }
 }
 
+/// A fenced block at the end of an answer is one blank row away from what is drawn next.
+///
+/// note: the other end of the rule the test above checks. A blank goes in after a block and a
+/// blank goes in after every answer, and where an answer ends with its block the two meet - so a
+/// separator that fires on the last chunk as well as on the ones before it puts two blank rows
+/// there instead of one, and the answer below it starts a row further down than it did.
+#[tokio::test]
+async fn a_fenced_block_at_the_end_of_an_answer_is_one_blank_row_from_the_next() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .say(Speaker::Model, "here is code:\n\n```rust\nfn f() {}\n```");
+    harness.app.say(Speaker::Model, "and that is all.");
+    harness.tab(Tab::Chat);
+
+    let screen = harness.sized(60, 20);
+    let row = |needle: &str| {
+        screen
+            .lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+    };
+
+    assert_eq!(
+        row("and that is all.") - row("fn f() {}"),
+        2,
+        "one blank row between the block and the answer under it: {screen}"
+    );
+}
+
 /// A language the fence named in words is coloured the way the language it names is.
 ///
 /// note: models write `rust` and `python` where the highlighter thinks in `rs` and `py`, so there

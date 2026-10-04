@@ -1477,6 +1477,40 @@ async fn a_turn_whose_thinking_is_not_sent_says_what_it_is_holding() {
     );
 }
 
+/// A long label gives way on a narrow pane rather than taking the columns beside it.
+///
+/// note: the label column is at most a third of the pane, which is what stops a session whose
+/// items are long paths from spending the row on the first of them. The two figures are what the
+/// pane is for - what a thing costs and what it is keeping out of the next request - and a label
+/// that took its share of the row and some more would push both off the end of it.
+#[tokio::test]
+async fn a_long_label_gives_way_on_a_narrow_pane() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::file(
+        "a-very-long-label-indeed",
+        "the body of the thing this item holds",
+    ));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    let going = harness.app.going();
+    let cost = going
+        .costs
+        .get(&harness.app.kernel.items()[0].id)
+        .copied()
+        .expect("the item is going into the next request");
+    let screen = harness.sized(40, 20);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("  1 "))
+        .unwrap_or_else(|| panic!("the item's row: {screen}"));
+
+    assert!(
+        row.contains(&grouped(cost)),
+        "the label took the row, and what is left of the figure is its first digit: {row}"
+    );
+}
+
 /// The same turn, under a projector that does carry thinking back, is holding nothing.
 ///
 /// note: the pair to the test above, and the half that says what the figure means. It is not
