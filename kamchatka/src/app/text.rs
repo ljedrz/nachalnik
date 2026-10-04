@@ -1139,4 +1139,30 @@ mod tests {
             "none → Shedder"
         );
     }
+
+    /// A wait under a tenth of a second is no wait, and the rest are said in the unit they are
+    /// read in.
+    ///
+    /// note: every band and the edges between them, because the whole of this is where a gap lands.
+    /// A client draws the same column from the same string, so a figure that came out in the wrong
+    /// unit is a figure it cannot go on to format.
+    #[test]
+    fn a_gap_too_short_to_be_news_says_nothing_and_the_rest_say_how_long() {
+        let ms = |n: u64| waited_since(std::time::Duration::from_millis(n));
+
+        // the majority of a session, which is what keeps the column from being a list of numbers
+        assert_eq!(ms(0), None);
+        assert_eq!(ms(99), None, "a wait between two frames is not news");
+
+        assert_eq!(ms(100), Some("+100ms".to_owned()));
+        assert_eq!(ms(250), Some("+250ms".to_owned()));
+        assert_eq!(ms(999), Some("+999ms".to_owned()));
+
+        assert_eq!(ms(1_000), Some("+1.0s".to_owned()));
+        assert_eq!(ms(4_260), Some("+4.3s".to_owned()));
+        assert_eq!(ms(59_999), Some("+60.0s".to_owned()));
+
+        assert_eq!(ms(60_000), Some("+1m00s".to_owned()));
+        assert_eq!(ms(3_661_000), Some("+61m01s".to_owned()));
+    }
 }

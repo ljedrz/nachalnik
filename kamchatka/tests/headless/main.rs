@@ -2803,12 +2803,36 @@ async fn a_turn_that_stopped_short_says_why() {
     };
     let script = vec![
         stopped("Rivers are among", StopReason::Length),
+        ModelResponse {
+            stop: StopReason::Length,
+            ..ModelResponse::tool_calls(vec![call("c1", "wait", json!({}))])
+        },
         stopped("", StopReason::Refusal),
         stopped("a sentence", StopReason::Other("eos_token".to_owned())),
         stopped("done", StopReason::EndTurn),
         stopped("half", StopReason::Other("interrupted".to_owned())),
     ];
-    let run = run("one\ntwo\nthree\nfour\nfive\n", script, |_| {}).await;
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = capped(script, None);
+    app.kernel.add_tool(Arc::new(Slow));
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let _ = Headless::new(Grant::Allow, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            &b"one\ntwo\nthree\nfour\nfive\n"[..],
+        )
+        .await;
+    let run = Run {
+        app,
+        records: String::from_utf8(records).expect("the records are text"),
+        prose: String::from_utf8(prose).expect("the prose is text"),
+    };
 
     assert!(
         run.prose
@@ -2816,11 +2840,34 @@ async fn a_turn_that_stopped_short_says_why() {
         "{}",
         run.prose
     );
+    // and the same limit reached mid-call says so, because there it is not the answer that is
+    // short: the call beside it may have been, and that is what a person has to be told
+    assert!(
+        run.prose.contains("length limit while asking for a tool"),
+        "{}",
+        run.prose
+    );
     assert!(run.prose.contains("reported a refusal"), "{}", run.prose);
     assert!(run.prose.contains("`eos_token`"), "{}", run.prose);
     assert!(!run.prose.contains("interrupted"), "{}", run.prose);
-    // and nothing after the turn that finished or the one that was stopped
-    assert_eq!(run.prose.matches("\n· ").count(), 3, "{}", run.prose);
+    // and nothing after the turn that finished or the one a person stopped
+    let notes: Vec<&str> = run
+        .prose
+        .lines()
+        .filter(|line| line.starts_with("· the "))
+        .collect();
+    assert_eq!(
+        notes,
+        [
+            "· the answer stopped at the model's length limit; /continue asks for the rest",
+            "· the model reached its length limit while asking for a tool, so the last call may be \
+             cut short",
+            "· the model declined: the endpoint reported a refusal or a filter",
+            "· the model stopped for a reason this program does not know: `eos_token`",
+        ],
+        "{}",
+        run.prose
+    );
 }
 
 /// `/note` and `/attach` say what went in, which a screen draws from the item and a pipe has no
