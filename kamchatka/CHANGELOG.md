@@ -57,6 +57,15 @@ minor bump may break you.
 - **`examples/jev_assisted_compaction` is `examples/system1_assisted_compaction`**, and asks the
   model `--advise` would.
 
+### fixed
+
+- **A confined command can rename and link across directories again.** The layer that keeps a
+  session's commands from signalling past it refused every rename or link from one directory to
+  another with `EXDEV`, since Landlock refuses that in any layer that does not grant it - in every
+  command, and in the session itself. A compiler renames its output into place, so nothing could
+  be built in a confined `shell`; `mv` hid it by copying. The layer now grants it everywhere,
+  which leaves the command's own ruleset to decide it, as before 0.17.0.
+
 ## [0.17.0] - 2026-10-02
 
 ### added

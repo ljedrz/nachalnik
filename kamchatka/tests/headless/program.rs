@@ -964,6 +964,59 @@ async fn a_command_carries_the_mark_of_the_command_it_runs_inside() {
     }
 }
 
+/// A confined command can move a file from one directory of the working directory to another.
+///
+/// note: through the program, because what refused it was not the command's ruleset but the
+/// layer the program puts itself in to scope signals, which every command inherits: a layer that
+/// does not grant `Refer` refuses every rename and link between directories, and a compiler
+/// renames its output into place. `ln` rather than `mv`, which copies where the kernel refuses a
+/// rename and so hides it.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_confined_command_can_move_a_file_between_directories() {
+    let probed = kamchatka::sandbox::available(&common::program());
+    if probed.confinement != kamchatka::sandbox::Confinement::Full {
+        eprintln!("skipped: this machine cannot confine a command");
+        return;
+    }
+    let cmd =
+        "mkdir -p from to && echo moved > from/it && ln from/it to/it && cat to/it > seen.txt";
+    let dir = common::scratch("program-move");
+    let base = common::endpoint(vec![
+        format!(
+            "data: {}",
+            json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
+                "tool_calls": [{"index": 0, "id": "c1", "type": "function",
+                "function": {"name": "shell", "arguments": json!({"cmd": cmd}).to_string()}}
+            ]}, "finish_reason": "tool_calls"}]})
+        ),
+        common::answer("done"),
+    ])
+    .await;
+
+    let ran = common::command()
+        .args(["--headless", "--no-record", "-m", "nothing"])
+        .args(["--allow", "exec:run,fs:write", "go"])
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+    assert!(
+        ran.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ran.stderr)
+    );
+
+    let seen = std::fs::read_to_string(dir.join("seen.txt")).unwrap_or_else(|e| {
+        panic!(
+            "the file never reached the other directory ({e}): {}",
+            String::from_utf8_lossy(&ran.stderr)
+        )
+    });
+    assert_eq!(seen.trim(), "moved");
+}
+
 /// Reads a child's output into a string as it arrives, so that a test can look at it without
 /// blocking on a pipe that may never say another word.
 fn watch(mut stream: std::process::ChildStderr) -> Arc<parking_lot::Mutex<String>> {

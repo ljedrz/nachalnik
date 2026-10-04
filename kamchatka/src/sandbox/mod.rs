@@ -982,14 +982,26 @@ pub fn confines_signals() -> bool {
 ///
 /// note: `HardRequirement`, so a kernel without the scope - below Linux 6.12 - is a `false` and
 /// nothing applied, rather than a ruleset that restricts nothing and still costs the privileges.
+///
+/// note: `Refer` handled and granted beneath `/`, because it is the one right a layer refuses
+/// without handling it: a layer of signals alone made every rename and link from one directory to
+/// another `EXDEV`, in every command and in this process. A compiler writes its output in one
+/// directory and renames it into another, so nothing could be built. Granted everywhere, it is
+/// the same right on both sides of any move, and the kernel's other condition - that a file gains
+/// no rights by moving - is the command's own ruleset to decide.
 pub fn scope_signals() -> bool {
-    use landlock::{CompatLevel, Compatible, Ruleset, RulesetAttr, Scope};
+    use landlock::{
+        AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr, RulesetCreatedAttr, Scope,
+        path_beneath_rules,
+    };
 
     confines_signals()
         && Ruleset::default()
             .set_compatibility(CompatLevel::HardRequirement)
-            .scope(Scope::Signal)
+            .handle_access(AccessFs::Refer)
+            .and_then(|ruleset| ruleset.scope(Scope::Signal))
             .and_then(|ruleset| ruleset.create())
+            .and_then(|created| created.add_rules(path_beneath_rules(["/"], AccessFs::Refer)))
             .and_then(|created| created.restrict_self())
             .is_ok()
 }
