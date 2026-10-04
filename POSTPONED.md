@@ -291,3 +291,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   a one-line change, and it changes what a client shows; whether a zero from a model that cannot
   reason is worth showing is the decision. `cargo mutants` found it: `> 0` replaced with `>= 0`
   survives every test, and a test pinning either answer would be choosing one.
+
+- **`Careful::servers` has no caller.** It lists every MCP server whose tools are installed, with
+  what the policy answers about each, and nothing in the workspace calls it: the permissions tab
+  reaches the same rows through `server_of`, one tool at a time. A test pinning its answer would
+  pin an answer nobody reads, and taking it out is a change to `kamchatka`'s public API. Whether
+  the tab should draw from it, or it should go, is the decision. `cargo mutants` found it: its
+  body replaced with `vec![]` survives every test.
