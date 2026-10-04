@@ -59,6 +59,58 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
     );
 }
 
+/// A call's own answer is cut at the figure its subject holds, which is what the limit is.
+///
+/// note: `Tool::limit` is what cuts this, and `Limits::for_call` is the only thing behind it, so a
+/// session with a subject held to something small gets a short copy of the answer naming the
+/// operation and the whole of it beside it, excluded. Without it the answer arrives whole - which
+/// is not a better answer, it is one the session's own table disagrees with, and the table is the
+/// thing this tool exists to report.
+#[tokio::test]
+async fn setup_says_what_each_answer_is_cut_at_because_it_is_cut_at_it() {
+    let limits = Limits::new();
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "tools" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone());
+
+    // held below what the answer weighs, which is the whole of what this is about
+    limits.set("setup:tools", 400).expect("a row for it");
+
+    kernel.push(ContextItem::user("what are you offered?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let shortened = answered(&kernel);
+    assert!(
+        shortened.contains("bytes truncated by an output limit"),
+        "the subject says 400 bytes and the answer is longer than that, so the copy the model \
+         was shown says so: {shortened}"
+    );
+    assert!(
+        shortened.len() <= 400,
+        "and the model is shown no more than the subject allows: {} bytes",
+        shortened.len()
+    );
+    // and the whole of it is here still, excluded beside the copy, which is what an output limit
+    // is a decision about and not a permission to have thrown the rest away
+    let whole = kernel
+        .items()
+        .iter()
+        .find(|item| item.state == nachalnik::ContextState::Excluded)
+        .map(|item| item.content.to_text().len())
+        .expect("the whole output is kept beside the shortened copy");
+    assert!(
+        whole > 400,
+        "and the copy is shorter than what it stands for: {whole}"
+    );
+}
+
 /// What a session was told to forget, `tools` says it has forgotten - the way `policy` does.
 ///
 /// note: `rules` reads the configuration for this sentence and `tools` stated the opposite
@@ -223,6 +275,14 @@ async fn setup_model_names_the_turns_another_model_wrote() {
         said.contains(&format!("`scripted` wrote item {first}")),
         "{said}"
     );
+    // and the turns this model wrote are not in that list. Every assistant turn since the switch
+    // is an item still in the context that this model wrote, and a list carrying them would be a
+    // model told that its own reasoning belongs to somebody else - which is the mistake this line
+    // exists to prevent, said in the other direction.
+    assert!(
+        !said.contains("`second` wrote"),
+        "the current model's own turns are named as another's: {said}"
+    );
 }
 
 /// An undecided domain is not the last word, and an undecided server is; the report says which.
@@ -368,6 +428,102 @@ async fn setup_permissions_counts_the_rules_nobody_has_thought_about() {
     // still named, because an answer standing silently for eleven rules would be its own kind of
     // dishonest - it is the row per rule that is not worth the tokens, not the fact of them
     assert!(said.contains(".env*"), "{said}");
+    // and nothing else is in the decided half yet, because a path rule nobody has answered for is
+    // a question. All eleven ship as `ask`, so the section that lists the decided ones has no rows
+    // and must not print its heading over an empty table.
+    assert!(
+        !said.contains("rules about paths, which bind the tools handed one"),
+        "a heading over no rows reads as a section nobody has looked at: {said}"
+    );
+}
+
+/// A path rule somebody has answered for is listed, because that is the one worth listing.
+#[tokio::test]
+async fn setup_permissions_lists_a_path_rule_somebody_has_decided() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    policy.set(&Subject::Path("build/".to_owned()), Verdict::Allow);
+    policy.set(&Subject::Path(".env*".to_owned()), Verdict::Deny);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what may you touch?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("rules about paths, which bind the tools handed one"),
+        "two rules have been decided and the section is where they belong: {said}"
+    );
+    // and the decided half is still split from the questions: a row each for somebody who decided,
+    // a count for the ten nobody has
+    let section = said
+        .split("rules about paths, which bind the tools handed one")
+        .nth(1)
+        .expect("the section is there");
+    assert!(section.contains("build/"), "the one allowed: {said}");
+    assert!(
+        section.contains("allow"),
+        "with the verdict beside it: {said}"
+    );
+    assert!(section.contains(".env*"), "and the one refused: {said}");
+    assert!(section.contains("deny"), "with its verdict: {said}");
+    // the eleven that ship as questions are counted rather than listed, as they were before
+    assert!(section.contains("path rule(s) are undecided"), "{said}");
+}
+
+/// An undecided server is the last word, and the report says so where the verdict goes.
+///
+/// note: the other half of `an_undecided_domain_says_that_a_row_above_it_can_answer_for_one_operation`.
+/// A server is consulted *beside* the rows above rather than under them, so every one of its tools
+/// stops and asks whatever its own rows say - which is the opposite of a domain, where an exact
+/// rule in front answers for one operation.
+#[tokio::test]
+async fn setup_permissions_says_an_undecided_server_stops_a_call_whatever_its_rows_say() {
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "permissions" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    // a server nobody has answered for, whose one tool's own row says allowed
+    kernel.add_tool(Arc::new(nachalnik::test::ConstTool::new(
+        "py__spew", "did it",
+    )));
+    policy.came_from("py__spew", "py");
+    policy.set(&Subject::Server("py".to_owned()), Verdict::Ask);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+
+    kernel.push(ContextItem::user("what may you do?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("server rule(s) are undecided"),
+        "the server has nobody's answer and every one of its tools is a question: {said}"
+    );
+    assert!(said.contains("server py"), "and it is named: {said}");
+    // and it says the half that is true of a server and not of a domain: the rows beside it do
+    // not answer for it
+    assert!(
+        said.contains("consulted beside the rows above"),
+        "an undecided server is not answered by a row naming its operation: {said}"
+    );
+    // the policy agrees with the sentence: the tool's own row allows it, and the server does not
+    assert_eq!(
+        policy.stance(&Subject::Server("py".to_owned())),
+        Verdict::Ask,
+        "the report and the policy disagree about the same tool"
+    );
 }
 
 /// Every row is one operation in one domain, and the tools it decides for are named beside it.
@@ -498,6 +654,53 @@ async fn setup_permissions_names_the_shell_for_the_rule_the_network_gate_consult
         !row.contains("nothing here is judged by it"),
         "a rule that is refusing the model's commands cannot be reported as deciding for \
          nothing: {row}"
+    );
+    // and nothing but the shell. The gate asks about a command, so it is a tool that runs one
+    // that this rule governs; the four introspection tools are on offer here and run nothing, and
+    // a row naming them says a rule is in force over calls it is never consulted about - which is
+    // the same error `mcp:call` is not credited with, in the other direction.
+    let named = row
+        .split("when the command reaches for it")
+        .next()
+        .expect("the clause is there");
+    assert!(
+        !named.contains("setup") && !named.contains("context") && !named.contains("fork"),
+        "only a tool that runs a command is judged by the network gate: {row}"
+    );
+}
+
+/// The kernel's own ceiling is reported only for a tool it is what actually cuts.
+///
+/// note: it is said about "a tool with no row of its own - one from a server", so it is only true
+/// of a tool that has neither. A session offering nothing but the introspection tools has a row
+/// for every subject they declare, and a sentence about a ceiling that governs none of them
+/// invites a model to ask for less than the answer it is reading.
+#[tokio::test]
+async fn setup_tools_reports_the_kernel_ceiling_only_where_it_is_what_cuts() {
+    let kernel = Kernel::new(Config {
+        default_tool_output_limit: Some(32_000),
+        ..Config::default()
+    });
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "setup",
+        json!({ "action": "tools" }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("setup"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what are you offered?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    // the ceiling is configured, so the sentence is reachable - this is not passing because the
+    // answer is silent
+    assert!(said.contains("32,000"), "the ceiling is in force: {said}");
+    assert!(
+        !said.contains("no row of its own"),
+        "every tool here has a row of its own, so nothing is cut at the kernel's ceiling: {said}"
     );
 }
 
