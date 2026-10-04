@@ -15,7 +15,7 @@ use kamchatka::{
     ui,
 };
 use nachalnik::{
-    Config, Content, ContextItem, Kernel,
+    Config, Content, ContextItem, Kernel, Provider,
     test::{ConstTool, ScriptedProvider},
 };
 use nachalnik_providers::OpenAiCompatible;
@@ -49,6 +49,31 @@ fn app() -> App {
     std::mem::forget(outcomes);
 
     app
+}
+
+/// The status line of a fresh session talking to `provider`, drawn `width` columns wide.
+/// `on_kernel` is the provider the kernel is handed, whose model is the name on the line.
+fn status_line(
+    provider: Arc<OpenAiCompatible>,
+    on_kernel: Arc<dyn Provider>,
+    width: u16,
+) -> String {
+    let kernel = Kernel::new(Config::default());
+    let policy = Arc::new(Careful::new());
+    kernel.set_provider(on_kernel);
+    kernel.set_policy(policy.clone());
+    let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
+    std::mem::forget(keep);
+    let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
+
+    let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
+    terminal
+        .draw(|frame| ui::draw(frame, &mut app))
+        .expect("a frame");
+    let buffer = terminal.backend().buffer().clone();
+    (0..width)
+        .map(|x| buffer[(x, 11)].symbol())
+        .collect::<String>()
 }
 
 /// The same session, with the end of the channel a command's request comes back on.
@@ -600,30 +625,14 @@ fn the_row_count_agrees_with_what_the_widget_actually_draws() {
 /// ends in `· F1 for the keys` and every rung of the ladder is reached that much later.
 #[test]
 fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
-    let status_at = |width: u16| {
-        let kernel = Kernel::new(Config::default());
-        let policy = Arc::new(Careful::new());
-        kernel.set_provider(Arc::new(ScriptedProvider::new([])));
-        kernel.set_policy(policy.clone());
-        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
-        std::mem::forget(keep);
-        // the longest address anyone is likely to be pointed at, which is the one that found this
-        let provider = Arc::new(OpenAiCompatible::new(
-            "gemini-3.5-flash-lite",
-            "https://generativelanguage.googleapis.com/v1beta/openai",
-            "",
-        ));
-        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
-
-        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
-        terminal
-            .draw(|frame| ui::draw(frame, &mut app))
-            .expect("a frame");
-        let buffer = terminal.backend().buffer().clone();
-        (0..width)
-            .map(|x| buffer[(x, 11)].symbol())
-            .collect::<String>()
-    };
+    // the longest address anyone is likely to be pointed at, which is the one that found this
+    let provider = Arc::new(OpenAiCompatible::new(
+        "gemini-3.5-flash-lite",
+        "https://generativelanguage.googleapis.com/v1beta/openai",
+        "",
+    ));
+    let status_at =
+        |width| status_line(provider.clone(), Arc::new(ScriptedProvider::new([])), width);
 
     // room for all of it: the address is there whole
     let whole = status_at(120);
@@ -670,32 +679,14 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
 /// already dropped and nothing else left to give.
 #[test]
 fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
-    let status_at = |width: u16| {
-        let kernel = Kernel::new(Config::default());
-        let policy = Arc::new(Careful::new());
-        // this one on the kernel as well, because the name on the line is the *kernel's* model
-        // and a scripted provider is called `scripted` - eleven columns, which is the whole
-        // subject here
-        let provider = Arc::new(OpenAiCompatible::new(
-            "dots-studio/dots-3-note-preview:free",
-            "https://openrouter.ai/api/v1",
-            "",
-        ));
-        kernel.set_provider(provider.clone());
-        kernel.set_policy(policy.clone());
-        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
-        std::mem::forget(keep);
-        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
-
-        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
-        terminal
-            .draw(|frame| ui::draw(frame, &mut app))
-            .expect("a frame");
-        let buffer = terminal.backend().buffer().clone();
-        (0..width)
-            .map(|x| buffer[(x, 11)].symbol())
-            .collect::<String>()
-    };
+    // this one on the kernel as well, because the name on the line is the *kernel's* model and a
+    // scripted provider is called `scripted` - eleven columns, which is the whole subject here
+    let provider = Arc::new(OpenAiCompatible::new(
+        "dots-studio/dots-3-note-preview:free",
+        "https://openrouter.ai/api/v1",
+        "",
+    ));
+    let status_at = |width| status_line(provider.clone(), provider.clone(), width);
 
     // room for all of it: the whole name, and the address after it
     let whole = status_at(120);
