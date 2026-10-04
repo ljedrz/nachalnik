@@ -1295,6 +1295,56 @@ mod tests {
         .into_owned()
     }
 
+    /// Runs one command under a session that stops it after `wait`, and gives back what the
+    /// command had to say by then.
+    ///
+    /// note: a session rather than a dropped call, because this is the one thing a
+    /// disconnected sink cannot say: an interrupt reaches a tool only through the sink it was
+    /// given, and `OutputSink::disconnected` discards the question as well as the answer.
+    async fn interrupted(command: &str, wait: Duration) -> String {
+        use nachalnik::{
+            Config, ContextItem, ContextKind, Kernel, ModelResponse,
+            test::{AllowAll, ScriptedProvider},
+        };
+
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::tool_calls(vec![ToolCall::new(
+                "c1",
+                "shell",
+                serde_json::json!({ "cmd": command }),
+            )]),
+            ModelResponse::text("stopped"),
+        ])));
+        kernel.set_policy(Arc::new(AllowAll));
+        kernel.add_tool(Arc::new(unconfined()));
+        kernel.push(ContextItem::user("go"));
+
+        let turn = tokio::spawn({
+            let kernel = kernel.clone();
+            async move { kernel.turn().await }
+        });
+        tokio::time::sleep(wait).await;
+        kernel.interrupt();
+
+        tokio::time::timeout(Duration::from_secs(8), turn)
+            .await
+            .unwrap_or_else(|_| {
+                panic!("a stopped command answers now, not when whatever it started has finished")
+            })
+            .expect("the turn is not a panic")
+            .expect("a stopped command is not a failed one");
+
+        kernel
+            .items()
+            .into_iter()
+            .find_map(|item| match item.kind {
+                ContextKind::ToolResult { .. } => Some(item.content.to_text().into_owned()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no result for the call it was stopped in"))
+    }
+
     /// A call dropped while its command runs takes the command's whole group with it.
     ///
     /// note: a call is dropped when the process is going - a runtime shut down mid-turn, a panic -
@@ -1472,6 +1522,57 @@ mod tests {
         );
 
         assert_eq!((collected.len(), full, dropped), (KEPT, false, 0));
+    }
+
+    /// A command stopped while it is being waited for, having closed its output, answers at
+    /// once and says it was stopped.
+    ///
+    /// note: the wait is watched on a heartbeat precisely so that this can be answered, and the
+    /// heartbeat is where the interrupt is read. A wait that acted on nothing would go on
+    /// watching a command that had already been stopped, for as long as that command said it
+    /// would run.
+    #[tokio::test]
+    async fn a_command_stopped_while_being_waited_for_answers_at_once() {
+        let said = interrupted("exec 1>&-; sleep 30", Duration::from_millis(500)).await;
+
+        assert!(
+            said.starts_with("exit: stopped before it finished"),
+            "{said}"
+        );
+    }
+
+    /// A command nobody asked to stop is not stopped, however long it is quiet for.
+    ///
+    /// note: the wait is watched on a heartbeat rather than left to block, and the heartbeat is
+    /// what reads whether the turn was interrupted - a wait that acted on anything else would
+    /// stop a command that was only quiet. `exec 1>&-` is here because it is what puts the wait
+    /// where the heartbeat is: the reading is over, and what is left is the command itself.
+    #[tokio::test]
+    async fn a_quiet_command_nobody_asked_to_stop_is_not_stopped() {
+        let said = ran("exec 1>&-; sleep 2; echo late >&2").await;
+
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("late"), "{said}");
+    }
+
+    /// The end of a command's standard output is not the end of its standard error, and a command
+    /// that closed its output and kept running has the rest of its error kept.
+    ///
+    /// note: `exec 1>&-` is the note beside the loop this is about - the end of the output is not
+    /// the end of the command, so the command is waited for on its own rather than while reading
+    /// it. A wait that is skipped the moment reading stops is the same wait held to no heartbeat
+    /// at all, and standard error is drained after it and cut by one: the error a command says
+    /// after it closed its output is exactly the error this would lose.
+    #[tokio::test]
+    async fn what_a_command_says_after_closing_its_output_is_kept() {
+        let said = ran("exec 1>&-; sleep 1; echo first >&2; sleep 1; echo second >&2").await;
+
+        assert!(said.starts_with("exit: 0"), "{said}");
+        assert!(said.contains("first"), "{said}");
+        assert!(
+            said.contains("second"),
+            "the last of its standard error: {said}"
+        );
     }
 
     /// A command that finishes and leaves something running still answers.
