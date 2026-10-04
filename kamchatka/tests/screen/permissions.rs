@@ -1670,6 +1670,15 @@ async fn a_waiting_question_can_be_left_and_come_back_to() {
     // and back, where the keys are already on the question because that is what the trip was for
     harness.app.show(Tab::Chat);
     assert_eq!(harness.app.focus, Focus::Body);
+    // and the box the keys are on is the one drawn in the accent. Red and the accent are two
+    // statements about the same panel - *a tool is waiting on somebody* and *the keys are here* -
+    // and they are read together, because a person who set the frame red would otherwise have
+    // configured the second distinction away
+    assert_eq!(
+        harness.corners(),
+        vec![harness.app.accent, harness.app.accent],
+        "the window, and the question that has the keys"
+    );
     harness.press(KeyCode::Char('y')).await;
     harness.settle().await;
     assert!(harness.app.asked().is_none(), "one key, having looked");
@@ -1763,6 +1772,48 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     assert!(screen.contains("pgup / pgdn for the rest"), "{screen}");
     assert!(screen.contains("line 0 of"), "{screen}");
     assert!(!screen.contains("line 79 of"), "{screen}");
+
+    // and on a screen tall enough for the whole of a question, it says nothing of the sort: the
+    // `pgup / pgdn` is the text for the boundary where the arguments have been cut, and a panel
+    // that claims there is more to read when the last line is already on the screen sends
+    // somebody paging down through rows that are there
+    //
+    // note: a second question, because an argument of eighty lines does not fit on any screen and
+    // the boundary is where it *does*. Eight lines is the smallest that is still cut on one row
+    // less than it is whole on.
+    let fits: String = (0..8)
+        .map(|i| format!("line {i} of a very long replacement"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut whole = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "context",
+            json!({ "action": "revise", "content": fits }),
+        )]),
+        ModelResponse::text("done"),
+    ]);
+    whole.app.kernel.add_tool(Arc::new(
+        ConstTool::new("context", "revised")
+            .with_capabilities([kamchatka::tools::domains::context("revise")]),
+    ));
+    whole.send("fix it").await;
+    whole.settle().await;
+
+    let exact = whole.sized(100, 25);
+    assert!(
+        exact.contains("line 7 of a very long replacement"),
+        "{exact}"
+    );
+    assert!(
+        !exact.contains("pgup / pgdn"),
+        "nothing was cut, so nothing says there is more: {exact}"
+    );
+    // and one row less, they are cut and it says so
+    assert!(
+        whole.sized(100, 24).contains("pgup / pgdn for the rest"),
+        "one row less and the arguments are cut"
+    );
 
     // the question is pinned rather than laid over the screen, so `pgdn` is the conversation's
     // until somebody moves the keys onto the question - and then it is the arguments'
@@ -2094,6 +2145,48 @@ async fn a_separator_inside_a_quote_is_not_coloured_as_a_joint() {
     assert!(screen.contains("│ echo 'a | b'"), "{screen}");
     // the `|` is inside the string, so it is drawn as the string's own colour and not as a joint
     assert_ne!(harness.style_of_last("| b'").0, Color::Cyan);
+}
+
+/// A build with nothing rating commands underlines nothing in one.
+///
+/// note: the other half of the joint tests above, and it holds in a build without the advisor in
+/// it, where there is no `worst` stage to point at. Underlining a run of a command that was never
+/// taken apart says there is a worse part of it to find, on the one screen where somebody is
+/// deciding whether to run it.
+///
+/// note: `ls -l /tmp` rather than a chain, because the underline is a run *between* joints and the
+/// run a wrong range picks out of a chain is a whole stage - which would make a failure here
+/// indistinguishable from the advisor's own underline being drawn.
+#[tokio::test]
+async fn a_command_nothing_rated_is_not_underlined() {
+    use ratatui::style::Modifier;
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "shell",
+            json!({ "action": "run", "cmd": "ls -l /tmp" }),
+        )]),
+        ModelResponse::text("listed"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("list it").await;
+    harness.settle().await;
+
+    // the command is drawn as it was written, and not one character of it is pointed at
+    assert!(harness.screen().contains("│ ls -l /tmp"));
+    for needle in ["ls -l", "tmp"] {
+        assert!(
+            !harness
+                .style_of_last(needle)
+                .1
+                .contains(Modifier::UNDERLINED),
+            "nothing was rated, so nothing is pointed at: {needle}"
+        );
+    }
 }
 
 /// What the rule records say, as `(subject, verdict, answering, once)`.
