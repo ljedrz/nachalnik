@@ -81,6 +81,59 @@ async fn a_bare_log_is_a_summary_and_a_price_rather_than_the_records() {
     );
 }
 
+/// The summary counts each kind, and the count is the number of records of it.
+///
+/// note: the histogram is the only thing a bare call says about what happened, so a count that
+/// was really "this kind happened" answers the question a model reaches for the log with -
+/// how many tool calls, how many edits - and answers it with one every time.
+#[tokio::test]
+async fn the_summary_counts_each_kind_rather_than_saying_that_it_happened() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read" }),
+    )]));
+
+    for n in 0..7 {
+        kernel.push(ContextItem::memory("scratch", format!("note {n}")));
+    }
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]).remove(0);
+    // the total the answer opens with, and the rows under it, which have to account for it
+    let total: usize = said
+        .split(' ')
+        .next()
+        .expect("every answer opens with a count")
+        .replace(',', "")
+        .parse()
+        .expect("a figure");
+    let rows: Vec<(&str, usize)> = said
+        .lines()
+        .filter_map(|line| {
+            let (name, count) = line.trim_end().rsplit_once(' ')?;
+            let (name, _) = name.rsplit_once(' ')?;
+            Some((name, count.replace(',', "").parse().ok()?))
+        })
+        .filter(|(name, _)| !name.ends_with(','))
+        .collect();
+    assert!(
+        rows.len() > 1,
+        "a session that did several kinds of thing has a row for each: {said}"
+    );
+    assert!(
+        rows.iter().any(|(_, count)| *count > 1),
+        "and a kind that happened more than once is counted more than once: {said}"
+    );
+    assert_eq!(
+        rows.iter().map(|(_, count)| count).sum::<usize>(),
+        total,
+        "the counts and the total are one pass over one log: {said}"
+    );
+}
+
 /// Every answer opens with what exists, not with what matched.
 ///
 /// note: this is the rule that makes the tool safe rather than a convenience. A filtered answer
@@ -1354,5 +1407,44 @@ async fn a_request_is_found_by_an_item_the_projector_left_out_of_it() {
     assert!(
         said.contains("model.requested") && said.contains("match"),
         "and it is the request record itself: {said}"
+    );
+}
+
+/// The limit table is this tool's limit, and the answer the model is shown obeys it.
+///
+/// note: `Tool::limit` is the one method here that decides how much of what a call returns the
+/// model gets to see, so a tool that declared nothing would hand back a log of whatever length
+/// the session happened to reach - on the very answer that reads as the cheapest thing an agent
+/// can ask for. A limit a table nobody consults is not a limit, so this asks for the answer a
+/// small row produces, and the row is moved with the same handle `/limit` moves.
+#[tokio::test]
+async fn the_log_says_no_more_than_the_limits_table_allows_it_to() {
+    let limits = Limits::new();
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "kinds": ["context.added"] }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    policy.set(&Subject::parse("log"), Verdict::Allow);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone());
+
+    for n in 0..150 {
+        kernel.push(ContextItem::memory("scratch", format!("note number {n}")));
+    }
+    limits.set("log:read", 1_000).expect("a row for it");
+    kernel.push(ContextItem::user("what has happened?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    // the copy the model was shown, which is the last one recorded: with `keep_truncated_output`
+    // the whole is put in beside it, excluded, and it is the longer of the pair
+    let said = answered(&kernel);
+    assert!(
+        said.contains("truncated by an output limit"),
+        "the log declared no limit, so a log of a long session is handed back whole however \
+         large it is: {said}"
     );
 }
