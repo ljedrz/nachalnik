@@ -26,6 +26,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik-providers` 0.8. Its `system1::Client` is what `--advise` asks, and
+  `Dialect::published` is what `/params` reads an endpoint's defaults and ceilings from.
+
 - **A key the help does not name does nothing.** The prompt took every key nothing else did to
   its text box's own keymap, which is emacs's and was on no help line: `ctrl+u` and `ctrl+r`
   undoing and redoing, `ctrl+k` and `ctrl+w` cutting, `ctrl+a` and `alt+<` moving the cursor,
