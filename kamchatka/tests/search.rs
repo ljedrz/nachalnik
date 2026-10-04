@@ -825,12 +825,13 @@ async fn a_capped_files_only_answer_does_not_advise_files_only() {
     );
 }
 
-/// An argument a model quoted is read, and one nobody can read stops the search.
+/// An argument a model quoted is read, either way round, and one nobody can read stops the search.
 ///
 /// note: the scar is `introspect::log`'s, where `take: "3"` was swallowed by a bare `as_u64` and
 /// the tool answered as though it had been asked for the default. Here the default for
 /// `files_only` is the *expensive* answer, so a swallowed `"true"` costs three thousand tokens
-/// and says nothing about why.
+/// and says nothing about why. A `"false"` nobody could read is the same refusal said about the
+/// cheaper answer, and the wrong turn to spend.
 #[tokio::test]
 async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
     let dir = tree("grep-arguments");
@@ -852,6 +853,22 @@ async fn a_quoted_argument_is_read_and_an_unreadable_one_is_refused() {
     )
     .await;
     assert!(said.starts_with("2 file(s) match"), "{said}");
+
+    // and the word `false` in quotes is that word rather than something nobody could read, both
+    // ways round: neither the expensive answer nor a case-insensitive search nobody asked for
+    for (args, what) in [
+        (
+            json!({ "pattern": "Kernel", "files_only": "false" }),
+            "3 match(es) in 2 file(s)",
+        ),
+        (
+            json!({ "pattern": "kernel", "ignore_case": "false" }),
+            "no matches for `kernel`",
+        ),
+    ] {
+        let said = ask(&dir, "grep", args).await;
+        assert!(said.starts_with(what), "{said}");
+    }
 
     let context = ask(
         &dir,
