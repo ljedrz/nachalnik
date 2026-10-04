@@ -362,6 +362,93 @@ mod tests {
         assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
     }
 
+    /// A log with no snapshot beside it has still been claimed, and the next name is the next one.
+    ///
+    /// note: the `.json` is looked for first, so it is the only way to reach the `.jsonl` check -
+    /// a log on its own is what a process that died between claiming it and writing the first
+    /// snapshot leaves, and one that had never been written at all must not get its name back.
+    #[test]
+    fn a_log_left_without_its_snapshot_is_a_name_that_is_taken() {
+        let dir = std::env::temp_dir().join("kamchatka-unclaimed-alone");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory to work in");
+        let stem = dir.join("2026-09-16T08-00-00Z");
+        std::fs::write(dir.join("2026-09-16T08-00-00Z.jsonl"), "one").expect("written");
+
+        let (log, state, _) = unclaimed(&stem).expect("a name beside the log that is there");
+        assert!(log.ends_with("2026-09-16T08-00-00Z-2.jsonl"), "{log}");
+        assert!(state.ends_with("2026-09-16T08-00-00Z-2.json"), "{state}");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("2026-09-16T08-00-00Z.jsonl")).expect("still there"),
+            "one",
+            "the log that is there is untouched"
+        );
+    }
+
+    /// A stem that cannot be written at all says which path and why, rather than looking for
+    /// another name a thousand times.
+    ///
+    /// note: the note on `unclaimed` is the promise - only a name that is taken is passed over,
+    /// because a directory that cannot be written in or a full disk is the reason there is no
+    /// record, and "no unused name" is a thousand wrong answers to it.
+    #[test]
+    fn a_name_that_cannot_be_written_at_all_is_said_as_it_is() {
+        let dir = std::env::temp_dir().join("kamchatka-unclaimed-nowhere");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("a directory to work in");
+        std::fs::write(dir.join("afile"), "not a directory").expect("written");
+
+        let refused = unclaimed(&dir.join("afile").join("session")).expect_err("nowhere to write");
+        assert!(
+            refused.contains("afile/session.jsonl") && refused.contains("could not write"),
+            "the refusal does not name the path or the reason: {refused}"
+        );
+        assert!(
+            !refused.contains("unused name"),
+            "a name that cannot be written was looked for again and again: {refused}"
+        );
+    }
+
+    /// A directory this user owns but cannot make private is refused, whatever it is made of.
+    ///
+    /// note: the mode is checked because it is what the other users of the machine go by, and the
+    /// check is after a `chmod` because a directory that can be tightened is. procfs is the case
+    /// where the two come apart: `/proc/self/task` is this user's own, is `0555`, and refuses to
+    /// be changed - so the `chmod` is ignored, the bits stay, and a transcript written under it
+    /// would be one anybody on the machine could read.
+    #[test]
+    fn a_directory_that_cannot_be_made_private_is_refused() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let dir = std::path::Path::new("/proc/self/task");
+        let Ok(meta) = std::fs::metadata(dir) else {
+            return;
+        };
+        let mine = {
+            use std::os::unix::fs::MetadataExt as _;
+            meta.uid() == rustix::process::geteuid().as_raw()
+        };
+        if !mine {
+            return;
+        }
+        // note: a machine that lets the `chmod` through is one where this directory is made
+        // private and there is nothing here to check
+        let tightened = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+        let mode = std::fs::metadata(dir)
+            .expect("still there")
+            .permissions()
+            .mode();
+        if tightened.is_ok() || mode & 0o077 == 0 {
+            return;
+        }
+
+        let refused = private(dir).expect_err("a directory everybody can read is not private");
+        assert!(
+            refused.contains("is not a directory only you can enter"),
+            "the refusal does not say what is wrong: {refused}"
+        );
+    }
+
     /// A link at the snapshot's name is a name that is taken, even when it points at nothing.
     ///
     /// note: `exists` follows a link and answers no for one to a file that is not there, and the
