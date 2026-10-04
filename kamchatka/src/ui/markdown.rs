@@ -725,4 +725,52 @@ mod tests {
             assert!(!rule(&Line::from(text)), "{text:?} is not a divider");
         }
     }
+
+    /// What one stretch of an answer is, and the words of it.
+    fn split(text: &str) -> Vec<String> {
+        chunks(text)
+            .into_iter()
+            .map(|chunk| match chunk {
+                Chunk::Prose(prose) => format!("prose {prose:?}"),
+                Chunk::Table(block) => format!("table {block:?}"),
+                Chunk::Code { language, body } => format!("code {language:?} {body:?}"),
+            })
+            .collect()
+    }
+
+    /// A closing fence is the character the block opened with, and no shorter than the one that
+    /// opened it.
+    ///
+    /// note: CommonMark says a fence closes on a run of the same character *at least as long*, so
+    /// the run's length is half of what closes a block and the other half is that the rest of the
+    /// line is nothing but that character. Read as either half alone, the ``` inside a ```` block
+    /// would end it - and a block the model indented with four backticks to hold a three-backtick
+    /// snippet is the ordinary way of saying that, not a corner of the format. The tilde fence is
+    /// the other direction: it is not the character the block opened with, so it is content.
+    #[test]
+    fn a_fence_closes_a_block_only_if_it_is_the_same_character_and_no_shorter() {
+        assert_eq!(
+            split("````rust\nfn a() {}\nstill inside\n```\n"),
+            [r#"code "rust" "fn a() {}\nstill inside\n```\n""#],
+            "a shorter run of the same character is not a closing fence",
+        );
+        assert_eq!(
+            split("```rust\nfn a() {}\n~~~\n```py\nb = 1\n```\n"),
+            [r#"code "rust" "fn a() {}\n~~~\n```py\nb = 1\n""#],
+            "another character's fence is content, and the block runs on past it",
+        );
+    }
+
+    /// A fence right under a line of prose still names its language.
+    ///
+    /// note: the language is read off the fence's own line, and a fence need not have a blank row
+    /// above it. Read from one character too early, the line it starts on is the prose's, and a
+    /// block of Rust arrives named after the end of the sentence in front of it.
+    #[test]
+    fn a_fence_right_under_prose_still_names_its_language() {
+        assert_eq!(
+            split("intro\n```rust\nfn main() {}\n```\n"),
+            ["prose \"intro\\n\"", "code \"rust\" \"fn main() {}\\n\""]
+        );
+    }
 }
