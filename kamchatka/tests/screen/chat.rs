@@ -1992,3 +1992,58 @@ async fn the_prompt_has_no_keys_the_help_does_not_name() {
     harness.press(KeyCode::Char('?')).await;
     assert_eq!(harness.app.input.lines(), ["ne w?o"]);
 }
+
+/// Thinking is on the chat while the turn is still arriving, beside the answer.
+#[tokio::test]
+async fn thinking_that_arrives_is_on_the_chat_while_the_turn_is_still_arriving() {
+    let mut harness = Harness::new([]);
+
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Reasoning("weighing it up".to_owned()),
+    });
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("here is the answer".to_owned()),
+    });
+
+    let screen = harness.screen();
+    assert!(screen.contains("weighing it up"), "{screen}");
+    assert!(screen.contains("here is the answer"), "{screen}");
+}
+
+/// A call for a tool this session does not have is said out loud, by name, as an error rather
+/// than as an answer.
+///
+/// note: the model is told about it too - the tool result carries the tools that are here - but
+/// that is the half that goes back to the model and nothing on the screen said so. A person
+/// watching a turn see nothing happen and no idea whether the model was refused or ignored is
+/// left reading the trace.
+#[tokio::test]
+async fn a_call_for_a_tool_this_session_does_not_have_is_said_out_loud() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "wibble", json!({}))]),
+        ModelResponse::text("never mind"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+
+    harness.send("do the thing").await;
+    harness.settle().await;
+
+    let said = harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| (entry.speaker, entry.text.as_str()))
+        .collect::<Vec<_>>();
+    let error = said
+        .iter()
+        .find(|(speaker, _)| *speaker == Speaker::Error)
+        .unwrap_or_else(|| panic!("an error is said for a call that cannot run: {said:?}"));
+    assert!(
+        error.1.contains("wibble") && error.1.contains("not a tool here"),
+        "and it names the tool: {}",
+        error.1
+    );
+}

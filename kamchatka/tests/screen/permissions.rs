@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{
-    app::{Focus, Tab},
+    app::{Focus, Speaker, Tab},
     sandbox::Confinement,
     tools::{Limits, Subject},
 };
@@ -841,6 +841,43 @@ async fn a_refusal_says_which_stance_made_it() {
     assert!(
         !note.contains("net:reach"),
         "the command never reached for it: {note}"
+    );
+
+    // and the other refusal there is: a rule about something else in the call, on a tool whose own
+    // capability is allowed. `shell` is allowed, so nothing about the tool says no - the path does
+    // - and a session left with only what the tool result said was left with a refused call and
+    // nothing accounting for it. The reason is said here as well, under the tool's own name
+    let mut other = Harness::new([
+        ModelResponse::tool_calls(vec![call("c2", "shell", json!({ "path": ".env" }))]),
+        ModelResponse::text("no, then"),
+    ]);
+    other.app.kernel.add_tool(Arc::new(
+        ConstTool::new("shell", "output").with_capabilities([Capability::exec("run")]),
+    ));
+    other.app.policy.set(
+        &Subject::Capability(Capability::exec("run")),
+        Verdict::Allow,
+    );
+    other
+        .app
+        .policy
+        .set(&Subject::Path(".env*".to_owned()), Verdict::Deny);
+
+    other.send("read the env").await;
+    other.settle().await;
+
+    let note = other
+        .app
+        .loose
+        .iter()
+        .map(|entry| (entry.speaker, entry.text.as_str()))
+        .find(|(speaker, _)| *speaker == Speaker::Note)
+        .unwrap_or_else(|| panic!("nothing accounted for the refusal"));
+    assert_eq!(note.0, Speaker::Note);
+    assert!(
+        note.1.starts_with("shell: ") && note.1.contains(".env*"),
+        "the refusal is named against the tool that was refused: {}",
+        note.1
     );
 }
 

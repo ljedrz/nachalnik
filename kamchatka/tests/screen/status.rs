@@ -198,13 +198,15 @@ async fn a_change_of_model_is_remarked_on_afresh() {
 }
 
 /// A provider that reports no reasoning is not a provider reporting none of it, and the line that
-/// would say so must not appear for the ordinary case.
+/// would say so must not appear for the ordinary case - nor for one that reports the figure as
+/// zero, which is the same silence written down rather than left out.
 #[tokio::test]
 async fn a_model_that_reports_no_reasoning_is_not_said_to_be_hiding_any() {
     let mut harness = Harness::new([ModelResponse {
         usage: Some(Usage {
             input_tokens: Some(9),
             output_tokens: Some(30),
+            reasoning_tokens: Some(0),
             ..Default::default()
         }),
         ..ModelResponse::text("done")

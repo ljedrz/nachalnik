@@ -1677,6 +1677,54 @@ async fn a_context_the_compactor_cannot_help_is_said_to_be_full_once() {
     assert_eq!(screen.matches(said).count(), 1, "{screen}");
 }
 
+/// And the other half of that sentence: a context that stops being full says so too, so a person
+/// who excluded what was holding the room knows it worked.
+///
+/// note: the same event with the other value, and it is a change rather than a state - the kernel
+/// says it once, on the change. What it cost to leave the second half out is that the line which
+/// tells somebody to `/exclude` was the last word on a subject for the rest of the session, and
+/// the thing they did about it was never acknowledged.
+#[tokio::test]
+async fn a_context_that_stops_being_full_says_so() {
+    let mut harness = Harness::new([
+        nachalnik::ModelResponse::text("ok"),
+        nachalnik::ModelResponse::text("ok again"),
+    ]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
+        threshold: 0.5,
+        target: 0.3,
+    })));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.push(
+        ContextItem::file("notes.txt", "a line of routine output. ".repeat(limit / 10)).pinned(),
+    );
+
+    let full = "the context is full, and the compactor has nothing more it may take";
+    harness.send("go on").await;
+    harness.settle().await;
+    assert!(harness.flat().contains(full), "{}", harness.screen());
+
+    // what the sentence asks for, done by hand
+    harness.send("/exclude all").await;
+    harness.send("and again").await;
+    harness.settle().await;
+
+    let screen = harness.sized(400, 120);
+    assert!(
+        screen.contains("ok again"),
+        "the second turn is not on it: {screen}"
+    );
+    assert!(
+        screen.contains("the context has room again"),
+        "nothing said the excluding worked: {screen}"
+    );
+    assert_eq!(
+        screen.matches("the context has room again").count(),
+        1,
+        "it said it once: {screen}"
+    );
+}
+
 // ------------------------------------------------------------------------- what is done with
 
 /// One exchange: the person's message, the model's call, its result and the model's answer.

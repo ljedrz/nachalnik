@@ -44,6 +44,50 @@ async fn a_chatty_tool_does_not_wipe_out_the_trace() {
     assert!(screen.contains("11,700 bytes so far"), "{screen}");
 }
 
+/// The count is of the call that is running, not of the session so far, so a second call begins at
+/// nothing.
+///
+/// note: `tool.output` counts what the running tool has said, and the running tool is what the
+/// last `tool.started` named. Carried over, a `cat` of a thousand lines left the next call's line
+/// opening at 11,700 and counting - a figure answering a question about the wrong call, on the
+/// one line that is supposed to be counting one call.
+#[tokio::test]
+async fn the_output_count_begins_again_at_every_call_that_starts() {
+    let mut harness = Harness::new([]);
+    let (first, second) = (
+        nachalnik::ToolCallId("c1".to_owned()),
+        nachalnik::ToolCallId("c2".to_owned()),
+    );
+
+    for call in [&first, &second] {
+        harness.app.on_event(Event::ToolStarted {
+            call: call.clone(),
+            tool: "shell".to_owned(),
+        });
+        harness.app.on_event(Event::ToolOutput {
+            call: call.clone(),
+            tool: "shell".to_owned(),
+            chunk: "a line of it\n".to_owned(),
+        });
+    }
+
+    // the line counting the running call up says what that call has said
+    let counting = |harness: &Harness| -> String {
+        harness
+            .app
+            .trace
+            .back()
+            .expect("the running call has a line of its own")
+            .detail
+            .clone()
+    };
+    assert!(
+        counting(&harness).contains("13 bytes so far"),
+        "the second call opened carrying the first call's count: {}",
+        counting(&harness)
+    );
+}
+
 /// A row on the trace is written in the colour the thing it accounts for is written in elsewhere:
 /// a tool call is cyan on the chat tab and cyan here, a permission is the yellow the question is
 /// drawn in. Two schemes for one session would mean learning which pane you were looking at before
