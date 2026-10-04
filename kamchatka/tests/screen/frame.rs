@@ -843,3 +843,122 @@ async fn ctrl_c_stops_a_listing_rather_than_leaving() {
         "{screen}"
     );
 }
+
+/// A panel is read with the same keys everywhere else here: `up`, `down`, `pgup` and `pgdn` move
+/// it a line and a window, and `←` and `→` move between its faces rather than closing it. Every
+/// other key closes it, which is what the footer says.
+///
+/// note: the first page is longer than the window, because a page that fits needs no scrolling and
+/// would make every one of these keys look the same. The footer counts the lines it is showing,
+/// so it is what a reading is checked against rather than which words happen to be in view.
+///
+/// note: on the page turn: a single-face panel has nothing for `←` and `→` to move between, and
+/// pressing one there closes it like any other key. A face that is one key away in either
+/// direction and a box that shuts at the first key anybody presses are different things to be on
+/// the same two keys.
+#[tokio::test]
+async fn a_panel_scrolls_by_a_line_and_by_a_window_and_turns_between_its_faces() {
+    let mut harness = Harness::new([]);
+    harness.press(KeyCode::F(1)).await;
+
+    /// The window of the open page, as `(first line shown, of them all)`.
+    fn showing(harness: &mut Harness) -> (usize, usize) {
+        let screen = harness.sized(100, 12);
+        let footer = screen
+            .lines()
+            .find(|line| line.contains("any key closes"))
+            .unwrap_or_else(|| panic!("the panel counts its lines: {screen}"));
+        let (shown, of) = footer
+            .split_once('–')
+            .and_then(|(_, rest)| rest.split_once(" of "))
+            .and_then(|(shown, rest)| {
+                rest.split_whitespace()
+                    .next()
+                    .map(|of| (shown.trim().to_owned(), of.to_owned()))
+            })
+            .unwrap_or_else(|| panic!("the footer counts its lines: {footer}"));
+        (
+            shown.parse().expect("a number"),
+            of.parse().expect("a number"),
+        )
+    }
+
+    let (top, of) = showing(&mut harness);
+    assert!(
+        of > 8,
+        "the first page should be longer than a short window, so that the scroll keys have \
+         somewhere to go: {of}"
+    );
+
+    // down and up move it one line
+    harness.press(KeyCode::Down).await;
+    assert_eq!(showing(&mut harness).0, top + 1, "down is one line");
+    harness.press(KeyCode::Up).await;
+    assert_eq!(showing(&mut harness).0, top, "and up puts it back");
+
+    // a window at a time, both ways
+    harness.press(KeyCode::PageDown).await;
+    let (page, _) = showing(&mut harness);
+    assert!(
+        page > top + 1,
+        "pgdn should move a whole window, and moved to {page}"
+    );
+    harness.press(KeyCode::PageUp).await;
+    assert_eq!(showing(&mut harness).0, top, "pgup is the way back");
+
+    // and the two that move between faces leave it open
+    let scrolled = harness.sized(100, 12);
+    harness.press(KeyCode::Right).await;
+    let other = harness.sized(100, 12);
+    assert!(
+        harness.app.overlay.is_some(),
+        "another face is not leaving the panel: {other}"
+    );
+    assert_ne!(
+        other, scrolled,
+        "and it is a different face of the same thing"
+    );
+    harness.press(KeyCode::Right).await;
+    assert!(
+        harness.app.overlay.is_some(),
+        "a panel with several faces is not closed by the key that turns them"
+    );
+    harness.press(KeyCode::Left).await;
+    harness.press(KeyCode::Left).await;
+    assert!(
+        harness.app.overlay.is_some(),
+        "and nor by the one that goes back the way it came"
+    );
+
+    // and any other key closes it
+    harness.press(KeyCode::Char('z')).await;
+    assert!(
+        harness.app.overlay.is_none(),
+        "which is what the footer says it does"
+    );
+}
+
+/// A panel with one face has nowhere for `←` and `→` to go, and they close it like any other key.
+///
+/// note: a separate test from the one above because it is the guard's own subject: `pages.len()`
+/// is what decides whether those two keys are a page turn or the closing gesture, and with one
+/// page there is no page turn to make. Turned into a page turn anyway, the panel would sit on a
+/// key that no longer means anything and could not be read.
+#[tokio::test]
+async fn a_panel_with_one_face_is_closed_by_the_keys_that_turn_the_others() {
+    let mut harness = Harness::new([]);
+    harness.send("/seams").await;
+    assert!(
+        harness.app.overlay.is_some(),
+        "`/seams` answered with a panel"
+    );
+
+    for key in [KeyCode::Left, KeyCode::Right] {
+        harness.send("/seams").await;
+        harness.press(key).await;
+        assert!(
+            harness.app.overlay.is_none(),
+            "{key:?} is not a page turn in a panel with one face"
+        );
+    }
+}

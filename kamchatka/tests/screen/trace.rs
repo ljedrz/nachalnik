@@ -6,9 +6,10 @@
 
 use std::{sync::Arc, time::Duration};
 
+use crossterm::event::KeyCode;
 use kamchatka::app::Tab;
 use nachalnik::{
-    Event, ModelResponse,
+    ContextItem, Event, ModelResponse,
     test::{ConstTool, call},
 };
 use ratatui::style::Color;
@@ -327,6 +328,110 @@ async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
         dates[0], dates[1],
         "the second day should be a different date: {screen}"
     );
+}
+
+/// The trace is a log, so it is read backwards from its newest line, and every key moves one
+/// amount in one direction: `pgup` and `pgdn` take a whole window at a time, and `end` - or `G`,
+/// which is what it is called on every other list here - is the way back to the newest line from
+/// wherever the reading has got to.
+///
+/// note: read off the rows rather than off a figure the pane prints, because the trace says how
+/// many events there are and not which window of them is on the screen. Each row carries the item
+/// it accounts for, so the rows say where the reading has got to.
+#[tokio::test]
+async fn the_trace_pages_a_window_at_a_time_and_end_returns_to_the_newest_line() {
+    let mut harness = Harness::new([]);
+    for n in 0..400 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("line {n} of the session")));
+    }
+    harness.drain();
+    harness.tab(Tab::Trace);
+
+    /// The item numbers the pane is currently drawing, oldest first.
+    fn drawn(harness: &mut Harness) -> Vec<usize> {
+        let screen = harness.screen();
+        let ids = screen
+            .match_indices('[')
+            .filter_map(|(at, _)| {
+                let digits: String = screen[at + 1..]
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect();
+                digits.parse().ok()
+            })
+            .collect::<Vec<_>>();
+        assert!(!ids.is_empty(), "the trace is drawing rows: {screen}");
+        ids
+    }
+
+    let newest = 400;
+    let fresh = drawn(&mut harness);
+    assert_eq!(
+        fresh.last().copied(),
+        Some(newest),
+        "a fresh trace is read from its newest line: {fresh:?}"
+    );
+    assert!(
+        fresh.len() < 400,
+        "and there is more than a window of it: {fresh:?}"
+    );
+
+    // one page up, and one page back. The window moves by itself, so the reading has to move with
+    // it - a pgup that only moved the reading would put a hole where the newest line was
+    harness.press(KeyCode::PageUp).await;
+    let up = drawn(&mut harness);
+    assert!(
+        !up.contains(&newest),
+        "pgup should have taken a whole window off the newest line: {up:?}"
+    );
+    assert!(
+        up.len() > 1 && up[1] - up[0] == 1,
+        "and what is left is the top of that window rather than a hole in it: {up:?}"
+    );
+
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(
+        drawn(&mut harness).last().copied(),
+        Some(newest),
+        "pgdn is the way back to where it was"
+    );
+
+    // a line at a time, both ways
+    harness.press(KeyCode::Up).await;
+    assert!(
+        !drawn(&mut harness).contains(&newest),
+        "up moves one line: {:?}",
+        drawn(&mut harness)
+    );
+    harness.press(KeyCode::Char('j')).await;
+    assert_eq!(
+        drawn(&mut harness).last().copied(),
+        Some(newest),
+        "`j` is the same key"
+    );
+
+    // `g` parks it at the top, so the oldest line is on the screen - and `G` and `end`, which are
+    // one key there and the same key here, are the way back from wherever the reading got to
+    harness.press(KeyCode::Char('g')).await;
+    assert_eq!(
+        drawn(&mut harness).first().copied(),
+        Some(1),
+        "`g` is the top of the log"
+    );
+
+    for key in [KeyCode::Char('G'), KeyCode::End] {
+        harness.press(KeyCode::Char('g')).await;
+        harness.press(key).await;
+        assert_eq!(
+            drawn(&mut harness).last().copied(),
+            Some(newest),
+            "{key:?} is the newest line, and the way back without paging down through everything \
+             that arrived"
+        );
+    }
 }
 
 /// The gap column answers "which step was slow", and a session spends most of its wall time in
