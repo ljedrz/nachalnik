@@ -425,8 +425,34 @@ async fn an_abandoned_edit_does_not_swallow_the_next_message() {
     harness.press(KeyCode::Char('e')).await;
     assert!(harness.app.editing.is_some());
 
-    // walking away from the tab abandons the edit; it used to stay armed, with the item's text
-    // still in the prompt, so the next message was committed into the context instead of sent
+    // `e` puts the keys on the prompt, so `esc` there is the prompt's own key. Handed back to
+    // the pane with `tab` - the edit belongs to this tab, and the pane's `esc` is what abandons it
+    // in place rather than reaching into the box somebody is typing in
+    harness.press(KeyCode::Tab).await;
+    assert_eq!(harness.app.focus, Focus::Body);
+    assert!(harness.app.editing.is_some(), "the edit is still armed");
+    harness.press(KeyCode::Esc).await;
+    assert!(harness.app.editing.is_none(), "esc abandoned the edit");
+    assert_eq!(harness.app.input.lines(), [""], "and emptied the prompt");
+    assert_eq!(
+        harness.app.focus,
+        Focus::Body,
+        "and left the keys on the pane"
+    );
+
+    // an `esc` that abandoned it has nothing left to abandon, so a second one is not going to
+    // reach into the prompt and throw away a half-typed message
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some());
+    harness.press(KeyCode::Tab).await;
+    harness.press(KeyCode::Esc).await;
+    assert!(harness.app.editing.is_none());
+
+    // and the other way of walking away from an armed edit does the same, which is what used to
+    // matter: the edit used to stay armed with the item's text still in the prompt, so the next
+    // message was committed into the context instead of sent
+    harness.press(KeyCode::Char('e')).await;
+    assert!(harness.app.editing.is_some());
     harness.tab(Tab::Chat);
     assert!(harness.app.editing.is_none(), "the edit was abandoned");
     assert_eq!(harness.app.input.lines(), [""], "and the prompt is empty");

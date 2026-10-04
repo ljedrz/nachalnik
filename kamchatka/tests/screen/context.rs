@@ -397,6 +397,98 @@ async fn an_item_can_be_reached_by_the_number_it_is_shown_under() {
     assert!(harness.app.count.is_empty());
 }
 
+/// The paging keys move a screenful at a time, and a half of one is what this many rows is.
+///
+/// note: `viewport` is what the last frame measured on the *chat* pane, and it is what both
+/// paging arms here count from - so what is asserted is not that the number is right but that
+/// the two keys and the row they are standing on are in step. Deleting an arm, or dividing by
+/// something else, leaves a `pgdn` that moves one row or none, which reads on the screen as a
+/// key that does not work.
+///
+/// note: the row is read back off the context through the selection rather than off the screen,
+/// because the list scrolls itself to keep the selected row visible - so which row is highlighted
+/// on the frame is the question either way, and the context is where it is unambiguous.
+#[tokio::test]
+async fn the_paging_keys_move_the_context_by_a_screenful_and_no_further() {
+    let mut harness = Harness::new([]);
+    for i in 0..60 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    // a frame on the chat pane, because that is the one the key counts from: the context pane
+    // reports how many rows it drew without recording how many fit
+    harness.tab(Tab::Chat);
+    harness.screen();
+    harness.tab(Tab::Context);
+    assert!(
+        harness.app.viewport >= 2,
+        "the fixture wants a pane with rows in it: {}",
+        harness.app.viewport
+    );
+    let half = harness.app.viewport.max(2) / 2;
+
+    // from the first row, `pgdn` lands half a screen down - several rows on, and not one
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.selected, half);
+
+    // and `pgup` puts it back where it was rather than somewhere above it
+    harness.press(KeyCode::PageUp).await;
+    assert_eq!(harness.app.selected, 0);
+
+    // neither end runs off: `pgdn` stops on the last item, `pgup` on the first
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.selected, half);
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.selected, 59);
+    harness.press(KeyCode::PageUp).await;
+    assert_eq!(harness.app.selected, 59 - half);
+
+    // and the row under the keys is the row the pane names: halfway is not somewhere else
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::PageDown).await;
+    let shown = harness.screen();
+    assert!(
+        shown.contains(&format!("{:>3} ", half + 1)),
+        "the item numbered {} should be the highlighted one: {shown}",
+        half + 1
+    );
+}
+
+/// `j` and `k` walk the rows, and so do the arrows; one of each is the same key twice.
+///
+/// note: deleting either arm of the up key leaves `up` doing nothing at all - the arm is the whole
+/// of it, `saturating_sub` on its own - and `k` is the letter somebody with their hands on the
+/// home row reaches for.
+#[tokio::test]
+async fn the_up_keys_move_the_context_up_one_row_at_a_time() {
+    let mut harness = Harness::new([]);
+    for i in 0..6 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::End).await;
+    assert_eq!(harness.app.selected, 5);
+
+    for (key, at) in [(KeyCode::Char('k'), 4), (KeyCode::Up, 3)] {
+        harness.press(key).await;
+        assert_eq!(harness.app.selected, at, "{key:?} did not move up");
+    }
+
+    // and up off the first row is the first row
+    harness.press(KeyCode::Home).await;
+    harness.press(KeyCode::Up).await;
+    assert_eq!(harness.app.selected, 0, "up ran off the top");
+    harness.press(KeyCode::Char('k')).await;
+    assert_eq!(harness.app.selected, 0, "`k` ran off the top");
+}
+
 #[tokio::test]
 async fn editing_an_item_leaves_it_doing_whatever_it_was_doing() {
     let mut harness = Harness::new([]);
