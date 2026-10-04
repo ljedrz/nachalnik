@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """The mutants `cargo mutants` missed, as task files for kill.sh: one group per file, a message a line.
 
-    mutants_tasks.py MUTANTS_OUT OUTDIR [PER_TASK]
+    mutants_tasks.py MUTANTS_OUT OUTDIR [PER_TASK] [--retry-unsettled]
 
 Writes OUTDIR/<slug>.txt (the messages) and OUTDIR/<slug>/ (the diffs the session gets as
 `.mutants/`), for every file with a missed mutant, split so that no task holds more than PER_TASK
 (default 8). A missed mutant is a lead, not a gap: some change nothing a caller can observe, and
 the session is asked to say so rather than to write a test that pins an implementation detail.
+
+A mutant `verdicts.jsonl` already settles is left out - see `ledger.py` - and so is one an
+earlier sweep tried and could not settle, unless `--retry-unsettled` asks for those again.
 """
 
 import collections
@@ -16,15 +19,28 @@ import re
 import shutil
 import sys
 
-out, dest = sys.argv[1], sys.argv[2]
-per = int(sys.argv[3]) if len(sys.argv) > 3 else 8
+import ledger
+
+retry = "--retry-unsettled" in sys.argv
+args = [arg for arg in sys.argv[1:] if arg != "--retry-unsettled"]
+out, dest = args[0], args[1]
+per = int(args[2]) if len(args) > 2 else 8
 outcomes = json.load(open(os.path.join(out, "outcomes.json")))["outcomes"]
+settled = ledger.load()
+skipped = collections.Counter()
 missed = collections.defaultdict(list)
 for o in outcomes:
     if o["summary"] != "MissedMutant":
         continue
     m = o["scenario"]["Mutant"]
+    k = ledger.key(m, open(os.path.join(out, o["diff_path"])).read())
+    entry = k and settled.get(ledger.ident(k))
+    if entry and not (retry and entry["verdict"] == "unsettled"):
+        skipped[entry["verdict"]] += 1
+        continue
     missed[m["file"]].append((m["name"], o["diff_path"]))
+if skipped:
+    print("left out, as verdicts.jsonl settles them:", dict(skipped), file=sys.stderr)
 
 os.makedirs(dest, exist_ok=True)
 for file, mutants in sorted(missed.items()):

@@ -232,6 +232,8 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    mutated code - a `path must be shorter than SUN_LEN` is the long path, not a catch.
 2. **Sessions**: `python3 $SKILL/mutants_tasks.py target/agents/out/X-merged/mutants.out $SWEEPS/tasks/X 8`,
    then `queue.sh 4 $SWEEPS/tasks/X/*.txt`, with `SWEEPS=target/agents/sw` and the key sourced.
+   A mutant `verdicts.jsonl` already settles is left out and counted on stderr; add
+   `--retry-unsettled` to give the ones an earlier sweep could not settle another session.
    `$SWEEPS/mt.json` is the session settings: every tool but `fs`, `shell` and `context` off, and a
    `sandbox-read` naming this session's `$CARGO_HOME`, `~/.rustup` and the repository's `.git`.
    Run `cargo fetch` first when `$CARGO_HOME` is new, because the sessions are offline.
@@ -242,6 +244,16 @@ disk; keep it there rather than on `/tmp`, which is a tmpfs.
    surviving into the report with its reason: equivalent (the mutated code cannot be told apart
    from the original by any caller), or the exact edge of a private threshold, which is not
    pinned.
+5. **Record what survives** in `$SKILL/verdicts.jsonl`, so that the next sweep does not spend a
+   session on it again: every mutant left equivalent, not pinned, dead (`no-caller`, with its
+   POSTPONED entry) or unsettled, with the reason:
+   `python3 $SKILL/ledger.py add target/agents/out/X-merged/mutants.out equivalent "<why>" "<name>"...`,
+   the names as `outcomes.json` gives them. `ledger.py` says how an entry is keyed - the
+   file, the function, the mutation and the text of its line, never the line number - and
+   `ledger.key(mutant, diff)` makes the key from an `outcomes.json` entry and the diff
+   cargo-mutants wrote for it. An entry stops matching when its line is edited, which is the
+   point: the code it was about is gone. A killed mutant needs no entry; its test is the record.
+   Commit the ledger with the tests.
 
 ### what goes wrong
 
