@@ -1298,6 +1298,36 @@ async fn a_table_is_only_a_table_where_one_was_written() {
     assert!(screen.contains("│ c    │   d    │     e │"), "{screen}");
 }
 
+/// A second line that is not a delimiter row leaves the two of them as prose.
+///
+/// note: the row under a header is what says which way each column reads, so it is the one line
+/// that cannot be guessed at - and the three ways of getting it wrong each put a table on the
+/// screen where the model wrote two lines of text: a row with no dashes in it at all, one with
+/// something in front of the dashes, and every second line whatever it says. A table drawn where
+/// there was prose reads as a claim about the shape of the answer that nobody made.
+#[tokio::test]
+async fn a_second_line_that_is_not_a_delimiter_row_is_prose() {
+    let mut harness = Harness::new([]);
+    harness.app.say(
+        Speaker::Model,
+        "| a | b |\n| : | : |\n| 1 | 2 |\n\n\
+         | c | d |\nsee | --- | below\n| 3 | 4 |\n",
+    );
+    harness.tab(Tab::Chat);
+    let screen = harness.sized(80, 24);
+
+    // what the model wrote is what the screen holds, pipes and all
+    assert!(screen.contains("| : | : |"), "{screen}");
+    assert!(screen.contains("see | --- | below"), "{screen}");
+
+    // and nothing was measured into columns. The joint between two columns is drawn by nothing
+    // else, so it is the one character that says a table was drawn here
+    assert!(
+        !screen.contains('┬'),
+        "a table where the answer wrote prose: {screen}"
+    );
+}
+
 /// A long answer keeps its beginning.
 ///
 /// note: a live session lost the top of one. The transcript bounded a *still arriving* entry at
