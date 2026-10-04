@@ -564,4 +564,39 @@ mod tests {
             ["│ alpha bravo charlie delta", "  echo foxtrot"]
         );
     }
+
+    /// The rows `refit` gives back, as the strings a screen would draw.
+    fn refit_rows(line: &Line<'_>, width: usize) -> Vec<String> {
+        refit(line, width)
+            .iter()
+            .map(|row| row.to_string())
+            .collect()
+    }
+
+    /// A word wider than the room the hang leaves is cut to that room, not to the whole pane.
+    ///
+    /// note: the continuation carries the indent, so a word cut to the full width would overflow
+    /// the row by however much the indent is. Twelve columns with two of them spent leaves ten,
+    /// and twelve is what `width + hang` would have cut it to instead.
+    #[test]
+    fn a_refit_line_cuts_a_word_to_the_room_left_by_the_hang() {
+        assert_eq!(
+            refit_rows(&Line::raw("  alpha aaaaaaaaaaaa beta"), 12),
+            ["  alpha ", "  aaaaaaaaaa", "  aa beta"]
+        );
+    }
+
+    /// A word that lands a row on the width exactly stays on it, and the word after it starts the
+    /// row below.
+    ///
+    /// note: a word is measured with its trailing space trimmed off, because that space is the
+    /// gap to what follows and a row ending on one is not full. `abcdef` is six and `ghijk` is
+    /// six, so the row fills twelve exactly - which is where `>` and `>=` part company.
+    #[test]
+    fn a_refit_line_leaves_a_row_alone_when_the_next_word_fills_it_exactly() {
+        assert_eq!(
+            refit_rows(&Line::raw("abcdef ghijk mno"), 12),
+            ["abcdef ghijk ", "mno"]
+        );
+    }
 }
