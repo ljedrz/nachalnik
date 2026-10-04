@@ -295,6 +295,14 @@ async fn an_action_that_is_no_part_of_this_tool_gets_the_list_of_the_ones_that_a
     let said = answered(&kernel);
     assert!(said.contains("there is no `delete`"), "{said}");
     assert!(said.contains("elide") && said.contains("revise"), "{said}");
+    // and the list is every operation the tool has, not only the ones that change something. The
+    // eight that change are what a call naming nothing falls through to asking for a `reason`
+    // about, so a list of those would be an answer to a call about writing rather than to a call
+    // about a word nobody has
+    assert!(
+        said.contains("look") && said.contains("search"),
+        "the list is of what this tool does, and four of its operations only read: {said}"
+    );
     assert_eq!(kernel.items()[0].state, ContextState::Active);
 }
 
