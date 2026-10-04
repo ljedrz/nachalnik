@@ -1061,6 +1061,32 @@ async fn over_the_limit_the_corner_says_the_compactor_goes_first() {
     );
 }
 
+/// Under the limit, nothing promises a pass that is not coming.
+///
+/// note: a sentence naming a compaction that will not happen is worse than a missing one. A
+/// context at two per cent of the limit reads as one about to be compacted, which sends somebody
+/// to `/compact` - or to pin what the pass would have taken, for a pass that never fires.
+#[tokio::test]
+async fn the_budget_promises_no_compaction_the_context_does_not_need() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
+        threshold: 0.8,
+        target: 0.5,
+    })));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("a short question"));
+    harness.drain();
+
+    harness.send("/budget").await;
+    let panel = harness.flat();
+    assert!(
+        !panel.contains("the compactor runs before the next request is sent"),
+        "a context at a few per cent of the limit is not about to be compacted: {panel}"
+    );
+}
+
 /// A request refused for its length says what to take out, and where compaction could not free
 /// enough it says so and names the model's own turns, which is what fills the context then.
 ///

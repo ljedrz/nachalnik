@@ -883,6 +883,57 @@ async fn what_stops_being_sent_comes_back_off_the_anchored_figure() {
     );
 }
 
+/// A counter that has learned nothing says so in a sentence, rather than in a table of zeroes.
+///
+/// note: the honest figure is `0 observations, a scale of 1.000`, and every one of those is a
+/// number somebody would have to know the meaning of to read. What the sentence has to say is why
+/// the scale is what it is: four bytes a token, and no request big enough to argue with it.
+#[tokio::test]
+async fn the_budget_says_the_counter_has_learned_nothing_yet() {
+    // nothing has been sent, so nothing could have taught the counter anything
+    let mut harness = Harness::new([]);
+    assert_eq!(
+        harness
+            .app
+            .kernel
+            .counter()
+            .calibration()
+            .map(|c| c.observations),
+        Some(0),
+        "the counter this ships with learns, and has been told nothing"
+    );
+
+    let panel = budget_of(&mut harness).await;
+    assert!(
+        panel.contains("the counter has not been corrected yet"),
+        "a scale of 1.0 is a guess, and this is where it says so: {panel}"
+    );
+    assert!(
+        !panel.contains("learned from 0 request"),
+        "a count of nothing is not what it has learned from: {panel}"
+    );
+}
+
+/// What `/budget` answered with, as one string.
+///
+/// note: the page rather than the screen, because a page is what a caller down a pipe or over a
+/// socket reads and a screen is what a person at a desk reads - and the keys that close a panel
+/// mean a test that reads the screen cannot press them afterwards.
+async fn budget_of(harness: &mut Harness) -> String {
+    let kamchatka::app::Overlay::Text { pages, .. } = harness
+        .app
+        .submit("/budget")
+        .await
+        .page
+        .expect("`/budget` answered with a page");
+
+    pages
+        .iter()
+        .map(|page| page.body.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 /// A message being typed is in the corner before it is anywhere else.
 ///
 /// note: it is not context and never will be until it is sent, so nothing in the runtime can
@@ -907,7 +958,18 @@ async fn a_message_being_typed_is_counted_before_it_is_sent() {
         "the corner should say how much of the figure is not sent yet: {screen}"
     );
 
-    // a slash command is not a message and is not going into any request
+    // and `/budget` names what the corner is counting that the context is not, rather than
+    // leaving the reader to take a half-written message for part of the request
+    let panel = budget_of(&mut harness).await;
+    assert!(
+        panel.contains(&format!("{drafted} tokens of message typed but not sent")),
+        "the panel should say what the corner is counting that the context is not: {panel}"
+    );
+
+    // a slash command is not a message and is not going into any request. The panel is closed
+    // first, since it takes the first key as the gesture that closes it and that key would
+    // otherwise be one backspace the prompt never sees
+    harness.press(KeyCode::Esc).await;
     for _ in 0.."here is a question of some length".len() {
         harness.press(KeyCode::Backspace).await;
     }
