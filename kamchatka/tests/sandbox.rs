@@ -1899,6 +1899,60 @@ fn a_confined_command_has_no_terminal_to_type_into() {
     assert!(!led.contains("reached"), "{led}");
 }
 
+/// A confiner that could not leave a terminal of its own still runs the command, where there is no
+/// terminal to leave.
+///
+/// note: the two ways a confined command ends up with no terminal are separate facts. `setsid` is
+/// refused to a process that already leads a group, which a caller may have made it; and a process
+/// with no controlling terminal has nothing to leave whichever way it was started. Either one is
+/// enough - the command runs, and it runs with no terminal to type into - and a check that wanted
+/// both would refuse every command a session that had already made a group of the confiner ran.
+///
+/// note: `process_group(0)` is the caller's half, and this suite's own `shell` is not what makes
+/// it: `Shell` spawns the confiner without one, so nothing here is a shape a person hits by
+/// running this program. It is a shape an embedder can, and the refusal is a refusal of their
+/// command rather than of the boundary.
+#[test]
+fn a_confiner_already_leading_a_group_still_runs_the_command() {
+    use std::os::unix::process::CommandExt as _;
+
+    if !enforced() {
+        return;
+    }
+    // a group of its own keeps the terminal this suite was started from, and a confiner that can
+    // open one refuses rightly - which is not the case this is about
+    if std::fs::File::open("/dev/tty").is_ok() {
+        eprintln!("skipped: run from a terminal, which the confiner would rightly refuse to keep");
+        return;
+    }
+    let dir = common::workdir("sandbox-group");
+    let mut command = common::command();
+    command
+        .args(
+            sandbox(dir.clone(), true, Network::NoTcp).argv(
+                "echo ran; if true 3<>/dev/tty; then echo reached; else echo no-terminal; fi",
+            ),
+        )
+        .process_group(0)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let child = command.spawn().expect("the binary under test is built");
+    let scratch = kamchatka::sandbox::scratch_for(child.id());
+    let output = child.wait_with_output().expect("it was spawned");
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    let said = String::from_utf8_lossy(&output.stdout).into_owned();
+    assert!(
+        said.contains("ran"),
+        "{said}{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        said.contains("no-terminal"),
+        "and the command it ran has no terminal: {said}"
+    );
+}
+
 /// A confined command leads a session of its own, which is what leaves the terminal behind, and
 /// the group `stop` signals.
 ///
