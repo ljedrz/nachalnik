@@ -1162,6 +1162,7 @@ fn keep(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::Subject;
 
     /// What no command of this session started is left alone at its end - a process of this user's
     /// with no mark, and one carrying another session's - and is not named as stopped.
@@ -1495,6 +1496,151 @@ mod tests {
 
         assert!(said.starts_with("exit: stopped"), "{said}");
         assert!(said.contains("downloading 45%"), "{said}");
+    }
+
+    /// What the stance makes of the network is said in the description, for each of the answers it
+    /// can have.
+    ///
+    /// note: said there rather than at the point of failure, and the point of failure cannot say
+    /// it. A refused socket is `Permission denied` and a refused name lookup is `Temporary failure
+    /// in name resolution`, which reads as a network having trouble; a model that does not know it
+    /// was refused goes looking for another way out. The three sentences are not
+    /// interchangeable - one refuses outright, one holds for a person to be asked, one refuses TCP
+    /// and promises nothing about a datagram - so each is checked against the stance that earns it.
+    ///
+    /// note: a gated session with nothing said about the network stands at `ask`, which is what
+    /// `Careful` answers for anything nobody has decided; the gate turns that into a question
+    /// rather than a refusal. See `Careful::gate_the_network`.
+    #[test]
+    fn the_description_says_what_the_stance_makes_of_the_network() {
+        let said = |gated: bool, stance: Verdict| {
+            let policy = Arc::new(Careful::new());
+            if gated {
+                policy.gate_the_network();
+            }
+            policy.set(&Subject::Capability(Capability::net("reach")), stance);
+            Shell {
+                policy,
+                workdir: std::env::temp_dir(),
+                extra: Vec::new(),
+                readable: Vec::new(),
+                devices: crate::sandbox::DEVICES.iter().map(Into::into).collect(),
+                // the sentence is only written where there is a confinement to be confined by
+                confiner: Some(std::env::temp_dir().join("kamchatka-is-not-run-here")),
+                limits: Limits::default(),
+                stragglers: Default::default(),
+            }
+            .spec()
+            .description
+        };
+
+        for (gated, stance, said_of_it) in [
+            // the gate refuses it outright, and nobody is asked
+            (true, Verdict::Deny, "it has no network"),
+            // the gate holds it, and the first attempt waits for a person
+            (
+                true,
+                Verdict::Ask,
+                "it waits while the person you are working with is asked",
+            ),
+            // and where there is no gate only Landlock stands in the way, which refuses TCP and
+            // promises nothing about a datagram - the word for that case is `no TCP`, not `no
+            // network`, and it is the sentence that has to keep the two apart
+            (false, Verdict::Ask, "TCP may be closed"),
+        ] {
+            let said = said(gated, stance);
+            assert!(said.contains(said_of_it), "{gated}/{stance:?}: {said}");
+        }
+
+        // and the two hold-outs are told apart from each other, which is the whole of what the
+        // wording is for: a session that refuses outright does not wait for anybody
+        let shut = said(true, Verdict::Deny);
+        assert!(!shut.contains("waits while the person"), "{shut}");
+        assert!(!shut.contains("TCP may be closed"), "{shut}");
+
+        // an outright allowance says nothing, because there is nothing for a model to be told
+        let open = said(true, Verdict::Allow);
+        assert!(
+            !open.contains("no network") && !open.contains("TCP may be closed"),
+            "{open}"
+        );
+    }
+
+    /// A line that exactly fills the room a read is given arrives whole, newline and all.
+    ///
+    /// note: the window a read is given is one byte past the ceiling rather than the ceiling, so
+    /// that a line filling it exactly - the newline it is kept with included - is read in one go
+    /// and kept as one line. A window a byte short splits that line at its last byte: the read
+    /// returns what it had, `keep` writes the line and a newline of its own, and the newline the
+    /// command wrote is read again as a line of its own and kept as a second one. A caller sees a
+    /// line of output where there was one line, and the ceiling's worth of bytes has become a
+    /// ceiling's worth plus one.
+    ///
+    /// note: `tr` rather than one `write`, because that is what makes the two differ. A command
+    /// that writes its whole line at once has it in the pipe before the first read is made, so the
+    /// window is filled by data that is already there and the cap decides nothing; a pipeline hands
+    /// it over as it is produced, and a heartbeat falls inside the drain.
+    #[tokio::test]
+    async fn a_line_filling_the_room_a_read_is_given_arrives_whole() {
+        let said = ran(&format!(
+            "head -c {} /dev/zero | tr '\\0' a; echo",
+            KEPT - 1
+        ))
+        .await;
+
+        let stdout = said
+            .split_once("\n--- stdout ---\n")
+            .map(|(_, stdout)| stdout)
+            .unwrap_or_else(|| panic!("no standard output: {}", &said[..said.len().min(200)]));
+        assert_eq!(
+            stdout.len(),
+            KEPT,
+            "a line of {} bytes and its newline is one line, not two: {stdout:?}",
+            KEPT - 1
+        );
+        assert!(
+            !said.contains("not kept"),
+            "a line that fits the ceiling is not reported as over it: {said}"
+        );
+    }
+
+    /// A command that could not be started is answered with the reason it could not, and only that
+    /// reason's own advice comes with it.
+    ///
+    /// note: the advice for a command too long to start says to write it to a file and run the
+    /// file, which is right for an argument list the kernel refused and wrong for a confiner that
+    /// is not there - and a model told to write a 200000-byte command to a file, when nothing about
+    /// the command was the problem, goes looking for a length it cannot find. The two refusals are
+    /// told apart by the kind of the error behind them, so a test that only ever started a command
+    /// that was too long never saw the other one.
+    ///
+    /// note: a confiner that is not there is the way to reach it. The spawn fails before a single
+    /// byte is run, so nothing of the command's own output can be mistaken for the reason, and the
+    /// reason says which file is missing.
+    #[tokio::test]
+    async fn a_command_that_could_not_start_is_not_told_it_was_too_long() {
+        let said = {
+            let call = ToolCall::new("c1", "shell", serde_json::json!({ "cmd": "echo ran" }));
+            let missing = std::env::temp_dir().join("kamchatka-no-such-confiner");
+            Shell {
+                confiner: Some(missing.clone()),
+                ..unconfined()
+            }
+            .invoke(&call, OutputSink::disconnected())
+            .await
+            .expect("the tool answers the call either way")
+            .content
+            .to_text()
+            .into_owned()
+        };
+
+        assert!(said.contains("could not run the command"), "{said}");
+        assert!(
+            !said.contains("too long"),
+            "a confiner that is not there is not an argument list: {said}"
+        );
+        assert!(!said.contains("write it to a file"), "{said}");
+        assert!(!said.contains("ran"), "nothing was run: {said}");
     }
 
     /// A command too long to start is answered with the reason and what to do instead, and not with
