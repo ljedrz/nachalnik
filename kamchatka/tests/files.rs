@@ -273,6 +273,49 @@ async fn a_file_that_is_not_text_says_which_byte_and_what_to_do() {
         said.contains("byte 0 of line 1 of it is not UTF-8"),
         "[{said}]"
     );
+
+    // and one that is not text part-way along a line says where in that line, which is the byte
+    // after the last newline before it rather than the one the whole file is measured from
+    let mut named = b"0123456789\n".to_vec();
+    named.extend_from_slice(b"aaaaa");
+    named.push(0xff);
+    named.extend_from_slice(b"\nlast\n");
+    std::fs::write(dir.join("midline.bin"), &named).expect("a file");
+    let said = ask(&dir, "read", json!({ "path": "midline.bin" })).await;
+    assert!(
+        said.contains("byte 5 of line 2 of it is not UTF-8"),
+        "[{said}]"
+    );
+}
+
+/// A first line longer than the output limit that is not text is said to be, rather than shown
+/// from its start as though it were a line of text cut short.
+///
+/// note: a line shown from its start is cut where the limit is, which can land inside a character,
+/// and the cut is not the file. A byte that is not UTF-8 is not a cut: dropping the rest of the
+/// line would answer with the start of a line that is not there, and say nothing about the byte a
+/// model has to find with `grep`.
+#[tokio::test]
+async fn a_line_too_long_to_show_that_is_not_text_says_so() {
+    let dir = scratch("files-wide-not-text");
+    let mut before = vec![0xff];
+    before.extend_from_slice("x".repeat(200).as_bytes());
+    before.push(b'\n');
+    before.extend_from_slice(b"next\n");
+    std::fs::write(dir.join("wide.bin"), &before).expect("a file");
+    let limits = Limits::default();
+    limits.set("fs:read", 100);
+
+    let said = ask_within(&dir, limits, "read", json!({ "path": "wide.bin" })).await;
+
+    assert!(
+        said.contains("byte 0 of line 1 of it is not UTF-8"),
+        "the byte is named: {said}"
+    );
+    assert!(
+        !said.contains("is longer than the output limit"),
+        "and it is not answered as a line cut short: {said}"
+    );
 }
 
 /// An `old` that is in the file but spelled for another line ending says so, rather than
@@ -807,6 +850,87 @@ async fn a_file_too_big_to_edit_says_how_big_it_is() {
         "it says how big the file is: {said}"
     );
     assert_eq!(held(&dir, "big.log"), big, "and nothing was changed");
+
+    // and the boundary the ceiling draws: a file of exactly it is one `fs` will edit, and only
+    // one byte past it is refused. The read stops one byte past, so a file of exactly the ceiling
+    // has to be held to for the `>` to be the one that refuses
+    let one_past = format!("head\n{}", "x".repeat(kept - 4));
+    std::fs::write(dir.join("one-past.log"), &one_past).expect("a file");
+    assert_eq!(one_past.len(), kept + 1, "one byte past the ceiling");
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "one-past.log", "old": "head", "new": "lead" }),
+    )
+    .await;
+    assert!(
+        said.contains(&format!(
+            "{} bytes, more than `fs` edits at once",
+            one_past.len()
+        )),
+        "one byte past the ceiling is refused: {said}"
+    );
+    assert_eq!(
+        held(&dir, "one-past.log"),
+        one_past,
+        "and nothing was changed"
+    );
+
+    let exact = format!("head\n{}", "x".repeat(kept - 5));
+    std::fs::write(dir.join("exact.log"), &exact).expect("a file");
+    assert_eq!(exact.len(), kept, "and this one is the ceiling exactly");
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "exact.log", "old": "head", "new": "lead" }),
+    )
+    .await;
+    assert!(said.contains("replaced one occurrence"), "{said}");
+    assert_eq!(
+        held(&dir, "exact.log"),
+        exact.replacen("head", "lead", 1),
+        "a file of exactly the ceiling is edited"
+    );
+}
+
+/// A file past what `fs` edits at once that reports no size of its own says `larger`, and not the
+/// zero it reported.
+///
+/// note: `/proc` reports a size of nothing for the files that are larger than anything in memory,
+/// and the read stops one byte past the ceiling precisely because a size is what a file says about
+/// itself. Where it says nothing, `larger` is the only honest figure; the guard exists to keep
+/// the zero out of it, and without it the refusal reads "0 bytes, more than `fs` edits at once".
+#[tokio::test]
+async fn a_file_too_big_that_reports_no_size_is_only_larger() {
+    let dir = scratch("files-too-big-unknown");
+    let kallsyms = Path::new("/proc/kallsyms");
+    let reads_past = std::fs::metadata(kallsyms).is_ok_and(|meta| meta.len() == 0)
+        && std::fs::read(kallsyms)
+            .map(|read| read.len() > kamchatka::tools::KEPT)
+            .unwrap_or(false);
+    if !reads_past {
+        eprintln!("skipped: no file here that reports no size and reads past the ceiling");
+        return;
+    }
+
+    let said = ask_unconfined(
+        &dir,
+        "edit",
+        json!({ "path": kallsyms, "old": "x", "new": "y" }),
+    )
+    .await;
+
+    assert!(
+        said.contains(&format!(
+            "larger, more than `fs` edits at once ({} bytes)",
+            kamchatka::tools::KEPT
+        )),
+        "it says only that it is larger: {said}"
+    );
+    assert!(
+        !said.contains("0 bytes, more than"),
+        "and not the size it reported: {said}"
+    );
 }
 
 /// A line longer than the output limit on its own is shown from its start and said to be cut,
