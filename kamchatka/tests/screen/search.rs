@@ -325,6 +325,19 @@ async fn backspace_and_delete_take_out_either_side_of_the_cursor() {
         Some(""),
         "an empty query stays empty and the box stays open"
     );
+
+    // and right steps over one character, of however many bytes
+    type_in(&mut harness, "aé").await;
+    harness.press(KeyCode::Left).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.parts()),
+        Some(("a", "é"))
+    );
+    harness.press(KeyCode::Right).await;
+    assert_eq!(
+        harness.app.search.as_ref().map(|s| s.parts()),
+        Some(("aé", ""))
+    );
 }
 
 /// The keys the panes need while the box is open are still the panes', and the keys of a text
