@@ -34,4 +34,7 @@ git -C "$wt" add -N . 2> /dev/null
 # the crates' sources and tests and nothing else: a session leaves scripts, `.orig` files and
 # build trees about, and none of them is what it was asked for
 git -C "$wt" diff -- '*/src/*.rs' '*/tests/*' ':!**/target/**' > "$out/$name.diff" 2> /dev/null
+# a test a session ran can leave a directory it took its own permissions off - one searchable and
+# no more - and `worktree remove` then gives up half way, leaving the directory and a slot taken
+chmod -R u+rwx "$wt" 2> /dev/null
 git -C "$REPO" worktree remove --force "$wt"
