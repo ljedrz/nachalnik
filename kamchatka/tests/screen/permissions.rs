@@ -1927,6 +1927,65 @@ fn ruled(harness: &Harness) -> Vec<(String, Verdict, Option<nachalnik::Permissio
         .collect()
 }
 
+/// The row the keys are on is a row of the tab.
+///
+/// note: `down` walks down the list and stops on its last one, and `end` puts the cursor on that
+/// last one rather than a row past it. The picked row is `App::chosen`, which every caller reads
+/// as the capability the next key is about, so a value off the end of the list names nothing and
+/// indexing the list with it is the panic. The frame clamps it before drawing, so the screen
+/// looks right either way; the field does not, and the field is what the keys and the tests on
+/// either side of them work from.
+#[tokio::test]
+async fn the_picked_row_is_a_row_of_the_tab() {
+    let mut harness = Harness::new(Vec::new());
+    for capability in [
+        Capability::fs("read"),
+        Capability::fs("write"),
+        Capability::exec("run"),
+    ] {
+        harness
+            .app
+            .policy
+            .set(&Subject::Capability(capability), Verdict::Allow);
+    }
+    harness.tab(Tab::Permissions);
+
+    let rows = harness.app.permissions().len();
+    assert!(rows >= 3, "not enough decisions to walk: {rows}");
+
+    harness.press(KeyCode::Down).await;
+    assert_eq!(harness.app.chosen, 1, "down is the next row");
+
+    harness.press(KeyCode::End).await;
+    assert_eq!(harness.app.chosen, rows - 1, "end is the last row");
+
+    // and at the end of the list, the keys that walk it are keys that do nothing
+    for key in [
+        KeyCode::Down,
+        KeyCode::Char('j'),
+        KeyCode::End,
+        KeyCode::Char('G'),
+    ] {
+        harness.press(key).await;
+        assert_eq!(
+            harness.app.chosen,
+            rows - 1,
+            "{key:?} went past the last of {rows} row(s)"
+        );
+    }
+
+    // the row it names is one the tab has, and the keys that walk back up still work
+    assert!(
+        harness.app.permissions().get(harness.app.chosen).is_some(),
+        "row {} of {rows}",
+        harness.app.chosen
+    );
+    harness.press(KeyCode::Up).await;
+    assert_eq!(harness.app.chosen, rows - 2, "up is the row before it");
+    harness.press(KeyCode::Home).await;
+    assert_eq!(harness.app.chosen, 0, "and home is the first of them");
+}
+
 /// A rule changed on the permissions tab is in the record.
 #[tokio::test]
 async fn a_rule_changed_on_the_tab_is_in_the_record() {
