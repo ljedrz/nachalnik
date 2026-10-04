@@ -343,26 +343,44 @@ async fn a_take_wider_than_the_ceiling_is_clamped_and_says_so() {
 }
 
 /// A `take` under the ceiling is left alone, and the sentence about the ceiling is not in it.
+///
+/// note: the ceiling is itself a case. A `take` of exactly the ceiling stopped the answer short
+/// just as one above it did, and nothing was clamped off it - every record asked for arrived - so
+/// saying so was a claim about a clamp that never happened.
 #[tokio::test]
 async fn a_take_under_the_ceiling_is_not_announced_as_one() {
-    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
-        "c1",
-        "log",
-        json!({ "action": "read", "take": 3 }),
-    )]));
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call("c1", "log", json!({ "action": "read", "take": 3 })),
+        // the ceiling itself, over a log longer than it, so the answer is short either way
+        call("c2", "log", json!({ "action": "read", "take": 64 })),
+    ]));
 
-    for n in 0..6 {
+    // more records than the ceiling, so a `take` of it really does leave some behind
+    for n in 0..70 {
         kernel.push(ContextItem::memory("scratch", format!("note {n}")));
     }
     kernel.push(ContextItem::user("carry on"));
 
     kernel.turn().await.expect("the turn failed");
 
-    let said = answers_from(&kernel, &["log"])[0].clone();
-    assert!(said.contains("Showing the 3 most recent"), "{said}");
+    let said = answers_from(&kernel, &["log"]);
+    assert!(said[0].contains("Showing the 3 most recent"), "{}", said[0]);
     assert!(
-        !said.contains("`take` is at most"),
-        "the ceiling is said where it stopped the answer short, and nowhere else: {said}"
+        !said[0].contains("`take` is at most"),
+        "the ceiling is said where it stopped the answer short, and nowhere else: {}",
+        said[0]
+    );
+
+    assert!(
+        said[1].contains("Showing the 64 most recent"),
+        "{}",
+        said[1]
+    );
+    assert!(
+        !said[1].contains("`take` is at most"),
+        "a `take` of exactly the ceiling asked for no more than the ceiling holds, so nothing was \
+         taken off it and saying otherwise is a clamp that did not happen: {}",
+        said[1]
     );
 }
 
@@ -760,6 +778,9 @@ async fn a_resumed_log_says_it_was_resumed_rather_than_drained_where_it_matters(
         ),
         // an item from before the resume, which has no beginning here
         call("c3", "log", json!({ "action": "read", "ids": [2] })),
+        // and the `since` on the other side of the same line: `since: {before}` is the record
+        // right before this log begins, so every record it asks for after that one is here
+        call("c4", "log", json!({ "action": "read", "since": before })),
     ]))));
     let policy = Arc::new(Careful::new());
     policy.set(
@@ -809,6 +830,20 @@ async fn a_resumed_log_says_it_was_resumed_rather_than_drained_where_it_matters(
         said[2].contains("[2] has no `context.added` here"),
         "an item from the session this was resumed from has no beginning here: {}",
         said[2]
+    );
+    // and the other side of the same line: `since: {before}` asks for the records after the last
+    // one this log has not got, so nothing was skipped. Off by one either way and it either
+    // misses a record it does not have or reports a range of records it does.
+    assert!(
+        !said[3].contains("is here, so `since"),
+        "`since: {before}` names the record immediately before this log, and every record it \
+         reaches is here: {}",
+        said[3]
+    );
+    assert!(
+        said[3].contains(&format!("match since:{before}")),
+        "and it answered with the records it was asked for: {}",
+        said[3]
     );
 }
 
