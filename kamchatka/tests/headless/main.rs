@@ -3227,3 +3227,201 @@ fn a_resumed_record_checks_clean_and_a_miscounted_one_does_not() {
         "{findings:?}"
     );
 }
+
+/// A page a line opened while a command was out is said to whoever has no screen to open it on.
+///
+/// note: `/help` answered `queued` because `/models` was still at the endpoint, and the caller was
+/// handed it by `App::release` rather than by the screen redrawing. Somebody with keys presses
+/// another key and reads the page; down a pipe and over a socket there is no key to press and
+/// nothing would ever show it, so `release` says it in the chat instead - which is the only place
+/// a caller with no keys is shown what a command answered.
+#[tokio::test]
+async fn a_page_from_a_line_that_waited_for_a_command_is_said_rather_than_opened() {
+    let Wired {
+        mut app,
+        mut finished,
+        ..
+    } = wired(Vec::new());
+    // a caller with no keys: a pipe, or a client
+    app.keys = false;
+
+    let first = app.submit("/models").await;
+    assert_eq!(first.did, Did::Ran, "the listing went out to the endpoint");
+    assert!(
+        app.in_flight(),
+        "and it is still out, so the next line waits for it"
+    );
+
+    // the page the waiting line opens: nothing on the screen can open it here, so it is said or it
+    // is nowhere
+    let queued = app.submit("/help").await;
+    assert_eq!(queued.did, Did::Queued, "the line did not wait");
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())
+        .await
+        .expect("the listing never came back")
+        .expect("the channel outlives the session");
+    app.on_outcome(outcome);
+    assert!(
+        !app.in_flight(),
+        "the listing is finished, so the waiting line can run"
+    );
+
+    assert!(app.release().await, "the waiting line was not handed in");
+
+    let said: Vec<String> = app.notes(0).map(|entry| entry.text.clone()).collect();
+    let page = said
+        .iter()
+        .find(|text| text.starts_with("--- "))
+        .unwrap_or_else(|| panic!("the page was opened and never said: {said:?}"));
+    assert!(
+        page.contains("the commands"),
+        "and it is the page `/help` answers with: {page}"
+    );
+    assert!(
+        said.iter().any(|text| text.contains("/attach PATH")),
+        "the page's own words: {said:?}"
+    );
+}
+
+/// A listing that was stopped does not finish the listing that came after it.
+///
+/// note: `/models` reaches the endpoint, and the loop is a moment behind reading the answer when
+/// somebody stops the session and asks for the list again. The answer to the first is on the
+/// channel with nothing marking which listing it belongs to except the number it was given when it
+/// went out, and that number is what tells the two apart - without it, the answer to a listing
+/// nobody is waiting for finishes the one that is, and the second is never answered at all while
+/// every line after it is held behind it.
+#[tokio::test]
+async fn a_listing_that_was_stopped_does_not_finish_the_listing_after_it() {
+    let Wired {
+        mut app,
+        mut finished,
+        ..
+    } = wired(Vec::new());
+
+    app.submit("/models").await;
+    assert!(app.in_flight(), "the first listing should be out");
+
+    // its answer has arrived, and the loop has not read it yet
+    let first = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())
+        .await
+        .expect("the first listing never came back")
+        .expect("the channel outlives the session");
+
+    // and the session is stopped, which is what lets the next listing go out while that answer is
+    // still unread
+    app.interrupt();
+    assert!(!app.in_flight(), "the stop took the listing");
+
+    app.submit("/models").await;
+    assert!(app.in_flight(), "the second listing is out");
+
+    // now the loop reads what the first one answered
+    app.on_outcome(first);
+
+    assert!(
+        app.in_flight(),
+        "the answer to a stopped listing finished the one that was sent after it"
+    );
+}
+
+/// A compaction pass that falls over is said and the session carries on, as a turn's is.
+///
+/// note: `/compact` hands the pass to a task and waits for the answer, so the pass is the one
+/// thing in the program that can fail where a turn cannot be watched failing - and it is what
+/// holds every line after it. The task watching it sends what came back however the work ended,
+/// including that it never came back at all; without that, a pass that panicked left the session
+/// waiting for a command that is never coming, and every line after it queued for ever.
+#[tokio::test]
+async fn a_compaction_pass_that_fell_over_is_said_and_the_session_carries_on() {
+    use nachalnik::{Budget, CompactionPlan, Compactor, ContextItem};
+
+    /// A pass that falls over, which is what a compactor reaching for the model and finding
+    /// something broken underneath it looks like from here.
+    struct Falls;
+
+    #[nachalnik::async_trait]
+    impl Compactor for Falls {
+        fn should_compact(&self, _budget: &Budget) -> bool {
+            false
+        }
+
+        async fn plan(
+            &self,
+            _items: &[std::sync::Arc<ContextItem>],
+            _budget: &Budget,
+        ) -> Option<CompactionPlan> {
+            panic!("the compactor fell over")
+        }
+    }
+
+    let Wired {
+        mut app,
+        mut finished,
+        ..
+    } = wired(Vec::new());
+    app.keys = false;
+    app.kernel.set_compactor(Some(Arc::new(Falls)));
+
+    let reply = app.submit("/compact").await;
+    assert_eq!(reply.did, Did::Ran);
+    assert!(app.in_flight(), "the pass is out");
+
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), finished.recv())
+        .await
+        .expect("a pass that fell over reported nothing, so the session waits for it for ever")
+        .expect("the channel outlives the session");
+    app.on_outcome(outcome);
+
+    assert!(
+        !app.in_flight(),
+        "the pass is finished, whatever it finished with"
+    );
+    let said: Vec<String> = app.notes(0).map(|entry| entry.text.clone()).collect();
+    assert!(
+        said.iter()
+            .any(|text| text == "the compaction pass failed before it came back"),
+        "the session is not told the pass failed: {said:?}"
+    );
+
+    // and a line after it is read at all, rather than queued behind a pass that is never coming
+    let reply = app.submit("/help").await;
+    assert_eq!(reply.did, Did::Ran, "the next line waited for ever");
+}
+
+/// A `/model` switch still settling is waited for when the session is leaving.
+///
+/// note: the line after a switch is held for it, so a session whose last line is the switch has
+/// nothing left to hand it in - and the switch's own notice would be taken by a look that never
+/// comes, and its change written to a record that has already been ended, or written by a process
+/// that has already gone. So the way out waits for the switch first, under its own bound, which is
+/// what takes the handle: a switch left standing is a command still out, and every line after it
+/// waits for one that is never coming.
+#[tokio::test]
+async fn a_switch_still_settling_is_waited_for_when_the_session_leaves() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+        ..
+    } = wired(Vec::new());
+
+    let reply = app.submit("/model another").await;
+    assert_eq!(reply.did, Did::Ran);
+    assert!(
+        app.settling.is_some(),
+        "the switch should still be settling"
+    );
+
+    app.wait_for_turn(&mut events, &mut finished, |_| {}).await;
+
+    assert!(
+        app.settling.is_none(),
+        "the switch was left standing, so the session is still waiting on it"
+    );
+    assert!(
+        !app.in_flight(),
+        "and nothing is out at the endpoint once it has been waited for"
+    );
+}

@@ -779,3 +779,67 @@ async fn a_panel_opens_on_a_very_tall_window() {
     let screen = harness.sized(80, 800);
     assert!(screen.contains("any key closes"), "{screen}");
 }
+
+/// `ctrl+c` with a turn running stops the turn, rather than leaving the session.
+///
+/// note: `ctrl+d` is the way out and it means the same thing wherever it is pressed - but `ctrl+c`
+/// is the stop, and it is one only while there is something to stop. It used to be the stop
+/// whichever the session was doing, which left a person with a turn running pressing it twice:
+/// once to stop the turn, and once again - now a quit - to leave.
+#[tokio::test]
+async fn ctrl_c_stops_a_turn_rather_than_leaving() {
+    let mut harness = Harness::new([ModelResponse::text("never finished")]);
+
+    harness.send("say something long").await;
+    assert!(harness.app.busy, "the turn is not running");
+
+    harness.chord(KeyCode::Char('c')).await;
+
+    assert!(
+        !harness.app.quit,
+        "`ctrl+c` while a turn is running is a stop, not a `/quit`"
+    );
+    assert!(
+        harness.app.kernel.is_interrupted(),
+        "and it stopped the turn"
+    );
+
+    // so the line before it ends is the one saying the session is going, not the turn
+    harness.settle().await;
+    assert!(!harness.app.quit, "stopping a turn does not leave");
+}
+
+/// `ctrl+c` with a listing still out stops the listing, rather than leaving the session.
+///
+/// note: the other half of the same claim, and the state it is about. A `/models` is waiting at an
+/// endpoint with no turn running, and it is what holds every line after it - so the key that stops
+/// a turn has to stop this too, or the only way out of a listing against a dead endpoint is
+/// `ctrl+d` and losing the session.
+#[tokio::test]
+async fn ctrl_c_stops_a_listing_rather_than_leaving() {
+    let mut harness = Harness::new([]);
+
+    // the listing is sent out to the endpoint and waited for, so nothing is running a turn
+    harness.send("/models").await;
+    assert!(
+        harness.app.in_flight(),
+        "the listing should still be out at the endpoint"
+    );
+    assert!(!harness.app.busy, "and no turn is running");
+
+    harness.chord(KeyCode::Char('c')).await;
+
+    assert!(
+        !harness.app.quit,
+        "`ctrl+c` while a listing is out is a stop, not a `/quit`"
+    );
+    assert!(
+        !harness.app.in_flight(),
+        "and the listing was stopped rather than waited for"
+    );
+    let screen = harness.flat();
+    assert!(
+        screen.contains("stopped waiting for the list of models"),
+        "{screen}"
+    );
+}
