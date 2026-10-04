@@ -243,6 +243,51 @@ async fn compaction_does_not_ask_for_a_result_that_is_pinned() {
     );
 }
 
+/// A pass that reaches for a pin is refused by the kernel, and the refusal is on the screen as well
+/// as in the report.
+///
+/// note: the line naming what moved reads the same either way, so without it a person has no way
+/// of knowing that what they pinned is still holding the context up.
+#[tokio::test]
+async fn a_pass_that_reaches_for_a_pin_says_it_was_refused() {
+    use nachalnik::{Content, ToolCall};
+
+    let mut harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    let call = ToolCall::new("call-1", "read", Arc::new(json!({"path": "big.rs"})));
+    kernel.push(ContextItem::user("what is in big.rs?"));
+    kernel.push(ContextItem::assistant(
+        Content::text("let me look"),
+        vec![call.clone()],
+    ));
+    let pinned = kernel.push(ContextItem::tool_result(
+        call.id.clone(),
+        "read",
+        Content::text("x".repeat(40_000)),
+        false,
+    ));
+    kernel.push(ContextItem::assistant(Content::text("it is all x"), vec![]));
+    kernel.set_state([pinned], ContextState::Pinned, None);
+
+    // a plan that names it anyway, which is what a compactor working from a stale list does
+    let report = kernel.apply_compaction(nachalnik::CompactionPlan {
+        elide: vec![pinned],
+        reason: "making room".into(),
+        ..Default::default()
+    });
+    assert_eq!(report.refused.len(), 1, "the pin held");
+
+    harness.drain();
+    let said = harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| entry.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(said.contains("1 refused, because pinned"), "{said}");
+}
+
 /// A marker is not free, and a pass that credits itself with the whole of what it elided is
 /// counting on it being. `Shedder` subtracted each item's tokens and put a line of its own reason
 /// where the content had been, so on a context full of small results the arithmetic said it had
