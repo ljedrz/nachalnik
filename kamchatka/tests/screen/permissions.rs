@@ -1663,6 +1663,21 @@ async fn a_question_about_a_long_argument_can_be_read_and_still_be_answered() {
     // the answers do not move with them
     assert!(screen.contains("[y] once"), "{screen}");
 
+    // `down` and `up` move the arguments a row each rather than only a page. Reading a rewritten
+    // tool result line by line is what the arrows are for everywhere else on this program, and
+    // somebody paging through eighty lines twenty at a time to find the one that changed is doing
+    // it the hard way - so `up` has to come back up one row too, not just `down` going further
+    let paged = harness.screen();
+    harness.press(KeyCode::Down).await;
+    let rowed = harness.screen();
+    assert_ne!(rowed, paged, "`down` moved off the page: {paged}");
+    harness.press(KeyCode::Up).await;
+    assert_eq!(
+        harness.screen(),
+        paged,
+        "`up` is a row as well, and puts it back"
+    );
+
     // it stops at the end rather than counting presses: without the clamp, four pages down past
     // the bottom is four pages back up before anything moves
     for _ in 0..8 {

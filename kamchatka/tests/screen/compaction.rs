@@ -1550,6 +1550,104 @@ async fn n_leaves_it_alone() {
     );
 }
 
+/// Which row of the compaction's list is the first one on the screen.
+///
+/// note: the rows are numbered `[1]`, `[2]` and so on, so the number on the top row is the row
+/// somebody is reading. Read from the panel rather than from the argument list, which echoes the
+/// first of them whatever the list is scrolled to.
+fn first_row_shown(harness: &mut Harness) -> Option<u32> {
+    harness.screen().lines().find_map(|row| {
+        let at = row.find('[')?;
+        let digits: String = row[at + 1..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        digits.parse().ok()
+    })
+}
+
+/// The list of a compaction that has more items in it than the panel has rows scrolls with all
+/// four keys, and one row at a time is one row.
+///
+/// note: the panel is drawn in the prompt's place rather than over the conversation, so there are
+/// only a handful of rows to scroll - a list of a hundred is asked about through them one press
+/// at a time, and only `pgup` and `pgdn` used to move. `up` and `down` are the keys everything
+/// else scrolls with, and a list nobody can read at its own pace is a decision somebody makes
+/// having read a seventh of it.
+#[tokio::test]
+async fn the_list_of_what_a_compaction_would_take_scrolls_a_row_at_a_time() {
+    use nachalnik::{Content, ToolCall};
+
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
+        threshold: 0.0,
+        target: 0.0,
+    })));
+    harness.app.compact_target = Some(0.0);
+    // forty exchanges is a hundred and twenty rows, which is more than any window this program
+    // draws in, so the list is longer than the panel whichever way it is sized
+    for round in 0..40 {
+        let call = ToolCall::new(
+            format!("call-{round}"),
+            "read",
+            Arc::new(json!({ "path": format!("f{round}.rs") })),
+        );
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("what is in f{round}.rs?")));
+        harness.app.kernel.push(ContextItem::assistant(
+            Content::text("let me look"),
+            vec![call.clone()],
+        ));
+        harness.app.kernel.push(ContextItem::tool_result(
+            call.id.clone(),
+            "read",
+            Content::text("x".repeat(4000)),
+            false,
+        ));
+    }
+    // and a turn of the model's own, so the last exchange is over and a pass may reach it
+    harness.app.kernel.push(ContextItem::user("and now?"));
+    harness.app.kernel.push(ContextItem::assistant(
+        Content::text("that is all of them"),
+        vec![],
+    ));
+    harness.drain();
+
+    harness.send("/compact").await;
+    // the pass is worked out off the loop, and the question asked when it comes back
+    harness.settle().await;
+    harness.press(KeyCode::Tab).await;
+
+    assert_eq!(
+        first_row_shown(&mut harness),
+        Some(1),
+        "the list starts at the top"
+    );
+
+    // `down` is one row, not a page: the point of it is to read the row that is not on the screen
+    harness.press(KeyCode::Down).await;
+    assert_eq!(first_row_shown(&mut harness), Some(2));
+    // and `up` puts it back rather than carrying on down, or leaving it where it was
+    harness.press(KeyCode::Up).await;
+    assert_eq!(first_row_shown(&mut harness), Some(1));
+
+    // at the top there is nowhere above the top to go
+    harness.press(KeyCode::Up).await;
+    assert_eq!(first_row_shown(&mut harness), Some(1));
+
+    // a page is still a page
+    // a page is more than a row, whatever its size, and `up` and `pgup` come back from it
+    harness.press(KeyCode::PageDown).await;
+    let paged = first_row_shown(&mut harness).expect("a row is shown");
+    assert!(paged > 2, "pgdn moved {paged}");
+    harness.press(KeyCode::Up).await;
+    assert_eq!(first_row_shown(&mut harness), Some(paged - 1));
+    harness.press(KeyCode::PageUp).await;
+    assert_eq!(first_row_shown(&mut harness), Some(1));
+}
+
 /// `/compact` asked for while a turn is running is refused, and says why.
 ///
 /// note: the guard is one question at a time, and a turn under way is the other half of it - so
