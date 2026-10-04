@@ -1499,6 +1499,30 @@ mod tests {
         let cmd = "a | b";
         assert_eq!(joints(cmd), vec![(2, 3)]);
         assert_eq!(&cmd[2..3], "|");
+        // a `case` arm's `;;` is stepped over whole rather than one `;` at a time, so the
+        // command after the arm is still read as a stage of its own
+        assert_eq!(picked("case $x in a) echo one;; esac; echo two"), [";"]);
+    }
+
+    /// A quote ends where it began, whatever it held in between.
+    ///
+    /// note: this is what the closing of one is for. A `\"` in a double-quoted string is the
+    /// character it is - the string does not end there - so a separator beside it is still inside
+    /// one; and a string read as ending at its first letter is not a string the scan understood,
+    /// so a separator after it is not inside one either. Which of the two was believed decides
+    /// whether the panel colours a `|` that is really a character of an argument.
+    #[test]
+    fn a_quote_ends_where_it_began() {
+        assert_eq!(picked("echo \"a | b\" | wc -l"), ["|"]);
+        assert_eq!(picked(r#"echo "a\" | b"; ls"#), [";"]);
+    }
+
+    /// A separator inside a subshell is the subshell's, and the command it is beside is found.
+    #[test]
+    fn a_separator_inside_a_subshell_is_not_this_commands() {
+        assert!(joints("(cd src; ls)").is_empty());
+        assert_eq!(picked("(cd src; ls) && cargo build"), ["&&"]);
+        assert_eq!(picked("echo $(date | tr -d '\\n') | wc -l"), ["|"]);
     }
 
     /// What looks like a joint and is not.
