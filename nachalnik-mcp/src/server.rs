@@ -14,7 +14,7 @@ use rmcp::{
 
 use crate::{
     Error, Result,
-    tool::{McpTool, Trust, spec_of, text_of, tool_id},
+    tool::{McpTool, Trust, left_out, spec_of, text_of, tool_id},
 };
 
 /// The most pages one listing reads, of tools or of resources; see `Server::tools` and
@@ -292,20 +292,16 @@ impl Server {
                     .iter()
                     .map(|part| match part {
                         Ok(text) => (*text).to_owned(),
-                        Err(media) => format!(
-                            "[a part with no text ({}), not carried into the context]",
-                            media.unwrap_or("no media type given")
-                        ),
+                        Err(media) => left_out("a part with no text", *media),
                     })
                     .collect::<Vec<_>>()
                     .join("\n"),
-                false => format!(
-                    "[a resource with no text ({}), not carried into the context]",
+                false => left_out(
+                    "a resource with no text",
                     parts
                         .iter()
                         .find_map(|part| part.err().flatten())
-                        .or(resource.mime_type.as_deref())
-                        .unwrap_or("no media type given")
+                        .or(resource.mime_type.as_deref()),
                 ),
             };
 
