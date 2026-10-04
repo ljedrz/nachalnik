@@ -793,19 +793,59 @@ async fn the_policy_line_is_the_only_row_above_the_table() {
     let screen = harness.sized(60, 12);
     let rows: Vec<&str> = screen.lines().collect();
 
-    // the strip of tabs, then what is deciding, then the one blank row that keeps the table off it
+    // the strip of tabs, then what is deciding - a line, or two in a build that can rate commands
+    // - then the one blank row that keeps the table off it, and the heading after that, which is
+    // where somebody looking for the answers looks
     assert!(
         rows[1].starts_with("│Careful"),
         "what is deciding is the first thing under the strip: {screen}"
     );
+    let heading = rows
+        .iter()
+        .position(|row| row.contains("capability or path"))
+        .unwrap_or_else(|| panic!("the table has a heading: {screen}"));
+    let blank = |row: &str| row.replace('│', "").trim().is_empty();
     assert!(
-        rows[2].replace('│', "").trim().is_empty(),
-        "and nothing is said under it but the gap: {screen}"
+        blank(rows[heading - 1]),
+        "a gap between what is deciding and the heading: {screen}"
     );
-    // the heading is the row after that, which is where somebody looking for the answers looks
     assert!(
-        rows[3].contains("capability or path"),
-        "the heading, on the row below the gap: {screen}"
+        rows[2..heading - 1].iter().all(|row| !blank(row)),
+        "and only the one: {screen}"
+    );
+}
+
+/// A window too narrow for the columns to be their usual widths still gets all three of them.
+///
+/// note: `22.min(width / 3)` and the width left over for what a rule covers are settled here and
+/// nowhere else, and a terminal is as narrow as somebody chooses to make it. What a rule covers is
+/// what somebody checking a flag came to read, so it is the column that has to be there at forty
+/// columns as much as at a hundred and ten, and the two columns beside it are what pays for it.
+#[tokio::test]
+async fn a_narrow_window_divides_a_row_between_its_three_columns() {
+    let mut harness = Harness::new([]);
+    for id in ["alpha", "beta", "gamma"] {
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new(id, "a tool").with_capabilities([Capability::fs("read")]),
+        ));
+        harness.app.policy.came_from(id, "files");
+    }
+    harness
+        .app
+        .policy
+        .set(&Subject::Server("files".to_owned()), Verdict::Allow);
+    harness.tab(Tab::Permissions);
+
+    // thirty-eight columns inside the border, a third of them for the subject, and what is left
+    // after the subject and the answer for what the rule covers
+    let screen = harness.sized(40, 12);
+    let row = screen
+        .lines()
+        .find(|line| line.contains("server files"))
+        .unwrap_or_else(|| panic!("the rule is listed: {screen}"));
+    assert_eq!(
+        row, "│  server files allow       alpha, bet…│",
+        "all three columns, and what it covers in the eleven that are left: {screen}"
     );
 }
 
