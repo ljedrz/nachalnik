@@ -139,6 +139,71 @@ async fn the_program_serves_a_socket_and_a_second_one_drives_it() {
     assert!(!socket.exists(), "the socket file was left behind");
 }
 
+/// A served session says which mode it is in, and it is not a headless one.
+///
+/// note: the pair with `the_program_serves_a_socket_and_a_second_one_drives_it`, which reads the
+/// host's own streams and is about the address it printed. What is under test here is the one line
+/// it must not print: a served run is driven by a socket, not by a line driver, so an announcement
+/// about headless runs is about a pipe nobody mentioned - and this host's stdout is one, which is
+/// what the announcement would be about. Said to somebody reading the host's stderr it reads as
+/// this session being a headless one.
+///
+/// note: a socket file rather than a port, so a machine that cannot bind a loopback port can run
+/// it; the path is short for the reason `served_over_a_socket` gives.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_served_session_does_not_announce_a_headless_run() {
+    use crate::common;
+
+    let dir = common::scratch("snotice");
+    let socket = dir.join("s.sock");
+
+    let host = std::process::Command::new(common::program())
+        .current_dir(common::nowhere())
+        .args(["--no-record", "--serve"])
+        .arg(format!("unix:{}", socket.display()))
+        // an address nothing answers on: a turn would fail, and this is about the line the run
+        // says about itself rather than about anything a turn did
+        .env("KAMCHATKA_BASE_URL", CLOSED)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the host did not start");
+
+    // a served session goes on for as long as somebody wants it to, so somebody has to end it
+    for _ in 0..100 {
+        if socket.exists() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(socket.exists(), "nothing ever listened at {socket:?}");
+    let quitter = tokio::task::spawn_blocking({
+        let socket = socket.clone();
+        move || crate::connect(&socket, b"/quit\n")
+    })
+    .await
+    .expect("the client panicked");
+
+    let host = tokio::task::spawn_blocking(move || host.wait_with_output())
+        .await
+        .expect("the host panicked")
+        .expect("the host did not finish");
+
+    let said =
+        String::from_utf8_lossy(&host.stdout).into_owned() + &String::from_utf8_lossy(&host.stderr);
+    assert!(
+        said.contains(&format!("serving on unix:{}", socket.display())),
+        "the host did not say where it was listening: {said}"
+    );
+    assert!(
+        !said.contains("is a headless run"),
+        "a served session announced a mode it is not in: {said}"
+    );
+    assert!(quitter.status.success());
+}
+
 /// `examples/phone.rs` writes every session it ran out, the way the program does.
 ///
 /// note: the example rather than a driver, because the bug was the example's and nothing
@@ -637,6 +702,140 @@ async fn a_client_that_leaves_its_questions_leaves_them_for_the_next_one() {
 
     quit(&session.at).await;
     session.ended().await.1.expect("the session failed");
+}
+
+/// The program leaves a question when its own command line says nothing about one, and answers it
+/// when it says so.
+///
+/// note: `--connect` reads `on_ask` off its own command line, and `leave` is what a watcher gets by
+/// default. What decides that is `main.rs` reading whether the flag was typed at all, which the
+/// two client tests above reach only by saying `.leaves_questions()` themselves - so they pin what
+/// that flag means to the `Client`, and nothing here would notice the program handing every
+/// question it is shown to its own `on_ask`. A watcher whose input closed would answer every open
+/// question `deny` - questions another client's person had been asked - and the question would be
+/// gone before anybody could come back to it.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_program_leaves_a_question_it_was_not_told_to_answer() {
+    use crate::connect;
+
+    let session = served_over_a_socket(
+        "leave",
+        vec![
+            ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+            ModelResponse::text("it would not let me"),
+        ],
+        |app| {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        },
+    )
+    .await;
+
+    // the program as a watcher of somebody else's session, with nothing said about questions
+    let watched = socket_of(&session.at);
+    let out = tokio::task::spawn_blocking(move || connect(&watched, b"go\n"))
+        .await
+        .expect("the client panicked");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(
+        said.contains("it is left for another client"),
+        "it did not leave a question it was not told to answer: {said}"
+    );
+    assert!(
+        !said.contains("nobody is here to answer for `peek`"),
+        "it answered a question it was to leave: {said}"
+    );
+    assert!(!said.contains("it would not let me"), "{said}");
+
+    // and the next client finds it still open, answers it, and the turn goes on
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    tokio::time::timeout(
+        PATIENCE,
+        kamchatka::remote::Client::new(Grant::Deny, &mut records, &mut prose)
+            .run(&session.at, BufReader::new(tokio::io::empty())),
+    )
+    .await
+    .expect("the second client never left")
+    .expect("the second client failed");
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    assert!(
+        prose.contains("nobody is here to answer for `peek`"),
+        "the question was not waiting for it: {prose}"
+    );
+    assert!(prose.contains("it would not let me"), "{prose}");
+
+    crate::quit_over_a_socket(&session.at).await;
+    session.ended().await.1.expect("the session failed");
+}
+
+/// The program reads a piped line only once the turn before it is over, so a `y` piped behind a
+/// message answers the question rather than being sent as a message.
+///
+/// note: `--headless` reads a line only when the session is quiet, and a `--connect` whose input is
+/// a pipe does the same - `echo "go
+/// " | kamchatka --connect` is a script, not somebody at a keyboard, and a `y` in a script is an
+/// answer to whatever question the session has open when the line is read. Reading it as soon as
+/// the turn starts sends it as a message instead, so the question is never answered by the person
+/// who wrote the `y`: it is left open, and answered by `settle` after the input has closed, with
+/// the line saying nobody was there to answer it - which is a statement about a script nobody
+/// wrote. What tells them apart is that line.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_program_reads_a_piped_answer_when_the_question_is_asked() {
+    use crate::connect;
+
+    let session = served_over_a_socket(
+        "paced",
+        vec![
+            ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
+            ModelResponse::text("it would not let me"),
+        ],
+        |app| {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        },
+    )
+    .await;
+
+    // the question is asked by the turn, and the `y` behind it is the script's answer to it
+    let watched = socket_of(&session.at);
+    let out = tokio::task::spawn_blocking(move || connect(&watched, b"go\ny\n"))
+        .await
+        .expect("the client panicked");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(
+        said.contains("wants to run peek"),
+        "the question was never asked: {said}"
+    );
+    assert!(
+        !said.contains("nobody is here to answer"),
+        "the `y` in the script was not read as the answer it was: {said}"
+    );
+    // and the turn the question was holding up reached the other side
+    assert!(said.contains("it would not let me"), "{said}");
+
+    crate::quit_over_a_socket(&session.at).await;
+    let (app, ended) = session.ended().await;
+    ended.expect("the session failed");
+    assert!(
+        app.kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text() == "the answer"),
+        "the call the `y` allowed did not run: {:?}",
+        app.kernel.items()
+    );
+}
+
+/// The path of the socket a `--connect` on a socket file is given.
+fn socket_of(at: &str) -> std::path::PathBuf {
+    let kamchatka::remote::protocol::Address::Unix(path) =
+        kamchatka::remote::protocol::address(at).expect("a socket file")
+    else {
+        panic!("{at} is not a socket file")
+    };
+    path.into()
 }
 
 /// A client that leaves its questions leaves too when a line of its own is held behind one, and

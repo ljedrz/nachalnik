@@ -466,6 +466,70 @@ fn the_program_writes_a_pair_that_checks_clean_and_writes_over_nothing() {
     );
 }
 
+/// One of the pair on its own is a session, and `--check` reads whichever of the two is there.
+///
+/// note: a session is two files, and either can be missing: a log with no snapshot beside it is
+/// what a run that was killed leaves, and a snapshot with no log is where `/save` put the context
+/// when the record was turned off. The refusal is for a name that has *neither*, because there is
+/// nothing to read - and reading the half that is there is what the check is for. The sentence
+/// names which is there, so a check of one file says which one it read.
+#[test]
+fn a_check_reads_whichever_of_the_pair_is_there() {
+    let kernel = {
+        let kernel = Kernel::new(Config::default());
+        kernel.push(ContextItem::user("where should the annex go?"));
+        kernel
+    };
+    let log: String = kernel
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).unwrap() + "\n")
+        .collect();
+    let check = |dir: &std::path::Path, stem: &str| {
+        common::command()
+            .current_dir(dir)
+            .args(["--check", stem])
+            .output()
+            .expect("the binary under test is built")
+    };
+
+    // the log, with no snapshot beside it
+    let dir = common::scratch("check-log-only");
+    std::fs::write(dir.join("lone.jsonl"), &log).expect("written");
+
+    let out = check(&dir, "lone");
+    let said = String::from_utf8_lossy(&out.stdout);
+    let refused = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "a log with nothing beside it is still a session: {said}{refused}"
+    );
+    assert!(
+        said.contains("records in lone.jsonl") && !said.contains("the snapshot in"),
+        "it did not say which of the pair it read: {said}"
+    );
+
+    // and the snapshot, with no log beside it
+    let dir = common::scratch("check-state-only");
+    std::fs::write(
+        dir.join("lone.json"),
+        serde_json::to_vec(&kernel.snapshot()).unwrap(),
+    )
+    .expect("written");
+
+    let out = check(&dir, "lone");
+    let said = String::from_utf8_lossy(&out.stdout);
+    let refused = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        out.status.success(),
+        "a snapshot with no log beside it is still a session: {said}{refused}"
+    );
+    assert!(
+        said.contains("the snapshot in lone.json") && !said.contains("records in"),
+        "it did not say which of the pair it read: {said}"
+    );
+}
+
 /// Two sessions that begin alike - the same instruction, from the same `-s` - are not forks of one
 /// session, and are refused rather than reconciled on the instruction they share.
 #[test]

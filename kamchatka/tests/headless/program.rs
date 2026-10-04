@@ -64,6 +64,59 @@ fn the_program_runs_headless_and_keeps_its_streams_apart() {
     }
 }
 
+/// A run told to be headless is not told which mode it chose, because it said so itself.
+///
+/// note: the announcement is there because a program that draws or does not draw depending on what
+/// is on the other end of a pipe should say which it decided, and `--headless` is how somebody says
+/// it themselves. Said to a run that asked for the mode, it is the program explaining an instruction
+/// back to the person who gave it. A scripted run reads stderr for failures, and a run told to be
+/// headless told the script itself.
+#[test]
+fn a_run_that_asked_to_be_headless_is_not_told_which_mode_it_chose() {
+    let out = common::command()
+        .args(["--headless", "--no-record"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !said.contains("so this is a headless run"),
+        "a run that was asked for the mode was told it chose it: {said}"
+    );
+}
+
+/// A headless run does not greet, and what it does say is the line driver's.
+///
+/// note: the greeting is `main.rs`'s and belongs to a session with a screen in front of it: it
+/// names `ctrl+p` and `F1`, which are this program's keys, and a headless run has none. The test
+/// beside this one is about what a piped run says about the mode it chose; this is about what it
+/// says into the conversation, which is in the same stream. A greeting said here would be printed
+/// to everybody who pipes a session in and reads it as though it were the session's own opening.
+#[cfg(feature = "tui")]
+#[test]
+fn a_headless_run_says_the_line_driver_and_not_the_terminals_keys() {
+    let out = common::command()
+        .args(["--headless", "--no-record"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("a line is a message"),
+        "a headless run did not say what its lines are: {said}"
+    );
+    assert!(
+        !said.contains("F1 lists the keys"),
+        "a headless run with no keys to press was told about them: {said}"
+    );
+}
+
 /// An empty message given on the command line is nothing, where an empty line down a pipe is.
 ///
 /// note: the two are the same act - a first message, sent as soon as it starts - and the line
