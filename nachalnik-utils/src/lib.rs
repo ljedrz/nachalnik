@@ -130,3 +130,20 @@ pub async fn providers(models: &[String]) -> Result<Vec<Arc<OpenAiCompatible>>, 
 
     Ok(built)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Models named on the command line are the ones used, as given, and the environment is not
+    /// read for any.
+    ///
+    /// note: the flags rather than `NACHALNIK_MODELS`, because setting a variable in a test is a
+    /// race with every other test reading one; the variable's half is what a run with no flags
+    /// gets, and a flag given is a run that asked for exactly these.
+    #[test]
+    fn the_models_named_by_flags_are_the_ones_used() {
+        let named = vec!["a/model".to_owned(), "b/model".to_owned()];
+        assert_eq!(models(named.clone()), named);
+    }
+}
