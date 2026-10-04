@@ -12,7 +12,7 @@ use crate::{
     subject::Subject,
     suite::{
         controlled, copies_agree,
-        dossier::{self, Dossier, Expected, id_of},
+        dossier::{self, Dossier, Expected},
         excluding, instrument, script,
     },
     trial::{Kind, Resolution, Step, Trial},
@@ -301,14 +301,10 @@ impl Attribution {
         );
 
         for (label, located, asked) in placed {
-            let Some(id) = id_of(&notes, &label) else {
+            let Some(index) = notes.iter().position(|note| note.label == label) else {
                 continue;
             };
-            let ordinal = notes
-                .iter()
-                .position(|note| note.label == label)
-                .unwrap_or(0)
-                + 1;
+            let (id, ordinal) = (notes[index].id, index + 1);
             trial.resolve(
                 Resolution::new(Kind::Location, located, Answer::Item(id))
                     .answering(asked)
