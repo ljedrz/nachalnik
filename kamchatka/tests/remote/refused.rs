@@ -367,8 +367,9 @@ fn an_address_says_what_kind_of_thing_it_is() {
         protocol::address("tcp:127.0.0.1:7878"),
         Ok(Address::Tcp("127.0.0.1:7878"))
     ));
-    // both of these are perfectly good strings and neither says which kind of thing it is
-    for guess in ["/run/kamchatka.sock", "127.0.0.1:7878", "unix:", ""] {
+    // both of these are perfectly good strings and neither says which kind of thing it is - and a
+    // scheme with nothing after it says the kind and not the thing
+    for guess in ["/run/kamchatka.sock", "127.0.0.1:7878", "unix:", "tcp:", ""] {
         let refused = protocol::address(guess).expect_err("it guessed");
         assert!(refused.contains("unix:PATH"), "{refused}");
     }
