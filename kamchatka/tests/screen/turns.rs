@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{app::Tab, tools::Limits};
 use nachalnik::{
-    Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
+    Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse, Tool,
     test::{ConstTool, call},
 };
 use ratatui::style::Color;
@@ -523,6 +523,80 @@ async fn a_tool_can_stop_being_offered_without_restarting() {
         "the next request should offer it again"
     );
     assert!(harness.screen().contains("offered again"));
+}
+
+/// A turn stopped on purpose is not a turn that ran out of requests, and is not said to be one.
+///
+/// note: both stop in `Idle`, and only the difference tells somebody reading the screen whether the
+/// model finished or somebody reached in. A headless run reads `App::paused` for its exit status,
+/// so a turn somebody interrupted would also exit as though the budget had stopped it - which is
+/// the one thing `/continue` is not for.
+#[tokio::test]
+async fn a_stopped_turn_is_not_a_turn_that_paused() {
+    let mut harness = Harness::configured(
+        [ModelResponse::text("half an answer")],
+        Config {
+            // a ceiling it never reached: what stops this turn is the interrupt and nothing else
+            max_requests_per_turn: Some(10),
+            ..Default::default()
+        },
+    );
+
+    harness.send("look around").await;
+    harness.app.busy = true;
+    // while the answer is still coming, which is the only moment an interrupt is answered
+    harness.app.interrupt();
+    harness.app.busy = false;
+    harness.settle().await;
+
+    assert!(
+        !harness.app.paused(),
+        "the turn was stopped, not out of requests"
+    );
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("the turn paused after"),
+        "nothing says a pause nobody asked for: {screen}"
+    );
+    assert!(
+        !screen.contains("/continue to carry on"),
+        "and nothing sends somebody to carry on from here: {screen}"
+    );
+}
+
+/// A tool that is off offer is not something the model is sent to, and one offered again is.
+///
+/// note: turning a tool off does not change what it would be allowed to do if it ran - the rules
+/// are still in the table - but every sentence that points a model at a tool asks the policy
+/// whether that tool is there to be pointed at. Without the withdrawal the policy still sees it
+/// offered, and a refusal from `fs` would go on naming `shell` in a session that had turned it
+/// off; a model sent to a tool it does not have spends a request naming one that does not exist.
+///
+/// note: the policy is told what is on offer first, as `wiring` does - a policy told nothing
+/// goes by its rules alone and there would be nothing for the withdrawal to turn off.
+#[tokio::test]
+async fn a_tool_that_is_off_is_not_what_a_refusal_points_the_model_at() {
+    let mut harness = Harness::new([]);
+    let run = Capability::exec("run");
+    let shell = Arc::new(ConstTool::new("shell", "ran").with_capabilities([run.clone()]));
+    harness.app.policy.offers(shell.spec());
+    harness.app.kernel.add_tool(shell);
+    assert!(
+        harness.app.policy.reachable(&run),
+        "with `shell` on offer the policy can point a model at it"
+    );
+
+    assert_eq!(harness.app.toggle("shell"), Some(false));
+    assert!(
+        !harness.app.policy.reachable(&run),
+        "a tool that is off offer is not something the model is sent to"
+    );
+
+    assert_eq!(harness.app.toggle("shell"), Some(true));
+    assert!(
+        harness.app.policy.reachable(&run),
+        "and offering it again puts it back in reach"
+    );
 }
 
 #[tokio::test]

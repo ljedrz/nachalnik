@@ -1069,6 +1069,41 @@ async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
     );
 }
 
+/// The two keys mean different things depending on whether there is a turn to stop, and each of
+/// them keeps its own meaning.
+///
+/// note: `ctrl+c` stops a turn and `ctrl+d` leaves, but with nothing running there is no turn to
+/// stop, so `ctrl+c` leaves as well - otherwise a session at rest could not be ended from the
+/// keyboard at all. The other side is the same: with a turn running, `ctrl+d` still means leave
+/// and must not be read as a request to stop the turn, which is what taking the first key's
+/// meaning for every key here would do.
+#[tokio::test]
+async fn each_of_the_two_keys_means_the_same_thing_whatever_is_running() {
+    let mut idle = Harness::new([]);
+    idle.app
+        .on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
+        .await;
+    assert!(
+        idle.app.quit,
+        "with no turn to stop, `ctrl+c` leaves: it is the way a session at rest ends"
+    );
+
+    let mut running = Harness::new([]);
+    running.app.busy = true;
+    running
+        .app
+        .on_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::CONTROL))
+        .await;
+    assert!(
+        running.app.quit,
+        "`ctrl+d` means leave whether or not there is a turn to stop"
+    );
+    assert!(
+        !running.app.kernel.is_interrupted(),
+        "and it did not stop the turn on its way out"
+    );
+}
+
 #[tokio::test]
 async fn dropping_the_calls_hands_the_turn_back_to_the_model() {
     let mut harness = Harness::new([

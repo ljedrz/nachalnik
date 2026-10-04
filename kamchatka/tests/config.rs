@@ -1740,6 +1740,97 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
 }
 
+/// Only the copy of the notice standing in the context is reworded, and an item that merely
+/// resembles it is left alone.
+///
+/// note: the kernel finds a notice it placed by all four of its names at once - kind, source,
+/// label and what it says - because a copy is identified by being the same notice, not by any
+/// one field of it. Dropping a field out of that identification means the rewrite reaches whatever
+/// else shares it, and every word the model is shown about its own context would go to an item
+/// that is not the notice. So each field here is the one that has to hold: an item with the same
+/// source, label and words under another kind; one with the same kind, label and words from
+/// another source; and one that is only the notice's own words.
+#[tokio::test]
+async fn only_the_copy_of_the_notice_is_reworded_and_nothing_that_merely_matches_it() {
+    use std::sync::Arc;
+
+    use kamchatka::wiring::Setup;
+    use nachalnik::{ContextItem, ContextKind};
+    use nachalnik_providers::OpenAiCompatible;
+
+    let mut app = Setup::default()
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed")
+        .app;
+    let standing = app
+        .kernel
+        .full_notice()
+        .expect("a notice with the compactor");
+    // as the kernel places it when the context fills
+    let said = standing.content.to_string();
+    let copy = app.kernel.push(standing.clone());
+
+    let near = |kind: ContextKind, source: &str, label: &str| {
+        ContextItem::new(kind, source, label, said.clone())
+    };
+    let other_kind = app
+        .kernel
+        .push(near(ContextKind::UserMessage, "kamchatka", "context full"));
+    let other_source = app
+        .kernel
+        .push(near(ContextKind::Reference, "file", "context full"));
+    let same_words = app.kernel.push(ContextItem::user(said.clone()));
+
+    // a wording change is what makes the rewrite happen at all; the notice only goes looking for
+    // its copy when there is new wording to put in it
+    app.toggle("context");
+    let now = app
+        .kernel
+        .full_notice()
+        .expect("a notice with the compactor")
+        .content
+        .to_string();
+    assert_ne!(now, said, "toggling `context` reworded the notice");
+    assert_eq!(
+        app.kernel
+            .item(copy)
+            .expect("still there")
+            .content
+            .to_string(),
+        now,
+        "the copy standing in the context says what the notice says now"
+    );
+
+    for (id, what) in [
+        (
+            other_kind,
+            "an item of another kind with the same source, label and words",
+        ),
+        (
+            other_source,
+            "an item from another source with the same kind, label and words",
+        ),
+        (
+            same_words,
+            "an item holding the notice's own words and nothing else of it",
+        ),
+    ] {
+        assert_eq!(
+            app.kernel
+                .item(id)
+                .expect("still there")
+                .content
+                .to_string(),
+            said,
+            "{what} is not the notice, so it is not rewritten"
+        );
+    }
+}
+
 /// `--compact`'s second fraction reaches the session as the target, at most the first and derived
 /// from it when left out.
 ///
