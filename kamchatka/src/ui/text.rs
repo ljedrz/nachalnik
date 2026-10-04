@@ -415,5 +415,38 @@ mod tests {
         let rows = fold("一丁丂七丄丅丆万", 8);
         assert!(rows.iter().all(|row| columns(row) <= 8), "{rows:?}");
         assert_eq!(rows.concat(), "一丁丂七丄丅丆万");
+
+        // the gap between two words is a column like any other, so a pair that fills the room
+        // exactly stays on one row and a pair one column over does not - and the pair is not the
+        // whole paragraph, so this is the arithmetic in the loop rather than the way out of it
+        assert_eq!(fold("aaaaa bbbb", 10), ["aaaaa bbbb"]);
+        assert_eq!(fold("aaaaa bbbbb", 10), ["aaaaa", "bbbbb"]);
+        assert_eq!(fold("aaaaa bbbb cc", 10), ["aaaaa bbbb", "cc"]);
+        assert_eq!(fold("aaaaa bbbbb cc", 10), ["aaaaa", "bbbbb cc"]);
+    }
+
+    /// A count is said in the band it falls in: as it is under a thousand, to a tenth of a thousand
+    /// under ten thousand, in whole thousands under a million, and to a tenth of a million under ten
+    /// million, where a `.0` is dropped.
+    ///
+    /// note: each band is here because the ones either side of it say the same count differently,
+    /// so a band that goes missing is a number said in some other band's words.
+    #[test]
+    fn a_round_figure_is_said_in_as_few_characters_as_it_can_be() {
+        for (n, said) in [
+            (0, "0"),
+            (999, "999"),
+            (1_000, "1.0k"),
+            (4_100, "4.1k"),
+            (9_999, "10.0k"),
+            (10_000, "10k"),
+            (131_000, "131k"),
+            (999_999, "999k"),
+            (1_048_576, "1M"),
+            (4_100_000, "4.1M"),
+            (12_000_000, "12M"),
+        ] {
+            assert_eq!(compact(n), said, "{n}");
+        }
     }
 }
