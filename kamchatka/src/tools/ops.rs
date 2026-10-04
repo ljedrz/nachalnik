@@ -848,6 +848,27 @@ mod tests {
             .with_capabilities(vec![Capability::exec("run")]);
         assert_eq!(unnamed_operation(&one, &asking(json!({}))), None);
 
+        // and a call whose `needs` answered for less than the whole tool is not one nobody could
+        // place, whatever its arguments look like
+        let asking_for = |capabilities: Vec<Capability>, args| PermissionRequest {
+            id: nachalnik::PermissionId(1),
+            call: nachalnik::ToolCallId("c1".to_owned()),
+            tool: "fs".to_owned(),
+            capabilities,
+            args: std::sync::Arc::new(args),
+        };
+        assert_eq!(
+            unnamed_operation(
+                &spec,
+                &asking_for(
+                    vec![Capability::fs("read")],
+                    json!({ WRAPPER: { "path": "x" } })
+                ),
+            ),
+            None,
+            "and a rule did match, so the widening the call brought is not what is being judged"
+        );
+
         let flat = ToolSpec::new("fs", "the filesystem")
             .with_schema(std::sync::Arc::new(json!({ "type": "object" })))
             .with_capabilities(spec.capabilities.clone());
@@ -885,6 +906,14 @@ mod tests {
         assert!(refusal.contains("as text"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
         assert!(refusal.contains("read the file"), "{refusal}");
+
+        // text that parses is still only a call when what it parses to is one
+        for not_a_call in ["42", "[1, 2, 3]", "null", "\"read the file\""] {
+            let written = json!({ WRAPPER: not_a_call });
+            let refusal = inner(&written).expect_err("text that is not a call is not one");
+            assert!(refusal.contains("as text"), "{not_a_call}: {refusal}");
+            assert!(refusal.contains(not_a_call), "{not_a_call}: {refusal}");
+        }
     }
 
     /// A wrapper whose one entry is the call, a level too deep, is read as the call.
@@ -980,6 +1009,55 @@ mod tests {
         assert!(
             said.contains('…'),
             "and says there is more either side: {said}"
+        );
+    }
+
+    /// A fault before the end of a payload is shown where it is, and not at the end of it.
+    ///
+    /// note: the position arrives as a line and a column and is counted out of the text here,
+    /// which is the one step between what the parser said and what the model is shown. A payload
+    /// written over several lines is ordinary - a model indenting a command is producing one -
+    /// and a count that lands anywhere but the fault quotes the part that was fine.
+    #[test]
+    fn a_fault_before_the_end_of_a_payload_is_shown_where_it_is() {
+        let payload = [
+            format!("{{\"pad\": \"{}\",", "L".repeat(300)),
+            format!(" \"cmd\": \"{}\" THERE oops,", "M".repeat(200)),
+            format!(" \"tail\": \"{}\"", "N".repeat(300)),
+            "}".to_owned(),
+        ]
+        .join("\n");
+
+        let said = unreadable(&payload);
+        assert!(said.contains("not JSON"), "{said}");
+        assert!(
+            said.contains("THERE"),
+            "the window is around the fault, which is where the count landed: {said}"
+        );
+        assert!(
+            !said.contains('L'),
+            "and not the start of the payload: {said}"
+        );
+    }
+
+    /// The window around a fault takes in the text before it as well as after.
+    ///
+    /// note: a fault is usually a missing `}` or an unescaped `"`, and either is recognisable
+    /// from the text in front of it. A window that opened at the fault quotes the rest of the
+    /// command and none of the reason it is wrong.
+    #[test]
+    fn the_window_says_what_is_around_the_fault() {
+        let payload = format!(
+            "{{\"call\": {{\"action\": \"run\", \"cmd\": \"{}\" oops \"tail\": \"{}\"}}}}",
+            "B".repeat(400),
+            "A".repeat(400)
+        );
+
+        let said = unreadable(&payload);
+        assert!(said.contains("not JSON"), "{said}");
+        assert!(
+            said.contains('B') && said.contains('A'),
+            "the window is on both sides of the fault: {said}"
         );
     }
 
