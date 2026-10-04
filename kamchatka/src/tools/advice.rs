@@ -912,6 +912,13 @@ mod tests {
         assert_eq!(advised.evaluate(&request).await, Verdict::Deny);
         assert_eq!(engine.attempts(), 0, "nothing should have left the machine");
         assert!(advised.rating(&request.call).is_none());
+
+        // and the reason the rules wrote down is the one handed out, since a wrapper that decides
+        // nothing must not lose the sentence the model is told a refusal by
+        let why = advised
+            .why(&request)
+            .expect("the rule that refused it is still accounted for");
+        assert!(why.contains("`exec:run`"), "{why}");
     }
 
     /// And one going to be asked about is rated, which is the only call that is.
