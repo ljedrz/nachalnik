@@ -1024,6 +1024,73 @@ fn a_run_that_assembles_no_session_reads_no_settings_file() {
     );
 }
 
+/// A record that cannot be read is named as unreadable, and is not the same as one that is not
+/// there.
+///
+/// note: the second half of the same flag, and the reason a missing file is its own answer rather
+/// than an error to pass on. A log nobody can open is a fault somebody has to look at - somebody
+/// has changed the mode, or made a directory where the record should be - while a file that is
+/// simply absent is the ordinary "nothing was saved here". A check that reported both as "there is
+/// no session" would send the first case away.
+#[test]
+fn a_check_names_a_record_it_could_not_read() {
+    let dir = common::scratch("check-unreadable");
+    // a directory where the log should be: there, and unreadable, and not the same as absent
+    std::fs::create_dir_all(dir.join("unreadable.jsonl")).expect("made");
+
+    let (ok, said) = run_from(&dir, &["--check", "unreadable"], "");
+    assert!(
+        !ok,
+        "a record nobody can read is not a check that passed: {said}"
+    );
+    assert!(
+        said.contains("could not read") && said.contains("unreadable.jsonl"),
+        "the check did not say which file it could not read: {said}"
+    );
+    assert!(
+        !said.contains("there is no session at"),
+        "a file nobody can read is not a file that is not there: {said}"
+    );
+}
+
+/// A command that runs no session, and a client that assembles none, name the flags they were
+/// given beside their own and refuse them.
+///
+/// note: both refusals are the same mechanism read off the matches, and both are about a caller
+/// who would otherwise have their flag silently dropped. A `reconcile` run assembles no session,
+/// so `-m` beside it is a flag that does nothing at all, and a `--connect` client belongs to
+/// whoever is serving, so `-m` beside it is a flag for somebody else's session. The refusal names
+/// what to drop, because `-m` beside `--connect` is a natural thing to type and it would otherwise
+/// connect and say nothing at all about the message.
+#[test]
+fn a_run_that_assembles_nothing_names_the_flags_it_was_given_besides_its_own() {
+    let (ok, said) = run(
+        &[
+            "-m",
+            "a-model",
+            "reconcile",
+            "a.json",
+            "b.json",
+            "-o",
+            "merged",
+        ],
+        "",
+    );
+    assert!(!ok, "a command takes only its own arguments: {said}");
+    assert!(
+        said.contains("a command takes only its own arguments") && said.contains("`--model`"),
+        "the command did not say which flag to drop: {said}"
+    );
+
+    let (ok, said) = run(&["--connect", "unix:nowhere.sock", "-m", "a-model"], "");
+    assert!(!ok, "a client assembles nothing of its own: {said}");
+    assert!(
+        said.contains("`--connect` takes nothing else but `--on-ask`")
+            && said.contains("`--model`"),
+        "the client did not say which flag to drop: {said}"
+    );
+}
+
 /// `--print-config` hands over the file this crate ships, and it is a file this program accepts.
 ///
 /// note: the round trip rather than a byte comparison alone, because what makes the flag worth

@@ -750,6 +750,68 @@ async fn the_programs_commands_signal_each_other_and_nothing_outside() {
     );
 }
 
+/// `--no-sandbox` is the one run whose commands are held to nothing, signals included.
+///
+/// note: the other half of the pair above, and the flag's whole claim about signals: everything
+/// this program starts inherits the scope, and `--no-sandbox` is the flag for a run whose commands
+/// are meant to reach the whole machine - a set-user-ID program such as `sudo` gains nothing in
+/// them, which is what the scope costs and why the flag says not to pay it. So a `--no-sandbox`
+/// run's child must find a process of the user's reachable where a confined one cannot.
+///
+/// note: an `--mcp` server rather than a `shell` command, because the child is started by the
+/// program itself before any provider is reached - so this needs no endpoint, and what it observes
+/// is exactly what a session's every command observes.
+#[cfg(feature = "mcp")]
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_with_no_sandbox_signals_whatever_it_can_reach() {
+    if !kamchatka::sandbox::confines_signals() {
+        eprintln!("skipped: no Landlock scope for a signal here, which is ABI 6");
+        return;
+    }
+    let dir = common::scratch("no-sandbox-signals");
+    // the child writes what `kill -0` said, and the run is over once it has
+    let probe = dir.join("probe.sh");
+    std::fs::write(
+        &probe,
+        "#!/bin/sh\nif kill -0 \"$1\" 2>/dev/null; then echo reached; else echo refused; fi > \
+         said.txt\n",
+    )
+    .expect("written");
+    let mut permissions = std::fs::metadata(&probe).expect("there").permissions();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        permissions.set_mode(0o755);
+    }
+    std::fs::set_permissions(&probe, permissions).expect("made runnable");
+
+    let mut outside = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("a process outside the session");
+
+    let ran = common::command()
+        .args(["--headless", "--no-record", "--no-sandbox", "-m", "nothing"])
+        .arg(format!("--mcp=probe={} {}", probe.display(), outside.id()))
+        .current_dir(&dir)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+    let _ = outside.kill();
+    let _ = outside.wait();
+
+    // the server's handshake fails, which is what ends the run; what the child saw is the point
+    let _ = ran;
+    let said = std::fs::read_to_string(dir.join("said.txt")).expect("the server was started");
+    assert_eq!(
+        said.trim(),
+        "reached",
+        "a `--no-sandbox` run's child could not signal a process of the user's"
+    );
+}
+
 /// `--sandbox-device` reaches the shell the program wires: a command that reads `/dev/zero`
 /// succeeds under the usual list and fails where only `/dev/null` was named.
 ///
@@ -2026,6 +2088,33 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
             said.lock()
         );
     }
+}
+
+/// An error that is not a deadline's leaves with a failure's status, and says what failed.
+///
+/// note: the other half of the three statuses above, and the one a script reading them cannot
+/// afford to get wrong: `124` says the run was out of time and nothing needs looking at, so an
+/// error that was passed off as one leaves whoever reads the status believing a session ended on
+/// time. `--check` of a path nothing is there for, because that is an error before any endpoint is
+/// reached and so needs no network of its own to be asked for.
+#[test]
+fn an_error_that_is_not_a_deadlines_leaves_with_a_failure() {
+    let out = common::command()
+        .args(["--check", "nowhere"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a failure is `anyhow`'s one: {said}"
+    );
+    assert!(
+        said.contains("there is no session at nowhere"),
+        "the failure did not say what failed: {said}"
+    );
 }
 
 /// A restart goes back to the model the flags named, not the one the session had switched to.
