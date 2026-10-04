@@ -369,6 +369,14 @@ pub(super) fn fitted(n: usize, width: usize) -> String {
 mod tests {
     use super::*;
 
+    /// A drawn row as the one string a terminal is handed.
+    fn drawn(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
     /// Eight characters and sixteen cells, cut at the cell.
     ///
     /// note: the box widths here are the ones a screen cannot be driven to. A pane is never two
@@ -423,6 +431,35 @@ mod tests {
         assert_eq!(fold("aaaaa bbbbb", 10), ["aaaaa", "bbbbb"]);
         assert_eq!(fold("aaaaa bbbb cc", 10), ["aaaaa bbbb", "cc"]);
         assert_eq!(fold("aaaaa bbbbb cc", 10), ["aaaaa", "bbbbb cc"]);
+
+        // a word too long for the row is broken rather than allowed to overflow, and the row it
+        // lands on keeps what was already on it - the two halves of that are separate claims, and
+        // a row written before a broken word is easy to lose
+        let said = "alpha beta gamma deltadeltadelta epsilon zeta";
+        let rows = fold(said, 12);
+        assert_eq!(
+            rows,
+            ["alpha beta", "gamma", "deltadeltade", "lta epsilon", "zeta"]
+        );
+        assert!(rows.iter().all(|row| columns(row) <= 12), "{rows:?}");
+
+        // a word as wide as the row is a row of its own, and there is no blank row above it: a
+        // blank one is a line of nothing, and `wrapped` gives the first row a prefix rather than
+        // the hanging indent, so it moves a whole paragraph across by the width of a marker
+        assert_eq!(fold("aaaaaaaaaaaa bb", 12), ["aaaaaaaaaaaa", "bb"]);
+        // two of them break at the room rather than run together and overflow it
+        assert_eq!(
+            fold("aaaaaaaaaaaa bbbbbbbbbbbb", 12),
+            ["aaaaaaaaaaaa", "bbbbbbbbbbbb"]
+        );
+        // and a word that fits the row exactly is left whole rather than broken and rejoined
+        assert_eq!(fold("abcde fghij", 5)[..], ["abcde", "fghij"]);
+        assert!(fold("abcde fghij", 5).iter().all(|row| columns(row) <= 5));
+        // and what was already on the row when a long word arrives is kept, not overwritten
+        assert_eq!(
+            fold("alpha deltadeltadelta", 12)[..],
+            ["alpha", "deltadeltade", "lta"]
+        );
     }
 
     /// A count is said in the band it falls in: as it is under a thousand, to a tenth of a thousand
@@ -448,5 +485,83 @@ mod tests {
         ] {
             assert_eq!(compact(n), said, "{n}");
         }
+    }
+
+    /// A list item's continuation hangs under its marker, and text that only looks like one does not.
+    ///
+    /// note: `- ` and `1. ` are indentation as far as reading it goes, so the marker is as wide as
+    /// it is drawn, however many digits the number runs to. The two that are *not* markers are
+    /// worth naming, because a rule that says yes to either hangs a row of ordinary prose under
+    /// something that is not there: digits with no `. ` or `) ` behind them, and a `. ` that never
+    /// had a number in front of it.
+    #[test]
+    fn a_list_items_continuation_hangs_under_its_marker() {
+        let rest = |line: &str| -> Vec<String> {
+            refit(&Line::raw(line), 20)
+                .iter()
+                .map(|row| drawn(row).trim_end().to_owned())
+                .skip(1)
+                .collect()
+        };
+        let said = "alpha bravo charlie delta echo foxtrot";
+
+        // The hang is as wide as the marker is drawn, and these are the markers plus the
+        // two things that only look like one.
+        let hang = |marker: &str| -> usize {
+            refit(&Line::raw(format!("{marker}{said}")), 20)[1]
+                .spans
+                .iter()
+                .take_while(|span| span.content.as_ref().trim().is_empty())
+                .map(|span| columns(span.content.as_ref()))
+                .sum()
+        };
+        for marker in ["- ", "* ", "+ "] {
+            assert_eq!(hang(marker), 2, "{marker}");
+        }
+        for (marker, wide) in [("1. ", 3), ("12. ", 4), ("12) ", 4), ("100. ", 5)] {
+            assert_eq!(hang(marker), wide, "{marker}");
+        }
+
+        // and it is drawn: the continuation of `1. ` sits under its item rather than
+        // back at the margin
+        assert_eq!(
+            rest(&format!("1. {said}"))[..],
+            ["   charlie delta", "   echo foxtrot"]
+        );
+        assert_eq!(
+            rest(&format!("12. {said}"))[..],
+            ["    charlie delta", "    echo foxtrot"]
+        );
+
+        // digits that are not a marker, and a marker that is not numbered, both continue at the
+        // margin: a rule that says yes to either hangs a row of ordinary prose under nothing
+        assert_eq!(
+            rest("2024 is the year alpha bravo charlie")[..],
+            ["alpha bravo charlie"]
+        );
+        assert_eq!(
+            rest(&format!(". {said}"))[..],
+            ["charlie delta echo", "foxtrot"]
+        );
+    }
+
+    /// A pane is wrapped to the width it was given, not to the floor under it.
+    ///
+    /// note: `width` is the pane and the prefix is drawn in front of the first row, so the floor
+    /// is the prefix's own width plus twelve - the width of the pane is never below it, and a
+    /// prefix of two cells and one of twenty are floored differently.
+    #[test]
+    fn a_narrow_pane_is_wrapped_to_its_own_width() {
+        let said = "alpha bravo charlie delta echo foxtrot";
+
+        assert_eq!(
+            wrapped(said, 20, "│ ")[..],
+            ["│ alpha bravo", "  charlie delta echo", "  foxtrot"]
+        );
+        // the same text in a pane past the floor, which is where the floor stops being the answer
+        assert_eq!(
+            wrapped(said, 30, "│ ")[..],
+            ["│ alpha bravo charlie delta", "  echo foxtrot"]
+        );
     }
 }
