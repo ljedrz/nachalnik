@@ -862,6 +862,8 @@ pub(crate) fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
 
 #[cfg(test)]
 mod tests {
+    use nachalnik::{ContextId, ContextState, Params, PermissionId, PermissionRequest, ToolCallId};
+
     use super::*;
 
     /// A tool result's first lines carry a mark when there were more, and none when there were not.
@@ -871,5 +873,270 @@ mod tests {
         assert_eq!(head("a\nb\nc\nd", 3), "a\nb\nc\n…");
         // the blank lines a provider opens with are not counted against the ones kept
         assert_eq!(head("\n\na\nb", 2), "a\nb");
+    }
+
+    /// What one event says, as the trace pane and the `log` tool both read it.
+    fn said(event: &Event) -> String {
+        trace_line(event).1
+    }
+
+    /// An item's state change names the item and what it became, which is the question "what did
+    /// that answer do to it?" and one nothing else on the trace answers.
+    #[test]
+    fn an_item_that_changed_says_which_one_and_what_it_became() {
+        assert_eq!(
+            said(&Event::ContextChanged {
+                id: ContextId(3),
+                from: ContextState::Active,
+                to: ContextState::Pinned,
+                note: None,
+            }),
+            "[3] active → pinned"
+        );
+    }
+
+    /// A question names the tool and the number of the question, because the answer is typed
+    /// against that number and nothing else on the trace carries it.
+    #[test]
+    fn a_question_names_the_tool_and_the_question() {
+        assert_eq!(
+            said(&Event::PermissionRequested {
+                request: PermissionRequest {
+                    id: PermissionId(7),
+                    call: ToolCallId("c1".to_owned()),
+                    tool: "shell".to_owned(),
+                    capabilities: Vec::new(),
+                    args: std::sync::Arc::new(serde_json::json!({})),
+                },
+            }),
+            "shell (7)"
+        );
+    }
+
+    /// A rule says what it holds for, and "from now on" against "for that one call" is the whole
+    /// difference between a grant and a rule.
+    #[test]
+    fn a_rule_says_how_far_it_holds() {
+        let (subject, verdict) = ("net:reach", Verdict::Allow);
+
+        assert_eq!(
+            said(&Event::PolicyRuled {
+                subject: subject.to_owned(),
+                verdict,
+                answering: None,
+                once: false,
+            }),
+            "net:reach: allow from now on"
+        );
+        assert_eq!(
+            said(&Event::PolicyRuled {
+                subject: subject.to_owned(),
+                verdict,
+                answering: Some(PermissionId(4)),
+                once: true,
+            }),
+            "net:reach: allow, for question 4's call alone"
+        );
+        assert_eq!(
+            said(&Event::PolicyRuled {
+                subject: subject.to_owned(),
+                verdict,
+                answering: Some(PermissionId(4)),
+                once: false,
+            }),
+            "net:reach: allow from now on, answering question 4"
+        );
+    }
+
+    /// A context that has run out says the two figures it was measured against, and one that has
+    /// room again says so. The event is announced on the change, so this line is the only account
+    /// of it.
+    #[test]
+    fn a_full_context_says_what_it_was_measured_against_and_one_that_has_room_says_so() {
+        assert_eq!(
+            said(&Event::ContextFull {
+                full: true,
+                used: 8863,
+                limit: Some(9000),
+            }),
+            "8,863 of 9,000 tokens, and nothing more the compactor may take"
+        );
+        // and the two shapes a limit does not cover: nothing to measure against, and room again
+        assert_eq!(
+            said(&Event::ContextFull {
+                full: true,
+                used: 12_345,
+                limit: None,
+            }),
+            "nothing more the compactor may take"
+        );
+        assert_eq!(
+            said(&Event::ContextFull {
+                full: false,
+                used: 12_345,
+                limit: Some(9000),
+            }),
+            "room again"
+        );
+    }
+
+    /// A failure says what it said, and says it in one line: the model's failure and the step's
+    /// are the same sentence to whoever is reading them.
+    #[test]
+    fn a_failure_says_what_went_wrong() {
+        assert_eq!(
+            said(&Event::ModelFailed {
+                error: "the endpoint said 429\nand then nothing".to_owned(),
+                overrun: None,
+            }),
+            "the endpoint said 429"
+        );
+        assert_eq!(
+            said(&Event::StepFailed {
+                error: "the projection left no messages".to_owned(),
+                overrun: None,
+            }),
+            "the projection left no messages"
+        );
+    }
+
+    /// The three events with nothing in the payload, each of which still carries a sentence of its
+    /// own: a name against an empty line is a row nobody can read.
+    #[test]
+    fn the_events_with_nothing_in_them_say_what_they_were() {
+        assert_eq!(
+            said(&Event::SessionStarted {
+                session: "session-1".to_owned(),
+            }),
+            "session session-1"
+        );
+        assert_eq!(
+            said(&Event::SessionFinished),
+            "nothing more will be recorded"
+        );
+        assert_eq!(
+            said(&Event::Interrupted),
+            "stopped; whatever had arrived is kept"
+        );
+    }
+
+    #[test]
+    fn a_redo_says_what_came_back_and_what_it_changed() {
+        assert_eq!(
+            said(&Event::ContextRedone {
+                items: 3,
+                restored: vec![ContextId(1), ContextId(2)],
+                changed: vec![ContextId(3)],
+            }),
+            "3 items now; 2 back in, 1 changed again"
+        );
+    }
+
+    #[test]
+    fn an_annotation_says_the_item_and_what_it_now_says() {
+        assert_eq!(
+            said(&Event::ContextAnnotated {
+                id: ContextId(7),
+                meta: serde_json::json!({ "worth": "a look" }),
+                was: Value::Null,
+            }),
+            "[7] {\"worth\":\"a look\"}"
+        );
+    }
+
+    #[test]
+    fn the_parameters_say_what_is_being_sent_or_that_there_are_none() {
+        // the provider's own defaults are in force, which is a different thing from every
+        // parameter having been set to nothing
+        assert_eq!(
+            said(&Event::ModelParamsChanged {
+                params: Params::new()
+            }),
+            "none; the provider's own defaults"
+        );
+        assert_eq!(
+            said(&Event::ModelParamsChanged {
+                params: [("temperature".to_owned(), Value::from(0.2))]
+                    .into_iter()
+                    .collect(),
+            }),
+            "{\"temperature\":0.2}"
+        );
+    }
+
+    #[test]
+    fn a_payload_says_how_big_it_is_and_where_to_read_it() {
+        assert_eq!(
+            said(&Event::ModelPayload {
+                payload: serde_json::json!({ "model": "one" }),
+            }),
+            "15 bytes, rendered by the provider; /payload prints it"
+        );
+    }
+
+    #[test]
+    fn a_tool_that_is_not_registered_is_named() {
+        assert_eq!(
+            said(&Event::ToolUnknown {
+                call: nachalnik::ToolCallId("c1".to_owned()),
+                tool: "dig".to_owned(),
+            }),
+            "`dig` was asked for and is not registered"
+        );
+    }
+
+    #[test]
+    fn a_repaired_call_says_the_identifier_it_has_now_and_why() {
+        // the provider gave no identifier at all, so there is nothing to arrow from
+        assert_eq!(
+            said(&Event::ToolCallRepaired {
+                call: nachalnik::ToolCallId("call_0".to_owned()),
+                was: String::new(),
+                reason: "the provider left the identifier empty".to_owned(),
+            }),
+            "gave a call the identifier `call_0`: the provider left the identifier empty"
+        );
+        assert_eq!(
+            said(&Event::ToolCallRepaired {
+                call: nachalnik::ToolCallId("call_1".to_owned()),
+                was: "1".to_owned(),
+                reason: "the provider reused an identifier from earlier in the session".to_owned(),
+            }),
+            "`1` → `call_1`: the provider reused an identifier from earlier in the session"
+        );
+    }
+
+    #[test]
+    fn reserved_identifiers_say_how_many_a_loaded_session_had_used() {
+        assert_eq!(
+            said(&Event::ToolCallsReserved { reserved: 5 }),
+            "5 identifier(s) a loaded session had already used"
+        );
+    }
+
+    #[test]
+    fn a_changed_compactor_says_what_went_out_and_what_makes_room_now() {
+        assert_eq!(
+            said(&Event::CompactorChanged {
+                from: Some("kamchatka::tools::Shedder".to_owned()),
+                to: Some("kamchatka::tools::KeepFirst".to_owned()),
+            }),
+            "Shedder → KeepFirst"
+        );
+        // and that nothing will ever be dropped is worth as much as the name of what will be
+        assert_eq!(
+            said(&Event::CompactorChanged {
+                from: Some("kamchatka::tools::Shedder".to_owned()),
+                to: None,
+            }),
+            "Shedder → none, so nothing is dropped"
+        );
+        assert_eq!(
+            said(&Event::CompactorChanged {
+                from: None,
+                to: Some("kamchatka::tools::Shedder".to_owned()),
+            }),
+            "none → Shedder"
+        );
     }
 }
