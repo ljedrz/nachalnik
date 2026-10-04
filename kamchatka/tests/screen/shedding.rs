@@ -1904,6 +1904,77 @@ async fn a_summary_is_priced_on_the_counters_own_scale() {
     );
 }
 
+/// The share a marker names is of counted tokens, so a context in which nothing could be counted
+/// is said as `0%` rather than as `under 1%`.
+///
+/// note: `under 1%` is for a share that rounds to nothing out of a context full of something. A
+/// context holding nothing but a picture every counter declines to price has nothing counted at
+/// all, and telling the model its context had reached under one percent of the limit is a claim
+/// about tokens nobody counted.
+#[tokio::test]
+async fn a_context_with_nothing_counted_is_said_as_no_share() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    // an attachment of a picture and two turns that said nothing: every counter in this workspace
+    // prices a picture at nothing, and there is nothing else here to count
+    kernel.push(ContextItem::file(
+        "screen.png",
+        Content::blob("image/png", "A".repeat(60_000)),
+    ));
+    kernel.push(ContextItem::user(""));
+    kernel.push(ContextItem::assistant(Content::text(""), vec![]));
+    kernel.push(ContextItem::user(""));
+    kernel.push(ContextItem::assistant(Content::text(""), vec![]));
+    let budget = against(kernel, Some(1_000_000));
+    assert_eq!(
+        budget.context_tokens, 0,
+        "the setup is not empty of figures"
+    );
+
+    // no threshold above what nothing is, which is the only way a pass here is made for room
+    let plan = Shedder {
+        threshold: 0.0,
+        target: 0.0,
+    }
+    .plan(&kernel.items(), &budget)
+    .await
+    .expect("a picture the model has been shown");
+    assert!(plan.reason.contains("reached 0%"), "{}", plan.reason);
+}
+
+/// With nothing in the context a scale can be derived from, the plain estimate is what a summary
+/// is priced on rather than nothing at all.
+///
+/// note: a context of empty turns and a picture is exactly that - every counter here prices a
+/// picture at nothing, and a turn's own words are left out of the scale - and a scale of nothing
+/// makes every drop pay for the summary it leaves, so a pass says it made room when it did not.
+#[tokio::test]
+async fn a_summary_is_priced_on_the_plain_scale_where_there_is_none_to_derive() {
+    let harness = Harness::new([]);
+    let kernel = &harness.app.kernel;
+    // a turn whose words are one token and whose call is the rest of what the request carries,
+    // answered by a result nothing can be counted from
+    let read = call("c1", "read", json!({}));
+    kernel.push(ContextItem::user(""));
+    kernel.push(ContextItem::assistant(
+        Content::text("ok"),
+        vec![read.clone()],
+    ));
+    kernel.push(ContextItem::tool_result(read.id.clone(), "read", "", false));
+    kernel.push(ContextItem::user(""));
+    let budget = against(kernel, Some(3));
+    assert!(Shedder::under(0.8).wants_room(&budget), "the setup is off");
+
+    assert!(
+        Shedder::under(0.8)
+            .plan(&kernel.items(), &budget)
+            .await
+            .is_none(),
+        "an exchange of {} tokens does not pay twice for a summary",
+        budget.context_tokens
+    );
+}
+
 /// What a picture frees is credited as the counter prices it, so a counter that does price one
 /// sees the room it made.
 ///
