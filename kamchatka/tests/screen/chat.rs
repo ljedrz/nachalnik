@@ -317,6 +317,89 @@ fn step() { let x = 1; }
     assert_eq!(comment, Color::Gray);
 }
 
+/// A fenced block is one blank row away from the prose either side of it.
+///
+/// note: the blank row is put in by this program rather than by the model, and the markdown
+/// renderer would have put one in had it drawn the block itself. Both answers are here because
+/// they answer different halves of the same question: a model that leaves a blank line already
+/// there must not get a second one, and a model that does not must still get one. The assertion is
+/// on the distance between the rows rather than on whether a row is empty, because the same
+/// drawing answers both, and a test that could not tell them apart would pass with either of them
+/// wrong.
+#[tokio::test]
+async fn a_fenced_block_is_a_blank_row_away_from_the_prose() {
+    for answer in [
+        "here is code:\n```rust\nfn f() {}\n```\nand that is all.\n",
+        "here is code:\n\n```rust\nfn f() {}\n```\n\nand that is all.\n",
+    ] {
+        let mut harness = Harness::new([]);
+        harness.app.say(Speaker::Model, answer);
+        harness.tab(Tab::Chat);
+
+        let screen = harness.sized(60, 20);
+        let row = |needle: &str| {
+            screen
+                .lines()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+        };
+
+        assert_eq!(
+            row("fn f() {}") - row("here is code:"),
+            2,
+            "one blank row above the block: {screen}"
+        );
+        assert_eq!(
+            row("and that is all.") - row("fn f() {}"),
+            2,
+            "one blank row below it: {screen}"
+        );
+    }
+}
+
+/// A language the fence named in words is coloured the way the language it names is.
+///
+/// note: models write `rust` and `python` where the highlighter thinks in `rs` and `py`, so there
+/// is a table between them. A block that came out with nothing coloured in it because of a
+/// spelling in that table looks like the highlighter had failed, and these are the spellings that
+/// come back: `python`, `javascript`, `typescript` and `c#`, with `node` and `csharp` being two of
+/// them under another name. (`yaml` and `c++` the highlighter reads as they are.)
+///
+/// note: what is asserted is that the two words are two colours apart, not which colours they
+/// are. A block nothing recognises is drawn all in cyan, so in one of those a comment and a
+/// keyword are a single colour - and the test then says what the reader is looking at rather than
+/// what the highlighter calls a token.
+#[tokio::test]
+async fn a_language_named_in_words_is_coloured_as_the_language_it_names() {
+    for (language, comment, keyword) in [
+        ("python", "# a comment", "def step"),
+        ("javascript", "// a comment", "const x"),
+        ("node", "// a comment", "const x"),
+        ("typescript", "// a comment", "let x"),
+        ("c#", "// a comment", "int x"),
+        ("csharp", "// a comment", "int x"),
+    ] {
+        let mut harness = Harness::new([]);
+        harness.app.say(
+            Speaker::Model,
+            format!("```{language}\n{comment}\n{keyword} = 1;\n```\n"),
+        );
+        harness.tab(Tab::Chat);
+
+        assert!(
+            harness.screen().contains(comment),
+            "a ```{language} block is drawn at all"
+        );
+        let (said, _) = harness.style_of(comment);
+        let (word, _) = harness.style_of(keyword);
+        assert_ne!(
+            said, word,
+            "```{language} came out with nothing in it coloured, which is what a language \
+             nothing here recognises looks like: {comment} and {keyword} are one colour"
+        );
+    }
+}
+
 #[tokio::test]
 async fn a_block_still_arriving_is_a_block_rather_than_prose() {
     // every code block is unterminated for as long as it is streaming in, and one read as prose
