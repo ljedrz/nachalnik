@@ -1645,6 +1645,47 @@ async fn a_command_is_asked_about_when_it_reaches_for_the_network_and_not_before
     assert!(policy.reaching().waiting().is_empty());
 }
 
+/// A command started while the network is a question is let through without one where the answer
+/// has become `always` by the time it reaches out.
+///
+/// note: the stance is read at the command's first attempt rather than when it started, so a yes
+/// with `always` to another command's question counts for this one too - asking again would be
+/// asking the person something they have already answered for good.
+#[tokio::test]
+async fn a_network_allowed_while_a_command_runs_lets_it_through_unasked() {
+    if !gated() {
+        return;
+    }
+    let (shell, policy) = gated_shell(&common::workdir("gate-allowed-meanwhile"));
+    let answers = answering(&policy, false);
+
+    let (socket, port) = listening();
+    let allowing = tokio::spawn({
+        let policy = policy.clone();
+        async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            policy.set(
+                &Subject::Capability(Capability::net("reach")),
+                Verdict::Allow,
+            );
+        }
+    });
+    let said = through(&shell, &format!("sleep 1; {}", two_datagrams(port))).await;
+    allowing.await.expect("the stance was set");
+
+    assert!(
+        said.contains("sent one") && said.contains("sent two"),
+        "{said}"
+    );
+    assert!(!said.contains("reached for the network"), "{said}");
+    assert_eq!(heard(&socket), ["one", "two"]);
+    assert_eq!(
+        answers.asked(),
+        0,
+        "a command was asked about an answer already given"
+    );
+}
+
 /// A network that is allowed lets a confined command connect over TCP: one the stance allows, and
 /// one the gate held until a person said yes.
 ///
