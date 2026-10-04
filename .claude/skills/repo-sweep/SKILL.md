@@ -174,11 +174,19 @@ json.dump({"model": "<model>", "requests": 0,
     "with the tools you have, and say plainly when something cannot be done. Do not run cargo: "
     "there is no toolchain here."}, open(os.environ["SWEEPS"] + "/fr.json", "w"))
 EOF
-for t in $SKILL/scopes/friction/*.txt; do
-    nohup $SKILL/friction.sh f-$(basename $t .txt) $t > /dev/null 2>&1 &
+for t in $SKILL/scopes/friction/*.txt; do          # three at a time; a session ends in `done`
+    while [ "$(jobs -rp | wc -l)" -ge 3 ]; do sleep 15; done
+    $SKILL/friction.sh f-$(basename $t .txt) $t > /dev/null 2>&1 &
+    sleep 60
 done
 python3 $SKILL/friction.py $SWEEPS/fr/tmp/kamchatka/*.json
 ```
+
+- `friction.sh` carries a session lost to the endpoint on, as the sweeps' resume does, so a free
+  model's 429s cost time rather than the session; started all at once, most die anyway.
+- Resumed sessions leave a snapshot per process, each holding the whole history before it, so
+  `friction.py` counts an early error once per snapshot. Count sessions by the snapshot name with
+  its `-N` suffix taken off before weighing a row.
 
 - Each session works in a worktree of its own, removed afterwards; what it changed is kept as
   `$SWEEPS/fr/NAME.diff`. The network is left to be asked about, so a command that reaches for it
