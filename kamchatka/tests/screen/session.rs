@@ -13,12 +13,62 @@ use kamchatka::{
     tools::Subject,
 };
 use nachalnik::{
-    Capability, Config, ContextItem, ContextState, Kernel, ModelResponse, Usage, Verdict,
+    Block, Capability, Config, Content, ContextItem, ContextState, Kernel, ModelResponse, Usage,
+    Verdict,
     test::{ConstTool, ScriptedProvider, call},
 };
 use serde_json::json;
 
 use crate::{common, harness::Harness};
+
+/// A save whose temporary name is already taken still saves.
+///
+/// note: `beside` names the file it is about to write `{path}.{pid}.{n}.writing` and opens it
+/// `create_new`, so a name somebody else already holds - a leftover from a run that was killed, or
+/// another process with this one to write beside the same file - is not overwritten and is not an
+/// error either: it takes the next number and writes there. The mode is the reason it is not an
+/// error: the session being written holds the whole conversation, and the name beside it can be
+/// anybody's.
+#[tokio::test]
+async fn a_save_past_a_name_already_taken_still_saves() {
+    let dir = common::scratch("save-taken-name");
+    let stem = dir.join("notes");
+    let (log, state) = (dir.join("notes.jsonl"), dir.join("notes.json"));
+
+    // every temporary name this process would try first, held by something else: the counter is
+    // shared with the rest of this binary, so the whole opening range is taken rather than one of
+    // them
+    for target in [&log, &state] {
+        for n in 0..512 {
+            std::fs::write(
+                format!("{}.{}.{n}.writing", target.display(), std::process::id()),
+                "not mine",
+            )
+            .expect("a name to be taken");
+        }
+    }
+
+    let mut harness = Harness::new([ModelResponse::text("noted")]);
+    harness.send("remember 4817").await;
+    harness.settle().await;
+    harness.send(&format!("/save {}", stem.display())).await;
+
+    let said = harness.flat();
+    assert!(!said.contains("could not write"), "{said}");
+    // and what was written is this session's, not the bytes the taken names hold
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_slice(&std::fs::read(&state).expect("the snapshot is there"))
+            .expect("the snapshot parses");
+    assert!(
+        snapshot
+            .items
+            .iter()
+            .any(|item| item.content.to_text().contains("remember 4817")),
+        "a name that was already taken became the session"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
 /// A session is named for when it started, in a name that is also its two files.
 ///
@@ -576,6 +626,14 @@ async fn a_loaded_session_hands_over_the_identifiers_it_already_used() {
         .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
     second.send(&format!("/load {}", saved.display())).await;
 
+    // and it says nothing about identifiers being given new ones, because none were: this kernel
+    // had issued none, so every name the snapshot brought is one it had not used
+    assert!(
+        !second.flat().contains("given new ones"),
+        "{}",
+        second.screen()
+    );
+
     // the loaded turn's identifier is now this kernel's own, and saying so is on the trace
     assert!(
         second
@@ -655,6 +713,13 @@ async fn a_session_loaded_into_itself_asks_no_call_twice() {
 
     harness.send(&format!("/save {}", saved.display())).await;
     harness.send(&format!("/load {}", saved.display())).await;
+
+    // and it says what it did about them: the copies were given new names, and the person is told
+    // how many, because the next request carrying one twice is otherwise a thing they have to
+    // notice on a provider's error rather than a thing the program said
+    let said = harness.flat();
+    assert!(said.contains("already used"), "{said}");
+    assert!(said.contains("given new ones"), "{said}");
 
     let asks_each_once = |harness: &Harness, exchanges: usize, when: &str| {
         let request = harness.app.kernel.preview_request().expect("a request");
@@ -775,6 +840,98 @@ async fn a_load_keeps_what_a_pinned_result_answers() {
             .filter(|message| message.tool_call_id.is_some())
             .count(),
         2
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A turn recorded as ordered blocks keeps its calls in its content, and a load that renames them
+/// has to rename them there too.
+///
+/// note: a turn whose order is part of it records its calls once, as `Block::Call`s inside its
+/// `Content::Blocks`, and reads them back from there - so the copy a load pushes carries the same
+/// names twice over, once in the list and once in the blocks. Renaming one without the other
+/// leaves a request asking `call_0` in the blocks while its result comes back under `call_0_1`,
+/// which is a request nothing answers.
+///
+/// note: this is the same claim as in `a_session_loaded_into_itself_asks_no_call_twice`, which has
+/// an ordinary turn where the calls live in the one place; this has one where they do not.
+#[tokio::test]
+async fn an_ordered_turn_loaded_into_itself_renames_its_calls_in_its_blocks() {
+    let dir = common::scratch("load-self-blocks");
+    let saved = dir.join("ordered.json");
+
+    let mut harness = Harness::new([
+        ModelResponse::blocks([
+            Block::text(Content::text("checking")),
+            Block::Call(call("call_0", "peek", json!({}))),
+            Block::text(Content::text("and there")),
+        ]),
+        ModelResponse::text("done"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "ok")));
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.send("look").await;
+    harness.settle().await;
+
+    // the fixture must have made an ordered turn, or there is nothing here to be wrong about
+    let ordered = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.calls().next().is_some())
+        .filter(|item| item.content.as_blocks().is_some())
+        .count();
+    assert_eq!(ordered, 1, "the fixture must make one ordered turn");
+
+    // the exchange pinned, as in the ordinary turn's test, so the load leaves it in the request
+    // beside the copy it brings
+    let exchange: Vec<_> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| item.calls().next().is_some() || item.kind.name() == "tool_result")
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(exchange.len(), 2, "the fixture must make one exchange");
+    harness
+        .app
+        .kernel
+        .set_state(exchange, ContextState::Pinned, None);
+
+    harness.send(&format!("/save {}", saved.display())).await;
+    harness.send(&format!("/load {}", saved.display())).await;
+
+    let request = harness.app.kernel.preview_request().expect("a request");
+    let mut asked: Vec<String> = request
+        .messages
+        .iter()
+        .flat_map(|message| message.calls().map(|c| c.id.0.clone()).collect::<Vec<_>>())
+        .collect();
+    let mut answered: Vec<String> = request
+        .messages
+        .iter()
+        .filter_map(|message| message.tool_call_id.as_ref().map(|id| id.0.clone()))
+        .collect();
+    assert_eq!(asked.len(), 2, "every exchange goes out: {asked:?}");
+    asked.sort();
+    answered.sort();
+    assert_eq!(asked, answered, "every call is answered by its own result");
+    asked.dedup();
+    assert_eq!(asked.len(), 2, "one identifier asked twice: {answered:?}");
+    // the copy is one of two accounts of the same call, and the names in them agree: a name the
+    // original keeps is beside one the copy took, not the name the copy asked under as well
+    assert!(
+        asked.contains(&"call_0".to_owned()) && asked.contains(&"call_0_1".to_owned()),
+        "the loaded copy was not given a name of its own: {asked:?}"
     );
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -1123,6 +1280,86 @@ async fn a_load_does_not_leave_the_set_aside_calls_waiting_to_run() {
         !loaded || second.app.kernel.pending_calls().is_empty(),
         "the loaded context has the set-aside session's calls waiting to run"
     );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A model that answers when it is let, which is how a turn is held in flight for a test.
+///
+/// note: a sleep rather than a gate, because this is about the state a turn is *in* - a request
+/// out, nothing decided, nothing prepared - and the only thing that has to be true is that it has
+/// not come back yet when the line is handed in. The sleep is a second and the line is handed in
+/// straight away.
+struct Slow;
+
+#[nachalnik::async_trait]
+impl nachalnik::Provider for Slow {
+    fn info(&self) -> nachalnik::ModelInfo {
+        nachalnik::ModelInfo::new("slow", "slow").with_context_limit(128_000)
+    }
+
+    async fn respond(
+        &self,
+        _request: nachalnik::ModelRequest,
+        deltas: nachalnik::DeltaSink,
+    ) -> Result<nachalnik::ModelResponse, nachalnik::BoxError> {
+        deltas.text("thinking about it");
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        Ok(ModelResponse::text("eventually"))
+    }
+}
+
+/// A load is refused while a turn is under way.
+///
+/// note: the load would change the request the model is answering.
+///
+/// note: the line is handed to `App::submit` rather than typed, because a person at a terminal
+/// cannot get the prompt while a question stands in its place - the keys are the question's - and
+/// the door this is about is the other one, a caller driving `App` and giving it the line.
+#[tokio::test]
+async fn a_load_mid_turn_is_refused() {
+    let dir = common::scratch("load-mid-turn");
+
+    let mut first = Harness::new([ModelResponse::text("4817, noted")]);
+    first.send("remember 4817").await;
+    first.settle().await;
+    first
+        .send(&format!("/save {}", dir.join("before").display()))
+        .await;
+    let saved = dir.join("before.json");
+
+    let refused = |said: &str| {
+        assert!(said.contains("a call is waiting to be answered"), "{said}");
+    };
+
+    // a turn under way: the request is out and nothing has come back
+    let mut running = Harness::new([]);
+    running.app.kernel.set_provider(Arc::new(Slow));
+    running.send("what is the weather").await;
+    assert!(running.app.busy, "the fixture must leave a turn running");
+    let reply = running
+        .app
+        .submit(&format!("/load {}", saved.display()))
+        .await;
+    refused(
+        &reply
+            .said
+            .iter()
+            .map(|e| e.text.clone())
+            .collect::<String>(),
+    );
+    assert!(
+        !running
+            .app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("4817")),
+        "the load went into a session whose request was still out"
+    );
+    running.app.interrupt();
+    running.settle().await;
 
     let _ = std::fs::remove_dir_all(&dir);
 }
