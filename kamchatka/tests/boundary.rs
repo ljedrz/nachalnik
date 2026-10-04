@@ -773,6 +773,131 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
     assert!(note.contains("may read and not write"), "{note}");
 }
 
+/// Each of the three spellings of a refusal is a refusal on its own.
+///
+/// note: they are listed together in `refused` and joined by `||` because any one of them is the
+/// same refusal written by a different layer - a C program's `strerror`, Rust's `io::Error`
+/// display, and the errno name itself. A message carrying the errno alone is written by programs
+/// that have it and nothing else to say: `EACCES` out of a Go client, `os error 13` out of
+/// something that formats the raw result. Read as a conjunction, both go unmentioned, and the
+/// session carries on as though nothing had been refused.
+#[test]
+fn a_refusal_written_in_any_of_its_spellings_is_a_refusal() {
+    use kamchatka::sandbox::Sandbox;
+
+    let confined = Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+
+    // a refusal naming nothing is owed the general sentence, and a refusal naming a path out of
+    // reach is owed that path - both only if the line was recognised as a refusal at all
+    for (stderr, said) in [
+        (
+            "sh: line 1: /home/someone/.ssh/id_rsa: os error 13\n",
+            "/home/someone/.ssh/id_rsa is outside what this session reaches",
+        ),
+        (
+            "sh: line 1: /home/someone/.ssh/id_rsa: EACCES\n",
+            "/home/someone/.ssh/id_rsa is outside what this session reaches",
+        ),
+        // the same refusal with nothing in it to pick a path out of
+        ("connect: EACCES (13)\n", "ran confined"),
+    ] {
+        let note = confined
+            .note_for(stderr)
+            .unwrap_or_else(|| panic!("`{stderr}` is a refusal and nothing was said of it"));
+        assert!(note.contains(said), "{stderr}: {note}");
+    }
+}
+
+/// A token that begins with a slash is a path, and is named whatever else is in it.
+///
+/// note: the filter leaves a URL out by asking more of a relative token than a `/` in it, and the
+/// question is which clause a token reaches first. A token written `/tmp/odd://etc/passwd` is a
+/// command quoting its own path with the empty component left in - and it reaches the slash at the
+/// front, which is a path, so it is named. Under the second clause alone it would be a URL and
+/// dropped, and the refusal would say only that something had been refused.
+///
+/// note: the token is the shape and not a path anybody has: what is checked is the order the two
+/// clauses are read in, and this is the only token where they disagree.
+#[test]
+fn an_absolute_path_that_looks_like_a_url_is_still_named() {
+    use kamchatka::sandbox::Sandbox;
+
+    let confined = Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+
+    let note = confined
+        .note_for("sh: /tmp/odd://etc/passwd: Permission denied\n")
+        .expect("something was refused, and it named the path");
+    assert!(note.contains("/tmp/odd://etc/passwd"), "{note}");
+
+    // ... and a URL that is not a path is left out, which is what the second clause is for: a
+    // `docker` refusal naming a registry does not send a model after a path called `https:`
+    let note = confined
+        .note_for("dial tcp: lookup https://registry.example/v2/: Permission denied\n")
+        .expect("something was refused");
+    assert!(
+        !note.contains("registry.example"),
+        "a URL is not a path this session reaches or does not: {note}"
+    );
+}
+
+/// What the startup probe reports as gated is what the child said, not what this kernel could do.
+///
+/// note: `gated` is the answer a session's whole network stance is built on: `Setup::wire` hands
+/// `shell` a confiner only where the probe held, and the permissions tab draws the same probe. A
+/// child that did not put the gate on says so, and a child that did not get a ruleset says so
+/// either - and in neither case is the network behind anything whatever, whatever `holds()` says
+/// about this kernel. Reading either half on its own would answer yes to a child that reported no.
+///
+/// note: asked of a stand-in for the child rather than of the real binary, because the two halves
+/// cannot both be true of it on one machine: a kernel that confines is a kernel whose ruleset took,
+/// and the case that matters is the report that says otherwise. The stand-in is handed the same
+/// arguments and answers with the line the confined child writes.
+#[test]
+fn the_gate_is_reported_only_where_the_child_said_it_went_on() {
+    let stand_in = common::scratch("stand-in").join("probe.sh");
+    for (report, said) in [
+        // the ruleset took and the gate did not go on, which is what a child whose standard input
+        // is not the socket comes back with
+        ("full", false),
+        // the ruleset did not take, whatever the gate said about itself
+        ("unavailable gated", false),
+    ] {
+        std::fs::write(
+            &stand_in,
+            format!("#!/bin/sh\necho 'kamchatka-confinement:{report}' >&2\n"),
+        )
+        .expect("the stand-in");
+        std::fs::set_permissions(
+            &stand_in,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .expect("it is run");
+
+        let probed = kamchatka::sandbox::available(&stand_in);
+        assert!(
+            probed.gated == said,
+            "the child reported `{report}` and this said gated: {}",
+            probed.gated
+        );
+    }
+}
+
 /// A relative path in a refusal is judged where the command ran, and is never read as an absolute
 /// one: a script with no execute bit is its own permissions, and a write one directory up is the
 /// boundary, named as the command wrote it.
@@ -935,6 +1060,60 @@ fn a_climb_out_of_a_directory_that_is_not_there_is_refused() {
     // and a `..` through a directory that is there is resolved as it always was
     std::fs::create_dir_all(dir.join("w").join("here")).expect("a directory");
     assert!(reach.allows("here/../notes.txt", Access::Writing).is_ok());
+}
+
+/// A chain of links longer than the bound is refused rather than followed to its end.
+///
+/// note: `LINKS` is there because two links can point at each other and forty of them can be
+/// laid out by whoever made them. A counter that never moved is a bound that is not a bound: the
+/// whole chain is followed, and where it lands is then compared with a reach it walked out of -
+/// so the refusal that must be given is the one that says where it leads cannot be checked.
+///
+/// note: the chain ends at a file that is there and out of reach, so the last link is followed to
+/// the end of the walk rather than to somewhere that does not exist. A chain within the bound is
+/// followed here as well, which is what says the refusal is about the length.
+#[test]
+fn a_chain_of_links_longer_than_the_bound_is_refused() {
+    use kamchatka::sandbox::{Access, Reach};
+
+    let dir = common::scratch("links").canonicalize().expect("it exists");
+    let reach = Reach {
+        workdir: dir.join("w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+    std::fs::create_dir_all(&reach.workdir).expect("the working directory");
+
+    let outside = dir.join("secret");
+    std::fs::write(&outside, "").expect("a file out of reach");
+    // note: longer than twice what the kernel will resolve in one go, because `resolve` compares
+    // a prefix of the chain at a time and `canonicalize` answers for a chain of forty links. A
+    // counter over a chain this length is the only thing standing between the walk and the end
+    let chain = 82;
+    for nth in 0..chain {
+        let target = match nth + 1 == chain {
+            true => outside.clone(),
+            false => PathBuf::from(format!("l{}", nth + 1)),
+        };
+        std::os::unix::fs::symlink(&target, reach.workdir.join(format!("l{nth}"))).expect("a link");
+    }
+
+    let refused = reach
+        .allows("l0", Access::Reading)
+        .expect_err("a chain this long is not followed to its end, so where it leads is unknown");
+    assert!(refused.contains("too long to follow"), "{refused}");
+
+    // ... and one within the bound is followed, so the refusal is about the length of the chain
+    // and not about links in general
+    std::os::unix::fs::symlink(&outside, reach.workdir.join("near")).expect("a link");
+    let refused = reach
+        .allows("near", Access::Reading)
+        .expect_err("it leads out of the working directory");
+    assert!(
+        refused.contains("outside what this session reaches"),
+        "{refused}"
+    );
 }
 
 /// A standard error of a great many refused paths is accounted for in a moment, naming three.
