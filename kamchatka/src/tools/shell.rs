@@ -1492,6 +1492,14 @@ mod tests {
         assert!(said.starts_with("exit: 0"), "{said}");
         assert!(said.contains("started\nno newline"), "{said}");
         assert!(said.contains("standard output is still open"), "{said}");
+
+        // and only where something was left holding the pipe: a command whose standard error
+        // ended with it says nothing about one that did not, or the note is on every result and
+        // the model reads it as a claim about this one
+        let said = ran("echo complained >&2").await;
+
+        assert!(said.contains("complained"), "{said}");
+        assert!(!said.contains("still open"), "{said}");
     }
 
     /// The last line of the output is kept when it has no newline and the command was quiet
