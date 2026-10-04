@@ -1391,6 +1391,29 @@ mod tests {
         }
     }
 
+    /// Standard error that is not text is held to the ceiling as text, cut where a character
+    /// ends, and every byte of it is either kept or counted.
+    ///
+    /// note: held to the ceiling as bytes while it is read, standard error grows on the way to
+    /// text - a byte that is not UTF-8 is the three of `�` - so it is held to it again there, and
+    /// the ceiling falls inside a character.
+    #[tokio::test]
+    async fn standard_error_that_is_not_text_is_cut_between_characters() {
+        let said = ran(&format!("head -c {KEPT} /dev/zero | tr '\\0' '\\377' >&2")).await;
+
+        let errors = said
+            .split_once("--- stderr ---\n")
+            .and_then(|(_, rest)| rest.split_once("\n--- stdout ---"))
+            .map(|(errors, _)| errors)
+            .unwrap_or_else(|| panic!("no standard error: {}", &said[..200]));
+        assert!(errors.len() <= KEPT, "{} bytes kept", errors.len());
+        let unkept = said.lines().nth(1).unwrap_or_default();
+        assert!(
+            unkept.starts_with(&format!("[{} more bytes", 3 * KEPT - errors.len())),
+            "{unkept}"
+        );
+    }
+
     /// What a command said went wrong comes before what it printed, where a limit cutting from the
     /// end cannot take it.
     #[tokio::test]
@@ -1414,9 +1437,12 @@ mod tests {
     }
 
     /// A line past the ceiling keeps its start, and what went is counted to the byte.
+    ///
+    /// note: ending in characters of three bytes, the first of which the ceiling falls inside, so
+    /// that the start kept ends where a character does rather than at the ceiling itself.
     #[test]
     fn a_line_past_the_ceiling_keeps_its_start() {
-        let line = vec![b'x'; KEPT + 10];
+        let line = [vec![b'x'; KEPT - 2], "€€€".as_bytes().to_vec()].concat();
         let (mut collected, mut full, mut dropped) = (String::new(), false, 0);
         keep(
             &line,
@@ -1429,6 +1455,23 @@ mod tests {
         assert!(full);
         assert!(collected.starts_with("xxx") && collected.len() <= KEPT);
         assert_eq!(collected.trim_end().len() + dropped, line.len());
+    }
+
+    /// A line that exactly fills the ceiling is kept whole, and does not fill it for the next one.
+    #[test]
+    fn a_line_that_exactly_fills_the_ceiling_is_kept_whole() {
+        // the room for a line is the ceiling less the newline it is kept with
+        let line = [vec![b'x'; KEPT - 1], b"\n".to_vec()].concat();
+        let (mut collected, mut full, mut dropped) = (String::new(), false, 0);
+        keep(
+            &line,
+            &mut collected,
+            &OutputSink::disconnected(),
+            &mut full,
+            &mut dropped,
+        );
+
+        assert_eq!((collected.len(), full, dropped), (KEPT, false, 0));
     }
 
     /// A command that finishes and leaves something running still answers.
