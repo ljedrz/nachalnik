@@ -75,6 +75,10 @@ minor bump may break you.
   an interrupt says that what is below is what it had said by then, and a line it had not ended -
   `printf 'downloading 45%'`, the progress line a slow command is stopped during - was dropped, so
   the answer under that sentence could be empty.
+- **A `ctrl+c` sent to a served session just after it starts listening ends it as one sent later
+  does**, with `130` and the session's record written. `ctrl+c` was listened for only once the
+  serving loop began, so a press between the socket appearing and that moment killed the process
+  where it stood, as `SIGTERM` and `SIGHUP` used to before they were listened for from the bind.
 - **Two MCP servers under one name are refused, whatever they offer.** Two `npx` lines with no
   `name=` both took the name `npx`, and where their tools did not clash both were let in - so
   `--allow-server npx`, or an `always` answered for one of them, granted both. It is refused
