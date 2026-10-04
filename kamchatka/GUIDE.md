@@ -70,8 +70,7 @@ so the figure is a **floor**. Nothing here has a tokenizer for a PDF, and a bare
 made the largest thing in the request read as the cheapest row in the pane you opened to decide
 what to delete.
 
-**sending** is what an item puts into the next request; **held** is what it is keeping out of one.
-For most rows the first is everything and the second is blank. The rows where they differ are the
+For most rows **sending** is everything and **held** is blank. The rows where they differ are the
 ones worth finding: an elided tool result holds all it ever held and spends only the marker that
 replaced it, an excluded item spends nothing at all, and an assistant turn sends what it said while
 holding what it thought. The `sending` column adds up to the figure on the status line less the
