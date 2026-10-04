@@ -348,6 +348,67 @@ async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
     );
 }
 
+/// A detail that wraps hangs under the column its event's name is in, not under the row above.
+///
+/// note: the one pane whose promise is that a detail wraps rather than being cut, so the hang is
+/// what makes a wrapped detail readable: the second row of a detail has to come back to where
+/// the first one began, or the pane is a paragraph of prose with a couple of words of name
+/// against its left. The columns in front are the clock and the gap; the width of those is what
+/// is being asserted, and it is what a pane that puts one under and not the other gets wrong.
+#[tokio::test]
+async fn a_detail_that_wraps_hangs_under_the_column_its_name_is_in() {
+    use std::time::{Instant, SystemTime};
+
+    use kamchatka::app::Traced;
+
+    let mut harness = Harness::new([]);
+
+    // long enough to wrap in a 120-column window, and with one word of its own at each end so
+    // that the two rows can be found separately
+    harness.app.trace.push_back(Traced {
+        name: "tool.started".to_owned(),
+        detail:
+            "X0 alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike \
+                 november oscar"
+                .to_owned(),
+        at: Instant::now(),
+        wall: SystemTime::now(),
+        after_a_person: false,
+    });
+    harness.tab(Tab::Trace);
+
+    let screen = harness.sized(120, 20);
+    // where each of these starts, in cells rather than bytes - the pane is drawn in a frame, and
+    // the border and the `─` of the date row are what make a byte offset and a column disagree
+    let column = |needle: &str| {
+        let line = screen
+            .lines()
+            .find(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"));
+        line[..line.find(needle).unwrap()].chars().count()
+    };
+
+    // `mike` is the first word of the continuation, so where it is is where that row begins. It
+    // has to be a row of its own for any of this to be about hanging
+    let hanging = screen.lines().filter(|line| line.contains("mike")).count() == 1
+        && screen.lines().any(|line| line.contains("oscar"));
+    assert!(
+        hanging,
+        "the detail should have wrapped into two rows: {screen}"
+    );
+    assert_eq!(
+        column("X0"),
+        column("mike"),
+        "the continuation hangs where the detail began: {screen}"
+    );
+    // ... and that is out past the name's column, so a detail can never be read as part of the
+    // name above it
+    assert!(
+        column("X0") > column("tool.started"),
+        "the detail starts out past the name's column: {screen}"
+    );
+}
+
 #[tokio::test]
 async fn a_run_that_outlasts_a_day_says_which_day_each_line_is_on() {
     use std::time::{Duration, SystemTime};

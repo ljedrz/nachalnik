@@ -390,6 +390,55 @@ async fn a_fenced_block_is_a_blank_row_away_from_the_prose() {
     }
 }
 
+/// A table is one blank row away from the prose either side of it, and never two.
+///
+/// note: the same question as the fenced block above, asked of the other block this program
+/// draws itself, and the two are drawn by different arms of the same match. What is not visible
+/// from either is which side of the last chunk the blank belongs on: a table or a fence is put
+/// one row away from what came before it, and the row after it is the next chunk's to put, so a
+/// table that closed the answer ends a row before a message the model did not ask for is. The
+/// second case here is a table at the very end of an answer - there is no next chunk at all, and
+/// nothing else puts that row there.
+#[tokio::test]
+async fn a_table_is_a_blank_row_away_from_the_prose_either_side_of_it() {
+    // the same answer, once with prose after the table and once ending in it: the rows below the
+    // table are counted, not the row some particular text lands on, because the blank under a
+    // table that ends an answer is the same row either way and only the chunk above it differs
+    for answer in [
+        "here is a table:\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nand that is all.\n",
+        "here is a table:\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n",
+    ] {
+        let mut harness = Harness::new([]);
+        harness.app.say(Speaker::Model, answer);
+        // and something after the answer, so the row below the table is bounded on both sides
+        // and a blank row there is one this program put there rather than the frame's own
+        harness.app.say(Speaker::User, "and then?");
+        harness.tab(Tab::Chat);
+
+        let screen = harness.sized(60, 20);
+        let rows: Vec<&str> = screen.lines().collect();
+        let row = |needle: &str| {
+            rows.iter()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+        };
+        let empty = |at: usize| rows[at].trim_start_matches(['│', ' ']).is_empty();
+
+        let head = row("here is a table:");
+        assert!(empty(head + 1), "one blank row above the table: {screen}");
+
+        // ... and exactly one below it, whether the next chunk is a sentence, or the chat's own
+        // blank under an answer that ends with its table
+        let floor = row("└");
+        let below = (floor + 1..rows.len()).find(|at| !empty(*at));
+        assert_eq!(
+            below,
+            Some(floor + 2),
+            "one blank row below the table, and no more: {screen}"
+        );
+    }
+}
+
 /// A language the fence named in words is coloured the way the language it names is.
 ///
 /// note: models write `rust` and `python` where the highlighter thinks in `rs` and `py`, so there
@@ -2145,6 +2194,64 @@ async fn a_tool_exchange_leaves_the_chat_the_way_it_leaves_the_request() {
     assert!(
         !screen.contains("⟩ peek("),
         "a call that is not in the request must not read as one that is: {screen}"
+    );
+}
+
+/// A turn and the calls it asked for say once between them why they are not going.
+///
+/// note: the same item produces several lines on the chat - a turn that asked for two tools is a
+/// line for the turn and one for each call - and the mark saying the item is out belongs to the
+/// item rather than to any one of those lines. Printed on each it is the same sentence three
+/// times over a rule and two calls, and the reader is left counting how many things went wrong.
+/// Compared against the *last* marked item rather than reset, so the calls following a withheld
+/// turn are the ones that get no second mark.
+#[tokio::test]
+async fn a_withheld_turn_and_the_calls_it_asked_for_say_once_that_they_are_not_going() {
+    use nachalnik::ContextKind;
+
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![
+            call("c1", "peek", json!({})),
+            call("c2", "stare", json!({})),
+        ]),
+        ModelResponse::text("so it says MODELSAID"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "the first thing")));
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("stare", "the second thing")));
+    harness.send("have a look").await;
+    harness.settle().await;
+
+    // both answers taken out, which takes the turn that asked out with them
+    let results: Vec<_> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::ToolResult { .. }))
+        .map(|item| item.id)
+        .collect();
+    assert_eq!(results.len(), 2, "both tools really ran");
+    harness
+        .app
+        .kernel
+        .set_state(results, ContextState::Excluded, Some("by hand".into()));
+    harness.drain();
+    harness.tab(Tab::Chat);
+
+    let screen = harness.flat();
+    // one turn and two calls are on the chat, so there are three lines to mark between them
+    assert!(screen.contains("peek("), "{screen}");
+    assert!(screen.contains("stare("), "{screen}");
+    assert_eq!(
+        screen.matches("no content and no answered calls").count(),
+        1,
+        "a turn and its calls are one thing not being sent, and say so once between them: {screen}"
     );
 }
 
