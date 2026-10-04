@@ -520,6 +520,20 @@ fn rows_are_counted_the_way_the_widget_wraps_them() {
         ui::wrapped_rows(&["aaaa bbbb cccc".to_owned(), "short".to_owned()], 10),
         3
     );
+    // and an empty line in among them is a row of its own, which is what a blank line in a
+    // message being typed is. Counted as nothing, the box is a row short and the line the
+    // person typed first is the one that falls off the top
+    assert_eq!(
+        ui::wrapped_rows(
+            &[
+                "aaaa bbbb cccc".to_owned(),
+                String::new(),
+                "short".to_owned(),
+            ],
+            10
+        ),
+        4
+    );
     // a width of nothing is not a division by zero
     assert_eq!(ui::wrapped_rows(&["anything".to_owned()], 0), 1);
 }
@@ -730,6 +744,89 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
     assert!(
         !floor.contains('\u{2026}'),
         "rather than a stub cut down to the floor: {floor}"
+    );
+}
+
+/// A name in wide characters is cut by the cell rather than by the character, and the figures
+/// beside it stay whole.
+///
+/// note: the far end of the name is found by taking a *suffix* that fits, which is the one place
+/// in the program that walks backwards over graphemes, and it has to make the same three
+/// decisions the forward cut makes: that a cell is not a character, that a grapheme is not a
+/// character either, and that a suffix already one grapheme long is not cut further. Each of
+/// those is a width of its own on this line, and none of them is reached by a name in ASCII.
+///
+/// note: `dots-studio/日本語のモデルuz` rather than the name the other ladder walks, because the
+/// tail is what is being measured: `uz` at the far end means the cut runs out of wide characters
+/// and has to count the ASCII ones in the same currency, and a suffix counted in characters
+/// rather than cells comes back a whole character too wide - the column the ellipsis was holding
+/// room for is spent on it, and the figure at the far end of the row goes off the edge, which is
+/// the one thing this ladder exists to prevent.
+#[test]
+fn a_name_in_wide_characters_is_cut_by_the_cell_and_the_figures_stay() {
+    let status_at = |model: &str, width: u16| {
+        let kernel = Kernel::new(Config::default());
+        let policy = Arc::new(Careful::new());
+        let provider = Arc::new(OpenAiCompatible::new(
+            model,
+            "https://openrouter.ai/api/v1",
+            "",
+        ));
+        kernel.set_provider(provider.clone());
+        kernel.set_policy(policy.clone());
+        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
+        std::mem::forget(keep);
+        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
+
+        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
+        terminal
+            .draw(|frame| ui::draw(frame, &mut app))
+            .expect("a frame");
+        let buffer = terminal.backend().buffer().clone();
+        (0..width)
+            .map(|x| buffer[(x, 11)].symbol())
+            .collect::<String>()
+    };
+
+    const NAME: &str = "dots-studio/日本語のモデルuz";
+    let row = |width| status_at(NAME, width);
+
+    // and the figure is whole at every width where it can be: the address has already gone and
+    // the vendor with it by now, so the name is what has to give
+    for width in 55..=62 {
+        let line = row(width);
+        assert!(
+            line.contains("of an unknown limit"),
+            "at {width} the figure lost its end to the name: {line}"
+        );
+    }
+
+    // and the tail is the same at 55 and 56, a character longer at 57, and the whole name at 58
+    // where the vendor prefix is still on the row and nothing has been cut. Each of those is a
+    // width of its own on this line, and the step from 56 to 57 is the one that is easy to get
+    // wrong: a suffix that has already taken one wide character must be protected from taking
+    // another, and without that it walks back into the character it already had
+    for (width, tail) in [
+        (55, "語 の モ デ ル uz"),
+        (56, "語 の モ デ ル uz"),
+        (57, "本 語 の モ デ ル uz"),
+    ] {
+        let line = row(width);
+        let kept = line
+            .split_once('\u{2026}')
+            .map(|(_, after)| after.split(" · ").next().unwrap_or_default())
+            .unwrap_or_default();
+        assert_eq!(kept.trim(), tail, "at {width}, the row is: {line}");
+    }
+
+    // the far end of the name is what is kept, rather than the middle, and the ellipsis says the
+    // rest of it is gone rather than the row simply being short
+    let cut = row(56);
+    assert!(cut.contains('\u{2026}'), "it says it was cut: {cut}");
+    assert!(!cut.contains('@'), "the address had gone first: {cut}");
+    assert!(
+        !cut.contains("dots-studio/"),
+        "and the vendor after it: {cut}"
     );
 }
 

@@ -594,6 +594,74 @@ async fn a_fenced_block_at_the_end_of_an_answer_is_one_blank_row_from_the_next()
     );
 }
 
+/// A list item that has to be wrapped hangs its continuation under the item rather than under
+/// the marker.
+///
+/// note: `- ` and `1. ` are indentation as far as reading it goes, and the width of the marker
+/// is what the second row of an item is indented by - a two-column marker and a three-column one
+/// hang by different amounts. A row back at the margin instead reads as a second item, which for
+/// `1.` means a second item of a numbered list that has one, and for a `-` means a paragraph
+/// beside a list rather than part of it.
+///
+/// note: asserted on the columns rather than on the text, because the text is the same either
+/// way. And on both markers, because a marker of one width hanging correctly says nothing about
+/// a marker of another.
+#[tokio::test]
+async fn a_wrapped_list_item_continues_under_the_item_rather_than_at_the_margin() {
+    let item = "the first item is long enough that it has to be wrapped onto another row";
+
+    for (marker, hang) in [("- ", 2), ("1. ", 3), ("12. ", 4)] {
+        let mut harness = Harness::new([]);
+        harness
+            .app
+            .say(Speaker::Model, format!("a list:\n\n{marker}{item}\n"));
+
+        let screen = harness.sized(60, 20);
+
+        // the item's row and the row that continues it. Which words land on the second row differs
+        // with the width of the marker, so the row is found by position rather than by content -
+        // and by content the prompt's help line below the pane has words in common with a list
+        // of somebody's advice
+        let pane = screen
+            .lines()
+            .take_while(|line| !line.starts_with("┌ you"))
+            .collect::<Vec<_>>();
+        let at_row = pane
+            .iter()
+            .position(|line| line.contains("the first item is"))
+            .unwrap_or_else(|| panic!("the item is on the screen: {screen}"));
+        let first = pane[at_row];
+        let second = pane[at_row + 1..]
+            .iter()
+            .find(|line| !line.trim_matches(['│', ' ']).is_empty())
+            .unwrap_or_else(|| panic!("the item is on one row only: {screen}"));
+
+        // both counts are after the pane's own border, so what is compared is the indentation
+        // inside the row rather than where the row starts
+        let hang_of = |line: &str| {
+            line.chars()
+                .skip_while(|c| *c == '│')
+                .take_while(|c| c.is_whitespace())
+                .count()
+        };
+
+        // the continuation is indented to where the item's *text* starts, which is a marker's width in:
+        // a row back at the margin reads as a second item, which for `1.` is a second item of a
+        // numbered list that has one, and for `-` a paragraph beside a list rather than part of it
+        assert_eq!(
+            hang_of(second),
+            hang,
+            "with `{marker}` the continuation is not under the item's text:\n{first}\n{second}"
+        );
+        // and the marker itself is at the margin, or there would be nothing to hang under
+        assert_eq!(
+            hang_of(first),
+            0,
+            "with `{marker}` the item's marker is not at the margin:\n{first}\n{second}"
+        );
+    }
+}
+
 /// A language the fence named in words is coloured the way the language it names is.
 ///
 /// note: models write `rust` and `python` where the highlighter thinks in `rs` and `py`, so there
