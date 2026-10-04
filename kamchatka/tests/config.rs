@@ -511,6 +511,23 @@ fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
         !out.contains("Error: kamchatka.json"),
         "a file that says nothing is named as though it had: {out}"
     );
+
+    // and a file that carries the key too, which is the case that takes both halves to tell: the
+    // file did say something about `compact`, and what is wrong is not it
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "compact": 0.9 }"#).expect("written");
+
+    let (ok, out) = run_from(
+        &dir,
+        &["--config-file", "kamchatka.json", "--compact", "2"],
+        "",
+    );
+
+    assert!(!ok, "{out}");
+    assert!(out.contains("was `2`"), "what was wrong: {out}");
+    assert!(
+        !out.contains("Error: kamchatka.json"),
+        "the file is named for a value somebody typed over it: {out}"
+    );
 }
 
 /// A word the file gets wrong says what the word is for and what it can be.
@@ -1382,6 +1399,44 @@ fn a_resume_numbers_nothing_again_that_the_log_past_the_snapshot_numbered() {
         begun.seq > seq + 3,
         "the resumed log begins at {}",
         begun.seq
+    );
+}
+
+/// And a question the log past the snapshot asked and never answered is a number not handed out
+/// again.
+///
+/// note: the other half of the case above, and the half only this one reaches: a run stopped
+/// while somebody was being asked carries `permission.requested` with no `permission.decided`
+/// after it, and a session carried on from there that reused the identifier would put two
+/// questions in one log under one number.
+#[test]
+fn a_resume_does_not_hand_out_again_a_permission_the_log_left_unanswered() {
+    let dir = common::scratch("resumed-unanswered");
+    let (ok, said) = run_from(&dir, &[], "remember 4817\n/save first.json\n");
+    assert!(ok, "{said}");
+
+    let first: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("first.json")).expect("saved"))
+            .expect("a snapshot");
+    let asked = first.next_permission;
+    let unanswered = serde_json::json!({ "seq": first.last_seq + 1, "at": 0, "event": {
+        "event": "permission.requested", "request": { "id": asked, "call": "lost", "tool": "fs",
+        "capabilities": ["fs:write"], "args": {} } } });
+    let mut log = std::fs::read_to_string(dir.join("first.jsonl")).expect("saved");
+    log.push_str(&format!("{unanswered}\n"));
+    std::fs::write(dir.join("first.jsonl"), log).expect("written");
+
+    let (ok, said) = run_from(&dir, &["-r", "first.json"], "/save second.json\n");
+    assert!(ok, "{said}");
+
+    let second: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("second.json")).expect("saved"))
+            .expect("a snapshot");
+    assert!(
+        second.next_permission > asked,
+        "{} after {asked}, so the question the log left unanswered is asked again under the same \
+         number",
+        second.next_permission
     );
 }
 
