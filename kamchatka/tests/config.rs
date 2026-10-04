@@ -919,6 +919,38 @@ fn a_named_file_beats_the_one_underfoot() {
     assert!(!said.contains("settings read from"), "{said}");
 }
 
+/// A file under this person's own config directory is read without anybody being asked about it.
+///
+/// note: the other half of the case above, and it is a question about *where* the file was found
+/// rather than what is in it: the working directory's is somebody else's, the one under
+/// `XDG_CONFIG_HOME` is this person's own, and a file there that starts a server is a server the
+/// person asked for. Nothing here stands in a working directory with a file in it, so what is read
+/// is the one under the config directory - and a run that asked about it would be asking somebody
+/// about their own configuration.
+#[test]
+fn a_file_in_this_persons_config_directory_is_read_without_asking() {
+    let dir = common::scratch("config-directory");
+    let home = dir.join("xdg").join("kamchatka");
+    std::fs::create_dir_all(&home).expect("a config directory to stand in for a person's");
+    let file = home.join("kamchatka.json");
+    std::fs::write(
+        &file,
+        r#"{ "model": "a-model-from-ones-own-config", "spend": 4321 }"#,
+    )
+    .expect("written");
+
+    let xdg = dir.join("xdg").display().to_string();
+    let (ok, said) = run_with(&[], "/model\n/spend\n", &[("XDG_CONFIG_HOME", &xdg)]);
+
+    assert!(ok, "a file this person wrote is not refused: {said}");
+    assert!(said.contains("a-model-from-ones-own-config"), "{said}");
+    assert!(said.contains("of 4,321"), "{said}");
+    assert!(
+        !said.contains("--config-file"),
+        "nobody is asked about a file in their own configuration: {said}"
+    );
+}
+
 /// Standing nowhere in particular, nothing is read and nothing is said.
 #[test]
 fn a_directory_with_no_file_in_it_reads_none() {
