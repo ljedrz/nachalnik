@@ -155,7 +155,8 @@ impl Drop for Asked<'_> {
 mod tests {
     use super::*;
 
-    /// A question answered reaches the command that asked, and one it stopped waiting on goes.
+    /// A question answered reaches the command that asked, and one it stopped waiting on goes and
+    /// says so.
     #[tokio::test]
     async fn an_answer_reaches_the_asker_and_an_abandoned_question_goes() {
         let reaching = std::sync::Arc::new(Reaching::new());
@@ -176,16 +177,21 @@ mod tests {
         assert!(reaching.waiting().is_empty());
         assert!(reaching.answer(asked.id, true).is_err(), "answered once");
 
-        // and one whose command stopped waiting is no longer on offer
+        // and one whose command stopped waiting is no longer on offer, and says it has gone: what
+        // waits on a change goes and reads the list, and a client nobody wakes goes on showing a
+        // question nobody is asking
+        woken.borrow_and_update();
         let abandoned = tokio::spawn({
             let reaching = reaching.clone();
             async move { reaching.ask(ToolCallId::from("c2"), "nc".into()).await }
         });
-        while reaching.first().is_none() {
-            tokio::task::yield_now().await;
-        }
+        woken.changed().await.expect("it said a question arrived");
         abandoned.abort();
         let _ = abandoned.await;
         assert!(reaching.waiting().is_empty(), "{:?}", reaching.waiting());
+        tokio::time::timeout(std::time::Duration::from_secs(5), woken.changed())
+            .await
+            .expect("the question went without a word")
+            .expect("it is still there to say so");
     }
 }
