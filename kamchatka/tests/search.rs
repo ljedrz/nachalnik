@@ -926,6 +926,15 @@ async fn a_context_wider_than_the_answer_gives_says_so() {
         "{inside}"
     );
 
+    // nor at the ceiling itself: asking for exactly what the answer gives clamps nothing, and
+    // naming a ceiling the argument did not pass says the search was cut down when it was not
+    let at = ask(&dir, "grep", json!({ "pattern": "Kernel", "context": 10 })).await;
+    assert!(
+        !at.contains("is the most this answers with"),
+        "nothing was clamped: {}",
+        at.lines().take(3).collect::<Vec<_>>().join(" | ")
+    );
+
     // and a `files_only` answer has no lines for the clamp to be a limit of, so it says nothing
     // about it whatever the argument was: `room` is `None` there, so no context line is ever
     // kept and there is nothing the ceiling stopped
