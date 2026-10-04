@@ -1145,6 +1145,47 @@ async fn ctrl_l_clears_what_the_program_said_and_keeps_what_was_said_to_it() {
     );
 }
 
+/// A system instruction is on the context tab and not on the chat.
+///
+/// note: it is in every request and nobody said it in this conversation. The announcement `/attach`
+/// and `-f` are given is the one every other item that is nobody's turn gets, so reading a system
+/// instruction as one of those puts the session's own instructions into the middle of what the
+/// model and the person said to each other. It is on the tab that keeps the record, for anybody
+/// who wants to read them.
+#[tokio::test]
+async fn a_system_instruction_is_not_a_line_of_the_conversation() {
+    let mut harness = Harness::new([ModelResponse::text("answered")]);
+    let system = harness
+        .app
+        .kernel
+        .push(ContextItem::system("answer in Polish"));
+    // an item of another kind, which the chat does announce: the difference between the two is
+    // the kind, and a test that could not tell them apart would pass with either of them wrong
+    let file = harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.md", "some notes"));
+    harness.send("what day is it").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("answered"), "{screen}");
+    assert!(
+        screen.contains(&format!("[{file}] notes.md (file)")),
+        "an attached file is announced on the chat: {screen}"
+    );
+    assert!(
+        !screen.contains(&format!("[{system}]")),
+        "the session's own instructions are not something said in the conversation, and the \
+         announcement another kind of item gets is not what they get either: {screen}"
+    );
+
+    // and the tab that keeps the record still has it, so nothing is hidden rather than dropped
+    harness.tab(Tab::Context);
+    let listed = harness.screen();
+    assert!(listed.contains("answer in Polish"), "{listed}");
+}
+
 /// And <kbd>down</kbd> puts it away again, while the prompt still says exactly what was recalled.
 #[tokio::test]
 async fn down_clears_a_recalled_line_and_leaves_a_typed_one_alone() {
@@ -2405,7 +2446,7 @@ async fn a_tool_exchange_leaves_the_chat_the_way_it_leaves_the_request() {
         .kernel
         .set_state([result], ContextState::Elided, Some("taken".into()));
     harness.drain();
-    let screen = harness.flat();
+    let screen = harness.screen();
     assert!(
         screen.contains("peek("),
         "an elided result keeps its call, so the call is still what happened: {screen}"
@@ -2413,6 +2454,13 @@ async fn a_tool_exchange_leaves_the_chat_the_way_it_leaves_the_request() {
     assert!(
         !screen.contains("TOOLSAID"),
         "and the content is what went: {screen}"
+    );
+    // and the marker stands in for a result rather than for one of this program's own lines: the
+    // rule down its left is the result's, where a note's would be a dot. A question or a turn that
+    // is elided reads under its own prefix for the same reason
+    assert!(
+        screen.contains("│ [... taken ...]"),
+        "an elided result should still read as a result: {screen}"
     );
 
     // excluded: the projector takes the call down with it, and so does the chat

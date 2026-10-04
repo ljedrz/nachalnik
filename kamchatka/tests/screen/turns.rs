@@ -10,10 +10,11 @@ use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use kamchatka::{app::Tab, tools::Limits};
 use nachalnik::{
-    Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse, Tool,
+    Block, Capability, Config, Content, ContextItem, ContextState, Event, ModelInfo, ModelResponse,
+    Tool,
     test::{ConstTool, call},
 };
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier};
 use serde_json::json;
 
 use crate::harness::Harness;
@@ -1049,19 +1050,35 @@ async fn what_an_edit_takes_out_and_what_it_puts_in_are_a_diff_s_two_colours() {
     assert_eq!(harness.style_of("path: greet.py").0, Color::Reset);
 }
 
-/// A turn recorded as ordered blocks reads on the chat in the order it was produced.
+/// A turn recorded as ordered blocks reads on the chat in the order it was produced, and a call in
+/// it is one of the lines.
 ///
 /// note: the chat drew every thought, then every sentence, then every call, which is right for a
 /// turn with one of each and wrong for the interleaved ones `--gemini` is there to keep: a turn
 /// that thought, said, thought again and said again read as two thoughts and then two sentences.
+///
+/// note: and the call is there at all. A turn's blocks are its thoughts, its sentences and the
+/// tools it asked for, in the order the model produced them, and reading the chat out of them
+/// without the calls would show a conversation in which the model spoke and nothing ever ran -
+/// which is a different history from the one that happened.
 #[tokio::test]
 async fn an_ordered_turn_reads_on_the_chat_in_its_own_order() {
-    let mut harness = Harness::new([ModelResponse::blocks(vec![
-        nachalnik::Block::reasoning(Content::text("aardvark thought")),
-        nachalnik::Block::text(Content::text("badger sentence")),
-        nachalnik::Block::reasoning(Content::text("cormorant thought")),
-        nachalnik::Block::text(Content::text("dingo sentence")),
-    ])]);
+    let mut harness = Harness::new([
+        ModelResponse::blocks(vec![
+            Block::reasoning(Content::text("aardvark thought")),
+            Block::text(Content::text("badger sentence")),
+            Block::Call(call("c1", "peek", json!({}))),
+            // a thought carrying markdown is still a thought: what the model wrote is rendered,
+            // and a thing it only thought is quoted as it arrived
+            Block::reasoning(Content::text("**cormorant** weighed it")),
+            Block::text(Content::text("dingo sentence")),
+        ]),
+        ModelResponse::text("echidna"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("peek", "echidna")));
     harness.send("go").await;
     harness.settle().await;
 
@@ -1074,4 +1091,25 @@ async fn an_ordered_turn_reads_on_the_chat_in_its_own_order() {
     assert!(at("aardvark") < at("badger"), "{screen}");
     assert!(at("badger") < at("cormorant"), "{screen}");
     assert!(at("cormorant") < at("dingo"), "{screen}");
+
+    // and the call is a line of the conversation, where it stood rather than at the end of it
+    assert!(
+        screen.contains("⟩ peek({})"),
+        "a tool the model asked for is a line of the conversation: {screen}"
+    );
+    assert!(at("badger") < at("peek("), "{screen}");
+    assert!(at("peek(") < at("cormorant"), "{screen}");
+
+    // and a thought is not an answer, which is a difference of voice rather than of wording: the
+    // markdown in it is shown as it arrived rather than rendered, and it is drawn as the quiet
+    // italic line rather than as prose
+    assert!(
+        screen.contains("**cormorant**"),
+        "what the model only thought is quoted as it arrived, and not rendered: {screen}"
+    );
+    let (_, thought) = harness.style_of("cormorant");
+    assert!(
+        thought.contains(Modifier::ITALIC),
+        "a thought is the quiet italic line rather than an answer: {thought:?}"
+    );
 }
