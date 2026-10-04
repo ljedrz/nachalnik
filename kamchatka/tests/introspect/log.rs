@@ -1099,3 +1099,146 @@ async fn an_item_that_never_existed_is_not_reported_as_inherited() {
     assert!(!said.contains("already in the context"), "{said}");
     assert!(said.contains("[999]"), "{said}");
 }
+
+/// Every kind of record that names an item is found by its number, and one that does not is not.
+///
+/// note: `ids` is the whole of what makes a log worth having beside the context - "what happened
+/// to 12?" is a question the context cannot answer, because the context only holds what 12 says
+/// now. So the filter has to reach every record that names an item, and *only* those: an `ids`
+/// filter that matched every record would answer every such question with the whole session, and
+/// one that missed a kind would answer "nothing happened" about a change that did.
+///
+/// note: the two halves are checked apart, because they fail in opposite directions and each kind
+/// is a separate arm of the match. The negatives are what catch a filter that matches everything -
+/// which is what a `names` that answers `true` to everything amounts to - and the kind filter is
+/// beside every one of them so that a wrong match is a wrong match *about that kind*.
+#[tokio::test]
+async fn an_ids_filter_finds_a_record_by_its_number_whatever_kind_of_record_it_is() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        // something whose answer is recorded as a context item of its own, which is the item a
+        // `tool.finished` names
+        call("c1", "context", json!({ "action": "look", "ids": [1] })),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["context.undone"], "ids": [3] }),
+        ),
+        call(
+            "c3",
+            "log",
+            json!({ "action": "read", "kinds": ["context.redone"], "ids": [3] }),
+        ),
+        call(
+            "c4",
+            "log",
+            json!({ "action": "read", "kinds": ["context.compacted"], "ids": [3] }),
+        ),
+        call(
+            "c5",
+            "log",
+            json!({ "action": "read", "kinds": ["model.requested"], "ids": [3] }),
+        ),
+        call(
+            "c6",
+            "log",
+            json!({ "action": "read", "kinds": ["tool.finished"], "ids": [6] }),
+        ),
+        // and the same kinds asked about an item none of them is about
+        call(
+            "c7",
+            "log",
+            json!({ "action": "read", "kinds": ["context.undone"], "ids": [1] }),
+        ),
+        call(
+            "c8",
+            "log",
+            json!({ "action": "read", "kinds": ["context.redone"], "ids": [1] }),
+        ),
+        call(
+            "c9",
+            "log",
+            json!({ "action": "read", "kinds": ["context.compacted"], "ids": [1] }),
+        ),
+        call(
+            "c10",
+            "log",
+            json!({ "action": "read", "kinds": ["tool.finished"], "ids": [1] }),
+        ),
+    ]));
+    kernel.push(ContextItem::memory("scratch", "a note"));
+    kernel.push(ContextItem::memory("scratch", "another note"));
+    let third = kernel.push(ContextItem::file("big.txt", "x".repeat(400)));
+    // one undo and one redo of a push, so the two records name an item by taking it away and by
+    // putting it back rather than by a state it was moved to
+    assert!(kernel.undo().expect("there was something to undo"));
+    assert!(kernel.redo().expect("there was something to redo"));
+    kernel.apply_compaction(nachalnik::CompactionPlan {
+        elide: vec![third],
+        remove: Vec::new(),
+        summary: None,
+        reason: "it is most of the context".into(),
+    });
+    kernel.push(ContextItem::user("what happened to 3?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    // note: the numbering the calls were written against, said out loud so that a change to it is
+    // a failure here rather than a test quietly checking nothing. Four items were in the context,
+    // so the turn's own assistant message is the fifth and the first answer the sixth - and it is
+    // the answer a `tool.finished` names, which is what `c6` is asking about.
+    assert!(
+        matches!(
+            &kernel.item(nachalnik::ContextId(6)).expect("it is in the context").kind,
+            ContextKind::ToolResult { tool, .. } if tool == "context"
+        ),
+        "the first answer is item 6, and the record naming it is `tool.finished`"
+    );
+
+    let said = answers_from(&kernel, &["log"]);
+    // each kind of record that names item 3, found by its number
+    assert!(said[0].contains("1 match"), "{}", said[0]);
+    assert!(said[1].contains("1 match"), "{}", said[1]);
+    assert!(said[2].contains("1 match"), "{}", said[2]);
+    // and the request this turn is making carries it, so it is about it too
+    assert!(said[3].contains("1 match"), "{}", said[3]);
+    assert!(said[4].contains("1 match"), "{}", said[4]);
+
+    // and none of them is about item 1, which none of those five kinds names - a filter that
+    // matched every record would answer every one of these with the record it must not
+    for answer in &said[5..] {
+        assert!(
+            answer.contains("0 match"),
+            "an `ids` filter matches the records that name the item, not every record: {answer}"
+        );
+        assert!(
+            answer.contains("Nothing matched"),
+            "and a filter that found nothing says so in words: {answer}"
+        );
+    }
+}
+
+/// The line for a replaced item admits to being one line only when there is more of the text.
+///
+/// note: `ContextReplaced` is the one record carrying content, and a short text is all on its line
+/// already - a marker sending the model to `whole` for it would send it for nothing.
+#[tokio::test]
+async fn a_replaced_items_short_text_is_not_said_to_have_more_of_it() {
+    let (kernel, _provider, _anchor) = agent(Vec::new());
+    let item = kernel.push(ContextItem::memory("scratch", "x"));
+    kernel.replace(item, "y").expect("the item is there");
+
+    let said = kernel
+        .tool("log")
+        .expect("it is installed")
+        .invoke(
+            &nachalnik::ToolCall::new("c1", "log", json!({ "action": "read", "ids": [1] })),
+            nachalnik::OutputSink::disconnected(),
+        )
+        .await
+        .expect("it answered")
+        .content
+        .to_text()
+        .into_owned();
+    assert!(said.contains("context.replaced"), "{said}");
+    assert!(!said.contains("bytes in all"), "{said}");
+}
