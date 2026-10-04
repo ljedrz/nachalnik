@@ -21,6 +21,29 @@ use nachalnik::{
 use nachalnik_providers::OpenAiCompatible;
 use ratatui::{Terminal, backend::TestBackend};
 
+/// How many columns of the drawn line follow `from`, up to the end of the chunk it was cut to.
+///
+/// note: counted to the `·` that starts the next thing on the line, because that is where this
+/// chunk ends and the next one begins - the figures, which is what the shortening was for. Up to
+/// the ellipsis rather than past it, since the ellipsis is the mark that says it was cut and not
+/// part of what was kept. By column rather than by character, because a character is worth one
+/// column or two depending on what it is and the line is drawn in columns.
+fn kept_of(line: &str, from: &str) -> usize {
+    let after = line
+        .split_once(from)
+        .unwrap_or_else(|| panic!("`{from}` is not on the line: {line}"))
+        .1;
+    let kept = after
+        .split('·')
+        .next()
+        .expect("the figures follow, and they are after a separator")
+        .split('\u{2026}')
+        .next()
+        .expect("a cut chunk ends in an ellipsis");
+
+    kept.chars().count()
+}
+
 fn app() -> App {
     let (app, outcomes) = answering();
     std::mem::forget(outcomes);
@@ -602,6 +625,14 @@ fn the_status_line_gives_up_the_address_before_it_gives_up_the_figures() {
     assert!(!cut.contains("googleapis.com"), "it really was cut: {cut}");
     assert!(cut.contains('\u{2026}'), "and says so: {cut}");
     assert!(cut.contains("~0 tokens, 0.0% (128k)"), "{cut}");
+    // exactly the columns that were asked to go, and no more. `contains` above would pass for a
+    // host shortened to a different width, which is the one thing this rung decides: a column
+    // given back is a column the figures at the right end have lost.
+    assert_eq!(
+        kept_of(&cut, "@ generativelanguage."),
+        7,
+        "`googlea` is what seven columns of the host's right-hand end are worth: {cut}"
+    );
 
     // too short for any of it to mean anything: it goes, and the figures stay
     let gone = status_at(52);
@@ -687,7 +718,6 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
         cut.contains("~0 tokens"),
         "and the figure still stayed: {cut}"
     );
-
     // narrower again, where the name cannot come to its floor: it is either kept whole or shortened
     // to nothing worth reading, and the code chooses to leave it whole rather than to say
     // `…ew:free`. A stub is the worse answer of the two - it names no model at all and is still

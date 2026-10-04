@@ -334,6 +334,60 @@ async fn the_status_line_says_what_the_budget_is_measured_against() {
     );
 }
 
+/// The corner is coloured by how much of the limit is left, and each band is a different colour.
+///
+/// note: one context in each band rather than one at a threshold. What a person reads is which
+/// colour arrived, and a band that had stopped existing altogether would leave every context the
+/// same colour - which a test that only sampled the middle of the scale would not catch.
+///
+/// note: the colour is read from the figure's own first cell rather than from the `Span` the
+/// drawing was handed, because what is under test is what a person sees.
+#[tokio::test]
+async fn the_corner_is_coloured_by_how_full_the_limit_is() {
+    // the limit is set rather than inherited, so each case is a fraction of a limit this test
+    // chose and the colour cannot be reached by accident through the counter's estimate
+    let colour_at = |target: f64| {
+        let mut harness = Harness::new([]);
+        harness
+            .app
+            .kernel
+            .set_provider(Arc::new(ScriptedProvider::new([]).with_info(
+                ModelInfo::new("scripted", "scripted").with_context_limit(100_000),
+            )));
+        harness.app.kernel.push(ContextItem::file(
+            "big.txt",
+            "x".repeat((target * 400_000.0) as usize),
+        ));
+        harness.drain();
+
+        let percent = harness
+            .screen()
+            .lines()
+            .last()
+            .and_then(|line| line.split_once(" tokens, "))
+            .and_then(|(_, rest)| rest.split_once('%'))
+            .map(|(percent, _)| percent.trim().parse::<f64>().expect("a percentage"))
+            .unwrap_or_else(|| panic!("the figure is on the line: {target}"));
+        // the figure is written in the colour the bands choose, so the needle is the count
+        // itself rather than the `tokens` beside it, which every band shares with the dim
+        // separator drawn before it
+        let count = grouped(harness.app.kernel.budget().used());
+        let colour = harness.style_of(&count).0;
+
+        (percent, colour)
+    };
+
+    // well clear, nearly full, and past it: three contexts a person reads differently
+    let (low, green) = colour_at(0.3);
+    assert_eq!(green, ratatui::style::Color::Green, "at {low}%");
+
+    let (high, yellow) = colour_at(0.8);
+    assert_eq!(yellow, ratatui::style::Color::Yellow, "at {high}%");
+
+    let (over, red) = colour_at(1.1);
+    assert_eq!(red, ratatui::style::Color::Red, "at {over}%");
+}
+
 #[tokio::test]
 async fn the_address_the_requests_go_to_is_visible_and_can_be_changed() {
     let mut harness = Harness::new([]);
