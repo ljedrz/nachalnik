@@ -1211,6 +1211,35 @@ mod tests {
         assert!(said.contains("is not something `shell` does"), "{said}");
     }
 
+    /// An argument `run` does not take is refused by name, and nothing is run.
+    ///
+    /// note: `path` beside a command is the mistake this rule was written for - a call that
+    /// ignored it would answer with the command's whole output as though the narrowing it asked
+    /// for had happened. The refusal reads off the same table the schema is built from, so the
+    /// two cannot disagree about what `shell` takes.
+    #[tokio::test]
+    async fn an_argument_run_does_not_take_is_refused_and_runs_nothing() {
+        let call = ToolCall::new(
+            "c1",
+            "shell",
+            serde_json::json!({ "cmd": "echo ran", "path": "notes.md" }),
+        );
+        let said = unconfined()
+            .invoke(&call, OutputSink::disconnected())
+            .await
+            .expect("the tool answers the call either way")
+            .content
+            .to_text()
+            .into_owned();
+
+        assert!(said.contains("`run` does not take `path`"), "{said}");
+        assert!(
+            said.contains("nothing was done"),
+            "and that the command was not run anyway: {said}"
+        );
+        assert!(!said.contains("ran"), "no command output: {said}");
+    }
+
     /// The description names the directory every call starts in, and a `cd` in one call is gone
     /// by the next - which is the claim that lets a model stop opening each command with one.
     #[tokio::test]
