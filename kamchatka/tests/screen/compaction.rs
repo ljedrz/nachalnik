@@ -1087,6 +1087,17 @@ async fn the_budget_promises_no_compaction_the_context_does_not_need() {
     );
 }
 
+/// Everything the conversation has said, a line an entry.
+fn said(harness: &Harness) -> String {
+    harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| entry.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// A request refused for its length says what to take out, and where compaction could not free
 /// enough it says so and names the model's own turns, which is what fills the context then.
 ///
@@ -1096,16 +1107,6 @@ async fn the_budget_promises_no_compaction_the_context_does_not_need() {
 #[tokio::test]
 async fn a_request_too_long_says_what_compaction_cannot_take() {
     use nachalnik::Content;
-
-    let said = |harness: &Harness| -> String {
-        harness
-            .app
-            .loose
-            .iter()
-            .map(|entry| entry.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
 
     let mut talked = Harness::new([]);
     talked.app.kernel.set_compactor(None);
@@ -1191,16 +1192,6 @@ async fn a_request_too_long_says_what_compaction_cannot_take() {
 /// naming neither the attachment nor the command that unpins it.
 #[tokio::test]
 async fn a_request_too_long_names_what_is_pinned() {
-    let said = |harness: &Harness| -> String {
-        harness
-            .app
-            .loose
-            .iter()
-            .map(|entry| entry.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
     let mut harness = Harness::new([]);
     harness.app.kernel.set_compactor(None);
     let limit = harness.app.kernel.budget().limit.expect("a limit");
@@ -1241,16 +1232,6 @@ async fn a_request_too_long_names_what_is_pinned() {
 /// corner was under the limit - which no exclusion could ever make it.
 #[tokio::test]
 async fn a_request_the_tools_put_over_the_limit_names_them() {
-    let said = |harness: &Harness| -> String {
-        harness
-            .app
-            .loose
-            .iter()
-            .map(|entry| entry.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-
     let mut harness = Harness::new([]);
     harness.app.kernel.set_compactor(None);
     let limit = harness.app.kernel.budget().limit.expect("a limit");
