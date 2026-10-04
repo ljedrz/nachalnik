@@ -888,16 +888,64 @@ async fn a_write_replaces_the_file_rather_than_emptying_it_first() {
     assert_eq!(left, ["run.sh"], "nothing is left beside it");
 }
 
+/// A file whose group is not the writer's is written where it is, because a new file could only
+/// carry the writer's own.
+///
+/// note: the mode is carried across by copying it onto the new file, and the owner and group
+/// cannot be - only root could set them on a file it did not create, so a rename over a file
+/// belonging to another group silently gives it this process's group. The write would land and
+/// read as having worked; what it changed is the file's standing in a directory that is shared
+/// with that group for a reason. Skipped where there is no group this process may give a file,
+/// which is a single-group machine or root, where the new file would match anyway.
+#[tokio::test]
+async fn a_file_whose_group_is_not_the_writers_is_written_where_it_is() {
+    use std::os::unix::fs::MetadataExt;
+
+    let Some(other) = rustix::process::getgroups()
+        .expect("the groups of this process")
+        .into_iter()
+        .find(|group| *group != rustix::process::getgid())
+    else {
+        eprintln!("skipped: no group this process may give a file");
+        return;
+    };
+
+    let dir = scratch("files-grouped");
+    let file = dir.join("shared.txt");
+    std::fs::write(&file, "old\n").expect("a file");
+    rustix::fs::chown(&file, None, Some(other)).expect("a group this process belongs to");
+    let before = std::fs::metadata(&file).expect("it is there");
+    assert_eq!(before.gid(), other.as_raw(), "it was given that group");
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "shared.txt", "content": "new\n" }),
+    )
+    .await;
+    assert!(said.contains("wrote 4 bytes"), "{said}");
+    assert_eq!(held(&dir, "shared.txt"), "new\n", "and the write landed");
+
+    let after = std::fs::metadata(&file).expect("it is there");
+    assert_eq!(after.gid(), other.as_raw(), "under the group it had");
+    assert_eq!(after.ino(), before.ino(), "and as the same file");
+}
+
 /// A file another hard link shares is written where it is, so both names still show one file.
 ///
 /// note: a rename would give this name a new file and leave the other name holding the old
 /// contents, which reads as the write not having happened to whoever looks there.
+///
+/// note: the shorter of the two writes is the half that says the file was emptied first. Being
+/// written where it is means an open that truncates, and an open that only wrote would leave the
+/// tail of what was there behind the new contents - visible here because the second write is
+/// shorter than what it replaced.
 #[tokio::test]
 async fn a_file_with_another_link_is_written_where_it_is() {
     use std::os::unix::fs::MetadataExt;
 
     let dir = scratch("files-linked");
-    std::fs::write(dir.join("a.txt"), "old\n").expect("a file");
+    std::fs::write(dir.join("a.txt"), "old and longer\n").expect("a file");
     std::fs::hard_link(dir.join("a.txt"), dir.join("b.txt")).expect("a second name for it");
     let before = std::fs::metadata(dir.join("a.txt"))
         .expect("it is there")
@@ -915,6 +963,11 @@ async fn a_file_with_another_link_is_written_where_it_is() {
             .expect("it is there")
             .ino(),
         before
+    );
+    assert_eq!(
+        held(&dir, "a.txt"),
+        "new\n",
+        "and holds what was written, with nothing of what it replaced left after it"
     );
     assert_eq!(
         held(&dir, "b.txt"),

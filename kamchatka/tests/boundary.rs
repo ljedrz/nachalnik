@@ -150,11 +150,16 @@ fn the_file_tools_are_held_to_the_same_boundary() {
     assert!(open.allows("/etc/passwd", Access::Reading).is_ok());
 }
 
-/// A working directory that may be searched but not listed is reached all the same.
+/// A working directory that may be searched but not listed is reached all the same, for reading
+/// and for writing.
 ///
 /// note: the open starts from a descriptor for the directory the path was allowed under, and the
 /// ordinary way to get one wants read permission on it. `O_PATH` asks for none, which is what a
-/// home somebody else serves, or a checkout shared with a group, is set up to need.
+/// home somebody else serves, or a checkout shared with a group, is set up to need. Writing is the
+/// harder half: the new file a `write` makes is made through that same descriptor, so a directory
+/// that can be searched and written in but not listed would be reached for a read and not for a
+/// write - and `replace` is the one that hands the descriptor to the temporary it renames over the
+/// old file, so it is the one that has to be tried.
 #[test]
 fn a_directory_that_may_only_be_searched_is_still_reached() {
     use kamchatka::sandbox::{Access, Reach};
@@ -172,14 +177,19 @@ fn a_directory_that_may_only_be_searched_is_still_reached() {
     let read = reach
         .allows("inside.txt", Access::Reading)
         .expect("it is inside");
+    let written = reach
+        .allows("new.txt", Access::Writing)
+        .expect("it is inside");
 
     let set = |mode| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode));
-    set(0o111).expect("search only");
+    // search and write, but no read: a directory something else creates files in and nobody lists
+    set(0o333).expect("write and search only");
     let listed = std::fs::read_dir(&dir).is_ok();
     let opened = reach.open(&read, Access::Reading).map(|mut opened| {
         let mut said = String::new();
         std::io::Read::read_to_string(&mut opened, &mut said).map(|_| said)
     });
+    let replaced = reach.replace(&written, b"made in a directory that is not listed");
     set(0o755).expect("put back");
 
     if listed {
@@ -190,6 +200,23 @@ fn a_directory_that_may_only_be_searched_is_still_reached() {
         .expect("a file in a directory that may only be searched")
         .expect("text");
     assert_eq!(said, "hello");
+
+    replaced.expect("and a new file is made in a directory that may only be searched");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("new.txt")).expect("it was made"),
+        "made in a directory that is not listed",
+    );
+    // sorted, because a listing comes in whatever order the filesystem keeps its entries in
+    let mut left: Vec<_> = std::fs::read_dir(&dir)
+        .expect("the directory, once it can be listed again")
+        .map(|entry| entry.expect("an entry").file_name())
+        .collect();
+    left.sort();
+    assert_eq!(
+        left,
+        ["inside.txt", "new.txt"],
+        "and nothing left beside it"
+    );
 }
 
 /// A refusal names everywhere the session reaches, not only the directory it started in.
