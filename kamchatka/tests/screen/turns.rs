@@ -466,6 +466,41 @@ async fn esc_stops_a_turn_that_is_running() {
     assert!(!harness.app.quit, "and it is not the leaving key");
 }
 
+/// `esc` in `ready` and nowhere else, which is the difference between stopping and saying so.
+///
+/// note: the guard is what makes the promise on `/help` a promise about a state rather than a
+/// key. Dropped calls are one thing to say about, and a line saying there are none to drop -
+/// about a turn that never started, or one that already finished - reads as something having
+/// happened. What is asserted is the absence of the line, which is the whole of the difference:
+/// `cancel_pending_calls` on a loop with nothing pending changes nothing at all, so the note is
+/// the only thing an unguarded `esc` puts on the screen.
+#[tokio::test]
+async fn esc_at_a_prompt_with_nothing_waiting_to_run_says_nothing() {
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .push(nachalnik::ContextItem::user("hello"));
+    harness.drain();
+
+    harness.press(KeyCode::Esc).await;
+
+    let said: String = harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| entry.text.clone())
+        .collect();
+    assert!(
+        !said.contains("dropped"),
+        "esc at an idle prompt said it had dropped something: {said}"
+    );
+    assert!(
+        harness.screen().contains("hello"),
+        "and the conversation is still there"
+    );
+}
+
 /// `esc` in `ready` drops the calls waiting to run, which is what `/stop` does there.
 #[tokio::test]
 async fn esc_in_ready_drops_the_calls_waiting_to_run() {

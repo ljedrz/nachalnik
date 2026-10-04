@@ -1120,6 +1120,110 @@ async fn the_undo_key_works_when_the_filter_has_emptied_the_pane() {
     );
 }
 
+/// `U` works when the pane is empty, which is the moment it is most needed.
+///
+/// note: the partner to `u` above, and the one a person is least likely to think is still there.
+/// The two presses that empty the pane - taking the last row out of what is being sent, and
+/// asking `f` for rows that are not going - both go into the undo stack, so the way back from
+/// either is two keys and the first of them lands on an empty pane. Without the arm for it there,
+/// the row stays where the first `u` put it and the second has nothing to do.
+///
+/// note: what is asserted is the state `u` left behind and the state `U` restores it to, read
+/// through `f` - so that both are about what the next request carries rather than about what the
+/// runtime happens to name on the way past.
+#[tokio::test]
+async fn the_redo_key_works_when_the_filter_has_emptied_the_pane() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("the only one"));
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    // `f` lists what is being sent, and taking the row out of it hides the row - which is why
+    // the second press is with `f` off, where the row is still there to be pressed again
+    harness.press(KeyCode::Char('f')).await;
+    harness.press(KeyCode::Char(' ')).await;
+    harness.press(KeyCode::Char('f')).await;
+    harness.press(KeyCode::Char(' ')).await;
+    assert_eq!(
+        harness.app.kernel.items()[0].state,
+        ContextState::Excluded,
+        "the row should be out of the request altogether"
+    );
+
+    // and `f` on again empties the pane, which is the state both keys have to work in
+    harness.press(KeyCode::Char('f')).await;
+    assert!(
+        harness.app.listed().is_empty(),
+        "the pane should be holding nothing at all"
+    );
+
+    // one key back: the row is a marker in the request rather than nothing, and `f` still hides
+    // it, so the pane is as empty as it was
+    harness.press(KeyCode::Char('u')).await;
+    assert_eq!(harness.app.kernel.items()[0].state, ContextState::Elided);
+    assert!(
+        harness.app.listed().is_empty(),
+        "and the pane is empty again, which is the state `U` is reached in"
+    );
+
+    // and one key on, back to where it was
+    harness.press(KeyCode::Char('U')).await;
+    assert_eq!(
+        harness.app.kernel.items()[0].state,
+        ContextState::Excluded,
+        "`U` is the way on from there, and the empty pane swallowed it"
+    );
+}
+
+/// A key acts on a row the pane is holding, even when the pane got shorter under the selection.
+///
+/// note: the selection is a number into the rows as they were drawn, and a query typed after that
+/// frame leaves it naming a row that is not there. `up` off the end of a list is the case that
+/// says so - `end` and `down` both clamp themselves, so a selection one past the end only ever
+/// arrives from a pane that shrank, and the key before it did nothing at all.
+///
+/// note: what is read back is what `enter` opens, rather than the number, because the number is
+/// the thing that is wrong and the item is the thing somebody can see opened.
+#[tokio::test]
+async fn a_key_on_a_pane_that_got_shorter_acts_on_a_row_it_is_holding() {
+    let mut harness = Harness::new([]);
+    for text in ["first question", "second question", "third question"] {
+        harness.app.kernel.push(ContextItem::user(text));
+    }
+    harness.drain();
+    harness.tab(Tab::Context);
+
+    // the bottom of a pane of three
+    harness.press(KeyCode::End).await;
+    assert_eq!(harness.app.selected, 2);
+
+    // and then a query that leaves one row, pressed after the frame that measured three
+    harness.press(KeyCode::Char('/')).await;
+    for c in "third".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    assert_eq!(harness.app.listed().len(), 1, "the query left one row");
+
+    // `up` on the only row is that row, and `enter` then opens it: a selection off the end of the
+    // pane would leave `up` one row along, so `enter` opens somebody else's row
+    harness.press(KeyCode::Up).await;
+    assert_eq!(
+        harness.app.selected, 0,
+        "`up` left the selection naming a row the pane is not holding"
+    );
+
+    harness.press(KeyCode::Enter).await;
+    let open = harness.flat();
+    assert!(
+        open.contains("third question"),
+        "`up` should have put the selection on the row the query left: {open}"
+    );
+    assert!(
+        !open.contains("second question"),
+        "and not on the row above it: {open}"
+    );
+}
+
 /// The header counts what `f` is holding back, not what a search is also hiding.
 ///
 /// note: the figure was every row `listed` dropped, which with a search running is the two filters

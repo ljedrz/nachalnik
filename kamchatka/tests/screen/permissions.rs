@@ -1325,6 +1325,51 @@ async fn a_question_that_arrives_under_somebody_s_fingers_is_not_answered_by_the
     );
 }
 
+/// A tool's question is answered by the keys, whatever else is standing in the prompt's place.
+///
+/// note: a pass's list is not a reason to answer some other question with its keys. A compaction
+/// is refused while a tool is waiting, so the two are never up at once -
+/// and when they somehow are, the keys belong to the tool, which is the one holding a turn still.
+/// The panel drew the tool's question, because `question_parts` gives it first.
+#[tokio::test]
+async fn a_tool_s_question_is_answered_even_while_a_compaction_is_standing_there() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig").await;
+    harness.settle().await;
+    assert!(harness.app.asked().is_some(), "a tool is waiting");
+
+    // a pass cannot be asked for while a question waits - `compact` refuses it - so this is the
+    // one state the guard is here to survive: both standing there, and only one of them drawn
+    harness.app.proposed = Some(kamchatka::app::Proposed {
+        rows: vec!["[1] something the pass would take".to_owned()],
+        count: 1,
+        holding: 5,
+    });
+
+    harness.press(KeyCode::Tab).await;
+    let screen = harness.screen();
+    assert!(screen.contains("a tool wants to run"), "{screen}");
+
+    // `y` is the tool's answer. Read as a pass's, it took the pass instead and left the call
+    // waiting - a question on the screen that one key could not answer
+    harness.press(KeyCode::Char('y')).await;
+    assert!(
+        harness.app.asked().is_none(),
+        "`y` answered the tool rather than the compaction"
+    );
+    assert!(
+        harness.app.proposed.is_some(),
+        "and left the pass alone: nothing was compacted"
+    );
+}
+
 /// The answers are separated from what the tool was asked to do, and the blank goes first.
 ///
 /// note: `path: /etc/hosts` and `[y] once` on consecutive rows read as one list of things rather
@@ -2418,11 +2463,13 @@ async fn the_conversation_still_scrolls_while_a_question_waits() {
     assert_eq!(harness.app.scroll, bottom, "and it starts at the bottom");
 
     // each of the four in turn, from wherever the last one left it: up and down a line, and the
-    // paging keys half a screen, which is what `input_key` does with the same keys
+    // paging keys half a screen, which is what `input_key` does with the same keys. Two pages up
+    // before one down, so that a `pgdn` going too far is not hidden by the bottom it stops at
     let half = (harness.app.viewport / 2) as isize;
     for (key, step) in [
         (KeyCode::Up, -1),
         (KeyCode::Down, 1),
+        (KeyCode::PageUp, -half),
         (KeyCode::PageUp, -half),
         (KeyCode::PageDown, half),
     ] {

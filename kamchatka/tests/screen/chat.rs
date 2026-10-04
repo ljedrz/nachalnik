@@ -1111,6 +1111,60 @@ async fn a_conversation_stays_where_somebody_scrolled_it_while_the_model_keeps_w
     assert!(screen.contains("line 199"), "{screen}");
 }
 
+/// `pgup` and `pgdn` move the transcript half a screen, and by the same half.
+///
+/// note: both read the pane the last frame measured rather than the window, so this draws one
+/// before it presses anything - a page taken against a height of zero is a page that goes
+/// nowhere. What is read back is `scroll` itself, because a page that is not a half is easy to
+/// miss on the screen: one the whole height moves twice as far and clamps against either end of
+/// the conversation, and one that is the remainder of the height is no page at all on the even
+/// heights a terminal is nearly always at.
+#[tokio::test]
+async fn paging_the_transcript_moves_it_by_half_a_screen() {
+    let mut harness = Harness::new([]);
+    for n in 0..200 {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(format!("line {n}\n\n")),
+        });
+    }
+
+    // a frame, so that the keys have a pane to work against
+    harness.screen();
+    let viewport = harness.app.viewport;
+    assert!(viewport > 2, "the pane should have rows in it: {viewport}");
+    let bottom = harness.app.rendered - viewport;
+    assert_eq!(
+        harness.app.scroll, bottom,
+        "a fresh conversation is at the bottom"
+    );
+
+    harness.press(KeyCode::PageUp).await;
+    assert_eq!(
+        harness.app.scroll,
+        bottom - viewport / 2,
+        "half a screen back, of a pane {viewport} rows high"
+    );
+
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(
+        harness.app.scroll, bottom,
+        "and back to the bottom, from the middle of the conversation"
+    );
+
+    // and paging down at the bottom stays there rather than walking off the end
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.scroll, bottom);
+
+    // a page is a page, not an amount: from the top of the conversation a page down is half a
+    // screen and another is the whole of one
+    harness.chord(KeyCode::Home).await;
+    assert_eq!(harness.app.scroll, 0);
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.scroll, viewport / 2);
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(harness.app.scroll, viewport);
+}
+
 #[tokio::test]
 async fn a_message_of_your_own_takes_you_back_to_the_bottom() {
     let mut harness = Harness::new([]);
