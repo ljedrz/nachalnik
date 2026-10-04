@@ -1319,6 +1319,33 @@ pub fn opening(app: &mut App, address: &str) {
 mod tests {
     use super::*;
 
+    use crate::wiring::{Setup, Wired};
+    use nachalnik::ModelResponse;
+    use nachalnik_providers::OpenAiCompatible;
+
+    /// A session wired the way the program wires one, with a scripted model behind it.
+    fn session() -> Wired {
+        let wired = Setup {
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        }
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed");
+        wired
+            .app
+            .kernel
+            .set_provider(Arc::new(nachalnik::test::ScriptedProvider::new(vec![
+                ModelResponse::text("nothing to see"),
+            ])));
+
+        wired
+    }
+
     /// A run of failed arrivals is one run until a whole `RESTING` goes by past the retry, however
     /// many connections got through in the middle of it.
     #[test]
@@ -1407,5 +1434,175 @@ mod tests {
             Some("+250ms"),
             "a wait the program spent went out as no gap: {lines:?}"
         );
+    }
+
+    /// The first `ctrl+c` stops what is running and does not leave; the second one leaves at once.
+    ///
+    /// note: the pair, because either half on its own is a session that behaves. `Server::run`
+    /// leaves on the press branch rather than waiting for the loop top, so a first press that
+    /// also returned `true` ended the session with the turn still running and nothing said about
+    /// what was being kept - the note and the `interrupt` are what the first press is for. And a
+    /// press that never returned `true` is a session nothing can end but `/quit`: a served
+    /// session has no keys, so `ctrl+c` twice is how somebody at the other end of a socket stops
+    /// it, and a run with a tool in it that never answers stays up until a signal arrives from
+    /// outside the process.
+    #[test]
+    fn a_second_ctrl_c_is_what_leaves_a_served_session() {
+        let Wired { mut app, .. } = session();
+        let mut stopping = false;
+
+        // the first one stops what is running and keeps the session
+        assert!(!apply_press(&mut app, &mut stopping));
+
+        // and the second one is the one that ends it, whatever the turn was doing
+        assert!(apply_press(&mut app, &mut stopping));
+    }
+
+    /// The seat goes to the client that is here, and only its own departure takes it away.
+    ///
+    /// note: the ordering, which is the whole of it. A replaced client is told so by its own
+    /// connection and only then goes - `connection::serve` sends `Left` on its way out - so the
+    /// departure that lands after a replacement is the one that was replaced, and taking the seat
+    /// off whoever holds it when it lands leaves the session served by nobody. The next client to
+    /// attach then finds an empty seat, replaces nobody and is served beside the one that was
+    /// holding it: two clients steering one agent, neither told about the other, and the newest
+    /// wins having evicted nobody. So a departure is asked whether it is the seated client's own
+    /// before the seat is cleared.
+    #[tokio::test]
+    async fn the_departure_of_a_replaced_client_does_not_vacate_the_seat() {
+        let Wired { mut app, .. } = session();
+        let mut serving = Serving::new(&app);
+
+        attach(&mut serving, &mut app, 1).await;
+        attach(&mut serving, &mut app, 2).await;
+        assert_eq!(
+            serving.seated,
+            Some(2),
+            "the newest client does not hold it"
+        );
+
+        // client 1 was replaced by client 2, and its connection now closes and says so
+        left(&mut serving, &mut app, 1).await;
+        assert_eq!(
+            serving.seated,
+            Some(2),
+            "a replaced client took the seat with it, and nobody holds the session"
+        );
+
+        // and client 3 finds a session that has an owner
+        attach(&mut serving, &mut app, 3).await;
+        assert_eq!(serving.seated, Some(3));
+    }
+
+    /// One client attaching, through the channel it really comes through.
+    async fn attach(serving: &mut Serving, app: &mut App, client: u64) {
+        let (answer, answered) = oneshot::channel();
+        serving
+            .asks
+            .send(FromClient::Asked {
+                client,
+                command: Command::Attach {
+                    since: None,
+                    session: None,
+                    version: None,
+                },
+                answer,
+            })
+            .expect("the session is still listening");
+        let asked = serving.asked().await.expect("something to answer");
+        serving.answer(app, asked).await;
+        answered.await.expect("the command was answered");
+    }
+
+    /// One client going, which is what its connection says on the way out.
+    async fn left(serving: &mut Serving, app: &mut App, client: u64) {
+        serving
+            .asks
+            .send(FromClient::Left { client })
+            .expect("the session is still listening");
+        let asked = serving.asked().await.expect("something to answer");
+        serving.answer(app, asked).await;
+    }
+
+    /// A question the advisor placed travels to the client beside the question it is about, and a
+    /// question it could not place travels with the reason rather than as nothing at all.
+    ///
+    /// note: the two rows, because they are two halves of one thing. `Attached::rated` is where a
+    /// browser draws the band, and an empty list is not the same thing as no question: a client
+    /// cannot tell a command nobody rated from a command this end forgot to rate, and the second
+    /// is a bug it has no way of noticing. `Attached::unrated` exists for the case where the
+    /// advisor answered and could not place the command - a firewall's refusal is the command the
+    /// colour is most for - and a reason dropped is a question drawn as though nobody had anything
+    /// to say about it.
+    #[cfg(feature = "shell-advisor")]
+    #[tokio::test]
+    async fn what_the_advisor_said_about_a_waiting_question_travels_beside_it() {
+        use crate::tools::{Advised, Careful};
+        use nachalnik::{
+            Capability, PermissionId, PermissionPolicy, PermissionRequest, ToolCallId, Verdict,
+        };
+        use nachalnik_providers::system1::{Answers, Question, SystemOne};
+        use serde_json::{Value, json};
+
+        /// An engine that places everything it is asked about, except the one command whose name
+        /// says it cannot.
+        struct Rubric;
+
+        #[nachalnik::async_trait]
+        impl SystemOne for Rubric {
+            async fn ask(
+                &self,
+                state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<Answers, nachalnik::BoxError> {
+                let unreadable = state["arguments"]["cmd"].as_str() == Some("unreadable");
+
+                Ok(Answers::read(match unreadable {
+                    // an answer with neither rubric nor claim in it: what a firewall's refusal
+                    // page reads as
+                    true => json!({ "model": "rubric", "answers": {} }),
+                    false => json!({
+                        "model": "rubric",
+                        "answers": { "rating": { "type": "score", "score": 0.1, "confidence": 0.99 } },
+                    }),
+                }))
+            }
+
+            fn named(&self) -> String {
+                "rubric".to_owned()
+            }
+        }
+
+        let asking = |id: u64, command: &str| PermissionRequest {
+            id: PermissionId(id),
+            call: ToolCallId::from(format!("call-{id}")),
+            tool: "shell".to_owned(),
+            capabilities: vec![Capability::exec("run")],
+            args: Arc::new(json!({ "cmd": command })),
+        };
+        let (placed, unplaceable) = (asking(1, "ls -la"), asking(2, "unreadable"));
+
+        let advised = Arc::new(Advised::new(Arc::new(Careful::new()), Arc::new(Rubric)));
+        let mut app = session().app;
+        app.advisor = Some(advised.clone());
+        // the verdict is the standing rules' either way; what the advisor wrote down while it was
+        // worked out is what is read afterwards
+        for request in [&placed, &unplaceable] {
+            assert_eq!(advised.evaluate(request).await, Verdict::Ask);
+        }
+
+        let judged = rated(&app, std::slice::from_ref(&placed));
+        assert_eq!(judged.len(), 1, "a placed question was not carried");
+        assert_eq!(judged[0].id, placed.id, "on the wrong question");
+        assert_eq!(judged[0].band, protocol::Band::Reads, "at the wrong band");
+
+        let why = unrated(&app, std::slice::from_ref(&unplaceable));
+        assert_eq!(why.len(), 1, "a question with no rating carried no reason");
+        assert_eq!(why[0].id, unplaceable.id, "on the wrong question");
+        assert!(!why[0].why.is_empty(), "a reason that says nothing");
+
+        // and neither list carries a row for a question the advisor was never asked about
+        assert!(judged.iter().all(|row| row.id != unplaceable.id));
+        assert!(why.iter().all(|row| row.id != placed.id));
     }
 }
