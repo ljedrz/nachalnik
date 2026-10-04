@@ -1496,3 +1496,65 @@ mod report {
         assert_eq!(read_report(reported).2.as_deref(), Some("one two"));
     }
 }
+
+#[cfg(test)]
+mod asked {
+    use super::*;
+    use landlock::{AccessFs, CompatLevel, Compatible, Ruleset, RulesetAttr};
+
+    /// Whether this kernel has the filesystem right a confined command's ruleset would need to
+    /// refuse a pathname socket it could not write.
+    ///
+    /// note: asked by building the ruleset, which is the question [`confines_unix_sockets`]
+    /// itself asks, and the two are compared rather than one being read off the other: a test
+    /// that took the function's own answer for the kernel's would pass on every kernel, and this
+    /// one has to fail when the function stops agreeing. `HardRequirement` is the level at which a
+    /// right the kernel does not have is an error rather than something quietly dropped.
+    fn the_kernel_has(rights: landlock::BitFlags<AccessFs>) -> bool {
+        // note: and not applied. Building it is the whole of what the question is, and a ruleset
+        // applied here would confine every test in this binary
+        Ruleset::default()
+            .set_compatibility(CompatLevel::HardRequirement)
+            .handle_access(rights)
+            .and_then(|ruleset| ruleset.create())
+            .is_ok()
+    }
+
+    /// A pathname socket is said to be confined where the kernel has the right to refuse one.
+    ///
+    /// note: ABI 9, asked of the kernel rather than read off a version; the two scopes beside it
+    /// are held to the kernel in `tests/boundary.rs`.
+    #[test]
+    fn a_unix_socket_is_confined_where_the_kernel_has_the_right() {
+        assert_eq!(
+            confines_unix_sockets(),
+            the_kernel_has(AccessFs::ResolveUnix.into()),
+            "a pathname socket"
+        );
+    }
+
+    /// Only a confinement that restricts something is a confinement.
+    ///
+    /// note: what three callers read, and none of them can be asked about it afterwards.
+    /// `run_if_asked` runs nothing at all where this says no, rather than running the command
+    /// with the whole filesystem and the network and a promise on the screen; the startup probe
+    /// reports `gated` as `false` without it, so a session whose sandbox did not take does not
+    /// go on reading command lines for program names; and `Setup::wire` hands `shell` a confiner
+    /// only where this says yes. `Partial` is a yes, because something is restricted even where
+    /// something is not - what did not take is named rather than granted.
+    #[test]
+    fn only_a_ruleset_in_force_is_a_confinement() {
+        for (confinement, confined) in [
+            (Confinement::Full, true),
+            (Confinement::Partial, true),
+            (Confinement::Unavailable, false),
+            (Confinement::Off, false),
+        ] {
+            assert_eq!(
+                confinement.is_confined(),
+                confined,
+                "{confinement} ({confinement:?})"
+            );
+        }
+    }
+}

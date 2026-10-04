@@ -814,6 +814,50 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
     assert!(note.contains("may read and not write"), "{note}");
 }
 
+/// The punctuation a message wraps a path in is not part of it: neither the full stop that ends
+/// the sentence nor the `..` a name climbs with.
+///
+/// note: both halves of the guard in `bare`, and each is load-bearing. A full stop is only a stop
+/// after a name, so `/home/someone/notes.txt.` names the file and not a file called
+/// `notes.txt.`; and `../..` is two directories up rather than a name with a stop stripped off it,
+/// which leaves `../` - one up - for a boundary to be named at the wrong depth.
+#[test]
+fn the_punctuation_around_a_path_is_not_part_of_it() {
+    let confined = Sandbox {
+        workdir: common::workdir("stopped-path"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+
+    for (stderr, said) in [
+        // a full stop after a quoted path is the sentence's, and the path is still the path
+        (
+            "cat: cannot read '/home/someone/notes.txt'. Permission denied\n",
+            "/home/someone/notes.txt",
+        ),
+        // ... and the same where the message did not quote it
+        (
+            "cat: cannot read /home/someone/notes.txt. Permission denied\n",
+            "/home/someone/notes.txt",
+        ),
+        // `..` is a climb rather than a name, so a refusal naming it is a refusal of the
+        // directory it lands in
+        ("cd: ../..: Permission denied\n", "../.."),
+    ] {
+        let note = confined
+            .note_for(stderr)
+            .unwrap_or_else(|| panic!("`{stderr}` names a path out of reach and nothing was said"));
+        assert!(
+            note.starts_with(&format!("[{said} is outside")),
+            "`{stderr}` was answered with {note}"
+        );
+    }
+}
+
 /// Each of the three spellings of a refusal is a refusal on its own.
 ///
 /// note: they are listed together in `refused` and joined by `||` because any one of them is the
