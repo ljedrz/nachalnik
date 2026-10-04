@@ -382,11 +382,13 @@ async fn two_servers_under_one_name_are_refused() {
     assert!(left.is_empty(), "{left:?}");
 }
 
-/// A server offering one name twice is refused as that, and a program that is not there as one that
-/// could not be started - neither as the fault it is not.
+/// A server offering one name twice is refused as that, a program that is not there as one that
+/// could not be started, and one that runs without speaking MCP as a handshake it never answered -
+/// neither as the fault it is not.
 ///
 /// note: the two arrived as "a name another server's tools already have", with one server running,
-/// and "did not answer the handshake" about a program that never ran.
+/// and "did not answer the handshake" about a program that never ran. The third is the pair both
+/// halves arrive as `Error::Connect` for, told apart by what failed underneath.
 #[tokio::test]
 async fn a_server_is_refused_for_what_actually_went_wrong() {
     let spec = spec!();
@@ -423,6 +425,74 @@ async fn a_server_is_refused_for_what_actually_went_wrong() {
             .as_ref()
             .is_err_and(|why| why.contains("could not be started")),
         "{missing:?}"
+    );
+    // and one that ran without speaking MCP: it was started, and it is the handshake that is
+    // missing - told apart by what failed underneath, since both arrive as `Error::Connect`
+    let silent = attached("quiet=echo".to_owned()).await;
+    assert!(
+        silent
+            .as_ref()
+            .is_err_and(|why| why.contains("did not answer the handshake")),
+        "{silent:?}"
+    );
+}
+
+/// A spec is a command unless what is before the `=` could be a name, and a name it could not be is
+/// the half of the line nobody meant to be an instruction.
+///
+/// note: `env FOO=bar cmd` is the case the guard is written for - `env` and its argument are a
+/// command that sets a variable, and read as a name there is nothing to run at all. A `/` in front
+/// of the `=` is the same shape with the same consequence. The name is otherwise only visible in
+/// the prefix the server's tools carry and in what `--allow-server` has to be given.
+#[tokio::test]
+async fn a_spec_is_read_as_a_command_wherever_a_name_could_not_be() {
+    let server = spec!();
+    let command = server.split_once('=').expect("the spec names its server").1;
+    let wired = || {
+        Setup {
+            tools: Some(Vec::new()),
+            compact: None,
+            ..Default::default()
+        }
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed")
+    };
+
+    // the case in the note: `env` and its argument are a command, so that is what is run and what
+    // the server is called
+    let fresh = wired();
+    let started = kamchatka::mcp::attach(
+        &fresh.app.kernel,
+        &fresh.app.policy,
+        &[format!("env PYTHONUNBUFFERED=1 {command}")],
+    )
+    .await
+    .unwrap_or_else(|why| panic!("`env PYTHONUNBUFFERED=1 {command}` was not started: {why}"));
+    assert_eq!(started[0].name(), "env", "the server was named for `env`");
+    let mut offered = fresh.app.kernel.tool_ids();
+    offered.sort();
+    assert_eq!(offered, ["env__add", "env__hang"]);
+
+    // and a path is a command rather than a name: read as a name, `python3` is left holding the
+    // script as an argument, and there is nothing at that to start
+    let fresh = wired();
+    let pathed = format!("servers/py={command}");
+    let refused = kamchatka::mcp::attach(
+        &fresh.app.kernel,
+        &fresh.app.policy,
+        std::slice::from_ref(&pathed),
+    )
+    .await
+    .map(|servers| servers.len());
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|why| why.contains("could not be started")),
+        "a path was read as a name: {pathed} was {refused:?}"
     );
 }
 
