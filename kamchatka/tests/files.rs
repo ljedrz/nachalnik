@@ -318,6 +318,26 @@ async fn an_edit_spelled_for_the_wrong_line_ending_says_so() {
         b"two\r\nfn go() {}\r\n"
     );
 
+    // and the same hint the other way round, which is the arm of it that says the file's ending
+    // rather than `old`'s: a model handed a Unix file and an `old` written for a Windows one
+    std::fs::write(dir.join("unix.txt"), b"one\nfn go() {}\n").expect("a file");
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "unix.txt", "old": "one\r\nfn go() {}", "new": "two\nfn go() {}" }),
+    )
+    .await;
+    assert!(said.contains("`old` does not occur"), "{said}");
+    assert!(
+        said.contains("the file ends its lines with LF, where `old` has CRLF"),
+        "{said}"
+    );
+    assert_eq!(
+        std::fs::read(dir.join("unix.txt")).expect("it is there"),
+        b"one\nfn go() {}\n",
+        "and nothing was changed"
+    );
+
     // and an `old` that is simply not there is not told about line endings
     let said = ask(
         &dir,
@@ -760,6 +780,35 @@ async fn a_file_past_what_is_kept_says_how_many_lines_it_has() {
     );
 }
 
+/// A file past what `fs` edits at once says how big it is, and not only that it is large.
+///
+/// note: the size is what the file says about itself, and the read stops one byte past the
+/// ceiling because a log is larger by the time it has been read. The figure is the one number the
+/// `sed -i` this sends the model to cannot do without, and `larger` is not a number.
+#[tokio::test]
+async fn a_file_too_big_to_edit_says_how_big_it_is() {
+    let dir = scratch("files-too-big");
+    let kept = kamchatka::tools::KEPT;
+    let big = "x".repeat(kept + 1_000);
+    std::fs::write(dir.join("big.log"), &big).expect("a file");
+
+    let said = ask(
+        &dir,
+        "edit",
+        json!({ "path": "big.log", "old": "x", "new": "y" }),
+    )
+    .await;
+
+    assert!(
+        said.contains(&format!(
+            "{} bytes, more than `fs` edits at once",
+            big.len()
+        )),
+        "it says how big the file is: {said}"
+    );
+    assert_eq!(held(&dir, "big.log"), big, "and nothing was changed");
+}
+
 /// A line longer than the output limit on its own is shown from its start and said to be cut,
 /// and the cut does not split a character.
 #[tokio::test]
@@ -1018,6 +1067,52 @@ async fn a_write_into_a_missing_directory_names_it() {
     );
     assert!(said.contains("`mkdir -p "), "{said}");
     assert!(!dir.join("src").exists());
+}
+
+/// A write refused for anything other than the directory being missing says so, and is not told
+/// to make a directory that is there.
+///
+/// note: `unmade` is only true where the path really is not there, and the kernel's word for a
+/// directory this session cannot search is `Permission denied` - not `No such file or directory`.
+/// Asked anyway, the answer claimed a directory that exists was missing and sent the model to
+/// `mkdir -p` over a directory it is already standing in.
+#[tokio::test]
+async fn a_write_refused_for_anything_else_is_not_told_to_make_a_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch("files-write-refused");
+    // a directory there, which its owner has made unsearchable
+    let outer = dir.join("outer");
+    std::fs::create_dir_all(outer.join("inner")).expect("directories");
+    std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o000)).expect("its mode");
+
+    let said = ask(
+        &dir,
+        "write",
+        json!({ "path": "outer/inner/x.txt", "content": "x" }),
+    )
+    .await;
+
+    // the last two restore the mode whatever the assertions do, so a failure is a directory this
+    // suite can remove rather than one it cannot
+    std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o755)).expect("its mode");
+
+    assert!(
+        outer.join("inner").is_dir(),
+        "the directory is there: {said}"
+    );
+    assert!(
+        !said.contains("is not there") && !said.contains("`mkdir"),
+        "so it is not said to be missing: {said}"
+    );
+    assert!(
+        said.contains("Permission denied"),
+        "the refusal is the kernel's: {said}"
+    );
+    assert!(
+        !outer.join("inner/x.txt").exists(),
+        "and nothing was written"
+    );
 }
 
 /// An edit of a file that is not there says nothing was changed and what makes a new one.
