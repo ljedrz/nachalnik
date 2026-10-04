@@ -150,6 +150,48 @@ fn the_file_tools_are_held_to_the_same_boundary() {
     assert!(open.allows("/etc/passwd", Access::Reading).is_ok());
 }
 
+/// A working directory that may be searched but not listed is reached all the same.
+///
+/// note: the open starts from a descriptor for the directory the path was allowed under, and the
+/// ordinary way to get one wants read permission on it. `O_PATH` asks for none, which is what a
+/// home somebody else serves, or a checkout shared with a group, is set up to need.
+#[test]
+fn a_directory_that_may_only_be_searched_is_still_reached() {
+    use kamchatka::sandbox::{Access, Reach};
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = common::workdir("searchable")
+        .canonicalize()
+        .expect("it exists");
+    let reach = Reach {
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        confined: true,
+    };
+    let read = reach
+        .allows("inside.txt", Access::Reading)
+        .expect("it is inside");
+
+    let set = |mode| std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode));
+    set(0o111).expect("search only");
+    let listed = std::fs::read_dir(&dir).is_ok();
+    let opened = reach.open(&read, Access::Reading).map(|mut opened| {
+        let mut said = String::new();
+        std::io::Read::read_to_string(&mut opened, &mut said).map(|_| said)
+    });
+    set(0o755).expect("put back");
+
+    if listed {
+        eprintln!("skipped: the owner of a directory can list it here without read");
+        return;
+    }
+    let said = opened
+        .expect("a file in a directory that may only be searched")
+        .expect("text");
+    assert_eq!(said, "hello");
+}
+
 /// A refusal names everywhere the session reaches, not only the directory it started in.
 ///
 /// note: it used to say "outside {workdir}, which is as far as this session reaches", which was
