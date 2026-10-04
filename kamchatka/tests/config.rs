@@ -931,6 +931,46 @@ fn a_directory_with_no_file_in_it_reads_none() {
     assert!(said.contains("no ceiling"), "{said}");
 }
 
+/// A run that runs no session reads no settings file, whether it was asked to or found one.
+///
+/// note: the three ways out of assembling a session - `--print-config`, `--check`, and the
+/// `reconcile` command - are asked for in `Args::given`, before anything is looked for. A file
+/// read beside one of them is read for a run that is not having one: what it says about `on-ask`
+/// has nothing to do with a session's records, and a file found underfoot asks a question the
+/// caller did not come here to answer.
+#[test]
+fn a_run_that_assembles_no_session_reads_no_settings_file() {
+    let broken = settings("no-session", r#"{ "on-ask": "maybe" }"#);
+
+    // named beside `--check`, and left where the program will find it beside the command, which
+    // has no flag to put it in
+    let (ok, said) = run(&["--config-file", &broken, "--check", "nowhere"], "");
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("there is no session at nowhere"),
+        "the check said what it was checking, and not about the file: {said}"
+    );
+
+    let dir = common::scratch("no-session-underfoot");
+    std::fs::write(dir.join("kamchatka.json"), r#"{ "on-ask": "maybe" }"#).expect("written");
+    let (ok, said) = spawn(
+        &dir,
+        &["reconcile", "a.json", "b.json", "-o", "merged"],
+        "",
+        &[],
+        true,
+    );
+    assert!(!ok, "{said}");
+    assert!(
+        !said.contains("`maybe`"),
+        "a file that runs no session was read by it: {said}"
+    );
+    assert!(
+        !said.contains("--config-file"),
+        "and nobody was asked about one: {said}"
+    );
+}
+
 /// `--print-config` hands over the file this crate ships, and it is a file this program accepts.
 ///
 /// note: the round trip rather than a byte comparison alone, because what makes the flag worth
@@ -1367,6 +1407,54 @@ fn a_settings_file_names_the_servers_a_run_starts() {
 
     assert!(!ok, "{said}");
     assert!(said.contains("they are files"), "{said}");
+}
+
+/// A typed `--mcp` is not replaced by a file's servers, as no other argument is replaced.
+///
+/// note: read off the same refusal - a server rule naming no server this run starts, which says
+/// which servers there are - so nothing has to be spawned to see which list arrived. The rule
+/// names a third one, so a file that won would be named in place of the typed server.
+#[cfg(feature = "mcp")]
+#[test]
+fn a_typed_mcp_beats_the_file() {
+    let path = settings("mcp-overridden", r#"{ "mcp": ["from-the-file=/nowhere"] }"#);
+
+    let (ok, said) = run(
+        &[
+            "--config-file",
+            &path,
+            "--mcp",
+            "typed=/nowhere",
+            "--deny-server",
+            "neither",
+        ],
+        "",
+    );
+
+    assert!(!ok, "{said}");
+    assert!(said.contains("they are typed"), "{said}");
+    assert!(!said.contains("from-the-file"), "{said}");
+}
+
+/// A file saying `advise: true` asks for the advisor, as a typed `--advise` does.
+///
+/// note: read off the policy the record names at startup, as the run beside it does: a rating is
+/// only ever drawn beside a question, so which policy a session starts under is the only thing
+/// that says whether the advisor was reached for at all.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn a_file_asks_for_the_advisor_as_a_flag_does() {
+    let local = [
+        ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
+        ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
+        ("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model"),
+    ];
+
+    let path = settings("advise-on", r#"{ "advise": true }"#);
+
+    let (ok, said) = run_with(&["--config-file", &path], "", &local);
+    assert!(ok, "{said}");
+    assert!(said.contains("tools::advice::Advised"), "{said}");
 }
 
 /// A typed `--advise` is not turned off by a file saying `false`.
