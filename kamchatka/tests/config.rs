@@ -1812,7 +1812,9 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
 ///
 /// note: the words are this program's, because what the model can do about a full context is a
 /// fact about the tools it was given - and a notice sending it to a tool it does not have is a
-/// notice nobody can act on. With no compactor there is nobody to find the context full.
+/// notice nobody can act on. With no compactor there is nobody to find the context full, and
+/// `--compact 1` is the same session said as a threshold no context can be over: a compactor
+/// standing in for one that never runs is a notice about a fullness that never comes.
 #[tokio::test]
 async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
     use std::sync::Arc;
@@ -1854,6 +1856,16 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
             ..Setup::default()
         }),
         None
+    );
+
+    // and `1`, which is the same session written as a threshold nothing can be over
+    assert_eq!(
+        notice(Setup {
+            compact: Some(1.0),
+            ..Setup::default()
+        }),
+        None,
+        "a context cannot be fuller than the whole of it, so there is nothing to make room in"
     );
 }
 
@@ -1910,6 +1922,56 @@ async fn a_full_context_is_told_to_the_model_in_terms_of_what_it_has_now() {
     app.policy.unanswered(Some(Verdict::Deny));
     app.refresh_full_notice();
     assert!(!notice(&app).contains("`context`"), "{}", notice(&app));
+}
+
+/// The notice is sent to `exclude` or `elide` while either of them is open, and tells the person to
+/// make room only once neither is.
+///
+/// note: one of the two being refused is the case this is about. `exclude` and `elide` are one
+/// operation each and separately grantable, so a rule about one of them does not close the other -
+/// and a model told to go and exclude what it no longer needs, when the session has refused it
+/// every exclusion it has, is sent to the tool it cannot use. The same holds the other way round,
+/// which is why both are here.
+#[tokio::test]
+async fn the_notice_sends_the_model_to_either_operation_while_either_is_open() {
+    use std::sync::Arc;
+
+    use kamchatka::{tools::Subject, wiring::Setup};
+    use nachalnik_providers::OpenAiCompatible;
+
+    let notice = |denied: &str| {
+        Setup {
+            deny: vec![Subject::parse(denied)],
+            ..Setup::default()
+        }
+        .wire(Arc::new(OpenAiCompatible::new(
+            "scripted",
+            "http://127.0.0.1:1",
+            "",
+        )))
+        .expect("the wiring failed")
+        .app
+        .kernel
+        .full_notice()
+        .map(|item| item.content.to_string())
+        .expect("a notice with the compactor")
+    };
+
+    for refused in ["context:exclude", "context:elide"] {
+        let said = notice(refused);
+        assert!(
+            said.contains("`exclude` or `elide`"),
+            "{refused} leaves the other one open, and the model is sent to that one: {said}"
+        );
+        assert!(
+            !said.contains("Tell the person"),
+            "{refused} refuses one operation, not both: {said}"
+        );
+    }
+
+    // and the sentence about asking the person is for a session with neither of them
+    let neither = notice("context");
+    assert!(neither.contains("Tell the person"), "{neither}");
 }
 
 /// Only the copy of the notice standing in the context is reworded, and an item that merely
@@ -2006,9 +2068,11 @@ async fn only_the_copy_of_the_notice_is_reworded_and_nothing_that_merely_matches
 /// `--compact`'s second fraction reaches the session as the target, at most the first and derived
 /// from it when left out.
 ///
-/// note: through `Args` rather than through the program, because what the target does is only on
-/// a screen once a pass runs, and a pass needs a model. What is under test is the wiring: a value
-/// that parses, is checked and then arrives nowhere is the failure a setting has.
+/// note: through `Args` and then through `Setup::wire` rather than through the program, because
+/// what the target does is only on a screen once a pass runs, and a pass needs a model - but the
+/// two numbers the session holds are what every one of those screens asks, so a value that parses,
+/// is checked and then arrives nowhere is a failure a setting has, and it is caught here rather
+/// than on a screen.
 #[test]
 fn a_compaction_target_is_held_to_the_threshold_and_carried() {
     use clap::Parser;
@@ -2058,4 +2122,74 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
         .map(|e| e.to_string())
         .unwrap_or_default();
     assert!(filed.contains("`[0.8, 0.6]`"), "{filed}");
+
+    // and it arrives: a target that parses, is held to the threshold and then is nowhere is a
+    // setting that reads as given and is not, since every screen asks the app rather than the
+    // arguments
+    let wired = |given: kamchatka::wiring::Setup| {
+        given
+            .wire(std::sync::Arc::new(
+                nachalnik_providers::OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""),
+            ))
+            .expect("the wiring failed")
+            .app
+    };
+    let chosen = wired(setup(&["--compact", "0.8,0.4"]).expect("a setup"));
+    assert_eq!(
+        (chosen.compact_target, chosen.compact_threshold),
+        (Some(0.4), Some(0.8)),
+        "the target somebody typed is the one the session aims for"
+    );
+
+    // and one left out is derived from the threshold rather than being nothing
+    let derived = wired(setup(&["--compact", "0.8"]).expect("a setup"));
+    assert_eq!(derived.compact_threshold, Some(0.8));
+    assert!(
+        derived
+            .compact_target
+            .is_some_and(|target| (target - 0.6).abs() < f64::EPSILON),
+        "twenty points under where it starts: {:?}",
+        derived.compact_target
+    );
+}
+
+/// `--parallel` reaches the session, and a session that was not asked for it runs its calls one at
+/// a time.
+///
+/// note: read off the runtime's own configuration, which is what the kernel acts on and what
+/// `setup policy` tells the model about, rather than off the timing of two calls - a test that
+/// waited for two tools to overlap would be a test about the machine it ran on. `--parallel` is
+/// the only flag in this crate that changes the runtime's own behaviour rather than what this
+/// program draws, so the two answers are worth holding to both ends of.
+#[test]
+fn the_parallel_flag_reaches_the_sessions_configuration() {
+    use clap::Parser;
+    use kamchatka::args::Args;
+
+    let wired = |args: &[&str]| {
+        Args::try_parse_from(std::iter::once("kamchatka").chain(args.iter().copied()))
+            .expect("the arguments parse")
+            .setup()
+            .expect("a setup")
+            .wire(std::sync::Arc::new(
+                nachalnik_providers::OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""),
+            ))
+            .expect("the wiring failed")
+            .app
+            .kernel
+            .config()
+            .parallel_tool_calls
+    };
+
+    assert!(
+        wired(&["--parallel"]),
+        "a session started with `--parallel` runs its calls abreast, and the runtime is what does \
+         the running"
+    );
+
+    // and the default is the other one, which is what the flag is for
+    assert!(
+        !wired(&[]),
+        "a session that was not asked for it does not run them abreast"
+    );
 }

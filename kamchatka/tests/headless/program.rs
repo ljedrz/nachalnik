@@ -2066,6 +2066,60 @@ fn a_restart_goes_back_to_the_model_the_flags_named() {
     assert!(!after.contains("switched-model"), "{after}");
 }
 
+/// A restart goes back to the address the flags named as well as to the model, and the two are
+/// restored separately.
+///
+/// note: `/endpoint` moves both, and one of them moved by hand is one of them moved - the flags
+/// named `127.0.0.1:1` and the session went to `127.0.0.1:2`, and a restore that watches only the
+/// model leaves the fresh session talking to the address the old one switched to, which reads as a
+/// restart and is not one. `/endpoint` with nothing after it is the question, so its answer is what
+/// is checked, asked of both ends of the restart.
+#[test]
+fn a_restart_goes_back_to_the_address_the_flags_named() {
+    let dir = common::scratch("reflag-address");
+
+    let mut child = common::command()
+        .args(["--headless", "-m", "flagged-model"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+
+    use std::io::Write as _;
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    stdin
+        .write_all(
+            b"/endpoint http://127.0.0.1:2/v1 flagged-model\n/endpoint\n/restart\n/endpoint\n/quit\n",
+        )
+        .expect("the lines go in");
+    drop(stdin);
+
+    let out = child.wait_with_output().expect("it ran");
+    let said = String::from_utf8_lossy(&out.stderr).into_owned();
+
+    assert!(out.status.success(), "{said}");
+    let asked: Vec<&str> = said
+        .lines()
+        .filter(|line| line.contains("requests go to"))
+        .collect();
+    assert_eq!(
+        asked.len(),
+        2,
+        "the question is asked of both ends of the restart: {said}"
+    );
+    assert!(asked[0].contains("127.0.0.1:2"), "{asked:?}");
+    assert!(
+        asked[1].contains("127.0.0.1:1"),
+        "the fresh session is on the address the flags named, not the one the old one switched \
+         to: {said}"
+    );
+    assert!(!asked[1].contains("127.0.0.1:2"), "{said}");
+}
+
 /// `/restart` writes the session out and carries on in a new one, in the program proper.
 ///
 /// note: the binary rather than a driver, because the half worth testing is the loop around
