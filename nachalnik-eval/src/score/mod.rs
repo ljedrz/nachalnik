@@ -437,7 +437,7 @@ impl fmt::Display for Scores {
             write!(
                 f,
                 ", {} by {:.0} points",
-                over_or_under(over),
+                if over >= 0.0 { "over" } else { "under" },
                 over.abs() * 100.0
             )?;
         }
@@ -450,9 +450,4 @@ impl fmt::Display for Scores {
 
         Ok(())
     }
-}
-
-/// Which way a confidence gap runs.
-fn over_or_under(gap: f64) -> &'static str {
-    if gap >= 0.0 { "over" } else { "under" }
 }
