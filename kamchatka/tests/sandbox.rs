@@ -2130,6 +2130,67 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
     assert!(stragglers.running().is_empty());
 }
 
+/// A job left running is given a grace to leave on `SIGTERM` before it is killed, and the wait
+/// ends as soon as it has left.
+///
+/// note: `trap '' TERM` is the job that will not go: a signal a shell ignores stays ignored across
+/// the `exec` of the `sleep` it puts in the background. How long the grace is is not what is
+/// checked, only that there is one and that a job that goes when it is asked does not wait it out.
+#[tokio::test]
+async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
+    // see `what_this_session_did_not_start_is_left_alone`: `stop` signals from this thread
+    kamchatka::sandbox::scope_signals();
+    let dir = common::workdir("stragglers-grace");
+    let stragglers = kamchatka::tools::Stragglers::default();
+    let shell = Shell {
+        limits: Limits::default(),
+        stragglers: stragglers.clone(),
+        policy: Arc::new(Careful::new()),
+        workdir: dir.clone(),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        confiner: Some(common::program()),
+    };
+    let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
+
+    let leaves = "sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
+    let stays = "trap '' TERM; sleep 30 >/dev/null 2>&1 & echo $! > job.pid";
+    for cmd in [leaves, stays] {
+        through(&shell, cmd).await;
+        let job: i32 = std::fs::read_to_string(dir.join("job.pid"))
+            .expect("the command said which job it started")
+            .trim()
+            .parse()
+            .expect("a process identifier");
+        assert!(
+            running(job),
+            "the job was not left running, so this checks nothing"
+        );
+
+        let asked = std::time::Instant::now();
+        assert_eq!(stragglers.stop(), vec![cmd.to_owned()]);
+        let took = asked.elapsed();
+        match cmd == stays {
+            true => assert!(
+                took >= Duration::from_millis(500),
+                "a job that would not leave was killed without a grace, in {took:?}"
+            ),
+            false => assert!(
+                took < Duration::from_secs(1),
+                "a job that left when asked was waited for anyway, for {took:?}"
+            ),
+        }
+
+        // reaped by init, which takes a moment once the signal has landed
+        let until = std::time::Instant::now() + Duration::from_secs(5);
+        while running(job) && std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!running(job), "the job outlived being stopped: {cmd}");
+    }
+}
+
 /// A job that leaves its command's group - `setsid`, or a fork whose parent is gone - is found at
 /// the end of the session as well, and stopped and named.
 ///
