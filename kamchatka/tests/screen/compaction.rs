@@ -12,7 +12,7 @@ use kamchatka::tools::Shedder;
 use nachalnik::{ContextItem, ContextState, test::call};
 use serde_json::json;
 
-use crate::harness::Harness;
+use crate::harness::{Harness, grouped};
 
 /// A compaction pass leaves the conversation coherent: the calls the model made are still on the
 /// record, each with an answer saying its result was compacted.
@@ -1414,11 +1414,31 @@ async fn compact_lists_what_would_go_and_waits() {
 
     let packed = harness.packed();
     assert!(packed.contains(&format!("[{result}]")), "{packed}");
+    // and the row is that item's own: the label and the kind it has in the context, not the
+    // first thing at the other end of the list. The identifier is what somebody pins against,
+    // so a row naming something else beside it is a pin against the wrong thing
+    assert!(
+        packed.contains("elide,leavingamarkerinitsplace·read·tool_result·"),
+        "the row describes the item the identifier names: {packed}"
+    );
     assert!(
         packed.contains("elide"),
         "and what would happen to it: {packed}"
     );
     assert!(packed.contains("[y]takeit"), "and how to answer: {packed}");
+    // and the total is what the rows add up to: the tokens the pass would take out of the request,
+    // which for a plan of one is that item's own. A figure read off some other item is a total
+    // nobody can check the question against
+    let holding = harness
+        .app
+        .kernel
+        .item(result)
+        .expect("the result is still there")
+        .tokens;
+    assert!(
+        packed.contains(&format!("holding{}tokens", grouped(holding))),
+        "the total is the items named, at what they hold: {packed}"
+    );
 
     assert_eq!(
         harness.app.kernel.item(result).unwrap().state,
@@ -1527,6 +1547,36 @@ async fn n_leaves_it_alone() {
     assert!(
         !screen.contains("[y]takeit"),
         "and the question is gone: {screen}"
+    );
+}
+
+/// `/compact` asked for while a turn is running is refused, and says why.
+///
+/// note: the guard is one question at a time, and a turn under way is the other half of it - so
+/// this is `/compact` typed while the model is working. Refused rather than queued: a queued pass
+/// would work its plan out against a context that is still being added to, which is the one thing
+/// the note on the command says a list must not be read against.
+#[tokio::test]
+async fn compact_during_a_running_turn_is_refused() {
+    let (mut harness, result) = ready_to_compact().await;
+
+    // a turn under way, and nothing else waiting to be answered
+    harness.app.busy = true;
+    assert!(!harness.app.asking(), "the case this is about");
+    harness.send("/compact").await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("already waiting for an answer"),
+        "a pass worked out beside a running turn would list a context still being added to: \
+         {screen}"
+    );
+    // and nothing is proposed, so there is no question on the screen either
+    assert!(harness.app.proposed.is_none(), "{screen}");
+    assert_eq!(
+        harness.app.kernel.item(result).unwrap().state,
+        ContextState::Active,
+        "and nothing was taken"
     );
 }
 

@@ -1389,6 +1389,67 @@ async fn compact_between_the_marks_says_where_the_compactor_starts() {
     let screen = harness.flat();
     assert!(screen.contains("starts making room at"), "{screen}");
     assert!(!screen.contains("found nothing it may take"), "{screen}");
+
+    // and the figure is that mark as a share of the limit - four fifths of 128,000 - because a
+    // person deciding whether to wait is reading a number of tokens, not a fraction they have
+    // to do the arithmetic on themselves
+    assert!(
+        screen.contains("under the ~102,400 it starts making room at"),
+        "four fifths of the limit: {screen}"
+    );
+}
+
+/// A context standing exactly where the compactor starts is not under it.
+///
+/// note: the boundary the two sentences are divided by, and the only place either can be wrong
+/// about itself. A pass starts making room at a share of the limit and not one token earlier, so
+/// a request of exactly that size has something to do - and the sentence saying which is the one
+/// that quotes the figure somebody reads to decide whether to wait. The mark is put exactly on the
+/// count rather than near it, because near it proves nothing: a guard reading `<=` and one reading
+/// `<` differ only here.
+#[tokio::test]
+async fn a_context_exactly_at_the_threshold_is_not_under_it() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
+        threshold: 0.8,
+        target: 0.3,
+    })));
+    harness.app.compact_target = Some(0.3);
+    harness.app.kernel.push(ContextItem::user(words(200_000)));
+
+    // the mark, moved onto whatever this context really measures, so the guard is the only thing
+    // under test
+    let (used, limit) = {
+        let budget = harness.app.kernel.budget();
+        (budget.used(), budget.limit.expect("a limit"))
+    };
+    harness.app.compact_threshold = Some(used as f64 / limit as f64);
+    assert_eq!(
+        (limit as f64 * used as f64 / limit as f64) as usize,
+        used,
+        "the mark has to land on the count and not beside it: {used} of {limit}"
+    );
+    // and the target is well under, so this is the between-the-marks case rather than the
+    // under-the-target one
+    assert!(
+        used as f64 / limit as f64 > 0.3,
+        "the setup is off: {}",
+        used as f64 / limit as f64
+    );
+    harness.drain();
+
+    harness.send("/compact").await;
+    harness.settle().await;
+
+    let screen = harness.flat();
+    assert!(
+        !screen.contains("has nothing to do"),
+        "a pass starts making room at this mark and not one token earlier: {screen}"
+    );
+    assert!(
+        !screen.contains("starts making room at"),
+        "and the sentence that quotes the mark is the one claiming to be under it: {screen}"
+    );
 }
 
 // ------------------------------------------------------------------------------ any context

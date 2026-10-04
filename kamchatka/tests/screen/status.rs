@@ -507,6 +507,27 @@ async fn serving(listing: &'static str, refusal: Option<&'static str>) -> Arc<Op
     provider
 }
 
+/// `/models` marks the one this session is asking, where the endpoint listed it.
+///
+/// note: the mark is what makes the list usable without a second command - somebody reading
+/// twenty names has to be told which one they are on - and it stays where the listing put it.
+#[tokio::test]
+async fn models_marks_the_one_in_use_where_the_endpoint_put_it() {
+    let listing = r#"{"data":[{"id":"another"},{"id":"mercury-2.5"},{"id":"a third"}]}"#;
+    let mut harness = Harness::served_by([], serving(listing, None).await);
+
+    harness.send("/models").await;
+    // the listing is asked for off the loop, and shown when it comes back
+    harness.settle().await;
+
+    let screen = harness.screen();
+    let marked = screen.find("▸ mercury-2.5").expect(&screen);
+    assert!(
+        marked > screen.find("another").expect(&screen),
+        "the list kept the order the endpoint gave: {screen}"
+    );
+}
+
 /// Serves one model listing, in the shape of an endpoint that publishes its *sampling* parameters
 /// only, and hands back a provider that has read it.
 async fn sampling_only() -> Arc<OpenAiCompatible> {
