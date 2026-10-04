@@ -469,6 +469,48 @@ async fn a_rule_about_mcp_covers_nothing_a_spawned_server_offers() {
     assert!(row.contains("nothing registered needs it"), "{row}");
 }
 
+/// And a domain rule names every capability in the domain it answers for, and nothing else.
+///
+/// note: the domain arm lists the capabilities a rule answers for rather than the tools it
+/// reaches. `mcp:call` is the one that must not appear beside them: every tool from a server
+/// declares it and `Careful::judges` swaps it for the server's own name, so an `fs` row that
+/// read `fs:read, mcp:call` would be naming an operation the rule is never consulted about - a
+/// `deny` for `mcp:call` is, and covers those tools, which is why the refusal is the case here.
+#[tokio::test]
+async fn a_domain_rule_names_the_capabilities_it_answers_for_and_no_others() {
+    let harness = Harness::new(Vec::new());
+    let unvouched = Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("files__read", "did it").with_capabilities([unvouched.clone()]),
+    ));
+    harness.app.policy.came_from("files__read", "files");
+    // a refusal *is* consulted about a server's own tool, so it is the one capability outside
+    // `fs` a rule about `fs` still must not claim
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(unvouched), Verdict::Deny);
+    harness
+        .app
+        .policy
+        .set(&Subject::Domain(Domain::Fs), Verdict::Allow);
+
+    let row = harness
+        .app
+        .permissions()
+        .into_iter()
+        .find(|row| row.subject == Subject::Domain(Domain::Fs))
+        .expect("the rule somebody wrote is listed");
+    assert_eq!(
+        row.covers(),
+        "fs:read",
+        "every capability in the domain it answers for, and nothing else"
+    );
+}
+
 /// And a capability the server answers for is not a question this session has, either.
 ///
 /// note: the other half of the same swap, on the count rather than on a row. Every tool from a
@@ -1752,6 +1794,56 @@ async fn a_question_naming_its_items_twice_is_not_described_as_a_move() {
     }))
     .await;
     assert!(both.is_empty(), "{both:?}");
+}
+
+/// A question naming more items than it can list says how many it left out - and only when it did.
+///
+/// note: eight is what the panel has room for, and a call naming nine items reads as one about the
+/// first eight of them. So the ninth is counted, and a call naming exactly eight has nothing left
+/// over to say: a line reading "… and 0 more" beside a list of every item it named would be the
+/// one this guards against.
+#[tokio::test]
+async fn a_question_about_more_items_than_it_can_list_says_how_many_it_left_out() {
+    async fn asked_about(items: usize) -> Vec<String> {
+        let mut harness = Harness::new([
+            ModelResponse::tool_calls(vec![call(
+                "c1",
+                "context",
+                json!({ "action": "elide", "ids": (1..=items).collect::<Vec<_>>() }),
+            )]),
+            ModelResponse::text("done"),
+        ]);
+        harness.app.kernel.add_tool(Arc::new(
+            ConstTool::new("context", "elided").with_capabilities([Capability::fs("glob")]),
+        ));
+        // pushed before the question, so they hold the identifiers 1 to `items` that the
+        // arguments name; the message that asks for it is one more, and is not named
+        for n in 1..=items {
+            harness
+                .app
+                .kernel
+                .push(ContextItem::file(format!("f{n}.txt"), "a little"));
+        }
+
+        harness.send("tidy the context").await;
+        harness.settle().await;
+        let asked = harness.app.asked().expect("a question is waiting");
+
+        harness.app.about(&asked)
+    }
+
+    let nine = asked_about(9).await;
+    assert_eq!(nine.len(), 9, "eight rows and the count: {nine:?}");
+    assert!(
+        nine[8].contains("and 1 more"),
+        "the one it left off the list is counted rather than dropped: {nine:?}"
+    );
+
+    let ten = asked_about(10).await;
+    assert!(
+        ten[8].contains("and 2 more"),
+        "and the count is of what is actually left: {ten:?}"
+    );
 }
 
 #[tokio::test]

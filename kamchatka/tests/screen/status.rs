@@ -1153,6 +1153,56 @@ async fn what_stops_being_sent_comes_back_off_the_anchored_figure() {
     );
 }
 
+/// An item elided since the request it was in comes off the anchored figure by what it holds.
+///
+/// note: the third of [`App::valued`]'s three answers, and the one the other two cannot reach. An
+/// elided item is still in the request as a marker, so the subtraction has something to take out -
+/// the marker's dozen - and taking that is what leaves a context of eight thousand tokens
+/// describing the next request as what the provider once charged for all of it. The figure it was
+/// charged for had the whole of the file in it, so the whole of what the file holds is what comes
+/// back out; the marker is counted on the other side, as part of the request that stands for it.
+#[tokio::test]
+async fn an_item_elided_since_the_request_it_was_in_comes_off_by_what_it_held() {
+    let mut harness = Harness::new([ModelResponse {
+        usage: Some(Usage {
+            input_tokens: Some(9_000),
+            ..Default::default()
+        }),
+        ..ModelResponse::text("done")
+    }]);
+    // four times the provider's own figure, so the difference between the two answers cannot be
+    // an artefact of what a marker costs
+    let file = harness
+        .app
+        .kernel
+        .push(ContextItem::file("haystack.txt", "a needle in it. ".repeat(2_000)).pinned());
+
+    harness.send("go").await;
+    harness.settle().await;
+    let before = harness
+        .app
+        .anchored(&harness.app.going(), &harness.app.kernel.budget())
+        .expect("anchored");
+    assert!(
+        before > 8_500,
+        "the request was charged for the whole of that file: {before}"
+    );
+
+    harness
+        .app
+        .kernel
+        .set_state([file], ContextState::Elided, Some("not any more".into()));
+    let after = harness
+        .app
+        .anchored(&harness.app.going(), &harness.app.kernel.budget())
+        .expect("anchored");
+
+    assert!(
+        after < 3_000,
+        "the figure is still carrying a request whose content is not going out: {before} -> {after}"
+    );
+}
+
 /// A counter that has learned nothing says so in a sentence, rather than in a table of zeroes.
 ///
 /// note: the honest figure is `0 observations, a scale of 1.000`, and every one of those is a
