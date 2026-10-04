@@ -100,4 +100,20 @@ mod tests {
             assert_eq!(read.time, "12:00:00", "{unusable:?}");
         }
     }
+
+    /// The offset `main` notes is the one `read_off` reads, and it is what says the clock local.
+    ///
+    /// note: the global can only be set once per process, so this is the test that notes one, and
+    /// `read_at` above is what covers the rest. A zone east of Greenwich is the case that matters:
+    /// an offset nobody kept leaves every stamp in the run at UTC and says UTC, which is a quiet
+    /// answer rather than a wrong one and so nothing else would catch.
+    #[test]
+    fn a_noted_offset_is_the_one_the_clock_reads() {
+        note_local_offset(Some(2 * 3600));
+
+        let east = read_off(UNIX_EPOCH + Duration::from_secs(12 * 3600));
+
+        assert!(east.local, "a noted offset was not used");
+        assert_eq!(east.time, "14:00:00");
+    }
 }
