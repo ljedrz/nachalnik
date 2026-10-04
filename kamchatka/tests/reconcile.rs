@@ -7,7 +7,10 @@
 
 use std::sync::Arc;
 
-use kamchatka::reconcile::{Fork, Reconciled, reconcile};
+use kamchatka::{
+    app::App,
+    reconcile::{Fork, Reconciled, reconcile, session_name},
+};
 use nachalnik::{
     Calibration, Config, ContextId, ContextItem, ContextKind, ContextState, Event, Kernel,
     ModelInfo, Snapshot, test::ScriptedProvider,
@@ -369,6 +372,18 @@ fn the_calibration_is_summed_for_one_model_and_dropped_for_two() {
         });
         snapshot
     };
+    // an unchanged figure on one fork, so that a total which is not a total of the two is a total
+    // of something else
+    let unchanged = |kernel: &Kernel, observations: usize| {
+        let mut snapshot = kernel.snapshot();
+        snapshot.calibration = Some(Calibration {
+            scale: 1.0,
+            observations,
+            estimated: 200,
+            reported: 200,
+        });
+        snapshot
+    };
 
     let (a, b) = two_forks();
     talking_to(&a, "m1");
@@ -397,6 +412,31 @@ fn the_calibration_is_summed_for_one_model_and_dropped_for_two() {
         "{:?}",
         one.said
     );
+
+    // three forks, whose figures do not share one scale: the observations are a count and the
+    // scale is the ratio of the totals, neither of which is what one of the forks would give
+    let ancestor = ancestor();
+    let (a, b) = two_forks_of(&ancestor);
+    let c = fork_of(&ancestor);
+    talking_to(&a, "m1");
+    talking_to(&b, "m1");
+    talking_to(&c, "m1");
+    let three = merged(&[
+        Fork::new("a", learned(&a, 100, 150), a.history()),
+        Fork::new("b", learned(&b, 300, 450), b.history()),
+        Fork::new("c", unchanged(&c, 3), c.history()),
+    ]);
+    let calibration = three.snapshot.calibration.expect("one model");
+    assert_eq!(
+        (
+            calibration.estimated,
+            calibration.reported,
+            calibration.observations
+        ),
+        (600, 800, 7),
+        "{calibration:?}"
+    );
+    assert_eq!(calibration.scale, 800.0 / 600.0, "{calibration:?}");
 
     talking_to(&b, "m2");
     let forks = [
@@ -432,6 +472,27 @@ fn a_calibration_with_nothing_learned_in_it_is_not_summed_or_said() {
             .any(|line| line.starts_with("the token counter's correction")),
         "{:?}",
         reconciled.said
+    );
+}
+
+/// The session a reconcile makes is named for when the command ran, like any other session's, so
+/// that the name sorts with the rest and answers what somebody reading a list of them asks.
+#[test]
+fn the_session_a_reconcile_makes_is_named_for_when_it_ran() {
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
+    let name = session_name();
+    let after = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
+
+    let bounds = [App::session_stamp(before), App::session_stamp(after)];
+    assert!(
+        bounds.iter().any(|bound| bound == &name),
+        "{name} is not a name for a moment between {bounds:?}"
     );
 }
 
