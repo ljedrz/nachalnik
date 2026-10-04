@@ -1,9 +1,17 @@
 //! `fork`: a copy of the session, standing up to answer something without spending the
 //! original's context on the reply.
 
-use crate::{agent, answered, answers_from};
-use nachalnik::{ContextItem, ContextState, ModelResponse, Role, test::call};
+use crate::{agent, answered, answers_from, one_turn};
+use kamchatka::{
+    introspect,
+    tools::{Careful, Limits, Subject},
+};
+use nachalnik::{
+    Config, ContextItem, ContextState, Kernel, ModelResponse, Role, Verdict,
+    test::{ScriptedProvider, call},
+};
 use serde_json::json;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn draft_answers_on_a_fork_and_leaves_the_context_alone() {
@@ -528,6 +536,8 @@ async fn a_fork_told_to_leave_out_an_item_that_is_not_there_is_refused() {
 
     let said = answers_from(&kernel, &["fork"])[0].clone();
     assert!(said.contains("999"), "{said}");
+    // and it says where the numbers come from, since `context` is on offer and nothing refuses it
+    assert!(said.contains("`context` prints"), "{said}");
     assert!(
         !provider
             .requests()
@@ -537,5 +547,56 @@ async fn a_fork_told_to_leave_out_an_item_that_is_not_there_is_refused() {
                 .as_ref()
                 .is_some_and(|content| content.to_text().contains("and without it?")))),
         "the copy was asked anyway"
+    );
+}
+
+/// A refusal sends the model where the item numbers come from only while it could use `context`.
+///
+/// note: everything named in an answer is read as something to try, so the refusal naming
+/// `context` is advice for a call the session would be refused for - the cost of it being that
+/// the model spends a request on being told what it had just been told it does not have. The
+/// policy the tools are handed is the one the kernel is consulting, and a session run
+/// `--deny context` is refused every `look`, so the sentence has to go with the capability.
+#[tokio::test]
+async fn a_refusal_names_where_the_numbers_come_from_only_while_context_is_reachable() {
+    // the policy `agent` hands out does not stop the model reading its own context
+    let (open, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "fork",
+        json!({ "action": "ask", "question": "and without it?", "without": [999] }),
+    )]));
+    open.push(ContextItem::user("what do you make of this?"));
+    open.turn().await.expect("the turn failed");
+
+    let said = answers_from(&open, &["fork"])[0].clone();
+    assert!(said.contains("999"), "{said}");
+    assert!(
+        said.contains("`context` prints"),
+        "with `context` on offer and allowed, the refusal says where the numbers come from: {said}"
+    );
+
+    // and a session where every `look` is refused is not sent to one
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(ScriptedProvider::new(one_turn(vec![call(
+        "c1",
+        "fork",
+        json!({ "action": "ask", "question": "and without it?", "without": [999] }),
+    )]))));
+    let policy = Arc::new(Careful::new());
+    for domain in ["fork", "log", "setup"] {
+        policy.set(&Subject::parse(domain), Verdict::Allow);
+    }
+    policy.set(&Subject::parse("context"), Verdict::Deny);
+    kernel.set_policy(policy.clone());
+    let _anchor = introspect::install(&kernel, policy, Limits::default());
+
+    kernel.push(ContextItem::user("what do you make of this?"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"])[0].clone();
+    assert!(said.contains("999"), "{said}");
+    assert!(
+        !said.contains("`context`"),
+        "the refusal points a model at a tool whose every call is refused: {said}"
     );
 }
