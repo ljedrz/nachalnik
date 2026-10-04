@@ -333,7 +333,8 @@ async fn the_space_cycle_produces_requests_a_real_api_accepts() {
     let said = answer(&app).to_lowercase();
     assert!(
         said.contains("apricot"),
-        "the model read the result: {said}"
+        "the model read the result: {}",
+        what_went_wrong(&app, &said)
     );
 
     // to the context tab, onto the tool result
@@ -1303,7 +1304,8 @@ async fn a_tilde_comes_back_as_a_sentence_about_tildes() {
         .collect();
     assert!(
         !refused.is_empty(),
-        "the model was told to use one and something answered it: {seen:?}"
+        "the model was told to use one and something answered it: {seen:?}; {}",
+        what_went_wrong(&app, &answer(&app))
     );
     // the `access(2)` trap in its second form, and the thing this must never do again
     assert!(
@@ -1537,7 +1539,7 @@ async fn the_question_about_a_real_change_names_the_item() {
     let Some(request) = asked else {
         panic!(
             "the model never asked to change the context; it said: {}",
-            answer(&app).chars().take(400).collect::<String>()
+            what_went_wrong(&app, &answer(&app).chars().take(400).collect::<String>())
         );
     };
     let about = app.about(&request);
@@ -1711,11 +1713,6 @@ async fn compaction_under_a_real_limit_leaves_a_request_the_endpoint_accepts() {
 
 // ----------------------------------------------------------------------------------- `/attach`
 
-/// A valid one-page PDF carrying one word, built here so the fixture is readable.
-///
-/// note: written out rather than pasted in as base64, because a fixture nobody can read is a
-/// fixture nobody can fix. The xref offsets have to be right - they are byte positions into this
-/// exact string - which is the whole reason this is a function and not a constant.
 /// What the model said, or - when it said nothing - what the program said instead.
 ///
 /// note: an empty answer is the least informative failure there is, and it is what a rejected
@@ -1742,6 +1739,11 @@ fn what_went_wrong(app: &App, said: &str) -> String {
     }
 }
 
+/// A valid one-page PDF carrying one word, built here so the fixture is readable.
+///
+/// note: written out rather than pasted in as base64, because a fixture nobody can read is a
+/// fixture nobody can fix. The xref offsets have to be right - they are byte positions into this
+/// exact string - which is the whole reason this is a function and not a constant.
 fn one_word_pdf(word: &str) -> Vec<u8> {
     let stream = format!("BT /F1 24 Tf 20 40 Td ({word}) Tj ET");
     let objects = [
@@ -2223,7 +2225,7 @@ async fn a_real_tool_result_is_found_by_a_word_its_row_never_shows() {
             .iter()
             .any(|item| matches!(item.kind, ContextKind::ToolResult { .. })),
         "the model never called the tool; it said: {}",
-        answer(&app).chars().take(200).collect::<String>()
+        what_went_wrong(&app, &answer(&app).chars().take(200).collect::<String>())
     );
 
     app.show(Tab::Context);
