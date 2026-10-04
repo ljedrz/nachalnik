@@ -760,8 +760,12 @@ impl Tool for Shell {
                 }
             }
 
+            // a line a timed-out read left unfinished is part of what the command had said by
+            // then, which is what the answer to a stopped command says it holds: `printf
+            // 'downloading 45%'` never ends its line, and it is the line worth having
             if output.is_interrupted() {
                 stop(&mut child).await;
+                keep(&line, &mut collected, &output, &mut full, &mut dropped);
                 interrupted = true;
                 break;
             }
@@ -1474,6 +1478,23 @@ mod tests {
         content.truncate_to(1_000).expect("it is over the limit");
         let said = content.to_text();
         assert!(said.contains("FATAL"), "{said}");
+    }
+
+    /// A command stopped in the middle of a line answers with that line too.
+    ///
+    /// note: the answer says that what is below is what the command had said by then, and a
+    /// progress line that never ends - `printf 'downloading 45%'` - is what a command stopped
+    /// for being slow has said. It was dropped, and the answer under that sentence was empty.
+    #[tokio::test]
+    async fn a_stopped_command_keeps_the_line_it_was_in_the_middle_of() {
+        let said = interrupted(
+            "printf 'downloading 45%%'; sleep 30",
+            Duration::from_millis(1_500),
+        )
+        .await;
+
+        assert!(said.starts_with("exit: stopped"), "{said}");
+        assert!(said.contains("downloading 45%"), "{said}");
     }
 
     /// A command too long to start is answered with the reason and what to do instead, and not with

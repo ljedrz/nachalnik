@@ -65,6 +65,10 @@ minor bump may break you.
   command, and in the session itself. A compiler renames its output into place, so nothing could
   be built in a confined `shell`; `mv` hid it by copying. The layer now grants it everywhere,
   which leaves the command's own ruleset to decide it, as before 0.17.0.
+- **A stopped command keeps the line it was in the middle of.** The answer to a command stopped by
+  an interrupt says that what is below is what it had said by then, and a line it had not ended -
+  `printf 'downloading 45%'`, the progress line a slow command is stopped during - was dropped, so
+  the answer under that sentence could be empty.
 
 ## [0.17.0] - 2026-10-02
 
