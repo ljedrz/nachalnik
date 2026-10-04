@@ -706,4 +706,23 @@ mod tests {
             .map(|row| row.iter().map(|span| span.content.to_string()).collect())
             .collect()
     }
+
+    /// A divider is three of one mark and nothing else, whichever of the three marks it is.
+    ///
+    /// note: markdown spells a rule as `-`, `*` or `_`, and a model can reach for any of the
+    /// three - an escaped run is a divider to it and punctuation to the reader - so all three have
+    /// to arrive as a rule rather than only the one.
+    #[test]
+    fn a_line_of_marks_is_a_rule() {
+        for text in ["---", "***", "___"] {
+            assert!(
+                rule(&Line::from(text)),
+                "{text:?} is three characters of one mark and nothing else"
+            );
+        }
+
+        for text in ["--", "* *", "**bold**", "___a divider___", "a-b-c"] {
+            assert!(!rule(&Line::from(text)), "{text:?} is not a divider");
+        }
+    }
 }

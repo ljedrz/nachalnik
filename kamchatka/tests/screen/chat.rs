@@ -166,6 +166,131 @@ let mid = sorted.len() / 2;
     assert!(fenced.trim_start().starts_with('│'), "{fenced}");
 }
 
+/// A heading says how deep it is by how it is dressed, since the `#` is dropped.
+///
+/// note: an H1 is underlined and the rest are not, and the two share a colour - weight and colour
+/// say the same thing and survive a background this program does not know. See the note on
+/// [`Markdown`] in `markdown.rs`.
+#[tokio::test]
+async fn a_heading_is_dressed_by_how_deep_it_is() {
+    let mut harness = Harness::new([ModelResponse::text(
+        "# The finding\n\n## The detail\n\n### The footnote\n",
+    )]);
+    harness.send("look").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("The finding"), "{screen}");
+    assert!(screen.contains("The detail"), "{screen}");
+    assert!(screen.contains("The footnote"), "{screen}");
+
+    let (h1, bold) = harness.style_of("The finding");
+    assert_eq!(h1, Color::Yellow);
+    assert!(
+        bold.contains(Modifier::BOLD | Modifier::UNDERLINED),
+        "{bold:?}"
+    );
+
+    let (h2, bold) = harness.style_of("The detail");
+    assert_eq!(h2, Color::Yellow, "an H2 is in the same colour as an H1");
+    assert!(bold.contains(Modifier::BOLD), "{bold:?}");
+    assert!(
+        !bold.contains(Modifier::UNDERLINED),
+        "only an H1 is underlined"
+    );
+
+    let (h3, bold) = harness.style_of("The footnote");
+    assert_ne!(h3, Color::Yellow, "and an H3 is not in it");
+    assert!(bold.contains(Modifier::BOLD), "but it is still a heading");
+}
+
+/// The punctuation of the format is dropped rather than drawn.
+///
+/// note: the `#` and the ``` are the punctuation of markdown, and what is wanted on the screen is
+/// what they mean. A marker this program drew instead would be punctuation just as surely.
+#[tokio::test]
+async fn the_punctuation_of_a_heading_and_of_an_indented_block_is_not_drawn() {
+    let mut harness = Harness::new([ModelResponse::text(
+        "# The finding\n\nhere is the call:\n\n    parse(input);\n",
+    )]);
+    harness.send("look").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("The finding"), "{screen}");
+    assert!(screen.contains("parse(input);"), "{screen}");
+
+    // the `#` and the fence are the renderer's to drop, and neither it nor this program draws one
+    assert!(!screen.contains('#'), "the marker of a heading: {screen}");
+
+    // and a heading sits where it was asked to rather than after a marker of this program's own
+    let heading = screen
+        .lines()
+        .find(|line| line.contains("The finding"))
+        .expect("the heading is on the screen");
+    assert!(heading.contains("│The finding"), "{heading}");
+
+    // an indented block is drawn as itself - a rule down its left and the code - and the answer
+    // carries no further rule after it; a fence this program drew for itself would add a row above
+    // and below the code
+    let rows: Vec<&str> = screen
+        .lines()
+        .filter(|line| !line.trim().is_empty() && !line.starts_with('└'))
+        .filter_map(|line| line.trim_start().strip_prefix('│'))
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let block = rows
+        .iter()
+        .position(|line| line.contains("parse(input);"))
+        .expect("the block is on the screen");
+    assert!(rows[block].starts_with('│'), "{}", rows[block]);
+    assert!(
+        !rows[block - 1].starts_with('│'),
+        "nothing is drawn inside the answer above the block: {}",
+        rows[block - 1]
+    );
+    assert_eq!(
+        rows[block + 1..]
+            .iter()
+            .filter(|line| line.starts_with('│'))
+            .count(),
+        0,
+        "and none below it either: {screen}"
+    );
+}
+
+/// A quote and a link are told apart from the prose around them, rather than being read as part of
+/// it.
+///
+/// note: both are cases where the words are ordinary and only the markup says what they are, so
+/// both lean on weight and colour rather than on punctuation the reader would have to know.
+#[tokio::test]
+async fn a_quote_and_a_link_are_told_apart_from_the_prose_around_them() {
+    let mut harness = Harness::new([ModelResponse::text(
+        "> the answer is in the parser\n\nsee [the parser](https://example.com/parser) for the rest\n",
+    )]);
+    harness.send("look").await;
+    harness.settle().await;
+
+    let screen = harness.screen();
+    assert!(screen.contains("the answer is in the parser"), "{screen}");
+    assert!(screen.contains("the parser"), "{screen}");
+
+    // a quote is held apart from the program's own words, by a colour and a slope
+    let (quoted, modifier) = harness.style_of("the answer is in");
+    assert_eq!(quoted, Color::Gray, "a quote is not the terminal's white");
+    assert!(modifier.contains(Modifier::ITALIC), "{modifier:?}");
+
+    // and a link is named as somewhere to go
+    let (link, modifier) = harness.style_of("https://example.com/parser)");
+    assert_eq!(
+        link,
+        Color::Blue,
+        "a link is not the colour of the words around it"
+    );
+    assert!(modifier.contains(Modifier::UNDERLINED), "{modifier:?}");
+}
+
 /// A tool's output in wide characters is shortened like any other, rather than taking the session
 /// with it.
 ///
