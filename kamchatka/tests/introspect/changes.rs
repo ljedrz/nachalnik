@@ -767,6 +767,11 @@ async fn walking_back_one_move_is_one_undo_for_the_person() {
 }
 
 /// And the report says which state each item went to, rather than the first one's for all of them.
+///
+/// note: the two are put back carrying the *same* note, because the way back is grouped by the
+/// state and the note together. Grouped by either one alone, the second item joins the first
+/// one's group and is put back where the first one came from - which is not a report that is wrong
+/// about a state, but a move that did not happen.
 #[tokio::test]
 async fn walking_back_says_where_each_item_ended_up() {
     let (kernel, _provider, _anchor) = agent(vec![
@@ -785,17 +790,21 @@ async fn walking_back_says_where_each_item_ended_up() {
     ]);
 
     let excluded = kernel.push(ContextItem::file("a.rs", "0".repeat(400)));
-    kernel.push(ContextItem::file("b.rs", "1".repeat(400)));
+    let active = kernel.push(ContextItem::file("b.rs", "1".repeat(400)));
     kernel.push(ContextItem::user("tidy up"));
-    // one of the two was already out of the request when the move found it, so the way back is
-    // two states and the report has two things to say
-    kernel.set_state([excluded], ContextState::Excluded, Some("mine".into()));
+    // one of the two was already out of the request when the move found it, and neither carried a
+    // note, so the way back is two states that differ in nothing but the state
+    kernel.set_state([excluded], ContextState::Excluded, None);
     kernel.turn().await.expect("the first turn failed");
     kernel.turn().await.expect("the second turn failed");
 
     let walked = all_answers(&kernel).last().unwrap().clone();
     assert!(walked.contains("1 now excluded"), "{walked}");
     assert!(walked.contains("2 now active"), "{walked}");
+    // and each item really is where the report said it went, rather than both of them in the
+    // first one's state
+    assert_eq!(kernel.item(excluded).unwrap().state, ContextState::Excluded);
+    assert_eq!(kernel.item(active).unwrap().state, ContextState::Active);
 }
 
 /// A walk of several steps knows a pin it put back itself is its own, for the steps after it.
