@@ -4,7 +4,7 @@
 use crate::{agent, answered, answers_from, branch, one_turn, tokens_in};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
-    Config, Content, ContextItem, ContextKind, ContextState, Kernel, ToolCallId, Verdict,
+    Block, Config, Content, ContextItem, ContextKind, ContextState, Kernel, ToolCallId, Verdict,
     test::ScriptedProvider, test::call,
 };
 use serde_json::json;
@@ -70,6 +70,48 @@ async fn the_whole_of_an_item_can_be_asked_for_in_quotes() {
     assert!(results[1].contains("true or false"), "{}", results[1]);
 }
 
+/// A row is as wide as the column and no wider, and one that fits is not shortened.
+///
+/// note: the cut is at one character too many rather than at one too few, so a line of exactly
+/// the column's width arrives whole and one character more arrives with the mark that says it
+/// was cut. The other way round shortens a line that fitted and marks it, and the mark says the
+/// text was left off when it was not - which is the one thing a listing cannot say wrongly,
+/// since a model reading it either goes looking for the rest of the line or stops.
+#[tokio::test]
+async fn a_row_that_fits_the_column_is_shown_whole() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+
+    kernel.push(ContextItem::file("wide.rs", "w".repeat(48)));
+    kernel.push(ContextItem::file("wider.rs", "n".repeat(49)));
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let row = |file: &str| {
+        said.lines()
+            .find(|line| line.contains(file))
+            .unwrap_or_else(|| panic!("no row for {file}: {said}"))
+            .to_owned()
+    };
+
+    let fits = row("wide.rs");
+    assert!(
+        fits.contains(&"w".repeat(48)) && !fits.contains('…'),
+        "a line as wide as the column is the whole of it: {fits}"
+    );
+
+    let over = row("wider.rs");
+    assert!(
+        over.contains('…') && !over.contains(&"n".repeat(49)),
+        "and one character more is cut, with the mark that says so: {over}"
+    );
+}
+
 #[tokio::test]
 async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for() {
     // the trap this closes: reading an item copies it into the context, so asking to see a big
@@ -128,6 +170,197 @@ async fn a_long_item_comes_back_as_a_sample_unless_the_whole_of_it_is_asked_for(
     // and asking for it costs what it costs, which is the caller's decision to make
     assert!(whole.contains(&long), "the whole of it, when asked for");
     assert!(!whole.contains("bytes not shown"), "{whole:.200}");
+}
+
+/// A row says how many calls its turn made, and says nothing at all about a turn that made none.
+///
+/// note: `[0 call(s)]` on a turn that only talked would be a figure about nothing, and a model
+/// reading it as an instrument panel for its own turn is being told it asked for something when
+/// it did not - which is the one way a listing of what the model did can be confidently wrong.
+#[tokio::test]
+async fn a_row_counts_the_calls_a_turn_made_and_only_where_it_made_some() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look" }),
+    )]));
+
+    kernel.push(ContextItem::user("read both"));
+    kernel.push(ContextItem::assistant(
+        "reading one of them",
+        vec![call(
+            "r1",
+            "fs",
+            json!({ "action": "read", "path": "one.rs" }),
+        )],
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("r1".into()),
+        "fs",
+        "the first file",
+        false,
+    ));
+    // and a turn that only said something, which is what most of them are
+    kernel.push(ContextItem::assistant("both are parsers", vec![]));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let row = |item: &ContextItem| {
+        said.lines()
+            .find(|line| {
+                line.split_whitespace()
+                    .next()
+                    .is_some_and(|id| id == item.id.0.to_string())
+            })
+            .unwrap_or_else(|| panic!("item {} is not listed: {said}", item.id.0))
+    };
+    // the turn that asked for one file, by its row rather than by its index: the turn being run
+    // pushes items of its own
+    let items = kernel.items();
+    let asking = items
+        .iter()
+        .find(|item| item.calls().next().is_some() && item.id.0 < 5)
+        .expect("the turn that read a file is in the context");
+    assert!(
+        row(asking).contains("[1 call(s)]"),
+        "the turn that asked for one file says so: {said}"
+    );
+    assert!(
+        !said.contains("[0 call(s)]"),
+        "a turn that asked for nothing is not a figure about zero calls: {said}"
+    );
+}
+
+/// A sample is for an item too big to copy into the context; a middling one is read whole.
+///
+/// note: the cut is at three thousand bytes, and the answer for anything under it is the whole
+/// item. An item of a couple of thousand bytes is exactly what a clean-up run meets first - one
+/// file read, one tool result - and cutting it means the model pays for a marker to read a
+/// paragraph it could have had whole.
+#[tokio::test]
+async fn an_item_of_middling_size_is_read_back_whole() {
+    let middling = "a line of a file the model read. ".repeat(70);
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "ids": [1] }),
+    )]));
+
+    kernel.push(ContextItem::file("one.rs", middling.clone()));
+    kernel.push(ContextItem::user("read it back"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        !said.contains("bytes not shown"),
+        "an item of {} bytes is not a sample: {said:.200}",
+        middling.len()
+    );
+    assert!(
+        said.contains(&middling),
+        "and it comes back as itself: {said:.200}"
+    );
+}
+
+/// A sample is cut on a character boundary, or the whole read back fails.
+///
+/// note: `&text[..head]` and `&text[tail..]` are byte ranges, and both ends of the cut are
+/// computed in bytes, so a cut that did not look for a boundary would end inside a character -
+/// a panic in the middle of answering a `look`, which is the one call an agent makes when it has
+/// already decided it is in trouble.
+#[tokio::test]
+async fn a_sample_of_multibyte_text_is_cut_on_character_boundaries() {
+    // a three-byte character at each cut, so byte 1500 and byte len-1500 each land inside one: a
+    // euro at 1499..1502 and again at 3000..3003, of a 4,501-byte item
+    let euro = "\u{20ac}";
+    let mut item = "h".repeat(1499);
+    item.push_str(euro);
+    item.push_str(&"x".repeat(1498));
+    item.push_str(euro);
+    item.push_str(&"t".repeat(1498));
+    assert_eq!(
+        item.len(),
+        4_501,
+        "the fixture is the shape the test is about"
+    );
+
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "ids": [1] }),
+    )]));
+
+    kernel.push(ContextItem::file("multibyte.rs", item.clone()));
+    kernel.push(ContextItem::user("read it back"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(
+        said.contains("bytes not shown"),
+        "an item this size is a sample: {said:.200}"
+    );
+    // the head stops at the last boundary at or before 1500, which is 1499 where the first euro
+    // starts, and the tail starts at the first boundary at or after len-1500, which is 3003 where
+    // the second one ends: both cuts on a boundary, and the figure between them the gap
+    assert!(
+        said.contains("1,504 bytes not shown"),
+        "the gap is the two cuts' distance: {said:.200}"
+    );
+    assert!(
+        said.contains(&"h".repeat(1499)),
+        "the head is everything up to the boundary: {said:.200}"
+    );
+    assert!(
+        said.contains(&"t".repeat(1498)),
+        "and the tail is everything after it: {said:.200}"
+    );
+}
+
+/// A turn recorded as ordered blocks is read back with what it asked for, block by block.
+///
+/// note: this is the view of a call that exists nowhere else. The request the model will be sent
+/// has the same parts in the same order, but there a call is a field beside the turn; and a
+/// flattened turn has no order to read at all. Without the arm for a call, the row for a call
+/// reads `call:` and nothing - the block's own name, and no trace of the tool, the arguments or
+/// the identifier it will be answered under.
+#[tokio::test]
+async fn a_turn_read_back_shows_its_calls_among_its_blocks() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "look", "ids": [1] }),
+    )]));
+
+    kernel.push(ContextItem::new(
+        ContextKind::AssistantMessage {
+            tool_calls: Vec::new(),
+            reasoning: None,
+        },
+        "model",
+        "assistant",
+        Content::blocks([
+            Block::text(Content::text("reading both of them")),
+            Block::Call(nachalnik::ToolCall::new(
+                "r1",
+                "fs",
+                json!({ "action": "read", "path": "one.rs" }),
+            )),
+        ]),
+    ));
+    kernel.push(ContextItem::user("go on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    assert!(said.contains("block(s), in order"), "{said}");
+    assert!(
+        said.contains(r#"call: fs({"action":"read","path":"one.rs"})"#),
+        "a call block reads as the call it is, and not as its name alone: {said}"
+    );
+    assert!(
+        said.contains("reading both of them"),
+        "and the text block beside it is still read: {said}"
+    );
 }
 
 #[tokio::test]
@@ -190,14 +423,19 @@ async fn request_sizes_a_message_by_what_it_sends() {
     )]));
 
     kernel.push(ContextItem::user("write it"));
-    kernel.push(ContextItem::assistant(
-        "",
-        vec![call(
-            "w1",
-            "fs",
-            json!({ "action": "write", "content": "x".repeat(5_000) }),
-        )],
-    ));
+    kernel.push(
+        ContextItem::assistant(
+            "",
+            vec![call(
+                "w1",
+                "fs",
+                json!({ "action": "write", "content": "x".repeat(5_000) }),
+            )],
+        )
+        // and the thinking beside it, which goes out in the message's own reasoning slot and is
+        // as much of what the turn sends as the arguments it wrote are
+        .with_reasoning(Some("weighing the two openings. ".repeat(100).into())),
+    );
     kernel.push(ContextItem::tool_result(
         ToolCallId("w1".into()),
         "fs",
@@ -220,6 +458,13 @@ async fn request_sizes_a_message_by_what_it_sends() {
         .and_then(|figure| figure.parse().ok())
         .unwrap_or_else(|| panic!("no size on {row:?}"));
     assert!(bytes > 5_000, "{row}");
+    // both halves of the turn, and neither of them counted as nothing: reasoning the endpoint
+    // will not take back is `held` in `look`, and this is what it sends
+    let thought = "weighing the two openings. ".repeat(100).len();
+    assert!(
+        bytes > 5_000 + thought,
+        "the column carries what it sends, and the reasoning is in the request: {row}"
+    );
 }
 
 /// The two ways an item goes missing are answered differently, so they are reported apart.
@@ -274,6 +519,150 @@ async fn request_says_which_rule_left_each_item_out() {
         "and says why `restore` is the wrong move on that half: {said}"
     );
     assert!(said.contains("orphaned tool result"), "{said}");
+
+    // each half names what is in it, which is the only thing that tells the two apart: the item
+    // a state took out is reported under the state and beside `restore`, and the item the
+    // projector took out under the projector and beside the sentence saying restoring it is the
+    // wrong move. One list holding the other's words would send a model to `restore` an orphan
+    let half = |heading: &str| {
+        let said = answered(&kernel);
+        let (start, rest) = said
+            .split_once(heading)
+            .unwrap_or_else(|| panic!("no `{heading}` in: {said}"));
+        // the heading, then the lines under it and not the next section's: a paragraph breaks
+        // each half off from what follows it
+        let under = rest.split_once("\n\n").map_or(rest, |(this, _)| this);
+        start.lines().last().unwrap_or_default().to_owned() + under
+    };
+    let by_state = half("left out by its own state");
+    assert!(by_state.contains("too big"), "{by_state}");
+    assert!(
+        !by_state.contains("orphaned tool result"),
+        "an active item the projector took out is in the other half: {by_state}"
+    );
+
+    let by_projector = half("left out by the projector");
+    assert!(
+        by_projector.contains("orphaned tool result"),
+        "{by_projector}"
+    );
+    assert!(
+        !by_projector.contains("too big"),
+        "an excluded item is in the other half, where `restore` would reach it: {by_projector}"
+    );
+}
+
+/// Each of the projector's two adjustments is reported under its own heading, and neither
+/// heading is printed over an empty list.
+///
+/// note: they are two different pieces of news and only one of them is a fault. `repairs` is
+/// content the model would have had and will not; `reordered` is the layout rule working, and a
+/// line reading like something broke - over an event that costs nothing and is nothing to act on
+/// - stays in the conversation for the rest of the session. A model reading a request summary
+/// counts a heading as a list it can read, so a heading over nothing is an answer about a fault
+/// that did not happen.
+#[tokio::test]
+async fn request_reports_each_projection_adjustment_under_its_own_heading() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "request" }),
+    )]));
+
+    kernel.push(ContextItem::user("go on"));
+    kernel.push(ContextItem::assistant(
+        "looking",
+        vec![call("w1", "shell", json!({ "action": "ls" }))],
+    ));
+    // a user turn between the call and its answer, which is what `context: note` does on every
+    // call - the item is written while the call that writes it is still in flight
+    kernel.push(ContextItem::user("meanwhile"));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("w1".into()),
+        "shell",
+        "the listing",
+        false,
+    ));
+    // and a result nothing asked for any more, which the projector has to take out
+    kernel.push(ContextItem::tool_result(
+        ToolCallId("gone".into()),
+        "shell",
+        "the output of a call nobody makes",
+        false,
+    ));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answered(&kernel);
+    let section = |heading: &str| {
+        let rest = said
+            .split_once(heading)
+            .unwrap_or_else(|| panic!("no `{heading}` in: {said}"))
+            .1;
+        rest[..rest.find("\n\n").unwrap_or(rest.len())].to_owned()
+    };
+
+    // the one that lost content is under the heading for it, with the call that was taken down
+    let repairs = section("and what that same projector rewrote");
+    assert!(
+        repairs.contains("`gone` is not in the projection"),
+        "content the model would have had went out, and it says what: {repairs}"
+    );
+
+    // and the one that only moved is under the heading saying nothing was lost, and not under
+    // that one: the two are different news, and a line reading like a fault about an event that
+    // costs nothing stays in the conversation for the rest of the session
+    let reordered = section("and what it put in a different order");
+    assert!(
+        reordered.contains("moved item"),
+        "the move is reported: {reordered}"
+    );
+    assert!(
+        reordered.contains("nothing to act on"),
+        "and said out loud that there is nothing to do about it: {reordered}"
+    );
+    assert!(
+        !reordered.contains("`gone`"),
+        "the dropped result is not in this half either: {reordered}"
+    );
+
+    // and where the projector adjusted nothing, neither heading is there to be read
+    let (whole, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "request" }),
+    )]));
+    whole.set_projector(Arc::new(nachalnik::LinearProjector {
+        repair_orphans: false,
+        ..Default::default()
+    }));
+    whole.push(ContextItem::user("write it"));
+    whole.push(ContextItem::assistant(
+        "writing",
+        vec![call("w1", "fs", json!({ "action": "write" }))],
+    ));
+    whole.push(ContextItem::tool_result(
+        ToolCallId("w1".into()),
+        "fs",
+        "wrote it",
+        false,
+    ));
+    whole.turn().await.expect("the turn failed");
+    let projection = whole.project();
+    assert!(
+        projection.repairs.is_empty() && projection.reordered.is_empty(),
+        "and this one needed neither: {projection:?}"
+    );
+
+    let said = answered(&whole);
+    assert!(
+        !said.contains("and what that same projector rewrote"),
+        "nothing was taken out, so nothing is said about taking out: {said}"
+    );
+    assert!(
+        !said.contains("and what it put in a different order"),
+        "nothing moved, so nothing is said about moving: {said}"
+    );
 }
 
 #[tokio::test]
