@@ -1293,6 +1293,72 @@ async fn a_line_said_while_an_answer_streams_is_not_swallowed() {
     assert!(prose.contains("spent 1,200 tokens of 1,000"), "{prose}");
 }
 
+/// A prose that cannot be flushed fails the run that wrote to it.
+///
+/// note: `Prose` answers `flush` with `Ok` rather than with the writer's own answer, and that is
+/// invisible while the prose is a `Vec` - every write lands, so a run reads the same either way.
+/// A writer that fails on flush tells the two apart, and it is what a pipe is once the reader on
+/// the far end has gone. The two runs below are the two halves: what a command says is flushed
+/// where every loop says its notes, and what a model says is flushed as each fragment arrives,
+/// because printing an answer as it comes is the point of printing it at all. Neither may report
+/// a flush nobody made.
+#[tokio::test]
+async fn a_prose_that_cannot_be_flushed_fails_the_run_that_wrote_to_it() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(Vec::new());
+
+    let (mut records, mut prose) = (Vec::new(), FailsToFlush(Vec::new()));
+    let ran = Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"/seams\n"[..])
+        .await;
+
+    assert!(
+        ran.is_err(),
+        "what a command said was never pushed out, and the run said it had: {:?}",
+        String::from_utf8_lossy(&prose.0)
+    );
+
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(vec![ModelResponse::text("4, and I checked")]);
+
+    let (mut records, mut prose) = (Vec::new(), FailsToFlush(Vec::new()));
+    let ran = Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(&mut app, &mut events, &mut finished, &b"what is 2+2\n"[..])
+        .await;
+
+    assert!(
+        ran.is_err(),
+        "an answer that could not be flushed was reported as one that had: {:?}",
+        String::from_utf8_lossy(&prose.0)
+    );
+}
+
+/// A writer that takes every byte and refuses the flush, which is the one half it is chosen for.
+///
+/// note: it fails on the flush rather than on the write so that a run reaches the answer before it
+/// stops, and it keeps what it was given so that a failure can say what it had. `Vec::flush` is
+/// `Ok` whatever is in it, which is why a run written to one reads the same whether the flush
+/// reached it or was answered for it.
+struct FailsToFlush(Vec<u8>);
+
+impl std::io::Write for FailsToFlush {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.extend_from_slice(buf);
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Err(std::io::ErrorKind::BrokenPipe.into())
+    }
+}
+
 /// A run that was not asked to take `ctrl+c` subscribes to nothing.
 ///
 /// note: what it costs to subscribe anyway is the thing that cannot be asserted from in here.
@@ -2983,6 +3049,114 @@ async fn output_nothing_prints_is_not_reported_as_fragments_gone_by() {
         "the prose points at a log that has none of it: {}",
         run.prose
     );
+}
+
+/// A model that says one thing the loop sees and then far more than it can.
+///
+/// note: the opposite case to the tool above, and it needs a provider of its own: a scripted one
+/// reports a whole answer in a single fragment, so nothing ever comes near what the broadcast
+/// holds. The first fragment and the pause after it are what a real stream looks like at the
+/// start of an answer, and they are what the loop sees before the rest arrives - one fragment per
+/// word, in one go, past `event_queue_depth`, with nothing between them to yield on. A flood with
+/// a yield per fragment is a loop that keeps up with every one of them.
+struct Flooding {
+    words: usize,
+}
+
+#[async_trait]
+impl Provider for Flooding {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("flooding", "flooding").with_context_limit(128_000)
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        let text: Vec<String> = (0..self.words).map(|word| format!("{word:06} ")).collect();
+        deltas.text(text[0].clone());
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        for word in &text[1..] {
+            deltas.text(word.clone());
+        }
+
+        Ok(ModelResponse::text(text.concat()))
+    }
+}
+
+/// Fragments of an answer that went past the loop are said to have gone, and not counted twice.
+///
+/// note: what is unrecoverable is worth saying, since a fragment is in no record and a reader told
+/// to go to the log for one is sent after something that was never in it. Said once for the whole
+/// answer rather than once per moment the loop noticed, and said against the answer it belongs to -
+/// which is why the notice follows the last of what arrived rather than interrupting it.
+///
+///
+/// note: the input is a pipe that stays open, and that is the whole of the timing. A run whose
+/// input has closed breaks out of its loop while the turn is still answering, and what is left is
+/// drained by `wait_for_turn`, which drops a count of what went past on the floor: the notice is
+/// said by the loop when it sees the end of the answer, and an answer that finished inside the
+/// overflow is one the loop never saw the end of. Keeping the pipe open leaves the loop where the
+/// notice is said, which is what this is about.
+#[tokio::test]
+async fn fragments_of_an_answer_that_went_by_are_said_to_have_gone() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = wired(Vec::new());
+    app.kernel
+        .set_provider(Arc::new(Flooding { words: 20_000 }));
+
+    let (mut typing, reader) = tokio::io::duplex(64);
+    typing.write_all(b"go\n").await.expect("could not type");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    let mut headless = Headless::new(Grant::Deny, &mut records, &mut prose);
+    // `/quit` once the answer has been said, so that the run ends by asking to rather than by the
+    // input going, which is what keeps the notice in the loop
+    // watched rather than the outcome channel, which the loop has
+    let kernel = app.kernel.clone();
+    let quitting = async move {
+        while !kernel
+            .history()
+            .iter()
+            .any(|record| record.event.name() == "model.finished")
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        typing.write_all(b"/quit\n").await.expect("could not type");
+    };
+
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        tokio::join!(
+            headless.run(&mut app, &mut events, &mut finished, BufReader::new(reader)),
+            quitting,
+        )
+    })
+    .await
+    .expect("the run waited for a line that was never coming")
+    .0
+    .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("the prose is text");
+    let notice = "fragment(s) of an answer went by too fast to print";
+    assert!(prose.contains(notice), "nothing said what went past");
+    // and once: the count is the whole of what went past, not one notice per moment behind
+    assert_eq!(
+        prose.matches(notice).count(),
+        1,
+        "what went past was said more than once"
+    );
+    // and after the answer it belongs to, so a line about the typing does not stand in the middle
+    // of a sentence somebody is reading
+    let answer = prose.rfind("019999").expect("the answer was not printed");
+    let said = prose.find(notice).expect("checked above");
+    assert!(said > answer, "what went past was said first");
 }
 
 /// A copy with no terminal to go to says so in the one line, rather than a line saying it went to
