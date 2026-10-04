@@ -142,7 +142,17 @@ def hygiene(budget: int) -> str:
         f"exception. If the next request is above {n} tokens, cleaning up comes before anything "
         "else: first `note` what you still need (the verified finding with file:line, or the "
         "fact you learnt), then `elide` the finished tool results (or `exclude` pure noise) with "
-        f"a reason, until it is back under {n}."
+        f"a reason, until it is back under {n}. "
+        "WHAT THE PROGRAM DOES ON ITS OWN: when the next message arrives, every tool result "
+        "from before it - each file you read, each search you ran - is elided and left as a "
+        "marker saying it was compacted after you had read it, and every follow-up message you "
+        "are sent starts such a pass. So: compare two places in the turn you read them, and "
+        "`note` each verified finding at once, with file:line and the exact words it rests on; "
+        "a note is never elided. Before a reply with no tool call, which ends the turn, `note` "
+        "anything still unnoted. When a marker stands for something you still need, `restore` "
+        "that item by id with a reason, or `search` it for the line you need, rather than "
+        "reading the file again: a restored item is not elided again, and a fresh read is at "
+        "the next message. `look` lists every item with its id, elided ones included."
     )
 
 
