@@ -326,6 +326,54 @@ async fn a_long_output_in_wide_characters_is_shortened_rather_than_fatal() {
     assert!(live.text.ends_with("日本語テスト\n"));
 }
 
+/// The cut lands on a character boundary, rather than inside a character.
+///
+/// note: the bound and the cut are both in bytes and the output is not all ASCII - `find` on a
+/// Japanese checkout, a `grep` over a source file with an accent in it. Cutting inside a
+/// character is a panic on the slice, so the count walks up to the next boundary.
+#[tokio::test]
+async fn a_cut_inside_a_multi_byte_character_moves_on_to_the_next_boundary() {
+    let mut harness = Harness::new([]);
+    let call = nachalnik::ToolCallId("c1".to_owned());
+    harness.app.on_event(Event::ToolStarted {
+        call: call.clone(),
+        tool: "shell".to_owned(),
+    });
+    // 8,002 bytes with a three-byte character at 4,000 - so the cut, which is half the bound back
+    // from the end, lands at 4,002 and is inside it
+    harness.app.on_event(Event::ToolOutput {
+        call: call.clone(),
+        tool: "shell".to_owned(),
+        chunk: "o".repeat(4_000),
+    });
+    harness.app.on_event(Event::ToolOutput {
+        call,
+        tool: "shell".to_owned(),
+        chunk: format!("日{}", "z".repeat(3_999)),
+    });
+
+    let live = harness
+        .app
+        .loose
+        .last()
+        .expect("the output is on the screen");
+    assert!(
+        !live.text.contains('日'),
+        "the cut moved up to the end of the character rather than down to its start: {:?}",
+        live.text.chars().take(100).collect::<String>()
+    );
+    assert!(
+        live.text.ends_with(&"z".repeat(3_999)),
+        "the whole of the tail past the cut is still there: {}",
+        live.text.len()
+    );
+    assert!(
+        live.text.len() < 8_000,
+        "{} bytes is not under the bound",
+        live.text.len()
+    );
+}
+
 /// Two calls streaming at once are two lines, and the first to finish takes only its own away.
 ///
 /// note: `--parallel` runs calls abreast, and their output was appended to whichever line was

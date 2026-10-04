@@ -2791,3 +2791,96 @@ async fn the_conversation_still_scrolls_while_a_question_waits() {
         );
     }
 }
+
+/// The picked row is the row the keys have, and it says so by being reversed rather than
+/// underlined.
+///
+/// note: the two modifiers are the whole of what distinguishes "the keys are here" from "the keys
+/// are elsewhere" on this tab, and both list tabs use the same pair. A pane that drew the
+/// underline while the keys were on its body would be claiming the keys had gone somewhere they
+/// had not, on the one screen where a letter changes what a call is allowed to do.
+#[tokio::test]
+async fn the_picked_row_is_reversed_while_the_keys_are_on_the_tab() {
+    use ratatui::style::Modifier;
+
+    let mut harness = Harness::new(Vec::new());
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
+    ));
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.tab(Tab::Permissions);
+
+    assert_eq!(
+        harness.app.focus,
+        Focus::Body,
+        "the keys are on the tab's body, which is the only place they can be"
+    );
+    let (_, modifier) = harness.style_of("allow");
+    assert!(
+        modifier.contains(Modifier::REVERSED),
+        "the picked row is reversed while the keys are on it, not underlined"
+    );
+    assert!(
+        !modifier.contains(Modifier::UNDERLINED),
+        "an underline would say the keys are somewhere else"
+    );
+}
+
+/// A row somebody cycled back to `ask` leaves the picked row naming a row that is no longer there.
+///
+/// note: the frame is what keeps `App::chosen` a row of the tab, and it is the only thing that
+/// does - the key handler clamps on its way in, so a key that took a row off the list leaves the
+/// index pointing one past the end. The screen looks right either way, because the list clamps
+/// its own selection, but `chosen` is the field every caller and every key works from, and a
+/// value off the end of the list names no subject at all.
+#[tokio::test]
+async fn cycling_the_picked_row_away_leaves_it_on_a_row_of_the_tab() {
+    let mut harness = Harness::new(Vec::new());
+    for capability in [
+        Capability::fs("read"),
+        Capability::fs("write"),
+        Capability::exec("run"),
+    ] {
+        harness
+            .app
+            .policy
+            .set(&Subject::Capability(capability), Verdict::Allow);
+    }
+    harness.tab(Tab::Permissions);
+    let rows = harness.app.permissions().len();
+    assert_eq!(rows, 3, "three decisions to walk: {rows}");
+
+    // the last row, and cycled all the way round: allow to deny keeps it listed, deny to ask
+    // does not, because `ask` is what the policy does about everything nobody has answered
+    harness.press(KeyCode::End).await;
+    harness.press(KeyCode::Char(' ')).await;
+    assert_eq!(harness.app.chosen, 2, "still the last of three");
+    harness.press(KeyCode::Char(' ')).await;
+    assert_eq!(
+        harness.app.permissions().len(),
+        rows - 1,
+        "an undecided subject is not a row"
+    );
+    assert_eq!(
+        harness.app.chosen,
+        rows - 1,
+        "and the key that took it off the list leaves the index where it was"
+    );
+
+    // the frame brings it back onto a row, which is the whole of what it is there for
+    harness.screen();
+    assert_eq!(
+        harness.app.chosen,
+        rows - 2,
+        "the picked row is a row of the tab after the frame has drawn"
+    );
+    assert!(
+        harness.app.permissions().get(harness.app.chosen).is_some(),
+        "row {} of {}",
+        harness.app.chosen,
+        harness.app.permissions().len()
+    );
+}
