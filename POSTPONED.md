@@ -292,9 +292,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   reason is worth showing is the decision. `cargo mutants` found it: `> 0` replaced with `>= 0`
   survives every test, and a test pinning either answer would be choosing one.
 
-- **`Careful::servers` has no caller.** It lists every MCP server whose tools are installed, with
-  what the policy answers about each, and nothing in the workspace calls it: the permissions tab
-  reaches the same rows through `server_of`, one tool at a time. A test pinning its answer would
-  pin an answer nobody reads, and taking it out is a change to `kamchatka`'s public API. Whether
-  the tab should draw from it, or it should go, is the decision. `cargo mutants` found it: its
-  body replaced with `vec![]` survives every test.
+- **`Careful::servers` and `Advised::careful` have no caller.** The first lists every MCP server
+  whose tools are installed, with what the policy answers about each, and the permissions tab
+  reaches the same rows through `server_of`, one tool at a time. The second hands out the standing
+  rules under the advisor, and its doc says the tools and the permissions tab hold it - they hold
+  the `Careful` they were built with instead. A test pinning either would pin an answer nobody
+  reads, and taking them out is a change to `kamchatka`'s public API. Whether something should
+  use them, or they should go, is the decision. `cargo mutants` found both: `servers` replaced
+  with `vec![]` and `careful` with a fresh policy survive every test.
