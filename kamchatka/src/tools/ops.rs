@@ -302,9 +302,27 @@ fn unreadable(written: &str) -> String {
 
     format!(
         "the arguments were not JSON, so nothing was read and nothing was done: {why}. What \
-         arrived there was `{}`. Send the call again, as one JSON object.",
-        around(written, at(written, why.line(), why.column()), SHOWN)
+         arrived there was `{}`. Send the call again, as one JSON object{}.",
+        around(written, at(written, why.line(), why.column()), SHOWN),
+        escaping(&why)
     )
+}
+
+/// What to write instead, where the fault is one a model makes without seeing it: a regex's `\(`
+/// put into a string as it stands, or a line break typed into one.
+///
+/// note: the line and column already say where, and that was not enough. A model that writes
+/// `\(` in a pattern reads it as the pattern it meant, sends it again the same way, and is told
+/// the same thing; what it lacks is the rule, which is one clause.
+fn escaping(why: &serde_json::Error) -> &'static str {
+    let said = why.to_string();
+    if said.starts_with("invalid escape") {
+        ", with every backslash inside a string written twice, as `\\\\`"
+    } else if said.starts_with("control character") {
+        ", with a line break inside a string written as `\\n`"
+    } else {
+        ""
+    }
 }
 
 /// Where in the text a line and column land, both counted from one; the end of it when they name
@@ -476,14 +494,18 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         // note: with what is wrong and the part of it to look at, as `unreadable` gives them. Told
         // only that it was not JSON and shown the end of the payload, a model whose fault is in the
         // middle of it - a `\(` in a pattern - has nothing to change, and sends the same call again
-        let (why, at) = match serde_json::from_str::<Value>(written) {
-            Err(e) => (format!(" ({e})"), at(written, e.line(), e.column())),
-            Ok(_) => (String::new(), written.len()),
+        let (why, at, rule) = match serde_json::from_str::<Value>(written) {
+            Err(e) => (
+                format!(" ({e})"),
+                at(written, e.line(), e.column()),
+                escaping(&e),
+            ),
+            Ok(_) => (String::new(), written.len(), ""),
         };
         return Some(format!(
             "the arguments were not JSON{why} - what arrived there was `{}` - so no operation \
              could be read from them, and the call is judged against all {} `{}` has; send it \
-             again as one JSON object",
+             again as one JSON object{rule}",
             around(written, at, SHOWN),
             ops.len(),
             spec.id
@@ -874,6 +896,10 @@ mod tests {
             said.contains("problems\\("),
             "and it shows the fault: {said}"
         );
+        assert!(
+            said.contains("every backslash inside a string written twice, as `\\\\`"),
+            "and the rule it broke, which the position alone does not give: {said}"
+        );
         // and a call the model wrapped in that key itself names its operation, which is read
         // through it
         assert_eq!(
@@ -1042,6 +1068,28 @@ mod tests {
         }
     }
 
+    /// A payload broken by how a string was written says how to write it.
+    ///
+    /// note: both are shapes a model writes without seeing them. The regex is the commoner: a
+    /// pattern copied into a string as it stands, `\(` and all, which reads to the model as the
+    /// pattern it meant and was sent again unchanged after being told only where it failed.
+    #[test]
+    fn a_string_written_wrong_says_how_to_write_it() {
+        let said = unreadable("{\"call\": {\"action\": \"grep\", \"pattern\": \"fn held\\(\"}}");
+        assert!(said.contains("invalid escape"), "{said}");
+        assert!(
+            said.contains("every backslash inside a string written twice, as `\\\\`"),
+            "{said}"
+        );
+
+        let said = unreadable("{\"call\": {\"action\": \"note\", \"content\": \"one\ntwo\"}}");
+        assert!(said.contains("control character"), "{said}");
+        assert!(
+            said.contains("a line break inside a string written as `\\n`"),
+            "{said}"
+        );
+    }
+
     /// A payload that never parsed says what is wrong with it and shows that part.
     ///
     /// note: both texts are shapes `inclusionai/ling-3.0-flash-vl` produces. The first is what
@@ -1079,6 +1127,10 @@ mod tests {
             "the case is a fault past the first {SHOWN} characters"
         );
         let said = unreadable(&escaped);
+        assert!(
+            !said.contains("backslash"),
+            "a quote left open is not a backslash to double: {said}"
+        );
         assert!(
             said.contains("import sys,json"),
             "the window follows the fault rather than quoting the start: {said}"
