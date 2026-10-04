@@ -3104,11 +3104,21 @@ async fn the_record_a_run_leaves_checks_clean_and_a_spoiled_one_does_not() {
         ModelResponse::tool_calls(vec![call("c1", "peek", json!({}))]),
         ModelResponse::text("read it"),
     ];
-    let run = run_with("look around\n/exclude 1\n", script, Grant::Allow, |app| {
-        app.kernel.add_tool(Arc::new(
-            ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
-        ));
-    })
+    // `/undo` then `/redo` on purpose, and the exclusion after them: the log's own `context.undone`
+    // takes an item back out and its `context.redone` puts it in again, and nothing after that
+    // names the item again - so the `context.redone` is the only record that leaves it in the
+    // context, and a reader that did not read it would say the snapshot holds an item the log
+    // never added
+    let run = run_with(
+        "look around\n/undo\n/redo\n/exclude 1\n",
+        script,
+        Grant::Allow,
+        |app| {
+            app.kernel.add_tool(Arc::new(
+                ConstTool::new("peek", "the answer").with_capabilities([Capability::fs("read")]),
+            ));
+        },
+    )
     .await;
     let snapshot = serde_json::to_string(&run.app.kernel.snapshot()).unwrap();
     let log = &run.records;
@@ -3170,6 +3180,40 @@ async fn the_record_a_run_leaves_checks_clean_and_a_spoiled_one_does_not() {
             "{said}: {findings:?}"
         );
     }
+
+    // a log whose own records disagree with each other: a change from a state the log did not
+    // leave the item in, and a change to an item the log never added
+    let joined = lines.join("\n") + "\n";
+    let changed = lines
+        .iter()
+        .find(|line| line.contains("\"context.changed\""))
+        .expect("the run changed an item");
+    let mut value: serde_json::Value = serde_json::from_str(changed).unwrap();
+    value["event"]["from"] = json!("pinned");
+    let findings = found(
+        &joined.replacen(changed, &value.to_string(), 1),
+        Some(&snapshot),
+    );
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("where the log had it")),
+        "{findings:?}"
+    );
+
+    // and a change to an item whose `context.added` is not in the log at all, which is what a
+    // record taken out of the middle of a session leaves behind: the log says it changed item 1,
+    // and nothing in it added item 1. The snapshot is the real one here, which still holds
+    // item 1, so the finding is about the record that is gone rather than about the item
+    let without_one =
+        without(&|line| line.contains("\"context.added\"") && line.contains("\"id\":1,"));
+    let findings = found(&without_one, Some(&snapshot));
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("changes item 1") && it.contains("never added")),
+        "{findings:?}"
+    );
 
     // and a snapshot edited to say something the log does not
     let mut edited: serde_json::Value = serde_json::from_str(&snapshot).unwrap();
@@ -3423,5 +3467,59 @@ async fn a_switch_still_settling_is_waited_for_when_the_session_leaves() {
     assert!(
         !app.in_flight(),
         "and nothing is out at the endpoint once it has been waited for"
+    );
+}
+
+/// A log of two sessions in one file is read as one, and the items the later session was not
+/// resumed from are said rather than counted against it.
+///
+/// note: two sessions in one file is what a session leaves when it is started afresh in the
+/// middle of a record: the new `session.started` follows the old one's records and numbers on
+/// beside them. What came before it belongs to a session that is over, so the items it left are
+/// not items this one has, and the count the two halves have to agree on is this one's alone.
+#[test]
+fn two_sessions_in_one_log_are_read_as_two_and_the_count_is_the_later_one() {
+    use kamchatka::check::check;
+    use nachalnik::{Config, ContextId, Kernel};
+
+    let first = Kernel::new(Config::default());
+    first.push(ContextItem::user("one"));
+    first.push(ContextItem::user("two"));
+
+    let second = Kernel::new(Config::default());
+    second.push(ContextItem::user("three"));
+
+    // one file, numbered on from where the first session ended, and this session's snapshot
+    // beside it renumbered to where the records it names are
+    let mut lines: Vec<String> = first
+        .history()
+        .iter()
+        .map(|record| serde_json::to_string(record).unwrap())
+        .collect();
+    let mut seq = lines.len() as u64;
+    for record in second.history() {
+        seq += 1;
+        let mut value = serde_json::to_value(&record).unwrap();
+        value["seq"] = json!(seq);
+        lines.push(value.to_string());
+    }
+    let log = lines.join("\n") + "\n";
+    let mut snapshot = serde_json::to_value(second.snapshot()).unwrap();
+    snapshot["last_seq"] = json!(seq);
+
+    let clean = check(Some(&log), Some(&snapshot.to_string()));
+    assert!(clean.findings.is_empty(), "{:?}", clean.findings);
+
+    // an item this session never added is still named, the items the session before it left
+    // being none of this one's: both sessions handed out identifier 1, and this one is the
+    // only half of the log that says what it did with it
+    let mut extra = snapshot.clone();
+    extra["items"][0]["id"] = json!(ContextId(2));
+    let findings = check(Some(&log), Some(&extra.to_string())).findings;
+    assert!(
+        findings
+            .iter()
+            .any(|it| it.contains("the snapshot has item 2, which the log never added")),
+        "{findings:?}"
     );
 }
