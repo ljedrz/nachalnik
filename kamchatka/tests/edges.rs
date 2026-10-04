@@ -687,6 +687,20 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
         cut.contains("~0 tokens"),
         "and the figure still stayed: {cut}"
     );
+
+    // narrower again, where the name cannot come to its floor: it is either kept whole or shortened
+    // to nothing worth reading, and the code chooses to leave it whole rather than to say
+    // `…ew:free`. A stub is the worse answer of the two - it names no model at all and is still
+    // wider than what it replaced - so what is checked here is that the name is one or the other
+    let floor = status_at(54);
+    assert!(
+        floor.contains("dots-3-note-preview:free"),
+        "and nothing left of it worth reading: {floor}"
+    );
+    assert!(
+        !floor.contains('\u{2026}'),
+        "rather than a stub cut down to the floor: {floor}"
+    );
 }
 
 /// `/models` against somewhere that answers nothing says so, rather than opening an empty box.

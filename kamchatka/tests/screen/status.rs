@@ -9,9 +9,12 @@ use std::{sync::Arc, time::Duration};
 
 use crossterm::event::KeyCode;
 use nachalnik::{
-    Content, ContextItem, ContextState, ModelInfo, ModelResponse, Usage, test::ScriptedProvider,
+    BoxError, Capability, Content, ContextItem, ContextState, DeltaSink, ModelInfo, ModelRequest,
+    ModelResponse, OutputSink, Provider, State, ToolCall, ToolOutput, ToolSpec, Usage, async_trait,
+    test::{ConstTool, ScriptedProvider, call},
 };
 use nachalnik_providers::OpenAiCompatible;
+use serde_json::json;
 
 use crate::harness::{Harness, grouped};
 use kamchatka::app::Tab;
@@ -411,6 +414,16 @@ async fn a_session_that_is_working_says_so_with_something_that_moves() {
     assert_ne!(second, third, "the lit dot did not move on");
     assert_eq!(lit(&mut harness, 840), first, "and it goes round");
 
+    // one blink per dot and not one per frame: a marker that steps as fast as the terminal can
+    // redraw is a different signal from one that moves at a rate somebody can read across the
+    // room, and the number of blinks in the time is what tells the two apart
+    let cycles = (0..3)
+        .map(|n| lit(&mut harness, 280 * (n + 1)))
+        .collect::<Vec<_>>();
+    assert_eq!(cycles, [1, 2, 0], "the dot moves on its own clock");
+    let quarter = lit(&mut harness, 700);
+    assert_eq!(quarter, 2, "and stays lit until the next blink");
+
     // a short turn stays clean; a long one says how long, because "is it hung?" is the question
     // the marker raises and cannot answer on its own
     harness.app.since = std::time::Instant::now();
@@ -423,6 +436,203 @@ async fn a_session_that_is_working_says_so_with_something_that_moves() {
     // and it goes when the work does
     harness.app.busy = false;
     assert!(!harness.screen().contains('•'), "{}", harness.screen());
+}
+
+/// The status line says what the runtime is doing, in words, and a different word for each of the
+/// five things it can be doing.
+///
+/// note: the word is the whole of it. A turn under way, a question somebody has to answer and a
+/// call that has been decided but has not run are three different situations, and one word that
+/// stands for all three leaves somebody who pressed `esc` and watched nothing happen with no way to
+/// tell a wedged turn from one the program has finished with and is waiting on them for.
+#[tokio::test]
+async fn the_status_line_says_which_thing_the_runtime_is_doing() {
+    /// The word the status line opens with, which is the one that names the state.
+    ///
+    /// note: every word of it rather than the first, because the line is drawn without wrapping and
+    /// `waiting on you` runs past the right edge of a hundred-column window on its own. What a
+    /// person reads is the whole phrase either way.
+    fn said(harness: &mut Harness) -> String {
+        let status = harness.sized(100, 30);
+        let line = status.lines().last().expect("a status line");
+        let first = line.split("·").next().expect("the state is on it");
+
+        // and the marker goes on with the state, so it is dropped: the word says what the runtime
+        // is doing, the three dots say how long it has been at it
+        first
+            .split_whitespace()
+            .filter(|word| !word.chars().all(|c| c == '\u{2022}'))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    // nothing done and nothing outstanding
+    let mut harness = Harness::new([]);
+    assert!(matches!(harness.app.kernel.state(), State::Idle));
+    assert_eq!(said(&mut harness), "idle");
+
+    // the model has asked for a tool and it is not allowed to run unasked: a question is waiting,
+    // and the box it is drawn in says so as well
+    let mut asking = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c1",
+        "dig",
+        json!({ "where": "there" }),
+    )])]);
+    asking.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+    asking.send("dig there").await;
+    asking.settle().await;
+    assert!(matches!(asking.app.kernel.state(), State::Deciding { .. }));
+    assert_eq!(said(&mut asking), "waiting on you");
+
+    // every call decided and none run. `/step` is the only way to stand here, which is why this
+    // state has a key of its own
+    let mut decided = Harness::new([ModelResponse::tool_calls(vec![call(
+        "c2",
+        "look",
+        json!({}),
+    )])]);
+    // a tool that needs nothing is decided without being asked about, which is what leaves the
+    // runtime in `Ready` rather than in `Deciding`
+    decided
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("look", "nothing to see")));
+    decided.send("/step look around").await;
+    decided.settle().await;
+    assert!(matches!(decided.app.kernel.state(), State::Ready { .. }));
+    assert_eq!(said(&mut decided), "ready");
+
+    // the next transition runs it, and a tool that has not finished yet is the only way to be
+    // caught in the middle of one
+    // and the one that needs nothing, so the turn runs it rather than stopping to ask
+    let mut running = Harness::new([
+        ModelResponse::tool_calls(vec![call("c3", "wait", json!({}))]),
+        ModelResponse::text("done"),
+    ]);
+    running
+        .app
+        .kernel
+        .add_tool(Arc::new(Slow::new(Duration::from_millis(400))));
+    running.send("wait").await;
+    for _ in 0..2_000 {
+        if matches!(running.app.kernel.state(), State::Executing { .. }) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert!(
+        matches!(running.app.kernel.state(), State::Executing { .. }),
+        "the tool should still be running"
+    );
+    assert_eq!(said(&mut running), "running");
+    running.settle().await;
+
+    // and the model ended its turn, which is a resting state of its own rather than `idle`: the
+    // turn is over and the answer is in
+    let mut answered = Harness::new([ModelResponse::text("done")]);
+    answered.send("go").await;
+    answered.settle().await;
+    assert!(matches!(
+        answered.app.kernel.state(),
+        State::Finished { .. }
+    ));
+    assert_eq!(said(&mut answered), "done");
+}
+
+/// A tool that takes a moment, so that a turn is still running when it is drawn.
+///
+/// note: `ConstTool` answers between two instructions, which is a turn over before anybody can
+/// look at it. The gap is the point of this type; the sleep is the gap.
+struct Slow(Duration);
+
+impl Slow {
+    fn new(how_long: Duration) -> Self {
+        Self(how_long)
+    }
+}
+
+#[async_trait]
+impl nachalnik::Tool for Slow {
+    fn spec(&self) -> ToolSpec {
+        ToolSpec::new("wait", "takes a moment")
+    }
+
+    async fn invoke(&self, _call: &ToolCall, _output: OutputSink) -> Result<ToolOutput, BoxError> {
+        tokio::time::sleep(self.0).await;
+
+        Ok(ToolOutput::new("a bone"))
+    }
+}
+
+/// And a request that has not come back yet says `asking`, which is the one state a person cannot
+/// reach by typing and the only one they need it for: a turn that is in flight is the one that
+/// `esc` stops.
+///
+/// note: a provider that does not answer is what holds the runtime in `Requesting`. Everything else
+/// on the line is drawn the same way - the word, the three dots and the clock - so this is the
+/// word being read rather than a second mechanism.
+#[tokio::test]
+async fn a_request_that_has_not_come_back_yet_says_it_is_asking() {
+    let gate = Arc::new(tokio::sync::Notify::new());
+    let mut harness = Harness::new([]);
+    harness
+        .app
+        .kernel
+        .set_provider(Arc::new(Waiting { gate: gate.clone() }));
+    harness.app.kernel.push(ContextItem::user("go"));
+    harness.app.start_turn();
+
+    let mut asking = String::new();
+    for _ in 0..500 {
+        if matches!(harness.app.kernel.state(), State::Requesting) {
+            asking = harness
+                .screen()
+                .lines()
+                .last()
+                .expect("a status line")
+                .split_whitespace()
+                .next()
+                .expect("a word on it")
+                .to_owned();
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(2)).await;
+    }
+    assert!(
+        matches!(harness.app.kernel.state(), State::Requesting),
+        "the request should still be out"
+    );
+    assert_eq!(asking, "asking", "a request in flight says so");
+
+    gate.notify_waiters();
+    harness.settle().await;
+}
+
+/// A model that answers only once the test says so, which is how a request in flight is held open.
+///
+/// note: `std::future::pending` would do, and cannot be woken again - so this is a gate rather than
+/// a hang, and the turn ends when the test opens it.
+struct Waiting {
+    gate: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl Provider for Waiting {
+    fn info(&self) -> ModelInfo {
+        ModelInfo::new("scripted", "scripted").with_context_limit(128_000)
+    }
+
+    async fn respond(
+        &self,
+        _request: ModelRequest,
+        _deltas: DeltaSink,
+    ) -> Result<ModelResponse, BoxError> {
+        self.gate.notified().await;
+
+        Ok(ModelResponse::text("late"))
+    }
 }
 
 #[tokio::test]
