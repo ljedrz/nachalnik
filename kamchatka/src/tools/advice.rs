@@ -773,6 +773,44 @@ mod tests {
         }
     }
 
+    /// One shell call, named, with the command the questions are put to.
+    fn running(id: &str, cmd: &str) -> PermissionRequest {
+        let mut request = asking("shell", Capability::exec("run"));
+        request.call = ToolCallId::from(id);
+        request.args = Arc::new(json!({ "cmd": cmd }));
+        request
+    }
+
+    /// An engine that answers off the command it was shown, so two calls get two answers.
+    ///
+    /// note: two bands rather than one, because a test that cannot tell them apart cannot say
+    /// whose reading it is holding.
+    struct ByCommand;
+
+    #[async_trait]
+    impl SystemOne for ByCommand {
+        async fn ask(
+            &self,
+            state: Value,
+            _questions: Vec<(String, Question)>,
+        ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+            let score = match state["arguments"]["cmd"].as_str().unwrap_or_default() {
+                it if it.contains("rm -rf") => 2.0,
+                _ => 0.0,
+            };
+            Ok(nachalnik_providers::system1::Answers::read(json!({
+                "model": "by-command",
+                "answers": {
+                    RATING: { "type": "score", "score": score, "confidence": 0.99 }
+                },
+            })))
+        }
+
+        fn named(&self) -> String {
+            "by-command".to_owned()
+        }
+    }
+
     /// A question about something other than a command is not rated, and nothing about it goes.
     #[tokio::test]
     async fn a_call_already_going_to_be_asked_about_is_not_sent_anywhere() {
@@ -1100,6 +1138,61 @@ mod tests {
         );
     }
 
+    /// A call is rated once, however many times the question comes round.
+    ///
+    /// note: the memory is keyed by the call, and what that key is for is that the second
+    /// question about a call must read the second reading rather than the first. A lookup that
+    /// answered "any call but this one" leaves the first answer where it is and puts a second
+    /// entry under a call nobody asked about.
+    #[tokio::test]
+    async fn a_call_rated_again_is_the_one_that_is_read_back() {
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(ByCommand));
+
+        let first = running("call-1", "ls");
+        let second = running("call-2", "ls");
+        assert_eq!(advised.evaluate(&first).await, Verdict::Ask);
+        assert_eq!(
+            advised.rating(&first.call).map(|it| it.shown()),
+            Some(Rating::Reads),
+            "the first reading of the first call"
+        );
+
+        // the same call asked about again, this time as something that would not be green
+        let again = running("call-1", "rm -rf /");
+        assert_eq!(advised.evaluate(&again).await, Verdict::Ask);
+        assert_eq!(
+            advised.rating(&again.call).map(|it| it.shown()),
+            Some(Rating::Grave),
+            "the reading written down for `call-1` is the one this call got"
+        );
+
+        // and the call nobody asked about twice still holds what it was given
+        assert_eq!(advised.evaluate(&second).await, Verdict::Ask);
+        assert_eq!(
+            advised.rating(&second.call).map(|it| it.shown()),
+            Some(Rating::Reads),
+            "`call-2` is not left holding another call's reading"
+        );
+        assert_eq!(advised.readings.lock().len(), 2, "one entry per call");
+    }
+
+    /// A call rated before the latest one is still rated.
+    ///
+    /// note: the memory is bounded, so that a session that never reads the panel grows no queue
+    /// behind it, and it lets go of the oldest - not of everything but the newest, which is a
+    /// rating gone before the person it was for is shown it.
+    #[tokio::test]
+    async fn a_reading_before_the_latest_is_still_there() {
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(ByCommand));
+
+        let (earlier, latest) = (running("call-1", "ls"), running("call-2", "ls"));
+        for request in [&earlier, &latest] {
+            assert_eq!(advised.evaluate(request).await, Verdict::Ask);
+        }
+        assert!(advised.rating(&earlier.call).is_some());
+        assert!(advised.rating(&latest.call).is_some());
+    }
+
     /// A command of eight stages costs the round trip a command of one costs.
     ///
     /// note: the property that makes taking a command apart worth doing here at all, and the
@@ -1334,6 +1427,39 @@ mod tests {
         };
 
         assert_eq!(state(&request)["arguments"]["cmd"], "rm -rf target");
+    }
+
+    /// A string cut to the cap ends on the last whole character that fits, where one straddles it.
+    #[test]
+    fn a_string_is_cut_at_the_last_character_that_fits() {
+        // `é` is two bytes and starts on every odd one here, so the `a` in front puts the cap in
+        // the middle of one
+        let straddling = format!("a{}", "é".repeat(ROOM));
+        assert_eq!(
+            capped(&Value::String(straddling.clone())),
+            Value::String(format!(
+                "{}… (cut; {} bytes in all)",
+                &straddling[..ROOM - 1],
+                straddling.len()
+            ))
+        );
+    }
+
+    /// A joint at the end of a command leaves nothing behind it, and nothing is not a stage.
+    ///
+    /// note: the range of an empty stage points at the same byte twice, which a client asked to
+    /// underline it would draw as a caret at the end of the command - on a question the model was
+    /// never shown a stage of. The stage is dropped rather than clamped back to the joint beside
+    /// it, which would point at a stage the model did read and call it a different one.
+    #[test]
+    fn a_stage_with_nothing_in_it_is_not_a_stage() {
+        // a trailing joint leaves a trailing stage of nothing
+        let cmd = "ls | grep x |";
+        assert_eq!(stages(cmd), [(0, 2), (5, 11)]);
+
+        // and one between two joints leaves the same, in the middle this time
+        let cmd = "ls | | wc -l";
+        assert_eq!(stages(cmd), [(0, 2), (7, 12)]);
     }
 
     /// A payload larger than [`ROOM`] is cut, says so, and does not panic on the way.
