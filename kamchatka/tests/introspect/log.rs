@@ -4,8 +4,8 @@
 use crate::{agent, answered, answers_from, branch, offers, one_turn};
 use kamchatka::{introspect, tools::Careful, tools::Limits, tools::Subject};
 use nachalnik::{
-    Config, ContextItem, ContextKind, Kernel, ModelResponse, Verdict, test::ScriptedProvider,
-    test::call,
+    Config, ContextItem, ContextKind, ContextState, Kernel, ModelResponse, Verdict,
+    test::ScriptedProvider, test::call,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -1276,4 +1276,83 @@ async fn a_replaced_items_short_text_is_not_said_to_have_more_of_it() {
         .into_owned();
     assert!(said.contains("context.replaced"), "{said}");
     assert!(!said.contains("bytes in all"), "{said}");
+}
+
+/// `ids` reaches a compaction by every list in its report, the summary beside the others.
+#[tokio::test]
+async fn a_compaction_is_found_by_the_summary_and_by_what_it_took() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "log",
+            json!({ "action": "read", "ids": [1], "kinds": ["context.compacted"] }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "ids": [3], "kinds": ["context.compacted"] }),
+        ),
+    ]));
+
+    let file = kernel.push(ContextItem::file("big.txt", "a".repeat(4_000)));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.apply_compaction(nachalnik::CompactionPlan {
+        elide: vec![file],
+        remove: Vec::new(),
+        summary: Some(ContextItem::memory(
+            "scratch",
+            "the parser is in src/parser.rs",
+        )),
+        reason: "compacted to make room; the context had reached 122% of the limit".into(),
+    });
+    let summary = kernel.items().last().expect("the summary is in").id;
+    assert_eq!(
+        summary,
+        nachalnik::ContextId(3),
+        "the summary is after what was elided"
+    );
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let (by_taken, by_summary) = (&said[0], &said[1]);
+    assert!(
+        by_taken.contains("1 match") && by_taken.contains("context.compacted"),
+        "the record of a pass that elided item 1 is found by its number: {by_taken}"
+    );
+    assert!(
+        by_summary.contains("1 match") && by_summary.contains("context.compacted"),
+        "and the same record is found by the summary the pass put in its place: {by_summary}"
+    );
+}
+
+/// `ids` reaches a request record by an item the projector left out of it.
+///
+/// note: `model.requested` names two lists, and an excluded item is in only the second - "what
+/// was not sent, and why" is the whole reason that list exists, and this is what a model asking
+/// why a file was not in the request reads the log to find. A filter that matched only what went
+/// out would answer that with silence for every withheld item there is.
+#[tokio::test]
+async fn a_request_is_found_by_an_item_the_projector_left_out_of_it() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "log",
+        json!({ "action": "read", "ids": [1], "kinds": ["model.requested"] }),
+    )]));
+
+    let file = kernel.push(ContextItem::file("a.rs", "0".repeat(400)));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.set_state([file], ContextState::Excluded, Some("done with it".into()));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = &answers_from(&kernel, &["log"])[0];
+    assert!(
+        !said.contains("Nothing matched"),
+        "a request that left item 1 out is a record about it, and it is found by its number: {said}"
+    );
+    assert!(
+        said.contains("model.requested") && said.contains("match"),
+        "and it is the request record itself: {said}"
+    );
 }
