@@ -304,24 +304,43 @@ fn unreadable(written: &str) -> String {
         "the arguments were not JSON, so nothing was read and nothing was done: {why}. What \
          arrived there was `{}`. Send the call again, as one JSON object{}.",
         around(written, at(written, why.line(), why.column()), SHOWN),
-        escaping(&why)
+        remedy(written, &why)
     )
 }
 
 /// What to write instead, where the fault is one a model makes without seeing it: a regex's `\(`
-/// put into a string as it stands, or a line break typed into one.
+/// put into a string as it stands, a line break typed into one, or the action written bare where
+/// the wrapper's object goes.
 ///
 /// note: the line and column already say where, and that was not enough. A model that writes
 /// `\(` in a pattern reads it as the pattern it meant, sends it again the same way, and is told
-/// the same thing; what it lacks is the rule, which is one clause.
-fn escaping(why: &serde_json::Error) -> &'static str {
+/// the same thing; what it lacks is the rule, which is one clause. The bare action is the
+/// commonest of the three: `{"call": glob, ...}`, often with the model's own markup for the rest
+/// of the call after it, and the clause shows the shape with the word it wrote.
+fn remedy(written: &str, why: &serde_json::Error) -> String {
     let said = why.to_string();
     if said.starts_with("invalid escape") {
-        ", with every backslash inside a string written twice, as `\\\\`"
-    } else if said.starts_with("control character") {
-        ", with a line break inside a string written as `\\n`"
-    } else {
-        ""
+        return ", with every backslash inside a string written twice, as `\\\\`".to_owned();
+    }
+    if said.starts_with("control character") {
+        return ", with a line break inside a string written as `\\n`".to_owned();
+    }
+
+    let bare = written
+        .strip_prefix(&format!("{{\"{WRAPPER}\":"))
+        .map(str::trim_start)
+        .map(|rest| {
+            rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .next()
+                .unwrap_or_default()
+        })
+        .filter(|word| word.starts_with(|c: char| c.is_ascii_alphabetic()));
+    match bare {
+        Some(word) => format!(
+            ", with `{WRAPPER}` holding an object that names the action, as in \
+             `{{\"{WRAPPER}\": {{\"action\": \"{word}\", ...}}}}`"
+        ),
+        None => String::new(),
     }
 }
 
@@ -498,9 +517,9 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
             Err(e) => (
                 format!(" ({e})"),
                 at(written, e.line(), e.column()),
-                escaping(&e),
+                remedy(written, &e),
             ),
-            Ok(_) => (String::new(), written.len(), ""),
+            Ok(_) => (String::new(), written.len(), String::new()),
         };
         return Some(format!(
             "the arguments were not JSON{why} - what arrived there was `{}` - so no operation \
@@ -900,6 +919,16 @@ mod tests {
             said.contains("every backslash inside a string written twice, as `\\\\`"),
             "and the rule it broke, which the position alone does not give: {said}"
         );
+        // and an action written bare where its object goes is shown in it
+        let said = unnamed_operation(
+            &spec,
+            &asking(json!({ UNPARSED: "{\"call\": read, \"path\": \"x\"}" })),
+        )
+        .expect("arguments that never parsed name nothing");
+        assert!(
+            said.contains("`{\"call\": {\"action\": \"read\", ...}}`"),
+            "{said}"
+        );
         // and a call the model wrapped in that key itself names its operation, which is read
         // through it
         assert_eq!(
@@ -1087,6 +1116,39 @@ mod tests {
         assert!(
             said.contains("a line break inside a string written as `\\n`"),
             "{said}"
+        );
+    }
+
+    /// An action written bare where the wrapper's object goes is shown in that object.
+    ///
+    /// note: both are shapes `inclusionai/ling-3.1-flash` sent in the friction sweep, the second
+    /// with its own markup for the rest of the call after the word. Told where the parse stopped,
+    /// it sent the next call the same way about as often as it fixed it.
+    #[test]
+    fn a_bare_action_is_shown_in_the_object_it_belongs_in() {
+        for written in [
+            "{\"call\": glob, \"path\": \".\", \"pattern\": \"src/kernel/mod.rs\"}",
+            "{\"call\": grep\n<arg_key>path</arg_key>\n<arg_value>., \"pattern\": \"odd\"}",
+        ] {
+            let said = unreadable(written);
+            let word = if written.contains("glob") {
+                "glob"
+            } else {
+                "grep"
+            };
+            assert!(
+                said.contains(&format!(
+                    "`call` holding an object that names the action, as in \
+                     `{{\"call\": {{\"action\": \"{word}\", ...}}}}`"
+                )),
+                "{said}"
+            );
+        }
+
+        let quoted = unreadable("{\"call\": {\"action\": \"read\", \"path\": x}}");
+        assert!(
+            !quoted.contains("names the action"),
+            "a bare word anywhere else is not the action out of its object: {quoted}"
         );
     }
 
