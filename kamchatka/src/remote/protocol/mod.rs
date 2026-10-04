@@ -1065,6 +1065,7 @@ pub enum Address<'a> {
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
+    use std::io::Cursor;
 
     use super::*;
 
@@ -1164,6 +1165,44 @@ mod tests {
         assert_eq!(overlong(b"short\n"), None);
         // and nothing at all is not a frame, but it is not over the limit either
         assert_eq!(overlong(b""), None);
+    }
+
+    /// The reader takes the frame sitting on the limit, and stops one byte past it.
+    ///
+    /// note: the reader half of the test above, which only `overlong` answers for bytes already in
+    /// a hand. [`Frames`] is asked about what it is *holding* - the frame without the newline that
+    /// ended it - and it is the other end of every `write`: a reader that refused the limit itself
+    /// would refuse a message the writer measured as the one thing it sends whole, and the
+    /// projection cut to fit would be refused on arrival by every client that could have had it.
+    #[tokio::test]
+    async fn a_frame_on_the_limit_is_read_and_one_over_it_is_refused() {
+        // a JSON string of the given length, framed as a peer would send it
+        let wire = |bytes: usize| {
+            let mut line = vec![b'x'; bytes];
+            line[0] = b'"';
+            line[bytes - 1] = b'"';
+            line.push(b'\n');
+
+            line
+        };
+        async fn read(line: Vec<u8>) -> Result<Option<String>, String> {
+            let mut frames = Frames::new(Cursor::new(line));
+
+            super::read::<String>(&mut frames).await
+        }
+
+        let at = read(wire(MAX_LINE))
+            .await
+            .expect("a frame exactly on the limit was refused")
+            .expect("a frame exactly on the limit was not read");
+        assert_eq!(at.len(), MAX_LINE - 2);
+
+        // and one byte more than that is the refusal, naming the limit it is over
+        let error = read(wire(MAX_LINE + 1))
+            .await
+            .expect_err("a frame over the limit was read");
+        assert!(error.contains("over the"), "{error}");
+        assert!(error.contains(&MAX_LINE.to_string()), "{error}");
     }
 
     /// The arithmetic a projection is cut by is serde_json's own, character for character.
