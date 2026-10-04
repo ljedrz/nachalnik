@@ -1338,4 +1338,74 @@ mod tests {
         // and a whole rest past the retry with nothing failing is the end of it
         assert!(run_is_over(resting, at(2_000)));
     }
+
+    /// The gap goes out where the program spent the time, and nowhere a person did.
+    ///
+    /// note: this is a client reading it rather than a pane drawing it, which is the half only here
+    /// can see: a client handed two timestamps works the rule out itself and gets a column whose
+    /// largest figure is the operator reading. Both halves of the guard are in one trace, because
+    /// either alone is satisfied by a gap column that is always empty.
+    #[test]
+    fn the_gap_column_leaves_out_the_wait_that_was_a_person() {
+        use crate::app::Traced;
+        use std::time::{Duration, Instant, SystemTime};
+
+        let (outcomes, _finished) = tokio::sync::mpsc::unbounded_channel();
+        let mut app = App::new(
+            nachalnik::Kernel::new(nachalnik::Config::default()),
+            Arc::new(crate::tools::Careful::new()),
+            Arc::new(nachalnik_providers::OpenAiCompatible::new(
+                "no",
+                "http://127.0.0.1:1",
+                "",
+            )),
+            crate::tools::Limits::new(),
+            outcomes,
+        );
+        let start = Instant::now();
+        let wall = SystemTime::now();
+
+        // four seconds of somebody reading a question, and then a quarter of a second of the
+        // program doing what they allowed: both waits are longer than the tenth of a second the
+        // column reports at all, so the only thing telling them apart is whose they were
+        for (name, after, theirs) in [
+            ("permission.requested", 0, false),
+            ("permission.decided", 4_000, true),
+            ("tool.started", 4_010, false),
+            ("tool.finished", 4_260, false),
+        ] {
+            app.trace.push_back(Traced {
+                name: name.to_owned(),
+                detail: "shell".to_owned(),
+                at: start + Duration::from_millis(after),
+                wall: wall + Duration::from_millis(after),
+                after_a_person: theirs,
+            });
+        }
+
+        let lines = tracing(&app);
+        let gap_of = |name: &str| {
+            lines
+                .iter()
+                .find(|line| line.name == name)
+                .map(|line| line.gap.clone())
+        };
+
+        // the four seconds somebody spent is on no line at all
+        let decided = gap_of("permission.decided");
+        assert_eq!(
+            decided,
+            Some(None),
+            "how long a person took went out as a gap: {lines:?}"
+        );
+
+        // and the quarter of a second the program spent is, on the line it ended on
+        assert_eq!(
+            gap_of("tool.finished")
+                .as_ref()
+                .and_then(|gap| gap.as_deref()),
+            Some("+250ms"),
+            "a wait the program spent went out as no gap: {lines:?}"
+        );
+    }
 }
