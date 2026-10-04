@@ -143,3 +143,42 @@ async fn a_wide_label_keeps_the_columns_after_it_where_they_belong() {
     // and the label that pushed it is drawn whole rather than cut back to fit
     assert!(harness.packed().contains(&wide(8)), "{screen}");
 }
+
+/// The last column of the context pane is cut to what the columns in front of it leave.
+///
+/// note: the only column of that pane with no width of its own - it is what an item says, and it
+/// is as long as the window allows. So the widths in front of it are what has to be right, and
+/// this reads where they put the boundary rather than repeating their arithmetic: eighty columns
+/// wide and the `kind` column given up, the row spends four on the identifier, five on the
+/// label, one between them, eight on the figure being sent, seven on the one being held and five
+/// of gaps, and what is left is forty-eight columns of the item with the ellipsis on the end of
+/// it. Every one of those is a number a change to any of them would move.
+///
+/// note: and a window a column wider shows a column more, which is what says the column is the
+/// leftover rather than a figure of its own.
+#[tokio::test]
+async fn the_last_column_of_the_context_pane_is_what_the_columns_in_front_of_it_leave() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("x".repeat(400)));
+    harness.tab(Tab::Context);
+
+    let narrow = harness.sized(80, 20);
+    let row = narrow.lines().nth(2).expect("the item\'s row");
+    let shown = row.chars().filter(|c| *c == 'x').count();
+    assert_eq!(
+        shown, 48,
+        "eighty columns, less the twenty-nine in front of the last column and the ellipsis: {row}"
+    );
+    assert!(
+        row.contains(&format!("{}…", "x".repeat(shown))),
+        "and the column ends with the ellipsis that says it was cut: {row}"
+    );
+
+    let wider = harness.sized(81, 20);
+    let row = wider.lines().nth(2).expect("the item\'s row");
+    assert_eq!(
+        row.chars().filter(|c| *c == 'x').count(),
+        shown + 1,
+        "a window a column wider shows a column more of what the item says: {row}"
+    );
+}

@@ -16,6 +16,7 @@ use nachalnik::{
     Calibration, ContextItem, ContextState, ModelResponse, Projection, Projector,
     test::{ConstTool, call},
 };
+use ratatui::style::Modifier;
 use serde_json::json;
 
 use crate::harness::{Harness, grouped};
@@ -1917,6 +1918,40 @@ async fn a_padded_tool_result_does_not_spend_its_preview_on_nothing() {
     );
 }
 
+/// A turn that was nothing but a call says what it asked for, rather than showing an empty row.
+///
+/// note: an assistant turn whose content is empty is not an item that holds nothing - the call
+/// is on its kind, beside the content, so the pane draws a row with every other column filled in
+/// and the last one empty. Somebody reading the pane to find out what a context is made of is
+/// looking at that row to find out what that turn was, and there is nothing in the row that says
+/// it. The names of the calls are what the turn said, in the pane's own vocabulary: a call with
+/// no name of its own would leave the row empty, which is what this is not.
+#[tokio::test]
+async fn a_turn_that_was_nothing_but_a_call_says_what_it_asked_for() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({ "where": "here" }))]),
+        ModelResponse::text("a bone"),
+    ]);
+    harness
+        .app
+        .kernel
+        .add_tool(Arc::new(ConstTool::new("dig", "a bone")));
+    harness.send("dig").await;
+    harness.settle().await;
+    harness.tab(Tab::Context);
+
+    let screen = harness.screen();
+    // the turn, and the calls it made: a row with a name in it, beside its kind and its cost
+    let row = screen
+        .lines()
+        .find(|line| line.contains("assistant_message"))
+        .unwrap_or_else(|| panic!("the turn is listed: {screen}"));
+    assert!(
+        row.contains("asked for dig"),
+        "a call-only turn says what it asked for, or the row says nothing at all: {row}"
+    );
+}
+
 /// A row the counter would not price says so, rather than reading as the cheapest thing here.
 ///
 /// note: the two meanings of `0` in that column. One is "measured, and free"; the other is
@@ -1960,6 +1995,62 @@ async fn a_row_nobody_priced_does_not_read_as_a_free_one() {
         .find(|line| line.contains("what is on the screen"))
         .expect("the question is listed");
     assert!(!prose.contains('+'), "{prose:?}");
+}
+
+/// The selected row is drawn as the one a key would act on, and stops being that while the prompt
+/// has the keys.
+///
+/// note: two ways of marking the same row, and they are about where the keys are rather than
+/// about which row it is. A reversed slab says this is the row the next key lands on; an
+/// underline says it is the row somebody is looking at while their hands are somewhere else -
+/// which is what an edit over one row is, since `e` puts the keys in the prompt and the row it
+/// is about is not the row a key would then change. The pane has no other way of saying which of
+/// the two it is drawing, and the two look nothing alike.
+///
+/// note: read as the modifier rather than as a colour, because the colour is the pane's own quiet
+/// one either way and only the modifier is the difference.
+#[tokio::test]
+async fn the_selected_row_is_marked_by_where_the_keys_are() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.push(ContextItem::user("the first row"));
+    harness.app.kernel.push(ContextItem::user("the second row"));
+    harness.tab(Tab::Context);
+    assert_eq!(harness.app.focus, Focus::Body);
+
+    // the keys are on the pane, so the row under them is the one they will change
+    assert!(
+        harness
+            .style_of("the first row")
+            .1
+            .contains(Modifier::REVERSED),
+        "a row a key would act on is marked as one: {}",
+        harness.screen()
+    );
+
+    // `e` on it puts the keys in the prompt, and the row it is about is no longer the row a key
+    // would change - so it is marked as being looked at instead
+    harness.press(KeyCode::Char('e')).await;
+    assert_eq!(harness.app.focus, Focus::Input);
+    assert!(
+        harness
+            .style_of("the first row")
+            .1
+            .contains(Modifier::UNDERLINED),
+        "a row being read is marked as one: {}",
+        harness.screen()
+    );
+
+    // and the keys coming back puts it the other way
+    harness.press(KeyCode::Esc).await;
+    assert_eq!(harness.app.focus, Focus::Body);
+    assert!(
+        harness
+            .style_of("the first row")
+            .1
+            .contains(Modifier::REVERSED),
+        "and it is the row a key acts on again: {}",
+        harness.screen()
+    );
 }
 
 /// `pgdn` moves the selection half a pane, which is what keeps the row it lands on from being the

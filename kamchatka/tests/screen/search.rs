@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crossterm::event::KeyCode;
 use kamchatka::app::Tab;
 use nachalnik::{
-    ModelResponse,
+    ContextItem, ModelResponse,
     test::{ConstTool, call},
 };
 use serde_json::json;
@@ -193,6 +193,54 @@ async fn the_keys_and_the_screen_agree_about_which_context_row_is_which() {
         "selection {} is off the end of {} filtered row(s)",
         harness.app.selected,
         kept.len()
+    );
+}
+
+/// A filter that leaves fewer rows than the selection had passed leaves the selection on a row
+/// that is there.
+///
+/// note: the frame's own clamp, and not a key's. `context_key` clamps the index it is about to
+/// act on too, so every key reaches a real row either way and a test that only pressed keys after
+/// narrowing would say nothing about this. What is left out of the frame is `App::selected`, and
+/// that is a public field documented as an index into `App::listed` - so a caller reading it
+/// after a filter had shrunk the pane would be handed a row that cannot be addressed, and the
+/// only thing that put it back is something happening to change it.
+///
+/// note: read off the state rather than off the screen, because the list widget clamps a
+/// selection past its own end while drawing it - the pane would look right with either figure
+/// behind it.
+#[tokio::test]
+async fn narrowing_the_pane_leaves_the_selection_on_a_row_it_has() {
+    let mut harness = Harness::new([]);
+    for i in 0..6 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("row{i} marker")));
+    }
+    harness.tab(Tab::Context);
+
+    // the last of the six, and then a query that keeps one of them
+    harness.press(KeyCode::End).await;
+    assert_eq!(
+        harness.app.selected, 5,
+        "the fixture wants a selection to move"
+    );
+    harness.press(KeyCode::Char('/')).await;
+    type_in(&mut harness, "row0").await;
+
+    let kept = harness.app.listed().len();
+    assert_eq!(kept, 1, "the query should have narrowed the pane: {kept}");
+
+    let screen = harness.screen();
+    assert!(
+        screen.contains("row0 marker"),
+        "the row it kept is the one on the screen: {screen}"
+    );
+    assert!(
+        harness.app.selected < kept,
+        "the selection is on row {} of {kept} rows - an index no row has",
+        harness.app.selected
     );
 }
 
