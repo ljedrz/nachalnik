@@ -336,7 +336,14 @@ async fn a_refusal_is_still_accounted_for_after_a_great_many_of_them() {
     let latest = policy
         .why(&ToolCallId::from("call_199"))
         .expect("the refusal just made is the one the model is about to read");
-    assert!(latest.contains("net:reach"), "{latest}");
+    // `exec:run` covers every capability, so what refused the `curl` is not one the shell
+    // declared, and the sentence says it is what the command reached for
+    assert!(
+        latest.contains("`net:reach`, which this command reaches for"),
+        "{latest}"
+    );
+    // and the refusal before it is still there, since nothing has read it yet either
+    assert!(policy.why(&ToolCallId::from("call_198")).is_some());
     assert_eq!(policy.why(&ToolCallId::from("call_0")), None);
 }
 
@@ -606,6 +613,10 @@ fn a_refused_mcp_call_is_not_talked_past_by_an_allowed_server() {
 
     // the server's name is the whole decision where nobody has said anything about `mcp:call`
     assert_eq!(policy.verdict(&request), Verdict::Allow);
+    // and the tables say so: a rule about `mcp:call` is not consulted about the server's tool,
+    // and one about what the tool does is, whoever spawned it
+    assert!(!policy.decides(&Subject::parse("mcp:call"), "files__read"));
+    assert!(policy.decides(&Subject::parse("fs:read"), "files__read"));
 
     for refusal in ["mcp:call", "mcp"] {
         let policy = Careful::new();
