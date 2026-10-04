@@ -2243,3 +2243,67 @@ async fn always_is_the_network_from_here_on_and_no_is_this_command() {
         ]
     );
 }
+
+/// A row that leaves the tab under the cursor leaves the keys on the row that has taken its place.
+///
+/// note: the tab lists decisions, so taking one back - `ask` is what the policy does when nobody
+/// has made one - drops the row rather than greying it. The cursor was on the last row, and the
+/// next key has to answer for a row that is there: without this, the tab acts on a row one past
+/// the end of its own list. Nothing here draws between the two keys, which is the whole of it -
+/// a frame happens to clamp this too, and a caller with a loop of its own has no frame to do it.
+#[tokio::test]
+async fn a_decision_taken_back_does_not_leave_the_keys_on_a_row_that_is_not_there() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+    let read = Subject::Capability(Capability::fs("read"));
+    let shell = Subject::Capability(Capability::exec("run"));
+    harness.app.policy.set(&read, Verdict::Deny);
+    harness.app.policy.set(&shell, Verdict::Allow);
+    harness.tab(Tab::Permissions);
+
+    let rows = harness.app.permissions();
+    assert_eq!(rows.len(), 2, "{} rows to choose between", rows.len());
+    // the last row of the list, and the row above it: whatever is answered next must be that one
+    let last = rows
+        .iter()
+        .position(|row| row.subject == shell)
+        .expect("the shell is listed");
+    assert_eq!(last, rows.len() - 1, "the shell is on the last of two rows");
+    let other = rows[last - 1].subject.clone();
+
+    pick(&mut harness, &shell).await;
+    harness.press(KeyCode::Char('r')).await;
+    assert_eq!(
+        harness
+            .app
+            .permissions()
+            .iter()
+            .filter(|row| row.subject == shell)
+            .count(),
+        0,
+        "`ask` is not a decision, so it is not a row"
+    );
+
+    // and the next key answers for the row that has taken its place
+    harness.press(KeyCode::Char('a')).await;
+    assert_eq!(
+        harness.app.policy.stance(&other),
+        Verdict::Allow,
+        "the row that is still on the tab is the one that was answered"
+    );
+    let said = harness
+        .app
+        .loose
+        .last()
+        .map(|entry| entry.text.clone())
+        .unwrap_or_default();
+    assert!(
+        said.contains(&other.to_string()),
+        "and the answer says which subject it was about: {said:?}"
+    );
+}

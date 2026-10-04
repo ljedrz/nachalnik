@@ -1698,3 +1698,154 @@ async fn a_row_nobody_priced_does_not_read_as_a_free_one() {
         .expect("the question is listed");
     assert!(!prose.contains('+'), "{prose:?}");
 }
+
+/// `pgdn` moves the selection half a pane, which is what keeps the row it lands on from being the
+/// one that was just read.
+///
+/// note: the pane's own height, as of the last frame - the same figure the scrolling keys here are
+/// working against.
+#[tokio::test]
+async fn paging_down_moves_half_a_pane_at_a_time() {
+    let mut harness = Harness::new([]);
+    for i in 0..200 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    // the height a frame measured, which is what the keys go by
+    harness.screen();
+    let half = harness.app.viewport.max(2) / 2;
+    assert!(half > 1, "a pane to page through: {}", harness.app.viewport);
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(
+        harness.app.selected, half,
+        "a page is half the pane, so the row just before the landing row is still within reach"
+    );
+
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(
+        harness.app.selected,
+        half * 2,
+        "and every press is the same step"
+    );
+}
+
+/// ... and it stops on the last row rather than one past it.
+///
+/// note: a row after the last is not a row anybody can see, and everything the keys do next is
+/// reached through it: `space`, `p`, `enter` and `y` would all be acting on something not drawn.
+#[tokio::test]
+async fn paging_down_stops_on_the_last_row() {
+    let mut harness = Harness::new([]);
+    for i in 0..200 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    harness.screen();
+    let (step, rows) = (harness.app.viewport.max(2) / 2, harness.app.listed().len());
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    for _ in 0..(rows / step + 2) {
+        harness.press(KeyCode::PageDown).await;
+    }
+    assert_eq!(
+        harness.app.selected,
+        rows - 1,
+        "the last row of {rows}, and not past it"
+    );
+
+    harness.press(KeyCode::PageDown).await;
+    assert_eq!(
+        harness.app.selected,
+        rows - 1,
+        "another page from the end is still the end"
+    );
+}
+
+/// A number that is no item at all says so, rather than being blamed on the filter.
+///
+/// note: `NG` has two answers to give and the second is the useful one - is this number an item
+/// this tab is not showing, or a number nobody ever had? A typo is the second, and telling
+/// somebody to press `f` about an item that does not exist sends them looking for a row that was
+/// never on the screen. The two are told apart by asking the context, which holds every item
+/// rather than the rows the pane is drawing.
+#[tokio::test]
+async fn a_number_that_is_no_item_at_all_is_not_blamed_on_the_filter() {
+    let mut harness = Harness::new([]);
+    for i in 0..5 {
+        harness
+            .app
+            .kernel
+            .push(ContextItem::user(format!("message {i}")));
+    }
+    harness.tab(Tab::Context);
+
+    for c in "999".chars() {
+        harness.press(KeyCode::Char(c)).await;
+    }
+    harness.press(KeyCode::Char('G')).await;
+
+    let note = harness
+        .app
+        .loose
+        .last()
+        .map(|entry| entry.text.clone())
+        .unwrap_or_default();
+    assert!(
+        note.contains("there is no item [999]"),
+        "`f` cannot list an item nobody has: {note:?}"
+    );
+}
+
+/// `p` on a pinned row puts it back in the request, rather than pinning it again.
+///
+/// note: the pin is the only state the cycle in `space` cannot reach, so `p` is the way both
+/// ways round. A key that only pinned would leave nothing on this tab to unpin with, and a row
+/// reading `pinned` that no key answers would be a promise the tab cannot take back. What is
+/// checked is the request as well as the state, because the state is the label and the request
+/// is the fact.
+#[tokio::test]
+async fn p_takes_a_pin_back_off_as_well_as_going_one_on() {
+    let mut harness = Harness::new([]);
+    let first = harness
+        .app
+        .kernel
+        .push(ContextItem::file("notes.txt", "keep me"));
+    harness.app.kernel.push(ContextItem::user("hello"));
+    harness.drain();
+    harness.tab(Tab::Context);
+    harness.press(KeyCode::Home).await;
+
+    // on, and the model still reads it - a pin is a promise to leave it alone, not a way of
+    // taking it out
+    harness.press(KeyCode::Char('p')).await;
+    assert_eq!(
+        harness.app.kernel.item(first).unwrap().state,
+        ContextState::Pinned
+    );
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(sent.contains("keep me"), "{sent}");
+
+    // and off, on the same key, which is the half that had no arm to reach it
+    harness.press(KeyCode::Char('p')).await;
+    assert_eq!(
+        harness.app.kernel.item(first).unwrap().state,
+        ContextState::Active,
+        "`p` on a pinned row should put it back in the request"
+    );
+    let sent = format!(
+        "{:?}",
+        harness.app.kernel.preview_request().unwrap().messages
+    );
+    assert!(sent.contains("keep me"), "{sent}");
+}
