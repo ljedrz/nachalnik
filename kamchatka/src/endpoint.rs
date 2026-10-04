@@ -54,10 +54,7 @@ const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
 /// refusal: `checked_limit` is what a program reads at startup, and this is here for a caller
 /// that wants the figure and has no startup to refuse one in.
 pub fn configured_limit() -> Option<usize> {
-    env::var("KAMCHATKA_CONTEXT_LIMIT")
-        .ok()
-        .and_then(|limit| limit.parse().ok())
-        .filter(|&limit| limit > 0)
+    checked_limit().ok().flatten()
 }
 
 /// The context limit somebody set by hand, or what is wrong with what they set.
