@@ -2077,6 +2077,97 @@ async fn an_edit_to_an_early_turn_stays_where_that_turn_was() {
     );
 }
 
+/// A replacement reads where the words it replaces were, even when nothing else is between them.
+///
+/// note: the case the `e` test above cannot reach. A terminal edit replaces in place and keeps its
+/// identifier, so it needs `in_order` to do nothing at all; the hint on `meta` is for a client
+/// whose next round replaces the last - `Kernel::supersede`, which this crate's keys no longer
+/// call but a resume from another client can still carry. The chat has to honour it, and one hop
+/// is the whole of what is being asked: the item names the one it replaces, and the words go
+/// where that one was rather than where their own identifier puts them.
+#[tokio::test]
+async fn a_replacement_reads_where_the_words_it_replaces_were() {
+    let mut harness = Harness::new([]);
+
+    let old = harness
+        .app
+        .kernel
+        .push(ContextItem::user("the first round"));
+    harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("the first answer", Vec::new()));
+    let new = harness
+        .app
+        .kernel
+        .push(ContextItem::user("the first round, said better"));
+    harness
+        .app
+        .kernel
+        .annotate(new, json!({ "replaces": old.0 }))
+        .expect("the hint is written");
+
+    let screen = harness.screen();
+    let row = |needle: &str| {
+        screen
+            .lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+    };
+
+    assert!(
+        row("the first round, said better") < row("the first answer"),
+        "the new words read in the old turn's place, not after what followed it: {screen}"
+    );
+}
+
+/// A replacement is not moved for naming an item this session does not have.
+///
+/// note: the other half of the same guard. The hint names an identifier, and identifiers are
+/// never reused and are not renumbered when an item is excluded or shed - so a context that
+/// arrives with a hint pointing at something it does not hold is ordinary rather than broken,
+/// and it is what a compacted session arrives as. Following it would put the item at the end of
+/// the conversation, because an identifier nothing holds sorts after everything that does, and
+/// its own place is the one it was appended at.
+#[tokio::test]
+async fn a_replacement_naming_an_item_that_is_not_here_stays_where_its_identifier_puts_it() {
+    let mut harness = Harness::new([]);
+
+    harness
+        .app
+        .kernel
+        .push(ContextItem::user("a question that was asked"));
+    // a hint for an identifier the context never handed out - what a client that shed the item it
+    // replaced, or wrote a snapshot by hand, leaves behind
+    let stranded = harness
+        .app
+        .kernel
+        .push(ContextItem::user("a question asked against something else"));
+    harness
+        .app
+        .kernel
+        .annotate(stranded, json!({ "replaces": 9_999 }))
+        .expect("the hint is written");
+    harness
+        .app
+        .kernel
+        .push(ContextItem::assistant("and the answer to it", Vec::new()));
+
+    let screen = harness.screen();
+    let row = |needle: &str| {
+        screen
+            .lines()
+            .position(|line| line.contains(needle))
+            .unwrap_or_else(|| panic!("{needle:?} should be on the screen: {screen}"))
+    };
+
+    assert!(
+        row("a question asked against something else") < row("and the answer to it"),
+        "an item that names something this session does not have keeps its own place, rather \
+         than the end of the conversation: {screen}"
+    );
+}
+
 /// The chat shows exactly the conversation the model is in, after any sequence of changes.
 ///
 /// note: a property rather than a case. Three of this session's bugs were the chat and the
@@ -2525,6 +2616,86 @@ async fn thinking_that_arrives_is_on_the_chat_while_the_turn_is_still_arriving()
     let screen = harness.screen();
     assert!(screen.contains("weighing it up"), "{screen}");
     assert!(screen.contains("here is the answer"), "{screen}");
+}
+
+/// A thought that arrives after the answer has started is a line of its own.
+///
+/// note: the reason this asks about the *order* rather than about both words being on the screen.
+/// `App::append` continues the line still arriving from the same speaker and starts one otherwise,
+/// and a provider interleaves them freely - so a fragment that landed on the wrong line would
+/// still put both words on the screen, in one row, with nothing wrong-looking about either.
+#[tokio::test]
+async fn a_thought_after_an_answer_is_a_line_of_its_own() {
+    let mut harness = Harness::new([]);
+
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Text("here is the answer".to_owned()),
+    });
+    harness.app.on_event(Event::ModelDelta {
+        delta: Delta::Reasoning("and the thought behind it".to_owned()),
+    });
+
+    let said: Vec<_> = harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| (entry.speaker, entry.text.as_str()))
+        .collect();
+    assert!(
+        said.contains(&(Speaker::Model, "here is the answer")),
+        "the answer is a line: {said:?}"
+    );
+    assert!(
+        said.contains(&(Speaker::Reasoning, "and the thought behind it")),
+        "and the thought that arrived after it is not written into that line: {said:?}"
+    );
+}
+
+/// Saying over a line that was arriving ends it, keeps what it said, and tidies what the
+/// provider left at the end of it.
+///
+/// note: the whole of what `App::close` is for, in the one shape a caller can see all three
+/// halves of. It is reached by every path that ends a line - a note said over it, an interrupt, a
+/// failure, the next request going out - and it is the only place an entry's `open` flag is ever
+/// taken down, so a line that stayed open would go on joining the next fragment to it. A line
+/// that was dropped instead would take the answer off the screen: it is the context item that
+/// replaces it a moment later, and until then this is the only account of it there is.
+#[tokio::test]
+async fn saying_over_a_line_ends_it_and_keeps_what_it_said() {
+    let mut harness = Harness::new([]);
+
+    // a provider's fragments, with the whitespace it likes to end them on
+    for fragment in ["the first half", " and ", "the second half\n\n"] {
+        harness.app.on_event(Event::ModelDelta {
+            delta: Delta::Text(fragment.to_owned()),
+        });
+    }
+    assert!(
+        harness.app.loose.iter().any(|entry| entry.open),
+        "a line being written is still arriving"
+    );
+
+    harness.app.on_event(Event::Interrupted);
+
+    let said: Vec<_> = harness
+        .app
+        .loose
+        .iter()
+        .map(|entry| (entry.speaker, entry.text.as_str(), entry.open))
+        .collect();
+    assert!(
+        !said.iter().any(|(_, _, open)| *open),
+        "nothing is still arriving once a line has been said over it: {said:?}"
+    );
+    assert!(
+        said.contains(&(Speaker::Model, "the first half and the second half", false)),
+        "what the fragments said is kept as one line, with what the provider left at the end of it \
+         gone: {said:?}"
+    );
+    assert!(
+        said.contains(&(Speaker::Note, "stopped", false)),
+        "{said:?}"
+    );
 }
 
 /// A call for a tool this session does not have is said out loud, by name, as an error rather

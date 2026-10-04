@@ -1184,6 +1184,51 @@ async fn a_resumed_session_reads_back_what_its_items_used_to_say() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// A record that is not past the snapshot says nothing about the run that wrote it.
+///
+/// note: the other half of the notice in the test above. `recall` says the record runs past the
+/// snapshot when it does, and the notice is worth nothing without that - it names a run that was
+/// killed part-way and what its records did, and a session whose log matches its snapshot has no
+/// such run in it. Said anyway, every resume would open with a paragraph about work nobody did.
+#[tokio::test]
+async fn a_record_that_is_not_past_the_snapshot_says_nothing_about_the_run_that_wrote_it() {
+    let first = Harness::new([]);
+    let id = first.app.kernel.push(ContextItem::user("the first draft"));
+    first
+        .app
+        .kernel
+        .replace(id, "the second draft")
+        .expect("the item is there");
+
+    let dir = common::scratch("recall-whole");
+    let log = dir.join("s.jsonl").display().to_string();
+    let state = dir.join("s.json").display().to_string();
+    first.app.write_session(&log, &state).expect("written");
+
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&state).expect("the snapshot is there"))
+            .expect("the snapshot parses");
+    let mut second = Harness::new([]);
+    second.app.kernel = Kernel::resume(Config::default(), snapshot);
+
+    // the log was written beside the snapshot and stops where the snapshot was taken, so nothing
+    // in it is past it
+    assert_eq!(
+        second.app.recall(Path::new(&state)),
+        1,
+        "the rewrite is still the one record this reads back"
+    );
+
+    second.app.replay();
+    let screen = second.screen();
+    assert!(
+        !screen.contains("past it"),
+        "nothing ran past this snapshot, and nothing says otherwise: {screen}"
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// A record that is not there, or that ends mid-line, costs a page rather than a session.
 ///
 /// note: the session has already resumed by the time the log is read, so nothing found there can
