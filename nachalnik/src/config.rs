@@ -1,18 +1,14 @@
 //! The knobs, with the reasoning for each default beside it.
-//!
-//! note: nothing here changes what the model is *told*. There is no system prompt, no instruction
-//! and no message template anywhere in this crate; these fields decide how the loop behaves and
-//! how much of what it does is recorded, and everything the model reads is context somebody
-//! pushed.
 
 #[cfg(doc)]
 use crate::{Event, Kernel, TokenCounter, ToolSpec};
 
 /// The kernel's configuration. See the source of [`Config::default`] for the defaults.
 ///
-/// note: There is no field here that changes *what the model is told*. The kernel ships no
-/// system prompt, no instructions and no message templates; all of that is context the user
-/// supplies (see [`Kernel::push`]).
+/// note: There is no field here that changes *what the model is told*: they decide how the loop
+/// behaves and how much of what it does is recorded. The kernel ships no system prompt, no
+/// instructions and no message templates; everything the model reads is context somebody pushed
+/// (see [`Kernel::push`]).
 #[derive(Debug, Clone)]
 pub struct Config {
     /// A user-friendly identifier of the session. It shows up in [`Event::SessionStarted`] and
