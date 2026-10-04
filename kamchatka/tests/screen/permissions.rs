@@ -1036,6 +1036,57 @@ async fn cycling_a_permission_goes_round_rather_than_getting_stuck() {
     );
 }
 
+/// A decision can be taken back from the row it was made on, and taking it back takes the row off
+/// the tab.
+///
+/// note: `ask` is what this policy does about everything nobody has answered for, and the tab
+/// lists answers rather than defaults - so `r` does not draw a third word on the row, it removes
+/// it, and the next question about that subject is asked again.
+#[tokio::test]
+async fn a_decision_can_be_taken_back_from_the_row_it_is_on() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("rm", "gone").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found").with_capabilities([Capability::fs("read")]),
+    ));
+    let shell = Subject::Capability(Capability::exec("run"));
+    let read = Subject::Capability(Capability::fs("read"));
+    for subject in [&shell, &read] {
+        harness.app.policy.set(subject, Verdict::Deny);
+    }
+    harness.tab(Tab::Permissions);
+
+    // `r` and backspace are one gesture, and the tab says so on both of them
+    for (key, subject) in [
+        (KeyCode::Char('r'), shell.clone()),
+        (KeyCode::Backspace, read.clone()),
+    ] {
+        pick(&mut harness, &subject).await;
+        harness.press(key).await;
+
+        assert_eq!(
+            harness.app.policy.stance(&subject),
+            Verdict::Ask,
+            "{key:?} puts it back to being a question"
+        );
+        assert!(
+            !harness
+                .app
+                .permissions()
+                .iter()
+                .any(|row| row.subject == subject),
+            "and an undecided subject is not a row: {key:?}"
+        );
+        assert!(
+            ruled(&harness).contains(&(subject.to_string(), Verdict::Ask, None, false)),
+            "{key:?} is in the record like any other decision: {:?}",
+            ruled(&harness)
+        );
+    }
+}
+
 #[tokio::test]
 async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
     let mut harness = Harness::new([ModelResponse::tool_calls(vec![call(
