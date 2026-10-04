@@ -600,3 +600,55 @@ async fn a_refusal_names_where_the_numbers_come_from_only_while_context_is_reach
         "the refusal points a model at a tool whose every call is refused: {said}"
     );
 }
+
+/// A fork beside a turn already answered sees the whole conversation, including that turn's result.
+///
+/// note: the turn this fork was asked in is found by looking for the assistant turn that carries
+/// its own call, so that the results of the *other* calls in that turn can be held out of the
+/// copy. Reading the comparison the other way round - any turn whose calls are not this one -
+/// picks the first turn in the session that did not ask for it, and treats that turn's results as
+/// siblings: a fork asked after an earlier turn of tool traffic would be told the earlier result
+/// was not in it, and would not read it.
+#[tokio::test]
+async fn a_fork_after_an_earlier_turn_reads_that_turns_results() {
+    let (kernel, provider, _anchor) = agent([
+        // an earlier turn, with a call of its own
+        ModelResponse::tool_calls(vec![call(
+            "c0",
+            "context",
+            json!({ "action": "note", "content": "an earlier finding", "reason": "because" }),
+        )]),
+        ModelResponse::text("done"),
+        // and then the turn that asks for the fork
+        ModelResponse::tool_calls(vec![call(
+            "c1",
+            "fork",
+            json!({ "action": "ask", "question": "what do you make of it?" }),
+        )]),
+        ModelResponse::text("the copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("write something down"));
+    kernel.turn().await.expect("the first turn ran");
+    kernel.push(ContextItem::user("now ask a copy about it"));
+    kernel.turn().await.expect("the second turn ran");
+
+    // the copy reads what the earlier turn wrote down, and says so where it counted from
+    let said = answers_from(&kernel, &["fork"])[0].clone();
+    assert!(
+        !said.contains("had not been answered when this copy was taken"),
+        "an earlier turn's result was held out of the copy as though it were this turn's: {said}"
+    );
+
+    let asked = &provider.requests()[2];
+    let text: String = asked
+        .messages
+        .iter()
+        .filter_map(|message| message.content.as_ref())
+        .map(|content| content.to_text().into_owned())
+        .collect();
+    assert!(
+        text.contains("an earlier finding"),
+        "the copy must read the result of the turn before it: {text}"
+    );
+}

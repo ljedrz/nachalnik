@@ -1533,6 +1533,21 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         "the limit set before the tool existed is the one it reads"
     );
 
+    // and `fork` reads its own two rows rather than nothing at all. A fork's answer ends with its
+    // deliberation, which is the part a limit cuts, and a row the tool does not consult is a
+    // number a person changed with no effect on the thing they changed it for
+    harness.send("/limit fork:draft 12000").await;
+    let drafting = nachalnik::ToolCall::new("c", "fork", json!({ "action": "draft" }));
+    assert_eq!(
+        harness
+            .app
+            .kernel
+            .tool("fork")
+            .and_then(|tool| tool.limit(&drafting)),
+        Some(12_000),
+        "`fork:draft` was raised to 12,000 and the tool does not declare it"
+    );
+
     // and its row is no longer marked. This harness installs no builtin tools, so `fs` and
     // `shell` are legitimately still unoffered here - which is why the check is of the row rather
     // than of the whole listing, and why the sentence under the table does not claim to account
