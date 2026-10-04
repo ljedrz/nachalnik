@@ -1493,6 +1493,22 @@ async fn a_question_separates_its_answers_from_what_it_is_about() {
             "{line:?} should survive a short screen: {short}"
         );
     }
+
+    // the one size where there is nothing spare at all: the header, one row of arguments and the
+    // answers come to exactly the rows there are, so the blank has nothing left to take and the
+    // row that would have been it belongs to the argument instead. Spending it on a blank here is
+    // what the note above is against, and what is left without it is a question naming a tool
+    // and asking about nothing
+    let exact = harness.sized(100, 11);
+    let rows: Vec<&str> = exact.lines().collect();
+    let answers = rows
+        .iter()
+        .position(|line| line.contains("[y] once"))
+        .unwrap_or_else(|| panic!("the answers are on the screen: {exact}"));
+    assert!(
+        rows[answers - 1].contains("/etc/hosts"),
+        "the row the blank would have been is the argument: {exact}"
+    );
 }
 
 /// A half-written message is still there after the question that interrupted it.
@@ -2187,6 +2203,36 @@ async fn a_command_nothing_rated_is_not_underlined() {
             "nothing was rated, so nothing is pointed at: {needle}"
         );
     }
+}
+
+/// A field named `cmd` is a command because the tool taking one is `shell`, and nothing else.
+///
+/// note: the rule is drawn by the tool's name as well as the field's, the way `App::about` picks
+/// its two out - a `cmd` is a shell command *here* because `shell` is the tool that takes one,
+/// and somebody else's tool with a field of that name has not said it is drawing a command line.
+/// Drawing one anyway puts a rule and the joints in a colour on the panel, on an argument that is
+/// a string, which reads as `sh` having been asked about something it was never shown.
+#[tokio::test]
+async fn a_cmd_on_a_tool_that_is_not_shell_is_not_drawn_as_a_command() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "read", json!({ "cmd": "echo hi && ls" }))]),
+        ModelResponse::text("done"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("read", "contents").with_capabilities([Capability::fs("read")]),
+    ));
+
+    harness.send("look").await;
+    harness.settle().await;
+
+    // the field as the model wrote it: a name and a string, sharing a row, and nothing on the
+    // screen saying a shell was involved
+    let screen = harness.screen();
+    assert!(screen.contains("cmd: echo hi && ls"), "{screen}");
+    assert!(
+        !screen.contains("│ echo hi"),
+        "a rule down the left is what a command is drawn with: {screen}"
+    );
 }
 
 /// What the rule records say, as `(subject, verdict, answering, once)`.
