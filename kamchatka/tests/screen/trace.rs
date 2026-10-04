@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 use crossterm::event::KeyCode;
 use kamchatka::app::Tab;
 use nachalnik::{
-    ContextItem, Event, ModelResponse,
+    Capability, ContextItem, Event, ModelResponse,
     test::{ConstTool, call},
 };
 use ratatui::style::Color;
@@ -119,6 +119,66 @@ async fn a_tool_call_on_the_trace_is_the_colour_a_tool_call_is_everywhere_else()
     // ... and every other kind of event is left where it was
     let (state, _) = harness.style_of("state.changed");
     assert_ne!(state, Color::Cyan, "only the tool events changed colour");
+}
+
+/// A failure is a failure before it is anything else: `tool.finished` is a cyan tool call and
+/// `model.failed` is red, whichever word came first. An event whose name says it went wrong would
+/// otherwise be read in the colour of the thing that went wrong.
+#[tokio::test]
+async fn a_failure_on_the_trace_is_the_colour_a_failure_is_everywhere_else() {
+    // an empty script is the cheapest way to have a provider fail: it answers a request it has no
+    // response for with an error, every time
+    let mut harness = Harness::new([]);
+
+    harness.send("what have you got?").await;
+    harness.settle().await;
+    harness.drain();
+    harness.tab(Tab::Trace);
+
+    assert_eq!(
+        harness.style_of("model.failed").0,
+        Color::Red,
+        "a call that went wrong is a failure before it is a call: {}",
+        harness.screen()
+    );
+}
+
+/// The question and the answer to it are the yellow the question was drawn in, so a permission on
+/// the trace and the line on the chat tab it accounts for are one colour - and the events that
+/// are neither tools nor permissions nor failures keep the colour that says nothing in
+/// particular, which is how a row is told apart from the ones that mean something.
+#[tokio::test]
+async fn a_permission_on_the_trace_is_the_colour_the_question_is_drawn_in() {
+    let mut harness = Harness::new([
+        ModelResponse::tool_calls(vec![call("c1", "dig", json!({}))]),
+        ModelResponse::text("I did not dig"),
+    ]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("dig", "a bone").with_capabilities([Capability::exec("run")]),
+    ));
+
+    harness.send("dig somewhere").await;
+    harness.settle().await;
+    harness.answer(KeyCode::Char('n')).await;
+    harness.settle().await;
+    harness.drain();
+    harness.tab(Tab::Trace);
+
+    for name in ["permission.requested", "permission.decided"] {
+        assert_eq!(
+            harness.style_of(name).0,
+            Color::Yellow,
+            "a permission is the yellow the question was drawn in: {name}"
+        );
+    }
+
+    // and the rest of the log is not painted yellow with it
+    assert_eq!(
+        harness.style_of("model.requested").0,
+        Color::White,
+        "an event that is not a tool, a permission or a failure says nothing in particular: {}",
+        harness.screen()
+    );
 }
 
 #[tokio::test]
