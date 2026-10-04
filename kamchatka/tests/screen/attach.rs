@@ -267,6 +267,57 @@ async fn a_device_is_refused_rather_than_read() {
     assert!(harness.app.kernel.items().is_empty(), "nothing went in");
 }
 
+/// A file sitting exactly on the ceiling is attached whole, because that is what the ceiling is.
+///
+/// note: `MOST` is the figure the refusal quotes, so a file of exactly that many bytes is where a
+/// mistake in either of the three comparisons shows: `>=` where the cap is `>` refuses the last
+/// file that fits, and a read capped below `MOST + 1` hands back a file with its tail missing,
+/// which is a payload the model is asked to read as if it were all of it.
+#[tokio::test]
+async fn a_file_at_the_ceiling_goes_in_whole() {
+    const MOST: usize = 16 * 1024 * 1024;
+
+    let dir = scratch("attach-ceiling");
+    let path = dir.join("wall-of-text.md");
+    std::fs::write(&path, "a".repeat(MOST)).expect("written");
+
+    let mut harness = Harness::new([ModelResponse::text("unreached")]);
+    harness.send(&format!("/attach {}", path.display())).await;
+
+    let items = harness.app.kernel.items();
+    let item = items.last().expect("the attachment went in");
+    assert_eq!(
+        item.content.as_text().map(str::len),
+        Some(MOST),
+        "the cap is the most a file may be, not the most but one, and the whole of it arrives"
+    );
+}
+
+/// A file over the ceiling is refused, and the sentence quotes the file that was named.
+///
+/// note: the size in that sentence is what somebody reads to decide whether to reach for a
+/// splitter, so it is the length of the file they named rather than of what was read of it - which
+/// is what the second check has, and the first is here because of that.
+#[tokio::test]
+async fn a_file_over_the_ceiling_is_refused_and_says_how_large_it_is() {
+    let dir = scratch("attach-over-ceiling");
+    let path = dir.join("a-talk.mp4");
+    std::fs::write(&path, vec![0_u8; 20 * 1024 * 1024]).expect("written");
+
+    let mut harness = Harness::new([ModelResponse::text("unreached")]);
+    harness.send(&format!("/attach {}", path.display())).await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("is 20 MB"),
+        "the refusal should quote the file that was named: {screen}"
+    );
+    assert!(
+        harness.app.kernel.items().is_empty(),
+        "nothing of a refused file goes in: {screen}"
+    );
+}
+
 /// `/note` is the same act with a message instead of a file: it goes in, and nothing is sent.
 ///
 /// note: what is checked is the *absence* of a turn as much as the presence of an item. The
