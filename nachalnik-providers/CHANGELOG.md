@@ -7,6 +7,12 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **An empty key is no key.** Every client leaves the `Authorization` or `x-goog-api-key` header out
+  rather than sending it with nothing in it, which is what a model served locally - ollama,
+  llama.cpp, vLLM - wants, and what a proxy in front of one may refuse.
+
 ### fixed
 
 - **A provider with no model yet is not told the address does not serve one.** Moved to an address

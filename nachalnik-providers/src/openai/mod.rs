@@ -14,7 +14,9 @@ use nachalnik::{ModelRequest, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
-use crate::{Dialect, Endpoint, Published, install_crypto, same_model, waiting::WHOLE_ANSWER};
+use crate::{
+    Dialect, Endpoint, Keyed, Published, install_crypto, same_model, waiting::WHOLE_ANSWER,
+};
 
 mod wire;
 
@@ -485,8 +487,8 @@ impl OpenAiCompatible {
         // in a URL is a key in every log a proxy keeps, and what sends it here is only a base
         // ending in `/openai` - which is not only Google's
         let request = match bearer {
-            true => self.client.get(url).bearer_auth(&self.api_key),
-            false => self.client.get(url).header("x-goog-api-key", &self.api_key),
+            true => self.client.get(url).bearer(&self.api_key),
+            false => self.client.get(url).google_key(&self.api_key),
         };
 
         request
