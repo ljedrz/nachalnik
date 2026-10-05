@@ -988,7 +988,11 @@ function draw() {
     );
   }
   for (const rule of latest.permissions) {
-    const covers = rule.tools.length ? rule.tools.join(", ") : "nothing registered needs it";
+    // note: `covers:` where the tab has a column header saying so. A rule about one tool is
+    // usually named for it, and without the word the row read `fs:glob` twice
+    const covers = rule.tools.length
+      ? `covers: ${rule.tools.join(", ")}`
+      : "nothing registered needs it";
     const sometimes = rule.sometimes.length ? ` · sometimes ${rule.sometimes.join(", ")}` : "";
     const el = row(panel, rule.subject, `${covers}${sometimes}`);
     // note: the three the tab's `a`, `r` and `n` give, with the one the row has pressed in. `ask`

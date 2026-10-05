@@ -35,6 +35,8 @@ minor bump may break you.
 - **A message larger than the window on its own is named as what has to go.** A paste past the
   limit was answered with what is pinned and the model's turns, neither of which could make room
   for it; the answer names the message and `/exclude` with its number.
+- **`examples/browser.html` says what a rule covers as `covers:`.** A rule about one tool is
+  usually named for it, so its row read the same name twice.
 - **`examples/browser.html` draws a pressed `deny` with its left edge red.** The edge between two
   of a rule's buttons was the left one's border, so it stayed grey beside the pressed one.
 - **The search box's cursor takes no cell of its own.** It was a bar glyph, which fills a cell
