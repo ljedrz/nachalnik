@@ -167,10 +167,14 @@
   .rules button {
     font-size: 12px; padding: 2px 8px; min-height: 0; border-radius: 0; color: var(--dim);
   }
-  .rules button + button { border-left: 0; }
+  /* neighbours share an edge by overlapping rather than by one of them losing its border, so the
+     pressed one, drawn on top, has all four of its edges in its own colour */
+  .rules button + button { margin-left: -1px; }
   .rules button:first-child { border-radius: 4px 0 0 4px; }
   .rules button:last-child { border-radius: 0 4px 4px 0; }
-  .rules button[aria-pressed="true"] { opacity: 1; font-weight: 600; border-color: currentColor; }
+  .rules button[aria-pressed="true"] {
+    opacity: 1; font-weight: 600; border-color: currentColor; position: relative; z-index: 1;
+  }
   .rules button.allowed[aria-pressed="true"] { color: var(--user); }
   .rules button.denied[aria-pressed="true"] { color: var(--bad); }
   .line { margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
