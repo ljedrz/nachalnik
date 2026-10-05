@@ -1215,9 +1215,11 @@ async fn a_request_too_long_names_what_is_pinned() {
         "it names the attachment and its number: {told}"
     );
     assert!(
-        told.contains("/restore"),
+        told.contains("`/restore N` unpins one"),
         "and says how to unpin it: {told}"
     );
+    // a pinned item is in the request already, so `/restore` does not put it back there
+    assert!(!told.contains("puts one back in the request"), "{told}");
     assert!(
         !told.contains("`/exclude` the oldest of those"),
         "38 tokens of the model's turns cannot cover an overrun of thousands: {told}"

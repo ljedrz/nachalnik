@@ -22,6 +22,8 @@ minor bump may break you.
 - **`/attach` takes a path with a space in it followed by a question.** Where the whole line is not
   a file, the path is the longest part of it, up to a space, that is one; it was the first word,
   so `/attach my notes.md what is this?` looked for a file called `my`.
+- **A request held back by what is pinned says `/restore` unpins.** It said `/restore N` puts an
+  item back in the request, which a pinned item is in already; it unpins it, so a pass may take it.
 
 ## [0.18.0] - 2026-10-04
 
