@@ -13,7 +13,9 @@ things live, [SECURITY.md](SECURITY.md) for the security position, and
 ## commands
 
 ```console
-cargo test --workspace --all-features       # everything; the live suite skips itself with no key
+cargo nextest run --workspace --all-features   # everything, as CI runs it; `--profile ci` to match
+cargo test --workspace --all-features --doc    # and the doctests, which nextest does not run
+cargo test --workspace --all-features       # everything at once, without nextest, a binary at a time
 cargo test --workspace --all-features --no-fail-fast   # when measuring what a test is worth
 cargo test -p nachalnik                     # the runtime's offline suite
 cargo test -p kamchatka --no-default-features          # the program with no screen and no MCP
@@ -23,6 +25,10 @@ cargo doc --workspace --all-features --no-deps   # with RUSTDOCFLAGS=-D warnings
 scripts/references.sh                       # every file and test the prose names still exists
 scripts/windows.sh                          # the libraries as CI builds them on Windows
 ```
+
+Nextest is the faster of the two by however many suites the machine can run side by side - the
+live suite skips itself with no key under either. `cargo test` stays the one `scripts/mutate.sh`
+reads.
 
 These are pre-commit checks and not just CI steps, and the `cargo doc` one is the one that gets
 skipped. `RUSTDOCFLAGS` is not in the environment the way `RUSTFLAGS: -D warnings` is in CI's, so
