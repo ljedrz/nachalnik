@@ -13,6 +13,7 @@ use nachalnik::{
     ContextItem, ModelResponse,
     test::{ConstTool, call},
 };
+use ratatui::style::Modifier;
 use serde_json::json;
 
 use crate::harness::Harness;
@@ -382,9 +383,15 @@ async fn the_query_can_be_amended_in_the_middle_of_it() {
     assert_eq!(search.parts(), ("mod", "req"));
     assert!(!harness.app.traced().is_empty(), "and it still matches");
 
-    // the box draws the cursor where it is, between the two halves
+    // the box draws the cursor where it is, on the first character after it, and takes no cell
+    // of its own to do it - a bar that did read as the cursor with a space after it
     let screen = harness.sized(120, 30);
-    assert!(screen.contains("/mod▏req"), "{screen}");
+    assert!(screen.contains("/modreq "), "{screen}");
+    // the box is the lowest thing on the screen with `req` in it; the trace pane has it too
+    let (_, under) = harness.style_of_last("req");
+    assert!(under.contains(Modifier::REVERSED), "{under:?}");
+    let (_, before) = harness.style_of_last("dreq");
+    assert!(!before.contains(Modifier::REVERSED), "{before:?}");
 }
 
 /// The two keys that take a character out take the one on their own side of the cursor.

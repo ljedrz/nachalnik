@@ -462,17 +462,27 @@ fn draw_search(frame: &mut Frame, app: &mut App, found: Option<usize>, area: Rec
     };
 
     // where the next character goes, which is not the end of the query any more: `left` and
-    // `right` move it, so the bar is drawn between the two halves rather than after both
+    // `right` move it, so the cursor is drawn between the two halves rather than after both
     let (before, after) = search.parts();
+    // note: a block over the character the cursor is on, as the prompt draws it, rather than a bar
+    // between two of them. A bar glyph is a cell of its own with only its left edge painted, so it
+    // read as a cursor with a space after it; past the end there is no character, and the block
+    // is the cell the next one will take
+    let mut rest = after.chars();
+    let under = rest.next().map_or_else(|| " ".to_owned(), String::from);
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("/", Style::default().fg(Color::Yellow)),
             Span::raw(before.to_owned()),
-            // the bar is a cursor: the box has the keys, and nothing else on the screen should
-            // look like it does
-            Span::styled("▏", Style::default().fg(Color::Yellow)),
-            Span::raw(after.to_owned()),
+            // the box has the keys, and nothing else on the screen should look like it does
+            Span::styled(
+                under,
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::REVERSED),
+            ),
+            Span::raw(rest.as_str().to_owned()),
             Span::styled(format!("  {found} of {of} · esc clears"), quiet()),
         ])),
         area,

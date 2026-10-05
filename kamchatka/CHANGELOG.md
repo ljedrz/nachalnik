@@ -29,6 +29,9 @@ minor bump may break you.
   for it; the answer names the message and `/exclude` with its number.
 - **`examples/browser.html` draws a pressed `deny` with its left edge red.** The edge between two
   of a rule's buttons was the left one's border, so it stayed grey beside the pressed one.
+- **The search box's cursor takes no cell of its own.** It was a bar glyph, which fills a cell
+  and paints only its left edge, so it read as a cursor with a space after it; it is a block over
+  the character under it, as the prompt draws its own.
 
 ## [0.18.0] - 2026-10-04
 
