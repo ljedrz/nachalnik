@@ -358,6 +358,13 @@ Referenced from [AGENTS.md](AGENTS.md).
   the stop; whether the answer then continues the command or kills it, and whether a job the
   command put in the background stopping counts too, is the decision.
 
+- **A malformed answer to an MCP call is waited past.** A response with the call's id and neither
+  a `result` nor an `error`, or a result under another id, is dropped by `rmcp`, and the call waits
+  for an answer that is not coming until an interrupt or `--deadline` ends it - as a call to a
+  server that never answers does. Reporting it means `rmcp` handing the malformed response on,
+  which is its change; a bound on how long a call waits is the other way, and is the same decision
+  as the bound on a server's first answers above.
+
 - **The largest source files are not split.** `kamchatka`'s `app/mod.rs`, `app/command.rs`,
   `sandbox/mod.rs` and `remote/protocol/mod.rs`, and `nachalnik`'s `kernel/mod.rs`, are each
   longer than can be read at once, and each has a seam that is already marked: the kernel's own
