@@ -36,7 +36,7 @@ system1 = []
 # The suite the two above are held to, for anyone writing a third. It stands up real sockets and
 # wants `nachalnik/test`, so it is off unless asked for - a dev-dependency's feature, not a
 # dependency's.
-conformance = ["nachalnik/test", "tokio/io-util", "tokio/net"]
+conformance = ["nachalnik/test", "tokio/io-util", "tokio/net", "tokio/rt"]
 
 [dependencies]
 nachalnik.workspace = true
@@ -44,6 +44,10 @@ parking_lot.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
+# note: `time` is all the library uses - the deadlines and the backoffs; nothing outside its tests
+# spawns or selects. `macros` and `rt` stay until the next minor release all the same: a crate that
+# has been getting either from this one, without asking tokio for it, would stop building on a
+# patch release that took them away
 tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 [dev-dependencies]
