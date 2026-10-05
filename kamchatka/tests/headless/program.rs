@@ -1284,7 +1284,9 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
         let dir = common::scratch(&format!("terminated-{signal}"))
             .canonicalize()
             .expect("it exists");
-        let cmd = "sleep 3; touch late.txt";
+        // note: the shell says which it is, so that whether it is still running can be asked of it
+        // rather than waited out
+        let cmd = "echo $$ > shell.pid; sleep 3; touch late.txt";
         let base = common::endpoint(vec![format!(
             "data: {}",
             json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
@@ -1365,11 +1367,24 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
             "SIG{signal}: the command's end is in the record: {names:?}"
         );
 
-        tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+        // note: gone, rather than four seconds of waiting to see whether it touched the file - a
+        // shell that is not running touches nothing. It was most of the time this test took, and
+        // the moment `init` takes to reap it is all a stopped one needs
+        let shell: u32 = std::fs::read_to_string(dir.join("shell.pid"))
+            .expect("the command said which shell it was")
+            .trim()
+            .parse()
+            .expect("a process identifier");
+        let running = || std::path::Path::new(&format!("/proc/{shell}")).exists();
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while running() && std::time::Instant::now() < until {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
         assert!(
-            !dir.join("late.txt").exists(),
+            !running(),
             "SIG{signal}: the command went on running after the session ended"
         );
+        assert!(!dir.join("late.txt").exists(), "SIG{signal}");
     }
 }
 

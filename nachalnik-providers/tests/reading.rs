@@ -865,7 +865,10 @@ async fn in_turn(bodies: Vec<&'static str>, requests: Arc<AtomicUsize>) -> Strin
 /// where the same `429` as a status was waited out. After the answer has started, something has
 /// been handed on, and a second attempt would say it again; ending the turn as a failure there
 /// threw away what had been generated and billed.
-#[tokio::test]
+///
+/// note: on a paused clock, as the other refusals waited out here are. Four of these cases sit
+/// through the first doubling, and on a real clock that was eight seconds of the suite.
+#[tokio::test(start_paused = true)]
 async fn a_refusal_as_the_first_event_of_a_stream_is_waited_out() {
     const LIMITED: &str = "data: {\"error\":{\"code\":429,\"message\":\"Rate limit exceeded\",\
          \"metadata\":{\"error_type\":\"rate_limit_exceeded\"}},\
