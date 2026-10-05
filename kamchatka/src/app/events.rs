@@ -249,6 +249,27 @@ impl App {
             // note: whether the model was told is not said here. The kernel leaves the notice out
             // where it would take the request over the limit, and the notice says itself when it
             // goes in, as every item does
+            //
+            // note: and where the tool definitions alone are over the limit, nothing excluded makes
+            // room, so the line says what does. Against a model that takes a thousand tokens it
+            // asked for `/exclude` one line above the overrun saying no exclusion covers it
+            Event::ContextFull {
+                full: true,
+                limit: Some(limit),
+                ..
+            } if self.kernel.budget().tool_tokens >= limit => {
+                let tools = self.kernel.budget().tool_tokens;
+                self.say(
+                    Speaker::Note,
+                    format!(
+                        "the context is full, and no exclusion makes room: the tool definitions \
+                         alone come to ~{} of the {} the model takes. `/tools toggle ID` stops \
+                         offering a tool, and `/tools` lists them",
+                        thousands(tools),
+                        thousands(limit),
+                    ),
+                )
+            }
             Event::ContextFull { full: true, .. } => self.say(
                 Speaker::Note,
                 "the context is full, and the compactor has nothing more it may take: what is left \
