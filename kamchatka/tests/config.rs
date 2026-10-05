@@ -121,12 +121,21 @@ fn spawn(
     };
 
     let mut child = command.spawn().expect("the binary under test is built");
-    child
+    // note: a broken pipe is the program having already gone, which a run refused at startup
+    // does without reading a line - and the way it went is what the test reads, below. It used to
+    // fail here instead, whenever the refusal beat the write, which a loaded machine makes often
+    let sent = child
         .stdin
         .take()
         .expect("stdin is a pipe")
-        .write_all(lines.as_bytes())
-        .expect("the lines were not sent");
+        .write_all(lines.as_bytes());
+    if let Err(e) = sent {
+        assert_eq!(
+            e.kind(),
+            std::io::ErrorKind::BrokenPipe,
+            "the lines were not sent: {e}"
+        );
+    }
     let out = child.wait_with_output().expect("the program never ended");
 
     // note: both streams, because a keyless run fails before the session starts and says so on
