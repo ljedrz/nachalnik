@@ -407,6 +407,25 @@ impl App {
                 thousands(budget.tool_tokens),
             );
         }
+        // note: and where the newest message is the overrun on its own - a paste larger than the
+        // window - nothing else in the context is the remedy either: unpinning a system
+        // instruction and excluding turns by number were offered against a message no exclusion
+        // of anything else could make room for
+        let message = self.kernel.items().into_iter().rev().find(|item| {
+            matches!(item.kind, ContextKind::UserMessage) && item.state.sends_content()
+        });
+        if let Some(message) = message
+            && budget.context_tokens.saturating_sub(message.tokens) < over
+        {
+            return format!(
+                "the message [{}] is ~{} tokens on its own, and nothing else in the context could \
+                 make room for it: `/exclude {}` takes it out, one `/undo` from coming back, and \
+                 a shorter one is what can be sent",
+                message.id,
+                thousands(message.tokens),
+                message.id,
+            );
+        }
 
         let mut said = String::new();
         if !pinned.is_empty() {
