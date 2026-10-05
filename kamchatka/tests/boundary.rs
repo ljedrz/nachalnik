@@ -766,6 +766,19 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         note.contains("/w"),
         "and what it could have used instead: {note}"
     );
+    assert!(note.contains("settings.toml is outside"), "{note}");
+
+    // two paths refused, as `echo hi > /a/out.txt; cat /a/in.txt` is, are two paths
+    let note = confined
+        .note_for(
+            "sh: line 1: /elsewhere/out.txt: Permission denied\n\
+             cat: /elsewhere/in.txt: Permission denied\n",
+        )
+        .expect("both are out of reach");
+    assert!(
+        note.contains("/elsewhere/out.txt, /elsewhere/in.txt are outside"),
+        "{note}"
+    );
 
     // a path this reaches was refused by its own permissions, and a hedge about the sandbox would
     // send a model looking for a boundary that had nothing to do with it

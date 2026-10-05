@@ -436,26 +436,33 @@ impl Sandbox {
             // a socket the command could read the path of and not connect to, which "outside what
             // this session reaches" would be false about
             (false, _) if sockets == named.len() => Some(format!(
-                "[{} is a socket outside what this session may write, and a confined command may \
+                "[{} {} outside what this session may write, and a confined command may \
                  connect only to a socket it could have written, so the permission error below \
                  is the confinement rather than the socket's own permissions. This command runs \
                  with {self}. Say what you need the socket for and ask for it to be opened up.]",
                 named.join(", "),
+                match named.len() {
+                    1 => "is a socket",
+                    _ => "are sockets",
+                },
             )),
             // reached, and refused a write the person could have made: under `--deny fs:write`
             // the working directory itself, or a path opened up with `--sandbox-read`
             (false, _) if read_only == named.len() => Some(format!(
-                "[{} is where this session may read and not write, so the permission error below \
-                 is the confinement rather than the file's own permissions. This command runs \
-                 with {self}. Say what you need to write there and ask for it to be opened up.]",
+                "[{} {} where this session may read and not write, so the permission error \
+                 below is the confinement rather than the file's own permissions. This command \
+                 runs with {self}. Say what you need to write there and ask for it to be opened \
+                 up.]",
                 named.join(", "),
+                are(&named),
             )),
             (false, _) => Some(format!(
-                "[{} is outside what this session reaches{}, so the permission error below is the \
-                 confinement rather than the file's own permissions. This command runs with \
+                "[{} {} outside what this session reaches{}, so the permission error below is \
+                 the confinement rather than the file's own permissions. This command runs with \
                  {self}. Work inside the working directory, or say what you need the path for \
                  and ask for it to be opened up.]",
                 named.join(", "),
+                are(&named),
                 match sockets {
                     0 => "",
                     _ => " or may connect to",
@@ -690,6 +697,15 @@ fn refused(line: &str) -> bool {
         || line.contains("permission denied")
         || line.contains("os error 13")
         || line.contains("EACCES")
+}
+
+/// The verb for the paths a note names: a command that writes one file and reads another is
+/// refused twice, and the note names both.
+fn are(named: &[String]) -> &'static str {
+    match named.len() {
+        1 => "is",
+        _ => "are",
+    }
 }
 
 /// The paths a line of standard error mentions: absolute ones, and relative ones with a `/` in
