@@ -12,6 +12,8 @@ minor bump may break you.
 - **A context the tool definitions alone fill is not told to `/exclude`.** The line saying the
   context is full asked for exclusions where the next line said no exclusion covers the request;
   it says now that the tool definitions take the room, and names `/tools toggle`.
+- **A permission error naming two paths says they are outside the reach**, rather than that they
+  is. A command that writes one file and reads another out of reach is refused for both.
 
 ## [0.18.0] - 2026-10-04
 
