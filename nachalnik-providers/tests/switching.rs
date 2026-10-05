@@ -153,6 +153,35 @@ async fn an_endpoint_that_lists_nothing_is_not_saying_the_model_is_absent() {
     let _ = silent;
 }
 
+/// A provider with no model yet is not told the address does not serve one, in any dialect.
+///
+/// note: what `/restart` does to a session started without `-m`: the provider is pointed back at
+/// the address and the empty name it began with, and the listing that move reads said ` ` is not
+/// among the models served - beside the program's own line saying no model has been picked.
+#[tokio::test]
+async fn no_model_is_not_a_model_the_address_lacks() {
+    let address = serving(SERVES).await;
+
+    #[cfg(feature = "openai")]
+    {
+        let provider =
+            nachalnik_providers::OpenAiCompatible::new("", "http://unused.invalid", "no key");
+        assert_eq!(moved_to(&provider, address.clone()).await, None);
+    }
+    #[cfg(feature = "gemini")]
+    {
+        let provider = nachalnik_providers::Gemini::new("", "http://unused.invalid", "no key");
+        assert_eq!(moved_to(&provider, address.clone()).await, None);
+    }
+    #[cfg(feature = "system1")]
+    {
+        let engine =
+            nachalnik_providers::system1::Client::new("", "http://unused.invalid", "no key");
+        assert_eq!(moved_to(&engine, address.clone()).await, None);
+    }
+    let _ = address;
+}
+
 /// What one address said its model takes does not follow the session to the next.
 ///
 /// note: `set_model` put the list down and `set_endpoint` did not, and the probe only writes one

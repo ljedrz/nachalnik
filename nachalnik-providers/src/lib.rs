@@ -256,9 +256,13 @@ pub(crate) fn some_of(listed: &[String]) -> String {
 
 /// What a dialect says when the address it was sent to does not list the model it asks for, and
 /// nothing when it does - or lists nothing at all, which is no evidence either way.
+///
+/// note: nothing for no model either. An empty name is a session that has not picked one yet,
+/// which the program already says in its own words; what this said was that ` ` is not served,
+/// on every `/restart` and `/endpoint` such a session made.
 #[cfg(any(feature = "gemini", feature = "openai"))]
 pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
-    if listed.is_empty() || listed.iter().any(|name| same_model(name, model)) {
+    if model.is_empty() || listed.is_empty() || listed.iter().any(|name| same_model(name, model)) {
         return None;
     }
 
