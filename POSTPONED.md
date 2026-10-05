@@ -37,8 +37,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **Whether `laya-serve`'s `confidence` is the one `system1::Client` reads.**
   [`laya`](https://github.com/NandhaKishorM/laya) is reached over HTTP: `laya-serve` answers
-  `POST /v1/systemone`, and
-  `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1`, with no key, reaches it through `system1::Client` - RUNNING.md has the commands. The script that spoke to it over a pipe
+  `POST /v1/systemone`, and `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1`, with no key,
+  reaches it through `system1::Client` - RUNNING.md has the commands. The script that spoke to it over a pipe
   is gone, and with it what that script did to laya's answer: it built the answer rather than
   passing laya's through, because laya's `confidence` was its own quantity and read as this
   program's it drew every command yellow; and it refitted laya's temperatures on sixty labelled
@@ -47,8 +47,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   `laya-serve` passes `predict()` through and says that is the TypeSafe SDKs' shape, which is the
   one OpenRouter's System One route takes too. Whether its `confidence` is the one the client reads
   has not been tried against a running server, and is the thing to check first. If it is not, the
-  recalibration belongs upstream or in the client, and which is the decision. The script and its sixty commands are in git history, last at `bcb9a2df`, for
-  whoever takes the working upstream.
+  recalibration belongs upstream or in the client, and which is the decision. The script and its
+  sixty commands are in git history, last at `bcb9a2df`, for whoever takes the working upstream.
 
 - **Naming this program to OpenRouter when the *advisor* is what is calling it.** The System One
   client sends no app headers, so a session that asks OpenRouter for advice is attributed for the
@@ -147,8 +147,10 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **Two runs of the live suite at once.** `kamchatka`'s `live.rs` works in `live-{name}`
   directories under the target directory, so two runs against one `CARGO_TARGET_DIR` at the same
-  moment clear each other's files. One test binary at a time is `common::scratch`'s rule; a target directory per run, or the
-  process id back in that one name, is the way round it if concurrent runs are wanted.
+  moment clear each other's files. `common::scratch` keeps the tests of one run apart - one test
+  binary at a time under `cargo test`, a directory per test under nextest - and two runs share
+  every name either way; a target directory per run, or a run's identifier in the name, is the way
+  round it if concurrent runs are wanted.
 
 - **No bound on an MCP server's first answers.** The handshake, `tools/list` and `resources/read`
   wait as long as the server takes, and a first `npx -y` can legitimately take minutes to download
