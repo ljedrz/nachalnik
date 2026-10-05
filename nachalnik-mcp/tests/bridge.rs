@@ -406,6 +406,40 @@ async fn a_call_reaches_the_server_and_the_answer_comes_back() {
     assert!(!output.is_error);
 }
 
+/// A call to a server whose connection has closed says that every tool it offers is gone with it.
+#[tokio::test]
+async fn a_call_to_a_server_that_has_gone_says_its_other_tools_have_gone_too() {
+    let (theirs, ours) = tokio::io::duplex(8 * 1024);
+    let serving = tokio::spawn(async move {
+        if let Ok(running) = Bench::default().serve(theirs).await {
+            let _ = running.waiting().await;
+        }
+    });
+    let server = Server::connect("files", ours)
+        .await
+        .expect("the handshake completes");
+    let kernel = kernel();
+    server.install(&kernel).await.unwrap();
+    serving.abort();
+
+    let echo = kernel.tool("files__echo").unwrap();
+    let mut said = String::new();
+    for _ in 0..50 {
+        said = invoke(&echo, json!({ "text": "hello" }))
+            .await
+            .content
+            .to_text()
+            .into_owned();
+        if said.contains("could not be sent") {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+
+    assert!(said.contains("could not be sent"), "{said}");
+    assert!(said.contains("every tool it offers"), "{said}");
+}
+
 #[tokio::test]
 async fn structured_content_stays_structured() {
     let (server, _) = bench("files").await;

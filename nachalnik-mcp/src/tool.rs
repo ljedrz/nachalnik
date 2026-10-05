@@ -159,9 +159,20 @@ impl Tool for McpTool {
             // not a reason to stop the loop
             // note: not "refused". The server never saw the call: sending fails when the connection
             // is gone, and a model told it was refused goes looking for what it did wrong
+            //
+            // note: and a closed connection is said to be one. The model calls the server's other
+            // tools next, and `Transport closed` alone does not say that each of them will fail the
+            // same way
             Err(e) => {
                 return Ok(ToolOutput::error(format!(
-                    "the call could not be sent to the MCP server: {e}"
+                    "the call could not be sent to the MCP server: {e}{}",
+                    match e {
+                        rmcp::ServiceError::TransportClosed => {
+                            ". The connection to it has closed, so every tool it offers fails \
+                             this way from here on"
+                        }
+                        _ => "",
+                    }
                 )));
             }
         };

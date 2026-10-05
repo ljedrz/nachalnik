@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A call to a server whose connection has closed says every tool it offers fails the same way.**
+  It said only that the call could not be sent, `Transport closed`, and a model went on to call the
+  server's other tools one at a time.
+
 ## [0.8.0] - 2026-10-02
 
 ### changed
