@@ -582,8 +582,9 @@ fn panel(
     // note: measured at the width the box will have, which is less than `columns` on a narrow
     // terminal - the borders and the padding take four of it, as `inner` below does
     let width = centred(frame.area(), columns, 0).width;
-    let lines = wrapped(&showing.body, width.saturating_sub(4) as usize, "").len();
-    let wanted = u16::try_from(lines)
+    let measured = width.saturating_sub(4);
+    let mut lines = wrapped(&showing.body, measured as usize, "");
+    let wanted = u16::try_from(lines.len())
         .unwrap_or(u16::MAX)
         .saturating_add(2 + strip);
     // in a wider type, because a window seven hundred rows tall is a `u16` times ninety that does
@@ -603,7 +604,12 @@ fn panel(
     ])
     .areas(outer);
 
-    let lines = wrapped(&showing.body, inner.width as usize, "");
+    // note: the lines it was measured by, wherever they are the ones it will draw - which is
+    // everywhere but a window too narrow for the borders. Folding the body is most of what drawing
+    // a box of the help costs, and doing it twice a frame was most of it again
+    if inner.width != measured {
+        lines = wrapped(&showing.body, inner.width as usize, "");
+    }
     let at = scroll.min(lines.len().saturating_sub(inner.height as usize));
     let footer = format!(
         "{} {}–{} of {} · any key closes ",

@@ -278,31 +278,40 @@ pub(super) fn fold(body: &str, room: usize) -> Vec<String> {
 
     let mut out = Vec::new();
     let mut line = String::new();
+    // how wide `line` is, kept as it grows rather than measured again for every word: a frame
+    // folds every line of whatever it draws, the help is hundreds of them, and measuring is
+    // walking the text
+    let mut filled = 0;
     // a word can be the empty string - that is what a run of spaces is made of - so "have I
     // put anything on this line yet" is its own question rather than `line.is_empty()`
     let mut fresh = true;
 
     for word in body.split(' ') {
+        let wide = columns(word);
         // a single word longer than the pane is broken rather than allowed to overflow; the last
         // piece stays open, so that whatever follows can share the line with it
-        if columns(word) > room {
+        if wide > room {
             if !fresh {
                 out.push(std::mem::take(&mut line));
             }
             out.extend(split_to_fit(word, room));
             line = out.pop().unwrap_or_default();
+            filled = columns(&line);
             fresh = false;
             continue;
         }
 
-        if !fresh && columns(&line) + 1 + columns(word) > room {
+        if !fresh && filled + 1 + wide > room {
             out.push(std::mem::take(&mut line));
+            filled = 0;
             fresh = true;
         }
         if !fresh {
             line.push(' ');
+            filled += 1;
         }
         line.push_str(word);
+        filled += wide;
         fresh = false;
     }
     out.push(line);
