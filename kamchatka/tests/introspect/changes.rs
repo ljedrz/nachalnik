@@ -551,6 +551,48 @@ async fn revise_rewrites_an_item_and_says_who_did_it() {
     )));
 }
 
+/// `revise` refuses a message the person wrote, and says what to do instead.
+///
+/// note: found live. A model meaning to revise its note was handed the id of the message asking for
+/// it, and wrote the note's text over the message - so every later request read the person as
+/// having said the model's words. Exclusion is not refused, since an excluded message still says
+/// what the person said.
+#[tokio::test]
+async fn revise_refuses_a_message_the_person_wrote() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "revise", "ids": [1], "content": "the model's words", "reason": "tidier" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "exclude", "ids": [1], "reason": "no longer needed" }),
+        ),
+    ]));
+    kernel.push(ContextItem::user("what the person said"));
+    kernel.push(ContextItem::user("carry on"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let item = kernel.item(nachalnik::ContextId(1)).unwrap();
+    assert_eq!(item.content.to_text(), "what the person said");
+    assert!(item.meta["revised"].is_null(), "{}", item.meta);
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("refused") && said[0].contains("the person wrote"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("`note`"),
+        "it says what to do instead: {}",
+        said[0]
+    );
+    assert_eq!(item.state, ContextState::Excluded, "{}", said[1]);
+}
+
 /// `revise` refuses what text cannot stand for, which is what a person's edit refuses: a picture,
 /// and a turn whose calls are not in the words it would be replacing.
 ///

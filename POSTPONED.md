@@ -249,14 +249,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   scale to a share of the window, or the compactor taking what the model has already been shown
   in this turn once the request would otherwise be refused.
 
-- **`context`'s `revise` reaches the person's own messages.** What it refuses is a system
-  instruction, the person's pins and the turn it is speaking in, so a message the person typed
-  can be rewritten: a model that meant to revise its note and gave the id of the message asking
-  for it replaced that message with the note's text. Nothing is lost - `context.replaced` keeps
-  the old words and an undo brings them back - but every later request reads the person as having
-  said something they did not. Refusing it is one more case in `protected`; whether the model may
-  tidy the person's words at all is the decision.
-
 - **`/params` showing a parameter's type and range.** It shows the default and the maximum where
   the listing publishes them, and nothing else, because nothing else is published: OpenRouter's
   `/models` and its per-model `/endpoints` give names, some defaults and the cap on an answer,

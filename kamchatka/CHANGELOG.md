@@ -24,6 +24,9 @@ minor bump may break you.
 
 ### fixed
 
+- **`context`'s `revise` refuses a message the person wrote**, and says `note` puts beside it what
+  the model meant. A model that meant to revise its note and gave the id of the message asking for
+  it wrote over that message, and every later request read the person as having said it.
 - **A context the tool definitions alone fill is not told to `/exclude`.** The line saying the
   context is full asked for exclusions where the next line said no exclusion covers the request;
   it says now that the tool definitions take the room, and names `/tools toggle`.

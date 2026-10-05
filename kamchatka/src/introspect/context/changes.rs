@@ -593,6 +593,17 @@ impl Changes {
         if let Some(why) = protected(&item, &self.pinned.lock(), own_turn(kernel, &call.id)) {
             return ToolOutput::error(format!("refused: [{id}] {why} - nothing was revised"));
         }
+        // note: here rather than in `protected`, because it is the one move that puts words in
+        // somebody's mouth. A message excluded or elided is still what the person said, and the
+        // pane shows it so; one revised has every later request read them as having said the
+        // model's text. A model meaning to revise its note and handed the id of the message asking
+        // for it did exactly that. What it means can go beside the message instead
+        if matches!(item.kind, ContextKind::UserMessage) {
+            return ToolOutput::error(format!(
+                "refused: [{id}] is a message the person wrote, and their words are theirs to \
+                 change - nothing was revised. `note` puts what you meant to say beside it"
+            ));
+        }
         // note: the three shapes a person's edit is refused for, refused here for the same reason:
         // text written over a picture is the picture gone, and over a turn whose calls live beside
         // or among its words it is the calls gone - and their results with them, orphaned and
