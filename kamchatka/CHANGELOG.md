@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.8.1, `nachalnik-mcp` 0.8.1 and `nachalnik-providers` 0.8.1. A session with
+  no key sends none because the providers' clients leave an empty key's header out, which 0.8.0 sent
+  as `Bearer ` with nothing after it.
 - **The dependency requirements name the lowest versions this crate builds against**, rather than
   the first of each major, which it did not: `anyhow` 1.0.4, `globset` 0.4.3, `grep-searcher` 0.1.4,
   `ignore` 0.4.15, `landlock` 0.4.7, `libc` 0.2.187, `serde` 1.0.194, `serde_json` 1.0.127, `time`
