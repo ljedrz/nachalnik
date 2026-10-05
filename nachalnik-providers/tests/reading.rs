@@ -701,6 +701,36 @@ async fn a_refusal_that_asks_for_a_long_wait_is_reported_rather_than_sat_through
     }
 }
 
+/// The same, asked as a date rather than as a number of seconds.
+///
+/// note: a date was read as nothing at all and fell through to the doubling, so a server that
+/// named the day it would answer again was asked four times in fourteen seconds. One in 2100 is
+/// further off than any wait this crate sits through, whatever day the suite is run on.
+#[tokio::test(start_paused = true)]
+async fn a_refusal_that_asks_for_a_long_wait_by_date_is_reported_rather_than_sat_through() {
+    for (dialect, _) in dialects("http://127.0.0.1:1") {
+        let requests = Arc::new(AtomicUsize::new(0));
+        let url = server(
+            "429 Too Many Requests",
+            "Retry-After: Mon, 01 Mar 2100 12:00:00 GMT\r\nContent-Type: application/json\r\n",
+            "{\"error\":{\"code\":429,\"message\":\"Come back in March.\"}}",
+            requests.clone(),
+        )
+        .await;
+        let (_, provider) = dialects(&url)
+            .into_iter()
+            .find(|(d, _)| *d == dialect)
+            .expect("built above");
+
+        let error = asked(provider).await.expect_err("a refusal");
+        assert!(
+            error.contains("Come back in March") && error.contains("longer than"),
+            "{dialect}: {error}"
+        );
+        assert_eq!(requests.load(Ordering::SeqCst), 1, "{dialect}: asked once");
+    }
+}
+
 /// A busy server that asks to be left for a minute is waited out, and once the tries run out is not
 /// said to have asked for longer than this waits.
 ///
