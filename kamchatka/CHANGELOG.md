@@ -19,6 +19,9 @@ minor bump may break you.
   name was told only that nothing matched; it is told they are `source:agent`.
 - **`/undo N` and `/redo N` refuse the count** and take nothing back. Each takes one change, and
   `/undo 5` answered `undone` for the one change it took back.
+- **`/attach` takes a path with a space in it followed by a question.** Where the whole line is not
+  a file, the path is the longest part of it, up to a space, that is one; it was the first word,
+  so `/attach my notes.md what is this?` looked for a file called `my`.
 
 ## [0.18.0] - 2026-10-04
 
