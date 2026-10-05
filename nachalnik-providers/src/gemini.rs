@@ -32,7 +32,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, install_crypto,
+    Dialect, Endpoint, Keyed, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
     waiting::{Asking, Sent, interrupted, sent},
@@ -127,7 +127,7 @@ impl Gemini {
         let Ok(response) = self
             .client
             .get(format!("{base}/models/{model}"))
-            .header("x-goog-api-key", &self.api_key)
+            .google_key(&self.api_key)
             .timeout(crate::ASKING)
             .send()
             .await
@@ -482,12 +482,7 @@ impl Provider for Gemini {
         };
 
         let url = format!("{base}/models/{model}:streamGenerateContent?alt=sse");
-        let sending = || {
-            self.client
-                .post(&url)
-                .header("x-goog-api-key", &self.api_key)
-                .json(&body)
-        };
+        let sending = || self.client.post(&url).google_key(&self.api_key).json(&body);
         let mut streamed = Streamed::default();
         match sent(&asking, &self.attempts, limit, true, sending, &mut streamed).await? {
             Sent::Interrupted => Ok(interrupted()),
@@ -684,7 +679,7 @@ impl Endpoint for Gemini {
         let Ok(response) = self
             .client
             .get(format!("{base}/models?pageSize=200"))
-            .header("x-goog-api-key", &self.api_key)
+            .google_key(&self.api_key)
             .timeout(crate::ASKING)
             .send()
             .await

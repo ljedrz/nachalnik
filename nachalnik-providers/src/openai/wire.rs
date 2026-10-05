@@ -18,6 +18,7 @@ use nachalnik::{
 use serde_json::{Value, json};
 
 use crate::{
+    Keyed,
     openai::OpenAiCompatible,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
@@ -205,7 +206,7 @@ impl Provider for OpenAiCompatible {
             self.attributed(
                 self.client
                     .post(format!("{endpoint}/chat/completions"))
-                    .bearer_auth(&self.api_key),
+                    .bearer(&self.api_key),
             )
             .json(&body)
         };

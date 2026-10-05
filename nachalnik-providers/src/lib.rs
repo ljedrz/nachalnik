@@ -316,6 +316,41 @@ pub(crate) fn address(url: impl Into<String>) -> String {
     url
 }
 
+/// A request carrying a key, or carrying none where the key is empty.
+///
+/// note: empty is how a caller says it has no key, which is what a model served on the machine in
+/// front of you wants: ollama, llama.cpp and vLLM check nothing unless they were started with a
+/// key of their own. Sent anyway, an empty key is an `Authorization: Bearer ` with nothing after
+/// it, which a server that checks nothing ignores and a proxy in front of one may well refuse.
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+pub(crate) trait Keyed {
+    /// The key as a bearer token, which is how the OpenAI dialect and System One take one.
+    #[cfg(any(feature = "openai", feature = "system1"))]
+    fn bearer(self, key: &str) -> Self;
+    /// The key in `x-goog-api-key`, which is how Google's native API takes one.
+    #[cfg(any(feature = "gemini", feature = "openai"))]
+    fn google_key(self, key: &str) -> Self;
+}
+
+#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+impl Keyed for reqwest::RequestBuilder {
+    #[cfg(any(feature = "openai", feature = "system1"))]
+    fn bearer(self, key: &str) -> Self {
+        match key.is_empty() {
+            true => self,
+            false => self.bearer_auth(key),
+        }
+    }
+
+    #[cfg(any(feature = "gemini", feature = "openai"))]
+    fn google_key(self, key: &str) -> Self {
+        match key.is_empty() {
+            true => self,
+            false => self.header("x-goog-api-key", key),
+        }
+    }
+}
+
 /// A base URL as it may be written down: what [`ModelInfo::endpoint`](nachalnik::ModelInfo) says,
 /// which goes into every record of a session.
 ///

@@ -167,3 +167,23 @@ async fn the_app_headers_go_to_openrouter_and_nowhere_else() {
         overheard(|address| OpenAiCompatible::new("m", format!("http://{address}"), "k")).await;
     assert!(!silent.contains("referer"), "{silent}");
 }
+
+/// A provider with no key sends no `Authorization` at all, rather than a bearer token of nothing.
+///
+/// note: what a model served on the machine wants. ollama, llama.cpp and vLLM check no key unless
+/// they were started with one, and an empty `Bearer ` is a header a proxy in front of one can refuse.
+#[tokio::test]
+async fn no_key_is_no_authorization_header() {
+    let heard =
+        overheard(|address| OpenAiCompatible::new("m", format!("http://{address}/v1"), "")).await;
+    assert!(!heard.contains("authorization"), "{heard}");
+}
+
+/// And a provider with one sends it, so the test above is about the empty key and not the header.
+#[tokio::test]
+async fn a_key_is_sent_as_a_bearer_token() {
+    let heard =
+        overheard(|address| OpenAiCompatible::new("m", format!("http://{address}/v1"), "sk-held"))
+            .await;
+    assert!(heard.contains("authorization: bearer sk-held"), "{heard}");
+}

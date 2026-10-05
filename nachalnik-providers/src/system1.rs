@@ -57,7 +57,7 @@ use nachalnik::{BoxError, Usage, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, RETRIES, install_crypto, same_model};
+use crate::{Endpoint, Keyed, RETRIES, install_crypto, same_model};
 
 /// Where the questions go unless a caller says otherwise: OpenRouter, which serves every System
 /// One model on its list from the same `/api/v1` its chat completions are on.
@@ -645,7 +645,7 @@ impl Client {
             let sent = self
                 .client
                 .post(&url)
-                .bearer_auth(&self.api_key)
+                .bearer(&self.api_key)
                 .json(body)
                 .send()
                 .await;
@@ -848,7 +848,7 @@ impl Endpoint for Client {
         let Ok(response) = self
             .client
             .get(format!("{base}/{LISTING}"))
-            .bearer_auth(&self.api_key)
+            .bearer(&self.api_key)
             .send()
             .await
         else {
