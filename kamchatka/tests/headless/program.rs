@@ -1975,6 +1975,21 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
         eprintln!("skipped: `script` is not on the path, so there is no pty to be had");
         return;
     }
+    // note: a `script` that is there can still be refused a pty - a sandbox that grants no
+    // `/dev/ptmx` is one - and then the program never runs, which the assertions below would
+    // read as the program saying nothing. So it is asked for one first, by itself.
+    let probe = std::process::Command::new("script")
+        .args(["-q", "-c", "true", "/dev/null"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("`script` ran");
+    if !probe.status.success() {
+        eprintln!(
+            "skipped: `script` could not make a pty here: {}",
+            String::from_utf8_lossy(&probe.stderr).trim()
+        );
+        return;
+    }
 
     let out = std::process::Command::new("script")
         .current_dir(common::nowhere())
