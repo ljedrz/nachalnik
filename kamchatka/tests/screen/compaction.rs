@@ -1254,6 +1254,40 @@ async fn a_request_the_tools_put_over_the_limit_names_them() {
     assert!(!told.contains("`/exclude` by number"), "{told}");
 }
 
+/// And the line saying the context is full, which comes first, does not ask for the exclusions
+/// the next line says cannot cover it.
+///
+/// note: found against an endpoint whose model takes a thousand tokens, with the compactor in
+/// place: `/exclude` what is no longer needed, then that no exclusion covers it.
+#[tokio::test]
+async fn a_context_the_tools_fill_is_not_told_to_exclude() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(Some(Arc::new(Shedder {
+        threshold: 0.5,
+        target: 0.3,
+    })));
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    harness.app.kernel.add_tool(Arc::new(
+        nachalnik::test::ConstTool::new("vast", "done").with_schema(json!({
+            "type": "object",
+            "description": "a tool described at length. ".repeat(limit / 4),
+        })),
+    ));
+    harness.send("hello").await;
+    harness.settle().await;
+
+    let told = said(&harness);
+    assert!(told.contains("the context is full"), "{told}");
+    assert!(
+        !told.contains("`/exclude` what is no longer needed"),
+        "{told}"
+    );
+    assert!(
+        told.contains("the tool definitions alone come to"),
+        "{told}"
+    );
+}
+
 /// `/compact` in a context that has not reached the compactor's own target says the context is
 /// under it, rather than that nothing in it is eligible.
 ///
