@@ -489,7 +489,9 @@ async fn every_operation_works_with_its_arguments_inside_the_wrapper() {
     for tool in common::builtin(&dir, true, Limits::default()) {
         kernel.add_tool(tool);
     }
-    kernel.push(ContextItem::user("something to act on"));
+    // a file rather than a message, since `revise` rewrites the first and a message the person
+    // wrote is not the model's to rewrite
+    kernel.push(ContextItem::file("notes.md", "something to act on"));
     kernel.push(ContextItem::user("and a second thing"));
 
     // one call per operation, in an order that leaves the context usable for the next: the reads

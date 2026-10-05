@@ -177,7 +177,8 @@ fn ops() -> Vec<Op> {
     ops.extend([
         Op::new(
             "revise",
-            "rewrites what one item says, for when you wrote something down wrong",
+            "rewrites what one item says, for when you wrote something down wrong - never a \
+             message the person wrote",
             vec![
                 Arg::one_of("ids", "integer", "the one item to rewrite").needed(),
                 Arg::text("content", "what the item should say instead").needed(),
