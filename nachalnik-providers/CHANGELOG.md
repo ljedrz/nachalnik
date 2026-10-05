@@ -15,6 +15,9 @@ minor bump may break you.
 
 ### fixed
 
+- **The conformance suite's error inside a 200 no longer costs fourteen seconds.** It carried a
+  `502`, which a provider that waits out a passing failure - as this crate's do - asked about three
+  more times, two, four and eight seconds apart, before the case could pass. It carries a `400`.
 - **A provider with no model yet is not told the address does not serve one.** Moved to an address
   with an empty name - which is what `/restart` does to a session started without a model - every
   dialect said that ` ` is not one of the models the address lists.
