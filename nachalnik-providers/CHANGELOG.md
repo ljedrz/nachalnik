@@ -20,6 +20,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A `Retry-After` given as a date is waited out until that date.** It was read as a number of
+  seconds or not at all, so a date fell through to the doubling and the server was asked again,
+  three times, before the time it had named. A date further off than the minute a refusal is
+  waited out for is refused at once, as a number of seconds that long is.
 - **The conformance suite's error inside a 200 no longer costs fourteen seconds.** It carried a
   `502`, which a provider that waits out a passing failure - as this crate's do - asked about three
   more times, two, four and eight seconds apart, before the case could pass. It carries a `400`.

@@ -381,8 +381,7 @@ pub(crate) async fn sent(
                     .headers()
                     .get(reqwest::header::RETRY_AFTER)
                     .and_then(|value| value.to_str().ok())
-                    .and_then(|value| value.trim().parse::<u64>().ok())
-                    .map(Duration::from_secs);
+                    .and_then(|value| retry_after(value, std::time::SystemTime::now()));
                 let body = match body(response, asking, patience).await {
                     Ok(Some(body)) => body,
                     Ok(None) => return Ok(Sent::Interrupted),
@@ -466,6 +465,70 @@ pub(crate) async fn sent(
             return Ok(Sent::Interrupted);
         }
     }
+}
+
+/// How long a `Retry-After` asks to be left: a number of seconds, or the date to come back at.
+///
+/// note: the date in the one shape HTTP sends it in, `Sun, 06 Nov 1994 08:49:37 GMT`, rather than
+/// the two obsolete ones a recipient is asked to read as well. Read as seconds alone, a date fell
+/// through to the doubling a server that said nothing gets, and was asked again before the time it
+/// had named. One already past is no wait at all, and one too far off is held to [`LINGER`] by the
+/// caller, as a number of seconds is.
+///
+/// note: `now` is a parameter so that the dates can be checked against a clock that stands still.
+fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
+    let value = value.trim();
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+
+    // `Sun, 06 Nov 1994 08:49:37 GMT`: a weekday nobody needs, then the date and the time
+    let (_, date) = value.split_once(", ")?;
+    let mut parts = date.split(' ');
+    let (day, month, year, clock, zone) = (
+        parts.next()?.parse::<u32>().ok()?,
+        parts.next()?,
+        parts.next()?.parse::<i64>().ok()?,
+        parts.next()?,
+        parts.next()?,
+    );
+    if zone != "GMT" || parts.next().is_some() {
+        return None;
+    }
+    let month = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ]
+    .iter()
+    .position(|name| *name == month)? as u32
+        + 1;
+    let mut clock = clock.split(':').map(|part| part.parse::<u32>().ok());
+    let (hours, minutes, seconds) = (clock.next()??, clock.next()??, clock.next()??);
+    if clock.next().is_some()
+        || !(1..=31).contains(&day)
+        || hours > 23
+        || minutes > 59
+        || seconds > 60
+    {
+        return None;
+    }
+
+    // days since 1970-01-01 of a date in the proleptic Gregorian calendar, after Howard Hinnant's
+    // `days_from_civil`: a year that starts in March puts the leap day last
+    let (y, m) = match month <= 2 {
+        true => (year - 1, month + 9),
+        false => (year, month - 3),
+    };
+    let era = y.div_euclid(400);
+    let of_era = y.rem_euclid(400);
+    let of_year = (153 * i64::from(m) + 2) / 5 + i64::from(day) - 1;
+    let of_cycle = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    let days = era * 146_097 + of_cycle - 719_468;
+
+    let at = days * 86_400 + i64::from(hours * 3600 + minutes * 60 + seconds);
+    let now = now.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+    let now = i64::try_from(now).ok()?;
+
+    Some(Duration::from_secs(u64::try_from(at - now).unwrap_or(0)))
 }
 
 /// Whether a status - or the code in an error object - is one that goes away by itself.
@@ -615,6 +678,52 @@ mod tests {
             Silence::Worth(_) => "said",
             Silence::Enough => "gave up",
             Silence::Ordinary => "waited",
+        }
+    }
+
+    /// A `Retry-After` is a number of seconds or a date, and a date is the wait until it.
+    ///
+    /// note: the dates' own instants were worked out apart from this parser, by Python's
+    /// `email.utils`, and include a leap day and the turn of a century that is not a leap year -
+    /// the two places a calendar written by hand goes wrong.
+    #[test]
+    fn a_retry_after_is_read_as_seconds_or_as_a_date() {
+        let at = |seconds: u64| std::time::UNIX_EPOCH + Duration::from_secs(seconds);
+
+        assert_eq!(retry_after("120", at(0)), Some(Duration::from_secs(120)));
+        assert_eq!(retry_after(" 7 ", at(0)), Some(Duration::from_secs(7)));
+
+        for (date, instant) in [
+            ("Sun, 06 Nov 1994 08:49:37 GMT", 784_111_777),
+            ("Thu, 29 Feb 2024 00:00:00 GMT", 1_709_164_800),
+            ("Wed, 31 Dec 2025 23:59:59 GMT", 1_767_225_599),
+            ("Mon, 01 Mar 2100 12:00:00 GMT", 4_107_585_600),
+        ] {
+            assert_eq!(
+                retry_after(date, at(instant - 30)),
+                Some(Duration::from_secs(30)),
+                "{date}"
+            );
+            // and one that has already gone by asks for no wait at all
+            assert_eq!(
+                retry_after(date, at(instant + 30)),
+                Some(Duration::ZERO),
+                "{date}"
+            );
+        }
+
+        // what is neither is no answer, and the doubling a server that said nothing gets
+        for neither in [
+            "",
+            "soon",
+            "-5",
+            "Sun, 06 Nov 1994 08:49:37 UTC",
+            "Sunday, 06-Nov-94 08:49:37 GMT",
+            "Sun, 32 Nov 1994 08:49:37 GMT",
+            "Sun, 06 Nob 1994 08:49:37 GMT",
+            "Sun, 06 Nov 1994 25:49:37 GMT",
+        ] {
+            assert_eq!(retry_after(neither, at(0)), None, "{neither:?}");
         }
     }
 

@@ -322,11 +322,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   status of its own for "done, but not recorded", and folding it into `1`, and the last two are a
   change a script would notice.
 
-- **A `Retry-After` given as a date is not read.** The dialects read it as a number of seconds,
-  and a date falls through to the doubling a server that said nothing gets. Nothing tested here
-  sends a date; an endpoint that does is what would make it worth the parse, which needs no new
-  dependency - an IMF date is one fixed shape - and would be held to `LINGER` like the seconds are.
-
 - **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
   doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
   to be carried on with `-r`. A free model on OpenRouter that is "temporarily rate-limited
