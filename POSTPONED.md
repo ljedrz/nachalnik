@@ -342,6 +342,22 @@ Referenced from [AGENTS.md](AGENTS.md).
   framing on `GET /`, which stops the frame and not the image, or a token in the page's address
   that `/events` asks for, which changes how the page is opened.
 
+- **An interrupt can land between a call's check and its start.** Run one at a time, each call
+  reads the interrupt flag outside the machine lock and announces `tool.started` after, while
+  `Kernel::interrupt` sets and announces under it. One landing between the two leaves
+  `turn.interrupted` in the record ahead of a call that then runs. A live run met it through the
+  `--spend` ceiling, which `App` charges off the event stream while the kernel moves on to the
+  calls. Reading the flag and announcing the start under the lock makes the record agree with
+  what ran; it is a change to the kernel's executing path, the window is between two statements,
+  so no test fails without it reliably, and the spend stop it would serve is a stopping rule
+  rather than a cap either way.
+
+- **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$`, or
+  a `SIGTSTP`, leaves the call reading pipes nobody will write to, and a headless run sits out its
+  `--deadline`, which ends it and the stopped process cleanly. Waiting with `WUNTRACED` would see
+  the stop; whether the answer then continues the command or kills it, and whether a job the
+  command put in the background stopping counts too, is the decision.
+
 - **The largest source files are not split.** `kamchatka`'s `app/mod.rs`, `app/command.rs`,
   `sandbox/mod.rs` and `remote/protocol/mod.rs`, and `nachalnik`'s `kernel/mod.rs`, are each
   longer than can be read at once, and each has a seam that is already marked: the kernel's own
