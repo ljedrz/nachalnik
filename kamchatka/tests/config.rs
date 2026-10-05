@@ -51,7 +51,8 @@ fn run_from(dir: &Path, args: &[&str], lines: &str) -> (bool, String) {
 /// The same with no API key anywhere, which is what somebody trying this for the first time has.
 ///
 /// note: removed rather than set empty, because an empty variable is a variable: `endpoint::connect`
-/// reads one and only fails where there is none, which is the case this is about.
+/// reads one, and goes without only where there is none, which is the case this is about. The
+/// address is still this machine's, which checks no key, so the run starts.
 fn run_keyless(args: &[&str], lines: &str) -> (bool, String) {
     spawn(elsewhere(), args, lines, &[], false, true)
 }
@@ -2328,4 +2329,22 @@ fn the_parallel_flag_reaches_the_sessions_configuration() {
         !wired(&[]),
         "a session that was not asked for it does not run them abreast"
     );
+}
+
+/// A key is not a prerequisite: a session pointed at this machine starts without one, and one
+/// pointed at OpenRouter, which refuses every request without one, is refused at startup.
+///
+/// note: the first is what somebody running a model of their own has - ollama, llama.cpp and vLLM
+/// check no key unless started with one - and they were refused until they exported one nothing
+/// would read.
+#[test]
+fn a_key_is_asked_for_only_where_the_address_checks_one() {
+    let (ok, said) = run_keyless(&[], "");
+    assert!(ok, "a local address needs no key: {said}");
+    assert!(!said.contains("KAMCHATKA_API_KEY"), "{said}");
+
+    let (ok, said) = spawn(elsewhere(), &[], "", &[], false, false);
+    assert!(!ok, "OpenRouter takes no request without a key: {said}");
+    assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
+    assert!(said.contains("openrouter.ai"), "and it says where: {said}");
 }
