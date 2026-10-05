@@ -783,7 +783,8 @@ setting added later nor a number added here can go unnoticed.
 
 `kamchatka --help` lists every option, and the environment too rather than leaving its variables
 for the readme alone to mention: the key, as `KAMCHATKA_API_KEY` or else `OPENROUTER_API_KEY` or
-`OPENAI_API_KEY`; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
+`OPENAI_API_KEY`, which OpenRouter and Google need and a model served on this machine does not -
+pointed anywhere else, a session with no key starts and sends none; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
 says otherwise, or Google's own `v1beta` with `--gemini`; `KAMCHATKA_CONTEXT_LIMIT`, for a
 provider that will not say how much context its model has; and `KAMCHATKA_NO_ATTRIBUTION`, which
 stops the program naming itself to OpenRouter. The advisor's variables are listed by a build that
@@ -833,10 +834,10 @@ to OpenRouter as well as to the model behind it.
 
 `KAMCHATKA_SYSTEM1_BASE_URL` moves the questions somewhere else: an engine of your own that
 answers the same route, `/systemone`, which is the one OpenRouter takes them on. A borrowed key is
-only ever sent to OpenRouter, so an advisor pointed anywhere else needs `KAMCHATKA_SYSTEM1_API_KEY`,
-and the session stops before it begins saying so rather than hand that address an OpenRouter key.
-Where the service there checks no key, any value will do. A service with a *different* request
-shape is not reachable.
+only ever sent to OpenRouter, so an advisor pointed anywhere else is sent
+`KAMCHATKA_SYSTEM1_API_KEY` if it is set, and no key at all if it is not - never an OpenRouter
+one. A service there that does check a key says so on the first question, where the colour would
+have been. A service with a *different* request shape is not reachable.
 
 It **decides nothing**. What the standing rules allow runs without a question and without
 anything being sent, what they refuse is refused, and what they ask about is asked about — an
@@ -868,13 +869,13 @@ uses:
 ```console
 $ pip install "laya[serve]"
 $ laya-serve
-$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1 KAMCHATKA_SYSTEM1_API_KEY=local
+$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1
 $ export KAMCHATKA_SYSTEM1_MODEL=<the model laya-serve lists>
 $ kamchatka --advise -m qwen/qwen3-coder
 ```
 
-The key is there because a borrowed one is only ever sent to OpenRouter, and laya checks none, so
-any value will do. The point is not that it is free, though it is: **nothing leaves the machine**.
+No key is needed: laya checks none, and a borrowed one is only ever sent to OpenRouter. The point
+is not that it is free, though it is: **nothing leaves the machine**.
 Everything the section above says about a third party reading a command stops applying, because
 the command goes to a server you started, under your own user, and comes back as numbers.
 

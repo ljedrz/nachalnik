@@ -13,7 +13,7 @@
 use std::{env, sync::Arc};
 
 use nachalnik::BoxError;
-use nachalnik_providers::{Gemini, OpenAiCompatible, gemini::DEFAULT_BASE_URL};
+use nachalnik_providers::{Gemini, OpenAiCompatible, gemini::DEFAULT_BASE_URL, is_openrouter};
 
 /// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
 ///
@@ -96,11 +96,58 @@ pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
 }
 
 /// The API key, under whichever of the documented names it is set.
+///
+/// note: an error where none is, although a session no longer needs one everywhere - see
+/// `key_for`, which is what decides. The signature is the one 0.18.0 published, kept for a patch
+/// release; the error is the sentence a session refused for want of a key used to be given.
 pub fn api_key() -> Result<String, BoxError> {
     env::var("KAMCHATKA_API_KEY")
         .or_else(|_| env::var("OPENROUTER_API_KEY"))
         .or_else(|_| env::var("OPENAI_API_KEY"))
         .map_err(|_| "set KAMCHATKA_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY)".into())
+}
+
+/// The key requests to `url` go with: the one set, or none at all - which the providers send as
+/// no header - unless `url` is a service that checks one.
+///
+/// note: a key is not a prerequisite, because a model served on the machine in front of you wants
+/// none: ollama, llama.cpp and vLLM check nothing unless they were started with a key of their own,
+/// and a session pointed at one used to be refused at startup until somebody exported a key it
+/// would never read. Refused still for OpenRouter and Google, which are the two defaults and refuse
+/// every request without one - there the line at startup is worth more than a 401 on the first
+/// turn. Anywhere else the endpoint is the one that knows, and its 401 says so.
+fn key_for(url: &str) -> Result<String, BoxError> {
+    match api_key().ok() {
+        Some(key) => Ok(key),
+        None if checks_a_key(url) => Err(format!(
+            "set KAMCHATKA_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY): {} refuses a request \
+             without one",
+            shown(url)
+        )
+        .into()),
+        None => Ok(String::new()),
+    }
+}
+
+/// Whether `url` is one of the services known to refuse every request that comes without a key.
+///
+/// note: on the host alone, as [`is_openrouter`] reads one, so Google's `/v1beta/openai` counts
+/// as well as its native `/v1beta`, whatever the port and whoever is named before an `@`.
+fn checks_a_key(url: &str) -> bool {
+    let host = |url: &str| {
+        let authority = shown(url);
+        let authority = authority
+            .split_once("://")
+            .map_or(authority.as_str(), |(_, rest)| rest);
+        let authority = authority.split('/').next().unwrap_or_default();
+        authority
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    };
+
+    is_openrouter(url) || host(url) == host(DEFAULT_BASE_URL)
 }
 
 /// Every variable this program reads a key from, none of which a command it runs for the model
@@ -216,7 +263,7 @@ pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxEr
     let mut provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
         addressed(base_url())?,
-        api_key()?,
+        key_for(&base_url())?,
     )
     .with_context_limit(checked_limit()?);
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
@@ -283,6 +330,10 @@ pub mod advise {
         /// OpenRouter too, or `OPENROUTER_API_KEY`. A session that was not given a second key is
         /// not thereby a session that cannot have an advisor.
         Borrowed(String),
+        /// None at all, for an advisor pointed somewhere other than OpenRouter and given no key
+        /// of its own: an engine on this machine checks none, and no OpenRouter key is borrowed
+        /// for anywhere else.
+        Keyless,
     }
 
     /// Which account, and never the key.
@@ -296,6 +347,7 @@ pub mod advise {
             let held = match self {
                 Self::Dedicated(_) => "Dedicated",
                 Self::Borrowed(_) => "Borrowed",
+                Self::Keyless => return f.write_str("Account::Keyless"),
             };
 
             write!(f, "Account::{held}(<key>)")
@@ -307,6 +359,8 @@ pub mod advise {
         pub fn api_key(&self) -> &str {
             match self {
                 Self::Dedicated(key) | Self::Borrowed(key) => key,
+                // which the client sends as no header at all
+                Self::Keyless => "",
             }
         }
     }
@@ -374,13 +428,10 @@ pub mod advise {
             return Ok(Account::Dedicated(key));
         }
 
+        // note: no key rather than a refusal, for the reason a session needs none - see
+        // `key_for`. An engine that does check one answers the first question with a 401
         if !is_openrouter(advisor_endpoint) {
-            return Err(format!(
-                "--advise needs a key: set KAMCHATKA_SYSTEM1_API_KEY. Its questions go to \
-                 {advisor_endpoint}, so no OpenRouter key is borrowed for them; any value will do \
-                 where that service checks no key"
-            )
-            .into());
+            return Ok(Account::Keyless);
         }
 
         own.filter(|_| is_openrouter(session_endpoint))
@@ -473,19 +524,23 @@ pub mod advise {
             }
 
             // and an advisor pointed somewhere other than OpenRouter is handed no OpenRouter key
-            // at all, the session's or the named one
+            // at all, the session's or the named one: it goes with none
             for advisor in [
                 "http://127.0.0.1:8000/v1",
                 "https://openrouter.ai.example.com/api/v1",
             ] {
-                let refused = chosen(None, own(), named(), openrouter, advisor)
-                    .expect_err("a borrowed key is not sent past OpenRouter");
-                let said = refused.to_string();
-                assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
-                assert!(said.contains(advisor), "{said}");
+                let keyless = chosen(None, own(), named(), openrouter, advisor)
+                    .expect("an engine of one's own may check no key");
+                assert!(matches!(&keyless, Account::Keyless), "{advisor}");
+                assert_eq!(
+                    keyless.api_key(),
+                    "",
+                    "a borrowed key is not sent past OpenRouter"
+                );
             }
 
-            // a session with no key at all is refused whatever it is pointed at
+            // a session with no key at all is refused where the advice goes to OpenRouter, which
+            // checks one, whatever the session is pointed at
             assert!(chosen(None, None, None, openrouter, openrouter).is_err());
             assert!(chosen(None, None, None, "http://localhost:11434/v1", openrouter).is_err());
         }
@@ -543,7 +598,7 @@ pub mod gemini {
             Gemini::new(
                 model.unwrap_or_default(),
                 addressed(base_url())?,
-                api_key()?,
+                key_for(&base_url())?,
             )
             .with_context_limit(checked_limit()?),
         );
@@ -552,5 +607,38 @@ pub mod gemini {
         }
 
         Ok(provider)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A key is asked for only where the service is known to refuse every request without one.
+    ///
+    /// note: the two defaults, under the spellings somebody copies them in, and the addresses a
+    /// model served on the machine is reached at - which are the reason a key is not a
+    /// prerequisite any more.
+    #[test]
+    fn only_the_services_that_check_a_key_need_one() {
+        for checks in [
+            "https://openrouter.ai/api/v1",
+            "https://eu.openrouter.ai/api/v1",
+            DEFAULT_BASE_URL,
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "https://GenerativeLanguage.googleapis.com:443/v1beta",
+        ] {
+            assert!(checks_a_key(checks), "{checks}");
+        }
+
+        for checks_none in [
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:8080/v1",
+            "http://gpu-box.lan:8000/v1",
+            "https://generativelanguage.googleapis.com.example.com/v1beta",
+            "https://openrouter.ai.example.com/api/v1",
+        ] {
+            assert!(!checks_a_key(checks_none), "{checks_none}");
+        }
     }
 }

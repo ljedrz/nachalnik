@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **A key is not needed to start.** A session pointed anywhere but OpenRouter or Google, which
+  refuse every request without one, starts with no key set and sends none: a model served on this
+  machine checks none.
+- **`--advise` asks an engine of one's own with no key** where `KAMCHATKA_SYSTEM1_API_KEY` is not
+  set, rather than refusing to start; `endpoint::advise::Account::Keyless` is that account.
+
 ### fixed
 
 - **A context the tool definitions alone fill is not told to `/exclude`.** The line saying the

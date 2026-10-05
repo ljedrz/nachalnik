@@ -38,8 +38,7 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **Whether `laya-serve`'s `confidence` is the one `system1::Client` reads.**
   [`laya`](https://github.com/NandhaKishorM/laya) is reached over HTTP: `laya-serve` answers
   `POST /v1/systemone`, and
-  `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1` beside any `KAMCHATKA_SYSTEM1_API_KEY`
-  reaches it through `system1::Client` - RUNNING.md has the commands. The script that spoke to it over a pipe
+  `KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1`, with no key, reaches it through `system1::Client` - RUNNING.md has the commands. The script that spoke to it over a pipe
   is gone, and with it what that script did to laya's answer: it built the answer rather than
   passing laya's through, because laya's `confidence` was its own quantity and read as this
   program's it drew every command yellow; and it refitted laya's temperatures on sixty labelled

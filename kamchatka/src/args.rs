@@ -47,7 +47,7 @@ The advisor, which is only ever asked when --advise is given:
   KAMCHATKA_SYSTEM1_API_KEY   its key. Without one it borrows an OpenRouter key -
                               this session's own where it talks to OpenRouter, or
                               OPENROUTER_API_KEY - but only for questions that go
-                              to OpenRouter
+                              to OpenRouter; anywhere else it asks with none
   KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; OpenRouter, or an engine of
                               your own that answers the same route, such as
                               laya-serve on this machine";
@@ -57,7 +57,8 @@ The advisor, which is only ever asked when --advise is given:
     format!(
         "\
 Environment:
-  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY
+  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY. Needed for
+                           OpenRouter and Google; a model served locally takes none
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
                            OpenRouter by default, or Google's own v1beta with --gemini
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
