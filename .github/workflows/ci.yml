@@ -87,6 +87,11 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # note: the suites run under nextest rather than `cargo test`, which runs one test binary at
+      # a time - so a run took as long as every binary end to end, and the slowest few were most
+      # of it. Nextest runs the tests of every binary side by side, and on four cores the suite
+      # took 35 seconds rather than 116. Its `ci` profile is in `.config/nextest.toml`
+      - uses: taiki-e/install-action@nextest
 
       # the tests turn every feature on, so nothing else exercises the default build
       - name: default features
@@ -105,14 +110,16 @@ jobs:
       # without one
       - name: kamchatka, no features
         if: matrix.kamchatka
-        run: cargo test -p kamchatka --no-default-features --locked
+        run: cargo nextest run -p kamchatka --no-default-features --locked --profile ci
       # and the one the readme tells an embedder to build: somebody else's tools, no screen. It is
       # a third feature combination rather than either of the two above, and nothing else here
       # compiles it - which is how a settings file naming every key came to be unusable in exactly
       # this configuration, for a day, over an `mcp` key that asked for nothing
       - name: kamchatka, mcp and no screen
         if: matrix.kamchatka
-        run: cargo test -p kamchatka --no-default-features --features mcp --locked
+        run: >
+          cargo nextest run -p kamchatka --no-default-features --features mcp --locked
+          --profile ci
       # a dialect each, the System One client alone, and the one nobody builds on purpose:
       # `waiting.rs` is shared, so a constant only one of them reads is dead code in the
       # other's build, and the client is built without either. `--all-targets`
@@ -129,7 +136,10 @@ jobs:
 
       - name: tests
         # the live suites skip themselves without a key, which is how they should behave here
-        run: cargo test --workspace ${{ matrix.skip }} --all-features --locked
+        run: cargo nextest run --workspace ${{ matrix.skip }} --all-features --locked --profile ci
+      # and the examples in the documentation, which nextest does not run
+      - name: doctests
+        run: cargo test --workspace ${{ matrix.skip }} --all-features --locked --doc
       - name: the examples that need no key
         run: cargo run -p nachalnik --example transparency --features selectors --locked
       - name: the compacting example
