@@ -748,7 +748,8 @@ impl Client {
     async fn say_if_the_model_is_not_there(&self) {
         let model = self.model();
         let listed = self.models().await;
-        if listed.is_empty() || listed.iter().any(|it| same_model(it, &model)) {
+        // no model is not a model the endpoint lacks; see `crate::unlisted`
+        if model.is_empty() || listed.is_empty() || listed.iter().any(|it| same_model(it, &model)) {
             *self.notice.lock() = None;
             return;
         }

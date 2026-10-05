@@ -32,6 +32,9 @@ minor bump may break you.
 - **The search box's cursor takes no cell of its own.** It was a bar glyph, which fills a cell
   and paints only its left edge, so it read as a cursor with a space after it; it is a block over
   the character under it, as the prompt draws its own.
+- **A session started without a model is not told, after `/restart`, that ` ` is not served.**
+  The address listed no model by the empty name, which is no model rather than an unlisted one;
+  see `nachalnik-providers`.
 
 ## [0.18.0] - 2026-10-04
 

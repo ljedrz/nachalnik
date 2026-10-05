@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A provider with no model yet is not told the address does not serve one.** Moved to an address
+  with an empty name - which is what `/restart` does to a session started without a model - every
+  dialect said that ` ` is not one of the models the address lists.
+
 ## [0.8.0] - 2026-10-04
 
 ### added
