@@ -14,6 +14,9 @@ minor bump may break you.
   it says now that the tool definitions take the room, and names `/tools toggle`.
 - **A permission error naming two paths says they are outside the reach**, rather than that they
   is. A command that writes one file and reads another out of reach is refused for both.
+- **A `context` selector for `memories` that matches nothing says what the model's own notes are
+  called.** `memories` are the notes the person wrote, and a model looking for its own under that
+  name was told only that nothing matched; it is told they are `source:agent`.
 
 ## [0.18.0] - 2026-10-04
 

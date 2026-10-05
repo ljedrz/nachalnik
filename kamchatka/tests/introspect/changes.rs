@@ -2145,6 +2145,41 @@ async fn a_select_that_is_not_a_string_is_refused_and_an_empty_file_one_says_why
     );
 }
 
+/// A model looking for its own notes under `memories` is told that those are the person's, and
+/// what its own are called.
+#[tokio::test]
+async fn a_selector_for_memories_that_matched_nothing_names_the_agents_notes() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({ "action": "note", "label": "plan", "content": "fix remove first" }),
+        ),
+        call(
+            "c2",
+            "context",
+            json!({ "action": "exclude", "select": "all:memories", "reason": "done with them" }),
+        ),
+        call(
+            "c3",
+            "context",
+            json!({ "action": "look", "select": "memories" }),
+        ),
+    ]));
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = all_answers(&kernel);
+    for answer in &said[1..] {
+        assert!(
+            answer.contains("nothing in your context matches"),
+            "{answer}"
+        );
+        assert!(answer.contains("`source:agent`"), "{answer}");
+    }
+}
+
 /// An `action` that is not a string is refused as what it is, not as missing.
 ///
 /// note: `the \`action\` argument is required`, said about a call that has one, sends a model to
