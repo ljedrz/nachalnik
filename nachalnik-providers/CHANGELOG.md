@@ -20,6 +20,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A reasoning count of zero the OpenAI dialect is given is kept as zero.** A reported
+  `"reasoning_tokens": 0` came back as `None`, which `Usage::reasoning_tokens` documents as the
+  provider not having said; Gemini's dialect already kept its reported zero. A zero inferred from
+  the total is still `None`.
 - **A `Retry-After` given as a date is waited out until that date.** It was read as a number of
   seconds or not at all, so a date fell through to the doubling and the server was asked again,
   three times, before the time it had named. A date further off than the minute a refusal is

@@ -201,30 +201,42 @@ async fn a_change_of_model_is_remarked_on_afresh() {
 }
 
 /// A provider that reports no reasoning is not a provider reporting none of it, and the line that
-/// would say so must not appear for the ordinary case - nor for one that reports the figure as
-/// zero, which is the same silence written down rather than left out.
+/// says a model hides its reasoning must appear for neither - nor for one that reports the figure
+/// as zero. The zero is said, though: it is the endpoint saying the model did not think, which is
+/// worth knowing for somebody who may not know which kind of model they picked.
 #[tokio::test]
 async fn a_model_that_reports_no_reasoning_is_not_said_to_be_hiding_any() {
-    let mut harness = Harness::new([ModelResponse {
-        usage: Some(Usage {
-            input_tokens: Some(9),
-            output_tokens: Some(30),
-            reasoning_tokens: Some(0),
-            ..Default::default()
-        }),
-        ..ModelResponse::text("done")
-    }]);
+    for (reported, said) in [
+        (None, "generated 30 out "),
+        (Some(0), "generated 30 out, none of it reasoning"),
+    ] {
+        let mut harness = Harness::new([ModelResponse {
+            usage: Some(Usage {
+                input_tokens: Some(9),
+                output_tokens: Some(30),
+                reasoning_tokens: reported,
+                ..Default::default()
+            }),
+            ..ModelResponse::text("done")
+        }]);
 
-    harness.send("go").await;
-    harness.settle().await;
-    harness.send("/budget").await;
+        harness.send("go").await;
+        harness.settle().await;
+        harness.send("/budget").await;
 
-    let screen = harness.screen();
-    assert!(screen.contains("generated 30 out"), "{screen}");
-    assert!(
-        !screen.contains("of it reasoning") && !screen.contains("does not send back"),
-        "silence about reasoning is not a claim there was none: {screen}"
-    );
+        let screen = harness.screen();
+        assert!(screen.contains(said), "{reported:?}: {screen}");
+        assert!(
+            !screen.contains("does not send back"),
+            "{reported:?}: no reasoning is not reasoning hidden: {screen}"
+        );
+        if reported.is_none() {
+            assert!(
+                !screen.contains("reasoning"),
+                "silence about reasoning is not a claim there was none: {screen}"
+            );
+        }
+    }
 }
 
 /// What the provider served from its cache is the figure that says what a *change* to the front

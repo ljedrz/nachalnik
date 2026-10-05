@@ -719,7 +719,11 @@ fn usage_of(reported: &Value) -> Usage {
             (output, None) => output,
             (output, Some(extra)) => Some(output.unwrap_or_default() + extra),
         },
-        reasoning_tokens: reported_reasoning.or(inferred).filter(|tokens| *tokens > 0),
+        // note: a zero is dropped from the residual, where it is no evidence of thinking at all, and
+        // kept where the endpoint said it by name - the model was asked to think, or is one that
+        // does not, and either is worth showing to somebody who may not know which they picked.
+        // Gemini's dialect keeps a reported `thoughtsTokenCount` of zero the same way
+        reasoning_tokens: reported_reasoning.or(inferred.filter(|tokens| *tokens > 0)),
         cached_input_tokens: reported["prompt_tokens_details"]["cached_tokens"].as_u64(),
     }
 }
@@ -1262,18 +1266,29 @@ mod tests {
         assert_eq!(usage.output_tokens, Some(100), "{usage:?}");
     }
 
-    /// Reasoning inferred as the residual of nothing is no reasoning at all.
+    /// Reasoning inferred as the residual of nothing is no reasoning at all, and a count of zero
+    /// the endpoint reports by name is a zero.
     ///
     /// note: the residual is what the total has left once the prompt and the completion are taken
     /// off, and a total that is exactly the two of them is evidence of no thinking - not of a
-    /// thinking that cost nothing. A reasoning count of zero the endpoint reports by name is the
-    /// other half, and an open question in POSTPONED.md.
+    /// thinking that cost nothing. A `reasoning_tokens` of `0` is the endpoint saying so, and was
+    /// read as it not having said - which `Usage::reasoning_tokens` is documented as not being the
+    /// same as zero, and which Gemini's dialect, keeping its own reported zero, did not do.
     #[test]
     fn a_residual_of_nothing_is_no_reasoning() {
         let left_over =
             usage_of(&json!({ "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }));
         assert_eq!(left_over.reasoning_tokens, None, "{left_over:?}");
         assert_eq!(left_over.output_tokens, Some(5), "{left_over:?}");
+
+        let said = usage_of(&json!({
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "completion_tokens_details": { "reasoning_tokens": 0 },
+        }));
+        assert_eq!(said.reasoning_tokens, Some(0), "{said:?}");
+        assert_eq!(said.output_tokens, Some(5), "{said:?}");
     }
 
     /// A request's tools go out as functions, and a request with none carries no `tools` at all.
