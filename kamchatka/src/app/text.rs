@@ -695,12 +695,17 @@ pub(super) fn head(text: &str, lines: usize) -> String {
 /// spend most of a turn on it. Without this there is nowhere in this program to find that out, on
 /// tokens somebody paid for. `None` is silence rather than zero: a provider that does not report
 /// reasoning is not a provider reporting none of it.
+///
+/// note: and a zero is said, as `none of it reasoning`, rather than left out like the silence. It
+/// is the endpoint saying the model did not think - asked not to, or one that does not - which is
+/// worth knowing for somebody who may not know which kind of model they picked.
 pub(crate) fn charged(usage: &Usage) -> String {
     let Some(out) = usage.output_tokens else {
         return "nothing reported".to_owned();
     };
-    match usage.reasoning_tokens.filter(|it| *it > 0) {
+    match usage.reasoning_tokens {
         None => format!("{} out", thousands(out as usize)),
+        Some(0) => format!("{} out, none of it reasoning", thousands(out as usize)),
         Some(thinking) => format!(
             "{} out, {} of it reasoning",
             thousands(out as usize),
