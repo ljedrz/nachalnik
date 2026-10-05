@@ -51,6 +51,20 @@ strip = true
 [profile.dev]
 debug = 0
 
+# note: the dependencies optimised in a dev build, and the workspace's own crates not, so a touched
+# file rebuilds exactly as fast as before. What a test spends its time in is mostly somebody
+# else's code - ratatui's layout solver and `unicode-width` measuring text were most of the
+# slowest sweep that draws the screen - and unoptimised, that is several times slower than it has
+# to be. Measured 2026-10-05 on four cores, as a CI runner has: the whole suite under nextest in
+# 28.8s at `0`, 19.2s at `1` and 18.7s at `2`, against a cold build of 38s, 80s and 100s. `1` is
+# nearly all of the run for less of the build, and a cold build is what a cache miss costs, once,
+# while every run pays for the tests.
+#
+# note: only the level. Debug assertions and overflow checks stay on in the dependencies as
+# everywhere else, and with `debug = 0` there was no debuginfo in them to lose.
+[profile.dev.package."*"]
+opt-level = 1
+
 # what every crate in here agrees on; a member opts in with `edition.workspace = true`
 [workspace.package]
 authors = ["ljedrz <ljedrz@gmail.com>"]
