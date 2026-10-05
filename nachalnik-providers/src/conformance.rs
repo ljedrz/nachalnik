@@ -806,15 +806,21 @@ impl Conformance {
     /// note: a provider that only reads the status code records the model as having said nothing,
     /// and the kernel faithfully writes that down. The runtime's own documentation of
     /// `Provider::respond` warns about it.
+    ///
+    /// note: a code that does not go away by itself. A `502` is what these usually carry, and a
+    /// provider that waits one out and asks again - as this crate's do, and should - spent
+    /// fourteen seconds of doublings on this case before it could fail, every run, for a question
+    /// about reading the error rather than about waiting. Waiting is held to in `whole_answers.rs`.
     async fn error_in_a_200(&self) -> Outcome {
-        let body = "data: {\"error\":{\"message\":\"the upstream is on fire\",\"code\":502}}\n\n";
+        let body =
+            "data: {\"error\":{\"message\":\"the upstream refused the request\",\"code\":400}}\n\n";
 
         match self.ask(body, Delivery::Whole).await {
             Ok(response) => Outcome::Failed(format!(
                 "a failure inside a 200 was read as an answer: {:?}",
                 text_of(&response)
             )),
-            Err(e) if e.contains("the upstream is on fire") => Outcome::Passed,
+            Err(e) if e.contains("the upstream refused the request") => Outcome::Passed,
             Err(e) => Outcome::Failed(format!("the server's own words are not in the error: {e}")),
         }
     }
