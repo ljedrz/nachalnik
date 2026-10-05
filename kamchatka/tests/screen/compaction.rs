@@ -1256,6 +1256,34 @@ async fn a_request_the_tools_put_over_the_limit_names_them() {
     assert!(!told.contains("`/exclude` by number"), "{told}");
 }
 
+/// A message larger than the window on its own is named as what has to go, rather than what is
+/// pinned or the model's turns, which no exclusion could make room for it by taking.
+#[tokio::test]
+async fn a_message_larger_than_the_window_is_named_as_the_overrun() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.set_compactor(None);
+    let limit = harness.app.kernel.budget().limit.expect("a limit");
+    // pushed rather than typed, since the screen takes a typed line a key at a time
+    let message = harness
+        .app
+        .kernel
+        .push(ContextItem::user("lorem ipsum ".repeat(limit)));
+    harness.send("/continue").await;
+    harness.settle().await;
+
+    let told = said(&harness);
+    assert!(
+        told.contains("tokens have to go before it is sent"),
+        "{told}"
+    );
+    assert!(
+        told.contains(&format!("the message [{message}] is ~")),
+        "{told}"
+    );
+    assert!(!told.contains("`/exclude` by number"), "{told}");
+    assert!(!told.contains("pinned, and no pass may free"), "{told}");
+}
+
 /// And the line saying the context is full, which comes first, does not ask for the exclusions
 /// the next line says cannot cover it.
 ///

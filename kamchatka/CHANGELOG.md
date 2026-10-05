@@ -24,6 +24,9 @@ minor bump may break you.
   so `/attach my notes.md what is this?` looked for a file called `my`.
 - **A request held back by what is pinned says `/restore` unpins.** It said `/restore N` puts an
   item back in the request, which a pinned item is in already; it unpins it, so a pass may take it.
+- **A message larger than the window on its own is named as what has to go.** A paste past the
+  limit was answered with what is pinned and the model's turns, neither of which could make room
+  for it; the answer names the message and `/exclude` with its number.
 
 ## [0.18.0] - 2026-10-04
 
