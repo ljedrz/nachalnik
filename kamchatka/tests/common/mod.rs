@@ -25,8 +25,27 @@ use std::path::PathBuf;
 /// test binary at a time, so a name only has to be unique within its own suite, and a stable name
 /// is one somebody debugging a failure can find - which was the reason for clearing on the way in
 /// rather than the way out, and is worth keeping.
+///
+/// note: under nextest, in a directory of the test's own. There every test is a process, and the
+/// processes of every suite run side by side - so a directory a whole suite shares, like
+/// [`nowhere`], was emptied by each test that started while the others were standing in it, and
+/// their spawns failed for want of a working directory. The directory is named by a hash of the
+/// suite and the test nextest hands each process, which keeps it the same from run to run, rather
+/// than by the names themselves: a socket is made in some of these, a socket's path is at most 107
+/// bytes, and a test's name can be most of that on its own.
 pub fn scratch(name: &str) -> PathBuf {
-    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let mut dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    if let (Ok(suite), Ok(test)) = (
+        std::env::var("NEXTEST_BINARY_ID"),
+        std::env::var("NEXTEST_TEST_NAME"),
+    ) {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (suite, test).hash(&mut hasher);
+        dir = dir.join(format!("n{:08x}", hasher.finish() as u32));
+    }
+    let dir = dir.join(name);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a directory to work in");
 

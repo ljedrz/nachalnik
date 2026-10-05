@@ -1016,13 +1016,15 @@ async fn a_request_that_finds_nothing_there_names_where_it_asked() {
 /// an address that is not one - is further down its chain, where a recorded error never looks.
 #[tokio::test]
 async fn a_request_that_reached_nobody_says_why() {
-    // bound and let go, so the port is refused rather than filtered
-    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
-    let nobody = format!("http://{}", listener.local_addr().expect("its own address"));
-    drop(listener);
+    // note: port 1, which no test can be listening on: it takes privileges to bind, so it is
+    // refused rather than filtered, and nothing can take it in between. A port bound here and let
+    // go was free for whichever test bound one next, and with the suites run side by side one did
+    // and answered; one held bound without listening is refused by Linux and never answered by
+    // macOS, which makes it a timeout
+    let nobody = "http://127.0.0.1:1";
 
     for (address, why) in [
-        (nobody.as_str(), "refused"),
+        (nobody, "refused"),
         ("not-a-url", "relative URL without a base"),
     ] {
         for (dialect, provider) in dialects(address) {
