@@ -246,6 +246,20 @@ impl App {
             // browser - was otherwise left with no way to take a change back at all, and every
             // message this program says about undoing something named the key rather than the
             // line. So the key is the shorthand and the command is the verb
+            //
+            // note: and a count after either is refused rather than dropped. `/undo 5` answered
+            // `undone` for the one change it took back, which reads as five
+            "undo" | "redo" if !rest.is_empty() => self.say(
+                Speaker::Error,
+                format!(
+                    "`/{command}` takes one change at a time and reads nothing after it, so \
+                     `{rest}` was not read and nothing was {}; `/{command}` once for each change",
+                    match command {
+                        "undo" => "undone",
+                        _ => "redone",
+                    }
+                ),
+            ),
             "undo" => self.undo(false),
             "redo" => self.undo(true),
             // note: not where there is nothing new for the model to answer; see
