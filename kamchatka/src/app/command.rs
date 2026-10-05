@@ -937,12 +937,19 @@ impl App {
 
         // note: the whole of it is tried as a path first, because a path with a space in it is an
         // ordinary path and splitting on the first space would turn `/attach my report.pdf` into
-        // a complaint about a file called `my`. Only when that is not a file does the first word
-        // become the path and the rest the question - which is the usual way to want this, and
-        // the reason it is one command rather than two things to type
+        // a complaint about a file called `my`. Only when that is not a file is the path the
+        // longest part of it, up to a space, that is one, and the rest the question - which is
+        // the usual way to want this, and the reason it is one command rather than two things to
+        // type. Where no part of it is a path, the first word is the one the refusal names
+        //
+        // note: the longest such part rather than the first word, because a question after a
+        // path with a space in it looked for a file called `my` all the same
         let (path, asked) = match std::fs::metadata(rest).is_ok() {
             true => (rest, ""),
-            false => rest.split_once(' ').unwrap_or((rest, "")),
+            false => (rest.match_indices(' ').rev())
+                .map(|(at, _)| (&rest[..at], rest[at + 1..].trim_start()))
+                .find(|(path, _)| std::fs::metadata(path).is_ok())
+                .unwrap_or_else(|| rest.split_once(' ').unwrap_or((rest, ""))),
         };
         let item = match crate::attach::attached(path) {
             Ok(item) => item.because("attached at the prompt"),

@@ -214,6 +214,29 @@ async fn a_path_with_a_space_is_still_a_path() {
     assert!(!harness.app.busy, "nothing was asked, so nothing was sent");
 }
 
+/// And a path with a space in it, followed by a question, is that path and that question.
+#[tokio::test]
+async fn a_path_with_a_space_and_a_question_is_both() {
+    let dir = scratch("attach-spaces-asked");
+    let path = dir.join("my notes.md");
+    std::fs::write(&path, "written down").expect("written");
+
+    let mut harness = Harness::new([ModelResponse::text("it says written down")]);
+    harness
+        .send(&format!("/attach {} what does it say?", path.display()))
+        .await;
+    harness.settle().await;
+
+    let items = harness.app.kernel.items();
+    assert_eq!(
+        items[0].content.as_text(),
+        Some("written down"),
+        "the first word alone is a file called `my`: {}",
+        harness.screen()
+    );
+    assert_eq!(items[1].content.as_text(), Some("what does it say?"));
+}
+
 /// A file this program has no media type for and cannot read as text is refused, rather than
 /// guessed at.
 ///
