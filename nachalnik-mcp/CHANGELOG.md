@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### changed
+
+- **The dependency requirements name the lowest versions this crate builds against**, rather than
+  the first of each major, which it did not: `serde_json` 1.0.127 and `tokio` 1.40. The versions it
+  is built and released with are unchanged, and cargo still picks the newest compatible ones; what
+  changes is that a lockfile holding an older one is updated rather than failing to compile.
+
 ### fixed
 
 - **A call to a server whose connection has closed says every tool it offers fails the same way.**

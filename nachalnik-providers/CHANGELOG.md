@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### changed
 
+- **The dependency requirements name the lowest versions this crate builds against**, rather than
+  the first of each major, which it did not: `reqwest` 0.13.2, `rustls` 0.23.27, `serde_json`
+  1.0.127 and `tokio` 1.40. The versions it is built and released with are unchanged, and cargo
+  still picks the newest compatible ones; what changes is that a lockfile holding an older one is
+  updated rather than failing to compile.
 - **An empty key is no key.** Every client leaves the `Authorization` or `x-goog-api-key` header out
   rather than sending it with nothing in it, which is what a model served locally - ollama,
   llama.cpp, vLLM - wants, and what a proxy in front of one may refuse.

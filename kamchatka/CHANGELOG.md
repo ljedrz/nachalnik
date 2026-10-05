@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### changed
 
+- **The dependency requirements name the lowest versions this crate builds against**, rather than
+  the first of each major, which it did not: `anyhow` 1.0.4, `globset` 0.4.3, `grep-searcher` 0.1.4,
+  `ignore` 0.4.15, `landlock` 0.4.7, `libc` 0.2.187, `serde` 1.0.194, `serde_json` 1.0.127, `time`
+  0.3.37, `tokio` 1.40, `tokio-stream` 0.1.1, `tui-markdown` 0.3.9 and `unicode-segmentation`
+  1.13.2. The versions it is built and released with are unchanged, and cargo still picks the newest
+  compatible ones; what changes is that a lockfile holding an older one is updated rather than
+  failing to compile.
 - **A key is not needed to start.** A session pointed anywhere but OpenRouter or Google, which
   refuse every request without one, starts with no key set and sends none: a model served on this
   machine checks none.

@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **The dependency requirements name the lowest versions this crate builds against**, rather than
+  the first of each major, which it did not: `async-trait` 0.1.43, `serde` 1.0.194, `serde_json`
+  1.0.127 and `tokio` 1.40. The versions it is built and released with are unchanged, and cargo
+  still picks the newest compatible ones; what changes is that a lockfile holding an older one is
+  updated rather than failing to compile.
+
 ## [0.8.0] - 2026-10-02
 
 ### added

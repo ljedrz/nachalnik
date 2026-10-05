@@ -77,24 +77,33 @@ rust-version = "1.88"
 # note: declared here rather than in each crate, so that two members cannot quietly end up on
 # two versions of the same thing. The runtime's five are the ones that matter: whatever else
 # arrives in this workspace, `nachalnik` itself is not to grow a sixth without a reason.
+#
+# note: every requirement here and in the members' own manifests is a floor - the lowest version
+# the workspace builds against on its MSRV - and not the version it is built with, which is
+# whatever `Cargo.lock` holds. Measured 2026-10-05 on 1.88: `cargo +nightly update -Z
+# direct-minimal-versions` and `cargo +1.88.0 check --workspace --all-features --lib --bins`,
+# lowering one dependency at a time from the locked version until it stopped building. A floor
+# written lower than that was a promise the source did not keep - `serde_json = "1"` named
+# 1.0.0 for code that needs 1.0.127 - and broke the build of anybody whose lockfile held a version
+# in between. The dev-dependencies were not measured.
 [workspace.dependencies]
 nachalnik = { version = "0.8.0", path = "nachalnik" }
 nachalnik-mcp = { version = "0.8.0", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.8.0", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
-async-trait = "0.1"
+async-trait = "0.1.43"
 parking_lot = "0.12"
 # `rc` so that `Content` can be cloned by bumping a refcount rather than copying a tool
 # output; it changes no wire format, and adds no dependency
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
+serde = { version = "1.0.194", features = ["derive", "rc"] }
+serde_json = "1.0.127"
 # keepalive, which is the one socket option `tokio::net` does not offer - `TcpStream::set_nodelay`
 # is tokio's own and `remote::tuned` uses it. Not a new crate in any sense that costs anything:
 # `tokio` itself builds this for the `net` feature, and `reqwest` for its own reasons, so what the
 # line buys is the right to call one method on a socket this workspace already owns
 socket2 = "0.6"
-tokio = { version = "1" }
+tokio = { version = "1.40" }
 # what the property suites are run by, and it gives them two things: a great many
 # generated cases and, the half that matters, a shrinker: a property that fails comes back as the
 # smallest input that still fails it rather than as whatever random string found it.
@@ -119,7 +128,7 @@ proptest = { version = "1", default-features = false, features = ["std"] }
 # takes chunks and never calls `text()`. The feature is additive, so a caller who wants the
 # decode turns it on from their own manifest; leaving it off here spares the ones who do not
 # `encoding_rs` and the SIMD crates behind it.
-reqwest = { version = "0.13", default-features = false, features = ["http2", "json", "rustls-no-provider"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["http2", "json", "rustls-no-provider"] }
 # the cryptography under the TLS, chosen here because reqwest was told to bring none. `ring` is
 # 17 C and assembly files, wants no cmake and no NASM, and is what rustls shipped with for years.
 # No production Rust TLS stack is free of C altogether - the pure-Rust providers are unaudited,
@@ -128,4 +137,4 @@ reqwest = { version = "0.13", default-features = false, features = ["http2", "js
 # note: whoever builds a client also installs this, since `no-provider` leaves nothing to fall
 # back on. It must stay on the same major as the rustls reqwest itself uses, or the provider goes
 # into one rustls and the requests come out of another.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23.27", default-features = false, features = ["ring", "std", "tls12"] }
