@@ -87,7 +87,7 @@ rust-version = "1.88"
 # 1.0.0 for code that needs 1.0.127 - and broke the build of anybody whose lockfile held a version
 # in between. The dev-dependencies were not measured.
 [workspace.dependencies]
-nachalnik = { version = "0.8.0", path = "nachalnik" }
+nachalnik = { version = "0.8.1", path = "nachalnik" }
 nachalnik-mcp = { version = "0.8.0", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.8.0", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
