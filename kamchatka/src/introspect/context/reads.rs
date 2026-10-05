@@ -227,7 +227,7 @@ pub(super) fn matched(
         return format!(
             "`{select}` is a selector, and nothing in your context matches it. `look` with no \
              `select` lists what there is.{}\n",
-            crate::introspect::unmatched_file(kernel, select)
+            crate::introspect::unmatched(kernel, select)
         );
     }
 

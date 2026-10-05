@@ -348,7 +348,12 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
     }
 }
 
-/// What a refusal adds when the selector that matched nothing was a `file:` one.
+/// What a refusal adds when the selector that matched nothing was a `file:` one, or one naming the
+/// person's notes.
+///
+/// note: `memories` are the notes the person wrote at the prompt, and the ones the model wrote are
+/// `source:agent`. A model looking for its own notes reaches for `memories`, matches nothing, and
+/// is told so here rather than left to guess again.
 ///
 /// note: `file:` names a file attached to the context. A path the model read is a tool result
 /// instead, and no `file:` matches it - which is what nearly every empty `file:` turns out to be,
@@ -357,7 +362,16 @@ pub(crate) fn named<'a>(items: &[Arc<ContextItem>], args: &'a Value) -> Result<N
 /// note: the tool is named only where the session still has it, and a selector that names no tool
 /// is named either way: `kind:tool_result` is a word this tool prints itself, so it stays true
 /// however the session is set up. Everything named in an answer is read as something to try.
-pub(crate) fn unmatched_file(kernel: &Kernel, select: &str) -> String {
+pub(crate) fn unmatched(kernel: &Kernel, select: &str) -> String {
+    let source = select.trim().to_lowercase();
+    let source = (source.strip_prefix("all:"))
+        .or_else(|| source.strip_prefix("source:"))
+        .unwrap_or(&source);
+    if matches!(source, "memory" | "memories") {
+        return " `memories` are the notes the person wrote; the notes you wrote are \
+                `source:agent`."
+            .to_owned();
+    }
     if !select.trim_start().starts_with("file:") {
         return String::new();
     }
