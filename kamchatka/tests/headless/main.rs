@@ -2279,6 +2279,31 @@ async fn an_undo_with_nothing_to_undo_says_so() {
     );
 }
 
+/// A count after `/undo` or `/redo` is refused, and nothing is taken back: one change undone and
+/// answered `undone` reads as all of them.
+#[tokio::test]
+async fn an_undo_with_a_count_undoes_nothing_and_says_so() {
+    let run = run(
+        "/note something worth keeping\n/undo 1000\n/redo 2\n",
+        vec![],
+        |_| {},
+    )
+    .await;
+
+    assert!(run.prose.contains("`1000` was not read"), "{}", run.prose);
+    assert!(run.prose.contains("`2` was not read"), "{}", run.prose);
+    assert!(!run.prose.contains("· undone"), "{}", run.prose);
+    assert!(
+        run.app
+            .kernel
+            .items()
+            .iter()
+            .any(|item| item.content.to_text().contains("something worth keeping")),
+        "the note was undone: {:?}",
+        run.app.kernel.items()
+    );
+}
+
 /// `/clear` is answered with where the two things it could mean actually live.
 ///
 /// note: the name this command had, and the one word somebody arriving from any other agent will

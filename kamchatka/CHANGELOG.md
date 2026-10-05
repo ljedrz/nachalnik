@@ -17,6 +17,8 @@ minor bump may break you.
 - **A `context` selector for `memories` that matches nothing says what the model's own notes are
   called.** `memories` are the notes the person wrote, and a model looking for its own under that
   name was told only that nothing matched; it is told they are `source:agent`.
+- **`/undo N` and `/redo N` refuse the count** and take nothing back. Each takes one change, and
+  `/undo 5` answered `undone` for the one change it took back.
 
 ## [0.18.0] - 2026-10-04
 
