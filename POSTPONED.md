@@ -365,6 +365,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   which is its change; a bound on how long a call waits is the other way, and is the same decision
   as the bound on a server's first answers above.
 
+- **An attachment named as a picture goes out as one whatever its bytes are.** `attach.rs` names a
+  media type by the extension alone, so a `.png` holding text, or an empty one, goes out as
+  `image/png`; the endpoint refuses the request - a 502, or `Invalid image data-url` - and every
+  request after it while the item stays in, so the session answers nothing until somebody excludes
+  it. Checking a picture's first bytes against its type, and refusing an empty file under any type
+  that is not text, would keep the claim from being false; it refuses files that are attached
+  today, which is why it waits.
+
 - **The largest source files are not split.** `kamchatka`'s `app/mod.rs`, `app/command.rs`,
   `sandbox/mod.rs` and `remote/protocol/mod.rs`, and `nachalnik`'s `kernel/mod.rs`, are each
   longer than can be read at once, and each has a seam that is already marked: the kernel's own
