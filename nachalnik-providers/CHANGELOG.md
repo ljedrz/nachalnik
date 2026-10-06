@@ -18,7 +18,10 @@ minor bump may break you.
   Call arguments are assembled from `input_json_delta` fragments; cached prompt tokens are added
   into `Usage::input_tokens`, which this API reports apart. It speaks to `api.anthropic.com` and to
   OpenRouter at `/api/v1/messages`, whose additions to the format - `provider`, `cost`, a `[DONE]`
-  after `message_stop` - are read past.
+  after `message_stop` - are read past. The prompt is cached by default, since this API caches
+  nothing unasked: a breakpoint at the end of the conversation and one at the end of the
+  instructions, both replaced by a `cache_control` parameter and dropped by a `false` or `null`
+  one.
 - **`Conformance::anthropic` and `conformance::Dialect::Anthropic`**, so the suite holds the third
   dialect to every case it can express - from streams recorded off the real API.
 

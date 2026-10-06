@@ -14,7 +14,8 @@ minor bump may break you.
   came before. `KAMCHATKA_BASE_URL` points it elsewhere - OpenRouter speaks it at
   `https://openrouter.ai/api/v1` - and `ANTHROPIC_API_KEY` is read for Anthropic's own address and
   for nothing else. The settings file takes `anthropic`, and a session asked for two dialects, one
-  by the file and one by the command line, is refused rather than handed either.
+  by the file and one by the command line, is refused rather than handed either. Its prompt is
+  cached by default; `/params cache_control false` turns that off.
 
 ### changed
 

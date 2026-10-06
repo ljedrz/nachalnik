@@ -27,7 +27,7 @@ lines, written once.
 | --- | --- |
 | `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
-| `anthropic` | Anthropic's Messages API: typed content blocks, call arguments streamed as `input_json_delta`, signed thinking blocks. `api.anthropic.com`, and OpenRouter at `/api/v1/messages`. |
+| `anthropic` | Anthropic's Messages API: typed content blocks, call arguments streamed as `input_json_delta`, signed thinking blocks, the prompt cached by default. `api.anthropic.com`, and OpenRouter at `/api/v1/messages`. |
 | `conformance` | the suite the dialects above are held to, for anyone writing another. Stands up real sockets; off unless asked for. |
 | `system1` | not a dialect: a client for System One models - any of the ones OpenRouter serves, or an engine of one's own at the same route - which answer typed questions about a state with numbers rather than driving a turn. Nothing it returns reaches a kernel. |
 

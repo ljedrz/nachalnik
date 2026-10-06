@@ -305,7 +305,7 @@ fn a_request_carries_what_this_api_requires_and_its_instructions_apart() {
     ]);
 
     assert_eq!(body["model"], "claude-test");
-    assert_eq!(body["system"], "be terse");
+    assert_eq!(body["system"][0]["text"], "be terse");
     assert_eq!(body["stream"], true);
     assert!(
         body["max_tokens"].as_u64().is_some_and(|most| most > 0),
@@ -363,6 +363,77 @@ fn a_parameter_adds_to_the_request_without_replacing_what_it_is_built_from() {
         "not replaced"
     );
     assert!(body.get("system").is_none(), "nor are the instructions");
+}
+
+/// The prompt is cached unless asked otherwise: at the end of the conversation, and at the end of
+/// the instructions, which holds when the conversation is edited further back.
+#[test]
+fn the_prompt_is_cached_by_default_at_both_ends() {
+    let body = rendered(vec![
+        ContextItem::system("be terse"),
+        ContextItem::user("hello"),
+    ]);
+
+    let ephemeral = json!({ "type": "ephemeral" });
+    assert_eq!(body["cache_control"], ephemeral, "{body}");
+    assert_eq!(
+        body["system"],
+        json!([{ "type": "text", "text": "be terse", "cache_control": ephemeral }])
+    );
+}
+
+/// With no instructions, the fixed breakpoint is on the last of the tools, which come before them.
+#[test]
+fn with_no_instructions_the_tools_are_where_the_cache_holds() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Anthropic::new(
+        "claude-test",
+        "http://127.0.0.1:1",
+        "no key",
+    ));
+    kernel.set_provider(provider.clone());
+    kernel.add_tool(Arc::new(nachalnik::test::EchoTool::new("echo", [])));
+    kernel.add_tool(Arc::new(nachalnik::test::EchoTool::new("other", [])));
+    kernel.push(ContextItem::user("go"));
+
+    let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
+    assert!(body.get("system").is_none(), "{body}");
+    let tools = body["tools"].as_array().expect("declared");
+    assert!(tools[0].get("cache_control").is_none(), "{body}");
+    assert_eq!(tools[1]["cache_control"]["type"], "ephemeral", "{body}");
+}
+
+/// `cache_control` in the parameters is the TTL of both breakpoints, and `false` or `null` is no caching.
+#[test]
+fn the_cache_is_the_parameters_to_change_or_turn_off() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Anthropic::new(
+        "claude-test",
+        "http://127.0.0.1:1",
+        "no key",
+    ));
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::system("be terse"));
+    kernel.push(ContextItem::user("go"));
+
+    let hour = json!({ "type": "ephemeral", "ttl": "1h" });
+    let mut params = nachalnik::Params::new();
+    params.insert("cache_control".to_owned(), hour.clone());
+    kernel.set_params(params.clone());
+    let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
+    assert_eq!(body["cache_control"], hour);
+    assert_eq!(
+        body["system"][0]["cache_control"], hour,
+        "the same TTL: {body}"
+    );
+
+    for off in [Value::Null, json!(false)] {
+        params.insert("cache_control".to_owned(), off);
+        kernel.set_params(params.clone());
+        let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
+        assert!(body.get("cache_control").is_none(), "{body}");
+        assert_eq!(body["system"], "be terse", "no breakpoint either: {body}");
+    }
 }
 
 /// In a user turn the results come first, whatever was put between the call and them.
