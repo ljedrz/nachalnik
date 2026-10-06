@@ -246,15 +246,9 @@ impl Tool for Inspect {
                 }
                 // a budget, because a test is a whole request and a model that discovered it
                 // could ablate everything would spend somebody's afternoon finding that out
-                //
-                // note: `fetch_update` though the newest toolchains call it deprecated, renamed
-                // `try_update`, because the workspace builds on 1.88 and `try_update` is not in
-                // it. `allow` rather than `expect`, which 1.88 would refuse for expecting a
-                // warning it never gives; the day `rust-version` has `try_update`, so does this
-                #[allow(deprecated)]
                 let spent = self
                     .budget
-                    .fetch_update(SeqCst, SeqCst, |left| left.checked_sub(1));
+                    .try_update(SeqCst, SeqCst, |left| left.checked_sub(1));
                 if spent.is_err() {
                     let why = "you have no tests left".to_owned();
                     self.journal.lock().push(Act::Refused {

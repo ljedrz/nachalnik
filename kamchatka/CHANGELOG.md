@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
+  edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
+  builds on it.
 - **The released binary is optimised for size**, `opt-level = "s"`: the static musl build is
   10.1MB rather than 13.6MB. Drawing the screen is about a sixth slower in the sweeps that draw it
   at every size, and nothing else measurably is.

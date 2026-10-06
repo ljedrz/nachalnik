@@ -109,7 +109,7 @@ scripts/windows.sh                          # the libraries as CI builds them on
 CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
 `nachalnik-mcp`, `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three
 keyless examples, holds the dependency tree to `deny.toml` with `cargo deny check`, and checks the
-whole workspace on the MSRV, **1.88**. The libraries are tested on
+whole workspace on the MSRV, **1.95**. The libraries are tested on
 Linux, macOS and Windows; `kamchatka` on Linux, on an x86_64 runner and an aarch64 one. Edition is
 2024, and `RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
 

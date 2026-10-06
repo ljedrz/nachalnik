@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
+  edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
+  builds on it.
+
 ## [0.8.1] - 2026-10-05
 
 ### changed

@@ -148,11 +148,11 @@ jobs:
         run: cargo run -p nachalnik --example pricing_a_picture --locked
 
   msrv:
-    name: msrv (1.88)
+    name: msrv (1.95)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: dtolnay/rust-toolchain@1.95.0
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-features --all-targets --locked
 

@@ -360,16 +360,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   worth that is the decision; a change that has to touch a whole one of these files is what would
   make it.
 
-- **The MSRV stays at 1.88, and the dependencies that need more wait with it.** The workspace has
-  built on 1.88 since it began, and the dependencies are moving past it: `uuid` 1.27 asks for
-  1.89, and `cargo update` keeps it at 1.26 because the resolver honours `rust-version`. Bumping is
-  one line in the workspace `Cargo.toml`, the `msrv` job in CI, the figure in CONTRIBUTING.md, and
-  a lockfile update that the new floor lets through - and the floors under the direct dependencies
-  raised to wherever the new versions need them. It waits because the next release is a patch
-  one, and a higher MSRV is a minor bump for every crate here: somebody on 1.88 stops building on
-  a version cargo would otherwise pick up for them.
-
-  **Something else rides the same release.** `nachalnik-providers` asks tokio for `macros` and
-  `rt`, and uses only `time` outside its tests; dropping the two is a break for a crate that had
-  been getting either from it without asking tokio itself, so it is held for the minor - the note
-  above `tokio` in its `Cargo.toml` says so. What unblocks both is the next minor release.
+- **`nachalnik-providers` still asks tokio for `macros` and `rt`.** It uses only `time` outside its
+  tests; dropping the two is a break for a crate that had been getting either from it without
+  asking tokio itself, so it is held for the minor - the note above `tokio` in its `Cargo.toml`
+  says so. The MSRV bump to 1.95, which was held for the same release, has been made,
+  so the next release is a minor one for every crate here and this can ride it.
