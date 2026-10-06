@@ -842,12 +842,12 @@ answers typed questions rather than writing text — about every shell command y
 **asked** about, and its answer drawn in that question:
 
 ```console
-$ export KAMCHATKA_SYSTEM1_MODEL=liquid/d1
+$ export KAMCHATKA_SYSTEM1_MODEL=<one of the models below>
 $ kamchatka --advise "tidy up the build artifacts"
 ```
 
-**Which model is yours to name, and there is no default.** OpenRouter serves a family of them —
-TypeSafe's, Liquid's, Inception's, Upstage's and more — and lists them at
+**Which model is yours to name, and there is no default.** OpenRouter serves a family of them, from
+several vendors, and lists them at
 `https://openrouter.ai/api/v1/models?output_modalities=decisions`. `--advise` without
 `KAMCHATKA_SYSTEM1_MODEL` stops before the session begins and says where that list is. A provider
 that sells one of these and is not on it is reached through OpenRouter's bring-your-own-key, which
@@ -875,12 +875,13 @@ address the session talks to. What a borrowed key changes is who is told: the ar
 to OpenRouter as well as to the model behind it.
 
 `KAMCHATKA_SYSTEM1_BASE_URL` moves the questions somewhere else: an engine of your own that
-answers the same route, `/systemone`, which is the one OpenRouter takes them on. A borrowed key is
-only ever sent to OpenRouter, so an advisor pointed anywhere else is sent
-`KAMCHATKA_SYSTEM1_API_KEY` if it is set, and no key at all if it is not - never an OpenRouter
-one. A service there that does check a key says so on the first question, where the colour would
-have been. A service with a *different* request shape is not reachable, with one exception the
-next section but one is about: Cloudflare's, which takes the same request at a different address.
+answers the same route, `/systemone`, which is the one OpenRouter takes them on, or one of the
+services the client knows the address of. A borrowed key is only ever sent to OpenRouter, so an
+advisor pointed anywhere else is sent `KAMCHATKA_SYSTEM1_API_KEY` if it is set, and no key at all
+if it is not - never an OpenRouter one. A service there that does check a key says so on the first
+question, where the colour would have been, or at startup where the client knows it checks one.
+Which engines are reachable, and how each is addressed and run, is in [the client's
+documentation][engines].
 
 It **decides nothing**. What the standing rules allow runs without a question and without
 anything being sent, what they refuse is refused, and what they ask about is asked about — an
@@ -889,9 +890,9 @@ unreachable, out of quota or unparseable costs the colour and nothing else, and 
 so where the colour would have been: `the advisor could not rate this`, and why.
 
 **The colour is the model's reading, and the models do not read alike** - not every one answers
-what `--advise` asks, and the ones that do place some commands a level apart. [Where the models
-differ](#where-the-models-differ) says how, and how to see what one makes of the rubric before
-relying on it.
+what `--advise` asks, the ones that do place some commands a level apart, and they do not mean the
+same thing by how sure they are. [Where the models differ](#where-the-models-differ) says what to
+do about it.
 
 **What leaves the machine**: for each shell command you are about to be asked about — which in a
 default session is every command the model writes, since `exec:run` is a question by default — the
@@ -903,76 +904,14 @@ environment.
 
 ### an advisor on this machine
 
-An engine running here is reached with `KAMCHATKA_SYSTEM1_BASE_URL` pointed at it.
-[`laya`](https://github.com/NandhaKishorM/laya) serves itself over HTTP at the route OpenRouter
-uses:
+An engine running here is reached with `KAMCHATKA_SYSTEM1_BASE_URL` pointed at it, and needs no
+key: a borrowed one is only ever sent to OpenRouter. The point is not that it is free, though it
+is: **nothing leaves the machine**. Everything the section above says about a third party reading
+a command stops applying, because the command goes to a server you started, under your own user,
+and comes back as numbers. [The client's documentation][engines] names the engines that serve the
+route and how to start each.
 
-```console
-$ pip install "laya[serve]"
-$ laya-serve
-$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8000/v1
-$ export KAMCHATKA_SYSTEM1_MODEL=<the model laya-serve lists>
-$ kamchatka --advise -m qwen/qwen3-coder
-```
-
-No key is needed: laya checks none, and a borrowed one is only ever sent to OpenRouter. The point
-is not that it is free, though it is: **nothing leaves the machine**.
-Everything the section above says about a third party reading a command stops applying, because
-the command goes to a server you started, under your own user, and comes back as numbers.
-
-What laya answers is laya's own, passed through, and has not been checked against a running
-`laya-serve` from here - see [where the models differ](#where-the-models-differ).
-
-### Clef, on Workers AI
-
-Cloudflare serves its own decision models, [Clef](https://huggingface.co/Cloudflare/clef) and the
-smaller, faster Clef-flash, on Workers AI with the same request and the same answer - at the
-address it serves every model at, with the model in the path rather than at `/systemone`, and the
-answer inside the `result` every response there is wrapped in. The advisor knows the address and
-does both:
-
-```console
-$ export KAMCHATKA_SYSTEM1_BASE_URL=https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run
-$ export KAMCHATKA_SYSTEM1_MODEL=@cf/cloudflare/clef-flash
-$ export KAMCHATKA_SYSTEM1_API_KEY=<a Cloudflare API token that may use Workers AI>
-$ kamchatka --advise -m qwen/qwen3-coder
-```
-
-The model's whole URL off its page works as the base URL too, with the model named `clef` or
-`clef-flash`. The token is not optional: Workers AI checks one, so a session pointed there without
-it is refused at startup, and no OpenRouter key is ever borrowed for it. Nor is the app named
-there - attribution goes to OpenRouter alone.
-
-What leaves the machine is what the section above says, sent to Cloudflare instead of OpenRouter.
-The weights are Apache-2.0 and on Hugging Face, so the same model can be run here: what they ship
-with is a Python function rather than a server, and llama.cpp, below, is a server.
-
-None of this has been run against a live account from here; the shapes are the ones Cloudflare's
-schema and Clef's reference implementation publish. The same weights served by llama.cpp, below,
-have been. Three things Workers AI has are not used: an address through Cloudflare's AI Gateway
-is not recognised, and is asked at `/systemone` and refused; Clef's `images` are never sent,
-since what is asked about is a command line; and there is no listing at that address, so the
-startup check says nothing there, and a model it does not serve is refused on the first question.
-
-### Clef-Flash, on llama.cpp
-
-llama.cpp's `llama-server` serves Clef-Flash's GGUF at the same route laya does, so it is
-reached the same way and with no key:
-
-```console
-$ llama-server -hf ggml-org/Clef-Flash-GGUF -b 4096 -ub 4096
-$ export KAMCHATKA_SYSTEM1_BASE_URL=http://127.0.0.1:8080/v1
-$ export KAMCHATKA_SYSTEM1_MODEL=ggml-org/Clef-Flash-GGUF
-$ kamchatka --advise -m qwen/qwen3-coder
-```
-
-**The batch size is not optional.** The whole request is read in one batch, and at llama.cpp's
-default of 512 tokens anything past a one-stage command is refused - `500: input (1261 tokens) is
-too large to process` - which is drawn as `the advisor could not rate this` with that sentence.
-The rubric alone is most of a request, and a command of eight stages asks eighteen questions, so
-give it a few thousand.
-
-The name `/v1/models` lists is the one to set, so that the startup check finds it.
+[engines]: https://docs.rs/nachalnik-providers/latest/nachalnik_providers/system1/#engines
 
 ### what the colour says
 
@@ -987,13 +926,13 @@ is for. What the colour buys is the half-second before that: whether this is the
 `cargo test` of the afternoon or the one call in fifty worth stopping on.
 
 **The top of that rubric is asked a second time, as a claim rather than as a position**, and the
-worse of the two answers is what gets drawn. Engines are good at different halves of it: an
-ordinal `score` is the primitive some read worst — laya's own card calls it its weakest — and
-asking the same reading as a yes-or-no finds destructive commands the rubric misses; others read
+worse of the two answers is what gets drawn. Engines are good at different halves of it: an ordinal
+`score` is the primitive some read worst — some engines' own documentation calls it their weakest —
+and asking the same reading as a yes-or-no finds destructive commands the rubric misses; others read
 the rubric well and miss some of them when the rubric is taken away. Folded, whichever model is
 asked draws at least as many of them red as either reading alone. It costs a question and not a
-round trip — every question in a call is answered in one pass, which is the same property that
-makes placing a command stage by stage affordable.
+round trip — every question in a call is answered in one pass, which is the same property that makes
+placing a command stage by stage affordable.
 
 Two rules keep it honest: a score is read by the level it is nearest rather than the one it has
 passed, and a rating the advisor was not sure of is never drawn green and never drawn safer than it
@@ -1003,48 +942,19 @@ explain is visibly a yellow nobody was sure of.
 
 ### where the models differ
 
-Every engine above takes the same request and answers in the same shape, and that is where the
-agreement ends. What follows is what has been seen to differ, so that a colour that surprises you
-can be put down to the engine before it is put down to the command - none of it is a fault this
-program corrects, since every engine is read the same way.
+Every engine takes the same request and answers in the same shape, and that is where the agreement
+ends: whether one answers the rubric at all, where it places a command, what its percentage means
+and what it will take all differ, and this program reads every one the same way rather than
+correcting any. [The client's documentation][differ] says what has been seen. What it comes to here
+is that a colour that surprises you may be the engine's rather than the command's - and that a
+command is never drawn green on a reading the engine itself reported as unsure.
 
-**Whether it answers at all.** Some take only part of the API: one on OpenRouter's list answers
-plain `noul` questions about a conversation and refuses the rubric, so every command comes back
-unrated, with the engine's refusal quoted where the colour would have been.
+To see what one makes of the rubric before relying on it, run `tests/advise.rs` with
+`KAMCHATKA_SYSTEM1_MODEL` set, and `KAMCHATKA_SYSTEM1_BASE_URL` for an engine of your own: it puts a
+couple of dozen commands to it and says where each landed. A failure there is a reading to know
+about rather than a bug - the rubric was worded against the models it was first run with.
 
-**Where it places a command.** The same command can land a level apart. `rm -rf target` is red
-from some and yellow from others - it is inside the working directory and a rebuild undoes it,
-but it is the shape of the commands that are not, and red is the safe way to be wrong. `cd /tmp
-&& ls` has come back yellow rather than green. And one engine reads every stage of a chain as the
-whole command, so no stage is ever underlined.
-
-**What `confidence` means.** Each engine reports its own figure, and three have been seen: the
-likeliest level's probability; how near the score is to a whole level, `1 - |score -
-round(score)|`; and, for a `choice`, the top probability rescaled so that an even split is `0`.
-They give different percentages for one distribution, and the second calls a reading split evenly
-between the bottom and top levels a certain yellow. What none of them can do is draw a command
-green that another would not: below the middle, each is at most the bottom level's probability, and
-a green needs the confidence. An engine whose figure ran *above* that would draw greens it should
-not, and no engine has been checked for it from here unless it is named below as having been run.
-
-**What it will take.** Limits differ and so does what happens past them: a rubric of one level is
-refused by some and answered by others, confidently, with the only score it has; a request larger
-than an engine reads in one pass is refused by some - llama.cpp at its batch size - and cut short
-by others - Workers AI truncates a long state, and Clef's reference implementation does it by
-keeping the beginning and dropping the end. An engine
-serving one model answers whatever model is named, and says which answered.
-
-**What has been run from here.** OpenRouter's, and Clef-Flash on llama.cpp. laya and Workers AI
-have not: they are reached in the shapes they publish, and what they actually answer is
-untested.
-
-How to see what one makes of it before relying on it: `tests/advise.rs` with
-`KAMCHATKA_SYSTEM1_MODEL` set (and `KAMCHATKA_SYSTEM1_BASE_URL` for an engine of your own) puts
-the commands above and a dozen more to it and says where each one landed, and
-`nachalnik-providers`' `tests/system1.rs` with `NACHALNIK_SYSTEM1_MODEL` and
-`NACHALNIK_SYSTEM1_BASE_URL` checks that it answers in the shapes the client reads. A failure in
-the first is a reading to know about rather than a bug - the rubric's wording was written against
-the models it was first run with.
+[differ]: https://docs.rs/nachalnik-providers/latest/nachalnik_providers/system1/#where-engines-differ
 
 ## 💾 a session on disk
 

@@ -21,22 +21,10 @@
 //! seam a caller holds as `dyn`, so that what it asks with is decided in one place and a test can
 //! answer in its place.
 //!
-//! note: one exception to the one route, and it is Cloudflare's. Workers AI serves Clef and
-//! Clef-flash with the System One body and answer, at the address it serves every model at -
-//! `/accounts/{id}/ai/run/@cf/cloudflare/clef` - with the model in the path rather than a route of
-//! its own, and the answer inside the `result` its whole REST API wraps everything in. So a base
-//! URL on [`is_workers_ai`] is posted to under the model's name rather than under `/systemone`,
-//! the body names the model the way the schema there asks (`clef`, not `@cf/cloudflare/clef`), and
-//! [`Answers::read`] and the refusals read through the wrapper. Everything else is the same
-//! request, which is what "fully API-compatible" buys. The address is taken either way it is
-//! copied: the account's `.../ai/run` with the model named `@cf/cloudflare/clef`, or the model's
-//! whole URL off its page.
-//!
-//! note: one request shape and one answer shape, and that is all the engines agree on. What a
-//! `confidence` is, which limits are enforced, whether an unknown model is refused or answered by
-//! whichever one is served, and where a given state lands - those differ between engines, and this
-//! client passes each engine's answer through rather than reconciling them. [`Answer`] says what
-//! has been seen of the first; `kamchatka`'s RUNNING.md, under "where the models differ", the rest.
+//! note: one exception to the one route, Cloudflare's Workers AI, which this client knows by its
+//! address - see [Engines](#engines). And one request shape and one answer shape is all the engines
+//! agree on: what is in an answer is each engine's own, passed through rather than reconciled -
+//! see [Where engines differ](#where-engines-differ).
 //!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
@@ -63,6 +51,89 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # Engines
+//!
+//! Every engine below takes the same body and answers in the same shape. Where they part company
+//! is the address, the key and how they are run; what they answer is the next section's business.
+//!
+//! **OpenRouter**, [`DEFAULT_BASE_URL`], with an OpenRouter key. The models are those its listing
+//! names for `output_modalities=decisions`, which is what [`Client::probe`] asks for.
+//!
+//! **laya**, on the machine. [`laya`](https://github.com/NandhaKishorM/laya)'s `laya-serve`
+//! answers `/v1/systemone`, with no key:
+//!
+//! ```text
+//! pip install "laya[serve]" && laya-serve      # base URL http://127.0.0.1:8000/v1
+//! ```
+//!
+//! What it answers has not been checked against a running server from here.
+//!
+//! **Clef-Flash on llama.cpp**, on the machine. `llama-server` serving
+//! [Clef-Flash](https://huggingface.co/Cloudflare/clef-flash)'s GGUF answers `/v1/systemone`, with no
+//! key, and lists the model under the name to ask for at `/v1/models`:
+//!
+//! ```text
+//! llama-server -hf ggml-org/Clef-Flash-GGUF -b 4096 -ub 4096   # base URL http://127.0.0.1:8080/v1
+//! ```
+//!
+//! The batch size is not optional: a request is read in one batch, and past it llama.cpp refuses
+//! with `500: input (1261 tokens) is too large to process`. Its default of 512 holds a question or
+//! two and a short state, and little more. This is the engine the live suite has been run against
+//! on the machine.
+//!
+//! **Clef and Clef-flash on Workers AI**, Cloudflare's, with a Cloudflare API token that may use
+//! Workers AI. The base URL is an account's `/ai/run`, and the model is named the way Workers AI
+//! names it:
+//!
+//! ```text
+//! base URL  https://api.cloudflare.com/client/v4/accounts/<account id>/ai/run
+//! model     @cf/cloudflare/clef        (or @cf/cloudflare/clef-flash)
+//! ```
+//!
+//! The model's whole URL off its page works as the base URL too, with the model named `clef`. An
+//! address on [`is_workers_ai`] is posted to under the model's name rather than at `/systemone`, the
+//! body carries the short name the schema there takes (`clef`, not `@cf/cloudflare/clef`), and the
+//! answer and the refusals are read out of the `result` and `errors` its REST API wraps everything
+//! in. No listing is asked for, since there is none at that address. Three things it offers are not
+//! used: an address through Cloudflare's AI Gateway is not recognised, and is asked at `/systemone`
+//! and refused; Clef's `images`, which this client has no way to send; and the listing elsewhere on
+//! the account. None of this has met a live account: the shapes are the ones Cloudflare's schema
+//! and Clef's reference implementation publish, pinned by tests that answer in them over a socket.
+//!
+//! # Where engines differ
+//!
+//! What has been seen to differ, so that an answer that surprises a caller can be put down to the
+//! engine before it is put down to the state. None of it is corrected here.
+//!
+//! **Whether it answers at all.** Some take only part of the API - one on OpenRouter's list answers
+//! plain `noul` questions about a conversation and refuses a `score` - and a refusal comes back as
+//! the engine's own error.
+//!
+//! **What `confidence` means.** Each engine reports its own figure, and three have been seen: the
+//! likeliest option's or level's probability (Clef's reference implementation); how near a `score`
+//! is to a whole level, `1 - |score - round(score)|` (llama.cpp, and a recorded Jev answer); and, for
+//! a `choice`, the top probability rescaled so that an even split is `0` (llama.cpp). They give
+//! different figures for one distribution, and the second calls a split even between the bottom and
+//! top levels a certain middle. What they share is a bound: for a `score` below the middle, each is
+//! at most the bottom level's probability, so a caller that requires confidence before reading a
+//! score as the bottom level gets no more of them under one than another. An engine whose figure ran
+//! above that bound would break it, and none has been checked for that except those named here.
+//!
+//! **Where a state lands.** The same state and question can come back a level apart from two
+//! engines, and one engine has read every part of a question carrying a fragment of a state as the
+//! whole state. Asserting on a placement is asserting on somebody's weights.
+//!
+//! **What it will take.** A rubric of one level is refused by some (Clef's schema asks for two to
+//! ten) and answered by others with `score: 0.0, confidence: 1.0`. A request larger than an engine
+//! reads at once is refused by some - llama.cpp at its batch size - and cut short by others: Workers
+//! AI truncates a long state, and Clef's reference implementation does it by keeping the beginning.
+//! An engine serving one model answers whatever model is named, and [`Answers::model`] says which
+//! answered; OpenRouter refuses a name it does not serve.
+//!
+//! **How to see what one does.** The crate's live `tests/system1.rs` checks an engine answers in the
+//! shapes this client reads: `NACHALNIK_SYSTEM1_MODEL` names the model, and
+//! `NACHALNIK_SYSTEM1_BASE_URL` an engine of one's own, which needs no `OPENROUTER_API_KEY`.
 
 use std::{
     collections::BTreeMap,
@@ -359,11 +430,10 @@ pub enum Answer {
         /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
         /// [`Answer::confidence`] reports as `None`.
         ///
-        /// note: the engine's figure, passed through, and engines do not compute the same one.
-        /// Clef's reference implementation reports the chosen option's probability; llama.cpp's
-        /// `llama-server` serving the same weights reports that probability rescaled so that a
-        /// uniform answer is `0`, `(p - 1/n) / (1 - 1/n)`. Both are at most the chosen option's
-        /// probability, which is the property a caller drawing a threshold on it can rely on.
+        /// note: the engine's figure, passed through, and engines do not compute the same one -
+        /// see [Where engines differ](self#where-engines-differ). Those seen so far are at most the
+        /// chosen option's probability, which is the property a caller drawing a threshold on it
+        /// can rely on.
         confidence: f64,
     },
     /// Where on the rubric, which may fall between two levels.
@@ -377,15 +447,10 @@ pub enum Answer {
         /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
         /// [`Answer::confidence`] reports as `None`.
         ///
-        /// note: the engine's figure, passed through, and engines do not compute the same one.
-        /// Clef's reference implementation reports the likeliest level's probability, which is
-        /// how concentrated the distribution is. llama.cpp's `llama-server` reports how near
-        /// [`Answer::Score::score`] is to a whole level, `1 - |score - round(score)|`, and so did
-        /// the recorded Jev answer this module's tests read - `2.96` at `0.96` with `0.99` on the
-        /// top level. The two part company on a split: half on the bottom level and half on the
-        /// top scores `1.0`, which the second reads as certain. Below `0.5` both are at most the
-        /// bottom level's probability, so a caller requiring confidence before reading a score as
-        /// the bottom level gets no more of them under either.
+        /// note: the engine's figure, passed through, and engines do not compute the same one -
+        /// see [Where engines differ](self#where-engines-differ). Some say how concentrated the
+        /// distribution is and some how near [`Answer::Score::score`] is to a whole level, and the
+        /// two part company on a split.
         ///
         /// note: not a guard against a badly built question. At an endpoint that takes a rubric
         /// with one level, it comes back `score: 0.0, confidence: 1.0`, which says nothing at all

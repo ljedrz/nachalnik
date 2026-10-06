@@ -9,12 +9,10 @@ minor bump may break you.
 
 ### added
 
-- **The advisor can be Clef, on Cloudflare's Workers AI.** `KAMCHATKA_SYSTEM1_BASE_URL` set to an
-  account's `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run` and
-  `KAMCHATKA_SYSTEM1_MODEL` to `@cf/cloudflare/clef` or `@cf/cloudflare/clef-flash` asks it, with
-  a Cloudflare API token in `KAMCHATKA_SYSTEM1_API_KEY`. A session pointed there with no token is
-  refused at startup rather than answered with a 401 at the first command, and no OpenRouter key
-  is borrowed for it.
+- **The advisor reaches every engine `nachalnik_providers::system1` does**, Cloudflare's Workers
+  AI among them; the client's documentation says how each is addressed. One that is known to
+  check a key and is given none is refused at startup rather than answered with a 401 at the
+  first command, and no OpenRouter key is borrowed for it.
 - **The advice is attributed to kamchatka at OpenRouter, as the conversation is**, so that a
   session asking OpenRouter for both is one app to it rather than an attributed conversation and
   anonymous advice. `KAMCHATKA_NO_ATTRIBUTION` stops both, and an advisor anywhere else is told

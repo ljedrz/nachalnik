@@ -47,13 +47,9 @@ The advisor, which is only ever asked when --advise is given:
   KAMCHATKA_SYSTEM1_API_KEY   its key. Without one it borrows an OpenRouter key -
                               this session's own where it talks to OpenRouter, or
                               OPENROUTER_API_KEY - but only for questions that go
-                              to OpenRouter; Workers AI needs a Cloudflare token
-                              here, and anywhere else it asks with none
-  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; OpenRouter, an engine of
-                              your own that answers the same route, such as
-                              laya-serve on this machine, or Workers AI's
-                              api.cloudflare.com/client/v4/accounts/<id>/ai/run
-                              with the model named @cf/cloudflare/clef";
+                              to OpenRouter; anywhere else it asks with none
+  KAMCHATKA_SYSTEM1_BASE_URL  where its questions go; OpenRouter, or an engine of
+                              your own that answers the same route";
     #[cfg(not(feature = "shell-advisor"))]
     const ADVISOR: &str = "";
 

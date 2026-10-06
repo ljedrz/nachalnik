@@ -467,11 +467,10 @@ pub mod advise {
     /// Where the advisor's questions go: OpenRouter, unless `KAMCHATKA_SYSTEM1_BASE_URL` names
     /// something else.
     ///
-    /// note: what something else is for is an engine of one's own - `laya-serve` on this machine
-    /// answers the same route - or Workers AI, which serves Clef under the model's own name and
-    /// which the client knows by its address. A provider that sells a System One model and is not
-    /// on OpenRouter's list is reached through OpenRouter's bring-your-own-key, so it needs
-    /// nothing here.
+    /// note: what something else is for is an engine of one's own, or a service the client knows
+    /// the address of - [`system1`]'s documentation lists both. A provider that sells a System One
+    /// model and is not on OpenRouter's list is reached through OpenRouter's bring-your-own-key,
+    /// so it needs nothing here.
     pub fn base_url() -> String {
         env::var("KAMCHATKA_SYSTEM1_BASE_URL")
             .unwrap_or_else(|_| system1::DEFAULT_BASE_URL.to_owned())
