@@ -27,7 +27,7 @@ from a copy of the first.
 
 ```console
 $ export NACHALNIK_API_KEY=sk-or-...
-$ cargo run -p nachalnik-eval --example bench -- -m google/gemini-3.5-flash -r 2
+$ cargo run -p nachalnik-eval --example bench -- -m <model> -r 2
 ```
 
 It prints a line for each kind of claim an experiment scores: how many were right, what guessing
@@ -67,14 +67,10 @@ second model's opinion of a first model's prose.
 **The control is a copy too, and the question says so.** "Did the answer change?" compares treated
 copies against copies of the same context with nothing moved — not against what the subject said
 in the live session, which it said with tools, at a different point in a different conversation.
-`Intervention::Nothing` is that control.
-
-Which is why every counterfactual in the suite asks about *two copies* — "one with your context as
-it stands, one with that note excluded: will they answer differently?" — rather than "would your
-answer change". The two are not the same question whenever the live session and a copy of it
-disagree, and they do disagree: a session has answered a dossier correctly while a copy of the
-identical context followed the false note in it. Every record says which happened, in a line
-that begins `the session`.
+`Intervention::Nothing` is that control, and it is why every counterfactual asks about *two
+copies* - "one with your context as it stands, one with that note excluded: will they answer
+differently?" - rather than "would your answer change": the live session and a copy of it can
+disagree.
 
 And both copies are blinded to the exchange in which the subject already answered
 (`Ablation::blind_to`), because a copy that can read that answer a few items above the repeated
@@ -162,7 +158,7 @@ already committed to which.
 
 ---
 
-### 🧪 the nine experiments
+### 🧪 the experiments
 
 They live in `suite`, which holds all of the crate's prompt text but two lines the harness says
 itself — the preamble every copy is told, and the line saying what shape to answer in — including
@@ -237,8 +233,8 @@ The word *introspection* invites more than this delivers.
 - **Anything about mechanism.** This is behavioural throughout. It says whether a model's account
   of itself predicts its own behaviour; it says nothing whatever about what is happening inside
   one.
-- **Introspection in general.** Nine experiments over six invented dossiers and two errands, with
-  a closed answer set. A model good at this is good at *this*.
+- **Introspection in general.** A handful of experiments over invented dossiers, with a closed
+  answer set. A model good at this is good at *this*.
 
 [nachalnik]: https://crates.io/crates/nachalnik
 
