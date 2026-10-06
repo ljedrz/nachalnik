@@ -38,6 +38,19 @@ async fn the_openai_compatible_provider_conforms() {
     .await;
 }
 
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn the_openai_compatible_provider_conforms_in_responses_mode() {
+    Conformance::responses("the OpenAI-compatible provider in Responses mode", |url| {
+        Arc::new(
+            nachalnik_providers::OpenAiCompatible::new("conformance", url, "no key needed")
+                .responses(true),
+        )
+    })
+    .check()
+    .await;
+}
+
 #[cfg(feature = "gemini")]
 #[tokio::test]
 async fn the_gemini_provider_conforms() {

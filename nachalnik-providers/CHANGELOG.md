@@ -24,6 +24,27 @@ minor bump may break you.
   one.
 - **`Conformance::anthropic` and `conformance::Dialect::Anthropic`**, so the suite holds the third
   dialect to every case it can express - from streams recorded off the real API.
+- **`OpenAiCompatible::responses`: OpenAI's Responses API, as a mode of the OpenAI dialect.** The
+  same address, key, listing and attribution, asked at `/responses`: a turn comes back as
+  `Content::Blocks` in the order of its items - reasoning, a message, calls - and goes back out the
+  same way, each reasoning item with the `encrypted_content` that is its thinking sealed. Asked with
+  `store: false` and with `reasoning.encrypted_content` in `include`, so nothing is kept on the
+  server and the thinking reaches the next request anyway - measured on `gpt-5-nano`, the request
+  carrying a call's result spent no reasoning tokens with it and 64 without. Instructions stay where
+  they were put rather than being gathered at the top, so the prefix this API caches by holds. It
+  speaks to `api.openai.com` and to OpenRouter's `/api/v1/responses`; `asks_responses` says which
+  mode a provider is in, and `Dialect::projection` follows it.
+- **`Conformance::responses` and `conformance::Dialect::Responses`**, which the mode passes in every
+  case it can express, numbered-from-one and summaries in parts among them.
+
+### fixed
+
+- **A failure reported as an event is found in the two places the Responses API and Anthropic's put
+  it, and a busy one is waited out there too.** The Responses API's `error` event carries its
+  `message` at the top and `response.failed` nests it under `response`, and neither was read as a
+  failure; its codes and Anthropic's are names - `rate_limit_exceeded`, `overloaded_error` - which
+  read as `0` were never retried. They are the statuses they name now, and "the first event" is
+  the first that carries anything, past the two a Responses stream opens with.
 
 ### changed
 

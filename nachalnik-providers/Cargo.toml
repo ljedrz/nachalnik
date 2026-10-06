@@ -21,7 +21,8 @@ all-features = true
 [features]
 default = ["openai"]
 # The OpenAI chat-completions dialect: `/chat/completions`, `choices[].delta`, tool calls
-# assembled from fragments. What OpenRouter, ollama, vLLM, Together and most of the rest speak.
+# assembled from fragments. What OpenRouter, ollama, vLLM, Together and most of the rest speak -
+# and, as a mode of it, OpenAI's Responses API, where a reasoning model's thinking goes back sealed.
 openai = []
 # Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
 # `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.

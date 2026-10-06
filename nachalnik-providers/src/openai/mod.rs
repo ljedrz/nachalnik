@@ -18,6 +18,7 @@ use crate::{
     Dialect, Endpoint, Keyed, Published, install_crypto, same_model, waiting::WHOLE_ANSWER,
 };
 
+mod responses;
 mod wire;
 
 /// Parameters that stop a stream being a stream, and what each one does instead.
@@ -95,6 +96,8 @@ pub struct OpenAiCompatible {
     /// Whether to read thinking a model wrote into its own content back out of it; see
     /// [`Self::thinking_in_content`].
     thinking_in_content: bool,
+    /// Whether to ask the Responses API rather than chat completions; see [`Self::responses`].
+    responses: bool,
     /// Every request this was asked to send, in order, when [`Self::recording`] is on.
     requests: Mutex<Vec<ModelRequest>>,
     /// Whether to keep them.
@@ -157,6 +160,7 @@ impl OpenAiCompatible {
             label: "openai-compatible".to_owned(),
             stream: true,
             thinking_in_content: true,
+            responses: false,
             requests: Mutex::new(Vec::new()),
             recording: false,
         }
@@ -252,6 +256,38 @@ impl OpenAiCompatible {
     pub fn thinking_in_content(mut self, on: bool) -> Self {
         self.thinking_in_content = on;
         self
+    }
+
+    /// Whether to ask OpenAI's Responses API, at `/responses`, rather than chat completions. Off
+    /// unless turned on.
+    ///
+    /// note: the same endpoint, key and listing, and a different conversation. A turn comes back as
+    /// ordered items - reasoning, a message, calls - and goes back out the same way, the reasoning
+    /// sealed in the `encrypted_content` this API hands out for it; chat completions has nowhere to
+    /// put that, so a reasoning model asked through it starts every turn's thinking from nothing.
+    /// OpenAI's own API answers it, and so does OpenRouter. Most of the rest of this dialect's
+    /// servers do not, which is why it is not the default.
+    ///
+    /// note: the requests are made with `store: false`, so the server keeps nothing between them,
+    /// and with `reasoning.encrypted_content` added to `include`, which is what makes the thinking
+    /// something that can be sent back. Both are the caller's to change in the parameters; the
+    /// second is added again to an `include` they set, unless they asked the server to `store`
+    /// the conversation instead.
+    ///
+    /// note: [`Self::thinking_in_content`] does not apply. This API keeps the thinking in items of
+    /// its own, and a `</think>` in what the model said is a word it said.
+    #[must_use]
+    pub fn responses(mut self, on: bool) -> Self {
+        self.responses = on;
+        if on && self.label == "openai-compatible" {
+            self.label = "openai-responses".to_owned();
+        }
+        self
+    }
+
+    /// Whether this asks the Responses API; see [`Self::responses`].
+    pub fn asks_responses(&self) -> bool {
+        self.responses
     }
 
     /// Whether to keep a copy of every request sent, for [`Self::requests`] to hand back.
@@ -762,6 +798,25 @@ impl Endpoint for OpenAiCompatible {
 }
 
 impl Dialect for OpenAiCompatible {
+    /// The default, for chat completions: see [`Dialect::projection`]. The Responses API takes a
+    /// turn as the ordered items it was, so it is projected as blocks, as the Gemini and Anthropic
+    /// dialects' are.
+    ///
+    /// note: as in the Anthropic dialect, the budget then counts thinking that has no sealed form -
+    /// another provider's - which is left out of the request; see `Anthropic::projection`.
+    fn projection(&self) -> nachalnik::LinearProjector {
+        match self.responses {
+            true => nachalnik::LinearProjector {
+                send_blocks: true,
+                ..Default::default()
+            },
+            false => nachalnik::LinearProjector {
+                send_reasoning: false,
+                ..Default::default()
+            },
+        }
+    }
+
     fn lists_every_parameter(&self) -> bool {
         self.listed.lock().every_parameter
     }
@@ -770,8 +825,9 @@ impl Dialect for OpenAiCompatible {
         let listed = self.listed.lock();
         let published = Published::default().with_default(listed.defaults.get(parameter).cloned());
         match parameter {
-            // the two names this dialect has for the length of an answer
-            "max_tokens" | "max_completion_tokens" => {
+            // the three names this dialect has for the length of an answer, the last the
+            // Responses API's
+            "max_tokens" | "max_completion_tokens" | "max_output_tokens" => {
                 published.with_maximum(listed.max_output_tokens.map(Into::into))
             }
             _ => published,

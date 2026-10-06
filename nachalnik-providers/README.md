@@ -25,7 +25,7 @@ lines, written once.
 
 | feature | what it speaks |
 | --- | --- |
-| `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. |
+| `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. With `responses(true)`, OpenAI's Responses API instead: `POST /responses`, ordered items, reasoning sealed in `encrypted_content` and sent back. `api.openai.com` and OpenRouter. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
 | `anthropic` | Anthropic's Messages API: typed content blocks, call arguments streamed as `input_json_delta`, signed thinking blocks, the prompt cached by default. `api.anthropic.com`, and OpenRouter at `/api/v1/messages`. |
 | `conformance` | the suite the dialects above are held to, for anyone writing another. Stands up real sockets; off unless asked for. |
@@ -61,6 +61,12 @@ Turn the thinking off where the model allows it, or pick one without the rule (O
 Sonnet 5, Haiku 4.5). And an instruction added mid-session joins the others at the top, which
 costs the request it first goes out with the whole cache. [The module's
 docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) have the details.
+
+OpenAI's Responses API is the same bargain once more, and a mode of the first dialect rather than a
+fourth: the same endpoint, key and listing, asked at `/responses`. A reasoning model's thinking
+comes back there as an item whose `encrypted_content` is the thinking itself, sealed; chat
+completions has nowhere to keep it, so every turn asked through it starts thinking from nothing.
+Here it goes back with the call's result, and is read rather than redone.
 
 ---
 

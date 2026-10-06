@@ -24,6 +24,56 @@ pub(crate) trait Events {
 
     /// Whether the server has already said why the turn ended.
     fn finished(&self) -> bool;
+
+    /// Whether anything read so far was part of an answer, rather than only saying one exists.
+    ///
+    /// note: what decides whether a failure that arrives as an event is a refusal to wait out or
+    /// a turn broken off. Every event is part of an answer unless a dialect says otherwise, which
+    /// only the Responses API has had to.
+    fn started(&self) -> bool {
+        true
+    }
+}
+
+/// The error object an event carries, wherever its dialect puts it.
+///
+/// note: three places. Under `error`, which is how the chat-completions dialect, OpenRouter,
+/// Google and Anthropic send one; the event itself, where it is the Responses API's flat
+/// `{"type": "error", "message": ...}`; and under `response`, where a Responses stream ends in
+/// `response.failed`. A `null` under `error` is no error: a Responses body always carries the
+/// field.
+fn error_in(event: &Value) -> Option<&Value> {
+    if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
+        return Some(error);
+    }
+    match event["type"].as_str() {
+        Some("error") => Some(event),
+        Some("response.failed") => event["response"]
+            .get("error")
+            .filter(|error| !error.is_null()),
+        _ => None,
+    }
+}
+
+/// The status an error object stands for, by number where it gives one and by name where it names
+/// one that a status would have said; `0` where it does neither.
+///
+/// note: by name because two dialects do not number theirs. The Responses API calls a rate limit
+/// `rate_limit_exceeded` and Anthropic's calls it a `rate_limit_error`, and as `0` neither was
+/// waited out - the one refusal that most wants to be.
+fn code_of(error: &Value) -> u64 {
+    if let Some(code) = error["code"]
+        .as_u64()
+        .or_else(|| error["code"].as_str().and_then(|code| code.parse().ok()))
+    {
+        return code;
+    }
+    match error["code"].as_str().or_else(|| error["type"].as_str()) {
+        Some("rate_limit_exceeded" | "rate_limit_error") => 429,
+        Some("server_error" | "api_error") => 500,
+        Some("overloaded_error") => 529,
+        _ => 0,
+    }
 }
 
 /// How a stream that carried something came to stop.
@@ -257,10 +307,14 @@ pub(crate) async fn read(
             // note: only the first event is a refusal to wait out. After one, something has been
             // handed on, and a second attempt would say it again - so what arrived is kept, as
             // for a stream broken off, and the failure is said rather than made the turn's end
-            if let Some(error) = event.get("error").filter(|error| !error.is_null()) {
-                if seen.is_empty() {
+            //
+            // note: and "first" is first to carry anything. The Responses API opens every stream
+            // with two events that only say a response exists, and a rate limit it meets after
+            // them has still handed nothing on
+            if let Some(error) = error_in(&event) {
+                if seen.is_empty() || !events.started() {
                     return Ok(Read::Refused {
-                        code: error["code"].as_u64().unwrap_or_default(),
+                        code: code_of(error),
                         said: failure(error),
                     });
                 }
@@ -327,10 +381,10 @@ pub(crate) async fn read(
     // the usual reason a good status carries no stream: a failure, reported as a body
     let body = String::from_utf8_lossy(&unstreamed).into_owned();
     if let Ok(payload) = serde_json::from_str::<Value>(&body)
-        && let Some(error) = payload.get("error").filter(|error| !error.is_null())
+        && let Some(error) = error_in(&payload)
     {
         return Ok(Read::Refused {
-            code: error["code"].as_u64().unwrap_or_default(),
+            code: code_of(error),
             said: failure(error),
         });
     }
@@ -490,7 +544,57 @@ fn refusals(message: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
+
+    /// An error is found wherever a dialect puts it, and a `null` in its place is not one.
+    #[test]
+    fn an_error_is_found_wherever_its_dialect_puts_it() {
+        let nested = json!({ "error": { "message": "busy", "code": 429 } });
+        let anthropics = json!({ "type": "error", "error": { "type": "overloaded_error" } });
+        let flat = json!({ "type": "error", "code": "rate_limit_exceeded", "message": "slow" });
+        let failed = json!({
+            "type": "response.failed",
+            "response": { "error": { "code": "server_error", "message": "oops" } },
+        });
+
+        assert_eq!(error_in(&nested), Some(&nested["error"]));
+        assert_eq!(error_in(&anthropics), Some(&anthropics["error"]));
+        assert_eq!(error_in(&flat), Some(&flat));
+        assert_eq!(error_in(&failed), Some(&failed["response"]["error"]));
+
+        // a Responses body carries the field either way, and an event that ends well is no error
+        assert_eq!(error_in(&json!({ "output": [], "error": null })), None);
+        assert_eq!(
+            error_in(&json!({ "type": "response.completed", "response": { "error": null } })),
+            None
+        );
+        assert_eq!(
+            error_in(&json!({ "type": "response.failed", "response": { "error": null } })),
+            None
+        );
+    }
+
+    /// A refusal named rather than numbered is the status it names, so the busy ones are waited
+    /// out.
+    #[test]
+    fn a_refusal_named_rather_than_numbered_is_the_status_it_names() {
+        for (error, code) in [
+            (json!({ "code": 429 }), 429),
+            (json!({ "code": "503" }), 503),
+            (json!({ "code": "rate_limit_exceeded" }), 429),
+            (json!({ "code": "server_error" }), 500),
+            (json!({ "type": "rate_limit_error" }), 429),
+            (json!({ "type": "overloaded_error" }), 529),
+            (json!({ "type": "api_error" }), 500),
+            (json!({ "code": "invalid_prompt" }), 0),
+            (json!({ "type": "invalid_request_error" }), 0),
+            (json!({}), 0),
+        ] {
+            assert_eq!(code_of(&error), code, "{error}");
+        }
+    }
 
     /// The two shapes a body that is not JSON is reported in are one reading of the same bytes,
     /// and a whole page is read the way a stream reports one.
