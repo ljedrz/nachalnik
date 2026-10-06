@@ -10,6 +10,12 @@
 //! response and handing back a [`ModelResponse`] - and a test that reached in beside it would be
 //! testing a copy of the code under test.
 //!
+//! note: this is where a live run's finding about a stream is kept. Several of these cases came
+//! out of hours against OpenRouter through a proxy that broke the stream on purpose; that harness
+//! is not in the repository and is not meant to be, because what it found is here, asked without
+//! a key in a second. The live runs that go on finding things are `.claude/skills/live-runs/`, and
+//! a shape one of them turns up becomes a case below rather than a reason to run it again.
+//!
 //! note: behind the `conformance` feature, and off by default. It is a dev tool, it stands up
 //! `TcpListener`s, and a caller writing a provider of its own is who it is for.
 //!
