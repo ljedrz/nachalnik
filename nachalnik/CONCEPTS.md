@@ -1,7 +1,7 @@
 # the parts that are not obvious
 
-Six things this runtime does differently from a loop somebody would write in an afternoon,
-each with the reasoning that put it there. [The readme](README.md) says what the crate is and
+What this runtime does differently from a loop somebody would write in an afternoon, each with
+the reasoning that put it there. [The readme](README.md) says what the crate is and
 how to start; this is what to read before building something that leans on it.
 
 ---
@@ -101,10 +101,10 @@ cost in `Projection::repairs` rather than doing it quietly.
 ## 🎯 a budget that corrects itself, and admits what it cannot reach
 
 Every token figure the kernel reports comes from a `TokenCounter`, and the estimate underneath the
-default one — `bytes / 4` — is admittedly that. How wrong it is depends on the shape of what you
-are sending: measured against a real API, about a third low on a short chat carrying four tool
-definitions, and a steady 7% low once the conversation is a few thousand tokens. It cannot see
-per-message framing and never sees the tokens a reasoning model spends thinking. Embedding a
+default one — `bytes / 4` — is admittedly that, and how wrong it is depends on the shape of what you
+are sending: short requests heavy with tool definitions read well low, long conversations a few
+percent low. It cannot see per-message framing and never sees the tokens a reasoning model spends
+thinking. Embedding a
 tokenizer would mean embedding a model-specific assumption, which this crate will not do.
 
 So it does the other thing. A provider that reports usage has said, after each response, what the
@@ -120,8 +120,7 @@ kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
 `Calibrating` keeps one ratio over every response worth learning from, so it settles rather than
-chasing the last request — measured over a growing conversation, it took that steady 7% error to
-within 1%. What it learned is a number you can look at (`calibration()`), not a fudge factor
+chasing the last request. What it learned is a number you can look at (`calibration()`), not a fudge factor
 buried in the kernel. It ignores requests too small to have a systematic error in them, because a
 percentage drawn from a handful of tokens is noise. And it corrects what is counted *from then
 on*: figures already recorded on items do not silently rewrite themselves. `Kernel::recount`
@@ -156,8 +155,8 @@ if the payload has no dimensions on it, so the third abstains exactly as the def
 
 One rule follows: a request carrying anything unpriced never reaches
 `observe`. `Calibrating` corrects with a single multiplier, so a gap it cannot see would be spread
-over the bytes it can — prose beside one screenshot ends up reading 50% high while the screenshot
-still reads nothing.
+over the bytes it can, and prose beside one screenshot would read high while the screenshot still
+read nothing.
 
 ---
 
