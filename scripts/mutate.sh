@@ -12,8 +12,7 @@
 #     [pattern]  an extended regex naming the tests being measured, matched against test paths
 #                as `cargo test` prints them. Without it, every failure is reported as `other`.
 #
-# See "a test's worth is measured" in CONTRIBUTING.md for what the answers mean, and for the three
-# mistakes this exists to catch.
+# See "a test's worth is measured" in CONTRIBUTING.md for what the answers mean.
 
 set -uo pipefail
 

@@ -288,7 +288,7 @@ $ cargo run --example compare_models -- -m <model> -m <another model> "the bigge
 ### 🧪 tests
 
 `cargo test -p nachalnik` runs the offline suite. The live suite, skipped without a key, is the
-only way to check what a mock cannot - that a real API accepts the requests this crate builds, and
+only way to check what a mock cannot — that a real API accepts the requests this crate builds, and
 that a real model's answers survive the round trip through the context:
 
 ```console

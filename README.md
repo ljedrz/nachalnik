@@ -95,7 +95,7 @@ describes, which is what an append-only log of typed events is for.
 | crate | what it is |
 | --- | --- |
 | **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. A handful of dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. |
-| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only. |
+| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes — and so Linux only. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
 | **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
@@ -148,7 +148,7 @@ $ cargo test --workspace
 ```
 
 The live suites, which skip themselves without a key, are the only way to check what a mock
-cannot - that a real API accepts the requests this workspace builds:
+cannot — that a real API accepts the requests this workspace builds:
 
 ```console
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
