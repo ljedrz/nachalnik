@@ -359,9 +359,3 @@ Referenced from [AGENTS.md](AGENTS.md).
   the one-file account of every public operation that AGENTS.md gives. Whether a reader's time is
   worth that is the decision; a change that has to touch a whole one of these files is what would
   make it.
-
-- **`nachalnik-providers` still asks tokio for `macros` and `rt`.** It uses only `time` outside its
-  tests; dropping the two is a break for a crate that had been getting either from it without
-  asking tokio itself, so it is held for the minor - the note above `tokio` in its `Cargo.toml`
-  says so. The MSRV bump to 1.95, which was held for the same release, has been made,
-  so the next release is a minor one for every crate here and this can ride it.

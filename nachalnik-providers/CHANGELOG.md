@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **`tokio` is asked for `time` alone**, without `macros` and `rt`, which nothing outside the tests
+  used; `conformance` still asks for `rt` itself. A crate that was getting either from this one
+  without asking `tokio` for it has to ask now.
 - **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
   edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
   builds on it.
