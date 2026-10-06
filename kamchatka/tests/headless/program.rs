@@ -651,15 +651,7 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
     });
     waited_out(&mut child, std::time::Duration::from_secs(30), &watched);
     let records = records.join().expect("it was read");
-    // what the watcher has read by the time the process has gone may be short of the end, which
-    // is what the line this is looking for is near
-    let waited = std::time::Instant::now();
-    while !watched.lock().contains("reached for the network")
-        && waited.elapsed() < std::time::Duration::from_secs(5)
-    {
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let said = watched.lock().clone();
+    let said = heard(&watched, "reached for the network");
 
     assert!(
         said.contains("reached for the network: deny, because nobody is here to be asked"),
@@ -933,7 +925,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
         pressed.elapsed() < std::time::Duration::from_secs(20),
         "`sleep 30` outlived the interrupt, so the command was waited for rather than stopped"
     );
-    let said = said.lock().clone();
+    let said = heard(&said, "what has arrived is kept");
     // and it was running: a call refused for want of anybody to ask leaves nothing to stop, and
     // passes everything above. `--allow shell` did exactly that, being a domain no tool declares
     assert!(
@@ -1174,6 +1166,23 @@ fn interrupt(pid: u32) {
     assert!(sent.success());
 }
 
+/// What a child had said, once `phrase` is among it - or after a few seconds, if it never is.
+///
+/// note: asked after the child has gone, and needed then. [`watch`] reads on a thread of its own,
+/// so what it holds when the process exits can be short of the end - and the end is where a run
+/// says how it ended, which is what these tests assert on. On a slow runner the last line lost
+/// that race: `the_deadline_ends_a_run_that_is_still_starting` failed on CI's ARM runner with the
+/// status right and the line not yet read. Waiting for the end of the stream instead would not
+/// do, because an MCP server the run spawned inherits its stderr and holds it open after it.
+fn heard(said: &Arc<parking_lot::Mutex<String>>, phrase: &str) -> String {
+    let waited = std::time::Instant::now();
+    while !said.lock().contains(phrase) && waited.elapsed() < std::time::Duration::from_secs(5) {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    said.lock().clone()
+}
+
 /// Waits for a child to leave, or says what it had said when it did not.
 fn waited_out(
     child: &mut std::process::Child,
@@ -1337,7 +1346,8 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
             said.lock()
         );
 
-        let said = said.lock().clone();
+        heard(&said, "ended by a termination signal");
+        let said = heard(&said, ".jsonl,");
         assert!(
             said.contains("ended by a termination signal"),
             "SIG{signal}: a run stopped mid-turn said nothing about what stopped it: {said}"
@@ -1598,7 +1608,8 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
         .expect("could not type");
     let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
 
-    let said = said.lock().clone();
+    heard(&said, "no fresh session could be started");
+    let said = heard(&said, "kamchatka -r ");
     assert!(!status.success(), "{said}");
     assert!(said.contains("no fresh session could be started"), "{said}");
     assert!(
@@ -2068,13 +2079,14 @@ async fn the_deadline_ends_the_program_itself() {
     let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
 
     // `124`, as `timeout(1)` leaves with
-    assert_eq!(status.code(), Some(124), "{}", said.lock());
+    let elapsed = started.elapsed();
+    let said = heard(&said, "out of time");
+    assert_eq!(status.code(), Some(124), "{said}");
     assert!(
-        started.elapsed() < std::time::Duration::from_secs(10),
-        "it waited far longer than it was given: {:?}",
-        started.elapsed()
+        elapsed < std::time::Duration::from_secs(10),
+        "it waited far longer than it was given: {elapsed:?}"
     );
-    assert!(said.lock().contains("out of time"), "{}", said.lock());
+    assert!(said.contains("out of time"), "{said}");
 }
 
 /// `--deadline` ends a run still starting: a server that never answers its handshake, and an
@@ -2111,12 +2123,9 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         let status = waited_out(&mut child, std::time::Duration::from_secs(15), &said);
 
         // the deadline's status wherever it falls, so a script need not know how far it got
-        assert_eq!(status.code(), Some(124), "{}", said.lock());
-        assert!(
-            said.lock().contains(&format!("out of time {step}")),
-            "{}",
-            said.lock()
-        );
+        let said = heard(&said, &format!("out of time {step}"));
+        assert_eq!(status.code(), Some(124), "{said}");
+        assert!(said.contains(&format!("out of time {step}")), "{said}");
     }
 }
 
