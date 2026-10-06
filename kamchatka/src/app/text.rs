@@ -127,6 +127,19 @@ pub(crate) fn trace_line(event: &Event) -> (String, String) {
         ),
         Event::SessionFinished => "nothing more will be recorded".to_owned(),
         Event::Interrupted => "stopped; whatever had arrived is kept".to_owned(),
+        Event::TurnPaused { requests } => format!(
+            "paused after {}; `/continue` carries on",
+            plural(*requests, "request")
+        ),
+        Event::TurnUnfinished { calls } => format!(
+            "the session ended before {} ran: {}",
+            plural(calls.len(), "call"),
+            calls
+                .iter()
+                .map(|call| call.0.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
         // the one event that carries content, because it is the only operation that overwrites
         // something - so the first line of what went is worth the room
         Event::ContextReplaced {
@@ -760,6 +773,11 @@ pub(crate) fn stopped_short(stop: &StopReason, asked: bool) -> Option<String> {
         StopReason::Refusal => {
             Some("the model declined: the endpoint reported a refusal or a filter".to_owned())
         }
+        // the record has it, as an empty list of calls beside the stop, and a screen showed a
+        // turn that simply ended
+        StopReason::ToolUse if !asked => Some(
+            "the model said it stopped to call a tool, and named none; the turn is over".to_owned(),
+        ),
         StopReason::Other(why)
             if !matches!(why.as_str(), "interrupted" | "cut off" | "unreported") =>
         {
@@ -1046,6 +1064,20 @@ mod tests {
         assert_eq!(
             said(&Event::Interrupted),
             "stopped; whatever had arrived is kept"
+        );
+    }
+
+    #[test]
+    fn a_turn_that_stopped_short_says_how() {
+        assert_eq!(
+            said(&Event::TurnPaused { requests: 1 }),
+            "paused after 1 request; `/continue` carries on"
+        );
+        assert_eq!(
+            said(&Event::TurnUnfinished {
+                calls: vec![ToolCallId("c1".into()), ToolCallId("c2".into())],
+            }),
+            "the session ended before 2 calls ran: c1, c2"
         );
     }
 

@@ -2836,6 +2836,7 @@ async fn a_turn_that_stopped_short_says_why() {
         stopped("a sentence", StopReason::Other("eos_token".to_owned())),
         stopped("done", StopReason::EndTurn),
         stopped("half", StopReason::Other("interrupted".to_owned())),
+        stopped("let me look", StopReason::ToolUse),
     ];
     let Wired {
         mut app,
@@ -2850,7 +2851,7 @@ async fn a_turn_that_stopped_short_says_why() {
             &mut app,
             &mut events,
             &mut finished,
-            &b"one\ntwo\nthree\nfour\nfive\n"[..],
+            &b"one\ntwo\nthree\nfour\nfive\nsix\n"[..],
         )
         .await;
     let run = Run {
@@ -2889,6 +2890,7 @@ async fn a_turn_that_stopped_short_says_why() {
              cut short",
             "· the model declined: the endpoint reported a refusal or a filter",
             "· the model stopped for a reason this program does not know: `eos_token`",
+            "· the model said it stopped to call a tool, and named none; the turn is over",
         ],
         "{}",
         run.prose
@@ -3752,6 +3754,50 @@ fn a_call_left_open_across_a_resume_is_said_to_be() {
         !findings.iter().any(|it| it.contains("a second time")),
         "{findings:?}"
     );
+}
+
+/// A session that ended with calls waiting, and said so, is not a finding.
+///
+/// note: the ending a program stopped at a question leaves. Before `turn.unfinished` it read as a
+/// record that had lost the end of its calls, and the run's `--check` failed for it.
+#[test]
+fn calls_a_session_said_it_ended_with_are_not_findings() {
+    use kamchatka::check::check;
+
+    let line = |seq: u64, event: serde_json::Value| {
+        serde_json::to_string(&json!({"seq": seq, "at": 1, "event": event})).unwrap()
+    };
+    let asked = [
+        line(
+            1,
+            json!({"event": "session.started", "session": "one", "format": 1}),
+        ),
+        line(
+            2,
+            json!({"event": "tool.requested", "call": "c1", "tool": "peek", "args": {}}),
+        ),
+        line(
+            3,
+            json!({"event": "tool.requested", "call": "c2", "tool": "peek", "args": {}}),
+        ),
+    ];
+    let said = [
+        asked.as_slice(),
+        &[
+            line(4, json!({"event": "turn.unfinished", "calls": ["c1"]})),
+            line(5, json!({"event": "session.finished"})),
+        ],
+    ]
+    .concat()
+    .join("\n");
+
+    let findings = check(Some(&said), None).findings;
+    assert_eq!(
+        findings.len(),
+        1,
+        "only the call the ending did not name: {findings:?}"
+    );
+    assert!(findings[0].contains("`c2`"), "{findings:?}");
 }
 
 /// A log that begins part way through a session is not held to the calls before the cut, and one
