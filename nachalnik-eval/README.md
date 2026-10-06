@@ -11,10 +11,9 @@ Built on [`nachalnik`][nachalnik]. A model commits to a claim about its own cont
 is what my answer rests on*, *taking it away would change nothing* — and the harness moves the
 thing the claim was about, on a copy, and compares. Nothing is scored that was not observed.
 
-Then **the same operation, handed to the model as a tool.** It forks
-its own context, ablates an item, sees what the copy says, and answers from a measurement instead
-of a theory. The difference between those two answers is what it is worth for a context to be
-state rather than a wall of text.
+Then **the same operation, handed to the model as a tool.** It forks its own context, ablates an
+item, sees what the copy says, and answers from a measurement instead of a theory. The difference
+between those two answers is what it is worth for a context to be state rather than a wall of text.
 
 > A model's account of what its answer depends on is not self-knowledge — it is task reasoning
 > in the first person. So stop asking for the report and give it the experiment.
@@ -217,6 +216,8 @@ the shape of the curve rather than any point on it.
 
 Pointing it at your own model, the rate limiting, reading a sweep back and how the harness is
 itself checked are in [RUNNING.md][running].
+
+---
 
 ### 🙈 what it does not measure
 

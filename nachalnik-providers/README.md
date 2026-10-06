@@ -29,13 +29,13 @@ lines, written once.
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
 | `anthropic` | Anthropic's Messages API: typed content blocks, call arguments streamed as `input_json_delta`, signed thinking blocks, the prompt cached by default. `api.anthropic.com`, and OpenRouter at `/api/v1/messages`. |
 | `conformance` | the suite the dialects above are held to, for anyone writing another. Stands up real sockets; off unless asked for. |
-| `system1` | not a dialect: a client for System One models - any of the ones OpenRouter serves, or an engine of one's own at the same route - which answer typed questions about a state with numbers rather than driving a turn. Nothing it returns reaches a kernel. |
+| `system1` | not a dialect: a client for System One models — any of the ones OpenRouter serves, or an engine of one's own at the same route — which answer typed questions about a state with numbers rather than driving a turn. Nothing it returns reaches a kernel. |
 
-Every dialect answers `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
-program around it asks: where the requests are going, which model is being asked, what this
-endpoint serves, and what the last retry was about. `Dialect` is the two together, so one
-`Arc<dyn Dialect>` holds any of them, for the kernel and the program alike, and nothing above it
-finds out which it got.
+Every dialect answers `Provider`, which is what the kernel asks through, and `Endpoint`, which is
+what the program around it asks: where the requests are going, which model is being asked, what this
+endpoint serves, and what the last retry was about. `Dialect` is the two together, so one `Arc<dyn
+Dialect>` holds any of them, for the kernel and the program alike, and nothing above it finds out
+which it got.
 
 The second dialect is the one worth having for its own sake. Gemini answers with the parts of a
 turn *in the order they were produced* — a thought, a sentence, a call, more thinking — and an
@@ -131,7 +131,7 @@ applies to all of them. Each case is a shape some endpoint actually sent.
 
 ---
 
-### 📜 license
+### 📜 licence
 
 MIT ([LICENSE-MIT][license]).
 

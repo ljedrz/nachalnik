@@ -128,8 +128,8 @@ figure it prints is computed over items that share a dossier and are therefore n
 So the only test `pool` applies is the sign test, over one run per model, which is honest there
 and nowhere else in this crate: models are independent of each other in a way that items never
 are. A model is its name, whichever endpoint served it, since the same weights reached two ways
-are not two models. `Cohort::is_unanimous` is unanimity and not significance - three models
-agreeing is unanimous at `p = 0.125` - which is why the cohort size is a decision a study registers
+are not two models. `Cohort::is_unanimous` is unanimity and not significance — three models
+agreeing is unanimous at `p = 0.125` — which is why the cohort size is a decision a study registers
 in advance.
 
 ---

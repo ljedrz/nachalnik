@@ -60,6 +60,9 @@ minor bump may break you.
 - **The released binary is optimised for size**, `opt-level = "s"`: the static musl build is
   10.1MB rather than 13.6MB. Drawing the screen is about a sixth slower in the sweeps that draw it
   at every size, and nothing else measurably is.
+- **RUNNING.md keeps what a session leaves on disk in one place**: the automatic record, `--check`
+  and `reconcile` sit with `/save` and `/load` rather than under switching the model, and what the
+  compactor does has a heading of its own rather than living under the status line's number.
 
 ### fixed
 
@@ -1523,8 +1526,8 @@ minor bump may break you.
   that `fs` makes none, and to make it with `shell` - or, where `shell` is refused, to write where
   a directory is or say which one is needed.
 - **`fs read` of a system file says `shell` reads it.** The system directories are in the shell's
-  reach and not in `fs`'s, and the refusal sent the model to ask for `/etc/passwd` to be opened up
-  - a file it could already `cat`. It now says the path will be refused again and to read it
+  reach and not in `fs`'s, and the refusal sent the model to ask for `/etc/passwd` to be opened up -
+  a file it could already `cat`. It now says the path will be refused again and to read it
   through `shell`, unless `shell` is refused too.
 - **A served session out of file descriptors says so once.** The listener stays readable while a
   connection it cannot take waits, so the loop failed to accept as fast as it could turn and said
@@ -3175,8 +3178,8 @@ minor bump may break you.
   The fix is in `contrib/laya_advisor.py`, which is the adapter and was behaving like a pipe.
   The two engines agree on the question shape and not on the answer: laya keys its answers by
   the primitive and sends no `type` at all, which the documented shape requires. So the shim now
-  builds each answer from the question it asked - which is the authoritative source for the type
-  - and computes confidence from the distribution, which is what the caller means by the word.
+  builds each answer from the question it asked - which is the authoritative source for the type -
+  and computes confidence from the distribution, which is what the caller means by the word.
   `ls` comes back at 0.97 and is green.
 
   `--probe "<command>"` prints what laya answers verbatim beside what the shim makes of it;

@@ -1,8 +1,8 @@
 # the parts that are not obvious
 
 What this runtime does differently from a loop somebody would write in an afternoon, each with
-the reasoning that put it there. [The readme](README.md) says what the crate is and
-how to start; this is what to read before building something that leans on it.
+the reasoning that put it there. [The readme](README.md) says what the crate is and how to start;
+this is what to read before building something that leans on it.
 
 ---
 
@@ -104,8 +104,8 @@ Every token figure the kernel reports comes from a `TokenCounter`, and the estim
 default one — `bytes / 4` — is admittedly that, and how wrong it is depends on the shape of what you
 are sending: short requests heavy with tool definitions read well low, long conversations a few
 percent low. It cannot see per-message framing and never sees the tokens a reasoning model spends
-thinking. Embedding a
-tokenizer would mean embedding a model-specific assumption, which this crate will not do.
+thinking. Embedding a tokenizer would mean embedding a model-specific assumption, which this crate
+will not do.
 
 So it does the other thing. A provider that reports usage has said, after each response, what the
 request actually cost, and the kernel knows what it estimated for the very same bytes — so it
@@ -120,10 +120,10 @@ kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
 `Calibrating` keeps one ratio over every response worth learning from, so it settles rather than
-chasing the last request. What it learned is a number you can look at (`calibration()`), not a fudge factor
-buried in the kernel. It ignores requests too small to have a systematic error in them, because a
-percentage drawn from a handful of tokens is noise. And it corrects what is counted *from then
-on*: figures already recorded on items do not silently rewrite themselves. `Kernel::recount`
+chasing the last request. What it learned is a number you can look at (`calibration()`), not a fudge
+factor buried in the kernel. It ignores requests too small to have a systematic error in them,
+because a percentage drawn from a handful of tokens is noise. And it corrects what is counted *from
+then on*: figures already recorded on items do not silently rewrite themselves. `Kernel::recount`
 rewrites them when you ask, and says so on the event stream.
 
 The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
@@ -153,10 +153,9 @@ That counts one context three ways — the default counter, one applying a vendo
 from `meta`, and that same formula handed a blob nobody measured. Knowing a formula does not help
 if the payload has no dimensions on it, so the third abstains exactly as the default one does.
 
-One rule follows: a request carrying anything unpriced never reaches
-`observe`. `Calibrating` corrects with a single multiplier, so a gap it cannot see would be spread
-over the bytes it can, and prose beside one screenshot would read high while the screenshot still
-read nothing.
+One rule follows: a request carrying anything unpriced never reaches `observe`. `Calibrating`
+corrects with a single multiplier, so a gap it cannot see would be spread over the bytes it can, and
+prose beside one screenshot would read high while the screenshot still read nothing.
 
 ---
 
