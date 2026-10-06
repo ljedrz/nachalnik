@@ -775,13 +775,13 @@ fn start_recording(app: &mut App, record: bool) {
 /// about how it was driven. The one thing it asks about the driving is `logged`: whether stdout
 /// is carrying the record stream, which a headless run does and a served one does not, even with
 /// no screen.
-fn finish<T>(
+fn finish(
     app: &App,
     record: bool,
     logged: bool,
     leave_running: bool,
-    outcome: Result<T>,
-) -> Result<T> {
+    outcome: Result<Option<headless::Stop>>,
+) -> Result<Option<headless::Stop>> {
     // note: the headless driver and the server each end the session themselves, so that the record
     // saying so goes down their own stream with the rest rather than being the one nobody was sent.
     // `Kernel::finish` emits an event every time it is called, so this asks the log whether it has
@@ -813,6 +813,9 @@ fn finish<T>(
         app.kernel.session_name(),
         app.kernel.history().len()
     ));
+    // a status of its own for a run that did everything but this, since a script reads `0` as a
+    // session it can find afterwards
+    let unrecorded = matches!(written, Some(Err(_)));
     match written {
         Some(Ok(written)) => say(&format!(
             "{written}\n`kamchatka -r {}` carries on from it",
@@ -833,7 +836,10 @@ fn finish<T>(
         say(&line);
     }
 
-    outcome
+    match outcome {
+        Ok(None) if unrecorded => Ok(Some(headless::Stop::Unrecorded)),
+        outcome => outcome,
+    }
 }
 
 /// Takes the terminal, draws until there is nothing left to draw, and gives it back.

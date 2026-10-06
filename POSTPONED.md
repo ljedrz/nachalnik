@@ -176,14 +176,6 @@ Each entry says what it is, why it waits, and what would unblock it.
   decision about what the history should claim the model said, and a live run of the choice on the
   endpoints that are strict about it.
 
-- **A headless run whose session record could not be written still exits as it would have.**
-  `finish` says `the session was not written` on stderr and returns the run's own outcome, so a
-  script that reads the status as "the session is saved" is wrong once. The note on
-  `start_recording` makes a record that cannot be written a thing said rather than fatal, and the
-  exit statuses in `--help` have no word for it. Unblocking it is a choice between leaving it, a
-  status of its own for "done, but not recorded", and folding it into `1`, and the last two are a
-  change a script would notice.
-
 - **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
   doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
   to be carried on with `-r`. A rate limit shared by several sessions lasts longer. Waiting longer

@@ -74,6 +74,9 @@ minor bump may break you.
   and is what a gateway or another OpenAI-compatible service that wants a key reads now. A session
   at `api.openai.com` with no key is refused at startup, naming `OPENAI_API_KEY`, as one at
   OpenRouter is.
+- **A run whose record could not be written leaves with `5`.** It left with `0`, so a script
+  reading the status as a session it could find afterwards was wrong once and could not tell. A run
+  that stopped short for any other reason keeps that reason's status.
 - **`--check` does not hold the calls a session ended with against it.** A session finished with a
   question unanswered, or calls permitted and not yet run, says so now in `turn.unfinished`, and
   those calls are not findings; a killed run, which says nothing, still has them named.
