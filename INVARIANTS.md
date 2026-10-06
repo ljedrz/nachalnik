@@ -48,38 +48,19 @@ without it.
   then on, and never silently rewrites figures already recorded (`Kernel::recount` does, loudly).
 - **A count that cannot reach something says so rather than returning `0`.**
   `TokenCounter::uncounted` is how, and it rides up to `Budget::uncounted` and
-  `ContextItem::uncounted`, so "measured, and free" and "there is a picture here and nothing
-  priced it" are never the same figure. A request carrying anything unpriced does not reach
-  `TokenCounter::observe`: `Calibrating` corrects with a single multiplier, so a gap it cannot see
-  gets spread over the bytes it can, and prose beside one screenshot ends up reading high while
-  the screenshot still reads nothing. And whatever a counter *would* need in order to price a
-  payload goes in `Blob::meta`, which the kernel never reads - on the blob rather than the item,
-  because the budget is counted over projected messages and a `Message` carries an item's
-  `Content` and not its metadata.
+  `ContextItem::uncounted`, so "measured, and free" and "nothing priced this" are never the same
+  figure. A request carrying anything unpriced does not reach `TokenCounter::observe`, because
+  `Calibrating` corrects with one multiplier and would spread a gap it cannot see over the bytes it
+  can. What a counter would need to price a payload goes in `Blob::meta`, which the kernel never
+  reads.
 
-  This crate carries no vendor formula and is not going to. A dialect is a shape that changes
-  over years and a price list is a per-model fact that changes whenever a vendor ships a model,
-  so putting the formulas in `nachalnik-providers` would turn "we speak three dialects" into a
-  subscription - and be wrong silently, which is what the abstention exists to end. The three
-  formula *shapes* stay as prose on `BytesPerToken::count`. Nor does `Blob` get a typed
-  `dimensions`, which covers pictures and leaves a PDF's pages and a recording's seconds nowhere
-  to go, or a `tokens: Option<usize>`, which is a per-model figure on a model-agnostic type and
-  wrong the moment the model changes.
+  No vendor formula goes into this workspace: a price is a per-model fact that changes whenever a
+  vendor ships a model, and a formula carried here would be wrong silently, which is what the
+  abstention exists to end.
 
-- **A media type is a claim, and nothing in here guesses one.** Everything that acts on it would
-  be wrong if it were inferred. `kamchatka`'s `attach::TYPES` maps ten extensions and refuses
-  anything else that is not valid text, rather than sniffing the bytes - an uncompressed PDF is
-  valid UTF-8 for pages at a time, so "is this text?" answers yes and the model is sent PDF
-  source. The OpenAI dialect then reads the media type to pick between its four parts -
-  `image_url`, `input_audio`, `video_url` and `file` - because in that dialect `image_url` means
-  an image and a PDF sent through it is a 400, and the `file` part is not refused for a recording
-  or a film: it drops them, and the model answers a question about bytes it never received.
-  Google's `inline_data` needs no such split. And `Blob::meta["name"]` is what fills that `file`
-  part's required filename - a convention between a caller and a provider, which is what a
-  free-form `meta` is for, and *not* a key the kernel knows. A derived `file.pdf` is the
-  fallback because the part is refused without one.
-
-  A shape is trusted once a test has sent it to a real endpoint, which is what
-  `a_document_goes_out_as_a_document` in `nachalnik/tests/live.rs` does for `file`. No test sends
-  a recording or a film yet, so `input_audio` and `video_url` are pinned only by `blobs.rs`, which
-  checks the part each media type goes out in and not that an endpoint takes it.
+- **A media type is a claim, and nothing in here guesses one.** Everything that acts on it -
+  which part a dialect sends a blob as, whether a provider takes it at all - would be wrong if it
+  were inferred, and sniffing bytes is inference: an uncompressed PDF is valid UTF-8 for pages at a
+  time. `kamchatka` names the types it is sure of and treats everything else that is valid text as
+  text, and refuses the rest. A wire shape for a media type is trusted once a live test has sent
+  it to a real endpoint.
