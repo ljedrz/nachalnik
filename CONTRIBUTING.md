@@ -112,6 +112,34 @@ the top of each says what it covers. Three things about them are not obvious:
 
 ---
 
+## sweeps, live runs and soaks
+
+What the suites cannot find, a model using the program can: it names a file `~`, passes the wrong
+id, and reads before it writes. The skills under `.claude/skills` turn headless `kamchatka`
+sessions on the workspace, each written for an agent such as Claude Code to follow. Each wants
+a **model id** and a **key**, and is run by asking for it by name - "a full repo sweep using
+kamchatka and model X", "a mutants sweep", "live runs with model X", "a soak with model X".
+
+- **`repo-sweep`** audits the code, its performance, its quality, its tests and its docs, and
+  measures the friction the tools cost a model using them. Its mutants mode takes its work list
+  from `cargo mutants` instead, has sessions draft a test for each survivor, and records every
+  verdict in `.claude/skills/repo-sweep/verdicts.jsonl` so the next run leaves the settled ones
+  out.
+- **`live-runs`** aims many short scenarios at one corner each, with a hostile fake endpoint and a
+  logging proxy beside them.
+- **`soak`** carries one session across resumes, a SIGTERM, a SIGKILL, a context wall, a
+  checkpoint `/load` and undo, and checks the chain of records with a checker that is run against
+  deliberate corruptions first.
+
+Run them with a different model each time: a small or a free model misuses a tool in ways a strong
+one does not, and that misuse is what finds the bug. The rules are the same for all of them. The
+key stays out of the repository. A finding is a lead until a test or a record proves it, and many
+turn out to be the model, a documented decision, or the harness. A fix goes on a branch of its own
+with a test that fails without it, and what needs a person's decision goes into
+[POSTPONED.md](POSTPONED.md).
+
+---
+
 ## conventions
 
 - **`note:` paragraphs.** A doc comment states what something is; a paragraph beginning `note:`

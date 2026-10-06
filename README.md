@@ -108,7 +108,7 @@ describes, which is what an append-only log of typed events is for.
 | [AGENTS.md](AGENTS.md) | orientation for whoever — person or model — is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
 | [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there — break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full, and the gotchas. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, how to run a sweep, a live run or a soak, the house conventions in full, and the gotchas. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
 | [POSTPONED.md](POSTPONED.md) | known, decided against *for now*, each entry saying what would unblock it. |
 
@@ -141,21 +141,53 @@ rather than to serve one: forking a context is `snapshot` and `resume`, what a c
 
 ---
 
-### 🧪 building and testing
+### 🧪 how it is tested
+
+There is more test code in this workspace than code under test, and the suites are one of several
+checks rather than the whole of them.
+
+- **Every invariant is a test.** Each one [INVARIANTS.md](INVARIANTS.md) states has something in
+  `tests/` that goes red when it breaks, and the ones that have to hold after *any* sequence of
+  operations are property suites: random runs of pushes, state changes, replacements, undo and
+  redo, with the context and its projection checked against each other after every step, and a
+  snapshot that has to resume into the session it was taken from.
+- **A test's worth is measured.** `cargo mutants` goes over each crate in turn, and a mutant that
+  survives the whole workspace's tests either gets a test that kills it or a written reason it
+  cannot be killed. A ledger of those verdicts keeps the next run to what has changed. A test
+  written by hand is held to the same question with `scripts/mutate.sh`: break what it is about,
+  and see whether anything *other* than it notices.
+- **CI** runs the suites on Linux (x86_64 and aarch64), macOS and Windows with every feature on,
+  builds with the defaults and with none, and checks the workspace on the MSRV, locked and at the
+  lowest version of every direct dependency the manifests allow.
+- **The live suites** send what this workspace builds to real APIs in all three dialects, because
+  a mock cannot say whether an API accepts it.
+- **The program is used as well as tested.** Again and again, and with many different models —
+  large and small, free, stealth, a diffusion one — headless `kamchatka` sessions are turned on the
+  workspace and on `kamchatka` itself. **Sweeps** audit the code, its performance, its quality, its
+  tests and its docs, and measure what the tools cost a model using them. **Live runs** aim many
+  short sessions at one corner each — hostile files, the sandbox and the network gate, output
+  floods, every slash command with bad arguments, resumes and kills — some of them against a
+  deliberately hostile fake endpoint. **Soaks** carry one long session across resumes, a SIGTERM,
+  a SIGKILL, a context wall and an undo, and hold the whole chain of records to the invariants
+  that span it, with a checker proven against deliberate corruptions before its verdict counts.
+
+A finding from any of these is a lead until a test or a record proves it. What gets fixed lands
+with a test that fails without the fix; what needs a person's decision goes into
+[POSTPONED.md](POSTPONED.md). The methods are in [`.claude/skills`](.claude/skills), written for an
+agent to run.
 
 ```console
 $ cargo test --workspace
 ```
 
-The live suites, which skip themselves without a key, are the only way to check what a mock
-cannot — that a real API accepts the requests this workspace builds:
+The live suites skip themselves without a key:
 
 ```console
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
 ```
 
-[CONTRIBUTING.md](CONTRIBUTING.md) has the full command set, what CI runs, and the keys each live
-suite reads.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full command set, what CI runs, the keys each live
+suite reads, and how to run a sweep, a live run or a soak.
 
 ---
 
