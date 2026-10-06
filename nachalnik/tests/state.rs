@@ -8,7 +8,7 @@ use std::{sync::Arc, time::Duration};
 use common::{drain, inquisitive, permissive, tool_results_text};
 use nachalnik::{
     BoxError, Config, ContextItem, ContextState, DeltaSink, Error, Event, Grant, Kernel, ModelInfo,
-    ModelRequest, ModelResponse, Provider, State, TooLong, async_trait,
+    ModelRequest, ModelResponse, Provider, State, TooLong, ToolCallId, async_trait,
     test::{AllowAll, ConstTool, ScriptedProvider, TooLongProvider, call},
 };
 use parking_lot::Mutex;
@@ -404,6 +404,74 @@ async fn the_request_budget_ends_a_turn_without_losing_the_thread() {
         kernel.turn().await.unwrap(),
         State::Finished { .. }
     ));
+
+    // and the record tells the two that ran out from the one the model ended, which rests after
+    // as many requests
+    let paused: Vec<usize> = kernel
+        .history()
+        .iter()
+        .filter_map(|record| match record.event {
+            Event::TurnPaused { requests } => Some(requests),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        paused,
+        [1, 1],
+        "each turn that ran out says so, and only those"
+    );
+}
+
+/// A session finished with calls waiting says which, ahead of `session.finished`.
+///
+/// note: the calls were asked for and will never be answered in this session, and without this
+/// their `tool.requested` with no `tool.finished` reads as a record that lost its ending.
+#[tokio::test]
+async fn a_session_finished_with_calls_waiting_names_them() {
+    let (kernel, _) = inquisitive([ModelResponse::tool_calls(vec![
+        call("c1", "echo", json!({})),
+        call("c2", "echo", json!({})),
+    ])]);
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "hi")));
+    kernel.push(ContextItem::user("go"));
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Deciding { .. }
+    ));
+
+    kernel.finish();
+
+    let events: Vec<Event> = kernel
+        .history()
+        .into_iter()
+        .map(|record| record.event)
+        .collect();
+    let ending = &events[events.len() - 2..];
+    assert_eq!(
+        ending,
+        [
+            Event::TurnUnfinished {
+                calls: vec![ToolCallId("c1".into()), ToolCallId("c2".into())]
+            },
+            Event::SessionFinished
+        ],
+        "{events:?}"
+    );
+
+    // and a session finished at rest says only that it finished
+    let kernel = Kernel::new(Config::default());
+    kernel.finish();
+    let events: Vec<Event> = kernel
+        .history()
+        .into_iter()
+        .map(|record| record.event)
+        .collect();
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Event::TurnUnfinished { .. })),
+        "{events:?}"
+    );
 }
 
 /// An answered question does not give a turn a fresh request budget.

@@ -700,11 +700,17 @@ impl Kernel {
         self.0.last_response.read().clone()
     }
 
-    /// Broadcasts [`Event::SessionFinished`].
+    /// Broadcasts [`Event::SessionFinished`], after [`Event::TurnUnfinished`] if the turn had
+    /// calls waiting to run.
     ///
     /// note: This is a marker for whoever is reading the log, not a shutdown: the kernel owns no
-    /// tasks and remains perfectly usable afterwards.
+    /// tasks and remains perfectly usable afterwards - the waiting calls are still waiting.
     pub fn finish(&self) {
+        let machine = self.0.machine.lock();
+        let waiting: Vec<ToolCallId> = machine.pending.iter().map(|p| p.call.id.clone()).collect();
+        if !waiting.is_empty() {
+            self.emit(Event::TurnUnfinished { calls: waiting });
+        }
         self.emit(Event::SessionFinished);
     }
 
@@ -971,6 +977,10 @@ impl Kernel {
                     .max_requests_per_turn
                     .is_some_and(|max| requests >= max)
                 {
+                    // a turn that made no request has nothing to pause
+                    if requests > 0 {
+                        self.emit(Event::TurnPaused { requests });
+                    }
                     return Ok(self.state());
                 }
                 requests += 1;

@@ -7,6 +7,16 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`Event::TurnPaused`, `turn.paused`**: `Kernel::turn` stopped at `max_requests_per_turn` with
+  the turn not over. The machine rests in `Idle` either way, so before this a turn that ran out of
+  requests read in the record exactly as one the model ended in as many.
+- **`Event::TurnUnfinished`, `turn.unfinished`**: `Kernel::finish` was called with calls the turn
+  had asked for still waiting to run - a question nobody answered, or calls permitted and not yet
+  run - and names them, ahead of `session.finished`. Their `tool.requested` with no `tool.finished`
+  read as a record that had lost its ending.
+
 ### fixed
 
 - **An interrupt between two calls is recorded where it landed.** Run one at a time, each call read
@@ -16,9 +26,10 @@ minor bump may break you.
 
 ### changed
 
-- **The dependency requirements are raised to what the whole workspace resolves to:** `async-trait` 0.1.89, `serde` 1.0.220 and `tokio` 1.47.
-  Each was lower than a version another dependency already asks for, so no build could have had
-  it; CI now builds every crate here with each direct dependency at its floor at once, on the MSRV.
+- **The dependency requirements are raised to what the whole workspace resolves to:** `async-trait`
+  0.1.89, `serde` 1.0.220 and `tokio` 1.47. Each was lower than a version another dependency already
+  asks for, so no build could have had it; CI now builds every crate here with each direct
+  dependency at its floor at once, on the MSRV.
 - **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
   edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
   builds on it.
