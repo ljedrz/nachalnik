@@ -182,12 +182,12 @@ Each entry says what it is, why it waits, and what would unblock it.
   is a trade against a person at the screen, who would rather be told; what would settle it is
   whether a headless run should wait out a rate limit its own `--deadline` bounds anyway.
 
-- **The relays hold a browser that sends no `Sec-Fetch-Site` only to its `Origin`.** A frame, an
-  image or a no-cors fetch from another site carries no `Origin`, and with fetch metadata the relay
-  refuses it; a browser old enough to send neither gets through to `GET /events` and takes the
-  session from the tab that had it. Closing that for every browser is a header that forbids
-  framing on `GET /`, which stops the frame and not the image, or a token in the page's address
-  that `/events` asks for, which changes how the page is opened.
+- **The relays hold a browser that sends no `Sec-Fetch-Site` only to its `Origin`.** An image or a
+  no-cors fetch from another site carries no `Origin`, and with fetch metadata the relay refuses
+  it; a browser old enough to send neither gets through to `GET /events` and takes the session
+  from the tab that had it. The page refuses to be framed, which closes the frame; closing the
+  rest for every browser is a token in the page's address that `/events` asks for, which changes
+  how the page is opened.
 
 - **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$`, or
   a `SIGTSTP`, leaves the call reading pipes nobody will write to, and a headless run sits out its
