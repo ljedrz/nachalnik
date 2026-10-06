@@ -52,9 +52,7 @@ off, which is worth it for a single server and is how one server's `read` quietl
 other's when there are two.
 
 Where the two together are over the limit it is the *prefix* that gives way, because the tool's
-own name is the half that tells one of a server's tools from another. A server with a
-sixty-two-character name would otherwise have every one of its tools arrive under the same
-identifier.
+own name is the half that tells one of a server's tools from another.
 
 ---
 
@@ -88,20 +86,10 @@ this crate is holding, which a separate dependency line can only guess at. `Serv
 
 ### 🧪 tests
 
-`cargo test -p nachalnik-mcp` stands up a real MCP server *in the test process* and talks to it
-over a pipe: the handshake, the tool listing, the calls and their content blocks all actually
-happen. There is no mock of the thing the bridge talks to, because a mock of a protocol is a test
-of your understanding of it.
-
-Among them is a server offering a tool called `delete_everything` that claims to be read-only.
-Under the default it buys nothing.
-
-An in-process server shares this crate's own SDK, though, so a second suite answers the question
-that leaves open: a server written in Python, speaking newline-delimited JSON-RPC by hand and
-spawned as a child process, which is the transport most servers arrive over. It skips when
-`python3` is not on the path. One test in it goes further and offers those tools to a real model,
-because whether an identifier survives a provider's charset and whether a description is enough to
-pick the right tool out of three are not things a scripted provider can be wrong about.
+`cargo test -p nachalnik-mcp` talks to a real MCP server rather than a mock: one in the test
+process, and one written in Python and spawned as a child, which is how most servers arrive (it
+skips without `python3`). One test offers those tools to a real model, since whether an identifier
+survives a provider's charset is not something a scripted provider can be wrong about.
 
 ---
 
