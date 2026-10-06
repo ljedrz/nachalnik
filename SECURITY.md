@@ -1,10 +1,6 @@
 # the security position
 
-Stated once and in one place, because it is the thing most likely to be quietly assumed
-otherwise. The `README.md` files say the same in longer form; this is what a change in this
-workspace has to keep true.
-
-Referenced from [AGENTS.md](AGENTS.md).
+What a change in this workspace has to keep true about what is enforced and what is not.
 
 ---
 
@@ -36,25 +32,15 @@ Referenced from [AGENTS.md](AGENTS.md).
   `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
   Landlock governs TCP from ABI 4, which is Linux 6.7: below that the ruleset comes back
   `Partial`, the files are still confined, TCP is left to the gate below where there is one, and
-  the permissions tab says "partly confined". The `shell` description a model reads says "runs
-  confined" either way and hedges the network with "TCP may be closed" where there is no gate,
-  because TCP is the one thing below 6.7 a command would act on differently; below 6.2 truncating
-  a file by name is ungoverned too, which the permissions tab says and the description does not.
-  The `landlock` crate has no UDP right to hand a ruleset, ABI 10 and the kernel's own
-  `BIND_UDP`/`CONNECT_SEND_UDP` notwithstanding, so UDP is the gate's or nobody's, and where there
-  is no gate the words say `no TCP` rather than rounding it up.
-  The `exec` is load-bearing rather than tidy: a helper standing in front of the command is what a
-  stopped call would kill instead of the command. It is a re-exec rather than
-  `CommandExt::pre_exec` because `pre_exec` runs between `fork` and `exec` in a process that has a
-  runtime's threads in it, where almost nothing is safe to call. The `fs` tool, which is not a
-  process - it opens a file, or walks a directory of them - is held to the same boundary by its own
-  code, which is weaker in kind and said to be: a path is resolved, links followed, and checked,
-  and then opened beneath the directory it was allowed under - and a write makes its new file and
-  renames it in a directory opened the same way. That open is `openat2` with `RESOLVE_BENEATH`,
-  so a component swapped for a link between the check and the open is refused by the kernel; on
-  a kernel older than 5.6 it is an ordinary open and the swap is not caught. A directory swapped
-  in the middle of a walk is only caught at the files opened under it: `glob` lists names, and a
-  name is not refused.
+  the permissions tab says "partly confined"; below 6.2 truncating a file by name is ungoverned
+  too. UDP is the gate's or nobody's. The `exec` is load-bearing: a helper standing in front of the
+  command is what a stopped call would kill instead.
+  The `fs` tool, which is not a process, is held to the same boundary by its own code, which is
+  weaker in kind: a path is resolved, links followed, and checked, then opened beneath the
+  directory it was allowed under with `openat2` and `RESOLVE_BENEATH`, so a component swapped for a
+  link in between is refused by the kernel - on a kernel older than 5.6 it is an ordinary open and
+  the swap is not caught. A directory swapped in the middle of a walk is caught only at the files
+  opened under it.
 - **The network is asked about when a command tries, not when it is named.** The confined child
   also installs a seccomp filter - `kamchatka::gate` - that holds every `socket()` for `AF_INET` or
   `AF_INET6`, which is the first thing any use of the network does, a DNS lookup included, and
@@ -73,11 +59,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   call is over and with nothing decided, is refused rather than asked, because a question about a
   command that has ended reaches nothing. Where the gate cannot be installed - under
   `--no-sandbox`, or on a kernel that cannot hold a call - the question is read off the command's
-  name, as it was, and the permissions tab says so: `network not gated` beside a confined shell,
-  and `a command can do any of these` under `--no-sandbox`. `gate` is the one module in the
-  workspace that writes `unsafe`: four system calls and a `prctl` that nothing wraps safely without
-  linking the C `libseccomp`, the descriptor one of them returns and the all-zero notification
-  another is handed, each with its reason beside it.
+  name, and the permissions tab says so. `gate` is the one module in the workspace that writes
+  `unsafe`, each block with its reason beside it.
 - **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
   a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
   The confinement holds a command to its directory and says nothing about what the command was
@@ -95,11 +78,8 @@ Referenced from [AGENTS.md](AGENTS.md).
   into the input this program's screen reads its keys from and answered its own question, where the
   kernel still allows `TIOCSTI`, or drawn over the question on any kernel. A child that cannot leave
   the terminal runs nothing. Under `/dev` the ruleset grants `null`, `zero`, `full`, `random` and
-  `urandom` by name and nothing else - `sandbox-device` is the list, and replacing it is the
-  person's call - since the rest reaches past the command: the person's other terminals in
-  `/dev/pts`, which a command could read what is typed into, the shared memory in `/dev/shm`, and on
-  a desktop the camera and the microphone. A pty goes with them, because its far end is a file in
-  `/dev/pts`. Under `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the
+  `urandom` by name and nothing else (`sandbox-device` replaces the list), since the rest reaches
+  past the command: the person's other terminals, shared memory, a camera and a microphone. Under `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the
   person has.
 - **A stop reaches the command's session, and what leaves it runs on.** Stopping a call kills the
   command's process group, which is the session it starts in, so whatever it started is stopped
@@ -107,37 +87,28 @@ Referenced from [AGENTS.md](AGENTS.md).
   `setsid`, or a daemon detaching itself - is out of that group and runs on after the call has
   said it stopped. It stays confined and gated, and a network attempt it makes after the call is
   refused rather than asked, so what it can reach does not grow; a served session cannot tell it
-  from a client. Holding the whole tree would take a cgroup per command, which needs one delegated
-  to the user; a PID namespace per command, which needs a user namespace; or making this process
-  the subreaper of what is orphaned and reaping it, alongside the runtime reaping its own children
-  by pid. Each fails somewhere this program runs, so a stop is the group, and says so.
+  from a client. Holding the whole tree would take a cgroup, a PID namespace or a subreaper per
+  command, and each fails somewhere this program runs, so a stop is the group, and says so.
   A call that *ends* leaves its group alone, so a job it put in the background - `sleep 300 &`, a
   server - runs on while the session lasts; when the session ends, every such group still running
   is sent `SIGTERM`, then `SIGKILL`, and named. `--leave-running` leaves them, and names them too.
   The same holds as above for a process that left its group: it is not on the list.
 - **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
-  the process behind it act for it, and that process is not in the domain: `systemd-run --user`
-  over the session bus read and wrote a home directory the same command was refused directly, and
-  the compositor and a container daemon are the same door. Landlock got an access right for it in
-  ABI 9, which is Linux 7.1, and `kamchatka` handles that right where the kernel has it - so a
-  command may connect to a socket it could have written to, and to no other. Below that kernel
-  nothing governs a `connect` at all. `sandbox::confines_unix_sockets` is what says which of the
-  two a machine is, and it is asked rather than assumed, because handling a right that is not
-  there would cost the ruleset its `Full` status and quietly stop the suite that tests it.
-  An abstract socket has no path for that right to name, and the X server listens on one,
-  `@/tmp/.X11-unix/X0`, taking any process of the user's without a cookie - a connection that can
-  type into the person's terminal. Landlock scopes those from ABI 6, which is Linux 6.12, and
+  the process behind it act for it, outside the domain - the session bus, the compositor, a
+  container daemon. Landlock governs that from Linux 7.1, and `kamchatka` uses it there: a command
+  may connect to a socket it could have written to, and to no other. Below that kernel nothing
+  governs a `connect`. `sandbox::confines_unix_sockets` says which a machine is.
+  An abstract socket has no path for that right to name, and the X server listens on one, taking
+  any process of the user's - a connection that can type into the person's terminal. Landlock scopes those from ABI 6, which is Linux 6.12, and
   `kamchatka` asks for the scope where the kernel has it, the same way: a command may connect to
   an abstract socket made inside its own confinement, and to no other. Below that kernel every
   abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets` says which.
 - **A confined command signals only the session.** Landlock's signal scope is as old as the
   abstract-socket one, and a command's own ruleset does not carry it: each command confines
   itself in a domain of its own, so there it would refuse a command stopping a server an earlier
-  call left running. The scope is checked per layer, so `kamchatka` puts it on its own process
-  before it starts anything, where every command inherits it: a command may signal what the
-  session started and `kamchatka` itself, and `kill -9 -1` reaches nothing else the person has.
-  `kamchatka` being inside that boundary is the part left open - keeping it out would take a
-  process of its own to start every command from. It costs `no_new_privs` on everything
+  call left running. So `kamchatka` puts it on its own process before it starts anything, where
+  every command inherits it: a command may signal what the session started and `kamchatka` itself,
+  and `kill -9 -1` reaches nothing else the person has. It costs `no_new_privs` on everything
   `kamchatka` starts, MCP servers included, so a set-user-ID program such as `sudo` gains nothing
   in them; under `--no-sandbox` it is not asked for. Below Linux 6.12 there is no such scope and
   every process of the user's is in reach. `sandbox::confines_signals` says which.
@@ -148,43 +119,32 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock
   refuses an `open` with `EACCES`, which is exactly what the kernel says about a file that belongs
   to somebody else - so a confined command is handed a permission error indistinguishable from an
-  ordinary one, and a model that cannot tell the two apart spends its turns on `sudo`. Saying it
-  in the tool description is not enough: a live session ignored one and went hunting for a `cargo`
-  that was never missing. Say it at the point of failure, name the path, and say nothing where the
-  refusal was not yours - a hedge on `cat /etc/shadow` sends a model looking for a boundary that
-  had nothing to do with it. `Sandbox::note_for` is the shape.
+  ordinary one, and a model that cannot tell the two apart spends its turns on `sudo`. A tool
+  description is not enough. Say it at the point of failure, name the path, and say nothing where
+  the refusal was not yours. `Sandbox::note_for` is the shape.
 - **And a refusal names the whole of what the session *does* reach.** The other half of the same
   rule: a refusal that names the working directory and calls it as far as the session goes stops
   being true the moment anybody passes `--sandbox-allow` or `--sandbox-read`. Under-reporting a
   boundary costs more than over-reporting it, because a model reads a refusal as the whole of the
   rule and never goes near the path somebody opened for exactly this - and it is the one thing in a
-  refusal the model cannot work out for itself. `Reach::range` is the shape, and it is
-  deliberately spelled the way `Sandbox`'s `Display` is: two things saying the same thing about one
-  session should not read as two rules.
+  refusal the model cannot work out for itself. `Reach::range` is the shape, spelled the way
+  `Sandbox`'s `Display` is, so the two do not read as two rules.
 - **A refusal closes the retry, and names no path but the one it refused.** A refusal that does
-  not say the same call will fail again is read as a reason it failed *this time*: one model sent
-  an identical path back again and again in a single turn. And every concrete path in a refusal is
-  read as a path to try, because a refusal is read under pressure to try something else - a
-  parenthesis offering `./~` for the rare file genuinely called that had two models reading `./~`,
-  a file neither of them wanted. Rare spellings belong in the tool's description, which is read
-  while choosing; the refusal gets the one instruction that applies. Two suites test it:
-  `tests/boundary.rs` pins the sentence, and only the section of `tests/live.rs` about `~` can
-  watch a real model read it, because a scripted provider agrees with every refusal it is handed.
+  not say the same call will fail again is read as a reason it failed *this time*, and every
+  concrete path in a refusal is read as a path to try. Rare spellings belong in the tool's
+  description; the refusal gets the one instruction that applies. `tests/boundary.rs` pins the
+  sentence.
 - **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no
   shell, so `read ~/.gitconfig` would join a directory literally called `~` onto the working
   directory and come back `No such file or directory` - the same trap as the one below, since a
   model believes an absent file and concludes the home directory is empty. Expanding it is the
-  wrong fix: under `--no-sandbox` `Reach::allows` returns the path unchecked, so `~/.ssh/id_rsa`
-  would resolve for real on a path the model wrote. It is refused with a sentence instead, before
-  the unconfined early return, and `fs`'s description says the rule for every `path` so the
-  refusal is not a surprise. `shell` is the other way round - `sh -c` does expand it, and the confinement
-  refuses what it expands to.
+  wrong fix: under `--no-sandbox` the path is not checked, so `~/.ssh/id_rsa` would resolve for
+  real. It is refused with a sentence instead, and `fs`'s description says so. `shell` is the other
+  way round: `sh -c` expands it, and the confinement refuses what it expands to.
 - **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
   program that probes before it opens is told yes and then refused - and lands in whichever branch
-  it keeps for a *corrupt* file rather than a *missing* one. Git does exactly this with
-  `~/.gitconfig` and dies with `fatal: unknown error occurred while reading the configuration
-  files`. Anything the confinement puts out of reach may need to be told it is not there rather
-  than left to find out.
+  it keeps for a *corrupt* file rather than a *missing* one, as git does with `~/.gitconfig`.
+  Anything the confinement puts out of reach may need to be told it is not there.
 - **A protocol that carries the `shell` tool is the machine, so where it listens is the boundary.**
   `--serve` refuses a non-loopback bind rather than documenting it as a thing not to do, and the
   socket file is made `0600` the moment after the bind creates it. In the one syscall between, what
@@ -194,12 +154,11 @@ Referenced from [AGENTS.md](AGENTS.md).
   boundary is somewhere else. Across a network, tunnel something that does authenticate. Anything
   added to `remote/` is held to this: it does not grow a credential, and it does not start deciding
   that some addresses are safe enough.
-- **An answer to a permission question is four things, and two of them are easy to leave out.**
-  `App::decide` is the one place all three loops answer through, and it exists because they did not:
-  a headless run granted a `curl` and then ran it with the network cut, because telling `Careful`
-  about a granted command is a separate act from telling the kernel. The other three are honouring
-  `always` over what the policy actually *consulted* rather than over what the tool declared,
-  sweeping the questions already queued behind this one, and driving the turn on afterwards. The
+- **An answer to a permission question is four things, and two of them are easy to leave out**:
+  telling `Careful` as well as the kernel (or a granted command runs with the network cut),
+  honouring `always` over what the policy *consulted* rather than what the tool declared, sweeping
+  the questions queued behind it, and driving the turn on afterwards. `App::decide` is the one place
+  all three loops answer through, and `App::decide_reach` the gate's. The
   gate's question has its own, `App::decide_reach`, for the same reason: the kernel never asked it,
   so the `policy.ruled` it writes is the only record there is that a command was let out.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
@@ -231,11 +190,9 @@ what stands in the way, and what does not.
   socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples put
   a page in front of a session and will listen wherever they are told: whoever reaches that page
   drives the session, the same as the person at the keyboard. A web page open in a browser on the
-  same machine is refused - the relay takes only requests whose host is an address or `localhost`,
-  that name no origin or site but its own, and that post JSON - so a site cannot drive a session
-  through the visitor's browser, nor take it from the tab that has it. A client may answer the
-  permission questions, so the session's own commands are kept out too. A port the session is served on is closed to every command confined while it is,
-  under an open network as under a held one. A socket file is reachable by every confined command
+  same machine is refused - the relay takes only same-origin JSON to a loopback host. A client may
+  answer the permission questions, so the session's own commands are kept out too: a port the
+  session is served on is closed to every command confined while it is. A socket file is reachable by every confined command
   below Linux 7.1, and from 7.1 by one that may write where it is, so a connection is refused when
   the peer is in the session of a command this process confined - each runs in one of its own -
   which covers anything it left running. What gets through is a process a command started under a
