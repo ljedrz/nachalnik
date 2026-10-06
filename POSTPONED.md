@@ -267,17 +267,18 @@ Referenced from [AGENTS.md](AGENTS.md).
   suite, or naming in RUNNING.md the models it has been checked against and leaving the rest to
   whoever picks one.
 
-- **`Careful::servers`, `Advised::careful` and `endpoint::configured_limit` have no caller.** The
-  first lists every MCP server whose tools are installed, with what the policy answers about each,
-  and the permissions tab reaches the same rows through `server_of`, one tool at a time. The
-  second hands out the standing rules under the advisor, and its doc says the tools and the
-  permissions tab hold it - they hold the `Careful` they were built with instead. The third reads
-  `KAMCHATKA_CONTEXT_LIMIT` for "a caller that has no startup to refuse one in", and the program
-  reads `checked_limit` everywhere. A test pinning any of them would pin an answer nobody reads,
-  and taking them out is a change to `kamchatka`'s public API. Whether something should use them,
-  or they should go, is the decision. `cargo mutants` found all three: `servers` replaced with
-  `vec![]`, `careful` with a fresh policy and `configured_limit` with `None` or `Some(1)` survive
-  every test.
+- **`Careful::servers` and `Advised::careful` have no caller.** The first lists every MCP server
+  whose tools are installed, with what the policy answers about each, and the permissions tab
+  reaches the same rows through `server_of`, one tool at a time. The second hands out the standing
+  rules under the advisor, and its doc says the tools and the permissions tab hold it - they hold
+  the `Careful` they were built with instead. A test pinning either would pin an answer nobody
+  reads, and taking them out is a change to `kamchatka`'s public API. Whether something should use
+  them, or they should go, is the decision. `cargo mutants` found both: `servers` replaced with
+  `vec![]` and `careful` with a fresh policy survive every test.
+
+  This entry named `endpoint::configured_limit` too, and was wrong about it: the live suite reads
+  it, in `talking_to`, which is the caller with no startup to refuse a limit in that its doc is
+  written for. Its mutants survive because that suite runs only with a key.
 
 - **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That
   is the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
