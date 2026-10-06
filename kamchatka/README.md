@@ -72,6 +72,23 @@ $ cargo install --path kamchatka              # from a clone
 A release carries static x86_64 and aarch64 binaries. Building needs Rust 1.95 or newer and no
 system libraries.
 
+A released binary can be checked rather than taken on trust:
+
+- **It reproduces.** The release workflow builds every binary a second time, from a checkout at
+  another path with its crates fetched into another `CARGO_HOME`, and compares the two byte for
+  byte. The release notes give the `rustc -V` it was built with, and
+  [CONTRIBUTING.md][contributing] the command to rebuild it yourself.
+- **It is attested.** Each archive carries a build provenance attestation tying it to this
+  repository, the workflow and the tag, which a checksum beside it cannot do — whoever could
+  replace the one could replace the other. `gh attestation verify ARCHIVE --repo ljedrz/nachalnik`
+  checks it.
+- **It says what is in it.** It is built with `cargo auditable`, so the binary carries its own
+  dependency list, and `cargo audit bin kamchatka` checks the exact versions in it against the
+  advisory database.
+- **Its dependencies are held to a policy.** CI fails on a known vulnerability, an unmaintained
+  crate or a yanked version, with nothing ignored, and on a licence the tree did not already need.
+  Every action in the workflows is pinned to a commit.
+
 ## 🔧 what it comes with
 
 Six tools — `fs`, `shell`, `context`, `fork`, `log`, `setup` — and a policy that asks about all of
@@ -168,6 +185,7 @@ MIT.
 [guide-find]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-finding-things-without-a-shell
 [running]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md
 [changelog]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/CHANGELOG.md
+[contributing]: https://github.com/ljedrz/nachalnik/blob/HEAD/CONTRIBUTING.md
 [guide-introspect]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/GUIDE.md#-letting-the-agent-read-and-manage-its-own-context
 [advise]: https://github.com/ljedrz/nachalnik/blob/HEAD/kamchatka/RUNNING.md#a-colour-on-the-question
 [shot-chat]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/chat.jpg

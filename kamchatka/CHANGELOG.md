@@ -31,6 +31,10 @@ minor bump may break you.
   https://api.openai.com/v1` is OpenAI's own. The settings file takes `responses`, and `/params`
   refuses `input`, which this API builds from the context.
 
+- **The readme says how to check a released binary**: that it reproduces byte for byte, how to
+  verify its attestation, how to audit the dependency list it carries, and what the dependency
+  tree is held to in CI.
+
 ### changed
 
 - **`endpoint::session_endpoint` takes an `endpoint::Wire`** rather than whether the session is a

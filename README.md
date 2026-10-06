@@ -42,6 +42,14 @@ $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what do
 $ ANTHROPIC_API_KEY=sk-ant-... kamchatka --anthropic -m claude-haiku-4-5 "what does this repository do?"
 ```
 
+**A shell sandboxed by the kernel, not by a list of forbidden commands.** Landlock confines what a
+command can touch: it writes only where you let it and reads nothing private outside the working
+directory. A seccomp filter catches the moment a command reaches for the network, a DNS lookup
+included, and holds it there until it has an answer, which by default is yours: the question comes
+when a command tries, not when it is named. [SECURITY.md](SECURITY.md) says where each of them
+stops. A released binary reproduces byte for byte and carries a provenance attestation and its own
+dependency list; [its readme](kamchatka/README.md#-installing) says how to check all three.
+
 ![The context tab: five items with what each sends and holds back, and a pinned note opened to show
 why it is there.][shot-context]
 
