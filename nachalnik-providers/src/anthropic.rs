@@ -451,6 +451,47 @@ fn is_empty(value: &Value) -> bool {
     }
 }
 
+/// Asks for the prompt to be cached, unless the parameters said otherwise.
+///
+/// note: on by default, because this API caches nothing it is not asked to, and an agent sends the
+/// same conversation again on every turn - unasked, every one of them is billed in full, where a
+/// cache read costs a tenth of that. Two breakpoints, the shape Anthropic gives for a tool loop:
+/// the top-level `cache_control`, which follows the end of the conversation as it grows, and one on
+/// the end of the instructions - or of the tools, where there are none - which holds when the
+/// conversation is edited further back. Here it is edited further back as a matter of course: an
+/// item pruned, rewritten or elided changes the prefix from that point on, and without the second
+/// breakpoint everything before it would be written again too.
+///
+/// note: `cache_control` in the parameters replaces the default for both, so a `ttl` given there
+/// is the TTL of both - this API refuses a later breakpoint that outlives an earlier one - and
+/// `false` or `null` asks for no caching at all, for an endpoint that refuses the field. `false`
+/// as well, because a program that reads `null` as "take the parameter away" - kamchatka's
+/// `/params` does - would otherwise have no way to say it.
+fn cached(body: &mut Value, asked: Option<&Value>) {
+    let cache = asked
+        .cloned()
+        .unwrap_or_else(|| json!({ "type": "ephemeral" }));
+    let Some(fields) = body.as_object_mut() else {
+        return;
+    };
+    if cache.is_null() || cache == false {
+        fields.remove("cache_control");
+        return;
+    }
+    fields.insert("cache_control".to_owned(), cache.clone());
+
+    if let Some(Value::String(instructions)) = fields.get("system") {
+        let marked = json!([{ "type": "text", "text": instructions, "cache_control": cache }]);
+        fields.insert("system".to_owned(), marked);
+    } else if let Some(last) = fields
+        .get_mut("tools")
+        .and_then(Value::as_array_mut)
+        .and_then(|tools| tools.last_mut())
+    {
+        last["cache_control"] = cache;
+    }
+}
+
 /// What an endpoint's description of a model says it takes in, and what it may generate.
 fn limits(entry: &Value) -> (Option<u64>, Option<u64>) {
     let context = entry["max_input_tokens"]
@@ -564,6 +605,7 @@ impl Provider for Anthropic {
                 _ => body[key] = value.clone(),
             }
         }
+        cached(&mut body, request.params.get("cache_control"));
 
         Some(body)
     }

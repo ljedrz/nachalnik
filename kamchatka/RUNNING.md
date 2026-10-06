@@ -458,9 +458,19 @@ because a parameter a model does *not* take is not refused: it is sent, ignored,
 anywhere says so, which makes a `seed` set for a reproducible run buy no reproducibility and look
 exactly like one that worked. The runtime invents none of them — only what you set is sent, apart
 from the `thinkingConfig` a `--gemini` request asks for its thinking with, and a
-`generationConfig` of yours is merged over that, and the `max_tokens` an `--anthropic` request
-cannot be sent without, which a `max_tokens` of yours replaces — and a listing that publishes nothing is read as
-silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
+`generationConfig` of yours is merged over that; the `max_tokens` an `--anthropic` request
+cannot be sent without, which a `max_tokens` of yours replaces; and the `cache_control` an
+`--anthropic` request asks for its prompt to be cached with — and a listing that publishes nothing
+is read as silence rather than as a prohibition, because ollama and a bare proxy both say nothing
+here.
+
+That last one is on because Anthropic caches nothing it is not asked to, and a session sends the
+same conversation again on every turn: unasked, each of them is billed in full, where a cached
+prompt costs a tenth of that. It marks the end of the conversation and the end of the
+instructions, so an item pruned or rewritten further back costs a write from that item on rather
+than from the start. `/params cache_control {"type":"ephemeral","ttl":"1h"}` keeps it for an hour
+instead of five minutes, at a dearer write, and `/params cache_control false` turns it off, for an
+endpoint that refuses the field.
 
 Where the listing is everything the model takes, a parameter you set that is not on it is named as
 sent and ignored, and the ones it takes that you have not set follow, one to a line, with the

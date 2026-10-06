@@ -18,10 +18,11 @@
 //!   cargo test -p nachalnik-providers --features anthropic --test anthropic_live -- --test-threads=1
 //! ```
 //!
-//! note: the cheapest model by default, and every request is small: a run is six requests and a
-//! few thousand tokens. What is checked is what the offline suites cannot: that the requests this
-//! dialect builds are accepted - the tool results in a user turn, and above all a signed thinking
-//! block sent back the way it came.
+//! note: the cheapest model by default, and every request but two is small: a run is eight
+//! requests, and the two that check the cache carry a prompt long enough to be cached - about a
+//! cent between them. What is checked is what the offline suites cannot: that the requests this
+//! dialect builds are accepted - the tool results in a user turn, a signed thinking block sent
+//! back the way it came - and that the cache asked for by default is really read.
 //!
 //! note: `OPENROUTER_API_KEY` only for OpenRouter and `ANTHROPIC_API_KEY` only for anything else,
 //! so neither key is ever sent to the other's address.
@@ -157,6 +158,37 @@ async fn signed_thinking_goes_back_with_the_call_it_came_before() {
                 .is_some_and(|s| !s.is_empty())
         });
     assert!(signed, "a turn that thought kept its signature");
+}
+
+/// The second turn of a conversation reads its start from the cache, with nothing asked for.
+///
+/// note: the instructions are long enough to be cached at all - every model has a smallest prefix
+/// it caches, and Haiku 4.5's is 4096 tokens - which makes this the dearest request here, at about
+/// a cent.
+#[tokio::test]
+async fn the_second_turn_reads_the_first_from_the_cache() {
+    let Some(kernel) = kernel(Params::new()).await else {
+        return;
+    };
+    let rules: String = (1..=600)
+        .map(|n| format!("Rule {n}: the duty officer at post {n} answers in one word.\n"))
+        .collect();
+    kernel.push(ContextItem::system(rules));
+    kernel.push(ContextItem::user("Reply with the word pong."));
+    kernel.turn().await.expect("the first turn is answered");
+
+    kernel.push(ContextItem::user("Reply with the word ping."));
+    kernel.turn().await.expect("the second turn is answered");
+    let usage = kernel
+        .last_response()
+        .and_then(|response| response.usage)
+        .expect("the cost is reported");
+    assert!(
+        usage
+            .cached_input_tokens
+            .is_some_and(|cached| cached > 4096),
+        "{usage:?}"
+    );
 }
 
 /// Asks for one call to `echo`, and checks the answer used what it returned.
