@@ -7,7 +7,7 @@
 **A terminal agent for Linux that gives you full control of the context.**
 
 Built on [`nachalnik`][nachalnik], and everything that makes it an agent is its own: the tools, the
-permission policy, the compactor, the confinement, the served sessions, the drawing, and the two
+permission policy, the compactor, the confinement, the served sessions, the drawing, and the three
 providers next door in [`nachalnik-providers`][providers]. The runtime supplies the state machine,
 the context and the paper trail, and none of this needed a change to it.
 
@@ -20,6 +20,11 @@ $ cargo install kamchatka # or download the released binary
 $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
+
+OpenRouter is the default, not the only choice: `KAMCHATKA_BASE_URL` points it at anything that
+speaks OpenAI's chat completions, a model served on this machine by ollama, vLLM or LM Studio
+included (no key needed), and `--gemini` and `--anthropic` speak Google's and Anthropic's own APIs.
+[Running it][running] has the details.
 
 ## ❓ who this is for
 
