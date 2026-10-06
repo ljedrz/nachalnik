@@ -44,6 +44,17 @@ minor bump may break you.
   10.1MB rather than 13.6MB. Drawing the screen is about a sixth slower in the sweeps that draw it
   at every size, and nothing else measurably is.
 
+### fixed
+
+- **A key named for who issued it is sent to them and nowhere else.** `OPENROUTER_API_KEY` and
+  `OPENAI_API_KEY` were fallbacks for any address, so a session pointed at `api.openai.com` with both
+  exported sent OpenAI the OpenRouter key, and one at Google's, Anthropic's or a local server's sent
+  whichever was set to whoever was there. `OPENROUTER_API_KEY` now goes to OpenRouter only and
+  `OPENAI_API_KEY` to `api.openai.com` only; `KAMCHATKA_API_KEY` still goes wherever the requests go,
+  and is what a gateway or another OpenAI-compatible service that wants a key reads now. A session
+  at `api.openai.com` with no key is refused at startup, naming `OPENAI_API_KEY`, as one at
+  OpenRouter is.
+
 ## [0.18.1] - 2026-10-05
 
 ### changed
