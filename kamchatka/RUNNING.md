@@ -20,10 +20,8 @@ $ printf 'what is 2+2? answer with just the number\n/budget\n' \
 **stdout is the session log**, one JSON record per line — the same bytes `/save` writes, so
 `jq 'select(.event.event == "tool.requested")' session.jsonl` is the whole of reading a run back.
 **stderr is a person's half**: what the model said, what a tool was asked to do, and what any
-command you sent answered. Every verb is there, because a command was never the keyboard's to
-begin with. A key with a command behind it — <kbd>u</kbd> and <kbd>U</kbd> being `/undo` and
-`/redo`, <kbd>ctrl+l</kbd> being `/cleanup`, <kbd>ctrl+r</kbd> being `/continue` — is the
-shorthand, and the line is what works down a pipe.
+command you sent answered. Every key with a command behind it has the command too — `/undo`,
+`/redo`, `/cleanup`, `/continue` — and the line is what works down a pipe.
 
 Nothing can be asked at a prompt that is not there, so the answers are given in advance:
 
@@ -37,24 +35,19 @@ A path rule is a file name in which `*` stands for any run of characters, a name
 such as `.env`, or one directory name with a slash after it, which is about that directory wherever
 it sits in a path. It is matched against the *last* name in a path, so a rule about a file is that
 file's name and nothing else: `--deny 'b.txt*'` is a rule about `b.txt` and `--deny b.txt` is not
-one, because a bare name is read as a whole domain — which is what `files` and `shell` are too, so
-nothing in the text can say which was meant. A run stopped for naming a domain no call is judged
-under says how to write the rule. It is not the glob language `fs`'s own `glob` argument takes, and
-a pattern that reads like one — `src/**` — stops the session rather than going onto the permissions
-tab as a rule no path can match.
+one, because a bare name is read as a whole domain. It is not the glob language `fs`'s own `glob`
+argument takes, and a pattern that reads like one — `src/**` — stops the session and says how to
+write the rule.
 
-`--on-ask deny` rather than `allow` is deliberate: a run nobody is watching should not be able to
-do a thing nobody has allowed. The model is told, and told that it was *this call* rather than a
-standing rule — so it works around it rather than retrying. On stderr it is the tool's name and
-the answer, `because nobody is here to be asked`.
+`--on-ask deny` is the default because a run nobody is watching should not be able to do a thing
+nobody has allowed. The model is told it was *this call* rather than a standing rule, so it works
+around it rather than retrying.
 
 Somebody else's tools are given the same way, and where a tool came from is a subject of its own.
 `--mcp files=… --allow-server files` is the whole of granting one server: the same subject the
-permissions tab writes when somebody answers **always** at the prompt, given before the server has
-been spawned or said what it offers. Without it the tools are there and every call is refused,
-because a server named on a command line is not thereby trusted to run. It is its own argument
-rather than a spelling of `--allow` because a server's name and a domain are both bare words and
-nothing in either says which it is.
+permissions tab writes when somebody answers **always** at the prompt. Without it the tools are
+there and every call is refused, because a server named on a command line is not thereby trusted
+to run.
 
 A run nobody is watching has to be told when to stop. `--deadline 300` interrupts
 whatever is in flight and leaves by the ordinary door — what arrived is kept and the session is
@@ -62,23 +55,14 @@ written out, which a killed process cannot say. <kbd>ctrl+c</kbd> does the same 
 at once if pressed again. `--deadline 0` is no deadline, as `0` is no ceiling to `--spend` and
 `--requests`.
 
-`--spend 50000` stops one too, because time is not the only thing one of these can spend: a model
-that has found a loop — a tool that fails the same way, a question it keeps re-asking — will stay
-inside any deadline you were willing to give it. The unit is tokens, `input + output` as the
-provider reports them, because nothing here carries a price list and a figure in money would be one;
-what a `fork` is charged counts the same as the session's own requests.
-It is a stopping rule rather than a cap, since what a response cost is known only once it has
-arrived. When the session stops, it says what had been spent against what ceiling, and that
-`/spend N` raises it. The lines after that are still read: a command runs, which is how the
-`/spend` gets there, and a message is passed over unsent rather than kept in the context for the
-next turn to carry out.
-
-It belongs to the *session* rather than to this loop, which is why it is on
-[`wiring::Setup`](#-embedding-it) and not on the headless driver. What stops the turn that crossed
-the line is `App`, and so is what refuses the next one, so a screen session, a piped script and a
-host with a loop of its own are held to the same number and none of them can get round it by not
-asking. `/spend` says what has been spent and against what, `/spend N` raises it, and `/spend 0`
-takes it away, which is the way back for whoever set it too low.
+`--spend 50000` stops one too, because a model that has found a loop will stay inside any deadline
+you were willing to give it. The unit is tokens, `input + output` as the provider reports them,
+`fork`s included; nothing here carries a price list. It is a stopping rule rather than a cap, since
+what a response cost is known only once it has arrived. When the session stops, the lines after
+are still read: a command runs, and a message is passed over unsent. `/spend` says what has been
+spent and against what, `/spend N` raises it, and `/spend 0` takes it away. It belongs to the
+session, so a screen session, a piped script and [an embedding host](#-embedding-it) are held to
+the same number.
 
 The total starts at nothing in every process. `-r` carries a session's context on, and what its
 counter had learned, but not what it had spent: the snapshot is the runtime's record, and this
@@ -89,12 +73,9 @@ An endpoint that reports no usage at all says so, once, rather than holding a ce
 will ever reach — a limit quietly never met is worse than no limit, because whoever set it is
 reading the run as bounded.
 
-`--deadline` is the one that needs nobody's cooperation — of the model, at least. It counts from
-the moment the program starts, so an endpoint that never answers and an MCP server that never
-finishes its handshake are held to it too, and a `/restart` does not start it again. A command of
-your own waiting on the endpoint — a `/models` listing, a compaction pass — is stopped with the
-turn. What it cannot cut short is a switch: `/model` and `/endpoint` finish theirs before the next
-line is read, so a deadline that falls during one is served when it returns.
+`--deadline` counts from the moment the program starts, so an endpoint that never answers and an
+MCP server that never finishes its handshake are held to it too, and a `/restart` does not start it
+again. It cannot cut short a `/model` or `/endpoint` switch, which finishes first.
 
 A job a command put in the background — `sleep 300 &`, a server it started, one it put in a
 session of its own with `setsid` — outlives its call, and is stopped when the session ends:
@@ -116,16 +97,12 @@ its own, so a script can tell a session that did its work from one that was stop
 | `124` | ran out of `--deadline`, whether or not the session had started — as `timeout` does |
 | `129`, `130`, `143` | was ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` and the signal |
 
-The first of them to happen is the one reported, and a pause is the last turn's: one that
-`/continue` carried on from is not where the run stopped. A session served with no screen leaves
-the same way when a signal ends it — `129`, `130` or `143` — so a service manager stopping one can
-tell that from a `/quit`.
+The first of them to happen is the one reported. A session served with no screen leaves the same
+way when a signal ends it.
 
-A line is read only while the runtime is resting, which is the one place this differs from a
-person at a prompt and is what makes a piped script mean what it says: the lines of a script
-cannot overtake the turns they belong to. `--no-default-features --features mcp` builds this and
-nothing else — no screen compiled in, and the same `--headless` behaviour whether or not the flag
-is given.
+A line is read only while the runtime is resting, so the lines of a script cannot overtake the
+turns they belong to. `--no-default-features --features mcp` builds the program with no screen
+compiled in.
 
 ## 🔌 a session you can walk away from
 
@@ -147,9 +124,8 @@ with nobody watching, a question waits for somebody to come back and answer it, 
 picking the session up an hour later picks up the same session. A client's input closing detaches
 it; it never ends anybody's session on the way out, and `/quit` is how you say you meant to.
 
-`--connect` writes what `--headless` writes — the records to stdout, what a person reads to
-stderr — so it is a drop-in for it in a script, and like it, it sends a piped line only once the
-turn before it is over; at a terminal, what is typed goes at once. It answers a permission question with the same
+`--connect` writes what `--headless` writes, so it is a drop-in for it in a script, and sends a
+piped line only once the turn before it is over. It answers a permission question with the same
 three letters the panel takes, `y`, `n` and `a`; `ctrl+c` stops the turn and a second one detaches;
 and `?4` prints what item 4 actually holds, which is the one thing a stream of records can never
 say, because [the log names things rather than copying them](#-a-session-on-disk). A running command
@@ -157,26 +133,16 @@ that [reaches for the network](#-the-network-when-a-command-tries) is answered w
 letters, once the kernel's own questions are.
 
 A question still open when a client's input closes is left for somebody else: the next client to
-attach, the desk where the session is drawn, or this one coming back. A client cannot tell whose
-question it is, so answering it would be deciding for whoever was asked. The lines of its script
-that were waiting for that turn to be over go unsent, and it says which as it leaves. A script that drives a session
-alone and wants its questions answered on the way out says so with `--on-ask deny` or
-`--on-ask allow` on the `--connect` command line; a settings file's `on-ask` is for runs that have
-nobody else to ask, and `--connect` does not read it. `leave`, the `--connect` default, is refused
-anywhere else, because there nobody else could answer.
+attach, the desk where the session is drawn, or this one coming back; the lines of its script that
+were waiting go unsent, and it says which. A script that drives a session alone says
+`--on-ask deny` or `--on-ask allow` on the `--connect` command line; a settings file's `on-ask` is
+not read there.
 
 **Where it listens is the whole of its authentication, so it refuses to listen anywhere else.**
-There is no bearer token in this protocol and there is not going to be one: it carries a `shell`
-tool, so reaching the session is reaching the machine, and a scheme that had to be kept in step
-would be protecting a channel whose real boundary is the socket. A unix socket's file permissions
-are that boundary — the file is made `0600` the moment it exists — and `tcp:127.0.0.1:PORT` is the
-machine. Anything else, `--serve tcp:0.0.0.0:7878` for one, is refused with the reason and a way
-out: it is not a loopback address and whatever reaches the port runs the `shell` tool as you, so
-listen on `tcp:127.0.0.1:PORT` or on `unix:PATH`, and reach it from elsewhere through something
-that does authenticate — `ssh -L` is the usual one.
-
-So reaching a session from another machine is a tunnel: SSH already has the key management, so the
-session gets an authenticated, encrypted transport without this program growing either.
+The protocol carries a `shell` tool, so reaching the session is reaching the machine. A unix
+socket is made `0600` the moment it exists, and `tcp:127.0.0.1:PORT` is the machine; anything else,
+`--serve tcp:0.0.0.0:7878` for one, is refused. From another machine, tunnel through something that
+authenticates:
 
 ```console
 host$  kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder
@@ -184,44 +150,25 @@ other$ ssh -N -L 7878:127.0.0.1:7878 host &
 other$ kamchatka --connect tcp:127.0.0.1:7878
 ```
 
-A port and a socket file are not the same thing to write a protocol over. Frames here are small —
-a line somebody typed, a fragment of a sentence — so `TCP_NODELAY` is on, because Nagle would hold
-each one back waiting for the last to be acknowledged. Keepalive is on, because a peer whose machine
-slept sends no `FIN` and a read on the other side would wait for ever. And a dropped connection is
-picked back up for a minute, backing off: a socket file's host either comes back at once or is not
-coming back, but over a port the ordinary reason to lose a connection is a laptop changing access
-points, and getting it back takes seconds.
+A dropped TCP connection is picked back up for a minute, backing off.
 
 **A session serves one client at a time, and the newest wins.** A client that attaches takes the
 session, and the one that had it is told it was replaced and let go of: `--connect` exits saying
-so, and the browser page stops reconnecting. Neither comes back by itself, because two clients that
-each reattached would trade the session back and forth; attaching again on purpose takes it back.
-The newest rather than the first, because the usual second connection is the same client coming
-back — a laptop that changed access points, a tab reconnecting — while the session still holds its
-old connection, which keepalive takes a couple of minutes to notice is gone. Refused, that client
-would be locked out of its own session for longer than it keeps trying.
+so, and the browser page stops reconnecting; attaching again on purpose takes it back. The newest
+wins because the usual second connection is the same client coming back while the session still
+holds its old one.
 
 Several people driving one agent is not something this program has a design for, and one at a time
 is what stands in for one. A session drawn at a desk and served is still two ways in: both may
 submit, interrupt and answer questions, and a message either sends into a running turn waits in one
 queue with the other's. Each goes in on its own, in the order it was sent, with a turn of its own.
 
-**A command that reaches for the endpoint is finished before the next line is read**, without the
-session standing still for it. `/models` fetches a listing, `/compact` works out a pass and a
-`/model` or `/endpoint` settles a switch, each sent off while the session goes on drawing,
-answering clients and reading the kernel; the line after one waits until it is back, because the
-line after `/models` is often the `/model` it was asked for. A client's waiting line is answered
-`queued` at once and handed in afterwards, and anything it opens on a page is said instead.
-`ctrl+c` — or a client's interrupt, or `--deadline` — stops a listing or a pass; a switch is
-always let finish, because half an `/endpoint` is worse than a wait. Down a pipe and from a client,
-a `/compact` is taken when its pass comes back, with what it took said first, and the list from
-`/models` is said rather than paged.
+**A command that reaches for the endpoint** — `/models`, `/compact`, `/model`, `/endpoint` — runs
+while the session goes on, and the line after it waits until it is back. `ctrl+c` stops a listing
+or a pass; a switch is always let finish.
 
-The protocol itself is newline-delimited JSON, which is to say `nc` and `jq` read it. It lives in
-[`remote`](https://docs.rs/kamchatka/latest/kamchatka/remote/) rather than in a crate of its own,
-and the module documentation is where the argument is: why the records are the half that cannot be
-lost and the fragments are the half that can, and why attaching answers with a projection rather
-than with a snapshot.
+The protocol is newline-delimited JSON, so `nc` and `jq` read it, and
+[`remote`](https://docs.rs/kamchatka/latest/kamchatka/remote/)'s documentation describes it.
 
 `examples/attached.rs` is a client of a served session — attach, ask, follow the turn, refuse a
 permission question, read back the item the answer was recorded as:
@@ -231,22 +178,18 @@ $ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
 $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 ```
 
-Its header carries the wire transcript, because a client in another language needs the JSON and
-none of the Rust.
+Its header carries the wire transcript, for a client in another language.
 
-And `examples/gateway.rs` with `examples/browser.html` put the session in a browser, which is the
-one client that cannot reach it on its own: a browser has no TCP, so something has to terminate
-HTTP in front. Three routes, no framework, no build step, and one HTML file.
+And `examples/gateway.rs` with `examples/browser.html` put the session in a browser, which cannot
+reach it on its own:
 
 ```console
 $ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
 $ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
 ```
 
-`examples/phone.rs` is the same thing in one command, for when there is nobody at the machine: it
-wires a session of its own, binds it to a loopback port the kernel picks, and serves the same page
-in front of it. The HTTP half is `examples/relay/`, shared rather than copied, which is why
-`gateway.rs` is still only a relay.
+`examples/phone.rs` is the same thing in one command, for when there is nobody at the machine: a
+session of its own, with the same page in front of it.
 
 ```console
 $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- -m qwen/qwen3-coder
@@ -254,16 +197,8 @@ $ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- -m qwen/qwen3
 
 It takes the program's own arguments, all of them, because the session it assembles is the
 program's: `-m`, `--advise`, `--allow`, `-s`, a first message, a settings file found where you are
-standing. Where the *page* listens is the one thing that is not one of them — the positional is the
-first message, and `--serve` already means the session's own socket — so it is
-`KAMCHATKA_PHONE_LISTEN`, loopback unless it says otherwise.
-
-It is `text/event-stream` rather than a WebSocket because SSE already has this protocol's shape in
-it. An event may carry an `id:`, and a browser that loses the stream reconnects **by itself** and
-sends `Last-Event-ID:` — which is exactly `attach { since }`. So the browser does resume with no
-client code, and the negative space matches too: an event with no `id:` does not move
-`Last-Event-ID`, so records get one and the fragments of a model still typing do not. A browser
-never tries to resume from something that was never recoverable.
+standing. Where the *page* listens is `KAMCHATKA_PHONE_LISTEN`, loopback unless it says otherwise.
+A browser that loses the stream reconnects and resumes by itself.
 
 The page has the terminal's four tabs, in the terminal's order: the button in the top right corner
 cycles **chat → context → events → permissions**.
@@ -271,61 +206,19 @@ cycles **chat → context → events → permissions**.
 The **context** view is the rows the context tab draws — what each item is, what it is estimated to
 cost, and what the next request will do with it. Tapping a row fetches the whole of that item,
 because the projection names items rather than carrying them; the button on the right of a row is
-its state, and tapping *that* moves it to the next one — active, then a marker where it was, then
-out of the request entirely, then active again. It is one button rather than three because the
-middle step is the one worth having: taking a tool result out makes the projector drop the call
-that asked for it, so the model reads a conversation it never had, while an elided one still
-answers its call and only the content is gone. That is <kbd>space</kbd> on the context tab, and it
-is the same function underneath — including the note it writes, which the model reads.
+its state, and tapping *that* moves it to the next one — active, elided, excluded, active again —
+which is <kbd>space</kbd> on the context tab, note included. The **chat** follows, as it does at
+the terminal. The **events** view is the trace, with the time each step took; the **permissions**
+view is the rules, each row with **allow**, **ask** and **deny**, and **ask** is the way back from
+an `always`.
 
-Moving a state moves the **chat** too, the way it does at the terminal — because the chat is the
-context, read back. An excluded item is gone from the conversation; an elided one keeps its place
-and reads as its **marker**, the projector's own words in the brackets it put round them, which is
-exactly what the model reads there. Both of those are the runtime's rules rather than the page's,
-so the page asks for a fresh conversation rather than working them out.
+The prompt is on the chat alone. A waiting question colours the cycler, and a mark in the top left
+blinks while a turn is running. A model's answer is rendered as markdown, nothing in it becomes
+HTML, and a link is a link only to `http`, `https` or `mailto`. It streams in as it is written and
+is then replaced by what was recorded, as at the terminal.
 
-The **events** view is the trace: what happened, in this program's own words, with the gap beside
-the lines that took any time — which is what that tab is *for*, since the question somebody brings
-to a log is which step was slow. Nothing under a tenth of a second gets a figure, and neither does
-a line that ended a wait for a *person*: however long you took to answer a question, it is not a
-step the program spent. The **permissions** view is the rules the policy holds and what each
-covers, with the confinement over the top and a count of the subjects nobody has decided, which are
-the ones that will be asked about. Each row carries **allow**, **ask** and **deny**, with the one it
-holds pressed in: <kbd>a</kbd>, <kbd>r</kbd> and <kbd>n</kbd> on the permissions tab, through the
-same function, so the change is recorded and said the same way. **ask** is the way back from an
-`always`, and takes the row off the list, since a question is not a decision. That is `rule` on the
-wire.
-
-Switching to context or permissions asks the session for a fresh projection rather than adding up
-the records, because `going`, `left_out` and `marker` are answers about the *next request* and no
-record carries them. That is `project`, which every client has. The events view asks for one
-on every record, because what it draws is the trace, in the program's own words, and that comes
-with a projection rather than with the records.
-
-The prompt is on the chat and nowhere else, which is where the terminal keeps it; a view that is a
-list of rows has nothing to say to a box that takes a line. A waiting question colours the cycler
-rather than following you about — the same thing the tab strip does by going red, and for the same
-reason: from another view, the question is not what you are looking at. A mark in the top left
-blinks while a turn is running, because a turn can be a minute of nothing arriving and a still page
-is otherwise indistinguishable from a dead connection.
-
-A model's answer is rendered as markdown, as the terminal renders it — headings, emphasis, lists,
-quotes, rules, code and tables — and only the model's: a call, a result and the program's own lines
-are drawn as they came. A fenced block keeps a rule down its left and is not highlighted, which the
-terminal does with a highlighter the page has no copy of. Nothing in an answer becomes HTML, and a
-link is a link only to `http`, `https` or `mailto`.
-
-A model's answer streams in as it is written and is then **replaced by what was recorded**, which
-is the rule the terminal follows: the fragments are the live half and the item is what was kept.
-They are worth replacing rather than keeping. A fragment is best-effort, so a client that fell
-behind would otherwise hold a truncated answer for ever with nothing to say so; and fragments are
-what the provider sent byte for byte, where the context trims the blank lines some of them like to
-open with.
-
-`/cleanup` takes this program's own lines off the chat — what it said about what it did, and what it
-answered a command with — and leaves the conversation, which is the context. It is the command form
-of <kbd>ctrl+l</kbd>, so it works at a terminal, down a pipe, through `--connect` and on the page;
-and because a session has one voice, clearing it on one client clears it on all of them.
+`/cleanup` (<kbd>ctrl+l</kbd>) takes this program's own lines off the chat and leaves the
+conversation; clearing it on one client clears it on all of them.
 
 The gateway has **no authentication and no encryption**, and says so when you point it at anything
 but loopback. `--serve` itself still refuses to. Whatever reaches the page reaches the `shell`
@@ -334,45 +227,18 @@ running.
 
 ## 🧩 three dialects, and why the others keep the order
 
-`--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
-convenience — it is the difference between seeing what the model did and seeing a rearrangement of
-it.
-
-`generateContent` answers with `content.parts[]`: a thinking part, a sentence, a `functionCall`,
-in the order they were produced. The OpenAI-compatible shim in front of the same model flattens
-that into a `content` string beside a `tool_calls` array, because the dialect it is imitating has
-nowhere to put an order. Everything downstream then reads a turn that has been tidied up.
-
-The context pane reads such a turn out in the order it was produced — the thinking, the sentence,
-the call — and `context` hands the agent the same blocks, numbered, with the signed ones marked. It
-is only worth having because the order is really in there: the runtime records it as
-`Content::Blocks`, counts it, prunes it and elides it like any other content, and a
-`LinearProjector` with `send_blocks` set, as `--gemini`'s is, sends it back the same way.
-
-Signatures are the other half. Gemini signs the parts of a turn and answers
-`400 Function call is missing a thought_signature` to a request that returns one without it — and
-it signs text parts as well as calls, which a message with three slots has nowhere to keep. Here
-each part's own fields ride back out on the block they arrived on, unread.
-
-`--anthropic` is the same bargain with Anthropic's Messages API, whose turn is a list of typed
-blocks - thinking, text, `tool_use` - kept in the order they came. Its thinking is signed, and a
-turn that thought before a tool call has to send that thinking back with the call's result,
-signature and all, or the next request is refused. Thinking from another provider has no signature
-this API would take, so a session that switched to it sends that thinking nowhere rather than
-being refused for it. OpenRouter speaks the same dialect at `/api/v1/messages`, so a model there
-can be asked in it as well as in the OpenAI one.
-
-`--responses` is the same bargain with OpenAI's own newer API, at the same address as chat
-completions and with the same key. A reasoning model's thinking comes back there as an item whose
-`encrypted_content` is the thinking itself, sealed; chat completions has nowhere to keep that, so a
-model asked through it starts every turn's thinking from nothing and is billed for doing it again.
-Here it goes back with the call's result: on `gpt-5-nano`, the request carrying a result back spent
-no reasoning tokens with it and 64 without. Instructions stay where they were put, so one added
-mid-session does not move the start of the prompt that OpenAI caches by. OpenRouter answers it,
-and so does `https://api.openai.com/v1`; most servers that speak chat completions do not.
+`--gemini` talks to Google's own API instead of an OpenAI-compatible one, `--anthropic` to
+Anthropic's Messages API (OpenRouter speaks it too, at `/api/v1/messages`), and `--responses` to
+OpenAI's Responses API at the same address and key as chat completions. All three answer a turn as
+parts in the order they were produced - thinking, a sentence, a call - where chat completions
+flattens it into a string beside a list of calls. Here the order is kept, counted, pruned and
+elided like any other content, the context pane and the `context` tool read it out as produced,
+and each part goes back out with whatever signature or sealed thinking it arrived with, which the
+next request is refused without. Instructions added mid-session stay where they were put under
+`--responses`, so the cached start of the prompt does not move.
 
 Every provider answers one trait, `Dialect`, so `/model`, `/models`, `/endpoint` and the status
-line work the same against any of them and nothing above them knows which wire format it got.
+line work the same against any of them.
 
 ```console
 $ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
@@ -389,47 +255,30 @@ $ kamchatka --responses -m gpt-5-mini "what does src/kernel.rs do?"
 it has.
 
 `/model ID` switches the model and `/endpoint URL [ID]` switches the address — and the model with
-it, because a model belongs to the address that serves it. Switching one and keeping the other is
-how a session ends up asking the ollama on this machine for `gemini-3.6-flash`; given no model the
-old name is kept and the new endpoint is asked whether it has one by that name, which is a notice
-now rather than a 404 on the next request. Both matter for different reasons: comparing two hosted
-models is one address and two names, while comparing a hosted model with the one running on this
-machine is two addresses. A comparison that cannot see the address is a comparison of names.
+it, because a model belongs to the address that serves it. Given no model, the old name is kept and
+the new endpoint is asked whether it has one by that name, which is a notice now rather than a 404
+on the next request.
 
 Every session is written down as it goes, and the last thing printed is where: a record of its
 events and a snapshot of its context, both in a `kamchatka` directory under the system's temporary
-one, and the `kamchatka -r` line that carries on from the snapshot. Only the lines naming the jobs
-it stopped on the way out come after it, since stopping them is the one step that waits. Each event is appended to the
-record the moment it happens, and the snapshot is rewritten whenever the session comes to rest
-and when a turn begins — so a `kill -9`, an out-of-memory kill or a pulled plug leaves the record
-complete to the last event, and a snapshot of where things stood before the turn that was cut
-short. A `SIGTERM` or `SIGHUP` — a closed terminal, `timeout`, `docker stop` — ends the session the
-way `/quit` does: a running turn is stopped and waited for, and the record says so.
+one, and the `kamchatka -r` line that carries on from the snapshot. Each event is appended the
+moment it happens, and the snapshot is rewritten whenever the session comes to rest and when a
+turn begins, so a `kill -9` or a pulled plug leaves the record complete to the last event. A
+`SIGTERM` or `SIGHUP` ends the session the way `/quit` does.
 
-A session's name is when it started, in UTC, so that a list of them says something to whoever is
-reading it, and it is also the name of its two files.
-
-Nobody has to type `/save` for any of this, because a session that ended badly is the one worth
-reading afterwards. A resumed session keeps its name, and its record goes beside the one it carried
-on from, as `NAME-2`, rather than over it. It carries on with the model its record says it was
-last talking to, unless `-m`, `KAMCHATKA_MODEL` or a settings file names another — but at the
-address this run is pointed at, not the record's. The record says where it was, with credentials
-left out, and a session pointed somewhere else is told so along with the `/endpoint` that goes
-back; it is not taken there, because that address is where this run's key would go, and a
-snapshot is a file anybody can hand somebody. It is a temporary directory because this is a
-safety net and not an archive — `/save PATH` is still how a session goes somewhere it will be next
-week — and `--no-record` turns it off for anyone who would rather a transcript did not outlive the
-terminal. The directory is `0700`: what goes in it is a whole conversation and every byte every tool
-produced, written without anybody asking, and under an ordinary umask that would be a
-world-readable file on a shared machine.
+A session's name is when it started, in UTC, and is the name of its two files. A resumed session
+keeps its name, and its record goes beside the one it carried on from, as `NAME-2`. It carries on
+with the model its record names, unless `-m`, `KAMCHATKA_MODEL` or a settings file names another,
+but at the address this run is pointed at: a snapshot is a file anybody can hand somebody, and the
+address is where this run's key would go. The directory is a safety net, not an archive - `/save
+PATH` is how a session goes somewhere it will be next week - it is `0700`, and `--no-record` turns
+it off.
 
 `kamchatka --check PATH` reads a record without starting anything. PATH is the log, the snapshot, or
 their shared name. It says what does not add up: a line that is not a record, an event this version
 does not know, a record missing or numbered twice, a call asked for and never finished, and a
 snapshot whose items the log does not account for. A killed run leaves a call that never finished,
-so a finding is not always a fault; anything found makes the exit status non-zero. The shapes it
-reads are in `nachalnik/tests/records/`, one of every event and a snapshot per format, and a
-reader written against those does not need this program.
+so a finding is not always a fault; anything found makes the exit status non-zero.
 
 `kamchatka reconcile a.json b.json -o merged` folds several forks of one session — one snapshot
 resumed twice and carried on two ways — into one session to carry on from, and starts nothing. The
@@ -439,67 +288,31 @@ order that never happened is not a conversation. A shared item left in a differe
 fork gets the most included one, and an item one fork revised is kept as revised — two forks that
 revised it differently are refused, naming both. Two notes under one label are both kept, and a
 pinned instruction at the point where the forks parted says which notes came from which fork and
-which labels more than one of them carries. Each fork's log is read for the model it was talking
-to: where they all talked to the same one, the token counter's correction is kept and the session
-carries on with that model, and otherwise it is dropped and `-m` says which. Forks of one session
-carry its name, so two sessions that only begin alike — the same `-s`, say — are refused. What it
-writes is a log and a snapshot that check clean, and nothing is written over: `kamchatka -r
-merged.json` carries on, and `/request` is how to read what the first request would be before
-anything is sent.
+which labels more than one of them carries. Two sessions that only begin alike are refused, and
+nothing is written over: `kamchatka -r merged.json` carries on, and `/request` shows the first
+request before anything is sent.
 
-`/models [FILTER]` is what makes `/model` usable, because the ids belong to the endpoint rather
-than to the model: the same thing is `google/gemini-3.5-flash` at one address and
-`gemini-3.5-flash` at another, and after an `/endpoint` there is no other way to find out which
-without guessing. It asks the endpoint, marks the one you are on with `▸` where it stands in the
-endpoint's own order, and takes a filter because a list of everything an endpoint serves is not an
-answer; a filtered list says how many of how many matched.
+`/models [FILTER]` lists what the endpoint serves under the ids it uses, which differ from one
+endpoint to the next, and marks the one you are on with `▸`.
 
 The key is *not* switched with the address. It is read from the environment once, at startup, and a
 key typed at a prompt would be a key in the transcript — so `/endpoint` is for the addresses that
 need no key or take the same one: a local model, a proxy, another base URL on the same account.
 
-What is not switched either way is the context. The same items go to whatever answers next, which
-is what makes the answers comparable. `/seams` names the six replaceable parts and what is in each
-of them right now, asked of the kernel rather than restated from what this program set up at
-startup.
+What is not switched either way is the context: the same items go to whatever answers next, which
+is what makes the answers comparable. `/seams` names the runtime's replaceable parts and what is in
+each now.
 
 `/params KEY JSON` sets one model parameter, `/params KEY null` takes it away, and `/params` shows
-them — with what else this model takes, where the endpoint publishes it. It shows the second
-because a parameter a model does *not* take is not refused: it is sent, ignored, and nothing
-anywhere says so, which makes a `seed` set for a reproducible run buy no reproducibility and look
-exactly like one that worked. The runtime invents none of them — only what you set is sent, apart
-from the `thinkingConfig` a `--gemini` request asks for its thinking with, and a
-`generationConfig` of yours is merged over that; the `max_tokens` an `--anthropic` request
-cannot be sent without, which a `max_tokens` of yours replaces; and the `cache_control` an
-`--anthropic` request asks for its prompt to be cached with; and the `store: false` a
-`--responses` request is sent with, and the `reasoning.encrypted_content` it adds to `include` -
-to yours, if you set one - so that its thinking can go back without the server keeping the
-conversation, unless `/params store true` asks it to — and a listing that publishes nothing is read
-as silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
+them, with what else this model takes where the endpoint publishes it - because a parameter a model
+does not take is sent and ignored with nothing saying so. A parameter you set that the listing does
+not name is marked as ignored, and a value over a published maximum is noted. Only what you set is
+sent, apart from what a dialect cannot send a request without; under `--anthropic` that includes
+asking for the prompt to be cached, which `/params cache_control false` turns off for an endpoint
+that refuses the field.
 
-That last one is on because Anthropic caches nothing it is not asked to, and a session sends the
-same conversation again on every turn: unasked, each of them is billed in full, where a cached
-prompt costs a tenth of that. It marks the end of the conversation and the end of the
-instructions, so an item pruned or rewritten further back costs a write from that item on rather
-than from the start. `/params cache_control {"type":"ephemeral","ttl":"1h"}` keeps it for an hour
-instead of five minutes, at a dearer write, and `/params cache_control false` turns it off, for an
-endpoint that refuses the field.
-
-Where the listing is everything the model takes, a parameter you set that is not on it is named as
-sent and ignored, and the ones it takes that you have not set follow, one to a line, with the
-default and the most each takes beside it where the listing publishes them. A value you set over a
-published maximum is noted; what the endpoint does with it is the endpoint's to say. Where the
-endpoint publishes its sampling parameters only, the same absence settles nothing, so it is named
-as sent and unchecked instead.
-
-No endpoint publishes a parameter's type or its range, so neither is shown: a default is a value,
-and its type is in it.
-
-A parameter named after something the request is built from — `messages`, `tools`, `model`,
-`contents` or `systemInstruction` under `--gemini`, `system` under `--anthropic`, and `input`
-under `--responses` —
-is refused. Those are the context's, the tools' and the session's, and no dialect lets a parameter
-replace them.
+A parameter named after something the request is built from — `messages`, `tools`, `model` and
+their kin in each dialect — is refused.
 
 ## 📏 the number in the status line is an estimate, and says which kind
 
@@ -512,37 +325,16 @@ split into context and tool definitions; the same request anchored on the last r
 and how much of it the next request would fill; what the last request really cost, as the provider
 counted it; and what the counter has learned.
 
-The first figure is the counter estimating the whole request from scratch. The anchored one is the
-one the corner shows once there has been a response to anchor on, and it is a different method
-rather than a better guess: it starts from what the provider charged, adds what the context
-estimates *now*, and subtracts what the estimator says the items that figure already covered would
-cost now. An item that has not moved appears in both estimates and cancels — so it contributes its
-measured cost and no error at all, and only what has changed since the last request is being guessed
-at. The error is a few percent of the change instead of a few percent of the context, which is the
-difference between a thousand tokens and thirty on a context of a hundred thousand.
+Once there has been a response, the corner shows the anchored figure: what the provider charged
+for the last request, plus the estimate of only what has changed since. An item that has not moved
+contributes its measured cost and no error, so the error is a few percent of the change rather
+than of the context, and per-message framing, tool schemas and anything the counter cannot price
+are inside the provider's figure already.
 
-It also absorbs, exactly and for nothing, the three things the counter is structurally blind to:
-per-message framing, the tool schemas as they stood when the request went out, and any payload it
-refuses to price. A PDF the counter cannot put a number on is inside the provider's figure the
-moment it has gone out once.
-
-The counter is the runtime's `Calibrating` one: every response to a request it could price in full
-tells it what that request really cost, and it adjusts. `/budget` says from how many requests, by
-what scale, and what its own guesses came to against the provider's count.
-
-So does every request the model refuses for being too long, and that one is worth more than a
-response. What an endpoint charges for is a bill, and an aggregator in front of a model may quote
-it in some other tokenizer's units; the number in a refusal is a count of the same bytes in the
-units the limit is actually enforced in. Where the two disagree, the corner ends up comfortably
-under a limit the model is already over — so a refusal corrects the counter, and says on screen
-what the request really came to and how much has to go before the next one is sent.
-
-A refusal is only read when it names the limit this session already knows, which is the one thing
-that says it is counting in the same units. The same model id at the same address can refuse in
-two voices: the aggregator's own, quoting the window this session knows, and the model behind it,
-quoting a larger window in its native tokenizer against bytes the aggregator had counted as
-fitting. Reading the second would name tens of thousands of tokens that were never there, so it is
-left as the sentence it arrived as, which says the problem in words.
+The counter corrects itself from every response to a request it could price in full, and from
+every refusal for length that names the limit this session knows - which is worth more, since it
+counts the bytes in the units the limit is enforced in. `/budget` says from how many requests and
+by what scale.
 
 Before any response, on an endpoint that reports no usage, and after a change of model until the
 next answer, the corner falls back to the plain estimate. And where something in the context has
@@ -557,37 +349,18 @@ for; see [the guards on a run nobody is watching](#-the-same-program-without-a-s
 says how much of the total was the advisor's.
 
 The compactor sheds what the conversation is done with, by two rules. The first runs before every
-request, however empty the context is: a tool result whose turn is over — the model has answered
-you with it in front of it, and you have said something since — goes to a marker, and so does a
-picture or a document the model has been shown in an exchange that is over. The second waits for
-room: once the context passes `--compact` (0.8 by default) of the limit, the oldest exchanges go
-whole — your message, the model's turns answering it, their results and any file you attached for
-it — until it is down to the target, the second fraction in `--compact 0.8,0.6` (`[0.8, 0.6]` in a
-settings file). Left out, that is twenty points under the first or half of it, whichever is more;
-the gap is what makes the drops come in bursts rather than an exchange before every turn, each of
-which would move the start of the request a provider's prompt cache keys on. Set the two equal for
-just enough each time. They are one setting because the second is about the first: a `--compact`
-typed beside a settings file that names both replaces both.
+request: a tool result whose turn is over goes to a marker, and so does a picture or a document the
+model has been shown in an exchange that is over - unless the marker would be bigger than the
+result. The second waits for room: once the context passes `--compact` (0.8 by default) of the
+limit, the oldest exchanges go whole until it is down to the target, the second fraction in
+`--compact 0.8,0.6`; left out, that is twenty points under the first or half of it, whichever is
+more, so the drops come in bursts rather than moving the cached start of the request every turn.
 
-Neither rule touches the turn in progress — what the model is in the middle of is what it has not
-finished using, and a result taken from under it was read again, and taken again — nor anything
-that is pinned, which the kernel refuses, nor a note the model wrote for itself, and neither
-summarizes what it takes: it never read it. Every item is still on the context tab, still holding every byte it held: an elided one marked `…`, one
-<kbd>space</kbd> from coming back, and a dropped one excluded, `/restore` from coming back. A result
-you bring back by hand is left alone by the first rule rather than elided again before the next
-request; when the context fills, it goes with its exchange like anything else, and a pin is what
-keeps it.
-
-Nothing either rule takes has gone unread, and the marker says so — a model reading a marker that
-said only "compacted" decided it had never seen the files it had just summarised. That holds when
-the request would not fit the limit, too: what the model has not been shown is never taken to make
-it fit, and the request is not sent.
-
-A marker costs something too — it is a line of text where the content was — so the compactor
-counts what each elision actually recovers and leaves alone any result no bigger than the marker
-that would replace it: eliding a `wrote 412 bytes to …` would make the request *bigger*. A picture
-is the exception, and goes once it has been shown whatever its size: the counter has no number for
-it, so no arithmetic would ever pick it.
+Neither rule touches the turn in progress, anything pinned, or a note the model wrote for itself,
+and neither summarizes. Every item is still on the context tab: an elided one <kbd>space</kbd> from
+coming back, a dropped one `/restore` from it. A result you bring back by hand is not elided again
+by the first rule. The marker says what was taken has been read, and what the model has not been
+shown is never taken to make a request fit.
 
 `/compact` asks that same compactor by hand, and shows its answer before anything happens: every
 item it would take, with the identifier, what it is and what it is holding. It then waits, in the
@@ -626,17 +399,11 @@ The context tab says the same figure while you are deciding which rows answer fo
 names the counter's own estimate as an estimate, and a refusal from the endpoint is the only one
 that quotes a count.
 
-`--send-oversized` sends it anyway. Both halves of that check can be wrong: the figure is an
-estimate, and the limit is whatever the endpoint advertised. `liquid/lfm-2.5-2.6b` is quoted at
-65,536 tokens on OpenRouter and routes to a provider whose own window is twice that, so a session
-holding itself to the smaller number refuses requests that would have been answered. The flag
-costs a round trip and buys the endpoint's own count, which is worth more than any guess made
-here.
+`--send-oversized` sends it anyway, since the figure is an estimate and the limit is whatever the
+endpoint advertised, which can be smaller than the window behind it.
 
-Down a pipe there are no keys, so `--headless` prints the `/compact` list to stderr and takes it.
-That is the opposite of what `--on-ask` does with a tool's question, and they are different
-questions: a tool's is the model asking to do something nobody vouched for, and this one is a line
-the operator typed.
+Down a pipe there are no keys, so `--headless` prints the `/compact` list to stderr and takes it:
+a line the operator typed is not a question the model asked.
 
 `/compact` is also the way out of a session too big to send. The tool that prunes a context is the
 *model's* — `context` — and reaching it costs a request, which is the thing that is failing.
@@ -663,10 +430,8 @@ let wired = kamchatka::wiring::Setup {
 .wire(kamchatka::endpoint::connect(Some("qwen/qwen3-coder")).await?)?;
 ```
 
-Two of those steps are not guessable and are the reason this exists rather than a page of
-instructions: the event subscription has to happen *before* anything is plugged in, or the trace
-is missing the wiring that set the session up; and the introspection tools hold a **weak** handle
-to something the caller has to keep alive.
+It subscribes to events before anything is plugged in, so the trace has the wiring, and keeps alive
+the handle the introspection tools hold weakly.
 
 From there, `App::submit` takes a line — a message or a command — and answers with what it did,
 what it said, and any page it opened:
@@ -679,17 +444,13 @@ let reply = wired.app.submit("/budget").await;
 event loop of its own wants neither: it holds the `App`, pumps `wired.events` into `on_event` and
 `wired.finished` into `on_outcome`, and hands in a line whenever it has one.
 
-`spend` above is the one thing a host gets whether it asks or not. `on_event` is the door every
-loop comes through, so that is where the provider's own figures are added up; once they pass the
-ceiling the turn in flight is interrupted and `App::start_turn` refuses the next one, so a host
-that keeps handing in lines is told rather than quietly billed. `App::spent`, `App::spend` and
-`App::set_spend` are the figure, the ceiling and the way to move it.
+`spend` is enforced in `on_event` and `App::start_turn`, so a host that keeps handing in lines is
+told rather than quietly billed. `App::spent`, `App::spend` and `App::set_spend` are the figure, the
+ceiling and the way to move it.
 
 ## 🗂️ a settings file
 
-`--config-file kamchatka.json` stands in for the arguments you would otherwise type every time.
-JSON, because a project's settings are a handful of strings, numbers and lists and there is a
-parser for that in the tree already:
+`--config-file kamchatka.json` stands in for the arguments you would otherwise type every time:
 
 ```json
 {
@@ -703,134 +464,47 @@ parser for that in the tree already:
 }
 ```
 
-Every key is optional, every one is named after the argument it stands in for — with two
-exceptions, below — and **anything given on the command line wins**, including a value that happens
-to be the default, because `--requests 8` is somebody saying eight rather than somebody saying
-nothing. A list on the command line *replaces* the file's rather than adding to it: one rule for
-every key is the only kind worth predicting, and the other way round there is no way to ask for
-fewer. `--model` is the one setting with a variable behind it, so the order there is command line,
-then `KAMCHATKA_MODEL`, then the file.
+Every key is optional and named after the argument it stands in for, and **anything given on the
+command line wins** - a list there *replaces* the file's. For the model the order is the command
+line, then `KAMCHATKA_MODEL`, then the file. A leading `~` in `sandbox-allow` and `sandbox-read` is
+your home directory. A key nothing reads stops the program and names it, and so does a key that does
+not apply to this run: `deadline` and `on-ask` (other than `deny`) beside `--serve`. What belongs to
+one invocation - a message, `-r`, `-f`, `--headless` - has no key.
 
-**`border-color` and `tools` are the exceptions**, the two settings with no argument behind them:
+Two keys have no argument behind them:
 
-```json
-{ "border-color": "#7aa2f7" }
-```
+- **`border-color`**, six hex digits, is the colour of the window's frame and of what says *the
+  keys are here*. Left out it is `#1A936F`; `null` is the terminal's own foreground. The colours that
+  mean something - yellow for `ask`, red for a question still waiting - are not affected.
+- **`tools`** is which of the six tools a session starts with; left out, all of them. `[]` offers
+  none, `null` and an unknown name are refused. `/tools toggle ID` turns one off or on mid-session.
 
-Six hex digits, `#` optional, and it is the colour of the window's frame — along with everything
-else drawn in it to say *the keys are here*: the active tab, the prompt while it has them, a
-permission question you can answer where you stand. It exists because that is the one colour in
-the program picked to sit beside *your* terminal theme rather than to mean something, and there is
-no argument for it because nobody types a colour twice. Left out, it is `#1A936F`; `null` is the
-terminal's own foreground colour, for a window that belongs to whatever palette it is opened in.
+**Given no `--config-file`, two places are looked in**: `./kamchatka.json`, then
+`kamchatka/kamchatka.json` under `XDG_CONFIG_HOME` or `~/.config`. A file picked up this way is
+named before anything else happens. **`./kamchatka.json` is asked about before it is read**,
+because whoever wrote the directory wrote it, and it may start MCP servers, turn the sandbox off
+and grant permissions; anything but `y` runs without it, and a run with no terminal is refused and
+told to name it with `--config-file`. The one under your config directory is read without asking.
 
-What it does not touch is the vocabulary. `ask` on the permissions tab, a budget bar past seven
-tenths, a command that was killed, a pinned row — those are yellow because yellow *means*
-something there, and they stay yellow against a frame of any colour. Red is left alone for the
-same reason: a question nobody has come back to is red whatever you set, or you could configure
-away the difference between *answerable now* and *still waiting*.
-
-A colour that is not six hex digits stops the program and says so, naming the file and the form —
-including in a headless run, which has no frame to draw. One file is valid everywhere or invalid
-everywhere, rather than one that works until somebody opens it on a terminal.
-
-**`tools` is the other one**, and it says which of the six a session starts with:
-
-```json
-{ "tools": ["fs", "shell", "context", "log", "setup"] }
-```
-
-Left out, every tool is offered, and the shipped file lists all six. `null` is refused: beside
-`[]` for none it could be read either way. The list above is the whole set minus `fork`, which is
-how a project says *do not go buying extra requests*. An empty list offers none of them, which is
-a session with whatever an MCP server brought and nothing else. A name that is
-not a tool stops the program and says which ones there are, for the same reason an unknown key
-does: a file asking for `contxt` and quietly getting a session with no context tool is worse than
-one that does not start.
-
-There is no argument behind it because which tools a project wants its agent to have is settled
-once and then not thought about again — and because the *other* thing it could be for, turning one
-off for a while, is `/tools toggle ID` at the prompt, at the moment somebody wants it rather than
-before the session starts. `/tools toggle` works on every tool, including the ones a server
-brought, and a tool turned off this way is kept rather than thrown away: `/tools toggle` again
-offers the same one back, still holding whatever it was remembering.
-
-A leading `~` in `sandbox-allow` and `sandbox-read` is your home directory. That is the one place
-this program expands one, because every other way of giving those paths has a shell in front of it
-that expanded `~` before the program saw anything, and a file has nothing in front of it. The tools
-still refuse a leading `~` rather than expanding it, because those paths are written by a *model*.
-
-A key nothing reads is an error naming it, not a line that quietly does nothing: the program stops
-and names the file, the key it did not know, and the keys it would have.
-
-A key that is read but does not apply to this run is an error too, and it says which file it came
-from. `deadline` and `on-ask` are the two, and `--serve` is the run they do not apply to: a served
-session goes on for as long as somebody wants it, and a question in it is answered by whoever is
-attached. An argument dropped on the floor is worse than one refused — `deadline: 300` beside
-`--serve` reads as a run that ends by itself — and a project's file is the most likely place for
-one to be dropped without a word, because whoever wrote it is not looking at this run's command
-line. So `--serve` refuses both, from the file as well as from the flags, naming the path.
-
-`on-ask: deny` in a file is not refused, because that is what the run would have used anyway, and
-`--print-config` below writes it: a file that is the shipped one with nothing changed in it is
-still a file a reader is meant to be able to serve from. Everything else in that key's place is
-refused, `allow` included.
-
-What it deliberately does not carry is anything belonging to one invocation rather than to the
-project: a message, `-r`, `-f`, and `--headless`, which decides for itself from whether stdout is a
-terminal.
-
-**Given no `--config-file`, two places are looked in**: `./kamchatka.json`, and then
-`kamchatka/kamchatka.json` under `XDG_CONFIG_HOME` or `~/.config`. The working directory first,
-because a file sitting next to the thing it describes is the one you mean; nothing walks *up* from
-there, because the surprise grows with the distance and typing the flag costs one flag. A file that
-applies because of where you are standing is one that can surprise you, and the answer to that is
-not to hide it — a session that picked one up says which file it read before anything else
-happens: on standard error before a server is started or a provider reached, and again in the
-conversation.
-
-**`./kamchatka.json` is asked about before it is read**, because whoever wrote the directory wrote
-it, and it may start MCP servers, turn the sandbox off and grant permissions. The question names
-which of those it sets, and anything but `y` runs without it. A run with no terminal to ask at — a
-pipe, a script, a served session with no screen — is refused instead, and `--config-file
-kamchatka.json` is how it says the file is meant. The one under your config directory is yours,
-and is read without asking.
-
-A path you typed is not announced: you already know which file it was.
-
-**A starting point ships with the crate**, as `kamchatka.json` beside this readme, and in the
-archive a release attaches, beside the binary: every setting there is, so you edit rather than
-remember, and every one of them at the program's own default. `cargo install` copies no files, so
-the binary carries a copy too — `kamchatka --print-config > kamchatka.json` is the same bytes,
-wherever you installed from. It holds the defaults, so a session run with it unchanged is the
-session run with no file, whatever is typed beside it. It grants nothing — `allow` is empty, both sandbox lists are empty, `on-ask` is `deny` — and none of that is an oversight. A
-default that pre-granted `read`, or opened up `~/.cargo` so that `cargo` works, would be this
-program deciding on your behalf the one kind of thing it exists not to decide on your behalf —
-and `~/.cargo` holds a registry token.
-
-It narrows nothing either. A spend ceiling can look like the one thing a file adopted sight-unseen
-can safely offer, but what it buys is a session that stops for a reason nobody chose, out of a
-file whose whole claim is that it is the defaults. `spend` is here at
-`null` with the rest, and `--spend`, `/spend` or one edit is how it stops being. The suite holds
-the file to naming every key and to leaving the two that bound a session unset, so neither a
-setting added later nor a number added here can go unnoticed.
+**A starting point ships with the crate**, as `kamchatka.json` beside this file and in a release's
+archive, and `kamchatka --print-config` prints the same bytes: every setting, each at its default.
+It grants nothing and bounds nothing - `allow` and the sandbox lists are empty, `on-ask` is `deny`,
+`spend` is `null` - because a default that granted something would be this program deciding on
+your behalf.
 
 ## 🎛️ options
 
-`kamchatka --help` lists every option, and the environment too rather than leaving its variables
-for the readme alone to mention: the key, as `KAMCHATKA_API_KEY`, which goes wherever the
-requests go - or, where `KAMCHATKA_API_KEY` is not set, the key named for whoever is there:
-`OPENROUTER_API_KEY` for OpenRouter and `OPENAI_API_KEY` for `api.openai.com`, each sent there and
-nowhere else, so that a key exported for one service is never handed to another. OpenRouter, OpenAI,
-Google and Anthropic refuse a request without one and a model served on this machine needs none -
-pointed anywhere else, a session with no key starts and sends none; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
-says otherwise, Google's own `v1beta` with `--gemini`, or Anthropic's own with `--anthropic` -
-`--responses` goes where chat completions does -
-whose key is read from `ANTHROPIC_API_KEY` first and only for Anthropic's own address;
-`KAMCHATKA_CONTEXT_LIMIT`, for a
-provider that will not say how much context its model has; and `KAMCHATKA_NO_ATTRIBUTION`, which
-stops the program naming itself to OpenRouter. The advisor's variables are listed by a build that
-has an `--advise` to use them and by no other.
+`kamchatka --help` lists every option, and the environment variables:
+
+- **`KAMCHATKA_API_KEY`**, sent wherever the requests go. Without it, `OPENROUTER_API_KEY` is read
+  for OpenRouter, `OPENAI_API_KEY` for `api.openai.com` and `ANTHROPIC_API_KEY` for Anthropic's own
+  address, each sent there and nowhere else. A model served on this machine needs no key.
+- **`KAMCHATKA_BASE_URL`**, where the requests go: OpenRouter, Google's own with `--gemini`, or
+  Anthropic's own with `--anthropic`, unless it says otherwise.
+- **`KAMCHATKA_CONTEXT_LIMIT`**, for a provider that will not say how much context its model has.
+- **`KAMCHATKA_NO_ATTRIBUTION`**, which stops the program naming itself to OpenRouter.
+
+A build with `--advise` lists the advisor's too.
 
 ## 🚦 an advisor on the question
 
@@ -853,26 +527,12 @@ several vendors, and lists them at
 that sells one of these and is not on it is reached through OpenRouter's bring-your-own-key, which
 needs nothing from this program.
 
-The feature puts the advisor in the binary and the flag is what starts one, so a build with
-`shell-advisor` and a model in the environment but no `--advise` draws no ratings at all. The
-permissions tab says so when that is the case, rather than leaving you to work it out from your
-own build flags.
+A build with the feature and no `--advise` draws no ratings, and the permissions tab says so.
 
 **The questions go to OpenRouter, and an OpenRouter key pays for them.** `KAMCHATKA_SYSTEM1_API_KEY`
 if it is set; otherwise the session's own key, where the session already talks to OpenRouter; and
-otherwise `OPENROUTER_API_KEY`. A key is an OpenRouter key because it is being sent to OpenRouter,
-not because of the variable it was read from — so a session pointed at ollama, at Google with
-`--gemini`, or at a gateway of your own holds a key that service issued, and spending it here
-would hand a third party a credential with no business with them. Such a session with neither of
-the other two set
-
-```console
-$ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka --advise "…"
-```
-
-stops before it begins, saying that it could not reach the advisor, which key to set, and which
-address the session talks to. What a borrowed key changes is who is told: the arguments below go
-to OpenRouter as well as to the model behind it.
+otherwise `OPENROUTER_API_KEY`. A session pointed anywhere else holds a key that service issued,
+so with neither of the other two set it stops before it begins and says which key to set.
 
 `KAMCHATKA_SYSTEM1_BASE_URL` moves the questions somewhere else: an engine of your own that
 answers the same route, `/systemone`, which is the one OpenRouter takes them on, or one of the
@@ -884,10 +544,8 @@ Which engines are reachable, and how each is addressed and run, is in [the clien
 documentation][engines].
 
 It **decides nothing**. What the standing rules allow runs without a question and without
-anything being sent, what they refuse is refused, and what they ask about is asked about — an
-`allow` is your decision, and a second model does not get to reopen it. So an advisor that is
-unreachable, out of quota or unparseable costs the colour and nothing else, and the question says
-so where the colour would have been: `the advisor could not rate this`, and why.
+anything being sent, and what they refuse is refused. An advisor that is unreachable or
+unparseable costs the colour and nothing else, and the question says why in its place.
 
 **The colour is the model's reading, and the models do not read alike** - not every one answers
 what `--advise` asks, the ones that do place some commands a level apart, and they do not mean the
@@ -897,19 +555,14 @@ do about it.
 **What leaves the machine**: for each shell command you are about to be asked about — which in a
 default session is every command the model writes, since `exec:run` is a question by default — the
 tool's id, the capabilities it declared, and its arguments, capped at 2KB per argument with the
-cut named. Not the conversation, not the system instruction, not the model's own prose about why
-it wants the call. A call the rules allow or refuse is sent nowhere. That disclosure is the reason
-this is behind both a feature and a flag rather than on for anyone with a key in their
-environment.
+cut named. Not the conversation, not the system instruction, not the model's prose. A call the
+rules allow or refuse is sent nowhere.
 
 ### an advisor on this machine
 
 An engine running here is reached with `KAMCHATKA_SYSTEM1_BASE_URL` pointed at it, and needs no
-key: a borrowed one is only ever sent to OpenRouter. The point is not that it is free, though it
-is: **nothing leaves the machine**. Everything the section above says about a third party reading
-a command stops applying, because the command goes to a server you started, under your own user,
-and comes back as numbers. [The client's documentation][engines] names the engines that serve the
-route and how to start each.
+key, and then **nothing leaves the machine**. [The client's documentation][engines] names the
+engines that serve the route and how to start each.
 
 [engines]: https://docs.rs/nachalnik-providers/latest/nachalnik_providers/system1/#engines
 
@@ -921,24 +574,13 @@ arguments: what the advisor reads the command as, in its colour, and how sure it
 Green, yellow or red, off a three-level rubric — it only reads, lists, searches or changes
 directory; it changes files inside the working directory, the way git or a rebuild could undo; it
 reaches outside the working directory, destroys something that cannot be got back, or sends
-something off this machine. You still have to read the command, which is what the panel under it
-is for. What the colour buys is the half-second before that: whether this is the fifteenth
-`cargo test` of the afternoon or the one call in fifty worth stopping on.
+something off this machine. You still have to read the command; the colour is the half-second
+before that. A chain is rated stage by stage, and the worst stage is underlined.
 
-**The top of that rubric is asked a second time, as a claim rather than as a position**, and the
-worse of the two answers is what gets drawn. Engines are good at different halves of it: an ordinal
-`score` is the primitive some read worst — some engines' own documentation calls it their weakest —
-and asking the same reading as a yes-or-no finds destructive commands the rubric misses; others read
-the rubric well and miss some of them when the rubric is taken away. Folded, whichever model is
-asked draws at least as many of them red as either reading alone. It costs a question and not a
-round trip — every question in a call is answered in one pass, which is the same property that makes
-placing a command stage by stage affordable.
-
-Two rules keep it honest: a score is read by the level it is nearest rather than the one it has
-passed, and a rating the advisor was not sure of is never drawn green and never drawn safer than it
-scored — a distribution spread across a safety rubric is the advisor saying it could not tell,
-which is not the same as a clean bill. The percentage is on the line so that a yellow you cannot
-explain is visibly a yellow nobody was sure of.
+**The top of that rubric is asked a second time, as a yes-or-no**, and the worse of the two answers
+is drawn, since engines read the two forms differently. A score is read by the level it is nearest,
+and a rating the advisor was not sure of is never drawn green and never safer than it scored. The
+percentage is on the line, so a yellow you cannot explain is visibly one nobody was sure of.
 
 ### where the models differ
 
@@ -964,23 +606,18 @@ beside a record already there under that name rather than over it - a resumed se
 name of the one it carried on from. The snapshot has two ways back in.
 
 `kamchatka -r PATH` starts a fresh session from it, which is the faithful one: the item numbers,
-the model parameters and what the token counter had learned all come back exactly as they were,
-because `Kernel::resume` is a constructor and builds the session around them. It also reads the
-`.jsonl` of the same name, if it is still beside the snapshot, for the one thing a snapshot
-cannot carry: what an item said before somebody rewrote it is an *event*, and without the record
-a resumed session's `v1` pages would be empty. A record that is missing or was cut off mid-line
-costs those pages and nothing else. What it cannot do is carry the lineage on: the resumed session's
-log starts where the resume did, so a `/save` of it writes a record without the earlier rewrites in
-it — the way two hops back is the `.jsonl` you kept.
+the model parameters and what the token counter had learned come back exactly as they were. It
+also reads the `.jsonl` of the same name, if it is beside the snapshot, for what an item said before
+it was rewritten; without it those pages are empty. The resumed session's own log starts at the
+resume, so the record from two hops back is the `.jsonl` you kept.
 
 `/load PATH` brings it into the session you are already in, which is the useful one. It is a
 context operation and it plays by the same rule as the rest of them — nothing is destroyed. What
 was in the context is **excluded**, keeping its numbers and its contents; anything **pinned**
 stays where it is, because a pin is you saying so and `--system` is pinned; the loaded items come
 in as new items with new numbers, and the conversation they were is read back onto the chat tab.
-`/undo` twice puts the whole thing back — one <kbd>u</kbd> where there are keys to press. The
-snapshot's model parameters replace yours, and neither puts those back, so the load says so when
-that changes them.
+`/undo` twice puts the whole thing back, apart from the model parameters the snapshot replaced,
+which the load names.
 
 That makes a checkpoint out of a file. `/save good`, let the agent go somewhere useless,
 `/load good`, and carry on from where it was still working — without losing the detour, which is
@@ -992,11 +629,8 @@ sitting in the context marked `-` excluded if you want to read it.
 this writes the session out and puts a brand new one in its place — the same thing that would
 happen if you quit and ran the program again, without quitting.
 
-The first thing the new session says is that the old one ended, with the old one's name, where its
-record and its snapshot went, and the `kamchatka -r` that carries on from it. It is the only place
-those are still written down — so the run you just abandoned is a `-r` away for as long as
-the temporary directory lasts. `--no-record` says so instead and writes nothing, as it does at
-the end of a run.
+The first thing the new session says is where the old one's record and snapshot went, and the
+`kamchatka -r` that carries on from it.
 
 **It goes back to the flags, not to where the session had got to.** The model is whatever `--model`
 said, the permissions are `--allow` and `--deny` again, every tool `/tools toggle` switched off is
@@ -1004,22 +638,11 @@ back, `--system` and `--file` are re-read, and the context is empty. What carrie
 what cannot be rebuilt cheaply or at all: the connection to the provider, the MCP servers — whose
 tools are installed into the new session rather than their processes being spawned again — and the
 sandbox, which is a ruleset that cannot be lifted once it has been applied. A session started with
-`-r` restarts into an *empty* one rather than back into the snapshot: the snapshot is where you
-began, and this is you saying you are done with it.
+`-r` restarts into an *empty* one. A running turn is stopped to do it.
 
-A turn that is running is stopped to do it, rather than the command refusing until it finishes —
-a model that has found a loop is the commonest reason to want a fresh session, and being told
-*not while busy* is being told to wait for the thing you are escaping.
-
-It works wherever a line does: at the prompt, down a pipe, and from a browser. A piped run
-carries on reading the same input, so `do this` / `/restart` / `do that` runs the second half in
-the new session. Clients attached over a socket are **disconnected** — their place in the log is
-a record number in a log that no longer exists, so there is nothing to carry across — and they
-reconnect into the new session by themselves if they retry, which `examples/browser.html` does.
-`--connect` does not: it follows one session, so it ends with the old one, says so, and is run
-again to attach to the new one. A host restarted at the same address is the same case from the
-client's side, and `--connect` stops there too, naming the session it was following, rather than
-carry its record stream on into another session's.
+It works wherever a line does, and a piped run carries on reading the same input into the new
+session. Clients attached over a socket are **disconnected**: the browser page reconnects into the
+new session by itself, and `--connect`, which follows one session, ends with the old one.
 
 ## 🧪 the tests
 
@@ -1034,53 +657,37 @@ let after = harness.app.kernel.preview_request().unwrap();
 assert!(!format!("{:?}", after.messages).contains("hunter2"));
 ```
 
-A terminal program whose tests only checked its own state would be testing the half nobody looks
-at.
-
-The other half is the program, and it is tested without a screen at all: the policy's own
-questions, real commands under a real Landlock ruleset, the introspection tools through the
-real loop, a whole session driven by lines, the same session driven through a socket by two
-clients at once, somebody else's MCP server spawned as a child process, and the settings file.
-`cargo test -p kamchatka --no-default-features --features mcp` runs those and nothing else — which
-is also the check that the screen really is optional, since a suite that only ever compiled with
-it could not tell you.
-
-`cargo test -p kamchatka --test live` is the third kind and wants a key: it asks whether a request
-these keys produced is one a real API accepts, and whether the sentences these tools write are ones
-a model can act on. A scripted provider agrees with every refusal it is handed.
+The rest of the program is tested without a screen - the policy, real commands under a real
+Landlock ruleset, sessions driven by lines and through a socket, MCP servers - and
+`cargo test -p kamchatka --no-default-features --features mcp` runs only those. `--test live`
+wants a key, and checks that a real API accepts what was built and a real model can act on what
+the tools say.
 
 ## 🧰 a toolchain lives in your home directory
 
 `$HOME` is not a system directory, so a confined command cannot read it — and most toolchains keep
 their real installation there. `cargo` is a rustup shim, rustup reads `~/.rustup/settings.toml`
-before it does anything at all, and a model asked to build a Rust project therefore gets a
-`Permission denied` on that file, which looks exactly like a missing compiler. Hand it the
-toolchain, for reading and no more:
+before it does anything at all, and a model asked to build a Rust project gets a
+`Permission denied` that looks like a missing compiler. Hand it the toolchain, for reading only:
 
 ```console
 $ kamchatka --sandbox-read ~/.rustup,~/.cargo -m …
 ```
 
-Read-only rather than `--sandbox-allow`, because a model that can *replace* the toolchain it is
-about to run is not the trade anybody meant to make. The same goes for `~/.nvm`, `~/.pyenv`,
-`~/.rbenv` and the rest. Both flags take a comma-separated list and may also be repeated, so a
-checkout elsewhere and a scratch directory are one flag: `--sandbox-allow /srv/repo,/tmp/work`.
+The same goes for `~/.nvm`, `~/.pyenv`, `~/.rbenv` and the rest. Both flags take a comma-separated
+list and may be repeated: `--sandbox-allow /srv/repo,/tmp/work`.
 
 **A daemon you talk to over a socket needs one too**, on Linux 7.1 and up. A confined command may
 connect to a unix socket only where it could have written one, so the session bus, the compositor
 and a container daemon all come back `Permission denied`, because each of them runs what it is
-asked outside the confinement. Where the error names the socket the shell says which it was, and
-the way out is to hand over the socket rather than the directory it sits in:
+asked outside the confinement. Hand over the socket rather than the directory it sits in:
 
 ```console
 $ kamchatka --sandbox-allow /run/docker.sock -m …
 ```
 
-`--sandbox-allow` rather than `--sandbox-read`, because connecting is the writing half of the rule:
-what comes back from a socket is whatever the process behind it was willing to do. On an older
-kernel there is no such right and every one of them was reachable all along. Under `--deny
-fs:write` a path given to `--sandbox-allow` is read-only, as the working directory is, and a
-socket among them is out of reach with the rest: refusing writes refuses the writing half here too.
+Connecting is the writing half of the rule, so it is `--sandbox-allow`, and `--deny fs:write` takes
+it away with the rest. On an older kernel every socket was reachable all along.
 
 An abstract socket - one with no file, which the X server and some session buses listen on - made
 outside the confinement is refused too, on Linux 6.12 and up, and no flag hands one over: a
@@ -1098,39 +705,18 @@ as `sudo` gains nothing in them. `--no-sandbox` leaves it off.
 and nothing else: the rest of `/dev` is your other terminals, which a command could read what you
 type into, shared memory, and on a desktop the camera and microphone. The list is
 `--sandbox-device` and the settings file's `sandbox-device`, which replace it rather than add to
-it, and the shipped `kamchatka.json` spells it out. A pty is the one thing a command may miss -
-`script` and `expect` make one - and its far end is a file in `/dev/pts`, so having it back means
-naming `/dev/ptmx` and `/dev/pts`, and with them every other terminal of yours.
+it. A command that needs a pty (`script`, `expect`) needs `/dev/ptmx` and `/dev/pts`, and with
+them every other terminal of yours.
 
-**Git needs no flag.** Under Landlock `access(2)` still answers from the file's own permissions, so
-git would ask whether `~/.gitconfig` is readable, be told yes, open it, get `EACCES` and take the
-*unreadable configuration* branch — `fatal: unknown error occurred while reading the configuration
-files`, and every git command in the session dead. So a confined command is handed
-`GIT_CONFIG_GLOBAL` pointing at nothing when its configuration is out of reach, and git gets the
-*no configuration* case, which it handles. A path you have set in `GIT_CONFIG_GLOBAL` yourself is
-treated the same way: a reachable one is left as you set it, one out of reach is replaced rather
-than left to kill every git command. Pass `--sandbox-read ~/.gitconfig` if you want your identity
-and aliases in there too.
+**Git needs no flag.** A confined command whose git configuration is out of reach is handed
+`GIT_CONFIG_GLOBAL` pointing at nothing, since git would otherwise read a refusal as a corrupt
+configuration and fail every command. `--sandbox-read ~/.gitconfig` brings your identity and
+aliases in.
 
-**A permission error says where it came from.** When a confined command is refused a path outside
-its reach, the tool result names the path and says it is outside what this session reaches, so
-the permission error is the confinement rather than the file's own permissions — along with what
-the command runs with, and to work inside the working directory or ask for the path to be opened
-up.
-
-A refusal that names only paths the command *can* reach gets no such line: `cat /etc/shadow` is
-refused with or without a sandbox, and hedging about it would send a model looking for a boundary
-that had nothing to do with it. Reaching a path for reading is not reaching it for writing,
-though: a write refused where the session reads and does not write - the working directory under
-`--deny fs:write`, a `--sandbox-read` path - and that you could have made is named as the
-confinement too.
-
-**And it says where the session does reach**, in the tools that run in process too, in the same
-words the `shell` tool's description uses. A refusal that named only the working directory would
-read as the whole boundary, and a path opened up with `--sandbox-allow` would be one the model
-never tried. So a refused path is answered with every place the session reaches, each marked
-read-write or read-only, and told to work where it does or to ask for the path to be opened up and
-say what it needs it for.
+**A permission error says where it came from.** When the confinement refuses a path, the tool
+result names it as outside what this session reaches, lists every place the session does reach,
+read-write or read-only, and says to work there or ask for the path to be opened up. A refusal that
+was not the confinement's - `cat /etc/shadow` - gets no such line.
 
 ## 🌐 the network, when a command tries
 
@@ -1149,14 +735,9 @@ waiting on the answer, so waiting for the turn would be waiting for ever:
 $ kamchatka --headless --allow exec:run 'fetch the release notes'
 ```
 
-says on stderr which command reached out and what it was answered, and the tool result the model
-reads says it was asked and refused. A `--connect` client
-given `--on-ask` answers the same way once its input has closed, and leaves it for another client
-otherwise; a served session sends the question to its
-client as it waits: `reaching` is the list, whole each time it changes, and `reach` answers one of
-them the way `decide` answers the kernel's. They are two commands because the two questions are
-numbered by different things — the kernel's by the kernel, and a running command's by the policy
-holding it. `examples/browser.html` draws either kind in the same panel.
+says on stderr which command reached out and what it was answered. A served session sends the
+question to its client as `reaching`, answered with `reach`, and the browser page draws it in the
+same panel as the kernel's questions.
 
 `deny` is every internet socket refused, so UDP as well, which the ruleset alone cannot refuse —
 and a refused lookup comes back from most programs as `Temporary failure in name resolution`,
