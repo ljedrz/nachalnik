@@ -45,10 +45,8 @@ reqwest.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
 # note: `time` is all the library uses - the deadlines and the backoffs; nothing outside its tests
-# spawns or selects. `macros` and `rt` stay until the next minor release all the same: a crate that
-# has been getting either from this one, without asking tokio for it, would stop building on a
-# patch release that took them away
-tokio = { workspace = true, features = ["macros", "rt", "time"] }
+# spawns or selects, and `conformance`, which does spawn, asks for `rt` itself
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
