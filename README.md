@@ -221,7 +221,7 @@ agent is not the boss, you are. `kamchatka` is the boiler room the work actually
 
 ---
 
-### 📜 license
+### 📜 licence
 
 Licensed under the MIT License ([LICENSE-MIT](LICENSE-MIT)).
 

@@ -24,21 +24,20 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 OpenRouter is the default, not the only choice: `KAMCHATKA_BASE_URL` points it at anything that
 speaks OpenAI's chat completions, a model served on this machine by ollama, vLLM or LM Studio
 included (no key needed); `--gemini` and `--anthropic` speak Google's and Anthropic's own APIs, and
-`--responses` OpenAI's Responses API.
-[Running it][running] has the details.
+`--responses` OpenAI's Responses API. [Running it][running] has the details.
 
 ## ❓ who this is for
 
 You're likely to find `kamchatka` compelling if any of these apply to you:
 - you hate when the agent forgets an important piece of information, or can't trace its reasoning
-back to earlier points in the discussion
+  back to earlier points in the discussion
 - you're dissatisfied with token accounting and auto-compaction being imprecise and unpredictable
-- you worry about supply-chain attack surface of large codebases
+- you worry about the supply-chain attack surface of large codebases
 - you distrust generic community tools hosted by `npm`
 - you want clear, fine-grained control over all the decisions taken by the agent
 - you want the agent's shell sandboxed by the kernel rather than by a list of forbidden commands:
-it writes only where you let it, reads nothing private outside the working directory, and reaches
-the network only when you say so
+  it writes only where you let it, reads nothing private outside the working directory, and reaches
+  the network only when you say so
 - you want a minimalistic agent with negligible OS footprint and a transparent configuration
 - you like to keep detailed, auditable, and local transcripts of past conversations
 
@@ -69,7 +68,7 @@ definitions, and `/budget` says what they cost.
 it, naming every item left out and why; `/payload` prints what the provider will put on the wire,
 field for field; `/raw` shows what came back from the last one.
 
-**Compaction you can see and take back.** No model is asked to summarise your history. A tool
+**Compaction you can see and take back.** No model is asked to summarize your history. A tool
 result the model has read and finished with becomes a one-line marker that says so, and once the
 context fills, the oldest exchanges go whole. Every item taken is still a row on the context tab
 with a note saying why, `/restore` brings it back, and a pinned item cannot be taken at all.
@@ -188,8 +187,8 @@ sends command lines off the machine; [running it][advise] says exactly what leav
   an agent reads and manages its own context with.
 - **[Running it][running]** — headless, a session with a socket in front of it that you can walk
   away from, the three dialects and which endpoints work, what the number in the status line is a
-  guess *at*, a settings file, every option, embedding it in something else, and what a toolchain
-  in your home directory needs.
+  guess *at*, what happens when the context fills, a settings file, every option, embedding it in
+  something else, and what a toolchain in your home directory needs.
 - **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of it.
 
 ## 🎸 the name
@@ -197,7 +196,7 @@ sends command lines off the machine; [running it][advise] says exactly what leav
 `nachalnik` is an homage to KINO's *Nachalnik Kamchatki*. Kamchatka was the boiler room Viktor
 Tsoi shovelled coal in; this is the one where the work actually happens.
 
-## licence
+## 📜 licence
 
 MIT.
 

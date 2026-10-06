@@ -71,11 +71,11 @@ Each entry says what it is, why it waits, and what would unblock it.
   one does: an item that no longer looks the way the entry left it is left alone.
 
 - **`log` stops at the resume.** A resumed session's log begins at `session.resumed`, so `log read`
-  cannot answer for anything before the restart, though the record written beside the snapshot
-  holds all of it; `App::recall` reads that file for `context.replaced`, and `-r` for the model the
-  session was talking to, and nothing reads it for anything else. Reaching
-  further means the tool reading a file the kernel does not hold, and every answer saying which of
-  its records came from there.
+  cannot answer for anything before the restart, though the record written beside the snapshot holds
+  all of it; `App::recall` reads that file for `context.replaced`, and `-r` for the model the
+  session was talking to, and nothing reads it for anything else. Reaching further means the tool
+  reading a file the kernel does not hold, and every answer saying which of its records came from
+  there.
 
 - **Two runs of the live suite at once.** `kamchatka`'s `live.rs` works in `live-{name}`
   directories under the target directory, so two runs against one `CARGO_TARGET_DIR` at the same
@@ -147,7 +147,7 @@ Each entry says what it is, why it waits, and what would unblock it.
   what `--check` already reads: a reader that is not this program, and a record that says what went
   wrong with it.
 
-- **A session's roots are resolved on every check.** `Reach` canonicalises the working directory
+- **A session's roots are resolved on every check.** `Reach` canonicalizes the working directory
   and every `--sandbox-allow` and `--sandbox-read` root each time it judges a path, which a `grep`
   over a large tree pays per file and per link. Resolving them once would move when a root is read
   from when it is used to when the session starts, so a root that appears, moves or is relinked
@@ -185,15 +185,15 @@ Each entry says what it is, why it waits, and what would unblock it.
   answer nobody reads, and removing them changes `kamchatka`'s public API. Whether something should
   use them, or they should go, is the decision.
 
-- **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That
-  is the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
+- **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That is
+  the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
   there. A model can copy it and wrap every later call the same way; `kamchatka` reads a wrapper
   whose text parses as the call inside it, which ends that loop without touching the wire. Sending
   back the text the model wrote would be the honest echo, and some endpoints refuse it, so one
   broken call would refuse every request after it; sending `{}` is valid everywhere and leaves the
-  account of what arrived to the tool result, which already quotes it. What would
-  settle it is a decision about what the history should claim the model said, and a live run of
-  the choice on the endpoints that are strict about it.
+  account of what arrived to the tool result, which already quotes it. What would settle it is a
+  decision about what the history should claim the model said, and a live run of the choice on the
+  endpoints that are strict about it.
 
 - **A headless run whose session record could not be written still exits as it would have.**
   `finish` says `the session was not written` on stderr and returns the run's own outcome, so a
@@ -206,9 +206,8 @@ Each entry says what it is, why it waits, and what would unblock it.
 - **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
   doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
   to be carried on with `-r`. A rate limit shared by several sessions lasts longer. Waiting longer
-  is a trade
-  against a person at the screen, who would rather be told; what would settle it is whether a
-  headless run should wait out a rate limit its own `--deadline` bounds anyway.
+  is a trade against a person at the screen, who would rather be told; what would settle it is
+  whether a headless run should wait out a rate limit its own `--deadline` bounds anyway.
 
 - **The relays hold a browser that sends no `Sec-Fetch-Site` only to its `Origin`.** A frame, an
   image or a no-cors fetch from another site carries no `Origin`, and with fetch metadata the relay

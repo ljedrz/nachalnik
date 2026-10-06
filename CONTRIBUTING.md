@@ -178,8 +178,8 @@ with a test that fails without it, and what needs a person's decision goes into
 - **Changelogs** are per crate, Keep a Changelog, and current before a release rather than
   reconstructed after one.
 - **Which number moves is a fact about the public API.** In `0.x.y`, `x` is the compatibility
-  boundary: a change a caller cannot compile through bumps `x`, everything else - new API included
-  - bumps `y`. Breaking is an item removed, a signature or public field changed, a required trait
+  boundary: a change a caller cannot compile through bumps `x`, everything else - new API included -
+  bumps `y`. Breaking is an item removed, a signature or public field changed, a required trait
   method added, or a variant on an enum that is not `#[non_exhaustive]`. Read it off the API:
   `cargo semver-checks --workspace --all-features` first, and for what it cannot see - a dropped
   feature, the MSRV, a behaviour change - the changelog. Where more is needed, compare the
@@ -220,8 +220,8 @@ with a test that fails without it, and what needs a person's decision goes into
   Say what the screen holds and what each part means; what a person types, settings, code and
   design diagrams stay.
 - **The prose argues.** Headings are lowercase and sentences are sentences. Spelling leans British
-  (`behaviour`, `defence`) with `-ize` for `summarize`. Rust source uses hyphens; the `README.md`s
-  use em dashes.
+  (`behaviour`, `defence`) with `-ize` for `summarize`. Rust source and the workspace's own
+  documents use hyphens; the `README.md`s and the guides beside them use em dashes.
 - **And it argues plainly.** Every document is written for somebody deciding what to do next, and
   the test is whether a sentence changes that decision. Keep the fact, the consequence, and the
   clause that stops somebody undoing it by mistake. Cut the story of how a bug was found, the

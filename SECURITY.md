@@ -41,37 +41,36 @@ What a change in this workspace has to keep true about what is enforced and what
   link in between is refused by the kernel - on a kernel older than 5.6 it is an ordinary open and
   the swap is not caught. A directory swapped in the middle of a walk is caught only at the files
   opened under it.
-- **The network is asked about when a command tries, not when it is named.** The confined child
-  also installs a seccomp filter - `kamchatka::gate` - that holds every `socket()` for `AF_INET` or
-  `AF_INET6`, which is the first thing any use of the network does, a DNS lookup included, and
-  hands the listener to the process that spawned it. That process
-  answers from `net:reach`: `allow` lets it through, `deny` refuses it with `EACCES`, and `ask`
-  asks the person, once per command, while the call waits. The filter reads only the call's
-  integer arguments - the family's low 32 bits, since that is all the kernel reads - so there is
-  no address a command could change after the answer, and nothing is decided per destination.
-  Where the gate holds, `Careful` stops reading a command for program names, and an allowed
-  `exec:run` runs unasked until a command reaches out. It covers a 32-bit process and an x32 call
-  through their own tables, and refuses `io_uring_setup` outright, since a ring opens a socket
-  without calling `socket()`. What it does not cover: a socket inherited or received over a unix
-  socket from a process outside the confinement - which the unix-socket rule below is what stands
-  in front of - and a family other than the two, such as `AF_PACKET`, which needs a privilege a
-  confined command does not have. An attempt made by something the command left running, after the
-  call is over and with nothing decided, is refused rather than asked, because a question about a
-  command that has ended reaches nothing. Where the gate cannot be installed - under
-  `--no-sandbox`, or on a kernel that cannot hold a call - the question is read off the command's
-  name, and the permissions tab says so. `gate` is the one module in the workspace that writes
-  `unsafe`, each block with its reason beside it.
-- **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads
-  a key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not.
-  The confinement holds a command to its directory and says nothing about what the command was
-  handed when it started, so a key left in the environment is the one secret a confined command
-  could always print, and what it prints goes into the context, the request and the record. The
-  keys are still in this program's own environment, and on Linux `/proc/PID/environ` is how a
-  process reads another's: confined, a command is refused its parent's, because Landlock denies a
-  process in a domain any look into one outside it; with `--no-sandbox` it is not, and stripping
-  the variables keeps them out of the command's environment and no further. MCP
-  servers keep them: those are programs the person chose, running unconfined with everything the
-  person can read, and stripping their environment would be a nuisance rather than a boundary.
+- **The network is asked about when a command tries, not when it is named.** The confined child also
+  installs a seccomp filter - `kamchatka::gate` - that holds every `socket()` for `AF_INET` or
+  `AF_INET6`, which is the first thing any use of the network does, a DNS lookup included, and hands
+  the listener to the process that spawned it. That process answers from `net:reach`: `allow` lets
+  it through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per command, while
+  the call waits. The filter reads only the call's integer arguments - the family's low 32 bits,
+  since that is all the kernel reads - so there is no address a command could change after the
+  answer, and nothing is decided per destination. Where the gate holds, `Careful` stops reading a
+  command for program names, and an allowed `exec:run` runs unasked until a command reaches out. It
+  covers a 32-bit process and an x32 call through their own tables, and refuses `io_uring_setup`
+  outright, since a ring opens a socket without calling `socket()`. What it does not cover: a socket
+  inherited or received over a unix socket from a process outside the confinement - which the
+  unix-socket rule below is what stands in front of - and a family other than the two, such as
+  `AF_PACKET`, which needs a privilege a confined command does not have. An attempt made by
+  something the command left running, after the call is over and with nothing decided, is refused
+  rather than asked, because a question about a command that has ended reaches nothing. Where the
+  gate cannot be installed - under `--no-sandbox`, or on a kernel that cannot hold a call - the
+  question is read off the command's name, and the permissions tab says so. `gate` is the one module
+  in the workspace that writes `unsafe`, each block with its reason beside it.
+- **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads a
+  key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not. The
+  confinement holds a command to its directory and says nothing about what the command was handed
+  when it started, so a key left in the environment is the one secret a confined command could
+  always print, and what it prints goes into the context, the request and the record. The keys are
+  still in this program's own environment, and on Linux `/proc/PID/environ` is how a process reads
+  another's: confined, a command is refused its parent's, because Landlock denies a process in a
+  domain any look into one outside it; with `--no-sandbox` it is not, and stripping the variables
+  keeps them out of the command's environment and no further. MCP servers keep them: those are
+  programs the person chose, running unconfined with everything the person can read, and stripping
+  their environment would be a nuisance rather than a boundary.
 - **A confined command does not have the terminal, and reaches five devices.** The child starts a
   session of its own before it runs anything, so it has no controlling terminal: `/dev/tty` does not
   open, and `TIOCSTI` is refused on every other one. With the terminal it could have pushed a `y`
@@ -79,8 +78,8 @@ What a change in this workspace has to keep true about what is enforced and what
   kernel still allows `TIOCSTI`, or drawn over the question on any kernel. A child that cannot leave
   the terminal runs nothing. Under `/dev` the ruleset grants `null`, `zero`, `full`, `random` and
   `urandom` by name and nothing else (`sandbox-device` replaces the list), since the rest reaches
-  past the command: the person's other terminals, shared memory, a camera and a microphone. Under `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the
-  person has.
+  past the command: the person's other terminals, shared memory, a camera and a microphone. Under
+  `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the person has.
 - **A stop reaches the command's session, and what leaves it runs on.** Stopping a call kills the
   command's process group, which is the session it starts in, so whatever it started is stopped
   with it, and a dropped call does the same. A process that starts a session of its own - under
@@ -97,12 +96,13 @@ What a change in this workspace has to keep true about what is enforced and what
   the process behind it act for it, outside the domain - the session bus, the compositor, a
   container daemon. Landlock governs that from Linux 7.1, and `kamchatka` uses it there: a command
   may connect to a socket it could have written to, and to no other. Below that kernel nothing
-  governs a `connect`. `sandbox::confines_unix_sockets` says which a machine is.
-  An abstract socket has no path for that right to name, and the X server listens on one, taking
-  any process of the user's - a connection that can type into the person's terminal. Landlock scopes those from ABI 6, which is Linux 6.12, and
-  `kamchatka` asks for the scope where the kernel has it, the same way: a command may connect to
-  an abstract socket made inside its own confinement, and to no other. Below that kernel every
-  abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets` says which.
+  governs a `connect`. `sandbox::confines_unix_sockets` says which a machine is. An abstract socket
+  has no path for that right to name, and the X server listens on one, taking any process of the
+  user's - a connection that can type into the person's terminal. Landlock scopes those from ABI 6,
+  which is Linux 6.12, and `kamchatka` asks for the scope where the kernel has it, the same way: a
+  command may connect to an abstract socket made inside its own confinement, and to no other. Below
+  that kernel every abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets`
+  says which.
 - **A confined command signals only the session.** Landlock's signal scope is as old as the
   abstract-socket one, and a command's own ruleset does not carry it: each command confines
   itself in a domain of its own, so there it would refuse a command stopping a server an earlier
@@ -158,9 +158,9 @@ What a change in this workspace has to keep true about what is enforced and what
   telling `Careful` as well as the kernel (or a granted command runs with the network cut),
   honouring `always` over what the policy *consulted* rather than what the tool declared, sweeping
   the questions queued behind it, and driving the turn on afterwards. `App::decide` is the one place
-  all three loops answer through, and `App::decide_reach` the gate's. The
-  gate's question has its own, `App::decide_reach`, for the same reason: the kernel never asked it,
-  so the `policy.ruled` it writes is the only record there is that a command was let out.
+  all three loops answer through. The gate's question has its own, `App::decide_reach`, for the same
+  reason: the kernel never asked it, so the `policy.ruled` it writes is the only record there is
+  that a command was let out.
 - **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
   exist because its documentation is exact about what it misses, because refusing up front with a
   reason is kinder than letting a command run and fail, and because it is consulted only where the
@@ -174,17 +174,17 @@ What a change in this workspace has to keep true about what is enforced and what
 The positions above are each about one mechanism. This is the same ground by who could do harm,
 what stands in the way, and what does not.
 
-- **The model, and whoever wrote something it read.** A file, a command's output or a tool's
-  answer can carry instructions, and the model acts on what it reads, so the model is treated as
-  a party that may be steered. It acts only through tools the policy lets run. The `shell` tool is
-  confined by Landlock on Linux - files outside the reach, TCP `connect`, and on 7.1 and later a
-  unix socket it could not write - has its internet sockets held by the gate where there is one,
-  and is not handed this program's keys. The `fs` tool is held to the same reach by its own code,
-  and on Linux opens beneath the directory a path was allowed under. What it can still do: send
-  UDP where there is no gate, and reach the network through whatever a person allowed; read
-  anything the reach includes and put it in the context, which goes to the provider; spend the
-  session's budget, including on `fork` drafts. Under `--no-sandbox` the shell is not confined at
-  all and the permission question is the only thing in the way.
+- **The model, and whoever wrote something it read.** A file, a command's output or a tool's answer
+  can carry instructions, and the model acts on what it reads, so the model is treated as a party
+  that may be steered. It acts only through tools the policy lets run. The `shell` tool is confined
+  by Landlock on Linux - files outside the reach, TCP `connect`, and on 7.1 and later a unix socket
+  it could not write - has its internet sockets held by the gate where there is one, and is not
+  handed this program's keys. The `fs` tool is held to the same reach by its own code, and on Linux
+  opens beneath the directory a path was allowed under. What it can still do: send UDP where there
+  is no gate, and reach the network through whatever a person allowed; read anything the reach
+  includes and put it in the context, which goes to the provider; spend the session's budget,
+  including on `fork` drafts. Under `--no-sandbox` the shell is not confined at all and the
+  permission question is the only thing in the way.
 - **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
   reaching the machine as the person who started it. `--serve` binds loopback only and makes its
   socket `0600`, and there is no authentication beyond that. The `gateway` and `phone` examples put
@@ -192,19 +192,19 @@ what stands in the way, and what does not.
   drives the session, the same as the person at the keyboard. A web page open in a browser on the
   same machine is refused - the relay takes only same-origin JSON to a loopback host. A client may
   answer the permission questions, so the session's own commands are kept out too: a port the
-  session is served on is closed to every command confined while it is. A socket file is reachable by every confined command
-  below Linux 7.1, and from 7.1 by one that may write where it is, so a connection is refused when
-  the peer is in the session of a command this process confined - each runs in one of its own -
-  which covers anything it left running. What gets through is a process a command started under a
-  `setsid` of its own, the `gateway` and `phone` relays, and any *other* served session on the
-  machine: a session closes only the port it serves itself, and a connection carries no pid, so one
-  process's confined command is a client like any other to a session in another. Its addresses
-  belong to whoever started that one. A command allowed the network can reach all three.
+  session is served on is closed to every command confined while it is. A socket file is reachable
+  by every confined command below Linux 7.1, and from 7.1 by one that may write where it is, so a
+  connection is refused when the peer is in the session of a command this process confined - each
+  runs in one of its own - which covers anything it left running. What gets through is a process a
+  command started under a `setsid` of its own, the `gateway` and `phone` relays, and any *other*
+  served session on the machine: a session closes only the port it serves itself, and a connection
+  carries no pid, so one process's confined command is a client like any other to a session in
+  another. Its addresses belong to whoever started that one. A command allowed the network can reach
+  all three.
 - **An MCP server.** It is a program the person chose, and it runs unconfined with the person's
-  environment and everything the person can read. What `kamchatka` controls is what its answers
-  do: a server's tools are judged under the server's name, and what
-  it returns reaches the context like any other tool result, where the model reads it - which is
-  the first actor above again.
+  environment and everything the person can read. What `kamchatka` controls is what its answers do:
+  a server's tools are judged under the server's name, and what it returns reaches the context like
+  any other tool result, where the model reads it - which is the first actor above again.
 - **Whoever wrote the directory it is run in.** Given no `--config-file`, `kamchatka` reads
   `./kamchatka.json`, and that file may set every key the command line can: `mcp`, which starts
   programs unconfined before the first message, `no-sandbox`, `allow`, `allow-server`, `on-ask` and

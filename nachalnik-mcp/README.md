@@ -93,7 +93,7 @@ survives a provider's charset is not something a scripted provider can be wrong 
 
 ---
 
-### 📜 license
+### 📜 licence
 
 MIT ([LICENSE-MIT][license]).
 
