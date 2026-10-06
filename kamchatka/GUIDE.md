@@ -642,6 +642,14 @@ and its first line says which lines those are and the `from` to read on with. `f
 read any part of a file, a log too large to hold in memory included. The other way to read a part
 is `sed -n` through `shell`, which is `exec:run` again, for a file the session may already read.
 
+**How much of a call's output the model is shown is a limit per subject**, so `fs:read` and
+`fs:grep` have one each. It starts at 32,000 bytes, and at 8,000 for the tools whose answer is a
+report of a fixed shape rather than a piece of the session. `/limit` lists them, numbered, and
+changes one from its next call onward - `/limit fs:read 64000`. A result that was cut keeps its
+whole beside it, excluded, and <kbd>space</kbd> on it sends the whole instead. The whole has a
+ceiling of its own, 8 MiB: past it a command's output is let go and the result says how much, and
+`fs` refuses to edit a larger file.
+
 ## 📎 putting something in, with or without a question
 
 `/attach` takes a path and then whatever you want to ask about it, so the file and the question
