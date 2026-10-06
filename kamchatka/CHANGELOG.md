@@ -82,6 +82,9 @@ minor bump may break you.
   those calls are not findings; a killed run, which says nothing, still has them named.
 - **A model that stopped to call a tool and named none is said to have.** The record had it, as an
   empty list of calls beside the stop; the screen and a pipe showed a turn that simply ended.
+- **The relays' page cannot be framed.** A framed copy of the page opens a stream of its own, which
+  takes the session, under whatever the page around it draws; `GET /` now forbids it with
+  `frame-ancestors 'none'` and `X-Frame-Options`.
 
 ### removed
 

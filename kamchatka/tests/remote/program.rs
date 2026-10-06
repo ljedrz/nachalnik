@@ -302,6 +302,19 @@ fn the_phone_example_writes_every_session_out() {
         panic!("the tab `{name}` never opened");
     };
 
+    // the page refuses to be framed, since a framed copy opens a stream of its own
+    let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
+    stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
+    write!(stream, "GET / HTTP/1.1\r\nHost: {page}\r\n\r\n").expect("the request goes out");
+    let mut served = String::new();
+    let _ = stream.read_to_string(&mut served);
+    let head = served.split("\r\n\r\n").next().unwrap_or_default();
+    assert!(
+        head.contains("Content-Security-Policy: frame-ancestors 'none'")
+            && head.contains("X-Frame-Options: DENY"),
+        "the page can be framed: {head}"
+    );
+
     let mut first = tab("first");
 
     // and a page somewhere else is refused, whichever door it tries. Each would end the session

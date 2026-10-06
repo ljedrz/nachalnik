@@ -559,6 +559,11 @@ async fn body<R: AsyncBufRead + Unpin>(
 }
 
 /// Writes one whole response.
+///
+/// note: no page may put one of these in a frame. A framed copy of the page opens its own stream,
+/// which takes the session, and stands under whatever the page around it draws over it. The
+/// header cannot stop a request that is not a frame - an image or a no-cors fetch of `/events`
+/// takes the session with nothing rendered - which is what `foreign` is for.
 async fn reply<W: AsyncWrite + Unpin>(
     write: &mut W,
     status: &str,
@@ -567,6 +572,7 @@ async fn reply<W: AsyncWrite + Unpin>(
 ) -> Result<(), String> {
     let head = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n\
+         Content-Security-Policy: frame-ancestors 'none'\r\nX-Frame-Options: DENY\r\n\
          Connection: close\r\n\r\n",
         body.len()
     );
