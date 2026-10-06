@@ -1,42 +1,16 @@
 # postponed, on purpose
 
 Known and decided against *for now*, so that nobody spends an afternoon rediscovering them.
-Each entry says what it is, why it waits, and what would unblock it - and where an entry has
-been wrong before, it says that too rather than being quietly corrected.
-
-Referenced from [AGENTS.md](AGENTS.md).
+Each entry says what it is, why it waits, and what would unblock it.
 
 ---
 
 - **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image block
-  with `[an image (image/png), not carried into the context]`, which was the only thing it could do
-  and is no longer. Carrying it is a few lines - a `Content::Blob` instead of a sentence - and the
-  reason to wait was that a server offering a 4 MB screenshot would put 5.5 MB of base64 into a
-  context whose budget could not count it. **The counter is in as of 0.4.0**, so the blocker is
-  gone: a budget now says how many pieces it could not price, and `kamchatka`'s compactor takes a
-  picture as soon as the model has been shown it.
-
-  **The blocker was never only the counter.** Neither dialect accepts a picture in a *tool result* -
-  `tool` content is a string in one and a `functionResponse` in the other - so a `Content::Blob` in
-  one goes out as the sentence naming it, the blob's own `Display`, deliberately, and `blobs.rs`
-  pins that for both dialects.
-  Carrying an MCP picture would therefore put megabytes of base64 in the context, send the model the
-  same sentence it already gets, and make `Budget::uncounted` report one unpriced piece for a
-  request whose actual content is a line of text. That is the budget naming a hole the request
-  does not have, which is the thing the elided-item rule exists to prevent.
-
-  **One dialect does take one now.** Anthropic's puts a `Content::Blob` in a `tool_result` as the
-  `image` block it is, and `blobs.rs` pins that too; the sentence above is true of the other two.
-
-  So what would unblock it is not a counter. It is a decision about **where a tool's picture
-  reaches the model**, since the one place it cannot is where it currently sits: a picture has
-  to be hoisted into a message that accepts one, which is a `Projector`'s business or a
-  provider's, and neither has been asked. Nothing about the bridge changes until that does.
-
-  Worth knowing for whoever picks this up: the kernel's projection carries the blob and the
-  *provider* flattens it, so the kernel's budget is right about the request it built and wrong
-  about the one that goes out. That is the only place in this workspace where those two differ
-  in a way a figure can see.
+  with a sentence naming it. Carrying it as a `Content::Blob` is a few lines, but only Anthropic's
+  dialect accepts a picture in a *tool result*; the other two would send the same sentence while
+  the budget counted megabytes of base64 it cannot price. What would unblock it is a decision about
+  **where a tool's picture reaches the model** - hoisted into a message that accepts one, by a
+  `Projector` or a provider - and nothing about the bridge changes until that is made.
 
 - **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
   The rule on the constant is that a session refuses a version it does not know and serves an older
@@ -45,17 +19,10 @@ Referenced from [AGENTS.md](AGENTS.md).
   number and does not keep it, so the moment `VERSION` is `2` nothing in a connection knows it is
   talking to a version-1 client and nothing can stop it being sent a version-2 message.
 
-  There is nothing to unblock and nothing to do while this is `1`. The day the number moves is the
-  day it is needed, and it is not the day anybody will be thinking about it. What it costs is the
-  number kept per connection and every write in `remote::server::connection::attend` asking about it - which is
-  more than a field, because "a message this version lacks" is a fact about each variant that
-  nothing declares today.
-
-  What stands in meanwhile is `Message::Unknown` at the client, which makes an unrecognised message
-  something a client survives rather than something that ends it, and `Attached::version`, which is
-  how a client finds out what the other end speaks without being refused first. Neither is the rule:
-  an unknown message is *counted* as an answer, because a client cannot tell one from a broadcast,
-  and a client that leaves a beat early is the cost of that guess.
+  Nothing is needed while this is `1`. When it moves, the number has to be kept per connection and
+  every write in `remote::server::connection::attend` has to ask about it, which needs each message
+  variant to declare the version it arrived in. Meanwhile `Message::Unknown` lets a client survive
+  a message it does not know, and `Attached::version` tells it what the other end speaks.
 
 - **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
   the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
@@ -205,40 +172,26 @@ Referenced from [AGENTS.md](AGENTS.md).
   in this turn once the request would otherwise be refused.
 
 - **`/params` showing a parameter's type and range.** It shows the default and the maximum where
-  the listing publishes them, and nothing else, because nothing else is published: OpenRouter's
-  `/models` and its per-model `/endpoints` give names, some defaults and the cap on an answer,
-  and Inception's gives names. A table of types and ranges kept in this workspace would be a
-  gateway's documentation as of the day it was copied, said of whichever model is behind it -
-  the restriction invented out of silence that `/params` already refuses to invent. What would
-  unblock it is an endpoint that publishes them, read as `Published` reads the rest.
-
-  `--gemini` says nothing beside its parameters at all. Its native listing has `temperature`,
-  `topP`, `topK`, `maxTemperature` and `outputTokenLimit`, but no list of what a request may
-  carry, and those five go under `generationConfig` rather than beside it, so there is no list
-  for `/params` to put them on. Reading them needs `/params` to say something about a key inside
-  a parameter, which is a decision about the command rather than the dialect.
+  the listing publishes them, and nothing else, because no endpoint publishes more. A table kept in
+  this workspace would be somebody's documentation as of the day it was copied. What would unblock
+  it is an endpoint that publishes them, read as `Published` reads the rest. Under `--gemini` it
+  says nothing at all, since that listing's figures go under `generationConfig`, and showing them
+  needs `/params` to speak about a key inside a parameter.
 
 - **`Careful::servers` and `Advised::careful` have no caller.** The first lists every MCP server
-  whose tools are installed, with what the policy answers about each, and the permissions tab
-  reaches the same rows through `server_of`, one tool at a time. The second hands out the standing
-  rules under the advisor, and its doc says the tools and the permissions tab hold it - they hold
-  the `Careful` they were built with instead. A test pinning either would pin an answer nobody
-  reads, and taking them out is a change to `kamchatka`'s public API. Whether something should use
-  them, or they should go, is the decision. `cargo mutants` found both: `servers` replaced with
-  `vec![]` and `careful` with a fresh policy survive every test.
-
-  This entry named `endpoint::configured_limit` too, and was wrong about it: the live suite reads
-  it, in `talking_to`, which is the caller with no startup to refuse a limit in that its doc is
-  written for. Its mutants survive because that suite runs only with a key.
+  whose tools are installed, with what the policy answers about each; the permissions tab reaches
+  the same rows one tool at a time. The second hands out the standing rules under the advisor,
+  which the tools and the permissions tab hold directly instead. A test pinning either would pin an
+  answer nobody reads, and removing them changes `kamchatka`'s public API. Whether something should
+  use them, or they should go, is the decision.
 
 - **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That
   is the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
-  there. A model can copy it: `inclusionai/ling-3.1-flash`, after one broken call, wrapped every
-  call after it in the same key and made no call that worked again. `kamchatka` now reads a
-  wrapper whose text parses as the call inside it, which ends the loop without touching the wire.
-  Sending back the text the model wrote would be the honest echo, and Novita answers it with a
-  400, so one broken call would refuse every request after it; sending `{}` is valid everywhere
-  and leaves the account of what arrived to the tool result, which already quotes it. What would
+  there. A model can copy it and wrap every later call the same way; `kamchatka` reads a wrapper
+  whose text parses as the call inside it, which ends that loop without touching the wire. Sending
+  back the text the model wrote would be the honest echo, and some endpoints refuse it, so one
+  broken call would refuse every request after it; sending `{}` is valid everywhere and leaves the
+  account of what arrived to the tool result, which already quotes it. What would
   settle it is a decision about what the history should claim the model said, and a live run of
   the choice on the endpoints that are strict about it.
 
@@ -252,8 +205,8 @@ Referenced from [AGENTS.md](AGENTS.md).
 
 - **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
   doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
-  to be carried on with `-r`. A free model on OpenRouter that is "temporarily rate-limited
-  upstream" stays so for longer than that when several sessions share it. Waiting longer is a trade
+  to be carried on with `-r`. A rate limit shared by several sessions lasts longer. Waiting longer
+  is a trade
   against a person at the screen, who would rather be told; what would settle it is whether a
   headless run should wait out a rate limit its own `--deadline` bounds anyway.
 
@@ -267,12 +220,10 @@ Referenced from [AGENTS.md](AGENTS.md).
 - **An interrupt can land between a call's check and its start.** Run one at a time, each call
   reads the interrupt flag outside the machine lock and announces `tool.started` after, while
   `Kernel::interrupt` sets and announces under it. One landing between the two leaves
-  `turn.interrupted` in the record ahead of a call that then runs. A live run met it through the
-  `--spend` ceiling, which `App` charges off the event stream while the kernel moves on to the
-  calls. Reading the flag and announcing the start under the lock makes the record agree with
-  what ran; it is a change to the kernel's executing path, the window is between two statements,
-  so no test fails without it reliably, and the spend stop it would serve is a stopping rule
-  rather than a cap either way.
+  `turn.interrupted` in the record ahead of a call that then runs - which the `--spend` ceiling can
+  hit. Reading the flag and announcing the start under the lock makes the record agree with what
+  ran; it is a change to the kernel's executing path, and the window is too narrow for a test to
+  fail reliably without it.
 
 - **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$`, or
   a `SIGTSTP`, leaves the call reading pipes nobody will write to, and a headless run sits out its
@@ -295,25 +246,12 @@ Referenced from [AGENTS.md](AGENTS.md).
   that is not text, would keep the claim from being false; it refuses files that are attached
   today, which is why it waits.
 
-- **The Anthropic dialect and the newest models' rule against an edited history.** Two things,
-  documented on `nachalnik_providers::anthropic` and handled by neither code nor test:
-
-  - *A signed thinking block is bound to the conversation before it* on Claude Fable 5.1, Opus 5.5
-    and Sonnet 5.5, and an account created on or after 2026-08-31 is refused (a 400, "bound to a
-    different conversation") for sending one back after anything ahead of it was edited - which
-    pruning, rewriting and eliding are. Anthropic's own two ways out are to strip every thinking
-    block from the history and send it again, once, on that refusal, or to send
-    `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` with the
-    `thinking-binding-controls-2026-08-01` beta header and let the API drop what no longer holds.
-    The second needs a header no parameter can set; the first is a retry on one wording of a 400.
-  - *An instruction added mid-session is joined into `system`*, so the request it first goes out
-    with writes the whole cache again. The newer models take a `role: "system"` message in place,
-    but only some of them, and only after a user turn and last or before an assistant turn; the
-    rest is a 400, and an item a reconcile adds after a reply is in exactly the wrong place.
-
-  OpenRouter cannot settle either. It accepted `role: "system"` in every position and on Haiku 4.5,
-  which Anthropic's documentation says refuses it everywhere, so it rewrites the message before
-  passing it on; and it decides nothing about the account the thinking is checked against. What
-  would unblock both is credit on an Anthropic account - one created after 2026-08-31, for the
-  first - so that each can be seen refused by the real API and then not.
-
+- **The Anthropic dialect and an edited history.** Two things the `nachalnik_providers::anthropic`
+  docs describe, with the models they apply to, and that neither code nor test handles: some models
+  refuse a signed thinking block sent back after anything ahead of it was edited - which pruning,
+  rewriting and eliding are - and an instruction added mid-session is joined into `system`, so the
+  request it first goes out with writes the whole cache again. The ways out are a retry on one
+  wording of a 400 or a beta header no parameter can set for the first, and a `role: "system"`
+  message only some models take, in some positions, for the second. OpenRouter settles neither -
+  it rewrites the message, and is not the account the thinking is checked against - so what would
+  unblock them is an Anthropic account, to see each refused by the real API and then not.
