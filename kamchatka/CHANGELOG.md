@@ -75,6 +75,12 @@ minor bump may break you.
   at `api.openai.com` with no key is refused at startup, naming `OPENAI_API_KEY`, as one at
   OpenRouter is.
 
+### removed
+
+- **`Careful::servers` and `Advised::careful`**, which nothing called. The permissions tab reaches a
+  server's rows through `Careful::server_of`, and the tools and the tab hold the standing rules
+  directly.
+
 ## [0.18.1] - 2026-10-05
 
 ### changed

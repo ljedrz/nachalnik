@@ -178,13 +178,6 @@ Each entry says what it is, why it waits, and what would unblock it.
   says nothing at all, since that listing's figures go under `generationConfig`, and showing them
   needs `/params` to speak about a key inside a parameter.
 
-- **`Careful::servers` and `Advised::careful` have no caller.** The first lists every MCP server
-  whose tools are installed, with what the policy answers about each; the permissions tab reaches
-  the same rows one tool at a time. The second hands out the standing rules under the advisor,
-  which the tools and the permissions tab hold directly instead. A test pinning either would pin an
-  answer nobody reads, and removing them changes `kamchatka`'s public API. Whether something should
-  use them, or they should go, is the decision.
-
 - **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That is
   the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
   there. A model can copy it and wrap every later call the same way; `kamchatka` reads a wrapper

@@ -427,11 +427,6 @@ impl Advised {
         self.engine.notice()
     }
 
-    /// The standing rules underneath, which the tools and the permissions tab hold directly.
-    pub fn careful(&self) -> &Arc<Careful> {
-        &self.careful
-    }
-
     /// Where the advisor put a command, if it was asked to place one and did.
     pub fn rating(&self, call: &ToolCallId) -> Option<Rated> {
         self.read(call)?.ok()
