@@ -69,16 +69,8 @@ $ cargo install --git https://github.com/ljedrz/nachalnik kamchatka
 $ cargo install --path kamchatka              # from a clone
 ```
 
-Two binaries are attached to a release, x86_64 and aarch64, both static musl, and each runs
-wherever the kernel is new enough.
-
-**0.15.1 is the last version that builds on macOS and Windows.** There its shell ran unconfined
-and the network was asked about by the command's name; everything since leans on Landlock and a
-seccomp filter, which are Linux's.
-
-Building needs Rust 1.95 or newer and nothing else: no system libraries, no `pkg-config`, nothing
-to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
-looking for yours.
+A release carries static x86_64 and aarch64 binaries. Building needs Rust 1.95 or newer and no
+system libraries.
 
 ## 🔧 what it comes with
 
@@ -94,9 +86,8 @@ $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 
 Those arrive through [`nachalnik-mcp`][nachalnik-mcp] declaring `mcp:call` and nothing else,
 whatever their annotations claim, and where they *came from* is a subject of its own:
-`--allow-server files` is one server and not the next one. The `name=` is worth giving, because it
-is what that grant names — without it the name comes from the program, which for most of the
-servers people actually run is `npx`.
+`--allow-server files` is one server and not the next one, which is why the `name=` is worth
+giving.
 
 `fs`'s `grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason
 they exist is the subject they ride: without them, finding a symbol means `exec:run`, which
@@ -109,27 +100,11 @@ the record kept beside it, `setup` what the session is running with, and `fork` 
 session a question. Every operation in them is a public function the screen was already calling —
 [what each does][guide-introspect].
 
-The registry is live rather than fixed at startup: `/tools toggle shell` stops offering it from
-the next request onward and `/tools toggle shell` again offers it, which is one call on the kernel
-each way and no restart. The `tools` key in a settings file says which of them a session starts
-with. When a model has gone down the wrong path entirely, <kbd>d</kbd> at the permission prompt
-drops *every* call it is waiting on with one reason — and the model is told, rather than left
-waiting on calls that silently vanished.
-
-How much of a call's output the model is shown is live too, keyed by the same subject its
-permission is — one row for `fs:read` and another for `fs:grep`, because a file and a
-repository-wide search are not the same size. It starts at 32,000 bytes, and at 8,000 for the
-seven whose answer is a report of a fixed shape rather than a piece of the session: those stay the
-same size in a session of ten items or a thousand, and everything else grows. `/limit` lists them,
-numbered, and changes one from its next call onward. The number is one the command takes, so
-`/limit fs:read 64000` and the same line with `fs:read`'s number in its place are the same
-instruction.
-
-The result that has *already* been cut is recovered a different way: its whole is excluded beside
-the copy the model was given, and <kbd>space</kbd> on it sends that instead — the projector answers
-one call with one result, so the whole takes the call and the short copy drops out. The whole has a
-ceiling of its own, 8 MiB: past it a command's output is read and let go and the result says how
-much, and `fs` refuses to edit a larger file with a sentence saying how else to change it.
+The registry is live: `/tools toggle shell` stops offering a tool from the next request and offers
+it again the second time, with no restart. How much of a call's output the model is shown is live
+too, per subject, with `/limit`, and a result that was cut keeps its whole beside it to send
+instead. When a model has gone down the wrong path entirely, <kbd>d</kbd> at the permission prompt
+drops *every* call it is waiting on, and the model is told.
 
 ## 🐢 one transition at a time
 
@@ -142,11 +117,9 @@ on purpose*, the moment the model has said what it wants and **nothing has happe
 ```
 
 Where the model answers with a call — a `shell` running `wc -l`, say — the session stops in
-`ready` and says which calls were decided and that none of them has run. The command is decided,
-permitted, and not running. From here you can read it, prune the context
-it would have run against, drop it, or `/step` again to run it. A whole turn walks through this
-state without ever drawing it, so an "approve this command?" prompt is a checkpoint put in front of
-the loop; here the checkpoint is a state the loop itself stands in.
+`ready`: the command is decided, permitted, and not running. From here you can read it, prune the
+context it would have run against, drop it, or `/step` again to run it. An "approve this command?"
+prompt is a checkpoint put in front of the loop; here it is a state the loop itself stands in.
 
 `/step` again for each transition — the tool runs, then the next request goes — or `/continue` for
 the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
@@ -158,18 +131,11 @@ Four features, two of them on by default. `--no-default-features --features tui`
 support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
 keys: without it you get the same program, headless, and none of the crates that draw it.
 
-`advise` is the third and is **off**. It is the client for a System One model, which answers
-typed questions rather than writing text: any of the ones OpenRouter serves, named by
-`KAMCHATKA_SYSTEM1_MODEL`, or an engine on this machine. Nothing in the program asks it anything
-unless the fourth is on too.
-
-`shell-advisor` is the fourth, also **off**, and it adds `--advise`. It asks the advisor where each
-shell command you are about to be asked about lands on a three-level rubric, and colours the
-question green, yellow or red by the answer. The rating decides nothing: what the rules allow runs
-unasked and what they refuse is refused. It is off by default and behind a flag as well as a
-feature because it sends a command line to a third party — in a default session, every command the
-model writes — and that is a decision to make rather than inherit. [Running it][advise] has the
-rubric, the key it takes, and exactly what leaves the machine.
+`advise` is the third and is **off**: the client for a System One model, which answers typed
+questions rather than writing text. `shell-advisor` is the fourth, also **off**, and adds
+`--advise`, which colours each shell command you are asked about green, yellow or red by the
+advisor's reading of it. The rating decides nothing. It is behind a feature and a flag because it
+sends command lines off the machine; [running it][advise] says exactly what leaves.
 
 ## 📚 the rest of it
 
