@@ -60,8 +60,12 @@ on purpose - the layout a test directory was chosen over, a file an example writ
 CI (`.github/workflows/ci.yml`) also builds with **default** features (the tests turn every
 feature on, so nothing else exercises that configuration), checks `nachalnik`, `nachalnik-mcp`,
 `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three keyless
-examples, and checks the whole workspace on the MSRV, **1.88**. Edition is 2024, and
+examples, and checks the whole workspace on the MSRV, **1.95**. Edition is 2024, and
 `RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
+
+The MSRV may rise in any minor release, to a toolchain that has been stable for about six months.
+Nobody is stranded by it: the resolver an edition-2024 workspace gets picks, for somebody on an
+older toolchain, the last version of a crate that still builds on it.
 
 The live suite is the only thing that can check that a real API accepts what this crate builds:
 

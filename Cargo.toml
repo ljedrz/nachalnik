@@ -82,7 +82,7 @@ edition = "2024"
 license = "MIT"
 repository = "https://github.com/ljedrz/nachalnik"
 homepage = "https://github.com/ljedrz/nachalnik"
-rust-version = "1.88"
+rust-version = "1.95"
 
 # note: declared here rather than in each crate, so that two members cannot quietly end up on
 # two versions of the same thing. The runtime's five are the ones that matter: whatever else

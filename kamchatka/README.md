@@ -70,7 +70,7 @@ wherever the kernel is new enough.
 and the network was asked about by the command's name; everything since leans on Landlock and a
 seccomp filter, which are Linux's.
 
-Building needs Rust 1.88 or newer and nothing else: no system libraries, no `pkg-config`, nothing
+Building needs Rust 1.95 or newer and nothing else: no system libraries, no `pkg-config`, nothing
 to install first. The TLS is `rustls` over `ring`, which builds its own cryptography rather than
 looking for yours.
 
