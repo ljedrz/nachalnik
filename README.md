@@ -23,6 +23,8 @@ Its **context** tab lists every item in the context: what it costs, whether it g
 request, and — where it does not — why. <kbd>space</kbd> changes how much of an item the model gets,
 <kbd>p</kbd> pins it so compaction cannot take it, <kbd>e</kbd> rewrites what it says, and
 <kbd>u</kbd> undoes any of it. Nothing runs before you have been asked, reading a file included.
+It sends no system prompt of its own and no telemetry: what reaches the model is the context that
+tab lists and the tool definitions, and <kbd>ctrl+p</kbd> prints the whole request before it goes.
 
 ```console
 $ cargo install kamchatka # or download a released binary
