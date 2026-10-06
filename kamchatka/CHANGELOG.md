@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### changed
+
+- **The released binary is optimised for size**, `opt-level = "s"`: the static musl build is
+  10.1MB rather than 13.6MB. Drawing the screen is about a sixth slower in the sweeps that draw it
+  at every size, and nothing else measurably is.
+
 ## [0.18.1] - 2026-10-05
 
 ### changed

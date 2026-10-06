@@ -30,9 +30,19 @@ members = [
 # answers a panicking tool as a failed call and says so in `tool.panicked`, and the turn carries
 # on; aborting would take the session with it, which is not a trade a program whose point is an
 # honest account of what happened gets to make for a smaller download.
+#
+# note: `"s"` rather than the default `3`, and not `"z"`. Measured 2026-10-06 on the static musl
+# build of `kamchatka` with the rest of this profile: 13.6MB at `3` and 10.1MB at `"s"`, against
+# 102s and 60s to build; on glibc `"z"` is 0.8MB under `"s"`. What it costs is in the one place
+# this program computes rather than waits - drawing the screen. The sweeps that draw at every size
+# run 15-18% slower at `"s"` and 75-80% slower at `"z"`, and nothing else in the suite moves: the
+# rest of the time a session spends is on the network or in a child process. A quarter of the
+# download for a sixth of a frame nobody is short of is worth it; nearly doubling the frame for
+# another 0.8MB is not.
 [profile.release]
 codegen-units = 1
 lto = "fat"
+opt-level = "s"
 strip = true
 
 # note: no debuginfo in a dev build. A panic still names every frame; what goes is the
