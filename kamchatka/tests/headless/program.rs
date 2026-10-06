@@ -1687,6 +1687,32 @@ async fn a_deadline_of_nothing_is_none() {
     assert_eq!(out.status.code(), Some(0), "a run that finished: {said}");
 }
 
+/// A run that did everything but write its record down leaves with a status of its own.
+///
+/// note: it left with `0`, so a script reading the status as "the session is saved" was wrong
+/// once and could not tell. The record is made unwritable the way it most often is: something
+/// that is not a directory where the directory goes.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_whose_record_was_not_written_says_so_in_its_status() {
+    let base = common::endpoint(vec![common::answer("done")]).await;
+    let temporary = common::scratch("record-unwritable");
+    std::fs::write(temporary.join("kamchatka"), "not a directory").expect("the file is written");
+
+    let out = common::command()
+        .args(["--headless", "-m", "nothing", "go"])
+        .current_dir(common::scratch("record-unwritable-here"))
+        .env("TMPDIR", &temporary)
+        .env("KAMCHATKA_BASE_URL", &base)
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("the binary under test is built");
+
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("the session was not written"), "{said}");
+    assert_eq!(out.status.code(), Some(5), "{said}");
+}
+
 /// `--requests` is how many requests one turn makes before it pauses and says so, and `0` is no
 /// ceiling at all.
 ///

@@ -94,6 +94,7 @@ its own, so a script can tell a session that did its work from one that was stop
 | `1` | failed: the last turn could not be finished, or the program could not start |
 | `3` | reached the `--spend` ceiling |
 | `4` | ended on a turn paused at `--requests`, waiting for `/continue` |
+| `5` | worked through its input, and its record could not be written |
 | `124` | ran out of `--deadline`, whether or not the session had started — as `timeout` does |
 | `129`, `130`, `143` | was ended by `SIGHUP`, <kbd>ctrl+c</kbd> or `SIGTERM`: `128` and the signal |
 

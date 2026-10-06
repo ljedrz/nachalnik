@@ -53,6 +53,11 @@ pub enum Stop {
     Terminated,
     /// `SIGHUP`: the terminal went away.
     HungUp,
+    /// The run ended as it should have, and its record could not be written.
+    ///
+    /// note: last in line, since it is found last: a run that stopped short for any of the reasons
+    /// above leaves with that status whether or not it was written down.
+    Unrecorded,
 }
 
 impl Stop {
@@ -61,12 +66,13 @@ impl Stop {
     /// note: the conventions a script already knows where there is one - `timeout(1)`'s `124`
     /// for a deadline, and `128` plus the signal for the three a signal ends - `130` for `ctrl+c`,
     /// `143` for `SIGTERM` and `129` for `SIGHUP` -
-    /// and small numbers that nothing else here uses for the two that are this program's own.
+    /// and small numbers that nothing else here uses for the three that are this program's own.
     /// `1` is a failed turn and `2` is an argument clap refused.
     pub fn code(self) -> u8 {
         match self {
             Self::Spent => 3,
             Self::Paused => 4,
+            Self::Unrecorded => 5,
             Self::Deadline => 124,
             Self::Interrupted => 130,
             Self::Terminated => 143,
