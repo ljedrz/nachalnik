@@ -15,6 +15,8 @@
 //!
 //! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from
 //!   fragments. What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak.
+//!   With [`OpenAiCompatible::responses`], OpenAI's Responses API instead: ordered items, and a
+//!   reasoning model's thinking sealed and sent back rather than redone every turn.
 //! - [`gemini`] - Google's own `generateContent`: `candidates[].content.parts`, whole calls, and
 //!   ordered `thought` parts, which is the dialect [`nachalnik::Content::Blocks`] was built for.
 //! - [`anthropic`] - Anthropic's Messages API: typed blocks, whole calls whose arguments stream

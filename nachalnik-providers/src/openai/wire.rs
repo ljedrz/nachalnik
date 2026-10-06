@@ -113,6 +113,9 @@ impl Provider for OpenAiCompatible {
     /// The payload, rendered once. `respond` sends exactly this, so previewing it is not a second
     /// opinion about what goes out - it is the thing that goes out.
     fn render(&self, request: &ModelRequest) -> Option<Value> {
+        if self.responses {
+            return Some(super::responses::render(self, request));
+        }
         let mut body = json!({
             "model": *self.model.lock(),
             "messages": request.messages.iter().map(to_wire).collect::<Vec<_>>(),
@@ -186,6 +189,9 @@ impl Provider for OpenAiCompatible {
     ) -> Result<ModelResponse, BoxError> {
         if self.recording {
             self.requests.lock().push(request.clone());
+        }
+        if self.responses {
+            return super::responses::respond(self, request, deltas).await;
         }
         let body = self.render(&request).expect("this provider always renders");
         // read off the body rather than off the field, so that a caller who set `stream` in its
@@ -847,7 +853,7 @@ fn audio(media_type: &str) -> Option<&'static str> {
 /// refuses the part without it, and `file.pdf` is a worse label than `quarterly-results.pdf` and a
 /// far better one than a 400. The media type is where it comes from because the media type is what
 /// there is: it is the same string the `file_data` URI declares, so the two cannot disagree.
-fn filename(blob: &Blob) -> String {
+pub(super) fn filename(blob: &Blob) -> String {
     match blob.meta.get("name").and_then(Value::as_str) {
         Some(name) => name.to_owned(),
         // `application/pdf` -> `file.pdf`; a type with no slash in it is not one this can improve
@@ -926,7 +932,7 @@ fn reasoning_in(carrier: &Value) -> Option<&str> {
 /// note: nothing written is no arguments, which is how a server spells a call to a tool that
 /// takes none - read as JSON, it failed, and the model was told its arguments were invalid and
 /// sent the same correct call again. Anything else that is not JSON is kept as it was written.
-fn arguments_of(written: &str) -> Value {
+pub(super) fn arguments_of(written: &str) -> Value {
     match written.trim() {
         "" => json!({}),
         written => {

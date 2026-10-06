@@ -1,4 +1,4 @@
-//! A suite any provider can be held to, whichever of the two dialects it speaks.
+//! A suite any provider can be held to, whichever of the dialects it speaks.
 //!
 //! note: a suite rather than a test per provider, because a bug in how one provider reads a
 //! stream is usually in every provider that reads the same stream, and fixed in one copy it stays
@@ -54,6 +54,8 @@ pub enum Dialect {
     Gemini,
     /// Anthropic's Messages API: typed blocks opened, grown and closed by index.
     Anthropic,
+    /// OpenAI's Responses API: typed items opened, grown and finished by `output_index`.
+    Responses,
 }
 
 /// What one case came to.
@@ -104,6 +106,18 @@ impl Conformance {
         Self {
             what: what.into(),
             dialect: Dialect::Anthropic,
+            build: Box::new(move |url| build(url) as Arc<dyn Provider>),
+        }
+    }
+
+    /// A provider speaking OpenAI's Responses API.
+    pub fn responses<P: Provider + 'static>(
+        what: impl Into<String>,
+        build: impl Fn(String) -> Arc<P> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            what: what.into(),
+            dialect: Dialect::Responses,
             build: Box::new(move |url| build(url) as Arc<dyn Provider>),
         }
     }
@@ -223,6 +237,12 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"zażółć — 大\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"zażółć — 大\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+                "data: [DONE]\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
@@ -282,6 +302,15 @@ impl Conformance {
                 "\"thoughtsTokenCount\":20,\"totalTokenCount\":41}}\n\n",
             ),
             // `thinking_tokens` is OpenRouter's, beside a total that already counts them
+            // `output_tokens` already counts the reasoning, as chat completions' does
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]}}\n\n",
+                "data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\"working it out\"}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[],\"encrypted_content\":\"gAAA\"}}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"ok\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null,\"usage\":{\"input_tokens\":11,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens\":30,\"output_tokens_details\":{\"reasoning_tokens\":20}}}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n",
@@ -350,6 +379,16 @@ impl Conformance {
                     "this dialect sends the thinking as parts of the turn, not as a summary",
                 );
             }
+            // a summary in two parts, as this API sends one per stretch of reasoning
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]}}\n\n",
+                "data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\"all but 9 means 9 stay\"}\n\n",
+                "data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":1,\"delta\":\"so the answer is 9\"}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[],\"encrypted_content\":\"gAAA\"}}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"9\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => {
                 return Outcome::Skipped(
                     "this dialect sends the thinking as blocks of the turn, not as a summary",
@@ -427,6 +466,16 @@ impl Conformance {
                 "\"role\":\"model\"}}]}\n\n",
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"the first half \"}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"write\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":2,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":2,\"delta\":\"NEVER-ARRIVED\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
             ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
@@ -514,6 +563,13 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]}}\n\n",
+                "data: {\"type\":\"response.reasoning_summary_text.delta\",\"output_index\":0,\"summary_index\":0,\"delta\":\"working it out\"}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":1,\"delta\":\"NEVER-ARRIVED\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n",
@@ -589,6 +645,13 @@ impl Conformance {
                 "\"name\":\"write\",\"args\":{\"path\":\"b.txt\"},\"id\":\"call_2\"}}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"write\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_1\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_2\",\"name\":\"write\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_2\",\"name\":\"write\",\"arguments\":\"{\\\"path\\\":\\\"b.txt\\\"}\"}}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_1\",\"caller\":{\"type\":\"direct\"},\"name\":\"write\",\"input\":{}}}\n\n",
@@ -644,16 +707,24 @@ impl Conformance {
     /// the model as a tool that does not exist. Google's dialect has no index at all, so there is
     /// nothing here to ask it.
     async fn numbered_from_one(&self) -> Outcome {
-        let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped(
-                "this dialect files no calls by an index of their own, only blocks by theirs",
-            );
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_a\",",
+                "\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]},\"index\":0,",
+                "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+            ),
+            // items are numbered by `output_index`, and the first one a turn sends need not be 0
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_a\",\"name\":\"read\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.output_item.done\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"call_a\",\"name\":\"read\",\"arguments\":\"{}\"}}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
+            Dialect::Gemini | Dialect::Anthropic => {
+                return Outcome::Skipped(
+                    "this dialect files no calls by an index of their own, only blocks by theirs",
+                );
+            }
         };
-        let body = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_a\",",
-            "\"function\":{\"name\":\"read\",\"arguments\":\"{}\"}}]},\"index\":0,",
-            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
-        );
 
         let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
@@ -688,6 +759,13 @@ impl Conformance {
                 "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
             ),
             Dialect::Gemini => return Outcome::Skipped("this dialect sends whole calls"),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"c1\",\"name\":\"read\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"pa\"}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"th\\\":\\\"note\"}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"s.md\\\"}\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
@@ -745,6 +823,15 @@ impl Conformance {
             ),
             Dialect::Gemini => return Outcome::Skipped("this dialect sends whole calls"),
             // the shape a real turn asking for two files at once was streamed in
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"c1\",\"name\":\"read\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{\\\"path\\\":\\\"a\"}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\".txt\\\"}\"}\n\n",
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":1,\"item\":{\"type\":\"function_call\",\"call_id\":\"c2\",\"name\":\"read\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\"{\\\"path\\\":\\\"b\"}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":1,\"delta\":\".txt\\\"}\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
@@ -800,7 +887,9 @@ impl Conformance {
     /// position did.
     async fn loose_fragment(&self) -> Outcome {
         let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect names the block every fragment belongs to");
+            return Outcome::Skipped(
+                "this dialect names the block or item every fragment belongs to",
+            );
         };
         let body = concat!(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
@@ -854,6 +943,11 @@ impl Conformance {
             Dialect::Gemini => {
                 return Outcome::Skipped("this dialect sends arguments as an object");
             }
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"function_call\",\"call_id\":\"c1\",\"name\":\"read\",\"arguments\":\"\"}}\n\n",
+                "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"{path: notes\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
+            ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
                 "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
@@ -895,6 +989,13 @@ impl Conformance {
                 "\"role\":\"model\"}}]}\n\n",
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"three\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"one \"}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"two \"}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"three\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null}}\n\n",
             ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
@@ -977,6 +1078,11 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}],",
                 "\"usageMetadata\":{\"promptTokenCount\":11,\"candidatesTokenCount\":3}}\n\n",
+            ),
+            Dialect::Responses => concat!(
+                "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"role\":\"assistant\",\"content\":[]}}\n\n",
+                "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"delta\":\"ok\"}\n\n",
+                "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[],\"error\":null,\"usage\":{\"input_tokens\":11,\"output_tokens\":3}}}\n\n",
             ),
             Dialect::Anthropic => concat!(
                 "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
