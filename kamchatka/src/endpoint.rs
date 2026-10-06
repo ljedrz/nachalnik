@@ -103,6 +103,9 @@ pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
 /// note: an error where none is, although a session no longer needs one everywhere - see
 /// `key_for`, which is what decides. The signature is the one 0.18.0 published, kept for a patch
 /// release; the error is the sentence a session refused for want of a key used to be given.
+///
+/// note: nothing here sends what this returns any more. It reads the three names in order whatever
+/// the address, which is how an OpenRouter key reached OpenAI; `key_for` is the rule now.
 pub fn api_key() -> Result<String, BoxError> {
     env::var("KAMCHATKA_API_KEY")
         .or_else(|_| env::var("OPENROUTER_API_KEY"))
@@ -119,17 +122,48 @@ pub fn api_key() -> Result<String, BoxError> {
 /// would never read. Refused still for OpenRouter and Google, which are the two defaults and refuse
 /// every request without one - there the line at startup is worth more than a 401 on the first
 /// turn. Anywhere else the endpoint is the one that knows, and its 401 says so.
+///
+/// note: whose key it is decides where it may go. `KAMCHATKA_API_KEY` is the one somebody set for
+/// this program, so it goes wherever they pointed it; `OPENROUTER_API_KEY` and `OPENAI_API_KEY`
+/// are named for who issued them, and go there and nowhere else. Read as fallbacks for any
+/// address, a session pointed at `api.openai.com` with both exported sent OpenAI the OpenRouter
+/// key - and one at Google's, Anthropic's or a local server's sent either to whoever was there.
 fn key_for(url: &str) -> Result<String, BoxError> {
-    match api_key().ok() {
+    keyed(url, |name| env::var(name).ok())
+}
+
+/// [`key_for`], with the variables read through `read`: the rule, apart from the environment, so
+/// that it can be checked with no key in it - it is the one thing here that decides whether a
+/// credential leaves for somebody who did not issue it.
+fn keyed(url: &str, read: impl Fn(&str) -> Option<String>) -> Result<String, BoxError> {
+    let named = match () {
+        _ if is_openrouter(url) => Some("OPENROUTER_API_KEY"),
+        _ if is_openai(url) => Some("OPENAI_API_KEY"),
+        _ => None,
+    };
+    let key = read("KAMCHATKA_API_KEY").or_else(|| named.and_then(&read));
+
+    match key {
         Some(key) => Ok(key),
         None if checks_a_key(url) => Err(format!(
-            "set KAMCHATKA_API_KEY (or OPENROUTER_API_KEY / OPENAI_API_KEY): {} refuses a request \
-             without one",
+            "set {}: {} refuses a request without one",
+            match named {
+                Some(name) => format!("{name} (or KAMCHATKA_API_KEY)"),
+                None => "KAMCHATKA_API_KEY".to_owned(),
+            },
             shown(url)
         )
         .into()),
         None => Ok(String::new()),
     }
+}
+
+/// Where OpenAI's own API is, which is the one address `OPENAI_API_KEY` is sent to.
+const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
+/// Whether `url` is OpenAI's own API.
+fn is_openai(url: &str) -> bool {
+    host(url) == host(OPENAI_BASE_URL)
 }
 
 /// Whether `url` is one of the services known to refuse every request that comes without a key.
@@ -138,6 +172,7 @@ fn key_for(url: &str) -> Result<String, BoxError> {
 /// as well as its native `/v1beta`, whatever the port and whoever is named before an `@`.
 fn checks_a_key(url: &str) -> bool {
     is_openrouter(url)
+        || is_openai(url)
         || host(url) == host(DEFAULT_BASE_URL)
         || host(url) == host(ANTHROPIC_BASE_URL)
 }
@@ -450,7 +485,7 @@ pub mod advise {
     pub fn account(session_endpoint: &str) -> Result<Account, BoxError> {
         chosen(
             env::var("KAMCHATKA_SYSTEM1_API_KEY").ok(),
-            api_key().ok(),
+            key_for(session_endpoint).ok().filter(|key| !key.is_empty()),
             env::var("OPENROUTER_API_KEY").ok(),
             session_endpoint,
             &base_url(),
@@ -718,6 +753,68 @@ pub mod anthropic {
 
 #[cfg(test)]
 mod tests {
+
+    /// A key named for who issued it goes to them and nowhere else; the one set for this program
+    /// goes wherever it was pointed.
+    ///
+    /// note: every address here is one this program documents somebody pointing it at, and every
+    /// key is exported at once - which is the case that leaked: an OpenRouter key went to OpenAI,
+    /// and either went to Google, Anthropic or a local server whenever `KAMCHATKA_API_KEY` was not
+    /// set.
+    #[test]
+    fn a_key_goes_only_to_whoever_issued_it() {
+        let every = |name: &str| match name {
+            "OPENROUTER_API_KEY" => Some("sk-or".to_owned()),
+            "OPENAI_API_KEY" => Some("sk-openai".to_owned()),
+            _ => None,
+        };
+        for (url, sent) in [
+            ("https://openrouter.ai/api/v1", Some("sk-or")),
+            ("https://api.openai.com/v1", Some("sk-openai")),
+            // the ones that refuse a request without a key, refused at startup rather than sent
+            // somebody else's
+            ("https://generativelanguage.googleapis.com/v1beta", None),
+            ("https://api.anthropic.com/v1", None),
+            // and the ones that take none, sent none
+            ("http://localhost:11434/v1", Some("")),
+            ("https://gateway.example.com/v1", Some("")),
+        ] {
+            let got = keyed(url, every);
+            assert_eq!(got.as_deref().ok(), sent, "{url}");
+        }
+
+        // the program's own key is the person's choice for wherever they pointed it
+        let own = |name: &str| (name == "KAMCHATKA_API_KEY").then(|| "sk-own".to_owned());
+        for url in [
+            "https://openrouter.ai/api/v1",
+            "https://api.openai.com/v1",
+            "https://api.anthropic.com/v1",
+            "http://localhost:11434/v1",
+        ] {
+            assert_eq!(keyed(url, own).ok().as_deref(), Some("sk-own"), "{url}");
+        }
+
+        // and a refusal names the variable that address reads
+        let none = |_: &str| None;
+        let said = keyed("https://api.openai.com/v1", none)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.starts_with("set OPENAI_API_KEY (or KAMCHATKA_API_KEY)"),
+            "{said}"
+        );
+        let said = keyed("https://openrouter.ai/api/v1", none)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.starts_with("set OPENROUTER_API_KEY (or KAMCHATKA_API_KEY)"),
+            "{said}"
+        );
+        let said = keyed("https://generativelanguage.googleapis.com/v1beta", none)
+            .unwrap_err()
+            .to_string();
+        assert!(said.starts_with("set KAMCHATKA_API_KEY:"), "{said}");
+    }
     use super::*;
 
     /// A key is asked for only where the service is known to refuse every request without one.

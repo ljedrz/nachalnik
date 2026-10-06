@@ -818,8 +818,11 @@ setting added later nor a number added here can go unnoticed.
 ## 🎛️ options
 
 `kamchatka --help` lists every option, and the environment too rather than leaving its variables
-for the readme alone to mention: the key, as `KAMCHATKA_API_KEY` or else `OPENROUTER_API_KEY` or
-`OPENAI_API_KEY`, which OpenRouter, Google and Anthropic need and a model served on this machine does not -
+for the readme alone to mention: the key, as `KAMCHATKA_API_KEY`, which goes wherever the
+requests go - or, where `KAMCHATKA_API_KEY` is not set, the key named for whoever is there:
+`OPENROUTER_API_KEY` for OpenRouter and `OPENAI_API_KEY` for `api.openai.com`, each sent there and
+nowhere else, so that a key exported for one service is never handed to another. OpenRouter, OpenAI,
+Google and Anthropic refuse a request without one and a model served on this machine needs none -
 pointed anywhere else, a session with no key starts and sends none; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
 says otherwise, Google's own `v1beta` with `--gemini`, or Anthropic's own with `--anthropic` -
 `--responses` goes where chat completions does -

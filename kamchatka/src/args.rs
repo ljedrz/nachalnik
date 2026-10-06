@@ -57,8 +57,10 @@ The advisor, which is only ever asked when --advise is given:
     format!(
         "\
 Environment:
-  KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY. Needed for
-                           OpenRouter, Google and Anthropic; a model served locally takes none
+  KAMCHATKA_API_KEY        the key, sent wherever the requests go. Needed for OpenRouter,
+                           OpenAI, Google and Anthropic; a model served locally takes none
+  OPENROUTER_API_KEY       the key for OpenRouter, and only there
+  OPENAI_API_KEY           the key for OpenAI's own API, and only there
   ANTHROPIC_API_KEY        the key for Anthropic's own API, with --anthropic, and only there
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
                            OpenRouter by default, Google's own v1beta with --gemini, or
