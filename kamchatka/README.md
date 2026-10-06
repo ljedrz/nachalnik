@@ -58,6 +58,33 @@ words, since the model put it there — and that it is pinned:
 ![The context tab. Five items with what each sends and holds back; the pinned note is selected and
 open, showing why it is there and what it says.][shot-context]
 
+## 🔍 nothing behind your back
+
+**No instructions of its own.** `kamchatka` sends no system prompt. The only system text in a
+session is what you give it with `--system` or a settings file, and that is a pinned row on the
+context tab like any other item. Besides the context, what reaches the model is the tool
+definitions, and `/budget` says what they cost.
+
+**The request before it goes.** <kbd>ctrl+p</kbd> prints the next request as the runtime renders
+it, naming every item left out and why; `/payload` prints what the provider will put on the wire,
+field for field; `/raw` shows what came back from the last one.
+
+**Compaction you can see and take back.** No model is asked to summarise your history. A tool
+result the model has read and finished with becomes a one-line marker that says so, and once the
+context fills, the oldest exchanges go whole. Every item taken is still a row on the context tab
+with a note saying why, `/restore` brings it back, and a pinned item cannot be taken at all.
+`/compact` shows a pass before it happens and waits for your answer.
+
+**A token count that says it is a guess.** Nothing here has the model's tokenizer, so the figure
+is written `~2,460`, and the percentage beside it names the limit it is a percentage of. Once a
+response arrives it is anchored on what the provider actually charged, and the counter corrects
+itself from every response it could price in full. Where something in the context has no price
+on it, the figure is a floor and says so.
+
+**No telemetry, no update check.** It talks to the endpoint you point it at, and to nothing else
+you did not ask for: an MCP server you name, a session you serve, the advisor you turn on. A
+command the shell runs is held at the network gate until it has an answer.
+
 ## 📦 installing
 
 Download one of the binaries from [releases](https://github.com/ljedrz/nachalnik/releases), or

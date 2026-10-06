@@ -35,6 +35,10 @@ minor bump may break you.
   verify its attestation, how to audit the dependency list it carries, and what the dependency
   tree is held to in CI.
 
+- **The readme says what the program does not do unasked**: it sends no system prompt of its own
+  or telemetry, shows the request before it goes, compacts without asking a model and can be undone,
+  and says its token count is an estimate.
+
 ### changed
 
 - **`endpoint::session_endpoint` takes an `endpoint::Wire`** rather than whether the session is a
