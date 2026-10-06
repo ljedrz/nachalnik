@@ -167,16 +167,6 @@ Referenced from [AGENTS.md](AGENTS.md).
   that works through the OpenAI dialect can fail a request through Google's. Checking needs a Google
   key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
 
-- **The fuzzing harness and the provider soak are not in the repository.** What drove
-  `kamchatka` headless and served with a live model and mined the records for errors, and what
-  soaked `nachalnik-providers` against OpenRouter through a fault-injecting proxy, live outside
-  it. The soak of `kamchatka` itself is in: `.claude/skills/soak/` carries one session across
-  resumes, kills and a context wall and checks the chain of records it leaves. Committed, the
-  other two could be run again after a change rather than rebuilt; the cost is a key and hours of
-  wall-clock time, and where they go is the decision. Python is not new here - two test servers
-  and both skills are Python - but `scripts/` is shell, and a campaign that finds
-  errors rather than reviews code is a different thing from the sweep.
-
 - **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused, and told to write
   `b.txt*`, because a domain, a tool's id and a file name are all bare words. Reading a bare word
   no domain claims as a path rule would make a typo like `--deny contextt` a rule about a file that
