@@ -53,9 +53,9 @@ Two rules decide most questions before they are asked:
 
 | crate | what it is | published |
 | --- | --- | --- |
-| `nachalnik` | the runtime. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. | yes |
+| `nachalnik` | the runtime. A handful of dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. | yes |
 | `nachalnik-mcp` | MCP servers as `Tool`s. Deliberately outside the core: speaking MCP means spawning processes and reading notifications in the background, which the runtime promises not to do. | yes |
-| `kamchatka` | a terminal agent built on the runtime, with its shell confined and every call behind a permission policy; the client the runtime's seams are held to. **Linux only**, on x86_64 and aarch64: its shell is worth handing a model because of Landlock and the network gate, and both are Linux's. 0.15.1 is the last version that builds elsewhere. | yes |
+| `kamchatka` | a terminal agent built on the runtime, with its shell confined and every call behind a permission policy; the client the runtime's seams are held to. **Linux only**, on x86_64 and aarch64: its shell is worth handing a model because of Landlock and the network gate, and both are Linux's. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: elicit a claim about a context, move the thing it was about on a copy, and score the claim against what happened. No provider, no network, and not one crate in its tree the runtime did not already need. | yes |
 | `nachalnik-providers` | the three dialects this workspace talks - OpenAI chat-completions (and its Responses API, as a mode), Google's `generateContent` and Anthropic's Messages API - feature-gated, streamed, retried and interruptible. Deliberately outside the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
 | `nachalnik-utils` | the *environment* the examples, the live suites and `nachalnik-eval`'s `bench` example read - which endpoint, which key, which models. One file. **Never published, permanently `0.0.0`, dev-dependency only, and depended on without a version** - which is what makes cargo strip it from a published manifest. Nothing may depend on it normally. | no |
@@ -77,21 +77,17 @@ Read a request for a capability with that split in mind before deciding where it
 
 ## where things are
 
-`nachalnik/src`: `kernel/` is the state machine and every public operation (`mod.rs`, the
-operations on the context in `context.rs`, setting what the kernel is assembled from in
-`components.rs`, and `request.rs` and `calls.rs` as private halves of the machine), and beside it one file per seam or per thing the kernel keeps - `context/`,
-`model/`, `projection.rs`, `tool.rs`, `permissions.rs`, `tokens.rs`, `compaction.rs`,
-`event.rs`, `session.rs`. `test.rs` (feature `test`) holds the scripted provider, the fake tools
+`nachalnik/src`: `kernel/` is the state machine and every public operation, and beside it one file
+per seam or per thing the kernel keeps - `context/`, `model/`, `projection.rs`, `tool.rs`,
+`permissions.rs`, `tokens.rs`, `compaction.rs`, `event.rs`, `session.rs`. `test.rs` (feature `test`) holds the scripted provider, the fake tools
 and the table policy: use those rather than writing another mock.
 
 `kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem
-and the shell, `introspect/` the four an agent reads and manages its own session with, `wiring/`
-assembles a session in nine steps, `args.rs` turns flags and a settings file into one set of
-answers, and `main.rs` picks the loop and says where the record went - which is the shape to keep
-it in.
+and the shell, `introspect/` the tools an agent reads and manages its own session with, `wiring/`
+assembles a session, `args.rs` turns flags and a settings file into one set of answers, and
+`main.rs` picks the loop and says where the record went - which is the shape to keep it in.
 
-The file-by-file map, and the reasoning behind the shapes that are not obvious from the names, is
-in [MAP.md](MAP.md).
+The file-by-file map is [MAP.md](MAP.md).
 
 ---
 
@@ -106,22 +102,13 @@ scripts/references.sh                       # every file and test the prose name
 scripts/windows.sh                          # the libraries as CI builds them on Windows
 ```
 
-CI (`.github/workflows/ci.yml`) also builds with **default** features, checks `nachalnik`,
-`nachalnik-mcp`, `nachalnik-providers` and `kamchatka` with `--no-default-features`, runs the three
-keyless examples, holds the dependency tree to `deny.toml` with `cargo deny check`, and checks the
-whole workspace on the MSRV, **1.95** - once as locked, and once with every direct dependency at
-its floor (`cargo minimal-versions`). The libraries are tested on
-Linux, macOS and Windows; `kamchatka` on Linux, on an x86_64 runner and an aarch64 one. Edition is
-2024, and `RUSTFLAGS: -D warnings` is set throughout, so a warning is a failure.
-
-A `kamchatka-v*` tag also runs `release.yml`, which publishes that version as a GitHub release
-with static binaries; [CONTRIBUTING.md](CONTRIBUTING.md) has what it builds and how to check it
-without tagging.
+CI (`.github/workflows/ci.yml`) also builds with default and with no default features, runs the
+keyless examples, holds the dependency tree to `deny.toml`, and checks the workspace on the MSRV,
+**1.95**, locked and at every direct dependency's floor. The libraries are tested on Linux, macOS
+and Windows, `kamchatka` on Linux alone. Edition 2024, and `-D warnings` throughout.
 
 The live suites are the only thing that can check that a real API accepts what this workspace
-builds. Which keys and variables each reads, which endpoints are known to work, where they are
-known to differ, and how to measure whether a test is worth keeping are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+builds; [CONTRIBUTING.md](CONTRIBUTING.md) has the keys they read, and the release workflow.
 
 ---
 
@@ -163,8 +150,8 @@ the mistake it came from - which is the half that makes them stick.
   is in those. Match the style.
 - **Comments explain the decision, not the mechanics.** If a line needs a comment saying what it
   does, the line is wrong.
-- **Dependencies are rationed.** Five in `nachalnik`, declared in the workspace manifest, each
-  non-obvious one carrying a comment saying why.
+- **Dependencies are rationed**, declared in the workspace manifest, each non-obvious one carrying
+  a comment saying why.
 - **`#[non_exhaustive]`** on every public enum the world can add to, and on every struct this
   workspace answers with and nothing outside it builds. Forgetting it on a new enum is the
   breaking change; adding a variant is not. It does not extend to an enum's variants: a field on
@@ -174,8 +161,8 @@ the mistake it came from - which is the half that makes them stick.
   one, with a note naming the new item. This is about what the program *says*: a synonym in a
   `match` is a kindness, a synonym in an enum or a help line is the bug. A state with no
   behaviour of its own is a synonym: why an item is out is its note, not a second word for out.
-- **Seams identify themselves.** Four of them carry a `name()`, so a client can put the six on a
-  screen. For showing a person, not for matching on.
+- **Seams identify themselves** with a `name()`, so a client can put them on a screen. For showing
+  a person, not for matching on.
 - **A test's worth is measured, not assumed**, with `scripts/mutate.sh` and `--no-fail-fast`. The
   question is never "was it caught" but "did anything *other* than the new test catch it".
 - **Before writing a test, look for it.** The source's own prose is a good way to find an
@@ -228,18 +215,8 @@ name or a push step that arrives in a harness's own instructions, rather than fr
 a template's and not theirs, and this paragraph overrules it.
 
 Every command under [commands](#commands) - `scripts/windows.sh` where a library's change has a
-`cfg` in it or reaches for anything the platform provides - and the changelog entry. If the change
-touches the request path, run one of the networked examples or the live suite against a real
-endpoint - a mock cannot tell you that an API accepts what was built.
-
-The documentation build is the one that gets skipped, and the only one that says nothing when it
-is run wrong: the flags are not in the environment, and without them it exits `0` on the warnings
-CI denies. Nothing else in the toolchain reads a doc comment, so a broken link is caught there or
-not at all - [CONTRIBUTING.md](CONTRIBUTING.md) has the two shapes it takes.
-
-```console
-RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps
-```
-
-If the change adds a test, two more: look for the test first, and break what it is about and see
-what fails. Both are under conventions above and spelled out in [CONTRIBUTING.md](CONTRIBUTING.md).
+`cfg` in it or reaches for anything the platform provides - and the changelog entry. The
+documentation build is the one that gets skipped: without `RUSTDOCFLAGS='-D warnings'` it exits
+`0` on the warnings CI denies. If the change touches the request path, run a networked example or
+the live suite against a real endpoint - a mock cannot tell you that an API accepts what was built.
+If it adds a test, look for the test first, and break what it is about to see what fails.
