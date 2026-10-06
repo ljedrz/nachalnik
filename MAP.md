@@ -189,6 +189,7 @@ program rather than a library.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
+`openai/responses.rs` (the same, in Responses mode: ordered items and sealed reasoning),
 `gemini.rs` (Google's own, the one that keeps the order of a turn), `anthropic.rs` (Anthropic's
 Messages API, the one whose thinking is signed and has to go back as it came), `endpoint.rs` (the
 `Endpoint` trait all of them answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
@@ -210,8 +211,8 @@ Three dialects, one trait. `Provider` is the kernel's half - ask, and be answere
 is the caller's: where the requests go, what is served there, what the last retry was about.
 `kamchatka`'s `App` holds an `Arc<dyn Dialect>` - both traits in one - and never finds out which
 wire format is behind it, which is the claim `/seams` makes about every other part of the runtime.
-`--gemini` picks the second and `--anthropic` the third, and both turn on
-`LinearProjector::send_blocks` with them. Those dialects' turn *is* an order, and projecting three
+`--gemini` picks the second and `--anthropic` the third, and `--responses` the first in its
+Responses mode; all three turn on `LinearProjector::send_blocks` with them. Those dialects' turn *is* an order, and projecting three
 slots at it would flatten on the way out every turn whose order was recorded on the way in.
 
 `introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**.

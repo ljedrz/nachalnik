@@ -1296,6 +1296,7 @@ fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
         &["--headless"][..],
         &["--headless", "--gemini"],
         &["--headless", "--anthropic"],
+        &["--headless", "--responses"],
     ] {
         let (ok, said) = run_with(args, "hi\n", &[("KAMCHATKA_BASE_URL", "not-a-url")]);
         assert!(!ok, "{args:?}: {said}");
@@ -1320,6 +1321,29 @@ fn two_dialects_asked_for_are_refused_rather_than_one_of_them_picked() {
     let (ok, said) = run(&["--config-file", &path, "--anthropic"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("two dialects"), "{said}");
+
+    // and `--responses`, which is a dialect too, though it goes to the same address
+    let (ok, said) = run(&["--responses", "--anthropic"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("--responses"), "{said}");
+
+    let path = settings(
+        "three-dialects",
+        r#"{ "gemini": true, "anthropic": true, "responses": true }"#,
+    );
+    let (ok, said) = run(&["--config-file", &path], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("three dialects"), "{said}");
+}
+
+/// `--responses` goes where chat completions does - OpenRouter, unless told otherwise - and is
+/// refused there without a key, as chat completions is.
+#[test]
+fn a_responses_session_with_no_key_goes_where_chat_completions_does() {
+    let (ok, said) = spawn(elsewhere(), &["--responses"], "", &[], false, false);
+    assert!(!ok, "{said}");
+    assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
+    assert!(said.contains("openrouter.ai"), "{said}");
 }
 
 /// `--anthropic` with no address goes to Anthropic, and is refused there without a key - which

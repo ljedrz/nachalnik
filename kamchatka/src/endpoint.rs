@@ -259,6 +259,8 @@ pub enum Wire {
     Gemini,
     /// Anthropic's Messages API, with `--anthropic`.
     Anthropic,
+    /// OpenAI's Responses API, with `--responses`: the same address and key as chat completions.
+    Responses,
 }
 
 /// Where this session's own requests go, in whichever dialect it was asked to speak.
@@ -274,7 +276,7 @@ pub enum Wire {
 /// whatever the endpoint this points at issued.
 pub fn session_endpoint(wire: Wire) -> String {
     match wire {
-        Wire::OpenAi => base_url(),
+        Wire::OpenAi | Wire::Responses => base_url(),
         Wire::Gemini => gemini::base_url(),
         Wire::Anthropic => anthropic::base_url(),
     }
@@ -288,12 +290,32 @@ pub fn session_endpoint(wire: Wire) -> String {
 /// command rather than a restart. The probe is the one thing skipped: there is no model for it to
 /// ask a limit about, and `set_model` runs it the moment there is.
 pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
+    connected(model, false).await
+}
+
+/// The same provider, asking OpenAI's Responses API: everything about where the requests go is
+/// the same, and only what they say differs.
+pub mod responses {
+    use super::*;
+
+    /// Builds the provider [`super::connect`] builds, in Responses mode.
+    pub async fn connect(model: Option<&str>) -> Result<Arc<OpenAiCompatible>, BoxError> {
+        connected(model, true).await
+    }
+}
+
+/// [`connect`], in whichever of the two modes.
+async fn connected(
+    model: Option<&str>,
+    responses: bool,
+) -> Result<Arc<OpenAiCompatible>, BoxError> {
     let mut provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
         addressed(base_url())?,
         key_for(&base_url())?,
     )
-    .with_context_limit(checked_limit()?);
+    .with_context_limit(checked_limit()?)
+    .responses(responses);
     if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
         provider = provider
             .on_behalf_of(APP_URL, APP_TITLE)

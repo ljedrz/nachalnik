@@ -33,8 +33,9 @@ $ kamchatka -m qwen/qwen3-coder "what does this repository do?"
 **Any model, hosted or local.** OpenRouter is only the default address: anything that speaks
 OpenAI's chat completions is one `KAMCHATKA_BASE_URL` away, and that includes a model running on
 your own machine under ollama, vLLM or LM Studio, which needs no key at all. `--gemini` speaks
-Google's own API and `--anthropic` Anthropic's own Messages API, both of which keep a turn's
-thinking, text and calls in the order they came and send their signatures back.
+Google's own API, `--anthropic` Anthropic's own Messages API and `--responses` OpenAI's Responses
+API, all of which keep a turn's thinking, text and calls in the order they came and send the
+signed or sealed thinking back.
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what does this repository do?"
@@ -97,7 +98,7 @@ describes, which is what an append-only log of typed events is for.
 | **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only; 0.15.1 is the last version that builds elsewhere. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
-| **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio), Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
+| **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
 | `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask — so that scaffolding is written once rather than in each crate that needs it. A *dev*-dependency with no version: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
 
 ### 📖 the docs

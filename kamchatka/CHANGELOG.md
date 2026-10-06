@@ -16,6 +16,11 @@ minor bump may break you.
   for nothing else. The settings file takes `anthropic`, and a session asked for two dialects, one
   by the file and one by the command line, is refused rather than handed either. Its prompt is
   cached by default; `/params cache_control false` turns that off.
+- **`--responses` asks OpenAI's Responses API** rather than chat completions, at the same address
+  with the same key: a turn keeps its order, and a reasoning model's thinking goes back sealed
+  rather than being redone every turn. OpenRouter answers it, and `KAMCHATKA_BASE_URL=
+  https://api.openai.com/v1` is OpenAI's own. The settings file takes `responses`, and `/params`
+  refuses `input`, which this API builds from the context.
 
 ### changed
 

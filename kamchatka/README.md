@@ -23,7 +23,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 
 OpenRouter is the default, not the only choice: `KAMCHATKA_BASE_URL` points it at anything that
 speaks OpenAI's chat completions, a model served on this machine by ollama, vLLM or LM Studio
-included (no key needed), and `--gemini` and `--anthropic` speak Google's and Anthropic's own APIs.
+included (no key needed); `--gemini` and `--anthropic` speak Google's and Anthropic's own APIs, and
+`--responses` OpenAI's Responses API.
 [Running it][running] has the details.
 
 ## ❓ who this is for

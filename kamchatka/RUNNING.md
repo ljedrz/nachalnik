@@ -332,7 +332,7 @@ but loopback. `--serve` itself still refuses to. Whatever reaches the page reach
 tool, so it is a thing for a network you trust while you are watching it, and not a thing to leave
 running.
 
-## 🧩 three dialects, and why two of them keep the order
+## 🧩 three dialects, and why the others keep the order
 
 `--gemini` talks to Google's own API instead of an OpenAI-compatible one. That is not a
 convenience — it is the difference between seeing what the model did and seeing a rearrangement of
@@ -362,6 +362,15 @@ this API would take, so a session that switched to it sends that thinking nowher
 being refused for it. OpenRouter speaks the same dialect at `/api/v1/messages`, so a model there
 can be asked in it as well as in the OpenAI one.
 
+`--responses` is the same bargain with OpenAI's own newer API, at the same address as chat
+completions and with the same key. A reasoning model's thinking comes back there as an item whose
+`encrypted_content` is the thinking itself, sealed; chat completions has nowhere to keep that, so a
+model asked through it starts every turn's thinking from nothing and is billed for doing it again.
+Here it goes back with the call's result: on `gpt-5-nano`, the request carrying a result back spent
+no reasoning tokens with it and 64 without. Instructions stay where they were put, so one added
+mid-session does not move the start of the prompt that OpenAI caches by. OpenRouter answers it,
+and so does `https://api.openai.com/v1`; most servers that speak chat completions do not.
+
 Every provider answers one trait, `Dialect`, so `/model`, `/models`, `/endpoint` and the status
 line work the same against any of them and nothing above them knows which wire format it got.
 
@@ -370,6 +379,8 @@ $ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
 $ kamchatka --gemini "what does src/kernel.rs do?"
 $ export ANTHROPIC_API_KEY=...        # an Anthropic Console key
 $ kamchatka --anthropic -m claude-haiku-4-5 "what does src/kernel.rs do?"
+$ export KAMCHATKA_BASE_URL=https://api.openai.com/v1 KAMCHATKA_API_KEY=...   # an OpenAI key
+$ kamchatka --responses -m gpt-5-mini "what does src/kernel.rs do?"
 ```
 
 ## 🔀 the model, and the address it lives at
@@ -460,9 +471,11 @@ exactly like one that worked. The runtime invents none of them — only what you
 from the `thinkingConfig` a `--gemini` request asks for its thinking with, and a
 `generationConfig` of yours is merged over that; the `max_tokens` an `--anthropic` request
 cannot be sent without, which a `max_tokens` of yours replaces; and the `cache_control` an
-`--anthropic` request asks for its prompt to be cached with — and a listing that publishes nothing
-is read as silence rather than as a prohibition, because ollama and a bare proxy both say nothing
-here.
+`--anthropic` request asks for its prompt to be cached with; and the `store: false` a
+`--responses` request is sent with, and the `reasoning.encrypted_content` it adds to `include` -
+to yours, if you set one - so that its thinking can go back without the server keeping the
+conversation, unless `/params store true` asks it to — and a listing that publishes nothing is read
+as silence rather than as a prohibition, because ollama and a bare proxy both say nothing here.
 
 That last one is on because Anthropic caches nothing it is not asked to, and a session sends the
 same conversation again on every turn: unasked, each of them is billed in full, where a cached
@@ -483,7 +496,8 @@ No endpoint publishes a parameter's type or its range, so neither is shown: a de
 and its type is in it.
 
 A parameter named after something the request is built from — `messages`, `tools`, `model`,
-`contents` or `systemInstruction` under `--gemini`, and `system` under `--anthropic` —
+`contents` or `systemInstruction` under `--gemini`, `system` under `--anthropic`, and `input`
+under `--responses` —
 is refused. Those are the context's, the tools' and the session's, and no dialect lets a parameter
 replace them.
 
@@ -807,7 +821,8 @@ setting added later nor a number added here can go unnoticed.
 for the readme alone to mention: the key, as `KAMCHATKA_API_KEY` or else `OPENROUTER_API_KEY` or
 `OPENAI_API_KEY`, which OpenRouter, Google and Anthropic need and a model served on this machine does not -
 pointed anywhere else, a session with no key starts and sends none; where the requests go, as `KAMCHATKA_BASE_URL`, which is OpenRouter unless it
-says otherwise, Google's own `v1beta` with `--gemini`, or Anthropic's own with `--anthropic`,
+says otherwise, Google's own `v1beta` with `--gemini`, or Anthropic's own with `--anthropic` -
+`--responses` goes where chat completions does -
 whose key is read from `ANTHROPIC_API_KEY` first and only for Anthropic's own address;
 `KAMCHATKA_CONTEXT_LIMIT`, for a
 provider that will not say how much context its model has; and `KAMCHATKA_NO_ATTRIBUTION`, which

@@ -34,13 +34,14 @@ const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
 /// nothing where a person can see it: set and then quietly not sent, it would read on the
 /// `/params` line as a parameter in force. `contents` means nothing to the other dialects, so
 /// refusing it there costs nobody anything.
-const BUILT: [&str; 6] = [
+const BUILT: [&str; 7] = [
     "model",
     "messages",
     "tools",
     "contents",
     "systemInstruction",
     "system",
+    "input",
 ];
 
 /// What `/undo` and `/redo` say while a turn is under way, which the kernel refuses to rewind;
