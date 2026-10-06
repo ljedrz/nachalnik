@@ -88,29 +88,17 @@ can make a run *fail* where a sequential one would have trickled through: a burs
 the retries behind them eat the budget, probes come back `Unreadable`, and a report quietly becomes
 a page of untested claims.
 
-So `Pace` carries two limits, because endpoints publish two kinds and neither implies the other.
-`at_once` caps how many requests are **in flight**. `per_minute` caps how many are **started** in a
-window, which is how a free tier words it and which no count of things in flight can stand in for —
-eight at once against a fast endpoint is eighty a second. The window is a sliding one, because the
-limit is worded as one. It also comes with a minimum gap between admissions: twenty a minute is
-obeyed perfectly by firing twenty requests in the window's first instant and then idling, and that
-is not a reading of the limit any endpoint's own limiter shares.
-
-The ceiling is applied by wrapping the subject's `Provider`, which is the only place it cannot be
-evaded — including by an experiment this crate has never seen. A ceiling on the ablation sweep
-alone is not one: nine experiments in flight put nine live probes on the wire underneath it.
-`Ablation::observe` fans its replicates out and `Ablation::observe_each` takes a whole sweep, so an
-experiment gets the concurrency by calling the methods it already called, and cannot exceed what
-the caller allowed however wide it fans.
+So `Pace` carries the two limits endpoints publish: `at_once` caps how many requests are **in
+flight**, and `per_minute` how many are **started** in a sliding window, spaced out rather than
+fired at its start. It is applied by wrapping the subject's `Provider`, so no experiment can evade
+it however wide it fans; `Ablation::observe` and `Ablation::observe_each` are where the fanning is.
 
 What is deliberately *not* here is what to do once a limit has been exceeded anyway. A `429` and
 its `Retry-After` are answered in whichever `Provider` you supplied, because that is the layer that
 knows the wire format they arrived in. These are about not provoking one.
 
-The `bench` example takes `-j` and `--per-minute` for the two, and writes its report after every
-experiment rather than once at the end — atomically, via a rename, so a reader or a killed process
-sees one whole checkpoint or the other and never the flushed half of one. A suite is hours long,
-and a run killed partway keeps every experiment it finished.
+The `bench` example takes `-j` and `--per-minute` for the two, and writes its report atomically
+after every experiment, so a run killed partway keeps every experiment it finished.
 
 ---
 
@@ -140,8 +128,9 @@ figure it prints is computed over items that share a dossier and are therefore n
 So the only test `pool` applies is the sign test, over one run per model, which is honest there
 and nowhere else in this crate: models are independent of each other in a way that items never
 are. A model is its name, whichever endpoint served it, since the same weights reached two ways
-are not two models; where one came through more than one, `pool` says which it counted. `Cohort::is_unanimous` is unanimity and not significance, and three models agreeing is
-unanimous at `p = 0.125`, which is why the cohort size is a decision a study registers in advance.
+are not two models. `Cohort::is_unanimous` is unanimity and not significance - three models
+agreeing is unanimous at `p = 0.125` - which is why the cohort size is a decision a study registers
+in advance.
 
 ---
 
