@@ -111,12 +111,6 @@ Each entry says what it is, why it waits, and what would unblock it.
   turns back without it. Nothing tested here needed it; a model that does, and a live test that
   shows the difference, would say whether it belongs in the dialect.
 
-- **A turn paused by `--requests` is not in the record as a pause.** The kernel returns at the
-  request budget with the machine `Idle`, and the records of that turn read exactly as those of a
-  turn the model ended in as many requests, so a log read afterwards cannot tell them apart. A
-  `turn.stopped` event would say it, and is additive since `Event` is `#[non_exhaustive]`; it is a
-  new part of the runtime's record, which is why it waits for a person rather than a release week.
-
 - **Two endings the record does not say plainly.** A termination signal between `model.requested`
   and the calls' results writes a snapshot holding a call that never ran, which resume repairs; and
   a turn whose answer asked for a tool and named none ends as `tool_use`, as though it had called

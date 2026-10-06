@@ -81,6 +81,28 @@ pub enum Event {
     /// Somebody asked the loop to stop at the next opportunity.
     #[serde(rename = "turn.interrupted")]
     Interrupted,
+    /// [`Kernel::turn`] stopped at [`Config::max_requests_per_turn`] before the model ended its
+    /// turn, and the next `turn` carries on from here.
+    ///
+    /// note: the machine rests in [`State::Idle`] either way, so without this
+    /// the records of a turn that ran out of requests read exactly as those of a turn the model
+    /// ended in as many.
+    #[serde(rename = "turn.paused")]
+    TurnPaused {
+        /// The requests the turn had made, which is the budget it reached.
+        requests: usize,
+    },
+    /// The session was finished with calls the turn had asked for still waiting to run.
+    ///
+    /// note: the one ending a record could not say before, and the one a stopped program leaves
+    /// most often: a question nobody answered, or calls permitted and not yet run, when
+    /// [`Kernel::finish`] was called. Their `tool.requested` has no
+    /// `tool.finished`, and this says that is how the session ended rather than a record lost.
+    #[serde(rename = "turn.unfinished")]
+    TurnUnfinished {
+        /// The calls, in the order the model asked for them.
+        calls: Vec<ToolCallId>,
+    },
     /// The runtime moved from one state to another.
     ///
     /// note: Together with the context events, this is enough to render what the agent is doing
@@ -558,6 +580,8 @@ impl Event {
             Self::SessionResumed { .. } => "session.resumed",
             Self::SessionFinished => "session.finished",
             Self::Interrupted => "turn.interrupted",
+            Self::TurnPaused { .. } => "turn.paused",
+            Self::TurnUnfinished { .. } => "turn.unfinished",
             Self::StateChanged { .. } => "state.changed",
             Self::ContextAdded { .. } => "context.added",
             Self::ContextChanged { .. } => "context.changed",
