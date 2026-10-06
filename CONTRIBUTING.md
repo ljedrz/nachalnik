@@ -258,7 +258,8 @@ server spawned as a child, and `reconcile` folds real forks of one session back 
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
 back out (`gemini`), does the same with a recorded Anthropic one (`anthropic`), and asks a real
 Anthropic endpoint whether it takes back what was recorded (`anthropic_live`, which skips without
-a key), checks what is volunteered to an endpoint about the calling program and to
+a key), does both for the Responses API (`responses` and `responses_live`, which skips without
+`OPENAI_API_KEY`, or `OPENROUTER_API_KEY` where `NACHALNIK_RESPONSES_BASE_URL` points at OpenRouter), checks what is volunteered to an endpoint about the calling program and to
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one
 mid-stream (`stalled`), asks the dialects about the edges of the reader they share - a body that
 ends without a newline, one that was never a stream, a refusal that says how long to wait
