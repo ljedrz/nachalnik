@@ -97,8 +97,16 @@ impl App {
         // note: nothing is said about what went in. The chat derives a line for a reference off
         // the item itself - which file, what it is, what it costs, and whether anything here
         // could price it - so a sentence here would be a second account of one item, written
-        // somewhere it can go out of date. See `App::as_conversation`
-        self.kernel.push(item);
+        // somewhere it can go out of date. See `App::as_conversation`. What is said is what the
+        // item is about to cost the session, which that line cannot show
+        let id = self.kernel.push(item);
+        if let Some(caution) = self
+            .kernel
+            .item(id)
+            .and_then(|it| crate::attach::caution(&it))
+        {
+            self.say(Speaker::Error, caution);
+        }
 
         // and the question, if there was one, exactly as typing it would have: one item, then
         // the loop. The file is already in the context, so it goes out with it rather than after

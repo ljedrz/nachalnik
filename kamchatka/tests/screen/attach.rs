@@ -104,6 +104,46 @@ async fn a_pdf_is_attached_as_bytes_and_nothing_pretends_to_price_it() {
     assert_eq!(item.state, nachalnik::ContextState::Active);
 }
 
+/// An empty file attached as a picture goes in, and the person is told what it will cost and how
+/// to take it back out.
+///
+/// note: attaching one is the person's call, so it is not refused - but the endpoint refuses every
+/// request carrying it, in its own words and naming no item, and a session that answers nothing
+/// after an `/attach` with no word about why is one nobody can get out of.
+#[tokio::test]
+async fn an_empty_picture_goes_in_and_says_what_it_will_cost() {
+    let dir = scratch("attach-empty");
+    let empty = dir.join("empty.png");
+    std::fs::write(&empty, b"").expect("written");
+    let whole = dir.join("whole.png");
+    std::fs::write(&whole, PNG).expect("written");
+
+    let mut harness = Harness::new([ModelResponse::text("read it")]);
+    harness.send(&format!("/attach {}", empty.display())).await;
+    harness.send(&format!("/attach {}", whole.display())).await;
+
+    let items = harness.app.kernel.items();
+    let attached: Vec<_> = items
+        .iter()
+        .filter(|item| !item.content.blobs().is_empty())
+        .collect();
+    assert_eq!(attached.len(), 2, "both went in");
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("empty.png is empty"),
+        "the empty one is named: {screen}"
+    );
+    assert!(
+        screen.contains(&format!("`/exclude {}`", attached[0].id)),
+        "with the way out: {screen}"
+    );
+    assert!(
+        !screen.contains("whole.png is empty"),
+        "and one with something in it is not: {screen}"
+    );
+}
+
 /// The path travels with the payload, because the projector cannot label a reference that is not
 /// text and the model would otherwise be handed a document with no name.
 #[tokio::test]

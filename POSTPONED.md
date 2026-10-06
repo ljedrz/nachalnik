@@ -203,12 +203,12 @@ Each entry says what it is, why it waits, and what would unblock it.
   as the bound on a server's first answers above.
 
 - **An attachment named as a picture goes out as one whatever its bytes are.** `attach.rs` names a
-  media type by the extension alone, so a `.png` holding text, or an empty one, goes out as
-  `image/png`; the endpoint refuses the request - a 502, or `Invalid image data-url` - and every
-  request after it while the item stays in, so the session answers nothing until somebody excludes
-  it. Checking a picture's first bytes against its type, and refusing an empty file under any type
-  that is not text, would keep the claim from being false; it refuses files that are attached
-  today, which is why it waits.
+  media type by the extension alone, so a `.png` holding text goes out as `image/png`; the endpoint
+  refuses the request - a 502, or `Invalid image data-url` - and every request after it while the
+  item stays in, and says so in words that name no item. An empty one is said when it goes in,
+  with the `/exclude` that takes it back out; a full one of the wrong kind is not, since only its
+  bytes could tell. Checking a picture's first bytes against its type would keep the claim from
+  being false, and refuses files that are attached today, which is why it waits.
 
 - **The Anthropic dialect and an edited history.** Two things the `nachalnik_providers::anthropic`
   docs describe, with the models they apply to, and that neither code nor test handles: some models

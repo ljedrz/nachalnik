@@ -162,3 +162,24 @@ pub fn describe(item: &ContextItem) -> Option<String> {
 
     Some(blobs.first()?.to_string())
 }
+
+/// What somebody has to be told about an item they just put in, or `None` for nothing.
+///
+/// note: an empty file of a type that is not text goes in as asked - what to attach is the
+/// person's to decide - and the endpoint refuses the request carrying it, and every one after it
+/// while it is in. The refusal comes back as the endpoint's own sentence, `Invalid image data-url`
+/// or a bare 502, and names no item, so the consequence and the way out are said here, where the
+/// item went in.
+pub fn caution(item: &ContextItem) -> Option<String> {
+    let empty = item
+        .content
+        .blobs()
+        .into_iter()
+        .find(|blob| blob.byte_len() == 0)?;
+
+    Some(format!(
+        "{} is empty, and goes out as {} with nothing in it. Endpoints refuse that, so every \
+         request is refused while it is in the context: `/exclude {}` takes it out",
+        item.label, empty.media_type, item.id
+    ))
+}
