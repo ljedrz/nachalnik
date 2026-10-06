@@ -9,6 +9,8 @@ minor bump may break you.
 
 ### changed
 
+- **Built against `nachalnik` 0.9.** The runtime's minor moved, and the bridge's tools and servers
+  are that runtime's types, so a caller on 0.8 and a bridge on 0.9 are two runtimes in one build.
 - **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.
   Each was lower than a version another dependency already asks for, so no build could have had
   it; CI now builds every crate here with each direct dependency at its floor at once, on the MSRV.

@@ -61,6 +61,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.9. Nothing here uses what the runtime added in it, but every provider
+  names runtime types throughout its public interface, so this release cannot be mixed with a
+  0.8-series runtime.
 - **`openai::Attribution` is `Attribution`**, re-exported under the old path, with `categories`
   and `unlisted` on it beside `url` and `title`; its `Default` names no app and sends nothing.
 - **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.
