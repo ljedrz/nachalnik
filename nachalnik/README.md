@@ -69,10 +69,7 @@ Reach for it when **what was in the context is part of your answer**:
   into whichever shape the wire format wanted.
 * **Agents that read and manage their own context.** Everything here is public API a `Tool` can
   call, so the same view and the same controls can be handed to the model. `kamchatka` does, and
-  the [write-ups][writeup] are five sessions of it. An agent found a false note in its own context
-  and rewrote it, took back a hallucination of its own the same way, and ran an ablation on itself
-  rather than answer from theory. In the two where I am the one editing, it carried on from words
-  I put in its mouth and retracted a true statement after I hid the evidence for it.
+  the [write-ups][writeup] are sessions of it.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
 no prompt and no UI, so a working agent is yours to assemble; [`kamchatka`][kamchatka] in this
@@ -95,8 +92,7 @@ included, `goose` and `codex` are good and also Rust. `nachalnik` is what you bu
   crate.
 * **Everything is an event.** The whole session is an append-only log of typed events, so a
   client is `subscribe()` + render, and changing the UI does not invalidate sessions.
-* **Small.** Five dependencies (`async-trait`, `parking_lot`, `serde`, `serde_json`, `tokio`),
-  no `unsafe`, and a codebase you can read in an afternoon.
+* **Small.** A handful of dependencies, no `unsafe`, and a codebase you can read in an afternoon.
 
 ---
 
@@ -172,10 +168,8 @@ trait object you can set, swap at runtime, and inspect:
 | `TokenCounter` | how tokens are counted | every number it reports, and what each request really cost |
 | `Compactor` | what to drop when it fills up | the veto on pinned items, the report, and saying when nothing more can go |
 
-Each of them can also say what it is — `Provider` through `info()`, `Tool` through `spec()`, and
-the other four through a `name()` whose default is the implementing type's own path. So
-`kernel.policy().name()` is a thing a client can put on a screen, and "six replaceable parts" is
-checkable rather than asserted: `kamchatka`'s `/seams` lists all six, by the names they give.
+Each of them can also say what it is, so a client can put the parts a session is running with on a
+screen.
 
 Model parameters are an opaque `serde_json` map carried to the provider verbatim, so `thinking`,
 `safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` — and the
@@ -193,9 +187,7 @@ it, counted like everything else, and offered back to the provider in `Message::
 APIs verify a signed thinking block against the turn it came from, and a runtime that dropped it
 could not talk to them. It is never separated from its turn, and `LinearProjector::send_reasoning`
 decides whether it goes back out. `ToolCall::extra` is the same idea per call: whatever a provider
-attaches to one — Google's `thought_signature`, an encrypted reasoning item — is carried back
-attached to that call, verbatim and uninterpreted. Gemini rejects the *next* request outright when
-it goes missing.
+attaches to one is carried back attached to that call, verbatim and uninterpreted.
 
 ---
 
@@ -283,59 +275,27 @@ Two that talk to a model:
   top of them, so the context carries one item per peer however long the panel runs, and each
   panelist states its position through a tool — so the ending is arithmetic rather than a vibe.
 
-```console
-$ cargo run --example compare_models -- -m google/gemini-3.5-flash-lite -m google/gemini-3.5-flash \
-    -s "answer in at most 40 words" "the biggest downside of Rust's orphan rule?"
-```
-
-Before anything is sent, that prints one row per model — its message count, the kernel's token
-estimate, the model's context limit and the fingerprint of its request — and says whether every
-model is about to be sent the same request, byte for byte.
-
-The two networked ones talk through [`nachalnik-providers`][nachalnik-providers], built from the
-environment by `nachalnik-utils`, and share [`examples/common`][ex-common] for two formatting
-helpers. They talk to anything that speaks the OpenAI dialect, local models included:
+Both talk through [`nachalnik-providers`][nachalnik-providers] to anything that speaks the OpenAI
+dialect, local models included, configured by `NACHALNIK_API_KEY`, `NACHALNIK_BASE_URL` and the
+models named on the command line:
 
 ```console
-$ NACHALNIK_API_KEY=ollama NACHALNIK_BASE_URL=http://localhost:11434/v1 \
-    cargo run --example compare_models -- -m llama3.2 -m granite4.2:3b "why the borrow checker?"
+$ cargo run --example compare_models -- -m <model> -m <another model> "the biggest downside of Rust's orphan rule?"
 ```
 
 ---
 
 ### 🧪 tests
 
-`cargo test -p nachalnik` runs the offline suite, covering the context model, the selectors, the
-state machine, the loop, permissions, projection and tool-call repair, token counting and
-calibration, compaction, and the session log. The state machine is tested for refusing a second
-concurrent `step` and for a dropped one not wedging the kernel. The log is tested for reporting an
-item's states in the order they were applied, which two threads changing one item is enough to
-break. A replaced `Projector` gets a test of its own, because a seam nothing has ever been swapped
-through is a claim rather than a seam.
-
-There is also a live suite, skipped when there is no key, which is the only way to check the
-things a mock cannot — that the requests this crate builds are accepted by a real API, and that a
-real model's answers survive the round trip through the context:
+`cargo test -p nachalnik` runs the offline suite. The live suite, skipped without a key, is the
+only way to check what a mock cannot - that a real API accepts the requests this crate builds, and
+that a real model's answers survive the round trip through the context:
 
 ```console
 $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --nocapture
 ```
 
-Google AI Studio speaks the same dialect and has a free tier of its own:
-
-```console
-$ NACHALNIK_API_KEY=... NACHALNIK_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai \
-  NACHALNIK_TEST_MODEL=gemini-3.5-flash-lite NACHALNIK_TEST_MODEL_B=gemini-3.5-flash \
-  cargo test --test live -- --test-threads=1
-```
-
-It covers: a plain turn on the wire and the recorded payload being the one that went out; a call
-whose result the model reads back, a refused call it is told about, and a truncated one; a *pruned*
-tool exchange still producing a request the API accepts and an *elided* one still answering its
-call; a step abandoned mid-request, a turn interrupted between requests, and an interrupt stopping
-a stream already arriving; and, across a session, a paused-and-resumed permission decision, a
-mid-session model swap, a whole session round-tripping through `serde`, and the calibrating counter
-being told what a real request cost.
+`NACHALNIK_BASE_URL` and `NACHALNIK_API_KEY` point it at any other OpenAI-compatible endpoint.
 
 ---
 
@@ -391,7 +351,6 @@ Licensed under the MIT License ([LICENSE-MIT][license]).
 [ex-transparency]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/transparency.rs
 [ex-compaction]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/compaction.rs
 [ex-pricing]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/pricing_a_picture.rs
-[ex-common]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/common/mod.rs
 [license]: https://github.com/ljedrz/nachalnik/blob/HEAD/LICENSE-MIT
 
 [concepts]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/CONCEPTS.md
