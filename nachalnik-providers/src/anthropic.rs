@@ -17,6 +17,33 @@
 //!
 //! note: OpenRouter answers this dialect too, at `/api/v1/messages`, and adds to it: a `provider`
 //! and a `cost`, ids of its own, and a `[DONE]` after `message_stop`. All of it is read past.
+//!
+//! # Two things the newest models hold against an edited history
+//!
+//! Neither is handled here yet, and both come from the same rule on Anthropic's side: that the
+//! start of a conversation, once sent, is sent the same way again.
+//!
+//! **A signed thinking block is bound to the conversation before it** on Claude Fable 5.1, Opus
+//! 5.5 and Sonnet 5.5. Its signature records the instructions, the tools and every message ahead of
+//! it, and once any of those is edited - an item pruned, rewritten or elided, the instructions
+//! changed, a tool added - every later thinking block is invalid. Accounts created on or after
+//! 2026-08-31 are refused for sending one, with a 400 that says the block "is bound to a different
+//! conversation"; older ones are not, for now. Editing earlier turns is what a session here does
+//! as a matter of course, so on those models, on such an account, either turn the thinking off -
+//! `{"type": "between_tools"}` as the `thinking` parameter, on Sonnet 5.5, at an effort of `high`
+//! or below - or use a model without the rule: Opus 5, Opus 4.8, Sonnet 5, Haiku 4.5. Opus 5.5's
+//! thinking cannot be turned off.
+//!
+//! **An instruction added mid-session goes to the top.** Every system message is joined into
+//! `system`, wherever it stood, so one added later - a reconcile's, a fork's question - changes the
+//! start of the prompt, and the request it first goes out with writes the whole cache again (and,
+//! under the rule above, invalidates the thinking before it). Anthropic's newer models take a
+//! `role: "system"` message in place, after the turns it follows, but only on some models and only
+//! in some positions - after a user turn, and last or before an assistant turn - and anything else
+//! is a 400. One rewrite per instruction added is the cost of not finding out by being refused;
+//! the cache is turned off with `cache_control: false` among the parameters.
+//!
+//! What would settle both is in POSTPONED.md.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 

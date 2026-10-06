@@ -25,6 +25,9 @@ Referenced from [AGENTS.md](AGENTS.md).
   request whose actual content is a line of text. That is the budget naming a hole the request
   does not have, which is the thing the elided-item rule exists to prevent.
 
+  **One dialect does take one now.** Anthropic's puts a `Content::Blob` in a `tool_result` as the
+  `image` block it is, and `blobs.rs` pins that too; the sentence above is true of the other two.
+
   So what would unblock it is not a counter. It is a decision about **where a tool's picture
   reaches the model**, since the one place it cannot is where it currently sits: a picture has
   to be hoisted into a message that accepts one, which is a `Projector`'s business or a
@@ -359,3 +362,26 @@ Referenced from [AGENTS.md](AGENTS.md).
   the one-file account of every public operation that AGENTS.md gives. Whether a reader's time is
   worth that is the decision; a change that has to touch a whole one of these files is what would
   make it.
+
+- **The Anthropic dialect and the newest models' rule against an edited history.** Two things,
+  documented on `nachalnik_providers::anthropic` and handled by neither code nor test:
+
+  - *A signed thinking block is bound to the conversation before it* on Claude Fable 5.1, Opus 5.5
+    and Sonnet 5.5, and an account created on or after 2026-08-31 is refused (a 400, "bound to a
+    different conversation") for sending one back after anything ahead of it was edited - which
+    pruning, rewriting and eliding are. Anthropic's own two ways out are to strip every thinking
+    block from the history and send it again, once, on that refusal, or to send
+    `thinking.block_binding.prefix_mismatch_behavior: "drop_block"` with the
+    `thinking-binding-controls-2026-08-01` beta header and let the API drop what no longer holds.
+    The second needs a header no parameter can set; the first is a retry on one wording of a 400.
+  - *An instruction added mid-session is joined into `system`*, so the request it first goes out
+    with writes the whole cache again. The newer models take a `role: "system"` message in place,
+    but only some of them, and only after a user turn and last or before an assistant turn; the
+    rest is a 400, and an item a reconcile adds after a reply is in exactly the wrong place.
+
+  OpenRouter cannot settle either. It accepted `role: "system"` in every position and on Haiku 4.5,
+  which Anthropic's documentation says refuses it everywhere, so it rewrites the message before
+  passing it on; and it decides nothing about the account the thinking is checked against. What
+  would unblock both is credit on an Anthropic account - one created after 2026-08-31, for the
+  first - so that each can be seen refused by the real API and then not.
+

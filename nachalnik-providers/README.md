@@ -49,7 +49,18 @@ The third is the same bargain with Anthropic's Messages API, whose turn is a lis
 Its thinking is signed, and a turn that thought before calling a tool has to send that thinking
 back with the result, signature and all; here each block's own fields ride back out on it, and
 only the fields that API defines, so a session that started against another provider does not
-send it a `thoughtSignature` it would refuse.
+send it a `thoughtSignature` it would refuse. Its prompt is cached by default, because that API
+caches nothing unasked; `cache_control` among the parameters changes that, and `false` turns it
+off.
+
+Two things that API holds against an edited history are not handled yet, and are worth knowing
+before choosing a model. On Claude Fable 5.1, Opus 5.5 and Sonnet 5.5 a signed thinking block is
+bound to everything before it, and accounts created on or after 2026-08-31 are refused for sending
+one back once anything earlier has been pruned or rewritten - which is what a session here does.
+Turn the thinking off where the model allows it, or pick one without the rule (Opus 5, Opus 4.8,
+Sonnet 5, Haiku 4.5). And an instruction added mid-session joins the others at the top, which
+costs the request it first goes out with the whole cache. [The module's
+docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) have the details.
 
 ---
 
