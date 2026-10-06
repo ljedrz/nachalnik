@@ -94,12 +94,12 @@ describes, which is what an append-only log of typed events is for.
 
 | crate | what it is |
 | --- | --- |
-| **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. Five dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. |
-| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only; 0.15.1 is the last version that builds elsewhere. |
+| **[`nachalnik`](nachalnik)** | the runtime: a loop that is a state machine, a context that is a list of identified values, and an append-only log of everything that happened. A handful of dependencies, no `unsafe`, no network, no prompt. Meant to stay boring. |
+| **[`kamchatka`](kamchatka)** | a terminal agent built on the runtime — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. Also where the sandbox lives, because it is the program that spawns processes - and so Linux only. |
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
 | **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
-| `nachalnik-utils` | never published, permanently `0.0.0`. One file saying which endpoint the workspace's examples and live tests talk to, which key pays for it and which models to ask — so that scaffolding is written once rather than in each crate that needs it. A *dev*-dependency with no version: cargo strips those from a published manifest, so a crate only ever dev-depended on never has to exist on the registry. |
+| `nachalnik-utils` | never published: which endpoint, key and models the workspace's examples and live tests use, written once. |
 
 ### 📖 the docs
 
@@ -108,7 +108,7 @@ describes, which is what an append-only log of typed events is for.
 | [AGENTS.md](AGENTS.md) | orientation for whoever — person or model — is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
 | [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there — break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full with the mistake each came from, and the two gotchas that cost an afternoon each. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, the house conventions in full, and the gotchas. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
 | [POSTPONED.md](POSTPONED.md) | known, decided against *for now*, each entry saying what would unblock it. |
 
@@ -129,8 +129,7 @@ change to the runtime to exist.
 processes and reading notifications in the background, which the runtime promises not to do. An
 MCP tool is a `Tool` that forwards to a server, and tools arriving and leaving are `add_tool` and
 `remove_tool`. It believes none of a server's tool annotations by default, because the
-specification calls them hints from an untrusted party; its tests include a tool called
-`delete_everything` that claims to be read-only.
+specification calls them hints from an untrusted party.
 
 **[`kamchatka`](kamchatka)** hands the model four tools about its own session — `context`, `fork`,
 `log` and `setup` — and every operation in them is a public function the screen was already
@@ -148,31 +147,15 @@ rather than to serve one: forking a context is `snapshot` and `resume`, what a c
 $ cargo test --workspace
 ```
 
-Every published crate has a suite, and its readme, or the `RUNNING.md` beside it, says what that
-covers. The live ones skip themselves when there is no API key. [CONTRIBUTING.md](CONTRIBUTING.md)
-has the full command set, what CI runs, and how to measure whether a test is worth keeping.
-
-Among them is the provider conformance suite. What a provider makes of a stream is not tested one
-provider at a time, because the questions would be the same each time. Every provider in the
-workspace is asked the same ones through a real socket instead: each question is a bug that
-actually happened to one of them, and a question added applies to all of them without any being
-edited.
-
-The live suites are the only way to check the things a mock cannot — that the requests this
-workspace builds are accepted by a real API, and that a real model's answers survive the round trip
-through a context:
+The live suites, which skip themselves without a key, are the only way to check what a mock
+cannot - that a real API accepts the requests this workspace builds:
 
 ```console
 $ OPENROUTER_API_KEY=sk-or-... cargo test --workspace -- --test-threads=1
 ```
 
-`kamchatka`'s live suite does not read that key, and skips without the ones it does read;
-[CONTRIBUTING.md](CONTRIBUTING.md) lists each suite's.
-
-The figures in these readmes are measurements — what a request really cost, what a counter guessed
-against what a provider charged, what a session did — taken against a real API where they say so.
-There is no tally of the repository itself: `cargo test --workspace` and the tree have one that
-stays current.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full command set, what CI runs, and the keys each live
+suite reads.
 
 ---
 
