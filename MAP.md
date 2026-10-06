@@ -31,8 +31,10 @@ from the file names. [AGENTS.md](AGENTS.md) has the one-line version.
 
 `kamchatka/src`:
 
-`app/` is the state. `mod.rs` is what a caller may ask of it, `events.rs` what a kernel event does
-to it, and `spend.rs` the ceiling and what is charged against it.
+`app/` is the state. `mod.rs` is what a caller may ask of it, `turn.rs` how it drives the kernel -
+a turn or a step, what the task reports when it stops, and a command's request out and back -
+`questions.rs` how what stands in the prompt's place is answered, `events.rs` what a kernel event
+does to it, and `spend.rs` the ceiling and what is charged against it.
 `transcript.rs` is the chat as a person reads it: `Speaker`, `Entry`, `Said`, and what builds a
 drawn line out of a context item and the lines that are not one. `views.rs` is what the screen
 asks of it and nothing else does - the question waiting, the rows the context and permissions tabs
