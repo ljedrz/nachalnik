@@ -189,13 +189,13 @@ session.started    state.changed       model.changed      tool.requested
 session.resumed    context.added       model.params       tool.unknown
 session.finished   context.changed     model.requested    tool.repaired
 turn.interrupted   context.replaced    model.delta        tool.reserved
-tools.changed      context.undone      model.payload      tool.started
-policy.changed     context.redone      model.finished     tool.output
-projector.changed  context.annotated   model.failed       tool.finished
-counter.changed    context.recounted   step.failed        permission.requested
-compactor.changed  context.compacted                      tool.panicked
-                   context.full                           permission.decided
-                                                          policy.ruled
+turn.paused        context.undone      model.payload      tool.started
+turn.unfinished    context.redone      model.finished     tool.output
+tools.changed      context.annotated   model.failed       tool.finished
+policy.changed     context.recounted   step.failed        permission.requested
+projector.changed  context.compacted                      tool.panicked
+counter.changed    context.full                           permission.decided
+compactor.changed                                         policy.ruled
 ```
 
 Every one of them carries what a client needs to render it without inferring anything. An undo
