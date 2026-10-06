@@ -41,6 +41,13 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.9, `nachalnik-mcp` 0.9 and `nachalnik-providers` 0.9. The runtime's
+  `Event::TurnPaused` and `Event::TurnUnfinished` are how a paused turn and a session that ended
+  with calls waiting are said, and what `--check` reads; the providers' `Anthropic` is
+  `--anthropic`, `OpenAiCompatible::responses` is `--responses`, `attributed_to` is how the
+  conversation and the advice are one app at OpenRouter, and `system1::is_workers_ai` is how an
+  advisor on Workers AI is told apart.
+
 - **`endpoint::session_endpoint` takes an `endpoint::Wire`** rather than whether the session is a
   `--gemini` one, since there are three dialects to say it for; `endpoint::KEYS` has
   `ANTHROPIC_API_KEY` in it, so a command the model runs is not handed that key either.
