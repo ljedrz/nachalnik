@@ -7,6 +7,13 @@ minor bump may break you.
 
 ## [unreleased]
 
+### fixed
+
+- **An interrupt between two calls is recorded where it landed.** Run one at a time, each call read
+  the interrupt flag outside the machine lock and announced `tool.started` after it, so an interrupt
+  landing between the two put `turn.interrupted` in the record ahead of a call that then ran. The
+  flag is read and the start announced under one hold of the lock `Kernel::interrupt` sets it under.
+
 ### changed
 
 - **The dependency requirements are raised to what the whole workspace resolves to:** `async-trait` 0.1.89, `serde` 1.0.220 and `tokio` 1.47.
