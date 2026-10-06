@@ -108,6 +108,8 @@ mod markup;
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
+#[cfg(any(feature = "openai", feature = "system1"))]
+mod attribution;
 #[cfg(feature = "conformance")]
 pub mod conformance;
 
@@ -124,6 +126,8 @@ pub(crate) mod waiting;
 
 #[cfg(feature = "anthropic")]
 pub use crate::anthropic::Anthropic;
+#[cfg(any(feature = "openai", feature = "system1"))]
+pub use crate::attribution::Attribution;
 pub use crate::endpoint::{Dialect, Endpoint, Published};
 #[cfg(feature = "gemini")]
 pub use crate::gemini::Gemini;
@@ -490,7 +494,7 @@ mod tests {
     ///
     /// note: two things turn this into a decision - app attribution, and whether `kamchatka` may
     /// spend a session's key on advice - and the second is the reason the URL forms are here:
-    /// `ranks_apps` passes a bare host, and `kamchatka` passes the whole address.
+    /// `Attribution::sign` passes a bare host, and `kamchatka` passes the whole address.
     ///
     /// note: `openrouter.ai.example.com` decides the shape of the function. A `contains` or a
     /// suffix test over the raw address would match it, and the callers would then name a program

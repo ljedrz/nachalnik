@@ -323,7 +323,7 @@ for, so there is nothing for it to agree with.
   **The rule is the workspace's rather than `nachalnik`'s.** In `nachalnik-providers`,
   `system1::Question` and `system1::Answer` carry it because they name the shapes a System One
   engine answers in, which are the engine's to add and not this crate's; `system1::Answers` and
-  `openai::Attribution` carry it because they are built here and nowhere else. `kamchatka` is
+  `Attribution` carry it because they are built here and nowhere else. `kamchatka` is
   held to it more loosely - its library is a terminal agent's insides rather than a runtime - but
   the same question decides.
 

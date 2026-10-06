@@ -9,6 +9,19 @@ minor bump may break you.
 
 ### added
 
+- **`system1::Client` reaches Clef and Clef-flash on Cloudflare's Workers AI.** An address on
+  `api.cloudflare.com` under an account's `/ai/run` - `system1::is_workers_ai` - is posted to under
+  the model's name, `@cf/cloudflare/clef`, rather than at `/systemone`, with the short name the
+  schema there takes (`clef`) in the body; the model's whole URL off its page is taken as the
+  address too. The answer is read out of the `result` that API wraps every response in, a refusal
+  out of its `errors` list with the code, and no listing is asked for, since there is none at that
+  address. Every other address is asked exactly as before.
+- **`Attribution`, at the crate's top level, and `attributed_to` on both clients that send it.**
+  `OpenAiCompatible::attributed_to` and `system1::Client::attributed_to` take the same value, so a
+  program asking OpenRouter for a conversation and for advice is one app to it, and one switch
+  stops both. It goes only where `is_openrouter` says, as before; `on_behalf_of`, `filed_under`
+  and `unlisted` on `OpenAiCompatible` still work, and edit the one it holds.
+
 - **`Anthropic`, behind the `anthropic` feature: Anthropic's Messages API as a `Dialect`.** A turn
   comes back as `Content::Blocks` in the order its blocks were opened - thinking, text, `tool_use` -
   and goes back out the same way, each thinking block with its `signature`, which a turn that
@@ -48,6 +61,8 @@ minor bump may break you.
 
 ### changed
 
+- **`openai::Attribution` is `Attribution`**, re-exported under the old path, with `categories`
+  and `unlisted` on it beside `url` and `title`; its `Default` names no app and sends nothing.
 - **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.
   Each was lower than a version another dependency already asks for, so no build could have had
   it; CI now builds every crate here with each direct dependency at its floor at once, on the MSRV.
