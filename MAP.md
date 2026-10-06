@@ -189,8 +189,9 @@ program rather than a library.
 
 `nachalnik-providers/src`: `openai/mod.rs` (`OpenAiCompatible`, where the requests go and what the
 endpoint says it serves), `openai/wire.rs` (one request sent and read back, streamed or whole),
-`gemini.rs` (Google's own, the one that keeps the order of a turn), `endpoint.rs` (the `Endpoint`
-trait both answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
+`gemini.rs` (Google's own, the one that keeps the order of a turn), `anthropic.rs` (Anthropic's
+Messages API, the one whose thinking is signed and has to go back as it came), `endpoint.rs` (the
+`Endpoint` trait all of them answer), `waiting.rs` (the send loop, the stall watch and the retry rules),
 `reading.rs` (a stream read an event at a time, and a server's sentence out of its error object),
 `markup.rs` (the words out of a body that is not JSON, which `system1.rs` reads too),
 `conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Client`,
@@ -205,13 +206,13 @@ to measure against are arguments, and the two callers in this workspace supply t
 library that quietly picked up `OPENAI_API_KEY` would be spending somebody's money on the strength
 of a variable they exported for another reason.
 
-Two dialects, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
+Three dialects, one trait. `Provider` is the kernel's half - ask, and be answered - and `Endpoint`
 is the caller's: where the requests go, what is served there, what the last retry was about.
 `kamchatka`'s `App` holds an `Arc<dyn Dialect>` - both traits in one - and never finds out which
 wire format is behind it, which is the claim `/seams` makes about every other part of the runtime.
-`--gemini` picks the second and turns on `LinearProjector::send_blocks` with it. That dialect's
-turn *is* an order, and projecting three slots at it would flatten on the way out every turn whose
-order was recorded on the way in.
+`--gemini` picks the second and `--anthropic` the third, and both turn on
+`LinearProjector::send_blocks` with them. Those dialects' turn *is* an order, and projecting three
+slots at it would flatten on the way out every turn whose order was recorded on the way in.
 
 `introspect/` is the second `nachalnik-mcp`: **written with no change to the runtime at all**.
 Forking a context is `Kernel::snapshot` and `Kernel::resume`; previewing a request is

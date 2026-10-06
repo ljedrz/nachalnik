@@ -71,9 +71,9 @@ tui = [
 [dependencies]
 nachalnik = { workspace = true, features = ["selectors"] }
 nachalnik-mcp = { workspace = true, optional = true }
-# both dialects: `--gemini` picks between them at startup, and the whole point of the second one
-# is that nothing above the trait finds out which it got
-nachalnik-providers = { workspace = true, features = ["gemini"] }
+# every dialect: `--gemini` and `--anthropic` pick between them at startup, and the whole point
+# of having more than one is that nothing above the trait finds out which it got
+nachalnik-providers = { workspace = true, features = ["anthropic", "gemini"] }
 
 parking_lot.workspace = true
 # `--serve` and `--connect` over a port: see `remote::tuned` for what the two options are for and

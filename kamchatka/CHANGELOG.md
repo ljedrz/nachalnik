@@ -7,8 +7,22 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`--anthropic` talks to Anthropic's own Messages API**, as `--gemini` talks to Google's: a turn
+  keeps the order it was produced in, and its signed thinking goes back with the tool results it
+  came before. `KAMCHATKA_BASE_URL` points it elsewhere - OpenRouter speaks it at
+  `https://openrouter.ai/api/v1` - and `ANTHROPIC_API_KEY` is read for Anthropic's own address and
+  for nothing else. The settings file takes `anthropic`, and a session asked for two dialects, one
+  by the file and one by the command line, is refused rather than handed either.
+
 ### changed
 
+- **`endpoint::session_endpoint` takes an `endpoint::Wire`** rather than whether the session is a
+  `--gemini` one, since there are three dialects to say it for; `endpoint::KEYS` has
+  `ANTHROPIC_API_KEY` in it, so a command the model runs is not handed that key either.
+- **`/params` refuses `system`**, which the Anthropic dialect builds from the session's
+  instructions, as it refuses the fields the other two build.
 - **A released binary carries its dependency tree**, written in by `cargo auditable` - a few
   kilobytes that `cargo audit bin` and other scanners read to say which crates it was built from.
   The release notes name the `rustc -V` it was built with, which is what reproducing it needs.

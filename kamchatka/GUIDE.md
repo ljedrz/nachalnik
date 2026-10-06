@@ -796,8 +796,8 @@ Items are named by `ids`, or by `select`, which takes the same selector language
 "the tool results I am done with" is one call rather than twelve numbers read off a listing. One or
 the other, and a call giving both is refused rather than answered on whichever it read first: a move
 that quietly dropped half of what it was told reads exactly like a move that did what it was asked.
-That cannot be said in the schema — mutual exclusion is `oneOf`, and neither of the two dialects one
-schema has to go out in has the keyword — so it is said in each argument's description and enforced
+That cannot be said in the schema — mutual exclusion is `oneOf`, and two of the dialects one schema has
+to go out in do not have the keyword — so it is said in each argument's description and enforced
 where the call is read.
 
 `look` takes the same `select`, and that is the only way to resolve a selector without using it on

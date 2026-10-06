@@ -41,6 +41,8 @@ pub struct Settings {
     pub model: Option<String>,
     /// Whether to speak Google's own dialect rather than an OpenAI-compatible one.
     pub gemini: Option<bool>,
+    /// Whether to speak Anthropic's own dialect rather than an OpenAI-compatible one.
+    pub anthropic: Option<bool>,
     /// Whether to ask a second model to rate the shell commands a question is about.
     ///
     /// note: not behind the `shell-advisor` feature, for the reason `mcp` is not: one file works

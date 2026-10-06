@@ -27,19 +27,20 @@ use super::{
 /// answer into one body, on a model whose list has no word for it.
 const TRANSPORT: [&str; 2] = ["stream", "stream_options"];
 
-/// The fields of a request that either dialect builds from the session - the context, the tools
-/// and the model - which both leave off the wire when a parameter names one.
+/// The fields of a request that any dialect builds from the session - the context, the tools
+/// and the model - which each leaves off the wire when a parameter names one.
 ///
-/// note: refused here as well, and in the union of the two, because a dialect skipping one says
+/// note: refused here as well, and in the union of them, because a dialect skipping one says
 /// nothing where a person can see it: set and then quietly not sent, it would read on the
-/// `/params` line as a parameter in force. `contents` means nothing to the other dialect, so
+/// `/params` line as a parameter in force. `contents` means nothing to the other dialects, so
 /// refusing it there costs nobody anything.
-const BUILT: [&str; 5] = [
+const BUILT: [&str; 6] = [
     "model",
     "messages",
     "tools",
     "contents",
     "systemInstruction",
+    "system",
 ];
 
 /// What `/undo` and `/redo` say while a turn is under way, which the kernel refuses to rewind;
