@@ -13,7 +13,10 @@
 use std::{env, sync::Arc};
 
 use nachalnik::BoxError;
-use nachalnik_providers::{Gemini, OpenAiCompatible, gemini::DEFAULT_BASE_URL, is_openrouter};
+use nachalnik_providers::{
+    Anthropic, Gemini, OpenAiCompatible, anthropic::DEFAULT_BASE_URL as ANTHROPIC_BASE_URL,
+    gemini::DEFAULT_BASE_URL, is_openrouter,
+};
 
 /// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
 ///
@@ -134,20 +137,29 @@ fn key_for(url: &str) -> Result<String, BoxError> {
 /// note: on the host alone, as [`is_openrouter`] reads one, so Google's `/v1beta/openai` counts
 /// as well as its native `/v1beta`, whatever the port and whoever is named before an `@`.
 fn checks_a_key(url: &str) -> bool {
-    let host = |url: &str| {
-        let authority = shown(url);
-        let authority = authority
-            .split_once("://")
-            .map_or(authority.as_str(), |(_, rest)| rest);
-        let authority = authority.split('/').next().unwrap_or_default();
-        authority
-            .split(':')
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-    };
+    is_openrouter(url)
+        || host(url) == host(DEFAULT_BASE_URL)
+        || host(url) == host(ANTHROPIC_BASE_URL)
+}
 
-    is_openrouter(url) || host(url) == host(DEFAULT_BASE_URL)
+/// Whether `url` is Anthropic's own API, which is the one address `ANTHROPIC_API_KEY` is sent to.
+fn is_anthropic(url: &str) -> bool {
+    host(url) == host(ANTHROPIC_BASE_URL)
+}
+
+/// The host of an address, lowercased, without the port, the path or whoever is named before an
+/// `@`.
+fn host(url: &str) -> String {
+    let authority = shown(url);
+    let authority = authority
+        .split_once("://")
+        .map_or(authority.as_str(), |(_, rest)| rest);
+    let authority = authority.split('/').next().unwrap_or_default();
+    authority
+        .split(':')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
 }
 
 /// Every variable this program reads a key from, none of which a command it runs for the model
@@ -162,10 +174,11 @@ fn checks_a_key(url: &str) -> bool {
 /// note: the shell only. An MCP server is a program the person chose, running unconfined with
 /// everything they can read, and a server that calls an API of its own may read one of these names
 /// for its own key; taking them from it would be a nuisance and not a boundary.
-pub const KEYS: [&str; 4] = [
+pub const KEYS: [&str; 5] = [
     "KAMCHATKA_API_KEY",
     "OPENROUTER_API_KEY",
     "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
     "KAMCHATKA_SYSTEM1_API_KEY",
 ];
 
@@ -234,21 +247,36 @@ pub fn base_url() -> String {
     env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
 }
 
+/// The wire format a session speaks, which is what decides the address it goes to by default.
+///
+/// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Wire {
+    /// OpenAI chat-completions, which OpenRouter and most local servers speak.
+    OpenAi,
+    /// Google's own `generateContent`, with `--gemini`.
+    Gemini,
+    /// Anthropic's Messages API, with `--anthropic`.
+    Anthropic,
+}
+
 /// Where this session's own requests go, in whichever dialect it was asked to speak.
 ///
 /// note: the dialect is half the answer and cannot be read out of the environment, which is why
 /// this takes the flag rather than working it out. `KAMCHATKA_BASE_URL` is read by both, and the
-/// two defaults behind it are different services - so a `--gemini` session that never set the
+/// defaults behind it are different services - so a `--gemini` session that never set the
 /// variable would otherwise report OpenRouter's address and Google's key.
 ///
 /// note: the advisor is what asks, and the question is whose key [`api_key`] just handed it. A key
 /// is an OpenRouter key because it is being sent to OpenRouter, not because of the variable
 /// it was read from: all three names are ordinary things to export, and `KAMCHATKA_API_KEY` is
 /// whatever the endpoint this points at issued.
-pub fn session_endpoint(gemini: bool) -> String {
-    match gemini {
-        true => gemini::base_url(),
-        false => base_url(),
+pub fn session_endpoint(wire: Wire) -> String {
+    match wire {
+        Wire::OpenAi => base_url(),
+        Wire::Gemini => gemini::base_url(),
+        Wire::Anthropic => anthropic::base_url(),
     }
 }
 
@@ -610,6 +638,62 @@ pub mod gemini {
     }
 }
 
+/// The same four variables, pointed at Anthropic's own API - and `ANTHROPIC_API_KEY`, where they
+/// are.
+pub mod anthropic {
+    use super::*;
+
+    /// The endpoint to talk to; Anthropic's own unless told otherwise.
+    ///
+    /// note: OpenRouter answers this dialect too, at `https://openrouter.ai/api/v1`, and that is
+    /// how a model there is asked in its own dialect rather than through the OpenAI one.
+    pub fn base_url() -> String {
+        env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| ANTHROPIC_BASE_URL.to_owned())
+    }
+
+    /// The key: `ANTHROPIC_API_KEY` where the requests go to Anthropic, and otherwise the one
+    /// every other dialect reads.
+    ///
+    /// note: read only for Anthropic's own address, because a key belongs to whoever issued it,
+    /// and one somebody exported for Anthropic has no business being sent to OpenRouter.
+    fn key(url: &str) -> Result<String, BoxError> {
+        match is_anthropic(url) {
+            true => match env::var("ANTHROPIC_API_KEY") {
+                Ok(key) => Ok(key),
+                Err(_) => key_for(url).map_err(|_| {
+                    format!(
+                        "set ANTHROPIC_API_KEY (or KAMCHATKA_API_KEY): {} refuses a request \
+                         without one",
+                        shown(url)
+                    )
+                    .into()
+                }),
+            },
+            false => key_for(url),
+        }
+    }
+
+    /// Builds a provider from the environment, asking the endpoint what the model takes.
+    ///
+    /// note: no attribution, and the model optional, for the reasons the Gemini one gives.
+    pub async fn connect(model: Option<&str>) -> Result<Arc<Anthropic>, BoxError> {
+        let url = base_url();
+        let provider = Arc::new(
+            Anthropic::new(
+                model.unwrap_or_default(),
+                addressed(url.clone())?,
+                key(&url)?,
+            )
+            .with_context_limit(checked_limit()?),
+        );
+        if model.is_some() {
+            provider.probe().await;
+        }
+
+        Ok(provider)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -627,6 +711,8 @@ mod tests {
             DEFAULT_BASE_URL,
             "https://generativelanguage.googleapis.com/v1beta/openai",
             "https://GenerativeLanguage.googleapis.com:443/v1beta",
+            ANTHROPIC_BASE_URL,
+            "https://api.anthropic.com:443/v1",
         ] {
             assert!(checks_a_key(checks), "{checks}");
         }

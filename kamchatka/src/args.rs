@@ -58,9 +58,11 @@ The advisor, which is only ever asked when --advise is given:
         "\
 Environment:
   KAMCHATKA_API_KEY        the key; or OPENROUTER_API_KEY, or OPENAI_API_KEY. Needed for
-                           OpenRouter and Google; a model served locally takes none
+                           OpenRouter, Google and Anthropic; a model served locally takes none
+  ANTHROPIC_API_KEY        the key for Anthropic's own API, with --anthropic, and only there
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
-                           OpenRouter by default, or Google's own v1beta with --gemini
+                           OpenRouter by default, Google's own v1beta with --gemini, or
+                           Anthropic's own with --anthropic
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}
 
@@ -95,8 +97,14 @@ pub struct Args {
 
     /// Talk to Google's own API rather than an OpenAI-compatible one, so that a turn keeps the
     /// order it was produced in: thinking, a sentence, a tool call, more thinking.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "anthropic")]
     pub gemini: bool,
+
+    /// Talk to Anthropic's own Messages API rather than an OpenAI-compatible one, so that a
+    /// turn keeps its order and its signed thinking goes back as it came. OpenRouter speaks it
+    /// too: point `KAMCHATKA_BASE_URL` at `https://openrouter.ai/api/v1`.
+    #[arg(long)]
+    pub anthropic: bool,
 
     /// Ask a second model where each shell command a question is about lands on a three-level
     /// rubric, and colour the question by the answer - a command joined at its `|`, `&&` or `;`
@@ -310,6 +318,7 @@ impl Args {
 
         fill!(
             gemini,
+            anthropic,
             requests,
             compact,
             parallel,
@@ -749,7 +758,7 @@ impl Args {
             return Ok(setup);
         }
 
-        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.gemini))
+        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.wire()?))
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;
@@ -759,9 +768,26 @@ impl Args {
         })
     }
 
+    /// The wire format this session speaks.
+    ///
+    /// note: clap refuses the two flags together, and this is for the settings file, which can
+    /// name one dialect while the command line names the other - two dialects asked for are a
+    /// mistake to say, not one to settle by picking either.
+    pub fn wire(&self) -> Result<endpoint::Wire> {
+        match (self.gemini, self.anthropic) {
+            (true, true) => Err(anyhow::anyhow!(
+                "--gemini and --anthropic are two dialects, and a session speaks one: one of \
+                 them is on in the settings file"
+            )),
+            (true, false) => Ok(endpoint::Wire::Gemini),
+            (false, true) => Ok(endpoint::Wire::Anthropic),
+            (false, false) => Ok(endpoint::Wire::OpenAi),
+        }
+    }
+
     /// Where this session's requests go, in whichever dialect was asked for.
     ///
-    /// note: two wire formats, one trait. `--gemini` is what a person picks, and everything
+    /// note: three wire formats, one trait. `--gemini` or `--anthropic` is what a person picks, and everything
     /// downstream - the kernel, the screen, `/model`, `/endpoint` - holds a `Dialect` and never
     /// finds out which one it got.
     ///
@@ -772,11 +798,14 @@ impl Args {
     /// is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
     pub async fn provider(&self) -> Result<Arc<dyn Dialect>> {
         let model = self.model.as_deref();
-        match self.gemini {
-            true => endpoint::gemini::connect(model)
+        match self.wire()? {
+            endpoint::Wire::Gemini => endpoint::gemini::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
-            false => endpoint::connect(model)
+            endpoint::Wire::Anthropic => endpoint::anthropic::connect(model)
+                .await
+                .map(|it| it as Arc<dyn Dialect>),
+            _ => endpoint::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
         }

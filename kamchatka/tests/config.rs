@@ -102,6 +102,7 @@ fn spawn(
         .env_remove("KAMCHATKA_SYSTEM1_API_KEY")
         .env_remove("KAMCHATKA_SYSTEM1_MODEL")
         .env_remove("OPENROUTER_API_KEY")
+        .env_remove("ANTHROPIC_API_KEY")
         .envs(env.iter().copied())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -1291,7 +1292,11 @@ fn every_help_line_is_a_whole_sentence() {
 /// neither the variable nor what it held.
 #[test]
 fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
-    for args in [&["--headless"][..], &["--headless", "--gemini"]] {
+    for args in [
+        &["--headless"][..],
+        &["--headless", "--gemini"],
+        &["--headless", "--anthropic"],
+    ] {
         let (ok, said) = run_with(args, "hi\n", &[("KAMCHATKA_BASE_URL", "not-a-url")]);
         assert!(!ok, "{args:?}: {said}");
         assert!(
@@ -1299,6 +1304,32 @@ fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
             "{args:?}: {said}"
         );
     }
+}
+
+/// A session speaks one dialect, and two asked for are refused rather than one of them picked.
+///
+/// note: clap refuses the two flags together; the settings file is the other way to ask for both,
+/// one there and one on the command line, and it is refused by name too.
+#[test]
+fn two_dialects_asked_for_are_refused_rather_than_one_of_them_picked() {
+    let (ok, said) = run(&["--gemini", "--anthropic"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("--anthropic"), "{said}");
+
+    let path = settings("two-dialects", r#"{ "gemini": true }"#);
+    let (ok, said) = run(&["--config-file", &path, "--anthropic"], "");
+    assert!(!ok, "{said}");
+    assert!(said.contains("two dialects"), "{said}");
+}
+
+/// `--anthropic` with no address goes to Anthropic, and is refused there without a key - which
+/// names the variable Anthropic's key is read from.
+#[test]
+fn an_anthropic_session_with_no_key_is_told_which_one_to_set() {
+    let (ok, said) = spawn(elsewhere(), &["--anthropic"], "", &[], false, false);
+    assert!(!ok, "{said}");
+    assert!(said.contains("ANTHROPIC_API_KEY"), "{said}");
+    assert!(said.contains("api.anthropic.com"), "{said}");
 }
 
 /// `compact` is a fraction, from the command line or from a file, and a percentage is refused.
@@ -1742,6 +1773,14 @@ fn a_dialect_is_half_of_which_service_a_session_talks_to() {
         said.contains("https://generativelanguage.googleapis.com/v1beta"),
         "and the refusal does not say which service it refused over: {said}"
     );
+
+    // and an `--anthropic` session's key is Anthropic's
+    let (ok, said) = run_where_defaulted(&["--advise", "--anthropic"], "", &model);
+    assert!(
+        !ok,
+        "an `--anthropic` session's own key is not OpenRouter's: {said}"
+    );
+    assert!(said.contains("https://api.anthropic.com/v1"), "{said}");
 }
 
 /// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.

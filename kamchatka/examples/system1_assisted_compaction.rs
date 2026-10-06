@@ -254,7 +254,8 @@ fn excerpt(text: &str) -> String {
 async fn main() -> Result<(), BoxError> {
     // the program's own path to an advisor, so that what `--advise` accepts is what this example
     // accepts: `KAMCHATKA_SYSTEM1_MODEL`, and a key for wherever its questions go
-    let engine = endpoint::advise::connect(&endpoint::session_endpoint(false)).await?;
+    let engine =
+        endpoint::advise::connect(&endpoint::session_endpoint(endpoint::Wire::OpenAi)).await?;
     if let Some(notice) = engine.notice() {
         eprintln!("advisor: {notice}");
     }
