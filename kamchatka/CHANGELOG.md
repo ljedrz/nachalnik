@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### changed
 
+- **The dependency requirements are raised to what the source and the whole workspace need:**
+  `anyhow` 1.0.46, `globset` 0.4.18, `serde` 1.0.220, `socket2` 0.6.3, `time` 0.3.47 and `tokio`
+  1.47. `anyhow` is the one that mattered: before 1.0.46, `anyhow!("{e}")` built and said `{e}`
+  rather than the error. CI now builds every crate here with each direct dependency at its floor at
+  once, on the MSRV, with warnings denied - which is what finds that.
 - **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
   edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
   builds on it.

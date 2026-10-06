@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.
+  Each was lower than a version another dependency already asks for, so no build could have had
+  it; CI now builds every crate here with each direct dependency at its floor at once, on the MSRV.
 - **`tokio` is asked for `time` alone**, without `macros` and `rt`, which nothing outside the tests
   used; `conformance` still asks for `rt` itself. A crate that was getting either from this one
   without asking `tokio` for it has to ask now.

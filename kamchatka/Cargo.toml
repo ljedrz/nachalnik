@@ -104,7 +104,7 @@ tokio = { workspace = true, features = [
     "time",
 ] }
 
-anyhow = "1.0.4"
+anyhow = "1.0.46"
 # `/attach` reads a file off the disk and `Content::Blob` holds its payload already encoded, so
 # something here has to do the encoding. Hand-rolling a codec in the one place that decides what
 # bytes a paid endpoint is charged for is not a trade worth making for forty lines
@@ -117,7 +117,7 @@ clap = { version = "4", features = ["derive", "env"] }
 # libraries plus a printer, so linking them needs no `rg` on the machine and no second
 # process-spawning path for the sandbox to cover. The printer is the half this program wants of
 # its own - one that cuts at matches and says how many it did not show
-globset = "0.4.3"
+globset = "0.4.18"
 grep-regex = "0.1"
 grep-searcher = "0.1.4"
 ignore = "0.4.15"
@@ -156,7 +156,7 @@ tokio-stream = { version = "0.1.1", optional = true }
 # matches on - so the stamp has to be built where the filtering is, which is `app`, not `ui`.
 # `ratatui-widgets` already builds this for a screen build; a headless one now pays for it too,
 # which is the price of the two panes agreeing about what an event says
-time = { version = "0.3.37", features = ["local-offset"] }
+time = { version = "0.3.47", features = ["local-offset"] }
 # the fuzzy matcher behind `/` on the context and trace panes - Helix's, which is where the
 # expectation of what "fuzzy" feels like comes from. The matcher alone rather than `nucleo`: the
 # full crate brings a worker pool and an injector for streaming millions of candidates into a

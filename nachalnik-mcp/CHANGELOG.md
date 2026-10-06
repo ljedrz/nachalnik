@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.
+  Each was lower than a version another dependency already asks for, so no build could have had
+  it; CI now builds every crate here with each direct dependency at its floor at once, on the MSRV.
 - **The MSRV is 1.95**, from 1.88. Edition 2024 already needed 1.85, and the resolver an
   edition-2024 project gets picks, for somebody on an older toolchain, the last version that still
   builds on it.
