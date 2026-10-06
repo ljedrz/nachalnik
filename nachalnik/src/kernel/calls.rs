@@ -132,21 +132,33 @@ impl Kernel {
             // watching the stream sees a call finish rather than a batch of them
             let mut batch = Batch::default();
             for prepared in &prepared {
+                // asked before the lock below is taken, since it is the policy's code
+                let refused = self.refusal(prepared.grant, &prepared.request, &*prepared.policy);
+
                 // an interrupt stops the ones that have not started. They are still recorded,
                 // and recorded as not having run, because a call with no result at all would
                 // leave the model looking at a question nobody answered
-                let output = match self.is_interrupted() {
-                    true => ToolOutput::error("interrupted before this call was made"),
-                    false => {
-                        self.invoke(
-                            prepared.tool.clone(),
-                            prepared.call.clone(),
-                            prepared.request.clone(),
-                            prepared.grant,
-                            &*prepared.policy,
-                        )
-                        .await
+                //
+                // note: the flag is read and the start announced under one hold of the machine
+                // lock, which is where `interrupt` sets and announces it. Read outside it, an
+                // interrupt landing between the two put `turn.interrupted` in the record ahead
+                // of a call that then ran
+                let output = {
+                    let _machine = self.0.machine.lock();
+                    match (self.is_interrupted(), refused) {
+                        (true, _) => {
+                            Err(ToolOutput::error("interrupted before this call was made"))
+                        }
+                        (false, Some(refusal)) => Err(refusal),
+                        (false, None) => {
+                            self.started(&prepared.call);
+                            Ok(())
+                        }
                     }
+                };
+                let output = match output {
+                    Ok(()) => self.run(prepared.tool.clone(), prepared.call.clone()).await,
+                    Err(output) => output,
                 };
                 self.record_output(prepared, output, &mut batch);
             }
@@ -202,24 +214,46 @@ impl Kernel {
         grant: Option<(Grant, GrantSource)>,
         policy: &dyn PermissionPolicy,
     ) -> ToolOutput {
-        let (grant, source) = grant.expect("every claimed call has been decided");
-        if grant == Grant::Deny {
-            // asked only where the policy is what refused it. `refusal` puts a reason into the
-            // standing-rule wording and into no other, so asking anywhere else computes an
-            // explanation of somebody else's decision and drops it
-            let why = match source {
-                GrantSource::Policy => policy.why(&request),
-                _ => None,
-            };
-
-            return ToolOutput::error(refusal(source, why));
+        if let Some(refusal) = self.refusal(grant, &request, policy) {
+            return refusal;
         }
 
+        self.started(&call);
+        self.run(tool, call).await
+    }
+
+    /// What a refused call is answered with, or `None` for one that may run.
+    fn refusal(
+        &self,
+        grant: Option<(Grant, GrantSource)>,
+        request: &PermissionRequest,
+        policy: &dyn PermissionPolicy,
+    ) -> Option<ToolOutput> {
+        let (grant, source) = grant.expect("every claimed call has been decided");
+        if grant != Grant::Deny {
+            return None;
+        }
+
+        // asked only where the policy is what refused it. `refusal` puts a reason into the
+        // standing-rule wording and into no other, so asking anywhere else computes an
+        // explanation of somebody else's decision and drops it
+        let why = match source {
+            GrantSource::Policy => policy.why(request),
+            _ => None,
+        };
+
+        Some(ToolOutput::error(refusal(source, why)))
+    }
+
+    fn started(&self, call: &ToolCall) {
         self.emit(Event::ToolStarted {
             call: call.id.clone(),
             tool: call.tool.clone(),
         });
+    }
 
+    /// Runs a call that may run and has been announced as started.
+    async fn run(&self, tool: Arc<dyn Tool>, call: ToolCall) -> ToolOutput {
         // a tool that fails is not a kernel failure: the model is told, and the loop goes on
         //
         // note: and one that panics has failed too, so the panic is caught at each poll rather

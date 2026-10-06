@@ -427,6 +427,71 @@ async fn run_in_turn_an_interrupt_stops_the_calls_that_had_not_started() {
     );
 }
 
+/// An interrupt that lands between two calls is recorded before every call it stopped and after
+/// every call that ran, so no call starts after `turn.interrupted` in the record.
+///
+/// note: a race rather than a seam, because the window is inside the kernel - between reading the
+/// flag and announcing the next start - and nothing a test supplies is called there. So the
+/// interrupt is fired from a thread of its own the moment the stream shows a call starting, across
+/// many batches of calls that answer at once, which puts it everywhere in the loop sooner or later.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn run_in_turn_nothing_starts_after_the_interrupt_that_stopped_it() {
+    const CALLS: usize = 32;
+
+    for round in 0..500 {
+        let kernel = Kernel::new(Config::default());
+        let calls = (0..CALLS)
+            .map(|n| call(&format!("c{n}"), "quick", json!({})))
+            .collect();
+        kernel.set_provider(Arc::new(ScriptedProvider::new([
+            ModelResponse::tool_calls(calls),
+            ModelResponse::text("done"),
+        ])));
+        kernel.set_policy(Arc::new(AllowAll));
+        kernel.add_tool(Arc::new(ConstTool::new("quick", "ok")));
+        kernel.push(ContextItem::user("go"));
+
+        // after a different call each round, so the interrupt meets the loop at a different place
+        let after = 1 + round % (CALLS - 2);
+        let mut events = kernel.subscribe();
+        let interrupting = {
+            let kernel = kernel.clone();
+            std::thread::spawn(move || {
+                let mut seen = 0;
+                while let Ok(event) = events.blocking_recv() {
+                    if matches!(event, Event::ToolStarted { .. }) {
+                        seen += 1;
+                        if seen == after {
+                            kernel.interrupt();
+                            return;
+                        }
+                    }
+                }
+            })
+        };
+
+        // a step at a time, because `turn` would spend the interrupt before the calls run
+        while !matches!(kernel.step().await.unwrap(), State::Idle) {}
+        interrupting.join().unwrap();
+
+        let records = kernel.history();
+        let Some(interrupted) = records
+            .iter()
+            .position(|record| matches!(record.event, Event::Interrupted))
+        else {
+            continue;
+        };
+        let late = records[interrupted..]
+            .iter()
+            .filter(|record| matches!(record.event, Event::ToolStarted { .. }))
+            .count();
+        assert_eq!(
+            late, 0,
+            "round {round}: {late} calls started after the interrupt that stopped the rest"
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn run_together_there_is_no_queue_left_for_an_interrupt_to_empty() {
     let (kernel, mut starts, gate) = three_gated_calls(true);

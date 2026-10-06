@@ -209,14 +209,6 @@ Each entry says what it is, why it waits, and what would unblock it.
   framing on `GET /`, which stops the frame and not the image, or a token in the page's address
   that `/events` asks for, which changes how the page is opened.
 
-- **An interrupt can land between a call's check and its start.** Run one at a time, each call
-  reads the interrupt flag outside the machine lock and announces `tool.started` after, while
-  `Kernel::interrupt` sets and announces under it. One landing between the two leaves
-  `turn.interrupted` in the record ahead of a call that then runs - which the `--spend` ceiling can
-  hit. Reading the flag and announcing the start under the lock makes the record agree with what
-  ran; it is a change to the kernel's executing path, and the window is too narrow for a test to
-  fail reliably without it.
-
 - **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$`, or
   a `SIGTSTP`, leaves the call reading pipes nobody will write to, and a headless run sits out its
   `--deadline`, which ends it and the stopped process cleanly. Waiting with `WUNTRACED` would see
