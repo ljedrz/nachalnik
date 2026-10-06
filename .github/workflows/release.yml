@@ -28,20 +28,47 @@ jobs:
   #
   # note: on a push and nothing else. A dispatch can be run against a tag - the form offers them -
   # and on the ref alone that would publish a release while `dry-run` held back its binaries
+  #
+  # note: the toolchain is settled here, once, and both binaries are built with the version this
+  # job found to be stable - which the notes then name. A binary is reproducible by somebody with
+  # the same toolchain, and "stable on the day" is not one anybody can install a month later
   create-release:
     name: create the release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      rust: ${{ steps.rustc.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: taiki-e/create-gh-release-action@v1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: stable
+      - id: rustc
+        name: the toolchain
+        run: |
+          rustc -V
+          echo "version=$(rustc -V | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+          echo "full=$(rustc -V)" >> "$GITHUB_OUTPUT"
+      - uses: taiki-e/create-gh-release-action@eba8ea96c86cca8a37f1b56e94b4d13301fba651 # v1.11.0
         with:
           prefix: kamchatka
           title: $prefix $version
           changelog: kamchatka/CHANGELOG.md
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: the toolchain, in the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          RUSTC: ${{ steps.rustc.outputs.full }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+            > "$RUNNER_TEMP/notes.md"
+          printf '\nBuilt with `%s`.\n' "$RUSTC" >> "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$RUNNER_TEMP/notes.md"
 
   # note: `!failure() && !cancelled()` rather than nothing, because `create-release` is skipped on
   # a dispatch and a job that needs a skipped job is skipped too. This has to run in both cases:
@@ -75,9 +102,32 @@ jobs:
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      # the version `create-release` settled on; a dispatch has none, and builds with stable
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
+        with:
+          toolchain: ${{ needs.create-release.outputs.rust || 'stable' }}
+      # note: no cache. A release is built once per tag, and a cache is something any run on the
+      # repository can have written into - which is the wrong thing for the one build that ships
+
+      # note: the dependency tree written into the binary, a few kilobytes of it, so that
+      # `cargo audit bin` or any scanner that reads the section can say which crates a downloaded
+      # `kamchatka` was built from long after the lockfile it came from has moved on. The action
+      # below runs a plain `cargo build` and has no way to ask for another, so a `cargo` in front
+      # of it on `PATH` turns `build` into `auditable build` and hands everything else on as it is
+      - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        with:
+          tool: cargo-auditable
+      - name: every build through cargo-auditable
+        run: |
+          mkdir -p "$RUNNER_TEMP/shim"
+          real=$(command -v cargo)
+          printf '#!/bin/sh\nif [ "$1" = build ]; then shift; exec "%s" auditable build "$@"; fi\nexec "%s" "$@"\n' \
+            "$real" "$real" > "$RUNNER_TEMP/shim/cargo"
+          chmod +x "$RUNNER_TEMP/shim/cargo"
+          echo "$RUNNER_TEMP/shim" >> "$GITHUB_PATH"
 
       # note: the one thing in the tree that needs a cross toolchain at all. Rust ships its own
       # musl libc and links against that; what has no Rust in it is `ring`, which compiles C, and
@@ -109,7 +159,7 @@ jobs:
       # above is the compiler for it, and a binary built by the toolchain the tests ran under is
       # worth more than one built somewhere else.
       - id: upload
-        uses: taiki-e/upload-rust-binary-action@v1
+        uses: taiki-e/upload-rust-binary-action@f0d45ae91ee7b8ee928de7a9d04d893a08bcbec6 # v1.30.2
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CC_aarch64_unknown_linux_musl: musl-gcc
@@ -174,7 +224,7 @@ jobs:
           CARGO_HOME="$RUNNER_TEMP/cargo-again" \
             CARGO_TARGET_DIR="$RUNNER_TEMP/target-again" \
             RUSTFLAGS="--remap-path-prefix=$RUNNER_TEMP/cargo-again=/cargo" \
-            cargo build --release --locked -p kamchatka --bin kamchatka \
+            cargo auditable build --release --locked -p kamchatka --bin kamchatka \
               --features shell-advisor --target ${{ matrix.target }}
           rebuilt="$RUNNER_TEMP/target-again/${{ matrix.target }}/release/kamchatka"
           sha256sum "$shipped" "$rebuilt"
@@ -185,7 +235,7 @@ jobs:
       # `gh attestation verify ARCHIVE --repo ljedrz/nachalnik` checks it. On a tag and nothing
       # else, because a dispatch builds a binary nobody is handed, and an attestation is a public
       # record of one
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         with:
           subject-path: |

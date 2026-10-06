@@ -1,0 +1,19 @@
+# note: the workflows' actions and nothing else. Every `uses:` is pinned to a commit, which is
+# what keeps a moved tag from changing what runs with a release's token - and a pin nothing
+# updates is a pin that falls behind every fix. One pull request a week, all of them in it, for a
+# release that has been out a week: a compromised one is usually caught and pulled within days.
+#
+# note: not `cargo`. A dependency moves with `cargo update` when somebody decides it should, and
+# the advisories against the ones locked are Dependabot's alerts, which need no file here
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"
