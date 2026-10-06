@@ -8,6 +8,10 @@
 //!     cargo test -p nachalnik-providers --features system1 --test system1 -- --nocapture
 //! ```
 //!
+//! `NACHALNIK_SYSTEM1_BASE_URL` points them at an engine of one's own instead, which needs no key -
+//! llama.cpp's `llama-server` serving Clef-Flash at `http://127.0.0.1:8080/v1`, say. The one test
+//! about a bad key is about OpenRouter's refusal, and stays there.
+//!
 //! note: live rather than over a socket serving a recorded body, which is what the unit tests in
 //! the module already do. What cannot be checked without the real endpoint is the half that
 //! matters most here: that the payload this crate renders is one the service *accepts*, for all
@@ -38,14 +42,16 @@ static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 macro_rules! live {
     () => {
         match (
+            env::var("NACHALNIK_SYSTEM1_BASE_URL"),
             env::var("OPENROUTER_API_KEY"),
             env::var("NACHALNIK_SYSTEM1_MODEL"),
         ) {
-            (Ok(key), Ok(model)) => Client::new(model, DEFAULT_BASE_URL, key),
+            (Ok(base), key, Ok(model)) => Client::new(model, base, key.unwrap_or_default()),
+            (Err(_), Ok(key), Ok(model)) => Client::new(model, DEFAULT_BASE_URL, key),
             _ => {
                 eprintln!(
-                    "skipped: set OPENROUTER_API_KEY and NACHALNIK_SYSTEM1_MODEL to run the live \
-                     tests"
+                    "skipped: set NACHALNIK_SYSTEM1_MODEL and OPENROUTER_API_KEY, or \
+                     NACHALNIK_SYSTEM1_BASE_URL, to run the live tests"
                 );
                 return;
             }
@@ -229,13 +235,19 @@ async fn the_listing_names_the_models_and_an_unknown_one_is_reported() {
         .expect("a model that is not served is worth saying out loud");
     assert!(notice.contains("vendor/nope"), "{notice}");
 
-    // and asking anyway is a refusal, rather than an empty answer - and not sent again, since a
-    // model that does not exist is a decision rather than a delay
+    // and asking anyway is sent once, since a model that does not exist is a decision rather
+    // than a delay. What comes back depends on what is serving: OpenRouter refuses the name, and
+    // an engine serving one model - llama.cpp's `llama-server` - answers with that model whatever
+    // was asked for. Either is fine so long as it cannot pass for the model that was named: no
+    // empty answer, and no answer claiming to be `vendor/nope`
     let sent = engine.attempts();
-    engine
+    let asked = engine
         .ask("anything", [("q", Question::noul("Is this fine?"))])
-        .await
-        .expect_err("an unknown model is refused");
+        .await;
+    if let Ok(answered) = &asked {
+        assert_ne!(answered.model, "vendor/nope", "{answered:?}");
+        assert!(answered.noul("q").is_some(), "{answered:?}");
+    }
     assert_eq!(engine.attempts(), sent + 1);
 }
 

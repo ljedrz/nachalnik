@@ -21,6 +21,23 @@
 //! seam a caller holds as `dyn`, so that what it asks with is decided in one place and a test can
 //! answer in its place.
 //!
+//! note: one exception to the one route, and it is Cloudflare's. Workers AI serves Clef and
+//! Clef-flash with the System One body and answer, at the address it serves every model at -
+//! `/accounts/{id}/ai/run/@cf/cloudflare/clef` - with the model in the path rather than a route of
+//! its own, and the answer inside the `result` its whole REST API wraps everything in. So a base
+//! URL on [`is_workers_ai`] is posted to under the model's name rather than under `/systemone`,
+//! the body names the model the way the schema there asks (`clef`, not `@cf/cloudflare/clef`), and
+//! [`Answers::read`] and the refusals read through the wrapper. Everything else is the same
+//! request, which is what "fully API-compatible" buys. The address is taken either way it is
+//! copied: the account's `.../ai/run` with the model named `@cf/cloudflare/clef`, or the model's
+//! whole URL off its page.
+//!
+//! note: one request shape and one answer shape, and that is all the engines agree on. What a
+//! `confidence` is, which limits are enforced, whether an unknown model is refused or answered by
+//! whichever one is served, and where a given state lands - those differ between engines, and this
+//! client passes each engine's answer through rather than reconciling them. [`Answer`] says what
+//! has been seen of the first; `kamchatka`'s RUNNING.md, under "where the models differ", the rest.
+//!
 //! note: three question types and they are asked together in one request. Each is evaluated on
 //! its own against the same state, which is the reason to ask them that way rather than in one
 //! bundled sentence: the answers do not interfere, and the round trip is paid for once.
@@ -57,7 +74,7 @@ use nachalnik::{BoxError, Usage, async_trait};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 
-use crate::{Endpoint, Keyed, RETRIES, install_crypto, same_model};
+use crate::{Attribution, Endpoint, Keyed, RETRIES, install_crypto, same_model};
 
 /// Where the questions go unless a caller says otherwise: OpenRouter, which serves every System
 /// One model on its list from the same `/api/v1` its chat completions are on.
@@ -65,6 +82,29 @@ pub const DEFAULT_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
 /// The path a question is posted to, under the base URL.
 const ROUTE: &str = "systemone";
+
+/// Whether an address is Cloudflare's Workers AI REST API, which serves System One models under
+/// their own names rather than at `/systemone`. Takes a whole URL.
+///
+/// note: on the authority and the start of the path, for the reason [`crate::is_openrouter`] is on
+/// the authority: `api.cloudflare.com` serves a great deal that is not Workers AI, and only an
+/// address under an account's `/ai/run` is one a question can be posted to.
+pub fn is_workers_ai(address: &str) -> bool {
+    let rest = address.split_once("://").map_or(address, |(_, rest)| rest);
+    let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
+    let host = authority.split(':').next().unwrap_or(authority);
+
+    host == "api.cloudflare.com" && path.contains("/ai/run")
+}
+
+/// The model's name as Workers AI's body takes it: the last part of `@cf/cloudflare/clef`.
+///
+/// note: the path wants the whole name and the body the short one - the schema there accepts
+/// `clef` and `clef-flash` and nothing else - so the one identifier a person sets is split here
+/// rather than asking for two.
+fn short_name(model: &str) -> &str {
+    model.rsplit('/').next().unwrap_or(model)
+}
 
 /// What a listing is asked for, so that one carrying every chat model answers with these alone.
 ///
@@ -197,9 +237,10 @@ impl Question {
 
     /// An ordered rubric, lowest level first.
     ///
-    /// note: the documentation asks for at least two levels and the endpoint does not enforce it.
-    /// One level comes back `score: 0.0` with `confidence: 1.0`, which is a confident answer to a
-    /// question that had only one possible answer - see [`Answer::Score`].
+    /// note: the documentation asks for at least two levels and not every endpoint enforces it.
+    /// At one that does not, one level comes back `score: 0.0` with `confidence: 1.0`, which is a
+    /// confident answer to a question that had only one possible answer - see [`Answer::Score`].
+    /// Clef's schema on Workers AI refuses one, and more than ten.
     pub fn score(
         instructions: impl Into<String>,
         levels: impl IntoIterator<Item = impl Into<String>>,
@@ -317,6 +358,12 @@ pub enum Answer {
         probabilities: BTreeMap<String, f64>,
         /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
         /// [`Answer::confidence`] reports as `None`.
+        ///
+        /// note: the engine's figure, passed through, and engines do not compute the same one.
+        /// Clef's reference implementation reports the chosen option's probability; llama.cpp's
+        /// `llama-server` serving the same weights reports that probability rescaled so that a
+        /// uniform answer is `0`, `(p - 1/n) / (1 - 1/n)`. Both are at most the chosen option's
+        /// probability, which is the property a caller drawing a threshold on it can rely on.
         confidence: f64,
     },
     /// Where on the rubric, which may fall between two levels.
@@ -330,10 +377,19 @@ pub enum Answer {
         /// How sure the model is, from 0 to 1; `NaN` where the answer did not say, which
         /// [`Answer::confidence`] reports as `None`.
         ///
-        /// note: not a guard against a badly built question. A rubric with one level comes back
-        /// `score: 0.0, confidence: 1.0` - the endpoint does not enforce the two the
-        /// documentation asks for - so this says how concentrated the distribution is and
-        /// nothing at all about whether the question was worth asking.
+        /// note: the engine's figure, passed through, and engines do not compute the same one.
+        /// Clef's reference implementation reports the likeliest level's probability, which is
+        /// how concentrated the distribution is. llama.cpp's `llama-server` reports how near
+        /// [`Answer::Score::score`] is to a whole level, `1 - |score - round(score)|`, and so did
+        /// the recorded Jev answer this module's tests read - `2.96` at `0.96` with `0.99` on the
+        /// top level. The two part company on a split: half on the bottom level and half on the
+        /// top scores `1.0`, which the second reads as certain. Below `0.5` both are at most the
+        /// bottom level's probability, so a caller requiring confidence before reading a score as
+        /// the bottom level gets no more of them under either.
+        ///
+        /// note: not a guard against a badly built question. At an endpoint that takes a rubric
+        /// with one level, it comes back `score: 0.0, confidence: 1.0`, which says nothing at all
+        /// about whether the question was worth asking.
         confidence: f64,
     },
 }
@@ -429,8 +485,17 @@ impl Answers {
     /// note: public, and the one reader. A caller standing in for an engine - a test's, most
     /// often - answers through it, and a second reader written there would be a second opinion
     /// about what `confidence` means the first time either moved.
+    ///
+    /// note: an answer inside a `result` is read out of it, which is the envelope Workers AI's
+    /// REST API wraps every response in. Only where the top level carries no `answers` of its own,
+    /// so that an engine answering plainly is read exactly as before; [`Answers::raw`] keeps the
+    /// wrapper, since it is the response as it arrived.
     pub fn read(raw: Value) -> Self {
-        let answers = raw["answers"]
+        let body = match raw.get("answers").is_none() && raw["result"].is_object() {
+            true => &raw["result"],
+            false => &raw,
+        };
+        let answers = body["answers"]
             .as_object()
             .map(|answered| {
                 answered
@@ -440,10 +505,13 @@ impl Answers {
             })
             .unwrap_or_default();
 
+        let model = body["model"].as_str().unwrap_or_default().to_owned();
+        let usage = read_usage(&body["usage"]);
+
         Self {
-            model: raw["model"].as_str().unwrap_or_default().to_owned(),
+            model,
             answers,
-            usage: read_usage(&raw["usage"]),
+            usage,
             raw,
         }
     }
@@ -548,6 +616,9 @@ pub struct Client {
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
+    /// Who to say these questions are asked on behalf of, where the endpoint keeps a ranking; see
+    /// [`Client::attributed_to`].
+    app: Attribution,
 }
 
 impl Client {
@@ -568,7 +639,21 @@ impl Client {
             model: Mutex::new(model.into()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
+            app: Attribution::default(),
         }
+    }
+
+    /// Says which app these questions are being asked on behalf of.
+    ///
+    /// note: the same [`Attribution`] a program hands its conversation's provider, so that a
+    /// session asking OpenRouter for advice is one app to it rather than an attributed
+    /// conversation beside anonymous advice on the same account. Sent only where the address is
+    /// OpenRouter's, which is the test the provider uses: an engine of one's own keeps no ranking
+    /// of the apps calling it.
+    #[must_use]
+    pub fn attributed_to(mut self, app: Attribution) -> Self {
+        self.app = app;
+        self
     }
 
     /// Where the requests are going.
@@ -581,8 +666,25 @@ impl Client {
     /// note: separate from [`Client::send`] so the path can be checked without a socket. The
     /// failure it produces when it is wrong - a 404 from a service that does serve the model - is
     /// the kind that reads as an outage.
+    ///
+    /// note: on [`is_workers_ai`], the model is the route. Two ways of giving the address are
+    /// taken, because both are what somebody copies: the account's `.../ai/run` with the model
+    /// named `@cf/cloudflare/clef`, and the model's whole URL off its page, which already ends in
+    /// the name. What is not guessed at is a base that stops short of both - `.../ai/run` with the
+    /// model named `clef` - which would need this to know which vendor's `@cf/` prefix to add.
     fn url(&self) -> String {
-        format!("{}/{ROUTE}", self.endpoint())
+        let base = self.endpoint();
+        if !is_workers_ai(&base) {
+            return format!("{base}/{ROUTE}");
+        }
+
+        let model = self.model();
+        match base.ends_with(&format!("/{model}"))
+            || base.ends_with(&format!("/{}", short_name(&model)))
+        {
+            true => base,
+            false => format!("{base}/{model}"),
+        }
     }
 
     /// Which model is being asked.
@@ -607,7 +709,13 @@ impl Client {
     /// [`nachalnik::Provider::render`] gives: two code paths that are supposed to agree
     /// eventually do not, and a preview that has quietly stopped matching is worse than none.
     pub fn render(&self, state: &Value, questions: &[(String, Question)]) -> Value {
-        render(&self.model(), state, questions)
+        let model = self.model();
+        let named = match is_workers_ai(&self.endpoint()) {
+            true => short_name(&model),
+            false => &model,
+        };
+
+        render(named, state, questions)
     }
 
     /// Puts the questions to the state, and answers all of them in one request.
@@ -643,8 +751,8 @@ impl Client {
         for attempt in 1..=RETRIES {
             self.attempts.fetch_add(1, Ordering::SeqCst);
             let sent = self
-                .client
-                .post(&url)
+                .app
+                .sign(self.client.post(&url), &url)
                 .bearer(&self.api_key)
                 .json(body)
                 .send()
@@ -765,20 +873,23 @@ impl Client {
 
 /// What a request that was refused said about itself, in whichever envelope it arrived in.
 ///
-/// note: two, because the engines do not agree on one. OpenRouter's is the `error` the rest of
+/// note: three, because the engines do not agree on one. OpenRouter's is the `error` the rest of
 /// its API and most of this crate's endpoints use, carrying a `code`. The TypeSafe SDKs' is
 /// `detail`, carrying an `error_type` beside the sentence - `authentication_error` for a key,
 /// `api_usage_error` for a model that does not exist - which an engine written against them
-/// answers in. Both are read here rather than at the call site, which does not know and has no
-/// reason to learn which one answered.
+/// answers in. Cloudflare's is a list, `errors`, each with a numeric `code`, beside a `success`
+/// that says `false`; the first is the one read, and an empty list - which every successful
+/// response there carries - is no refusal. All three are read here rather than at the call site,
+/// which does not know and has no reason to learn which one answered.
 ///
 /// note: the label is kept wherever there is one, and it is the part that does not get reworded.
 /// A `code` is a number at one service and a string at the other, so both are read; what is never
 /// invented is a label where the envelope carried none.
 fn complaint(parsed: &Value) -> Option<String> {
-    let envelope = match parsed.get("detail") {
-        Some(detail) => detail,
-        None => &parsed["error"],
+    let envelope = match (parsed.get("detail"), parsed["errors"].get(0)) {
+        (Some(detail), _) => detail,
+        (None, Some(first)) => first,
+        (None, None) => &parsed["error"],
     };
     let said = envelope["message"].as_str()?;
 
@@ -843,8 +954,16 @@ impl Endpoint for Client {
     /// TypeSafe SDKs answers `models[].name`. An address that answers neither says nothing, which
     /// `say_if_the_model_is_not_there` reads as nothing having been said rather than as every
     /// model missing.
+    ///
+    /// note: nothing is asked of Workers AI, which has no listing under the address a question
+    /// goes to - its search is elsewhere on the account, paged, and lists every task's models -
+    /// so the answer there is the same nothing an address with no listing gives, without the
+    /// request that would have found that out.
     async fn models(&self) -> Vec<String> {
         let base = self.endpoint();
+        if is_workers_ai(&base) {
+            return Vec::new();
+        }
         let Ok(response) = self
             .client
             .get(format!("{base}/{LISTING}"))
@@ -1079,6 +1198,133 @@ mod tests {
         let fine: Value =
             serde_json::from_str(r#"{"model":"jev-1.13.0","answers":{}}"#).expect("it parses");
         assert_eq!(complaint(&fine), None);
+    }
+
+    /// Workers AI is told apart by its authority and its `/ai/run`, and nothing else is.
+    #[test]
+    fn workers_ai_is_the_account_s_ai_run_on_cloudflare_s_api() {
+        for theirs in [
+            "https://api.cloudflare.com/client/v4/accounts/abc/ai/run",
+            "https://api.cloudflare.com/client/v4/accounts/abc/ai/run/@cf/cloudflare/clef",
+            "http://api.cloudflare.com:8080/client/v4/accounts/abc/ai/run",
+        ] {
+            assert!(is_workers_ai(theirs), "{theirs}");
+        }
+
+        for not in [
+            DEFAULT_BASE_URL,
+            "http://127.0.0.1:8000/v1",
+            // the rest of Cloudflare's API, which no question goes to
+            "https://api.cloudflare.com/client/v4/zones",
+            // and a host that only borrows the name
+            "https://api.cloudflare.com.example.com/client/v4/accounts/abc/ai/run",
+            "https://example.com/api.cloudflare.com/ai/run",
+        ] {
+            assert!(!is_workers_ai(not), "{not}");
+        }
+    }
+
+    /// On Workers AI the model is the route, the address is taken either way it is copied, and the
+    /// body names the model the short way its schema asks for.
+    #[test]
+    fn workers_ai_is_asked_under_the_model_s_own_name() {
+        let account = "https://api.cloudflare.com/client/v4/accounts/abc/ai/run";
+        let whole = format!("{account}/@cf/cloudflare/clef");
+        let asked = [("q".to_owned(), Question::noul("Is this fine?"))];
+
+        for (base, model) in [
+            (account.to_owned(), "@cf/cloudflare/clef"),
+            (format!("{account}/"), "@cf/cloudflare/clef"),
+            (whole.clone(), "clef"),
+            (whole.clone(), "@cf/cloudflare/clef"),
+            (format!("{account}/@cf/cloudflare"), "clef"),
+        ] {
+            let engine = Client::new(model, &base, "k");
+            assert_eq!(engine.url(), whole, "{base} asking {model}");
+            assert_eq!(
+                engine.render(&"anything".into(), &asked)["model"],
+                "clef",
+                "{base} asking {model}"
+            );
+        }
+
+        // and nowhere else is the name shortened: OpenRouter's identifiers carry their vendor
+        let elsewhere = Client::new("vendor/decider", DEFAULT_BASE_URL, "k");
+        assert_eq!(
+            elsewhere.render(&"anything".into(), &asked)["model"],
+            "vendor/decider"
+        );
+    }
+
+    /// An answer inside Workers AI's `result` is read out of it, and the wrapper is kept as it came.
+    ///
+    /// note: the answers are in the shapes Clef's reference implementation builds them in - its
+    /// `systemone_answer`, published with the weights on Hugging Face - and the wrapper is the one
+    /// Workers AI's REST API puts every response in. Neither was recorded from a live account.
+    #[test]
+    fn an_answer_wrapped_in_a_result_is_read_out_of_it() {
+        let raw = json!({
+            "result": {
+                "model": "clef",
+                "answers": {
+                    "urgent": {"type": "noul", "noul": 0.9731},
+                    "team": {"type": "choice", "choice": "technical", "confidence": 0.9512,
+                             "probabilities": {"billing": 0.0311, "sales": 0.0177, "technical": 0.9512}},
+                    "severity": {"type": "score", "score": 2.6104, "confidence": 0.6612,
+                                 "legend": {"0": "No impact", "1": "Minor", "2": "Major", "3": "Critical"},
+                                 "probabilities": {"0": 0.0021, "1": 0.0062, "2": 0.3305, "3": 0.6612}}
+                },
+                "usage": {"input_tokens": 312, "output_tokens": 0}
+            },
+            "success": true,
+            "errors": [],
+            "messages": []
+        });
+
+        // a success carries an empty `errors`, which is not a refusal
+        assert_eq!(complaint(&raw), None);
+
+        let read = Answers::read(raw.clone());
+        assert_eq!(read.model, "clef");
+        assert_eq!(read.noul("urgent"), Some(0.9731));
+        assert_eq!(read.choice("team"), Some("technical"));
+        assert_eq!(read.confidence("team"), Some(0.9512));
+        assert_eq!(read.score("severity"), Some(2.6104));
+        assert_eq!(read.confidence("severity"), Some(0.6612));
+        // nothing is generated, and an honest zero is a zero rather than an unreported figure
+        assert_eq!(
+            read.usage,
+            Some(Usage {
+                input_tokens: Some(312),
+                output_tokens: Some(0),
+                ..Usage::default()
+            })
+        );
+        assert_eq!(read.raw, raw, "the response as it arrived, wrapper and all");
+
+        // and an engine that answers plainly beside a `result` of its own is read at the top level
+        let plain = Answers::read(json!({
+            "model": "jev-1.13.0",
+            "answers": {"q": {"type": "noul", "noul": 0.1}},
+            "result": {"answers": {"q": {"type": "noul", "noul": 0.9}}}
+        }));
+        assert_eq!(plain.noul("q"), Some(0.1));
+    }
+
+    /// A refusal in Cloudflare's envelope is read out of its first `errors` entry, code and all.
+    #[test]
+    fn a_refusal_in_cloudflare_s_envelope_names_its_code() {
+        let refused = json!({
+            "result": null,
+            "success": false,
+            "errors": [{"code": 10000, "message": "Authentication error"}],
+            "messages": []
+        });
+
+        assert_eq!(
+            complaint(&refused).as_deref(),
+            Some("10000: Authentication error")
+        );
     }
 
     /// An engine that does not override [`SystemOne::notice`] has nothing to say.
@@ -1380,6 +1626,149 @@ mod tests {
             !said.contains(", d"),
             "the rest are counted, not named: {said}"
         );
+    }
+
+    /// Answers one request with `reply`, and hands back what it was sent - head and body.
+    async fn overheard(engine: Client, reply: &'static str) -> (String, Result<Answers, BoxError>) {
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port");
+        let at = listener.local_addr().expect("its address");
+        let heard = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("a request");
+            let mut seen = Vec::new();
+            let mut buffer = [0u8; 4096];
+            // the head and then the body the head promised, which is all one question sends
+            loop {
+                let text = String::from_utf8_lossy(&seen).into_owned();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let length = head
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length: ")
+                                .map(str::to_owned)
+                        })
+                        .and_then(|it| it.trim().parse::<usize>().ok())
+                        .unwrap_or(0);
+                    if body.len() >= length {
+                        break;
+                    }
+                }
+                match socket.read(&mut buffer).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => seen.extend_from_slice(&buffer[..n]),
+                }
+            }
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{reply}",
+                        reply.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+            String::from_utf8_lossy(&seen).into_owned()
+        });
+
+        // whatever name the engine was given, the socket is the listener's
+        let mut engine = engine;
+        let host = Endpoint::host(&engine);
+        let host = host.split(':').next().unwrap_or_default().to_owned();
+        engine.client = reqwest::Client::builder()
+            .resolve(&host, at)
+            .build()
+            .expect("a client that resolves one name itself");
+        let address = engine
+            .endpoint()
+            .replace(&format!("{host}:1"), &format!("{host}:{}", at.port()));
+        *engine.base_url.lock() = address;
+
+        let answered = engine
+            .ask("anything", [("q", Question::noul("Is this fine?"))])
+            .await;
+
+        (heard.await.expect("the listener").to_lowercase(), answered)
+    }
+
+    /// The advice is attributed to the app at OpenRouter, the way a conversation is, and nowhere
+    /// else.
+    #[tokio::test]
+    async fn the_advice_names_the_app_to_openrouter_and_nowhere_else() {
+        const ANSWER: &str = r#"{"model":"m","answers":{"q":{"type":"noul","noul":0.5}}}"#;
+        let app = || {
+            Attribution::new("https://example.invalid/app", "kamchatka")
+                .filed_under(["cli-agent", "programming-app"])
+        };
+
+        let (seen, answered) = overheard(
+            Client::new("m", "http://openrouter.ai:1/api/v1", "k").attributed_to(app()),
+            ANSWER,
+        )
+        .await;
+        assert!(answered.is_ok(), "{answered:?}");
+        assert!(seen.starts_with("post /api/v1/systemone "), "{seen}");
+        assert!(
+            seen.contains("referer: https://example.invalid/app"),
+            "{seen}"
+        );
+        assert!(seen.contains("x-openrouter-title: kamchatka"), "{seen}");
+        assert!(
+            seen.contains("x-openrouter-categories: cli-agent,programming-app"),
+            "{seen}"
+        );
+
+        // an engine of one's own keeps no ranking, and is told nothing about the app
+        let (elsewhere, _) = overheard(
+            Client::new("m", "http://127.0.0.1:1/v1", "k").attributed_to(app()),
+            ANSWER,
+        )
+        .await;
+        assert!(
+            !elsewhere.contains("referer") && !elsewhere.contains("x-openrouter-"),
+            "{elsewhere}"
+        );
+
+        // and a client with no attribution sends none wherever it is pointed
+        let (silent, _) = overheard(
+            Client::new("m", "http://openrouter.ai:1/api/v1", "k"),
+            ANSWER,
+        )
+        .await;
+        assert!(!silent.contains("referer"), "{silent}");
+    }
+
+    /// A question to Workers AI goes under the model's name, with the short name in the body, and
+    /// what comes back inside `result` is read.
+    #[tokio::test]
+    async fn a_question_to_workers_ai_is_asked_and_answered_through_its_wrapper() {
+        let (seen, answered) = overheard(
+            Client::new(
+                "@cf/cloudflare/clef",
+                "http://api.cloudflare.com:1/client/v4/accounts/abc/ai/run",
+                "cf-token",
+            ),
+            r#"{"result":{"model":"clef","answers":{"q":{"type":"noul","noul":0.25}},
+                "usage":{"input_tokens":40,"output_tokens":0}},
+                "success":true,"errors":[],"messages":[]}"#,
+        )
+        .await;
+
+        assert!(
+            seen.starts_with("post /client/v4/accounts/abc/ai/run/@cf/cloudflare/clef "),
+            "{seen}"
+        );
+        assert!(seen.contains("authorization: bearer cf-token"), "{seen}");
+        assert!(seen.contains(r#""model":"clef""#), "{seen}");
+
+        let answered = answered.expect("an answer");
+        assert_eq!(answered.model, "clef");
+        assert_eq!(answered.noul("q"), Some(0.25));
     }
 
     /// A 200 that carries no answer is an error, not a response with every question unanswered.

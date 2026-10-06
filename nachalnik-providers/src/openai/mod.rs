@@ -74,17 +74,11 @@ pub struct OpenAiCompatible {
     notice: Mutex<Option<String>>,
     /// Who to say these requests are on behalf of, where the endpoint asks. Set once, at
     /// construction: it is a property of the program making the request, not of the session.
-    attribution: Option<Attribution>,
-    /// What kind of program it is, in the endpoint's own vocabulary; see [`Self::filed_under`].
     ///
-    /// note: beside [`Self::attribution`] rather than inside it, because the order two builder
-    /// methods are called in should not decide what goes out. It is sent only where there is an
-    /// attribution to send it with, which is the API's own rule: the page is built against the
-    /// URL, so a category with no URL beside it describes nothing.
-    categories: Vec<String>,
-    /// Whether the app page these requests would create should be left off the public listings;
-    /// see [`Self::unlisted`].
-    unlisted: bool,
+    /// note: one value rather than a field per header, so that the order the builder methods are
+    /// called in does not decide what goes out - a category set before the app was named is
+    /// kept, and sent once there is a URL to send it with. See [`Attribution`].
+    app: Attribution,
     /// What this endpoint is called, as [`nachalnik::ModelInfo::provider`] reports it.
     ///
     /// note: worth setting when there are several. Without it a panel comparing models through
@@ -109,32 +103,9 @@ pub struct OpenAiCompatible {
     recording: bool,
 }
 
-/// The app a request is being made on behalf of, for an endpoint that keeps a ranking of them.
-///
-/// note: the URL is an identifier rather than a link anybody follows - OpenRouter keeps the app's
-/// page against it - so it wants to be the project's own address and to stay the same.
-///
-/// note: `#[non_exhaustive]` because nothing outside this crate builds one.
-/// [`OpenAiCompatible::on_behalf_of`] takes the two parts and assembles it, which is the only
-/// way one is made, and a third header the ranking wants should not be a break.
-#[derive(Clone, Debug)]
-#[non_exhaustive]
-pub struct Attribution {
-    /// The app's own URL, which is what the ranking is kept against.
-    pub url: String,
-    /// What to call it on the page.
-    pub title: String,
-}
-
-/// Whether an endpoint is one that keeps a ranking of the apps calling it.
-///
-/// note: named for what it decides rather than for whose address it is, since what the caller here
-/// is asking is whether there is a ranking to be listed in. The address test is
-/// [`crate::is_openrouter`], shared with the two other places in this workspace that turn the same
-/// question into a decision about somebody's credentials or data.
-fn ranks_apps(host: &str) -> bool {
-    crate::is_openrouter(host)
-}
+/// What used to be this module's own, and is now the crate's, because the System One client sends
+/// it too.
+pub use crate::Attribution;
 
 impl OpenAiCompatible {
     /// Builds a provider for one model.
@@ -154,9 +125,7 @@ impl OpenAiCompatible {
             listed: Mutex::new(Entry::default()),
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
-            attribution: None,
-            categories: Vec::new(),
-            unlisted: false,
+            app: Attribution::default(),
             label: "openai-compatible".to_owned(),
             stream: true,
             thinking_in_content: true,
@@ -308,17 +277,24 @@ impl OpenAiCompatible {
         self.attempts.load(Ordering::SeqCst)
     }
 
+    /// Says which app these requests are being made on behalf of, all of it at once.
+    ///
+    /// note: the way to hand over one [`Attribution`] built for several clients, which is what a
+    /// program asking one service for a conversation and for advice wants: one value, and one
+    /// switch to stop sending it. It replaces whatever the three methods below had set.
+    #[must_use]
+    pub fn attributed_to(mut self, app: Attribution) -> Self {
+        self.app = app;
+        self
+    }
+
     /// Says which app these requests are being made on behalf of.
     ///
-    /// note: off unless a caller asks for it, and sent only to the endpoint that reads it. The
-    /// headers name the program, never the person running it or what they asked - but a
-    /// `HTTP-Referer` volunteered to whatever address the caller has pointed this at is still
-    /// something the person running it did not ask to send, and the address is a setting.
+    /// note: off unless a caller asks for it, and sent only to the endpoint that reads it - see
+    /// [`Attribution::new`].
     pub fn on_behalf_of(mut self, url: impl Into<String>, title: impl Into<String>) -> Self {
-        self.attribution = Some(Attribution {
-            url: url.into(),
-            title: title.into(),
-        });
+        self.app.url = url.into();
+        self.app.title = title.into();
         self
     }
 
@@ -326,34 +302,19 @@ impl OpenAiCompatible {
     ///
     /// note: does nothing on its own. It is sent beside [`Self::on_behalf_of`] or not at all, and
     /// to the same one endpoint - the page is built against the URL, so a category with no URL
-    /// beside it describes nothing and is a header that buys the caller nothing.
-    ///
-    /// note: what it is given, verbatim. OpenRouter documents two per request, ten in total, and
-    /// its own list of names - and an unrecognised one is *dropped*, not refused: no error, no
-    /// notice, a 200 like any other, so `cli_agent` for `cli-agent` is a typo that fails nothing
-    /// and shows up only as an app filed under nothing. Neither the count nor the spelling is
-    /// checked here, because a crate that guessed at somebody else's list would go stale the day
-    /// it grew: [the attribution page](https://openrouter.ai/docs/app-attribution) has the names.
-    ///
-    /// note: they accumulate on the app rather than replace what it has, so this is not a way to
-    /// correct one. Changing what an app is already filed under is a conversation with OpenRouter.
+    /// beside it describes nothing and is a header that buys the caller nothing. See
+    /// [`Attribution::filed_under`] for what is and is not checked.
     #[must_use]
     pub fn filed_under<C: Into<String>>(mut self, categories: impl IntoIterator<Item = C>) -> Self {
-        self.categories = categories.into_iter().map(Into::into).collect();
+        self.app = std::mem::take(&mut self.app).filed_under(categories);
         self
     }
 
-    /// Keeps the app page off the public rankings and out of the marketplace, for attribution kept
-    /// as somebody's own telemetry rather than as a listing.
-    ///
-    /// note: this only ever reaches the request that *creates* the page. A URL that already has
-    /// one keeps whatever visibility it has, in either direction - so a program with one fixed URL
-    /// has a single request, once, in which this means anything, and nobody running it later can
-    /// change that with a header. Which is also what makes it safe: a caller of somebody else's
-    /// app cannot hide it.
+    /// Keeps the app page off the public rankings and out of the marketplace; see
+    /// [`Attribution::unlisted`] for the one request in which it means anything.
     #[must_use]
     pub fn unlisted(mut self, unlisted: bool) -> Self {
-        self.unlisted = unlisted;
+        self.app.unlisted = unlisted;
         self
     }
 
@@ -375,28 +336,7 @@ impl OpenAiCompatible {
 
     /// Adds the app headers, if there are any and this is somewhere that reads them.
     fn attributed(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        let Some(app) = self
-            .attribution
-            .as_ref()
-            .filter(|_| ranks_apps(&self.host()))
-        else {
-            return request;
-        };
-        // `X-OpenRouter-Title` is the current name; `X-Title` is the one it replaced and is still
-        // accepted
-        let request = request
-            .header(reqwest::header::REFERER, &app.url)
-            .header("X-OpenRouter-Title", &app.title);
-        let request = match self.categories.is_empty() {
-            true => request,
-            false => request.header("X-OpenRouter-Categories", self.categories.join(",")),
-        };
-        // and nothing at all for the public case, which is the default and has no value of its
-        // own: `hidden` or the absence of the header, there is no third thing to say
-        match self.unlisted {
-            true => request.header("X-OpenRouter-App-Visibility", "hidden"),
-            false => request,
-        }
+        self.app.sign(request, &self.host())
     }
 
     /// Where the requests are going.
@@ -880,23 +820,6 @@ mod tests {
     use nachalnik::Provider;
 
     use super::*;
-
-    #[test]
-    fn only_the_endpoint_that_reads_the_app_headers_is_sent_them() {
-        // the ones that are
-        assert!(ranks_apps("openrouter.ai"));
-        assert!(ranks_apps("openrouter.ai:443"));
-        assert!(ranks_apps("api.openrouter.ai"));
-
-        // and the ones that are not. The two that only look like OpenRouter's are the reason this
-        // matches on the authority rather than looking for the name anywhere in the address: a
-        // substring or suffix test would send an unrelated host the name of the program calling it
-        assert!(!ranks_apps("localhost:11434"));
-        assert!(!ranks_apps("generativelanguage.googleapis.com"));
-        assert!(!ranks_apps("openrouter.ai.example.com"));
-        assert!(!ranks_apps("notopenrouter.ai"));
-        assert!(!ranks_apps(""));
-    }
 
     /// The client this crate offers gives up on a silent server when a whole answer's time is up,
     /// and not before.

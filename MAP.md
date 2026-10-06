@@ -204,7 +204,8 @@ Messages API, the one whose thinking is signed and has to go back as it came), `
 `markup.rs` (the words out of a body that is not JSON, which `system1.rs` reads too),
 `conformance.rs` (the suite, behind its own feature), `system1.rs` (feature `system1`: `Client`,
 for any System One model - typed questions answered with numbers - and the one thing here that is
-not a `Dialect`: it drives no turn). Each dialect is a feature, and what it owns is what its events
+not a `Dialect`: it drives no turn), `attribution.rs` (`Attribution`, the app headers both
+`OpenAiCompatible` and the System One client send, and only to OpenRouter). Each dialect is a feature, and what it owns is what its events
 *say*; `waiting.rs`, `reading.rs` and `markup.rs` are everything else, crate-private and shared,
 which is what makes them one crate rather than two.
 

@@ -14,8 +14,8 @@ use std::{env, sync::Arc};
 
 use nachalnik::BoxError;
 use nachalnik_providers::{
-    Anthropic, Gemini, OpenAiCompatible, anthropic::DEFAULT_BASE_URL as ANTHROPIC_BASE_URL,
-    gemini::DEFAULT_BASE_URL, is_openrouter,
+    Anthropic, Attribution, Gemini, OpenAiCompatible,
+    anthropic::DEFAULT_BASE_URL as ANTHROPIC_BASE_URL, gemini::DEFAULT_BASE_URL, is_openrouter,
 };
 
 /// The project these requests are made on behalf of, where the endpoint keeps a ranking of apps.
@@ -50,6 +50,24 @@ const APP_TITLE: &str = "kamchatka";
 /// it does not recognise without an error. What catches a typo is opening the page the attribution
 /// built and seeing what it says.
 const APP_CATEGORIES: [&str; 2] = ["cli-agent", "programming-app"];
+
+/// What this program says about itself to an endpoint that keeps a ranking of apps, or nothing
+/// where `KAMCHATKA_NO_ATTRIBUTION` is set.
+///
+/// note: one value for every client that sends it - the conversation's provider and the advisor -
+/// and one switch for all of them. Somebody who turned attribution off for their conversation
+/// has not agreed to be named by a second client on the same account, and two switches would be
+/// a way to be half off without noticing.
+///
+/// note: the [`Attribution::default`] names nothing and sends nothing, so a client handed it is
+/// one that was never attributed; where it goes, `nachalnik_providers` decides by the same
+/// address test for both.
+pub fn attribution() -> Attribution {
+    match env::var_os("KAMCHATKA_NO_ATTRIBUTION") {
+        Some(_) => Attribution::default(),
+        None => Attribution::new(APP_URL, APP_TITLE).filed_under(APP_CATEGORIES),
+    }
+}
 
 /// The context limit somebody set by hand, if they set one.
 ///
@@ -344,18 +362,14 @@ async fn connected(
     model: Option<&str>,
     responses: bool,
 ) -> Result<Arc<OpenAiCompatible>, BoxError> {
-    let mut provider = OpenAiCompatible::new(
+    let provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
         addressed(base_url())?,
         key_for(&base_url())?,
     )
     .with_context_limit(checked_limit()?)
-    .responses(responses);
-    if env::var_os("KAMCHATKA_NO_ATTRIBUTION").is_none() {
-        provider = provider
-            .on_behalf_of(APP_URL, APP_TITLE)
-            .filed_under(APP_CATEGORIES);
-    }
+    .responses(responses)
+    .attributed_to(attribution());
 
     let provider = Arc::new(provider);
     if model.is_some() {
@@ -454,8 +468,10 @@ pub mod advise {
     /// something else.
     ///
     /// note: what something else is for is an engine of one's own - `laya-serve` on this machine
-    /// answers the same route. A provider that sells a System One model and is not on OpenRouter's
-    /// list is reached through OpenRouter's bring-your-own-key, so it needs nothing here.
+    /// answers the same route - or Workers AI, which serves Clef under the model's own name and
+    /// which the client knows by its address. A provider that sells a System One model and is not
+    /// on OpenRouter's list is reached through OpenRouter's bring-your-own-key, so it needs
+    /// nothing here.
     pub fn base_url() -> String {
         env::var("KAMCHATKA_SYSTEM1_BASE_URL")
             .unwrap_or_else(|_| system1::DEFAULT_BASE_URL.to_owned())
@@ -513,6 +529,18 @@ pub mod advise {
             return Ok(Account::Dedicated(key));
         }
 
+        // note: Workers AI is the one address other than OpenRouter's that is known to check a
+        // key - it is a Cloudflare account - and known not to take a borrowed one, so going with
+        // none there is a 401 on the first command rather than a session that never had an
+        // advisor. Said now, while nothing is running
+        if system1::is_workers_ai(advisor_endpoint) {
+            return Err(format!(
+                "--advise needs a Cloudflare API token for {advisor_endpoint}: set \
+                 KAMCHATKA_SYSTEM1_API_KEY to one that may use Workers AI"
+            )
+            .into());
+        }
+
         // note: no key rather than a refusal, for the reason a session needs none - see
         // `key_for`. An engine that does check one answers the first question with a 401
         if !is_openrouter(advisor_endpoint) {
@@ -541,7 +569,9 @@ pub mod advise {
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
         let model = model()?;
         let account = account(session_endpoint)?;
-        let engine = Arc::new(Client::new(model, base_url(), account.api_key()));
+        let engine = Arc::new(
+            Client::new(model, base_url(), account.api_key()).attributed_to(attribution()),
+        );
         engine.probe().await;
 
         Ok(engine)
@@ -628,6 +658,18 @@ pub mod advise {
             // checks one, whatever the session is pointed at
             assert!(chosen(None, None, None, openrouter, openrouter).is_err());
             assert!(chosen(None, None, None, "http://localhost:11434/v1", openrouter).is_err());
+
+            // and where it goes to Workers AI, which takes a Cloudflare token and no OpenRouter
+            // key, it is refused unless one was held for it - borrowing nothing on the way
+            let workers = "https://api.cloudflare.com/client/v4/accounts/abc/ai/run";
+            let refused = chosen(None, own(), named(), openrouter, workers)
+                .expect_err("Workers AI checks a key, and none here is Cloudflare's");
+            let said = refused.to_string();
+            assert!(said.contains("KAMCHATKA_SYSTEM1_API_KEY"), "{said}");
+            assert!(said.contains(workers), "{said}");
+            let held = chosen(dedicated(), own(), named(), openrouter, workers)
+                .expect("a token held for the advisor pays there");
+            assert!(matches!(&held, Account::Dedicated(_)));
         }
 
         /// Which account is which, said out loud, and the key never is.

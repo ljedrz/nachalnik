@@ -9,6 +9,17 @@ minor bump may break you.
 
 ### added
 
+- **The advisor can be Clef, on Cloudflare's Workers AI.** `KAMCHATKA_SYSTEM1_BASE_URL` set to an
+  account's `https://api.cloudflare.com/client/v4/accounts/<id>/ai/run` and
+  `KAMCHATKA_SYSTEM1_MODEL` to `@cf/cloudflare/clef` or `@cf/cloudflare/clef-flash` asks it, with
+  a Cloudflare API token in `KAMCHATKA_SYSTEM1_API_KEY`. A session pointed there with no token is
+  refused at startup rather than answered with a 401 at the first command, and no OpenRouter key
+  is borrowed for it.
+- **The advice is attributed to kamchatka at OpenRouter, as the conversation is**, so that a
+  session asking OpenRouter for both is one app to it rather than an attributed conversation and
+  anonymous advice. `KAMCHATKA_NO_ATTRIBUTION` stops both, and an advisor anywhere else is told
+  nothing.
+
 - **`--anthropic` talks to Anthropic's own Messages API**, as `--gemini` talks to Google's: a turn
   keeps the order it was produced in, and its signed thinking goes back with the tool results it
   came before. `KAMCHATKA_BASE_URL` points it elsewhere - OpenRouter speaks it at
