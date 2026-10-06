@@ -798,6 +798,12 @@ impl Setup {
         app.set_spend(self.spend);
         app.compact_target = compact_target;
         app.compact_threshold = compact_threshold;
+        // what `/attach` says about a file it took, said about the ones `-f` took
+        for item in app.kernel.items() {
+            if let Some(caution) = attach::caution(&item) {
+                app.say(crate::app::Speaker::Error, caution);
+            }
+        }
 
         // note: everything is built and then what was not asked for is turned off, rather than
         // only the named ones being built. That is what makes the list a starting position: the
