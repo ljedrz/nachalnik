@@ -38,8 +38,9 @@ asks of it and nothing else does - the question waiting, the rows the context an
 draw. `going.rs` is what the next request does with each item. That is a reading of the kernel
 rather than a fact about this terminal, and it is its own file because the screen, the wire and the
 `context` tool all answer out of it, so the model's account of its own budget and the person's
-cannot drift apart. `keys.rs` is what the keys do, `command.rs` the slash commands, `session.rs`
-a session on disk - `/load`, `/save` and the write that puts a file in place whole - and `text.rs`
+cannot drift apart. `keys.rs` is what the keys do, `command/` the slash commands - read and
+dispatched in its `mod.rs`, and answered by topic in `model.rs`, `context.rs` and `tools.rs` -
+`session.rs` a session on disk - `/load`, `/save` and the write that puts a file in place whole - and `text.rs`
 turns a runtime value into a line. `search.rs` is the `/` filter over a pane's rows and `when.rs`
 the clock a trace line is stamped with; both are here rather than in `ui/` because a pane that
 searched one string and drew another would find nothing where it says there is something.
