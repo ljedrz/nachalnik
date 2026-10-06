@@ -101,7 +101,7 @@ rust-version = "1.95"
 # needs more: `async-trait` is 0.1.89 because `rmcp` asks for it, and `tokio` 1.47 and `serde`
 # 1.0.220 the same way. A floor nothing can resolve to is not one anybody gets.
 [workspace.dependencies]
-nachalnik = { version = "0.8.1", path = "nachalnik" }
+nachalnik = { version = "0.9.0", path = "nachalnik" }
 nachalnik-mcp = { version = "0.8.1", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.9.0", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
