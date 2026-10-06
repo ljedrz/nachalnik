@@ -1,4 +1,4 @@
-//! Both dialects, against the suite every provider in this workspace has to pass.
+//! Every dialect, against the suite every provider in this workspace has to pass.
 //!
 //! note: gated on the `conformance` feature, because the suite it runs is behind one - it is a
 //! dev tool for whoever is writing a third provider, not something a caller of this crate should
@@ -11,7 +11,10 @@
 //! fragments filed by a missing index in two. A case added there applies to both of these at
 //! once, with nothing edited here.
 
-#![cfg(all(feature = "conformance", any(feature = "openai", feature = "gemini")))]
+#![cfg(all(
+    feature = "conformance",
+    any(feature = "anthropic", feature = "openai", feature = "gemini")
+))]
 
 use std::sync::Arc;
 
@@ -40,6 +43,20 @@ async fn the_openai_compatible_provider_conforms() {
 async fn the_gemini_provider_conforms() {
     Conformance::gemini("the Gemini provider", |url| {
         Arc::new(nachalnik_providers::Gemini::new(
+            "conformance",
+            url,
+            "no key needed",
+        ))
+    })
+    .check()
+    .await;
+}
+
+#[cfg(feature = "anthropic")]
+#[tokio::test]
+async fn the_anthropic_provider_conforms() {
+    Conformance::anthropic("the Anthropic provider", |url| {
+        Arc::new(nachalnik_providers::Anthropic::new(
             "conformance",
             url,
             "no key needed",

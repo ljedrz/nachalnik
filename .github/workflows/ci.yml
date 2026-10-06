@@ -149,6 +149,8 @@ jobs:
       # is not there compiles nowhere except under `--all-features`
       - name: nachalnik-providers, gemini only
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features gemini --locked
+      - name: nachalnik-providers, anthropic and the suite
+        run: cargo check -p nachalnik-providers --all-targets --no-default-features --features anthropic,conformance --locked
       - name: nachalnik-providers, openai and the suite
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance --locked
       - name: nachalnik-providers, system1 only

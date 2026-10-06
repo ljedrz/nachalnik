@@ -256,9 +256,11 @@ without a key. `config` is the settings file through the same door, `mcp` is som
 server spawned as a child, and `reconcile` folds real forks of one session back into one.
 
 `nachalnik-providers/tests/` serves a recorded Gemini stream off a socket and checks what goes
-back out (`gemini`), checks what is volunteered to an endpoint about the calling program and to
+back out (`gemini`), does the same with a recorded Anthropic one (`anthropic`), and asks a real
+Anthropic endpoint whether it takes back what was recorded (`anthropic_live`, which skips without
+a key), checks what is volunteered to an endpoint about the calling program and to
 which one (`attribution`), answers two sockets that go silent, one before the first byte and one
-mid-stream (`stalled`), asks both dialects about the edges of the reader they share - a body that
+mid-stream (`stalled`), asks the dialects about the edges of the reader they share - a body that
 ends without a newline, one that was never a stream, a refusal that says how long to wait
 (`reading`), holds each dialect's projection against what its own `to_wire` carries
 (`projection`), pins where each puts a `Content::Blob` and that neither is handed one in a place
@@ -278,7 +280,7 @@ The shapes a *stream* arrives in are not tested per provider, because the questi
 same each time. `nachalnik-providers/src/conformance.rs` is the suite, behind the `conformance`
 feature: a provider is asked the same questions through a real socket, each one a bug that
 actually happened, and a question added applies to everything held to it without any of them being
-edited. `nachalnik-providers/tests/conformance.rs` holds both dialects to it. `whole_answers` is
+edited. `nachalnik-providers/tests/conformance.rs` holds every dialect to it. `whole_answers` is
 what is left over - the answer that arrives in one piece, which only the OpenAI dialect has a path
 for, so there is nothing for it to agree with.
 
