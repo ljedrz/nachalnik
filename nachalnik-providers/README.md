@@ -53,14 +53,10 @@ send it a `thoughtSignature` it would refuse. Its prompt is cached by default, b
 caches nothing unasked; `cache_control` among the parameters changes that, and `false` turns it
 off.
 
-Two things that API holds against an edited history are not handled yet, and are worth knowing
-before choosing a model. On Claude Fable 5.1, Opus 5.5 and Sonnet 5.5 a signed thinking block is
-bound to everything before it, and accounts created on or after 2026-08-31 are refused for sending
-one back once anything earlier has been pruned or rewritten - which is what a session here does.
-Turn the thinking off where the model allows it, or pick one without the rule (Opus 5, Opus 4.8,
-Sonnet 5, Haiku 4.5). And an instruction added mid-session joins the others at the top, which
-costs the request it first goes out with the whole cache. [The module's
-docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) have the details.
+Some of its models hold an edited history against signed thinking, and refuse a turn sent back
+after anything before it was pruned or rewritten - which is what a session here does. [The
+module's docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) say which,
+and what to do about it.
 
 OpenAI's Responses API is the same bargain once more, and a mode of the first dialect rather than a
 fourth: the same endpoint, key and listing, asked at `/responses`. A reasoning model's thinking
@@ -76,35 +72,26 @@ A stream that has gone quiet, a request refused with a `Retry-After`, and one so
 escape on are three different answers to *send it again?*, and getting them wrong costs either a
 turn or somebody's money. All three are separated here, and shared by every dialect:
 
-- **a stalled stream is interruptible.** The read wakes every 120ms to check whether the caller
-  asked it to stop, so a server that accepts a connection and then goes away does not hold the
-  program with no way to take it back.
-- **the silence is reported.** After ten seconds it says so through `Endpoint::take_notice`, and
-  again every thirty; after 150 it gives up on that attempt. A stream that had said something
-  keeps it, as a turn cut off, and one that had not is a failure. A request whose headers never
-  came is not sent again, streamed or not: an endpoint may hold them until its first token, as
-  ollama does while it loads a model, so a server that took the request may be working on it, and
-  a second try is a second bill. Only a request that never made its connection is sent again.
+- **a stalled stream is interruptible**, so a server that takes a connection and goes away does not
+  hold the program.
+- **the silence is reported** through `Endpoint::take_notice`, and the attempt is given up on after
+  150 seconds. A stream that had said something keeps it, as a turn cut off. A request that reached
+  the server is not sent again, since it may be working on it and a second try is a second bill.
 - **a busy server is retried, a spent quota is not.** A `Retry-After` longer than a minute is a
-  daily limit answering with the seconds until midnight, and sitting through three doublings to
-  discover that wastes the turn as well as the wait.
+  daily limit, not a busy server.
 - **an interrupt is an answer, not an error.** It comes back as `StopReason::Other("interrupted")`
-  with whatever had arrived, because a red line for doing as asked reads as a bug.
+  with whatever had arrived.
 
-Every request is sent at most four times and **every attempt is billed** — a provider that
-generated nine thousand tokens and then lost the connection has still generated them — which is
-why the retry is for a server that said *busy*, not for a request that is simply large.
+Every request is sent at most four times and **every attempt is billed**, which is why the retry is
+for a server that said *busy*, not for a request that is simply large.
 
 ---
 
 ### 🧾 what actually went out
 
-Streamed is the default and is what a person watching wants. `streaming(false)` asks for the
-answer in one piece instead, which is what a benchmark or a batch wants — and is the only way to
-reach some endpoints' non-streaming code, which is not always the same code as their streaming
-code. What it costs is every fragment and, with them, anything to keep from a turn stopped
-partway: an interrupt still ends the wait, but it comes back empty, because an answer that
-arrives whole has no middle to keep.
+Streamed is the default. `streaming(false)` asks for the answer in one piece, which is what a
+benchmark or a batch wants; an interrupt then comes back empty, since a whole answer has no middle
+to keep.
 
 ```rust
 let provider = OpenAiCompatible::new(model, base_url, key)
@@ -115,9 +102,8 @@ assert_eq!(provider.requests()[0].params["max_tokens"], json!(1));
 ```
 
 `recording(true)` keeps a copy of every request the provider was asked to send, and `requests()`
-hands them back. It is off by default — a session running all afternoon would otherwise hold every
-request it ever made — and it is there because *what was actually sent* is a question this runtime
-takes seriously everywhere else. `render` answers it before the fact; this answers it after.
+hands them back - off by default, since a long session would hold every request it made. `render`
+says what will be sent; this says what was.
 
 ---
 
@@ -131,25 +117,17 @@ variable they exported for another reason.
 It **prints nothing**. Fragments are reported through `nachalnik::DeltaSink` and the screen
 belongs to whoever owns it.
 
-It **invents no parameters**. What the caller set is what goes out, verbatim — which is the
-runtime's rule and not a provider's to break — beside the conversation and never in place of it:
-a parameter named after a field the request is built from, `messages` or `tools` or the like, is
-left off. `openai::NOT_A_STREAM` is the one concession: a list
-of parameter names that stop a stream being a stream, for a client that would like to warn before
-the request rather than be quietly wrong about its own record afterwards.
+It **invents no parameters**. What the caller set goes out verbatim, beside the conversation and
+never in place of it: a parameter named after a field the request is built from, `messages` or
+`tools`, is left off.
 
 ---
 
 ### 🧪 tests
 
-`cargo test -p nachalnik-providers --all-features` talks to a real socket wherever the thing under
-test lives inside `respond` — a stream assembled from chunks cannot be checked by a parser called
-from outside it, because that is a test of a copy of the code. A server that answers and then says
-nothing, one that breaks a stream mid-character, one that returns an `error` object inside a 200:
-each is a shape some endpoint actually sent.
-
-Every dialect is also held to one conformance suite, so that a case is added once and applies to
-all of them. Every case in it is a bug that really happened.
+`cargo test -p nachalnik-providers --all-features` talks to a real socket wherever what is tested
+lives inside `respond`, and every dialect is held to one conformance suite, so a case added once
+applies to all of them. Each case is a shape some endpoint actually sent.
 
 ---
 
