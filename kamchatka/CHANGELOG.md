@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- **A released binary carries its dependency tree**, written in by `cargo auditable` - a few
+  kilobytes that `cargo audit bin` and other scanners read to say which crates it was built from.
+  The release notes name the `rustc -V` it was built with, which is what reproducing it needs.
 - **The dependency requirements are raised to what the source and the whole workspace need:**
   `anyhow` 1.0.46, `globset` 0.4.18, `serde` 1.0.220, `socket2` 0.6.3, `time` 0.3.47 and `tokio`
   1.47. `anyhow` is the one that mattered: before 1.0.46, `anyhow!("{e}")` built and said `{e}`

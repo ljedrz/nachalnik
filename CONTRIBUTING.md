@@ -63,7 +63,8 @@ feature on, so nothing else exercises that configuration), checks `nachalnik`, `
 examples, checks the whole workspace on the MSRV, **1.95**, and checks it again on the MSRV
 with every direct dependency at the floor its manifest names (`cargo minimal-versions`, which
 needs `cargo-hack` beside it). Edition is 2024, and `RUSTFLAGS: -D warnings` is set throughout,
-so a warning is a failure.
+so a warning is a failure. Every action is pinned to a commit, and `zizmor .github` is what the
+workflows are held to - run it after touching one.
 
 The MSRV may rise in any minor release, to a toolchain that has been stable for about six months.
 Nobody is stranded by it: the resolver an edition-2024 workspace gets picks, for somebody on an
@@ -414,8 +415,13 @@ for, so there is nothing for it to agree with.
   own reference gives it, since an implementor already carrying the name gets an ambiguity error
   rather than a default.
 
-  Read it off the API rather than off the commit log or the diff. `cargo public-api --diff` where
-  it is installed; otherwise `git worktree add` the last tag, run
+  Read it off the API rather than off the commit log or the diff. `cargo semver-checks
+  --workspace --all-features` first: it compares each crate with the version on crates.io and
+  says which number a change needs. What it cannot see is everything outside the API - a
+  dependency's feature dropped, the MSRV raised, a behaviour changed under the same signature -
+  and those are the changelog's to say, and a reason for a minor all the same. Where it is not
+  enough, `cargo public-api --diff` where it is installed; otherwise `git worktree add` the last
+  tag, run
   `cargo doc --workspace --all-features --no-deps` in both trees with separate `CARGO_TARGET_DIR`s,
   and compare every `item-decl` block and `code-header` in the HTML - **keyed by the page it is
   on**, or two identically-signed methods on different types cancel out and the comparison comes
@@ -473,12 +479,15 @@ for, so there is nothing for it to agree with.
   **Each binary is built twice and attested.** The second build is from a checkout at another
   path, with the crates fetched into another `CARGO_HOME`, and has to match the shipped binary byte
   for byte. The shipped build remaps `CARGO_HOME` to `/cargo`, because a dependency's source path
-  is otherwise compiled in, as the location a panic names. So anybody with the same stable
-  toolchain and `Cargo.lock` gets the same bytes from:
+  is otherwise compiled in, as the location a panic names, and goes through `cargo auditable`,
+  which writes the dependency tree into the binary for `cargo audit bin` and the scanners that
+  read it. The release notes end with the `rustc -V` both binaries were built with, so anybody
+  with that toolchain, `cargo-auditable` and the tag's `Cargo.lock` gets the same bytes from:
 
   ```console
-  RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo" cargo build --release --locked \
-    -p kamchatka --bin kamchatka --features shell-advisor --target x86_64-unknown-linux-musl
+  RUSTFLAGS="--remap-path-prefix=$HOME/.cargo=/cargo" cargo +VERSION auditable build --release \
+    --locked -p kamchatka --bin kamchatka --features shell-advisor \
+    --target x86_64-unknown-linux-musl
   ```
 
   On a tag, the archive and the binary also get a build provenance attestation. That ties them to
