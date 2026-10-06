@@ -8,7 +8,8 @@
 //!
 //! note: what it finds is said, not repaired, and a finding is not always a fault. A call that was
 //! asked for and never finished is what a killed run leaves, and is worth knowing about for that
-//! reason; a record numbered twice, or an item the log never added, is a record that something
+//! reason - a session that ended with calls waiting says so in `turn.unfinished`, and those are not
+//! findings; a record numbered twice, or an item the log never added, is a record that something
 //! other than this program has changed.
 
 use std::{
@@ -210,6 +211,10 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
                     ));
                 }
                 open.push((call.0.clone(), tool.clone(), record.seq));
+            }
+            // the session said it ended with these waiting, which is an ending and not a loss
+            Event::TurnUnfinished { calls } => {
+                open.retain(|(open, ..)| !calls.iter().any(|call| call.0 == *open));
             }
             Event::ToolFinished { call, .. } => {
                 match open.iter().position(|(open, ..)| *open == call.0) {

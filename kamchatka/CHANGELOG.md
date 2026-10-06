@@ -74,6 +74,11 @@ minor bump may break you.
   and is what a gateway or another OpenAI-compatible service that wants a key reads now. A session
   at `api.openai.com` with no key is refused at startup, naming `OPENAI_API_KEY`, as one at
   OpenRouter is.
+- **`--check` does not hold the calls a session ended with against it.** A session finished with a
+  question unanswered, or calls permitted and not yet run, says so now in `turn.unfinished`, and
+  those calls are not findings; a killed run, which says nothing, still has them named.
+- **A model that stopped to call a tool and named none is said to have.** The record had it, as an
+  empty list of calls beside the stop; the screen and a pipe showed a turn that simply ended.
 
 ### removed
 

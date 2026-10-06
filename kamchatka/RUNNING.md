@@ -610,8 +610,9 @@ sitting in the context marked `-` excluded if you want to read it.
 `kamchatka --check PATH` reads a record without starting anything. PATH is the log, the snapshot, or
 their shared name. It says what does not add up: a line that is not a record, an event this version
 does not know, a record missing or numbered twice, a call asked for and never finished, and a
-snapshot whose items the log does not account for. A killed run leaves a call that never finished,
-so a finding is not always a fault; anything found makes the exit status non-zero.
+snapshot whose items the log does not account for. A session that ended with calls still waiting
+says so in its record, and those calls are not findings; a killed run says nothing, so a finding
+is not always a fault. Anything found makes the exit status non-zero.
 
 `kamchatka reconcile a.json b.json -o merged` folds several forks of one session — one snapshot
 resumed twice and carried on two ways — into one session to carry on from, and starts nothing. The

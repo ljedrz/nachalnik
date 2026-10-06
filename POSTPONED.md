@@ -111,12 +111,6 @@ Each entry says what it is, why it waits, and what would unblock it.
   turns back without it. Nothing tested here needed it; a model that does, and a live test that
   shows the difference, would say whether it belongs in the dialect.
 
-- **Two endings the record does not say plainly.** A termination signal between `model.requested`
-  and the calls' results writes a snapshot holding a call that never ran, which resume repairs; and
-  a turn whose answer asked for a tool and named none ends as `tool_use`, as though it had called
-  one. Both want the same decision as the entry above: what the record should say about a turn that
-  did not end the way its last event suggests.
-
 - **A heuristic refusal under `--no-sandbox` is described as a person's.** With no confinement,
   `net:reach` is judged from a command's name; a command that trips it under `--on-ask deny` is
   refused as though somebody had been asked, and the model is told a different approach may be
