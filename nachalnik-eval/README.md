@@ -68,8 +68,8 @@ second model's opinion of a first model's prose.
 copies against copies of the same context with nothing moved — not against what the subject said
 in the live session, which it said with tools, at a different point in a different conversation.
 `Intervention::Nothing` is that control, and it is why every counterfactual asks about *two
-copies* - "one with your context as it stands, one with that note excluded: will they answer
-differently?" - rather than "would your answer change": the live session and a copy of it can
+copies* — "one with your context as it stands, one with that note excluded: will they answer
+differently?" — rather than "would your answer change": the live session and a copy of it can
 disagree.
 
 And both copies are blinded to the exchange in which the subject already answered

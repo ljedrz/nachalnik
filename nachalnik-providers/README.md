@@ -54,7 +54,7 @@ caches nothing unasked; `cache_control` among the parameters changes that, and `
 off.
 
 Some of its models hold an edited history against signed thinking, and refuse a turn sent back
-after anything before it was pruned or rewritten - which is what a session here does. [The
+after anything before it was pruned or rewritten — which is what a session here does. [The
 module's docs](https://docs.rs/nachalnik-providers/latest/nachalnik_providers/anthropic/) say which,
 and what to do about it.
 
@@ -102,7 +102,7 @@ assert_eq!(provider.requests()[0].params["max_tokens"], json!(1));
 ```
 
 `recording(true)` keeps a copy of every request the provider was asked to send, and `requests()`
-hands them back - off by default, since a long session would hold every request it made. `render`
+hands them back — off by default, since a long session would hold every request it made. `render`
 says what will be sent; this says what was.
 
 ---
