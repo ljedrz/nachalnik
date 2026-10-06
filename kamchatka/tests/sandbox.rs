@@ -2331,6 +2331,17 @@ async fn a_job_that_left_its_group_is_stopped_too() {
         }
     };
     let jobs = [job("away.pid"), job("forked.pid")];
+    // note: the identifier is written just before `exec sleep`, and while the exec is under way a
+    // process's environment reads as empty, mark and all - so the jobs are looked for once they are
+    // `sleep`, or a loaded machine finds the one written last without a mark
+    let until = std::time::Instant::now() + Duration::from_secs(5);
+    let slept = |pid: i32| {
+        std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            .is_ok_and(|comm| comm.trim() == "sleep")
+    };
+    while !jobs.iter().all(|job| slept(*job)) && std::time::Instant::now() < until {
+        std::thread::sleep(Duration::from_millis(20));
+    }
     let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
     assert!(
         jobs.iter().all(|job| running(*job)),
