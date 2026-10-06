@@ -1,7 +1,7 @@
 [package]
 name = "nachalnik-providers"
 version = "0.8.1"
-description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions and Gemini dialects, streamed, retried and interruptible - and a client for System One models, which answer typed questions instead of turns."
+description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions, Gemini and Anthropic dialects, streamed, retried and interruptible - and a client for System One models, which answer typed questions instead of turns."
 documentation = "https://docs.rs/nachalnik-providers"
 readme = "README.md"
 # `web-programming::http-client` because that is the whole of what this is: somebody else's HTTP
@@ -26,6 +26,9 @@ openai = []
 # Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
 # `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.
 gemini = []
+# Anthropic's own Messages API: `/messages`, typed content blocks, `input_json_delta` fragments
+# and signed thinking blocks. What `api.anthropic.com` speaks, and OpenRouter at `/api/v1/messages`.
+anthropic = []
 # System One models - typed questions put to a state, answered with probabilities - at
 # `POST /systemone`: any of the ones OpenRouter serves, or an engine of one's own. The one thing in
 # here that is not a `Dialect`, because it generates no text and calls no tools - so it implements
@@ -33,7 +36,7 @@ gemini = []
 # vendor, and favouring none: a provider OpenRouter does not list is reached through its
 # bring-your-own-key rather than by a path of its own in here.
 system1 = []
-# The suite the two above are held to, for anyone writing a third. It stands up real sockets and
+# The suite the dialects above are held to, for anyone writing a third. It stands up real sockets and
 # wants `nachalnik/test`, so it is off unless asked for - a dev-dependency's feature, not a
 # dependency's.
 conformance = ["nachalnik/test", "tokio/io-util", "tokio/net", "tokio/rt"]

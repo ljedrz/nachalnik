@@ -10,13 +10,15 @@
 //! behind it answers in *turns*.
 //!
 //! A [`Dialect`] does. It implements [`nachalnik::Provider`], so a kernel can be handed one and a
-//! session is what comes out. There are two, each behind the feature of the same name, and
+//! session is what comes out. There are three, each behind the feature of the same name, and
 //! `openai` is on by default:
 //!
 //! - [`openai`] - `POST /chat/completions`, `choices[].delta`, tool calls assembled from
 //!   fragments. What OpenRouter, ollama, vLLM, LM Studio, Together and most of the rest speak.
 //! - [`gemini`] - Google's own `generateContent`: `candidates[].content.parts`, whole calls, and
 //!   ordered `thought` parts, which is the dialect [`nachalnik::Content::Blocks`] was built for.
+//! - [`anthropic`] - Anthropic's Messages API: typed blocks, whole calls whose arguments stream
+//!   in fragments, and signed thinking that has to go back as it came. OpenRouter speaks it too.
 //!
 //! An `Endpoint` that is not a `Dialect` answers something other than a turn, and there is no
 //! kernel in its path at all:
@@ -53,7 +55,7 @@
 //! the address and the key, and [`OpenAiCompatible::with_context_limit`] a limit to measure
 //! against in place of the one the endpoint advertises.
 //!
-//! note: both dialects report fragments through a [`nachalnik::DeltaSink`] and print nothing.
+//! note: every dialect reports fragments through a [`nachalnik::DeltaSink`] and print nothing.
 //! The screen belongs to whoever owns it, and a provider writing to it would be drawing over
 //! somebody's frame.
 
@@ -62,7 +64,7 @@
 
 use std::ops::RangeInclusive;
 
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 use nachalnik::BoxError;
 use nachalnik::{Overrun, TooLong};
 
@@ -76,7 +78,12 @@ mod endpoint;
 ///
 /// note: here rather than in `waiting`, because the System One client asks as often as a dialect
 /// does and is built without either of them.
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 pub(crate) const RETRIES: usize = 4;
 
 /// How long a question *about* an endpoint is given: a listing of its models, or a probe for a
@@ -87,11 +94,18 @@ pub(crate) const RETRIES: usize = 4;
 /// on a client that may have no timeout - and an endpoint that takes the connection and never
 /// answers would hold whatever is waiting on it for ever. What a question that times out answers
 /// is what it answers when the endpoint cannot say: nothing, or no limit.
-#[cfg(any(feature = "openai", feature = "gemini"))]
+#[cfg(any(feature = "anthropic", feature = "openai", feature = "gemini"))]
 pub(crate) const ASKING: std::time::Duration = std::time::Duration::from_secs(15);
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 mod markup;
 
+#[cfg(feature = "anthropic")]
+pub mod anthropic;
 #[cfg(feature = "conformance")]
 pub mod conformance;
 
@@ -99,13 +113,15 @@ pub mod conformance;
 pub mod gemini;
 #[cfg(feature = "openai")]
 pub mod openai;
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) mod reading;
 #[cfg(feature = "system1")]
 pub mod system1;
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) mod waiting;
 
+#[cfg(feature = "anthropic")]
+pub use crate::anthropic::Anthropic;
 pub use crate::endpoint::{Dialect, Endpoint, Published};
 #[cfg(feature = "gemini")]
 pub use crate::gemini::Gemini;
@@ -121,7 +137,12 @@ pub use crate::system1::SystemOne;
 /// URL without a base`, is further down the chain. The kernel records an error as its `Display`,
 /// so a cause left in the chain is a cause nobody is shown. A layer that already repeats the one
 /// under it is not repeated again.
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 pub(crate) fn with_causes(e: &(dyn std::error::Error + 'static)) -> String {
     let mut said = e.to_string();
     let mut cause = e.source();
@@ -224,7 +245,7 @@ pub fn too_long(said: &str, limit: Option<u64>) -> Option<TooLong> {
 /// and this is that line, so that the one refusal a session can *act* on arrives as [`TooLong`]
 /// rather than as prose somebody has to read twice. The sentence survives either way: `TooLong`
 /// prints what the server said and nothing else.
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn refused(said: String, limit: Option<usize>) -> BoxError {
     match too_long(&said, limit.map(|limit| limit as u64)) {
         Some(too_long) => too_long.into(),
@@ -245,7 +266,12 @@ pub fn same_model(listed: &str, model: &str) -> bool {
 /// note: three, because an endpoint that lists hundreds - OpenRouter does - would otherwise put
 /// every one of them on one line, and none leaves somebody who mistyped a name nothing to correct
 /// it by.
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 pub(crate) fn some_of(listed: &[String]) -> String {
     let some: Vec<&str> = listed.iter().take(3).map(String::as_str).collect();
     match listed.len() > some.len() {
@@ -260,7 +286,7 @@ pub(crate) fn some_of(listed: &[String]) -> String {
 /// note: nothing for no model either. An empty name is a session that has not picked one yet,
 /// which the program already says in its own words; what this said was that ` ` is not served,
 /// on every `/restart` and `/endpoint` such a session made.
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
     if model.is_empty() || listed.is_empty() || listed.iter().any(|name| same_model(name, model)) {
         return None;
@@ -306,7 +332,12 @@ pub fn is_openrouter(address: &str) -> bool {
 ///
 /// note: never into the `//` after a scheme. `https://` is no address either way, but cut to
 /// `https:` it is one nobody typed.
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 pub(crate) fn address(url: impl Into<String>) -> String {
     let mut url = url.into();
     let kept = url.trim_end_matches('/').len();
@@ -322,23 +353,44 @@ pub(crate) fn address(url: impl Into<String>) -> String {
 /// front of you wants: ollama, llama.cpp and vLLM check nothing unless they were started with a
 /// key of their own. Sent anyway, an empty key is an `Authorization: Bearer ` with nothing after
 /// it, which a server that checks nothing ignores and a proxy in front of one may well refuse.
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 pub(crate) trait Keyed {
     /// The key as a bearer token, which is how the OpenAI dialect and System One take one.
     #[cfg(any(feature = "openai", feature = "system1"))]
     fn bearer(self, key: &str) -> Self;
+    /// The key in `x-api-key`, which is how Anthropic's API takes one.
+    #[cfg(feature = "anthropic")]
+    fn anthropic_key(self, key: &str) -> Self;
     /// The key in `x-goog-api-key`, which is how Google's native API takes one.
     #[cfg(any(feature = "gemini", feature = "openai"))]
     fn google_key(self, key: &str) -> Self;
 }
 
-#[cfg(any(feature = "gemini", feature = "openai", feature = "system1"))]
+#[cfg(any(
+    feature = "anthropic",
+    feature = "gemini",
+    feature = "openai",
+    feature = "system1"
+))]
 impl Keyed for reqwest::RequestBuilder {
     #[cfg(any(feature = "openai", feature = "system1"))]
     fn bearer(self, key: &str) -> Self {
         match key.is_empty() {
             true => self,
             false => self.bearer_auth(key),
+        }
+    }
+
+    #[cfg(feature = "anthropic")]
+    fn anthropic_key(self, key: &str) -> Self {
+        match key.is_empty() {
+            true => self,
+            false => self.header("x-api-key", key),
         }
     }
 
@@ -358,7 +410,7 @@ impl Keyed for reqwest::RequestBuilder {
 /// the query string, is a way some endpoints take one - and a record is a file that is kept,
 /// shared and pasted into bug reports, where an address belongs and a key does not. The scheme,
 /// the host and the path are what says where a session was talking.
-#[cfg(any(feature = "gemini", feature = "openai"))]
+#[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
 pub(crate) fn recorded(url: &str) -> String {
     let url = url.split(['?', '#']).next().unwrap_or_default();
     let (scheme, rest) = match url.split_once("://") {
@@ -393,7 +445,7 @@ mod tests {
     use super::*;
 
     /// An address goes into the record without the credentials some endpoints take in it.
-    #[cfg(any(feature = "gemini", feature = "openai"))]
+    #[cfg(any(feature = "anthropic", feature = "gemini", feature = "openai"))]
     #[test]
     fn an_address_is_written_down_without_its_credentials() {
         for (given, written) in [

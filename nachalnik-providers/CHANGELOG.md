@@ -7,6 +7,21 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`Anthropic`, behind the `anthropic` feature: Anthropic's Messages API as a `Dialect`.** A turn
+  comes back as `Content::Blocks` in the order its blocks were opened - thinking, text, `tool_use` -
+  and goes back out the same way, each thinking block with its `signature`, which a turn that
+  thought before calling a tool has to carry or the next request is refused. Only the fields this
+  API defines go back on a block, so a session that started against Gemini sends it no
+  `thoughtSignature`, and unsigned thinking from another provider is left out rather than refused.
+  Call arguments are assembled from `input_json_delta` fragments; cached prompt tokens are added
+  into `Usage::input_tokens`, which this API reports apart. It speaks to `api.anthropic.com` and to
+  OpenRouter at `/api/v1/messages`, whose additions to the format - `provider`, `cost`, a `[DONE]`
+  after `message_stop` - are read past.
+- **`Conformance::anthropic` and `conformance::Dialect::Anthropic`**, so the suite holds the third
+  dialect to every case it can express - from streams recorded off the real API.
+
 ### changed
 
 - **The dependency requirements are raised to what the whole workspace resolves to:** `tokio` 1.47.

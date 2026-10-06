@@ -52,6 +52,8 @@ pub enum Dialect {
     OpenAi,
     /// Google's `generateContent`: `candidates[].content.parts`, whole calls.
     Gemini,
+    /// Anthropic's Messages API: typed blocks opened, grown and closed by index.
+    Anthropic,
 }
 
 /// What one case came to.
@@ -90,6 +92,18 @@ impl Conformance {
         Self {
             what: what.into(),
             dialect: Dialect::Gemini,
+            build: Box::new(move |url| build(url) as Arc<dyn Provider>),
+        }
+    }
+
+    /// A provider speaking Anthropic's.
+    pub fn anthropic<P: Provider + 'static>(
+        what: impl Into<String>,
+        build: impl Fn(String) -> Arc<P> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            what: what.into(),
+            dialect: Dialect::Anthropic,
             build: Box::new(move |url| build(url) as Arc<dyn Provider>),
         }
     }
@@ -209,6 +223,14 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"zażółć — 大\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"zażółć — 大\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
 
         let from = body.find("za").expect("the text is in the body");
@@ -258,6 +280,19 @@ impl Conformance {
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}],",
                 "\"usageMetadata\":{\"promptTokenCount\":11,\"candidatesTokenCount\":10,",
                 "\"thoughtsTokenCount\":20,\"totalTokenCount\":41}}\n\n",
+            ),
+            // `thinking_tokens` is OpenRouter's, beside a total that already counts them
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"working it out\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"EpwDCtgB\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":11,\"output_tokens\":30,\"output_tokens_details\":{\"thinking_tokens\":20}}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
             ),
         };
 
@@ -313,6 +348,11 @@ impl Conformance {
             Dialect::Gemini => {
                 return Outcome::Skipped(
                     "this dialect sends the thinking as parts of the turn, not as a summary",
+                );
+            }
+            Dialect::Anthropic => {
+                return Outcome::Skipped(
+                    "this dialect sends the thinking as blocks of the turn, not as a summary",
                 );
             }
         };
@@ -387,6 +427,17 @@ impl Conformance {
                 "\"role\":\"model\"}}]}\n\n",
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"the first half \"}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_1\",\"caller\":{\"type\":\"direct\"},\"name\":\"write\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"NEVER-ARRIVED\"}}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
             ),
         };
 
@@ -463,6 +514,14 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"NEVER-ARRIVED\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\",\"signature\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"working it out\"}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"NEVER-ARRIVED\"}}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
 
         let marker = body
@@ -530,6 +589,17 @@ impl Conformance {
                 "\"name\":\"write\",\"args\":{\"path\":\"b.txt\"},\"id\":\"call_2\"}}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
             ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_1\",\"caller\":{\"type\":\"direct\"},\"name\":\"write\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"a.txt\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_2\",\"caller\":{\"type\":\"direct\"},\"name\":\"write\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\":\\\"b.txt\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
 
         let response = match self.ask(body, Delivery::Whole).await {
@@ -575,7 +645,9 @@ impl Conformance {
     /// nothing here to ask it.
     async fn numbered_from_one(&self) -> Outcome {
         let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect files no calls by index");
+            return Outcome::Skipped(
+                "this dialect files no calls by an index of their own, only blocks by theirs",
+            );
         };
         let body = concat!(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"call_a\",",
@@ -605,18 +677,28 @@ impl Conformance {
     /// arguments. A provider that resolved calls by identifier alone would drop every fragment
     /// after the first. Google's dialect sends whole calls, so there is nothing here to ask it.
     async fn fragmented_arguments(&self) -> Outcome {
-        let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect sends whole calls");
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+                "\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"pa\"}}]},\"index\":0}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                "\"function\":{\"arguments\":\"th\\\":\\\"note\"}}]},\"index\":0}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                "\"function\":{\"arguments\":\"s.md\\\"}\"}}]},\"index\":0,",
+                "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+            ),
+            Dialect::Gemini => return Outcome::Skipped("this dialect sends whole calls"),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"pa\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"th\\\": \\\"note\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"s.md\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
-        let body = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
-            "\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"pa\"}}]},\"index\":0}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
-            "\"function\":{\"arguments\":\"th\\\":\\\"note\"}}]},\"index\":0}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
-            "\"function\":{\"arguments\":\"s.md\\\"}\"}}]},\"index\":0,",
-            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
-        );
 
         // one call and no more: a provider that made a call of every fragment as well as the
         // whole would pass on the first alone
@@ -645,24 +727,38 @@ impl Conformance {
     /// note: the openers carry `"arguments": ""`, because that is how the endpoints that do this
     /// announce a call, and because an empty fragment is what `loose_fragment` below turns on.
     async fn fragmented_calls(&self) -> Outcome {
-        let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect sends whole calls");
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+                "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"a\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
+                "\"function\":{\"arguments\":\".txt\\\"}\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c2\",",
+                "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+                "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"b\"}}]}}]}\n\n",
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
+                "\"function\":{\"arguments\":\".txt\\\"}\"}}]},",
+                "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+            ),
+            Dialect::Gemini => return Outcome::Skipped("this dialect sends whole calls"),
+            // the shape a real turn asking for two files at once was streamed in
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\": \\\"a\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\".txt\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c2\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"path\\\": \\\"b\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\".txt\\\"}\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
-        let body = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
-            "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
-            "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"a\"}}]}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,",
-            "\"function\":{\"arguments\":\".txt\\\"}\"}}]}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,\"id\":\"c2\",",
-            "\"function\":{\"name\":\"read\",\"arguments\":\"\"}}]}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
-            "\"function\":{\"arguments\":\"{\\\"path\\\":\\\"b\"}}]}}]}\n\n",
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":1,",
-            "\"function\":{\"arguments\":\".txt\\\"}\"}}]},",
-            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
-        );
 
         let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
@@ -704,7 +800,7 @@ impl Conformance {
     /// position did.
     async fn loose_fragment(&self) -> Outcome {
         let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect sends whole calls");
+            return Outcome::Skipped("this dialect names the block every fragment belongs to");
         };
         let body = concat!(
             "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
@@ -749,14 +845,24 @@ impl Conformance {
     /// Google's dialect sends arguments as an object rather than as a string, so it cannot express
     /// the question.
     async fn broken_arguments(&self) -> Outcome {
-        let Dialect::OpenAi = self.dialect else {
-            return Outcome::Skipped("this dialect sends arguments as an object");
+        let body = match self.dialect {
+            Dialect::OpenAi => concat!(
+                "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
+                "\"function\":{\"name\":\"read\",\"arguments\":\"{path: notes\"}}]},\"index\":0,",
+                "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+            ),
+            Dialect::Gemini => {
+                return Outcome::Skipped("this dialect sends arguments as an object");
+            }
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"c1\",\"caller\":{\"type\":\"direct\"},\"name\":\"read\",\"input\":{}}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{path: notes\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ),
         };
-        let body = concat!(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",",
-            "\"function\":{\"name\":\"read\",\"arguments\":\"{path: notes\"}}]},\"index\":0,",
-            "\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
-        );
 
         let response = match self.ask(body, Delivery::Whole).await {
             Ok(response) => response,
@@ -789,6 +895,16 @@ impl Conformance {
                 "\"role\":\"model\"}}]}\n\n",
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"three\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}]}\n\n",
+            ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"one \"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"two \"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"three\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
             ),
         };
 
@@ -861,6 +977,14 @@ impl Conformance {
                 "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ok\"}],",
                 "\"role\":\"model\"},\"finishReason\":\"STOP\"}],",
                 "\"usageMetadata\":{\"promptTokenCount\":11,\"candidatesTokenCount\":3}}\n\n",
+            ),
+            Dialect::Anthropic => concat!(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":11,\"output_tokens\":1}}}\n\n",
+                "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n",
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
             ),
         };
 

@@ -40,6 +40,7 @@ check --workspace --exclude kamchatka --all-features --all-targets
 check -p nachalnik --no-default-features
 check -p nachalnik-mcp --no-default-features
 check -p nachalnik-providers --all-targets --no-default-features --features gemini
+check -p nachalnik-providers --all-targets --no-default-features --features anthropic,conformance
 check -p nachalnik-providers --all-targets --no-default-features --features openai,conformance
 check -p nachalnik-providers --all-targets --no-default-features --features system1
 check -p nachalnik-providers --all-targets --no-default-features

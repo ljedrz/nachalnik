@@ -6,19 +6,22 @@
 //! reasoning, and the budget charged for every turn of thinking the context was holding.
 //! `Dialect::projection` is the connection, and these are the tests that the two agree.
 
-#![cfg(any(feature = "openai", feature = "gemini"))]
+#![cfg(any(feature = "anthropic", feature = "openai", feature = "gemini"))]
 
 use std::sync::Arc;
 
-#[cfg(feature = "gemini")]
+#[cfg(any(feature = "openai", feature = "gemini"))]
+use nachalnik::ContextKind;
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 use nachalnik::{Block, Part, ToolCall, ToolCallId};
-use nachalnik::{Config, Content, ContextItem, ContextKind, Kernel, Provider};
+use nachalnik::{Config, Content, ContextItem, Kernel, Provider};
 use nachalnik_providers::Dialect;
-#[cfg(feature = "gemini")]
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 use serde_json::json;
 
 /// A session holding one assistant turn: a short answer and a long think, which is the usual
 /// ratio for a reasoning model and the reason this matters at all.
+#[cfg(any(feature = "openai", feature = "gemini"))]
 fn thinking_out_loud() -> (Kernel, String) {
     let kernel = Kernel::new(Config::default());
     let thinking = "let me work through what the stack trace is saying. ".repeat(60);
@@ -89,6 +92,50 @@ fn the_gemini_dialect_pays_for_the_thinking_it_does_send() {
     assert!(
         payload.contains(&thinking),
         "this dialect sends it, as a part marked `thought`"
+    );
+
+    let thinking_costs = kernel.counter().count(&Content::text(thinking.as_str()));
+    assert!(
+        kernel.budget().context_tokens > thinking_costs,
+        "the request carries the thinking, so the estimate has to as well"
+    );
+}
+
+/// Anthropic's dialect sends the thinking it signed, and the budget pays for it.
+///
+/// note: the thinking has to be this dialect's own - a block with a signature on it - because that
+/// is the only kind this API takes back. The case the projector cannot see is the other kind, a
+/// thinking turn another provider recorded, which is projected and then not sent; see
+/// `Anthropic::projection`.
+#[cfg(feature = "anthropic")]
+#[test]
+fn the_anthropic_dialect_pays_for_the_thinking_it_signed_and_sends() {
+    let thinking = "let me work through what the stack trace is saying. ".repeat(60);
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::user("why does it fail?"));
+    kernel.push(ContextItem::assistant(
+        Content::blocks([
+            Block::Reasoning(
+                Part::new(thinking.as_str()).with_extra(json!({ "signature": "SIG" })),
+            ),
+            Block::Call(ToolCall::new("toolu_1", "read", json!({}))),
+        ]),
+        Vec::new(),
+    ));
+    kernel.push(ContextItem::tool_result(
+        ToolCallId::from("toolu_1"),
+        "read",
+        "the trace",
+        false,
+    ));
+    let provider = nachalnik_providers::Anthropic::new("m", "https://example.invalid/v1", "k");
+    kernel.set_projector(Arc::new(provider.projection()));
+
+    let request = kernel.preview_request().expect("a request");
+    let payload = provider.render(&request).expect("it renders");
+    assert_eq!(
+        payload["messages"][1]["content"][0]["thinking"], thinking,
+        "this dialect sends it, signed"
     );
 
     let thinking_costs = kernel.counter().count(&Content::text(thinking.as_str()));

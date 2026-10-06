@@ -11,7 +11,7 @@
 //! answer `nachalnik-mcp` has always given, and it beats a 400 by enough to be worth being
 //! deliberate about.
 
-#![cfg(any(feature = "openai", feature = "gemini"))]
+#![cfg(any(feature = "anthropic", feature = "openai", feature = "gemini"))]
 
 use std::sync::Arc;
 
@@ -116,6 +116,31 @@ fn googles_dialect_sends_inline_data_beside_the_text_parts() {
         answer["parts"][0]["functionResponse"]["response"]["result"],
         json!(format!("[image/png, {}B]", PIXEL.len()))
     );
+}
+
+/// Anthropic's carries it as an `image` block, in the user turn and inside the tool's result alike.
+///
+/// note: the one dialect here whose tool result can hold a picture: a `tool_result` takes the same
+/// blocks a user turn does, so a screenshot a tool took reaches the model as a screenshot rather
+/// than as its name.
+#[cfg(feature = "anthropic")]
+#[test]
+fn anthropics_dialect_sends_an_image_block_wherever_the_picture_is() {
+    use nachalnik_providers::Anthropic;
+
+    let provider = Arc::new(Anthropic::new("m", "https://example.invalid/v1", "k"));
+    let body = rendered(provider, looking_at_a_picture());
+    let messages = body["messages"].as_array().expect("messages");
+    let image = json!({
+        "type": "image",
+        "source": { "type": "base64", "media_type": "image/png", "data": PIXEL },
+    });
+
+    assert_eq!(messages[0]["content"][0], image, "the user turn");
+    assert_eq!(messages[1]["role"], "assistant");
+    let result = &messages[2]["content"][0];
+    assert_eq!(result["type"], "tool_result");
+    assert_eq!(result["content"], json!([image]), "the result: {result}");
 }
 
 /// A document is not a picture, and the conventional dialect has a separate part for saying so.
@@ -260,7 +285,7 @@ fn a_sentence_about_a_recording_carries_both() {
             "https://example.invalid",
             "k",
         ));
-        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let body = rendered(provider, vec![ContextItem::user(asked.clone())]);
         let parts = &body["contents"][0]["parts"];
 
         assert_eq!(parts[0]["text"], "what is said in this?");
@@ -269,6 +294,23 @@ fn a_sentence_about_a_recording_carries_both() {
             json!({ "mime_type": "audio/wav", "data": PIXEL }),
             "{parts}"
         );
+    }
+
+    // this API takes pictures and PDFs and no recordings; it goes out as a document, the one
+    // block a payload that is not a picture can be, and the API refuses it in its own words
+    #[cfg(feature = "anthropic")]
+    {
+        let provider = Arc::new(nachalnik_providers::Anthropic::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let parts = &body["messages"][0]["content"];
+
+        assert_eq!(parts[0]["text"], "what is said in this?");
+        assert_eq!(parts[1]["type"], "document", "{parts}");
+        assert_eq!(parts[1]["source"]["media_type"], "audio/wav", "{parts}");
     }
 }
 
@@ -314,13 +356,31 @@ fn a_turn_that_is_a_sentence_and_a_picture_carries_both() {
             "https://example.invalid",
             "k",
         ));
-        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let body = rendered(provider, vec![ContextItem::user(asked.clone())]);
         let parts = &body["contents"][0]["parts"];
 
         assert_eq!(parts[0]["text"], "what is wrong with this?");
         assert_eq!(
             parts[1]["inline_data"],
             json!({ "mime_type": "image/png", "data": PIXEL }),
+            "{parts}"
+        );
+    }
+
+    #[cfg(feature = "anthropic")]
+    {
+        let provider = Arc::new(nachalnik_providers::Anthropic::new(
+            "m",
+            "https://example.invalid/v1",
+            "k",
+        ));
+        let body = rendered(provider, vec![ContextItem::user(asked)]);
+        let parts = &body["messages"][0]["content"];
+
+        assert_eq!(parts[0]["text"], "what is wrong with this?");
+        assert_eq!(
+            parts[1]["source"],
+            json!({ "type": "base64", "media_type": "image/png", "data": PIXEL }),
             "{parts}"
         );
     }

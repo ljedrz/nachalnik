@@ -21,20 +21,21 @@ lines, written once.
 
 ---
 
-### 🗣 two dialects, one trait
+### 🗣 three dialects, one trait
 
 | feature | what it speaks |
 | --- | --- |
 | `openai` (default) | `POST /chat/completions`, `choices[].delta`, tool calls assembled from fragments. OpenRouter, ollama, vLLM, LM Studio, Together, and most of the rest. |
 | `gemini` | Google's `generateContent`: `candidates[].content.parts`, whole calls, ordered `thought` parts. |
-| `conformance` | the suite the two above are held to, for anyone writing a third. Stands up real sockets; off unless asked for. |
+| `anthropic` | Anthropic's Messages API: typed content blocks, call arguments streamed as `input_json_delta`, signed thinking blocks. `api.anthropic.com`, and OpenRouter at `/api/v1/messages`. |
+| `conformance` | the suite the dialects above are held to, for anyone writing another. Stands up real sockets; off unless asked for. |
 | `system1` | not a dialect: a client for System One models - any of the ones OpenRouter serves, or an engine of one's own at the same route - which answer typed questions about a state with numbers rather than driving a turn. Nothing it returns reaches a kernel. |
 
-Both answer `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
+Every dialect answers `Provider`, which is what the kernel asks through, and `Endpoint`, which is what the
 program around it asks: where the requests are going, which model is being asked, what this
 endpoint serves, and what the last retry was about. `Dialect` is the two together, so one
-`Arc<dyn Dialect>` holds either, for the kernel and the program alike, and nothing above it finds
-out which it got.
+`Arc<dyn Dialect>` holds any of them, for the kernel and the program alike, and nothing above it
+finds out which it got.
 
 The second dialect is the one worth having for its own sake. Gemini answers with the parts of a
 turn *in the order they were produced* — a thought, a sentence, a call, more thinking — and an
@@ -44,13 +45,19 @@ it arrives as `Content::Blocks`, is counted and pruned like anything else, and g
 same way — signatures attached to the parts they belong to, without which that API rejects the
 next request.
 
+The third is the same bargain with Anthropic's Messages API, whose turn is a list of typed blocks.
+Its thinking is signed, and a turn that thought before calling a tool has to send that thinking
+back with the result, signature and all; here each block's own fields ride back out on it, and
+only the fields that API defines, so a session that started against another provider does not
+send it a `thoughtSignature` it would refuse.
+
 ---
 
 ### ⏳ waiting, and knowing what kind of waiting it is
 
 A stream that has gone quiet, a request refused with a `Retry-After`, and one somebody pressed
 escape on are three different answers to *send it again?*, and getting them wrong costs either a
-turn or somebody's money. All three are separated here, and shared by both dialects:
+turn or somebody's money. All three are separated here, and shared by every dialect:
 
 - **a stalled stream is interruptible.** The read wakes every 120ms to check whether the caller
   asked it to stop, so a server that accepts a connection and then goes away does not hold the
@@ -124,8 +131,8 @@ from outside it, because that is a test of a copy of the code. A server that ans
 nothing, one that breaks a stream mid-character, one that returns an `error` object inside a 200:
 each is a shape some endpoint actually sent.
 
-Both dialects are also held to one conformance suite, so that a case is added once and applies to
-both. Every case in it is a bug that really happened.
+Every dialect is also held to one conformance suite, so that a case is added once and applies to
+all of them. Every case in it is a bug that really happened.
 
 ---
 

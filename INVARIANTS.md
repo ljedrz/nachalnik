@@ -59,7 +59,7 @@ without it.
 
   This crate carries no vendor formula and is not going to. A dialect is a shape that changes
   over years and a price list is a per-model fact that changes whenever a vendor ships a model,
-  so putting the formulas in `nachalnik-providers` would turn "we speak two dialects" into a
+  so putting the formulas in `nachalnik-providers` would turn "we speak three dialects" into a
   subscription - and be wrong silently, which is what the abstention exists to end. The three
   formula *shapes* stay as prose on `BytesPerToken::count`. Nor does `Blob` get a typed
   `dimensions`, which covers pictures and leaves a PDF's pages and a recording's seconds nowhere
