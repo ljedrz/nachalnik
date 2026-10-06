@@ -344,15 +344,14 @@ Referenced from [AGENTS.md](AGENTS.md).
   that is not text, would keep the claim from being false; it refuses files that are attached
   today, which is why it waits.
 
-- **The largest source files are not split.** `kamchatka`'s `app/mod.rs`, `app/command.rs`,
-  `sandbox/mod.rs` and `remote/protocol/mod.rs`, and `nachalnik`'s `kernel/mod.rs`, are each
-  longer than can be read at once, and each has a seam that is already marked: the kernel's own
-  section comments, the sandbox's policy model beside its Landlock probing, the application's turn
-  machinery beside its answering of questions. Moving a section to a file of its own is mechanical,
-  and it costs the history `git blame` reads and the layout MAP.md describes, and for the kernel
-  the one-file account of every public operation that AGENTS.md gives. Whether a reader's time is
-  worth that is the decision; a change that has to touch a whole one of these files is what would
-  make it.
+- **The largest source files are not split.** `kamchatka`'s `app/mod.rs` and `app/command.rs`,
+  and `nachalnik`'s `kernel/mod.rs`, are each longer than can be read at once. Unlike the
+  sandbox and the wire, which came apart along seams that were already there, each of these is
+  mostly one `impl` block, so splitting one means choosing groups of methods - slash commands by
+  family, the application's turn machinery apart from its answering of questions, the kernel's
+  operations by what they act on. The cost is small (`git blame -C` follows a move, and MAP.md
+  gains a row) but the grouping is a judgement, and a change that has to touch a whole one of
+  these files is what would show where it lies.
 
 - **The Anthropic dialect and the newest models' rule against an edited history.** Two things,
   documented on `nachalnik_providers::anthropic` and handled by neither code nor test:
