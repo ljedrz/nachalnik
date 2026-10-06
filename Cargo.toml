@@ -90,30 +90,34 @@ rust-version = "1.95"
 #
 # note: every requirement here and in the members' own manifests is a floor - the lowest version
 # the workspace builds against on its MSRV - and not the version it is built with, which is
-# whatever `Cargo.lock` holds. Measured 2026-10-05 on 1.88: `cargo +nightly update -Z
-# direct-minimal-versions` and `cargo +1.88.0 check --workspace --all-features --lib --bins`,
-# lowering one dependency at a time from the locked version until it stopped building. A floor
-# written lower than that was a promise the source did not keep - `serde_json = "1"` named
-# 1.0.0 for code that needs 1.0.127 - and broke the build of anybody whose lockfile held a version
-# in between. The dev-dependencies were not measured.
+# whatever `Cargo.lock` holds. A floor written lower than that is a promise the source does not
+# keep - `serde_json = "1"` named 1.0.0 for code that needs 1.0.127 - and breaks the build of
+# anybody whose lockfile holds a version in between. CI's `minimal-versions` job holds every
+# member to it: each direct dependency at its floor at once, the dev-dependencies left out, built
+# on the MSRV with warnings denied. The warnings are half of it - `anyhow` before 1.0.46 takes
+# `anyhow!("{e}")` for a plain string and builds, and an error says `{e}`.
+#
+# note: at once is what lifts a floor past what this crate's own source needs, when a dependency
+# needs more: `async-trait` is 0.1.89 because `rmcp` asks for it, and `tokio` 1.47 and `serde`
+# 1.0.220 the same way. A floor nothing can resolve to is not one anybody gets.
 [workspace.dependencies]
 nachalnik = { version = "0.8.1", path = "nachalnik" }
 nachalnik-mcp = { version = "0.8.1", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.8.1", path = "nachalnik-providers" }
 # no version: it is never published, so nothing may depend on it except as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
-async-trait = "0.1.43"
+async-trait = "0.1.89"
 parking_lot = "0.12"
 # `rc` so that `Content` can be cloned by bumping a refcount rather than copying a tool
 # output; it changes no wire format, and adds no dependency
-serde = { version = "1.0.194", features = ["derive", "rc"] }
+serde = { version = "1.0.220", features = ["derive", "rc"] }
 serde_json = "1.0.127"
 # keepalive, which is the one socket option `tokio::net` does not offer - `TcpStream::set_nodelay`
 # is tokio's own and `remote::tuned` uses it. Not a new crate in any sense that costs anything:
 # `tokio` itself builds this for the `net` feature, and `reqwest` for its own reasons, so what the
 # line buys is the right to call one method on a socket this workspace already owns
-socket2 = "0.6"
-tokio = { version = "1.40" }
+socket2 = "0.6.3"
+tokio = { version = "1.47" }
 # what the property suites are run by, and it gives them two things: a great many
 # generated cases and, the half that matters, a shrinker: a property that fails comes back as the
 # smallest input that still fails it rather than as whatever random string found it.

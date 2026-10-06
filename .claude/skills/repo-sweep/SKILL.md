@@ -137,6 +137,7 @@ cargo test --workspace --all-features --locked
 cargo test -p kamchatka --no-default-features --locked
 scripts/references.sh
 cargo +1.95.0 check --workspace --all-features --all-targets --locked
+cargo +1.95.0 minimal-versions check --workspace --all-features --direct
 cargo run -p nachalnik --example transparency --features selectors --locked
 cargo run -p nachalnik --example compaction --locked
 cargo run -p nachalnik --example pricing_a_picture --locked
