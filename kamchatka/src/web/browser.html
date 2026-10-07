@@ -1126,6 +1126,9 @@ prompt.onsubmit = async (e) => {
   // the context until a reload
   const waiting = !text.startsWith("/");
   if (waiting) pending.push(drawn);
+  // a command is marked so that `/cleanup` takes it off with the notes it led to. The terminal
+  // never shows a typed command in the chat at all
+  else drawn.classList.add("command");
   // and taken back where the gateway would not take it. A line drawn optimistically is a promise
   // this page can keep or break in one round trip, and the reader's own words are the one thing
   // they will assume arrived. It goes back in the box, because what somebody wants after a line
@@ -1218,10 +1221,11 @@ function heard(m) {
     // holds, so there is nothing on the numbered stream to work it out from
     case "model": named(m.model); break;
     case "said": say(m.speaker === "error" ? "error" : "note", m.text); break;
-    // what `/cleanup` and `ctrl+l` take off a terminal, taken off this page: the program's own lines
-    // and nothing else. The conversation stays, because it is the context and this did not touch it
+    // what `/cleanup` and `ctrl+l` take off a terminal, taken off this page: the program's own lines,
+    // and the commands typed here, which the terminal does not show in the first place. The
+    // conversation stays, because it is the context and this did not touch it
     case "cleared": {
-      for (const el of log.querySelectorAll(".note, .error")) el.remove();
+      for (const el of log.querySelectorAll(".note, .error, .command")) el.remove();
       break;
     }
     case "item": {
