@@ -9,20 +9,20 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 
-# note: read and nothing else. No job here writes anything back - not a comment, not a status, not
-# a cache outside the one Actions keeps - so the token every step can reach is one that cannot
+# note: read-only. No job writes anything back (comments, statuses, caches beyond Actions' own),
+# so the token every step can access can't write either
 permissions:
   contents: read
 
-# a push that replaces another on the same branch or pull request cancels the run it replaced:
-# its answer is about a commit nobody is going to merge
+# a new push to the same branch or pull request cancels the previous run, which would only test a
+# commit that won't be merged
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # the opinions: formatting, lints and documentation. One platform is enough for all three -
-  # they say the same thing everywhere, and saying it three times only costs minutes
+  # formatting, lints and documentation. One platform is enough, since the results are the same on
+  # all of them
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -40,33 +40,31 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --workspace --all-features --all-targets --locked -- -D warnings
-      # and again with the screen off, because a lint that only fires there passes the run above
-      # and passes every step in the test job too - those build the feature combinations with
-      # `check` and `test`, which warn rather than fail. `recalled` reached a tag that way: a
-      # field every use of which lives behind `tui`, so the screenless build carried one nothing
-      # read and `--all-features` could not see it. `kamchatka` is the crate where a feature
-      # removes code rather than adding a dialect, and these are its two screenless shapes - the
-      # plain one, and the one the readme tells an embedder to build
+      # and again without the screen, because some lints only fire there, and the test job's
+      # `check` and `test` runs only warn. `recalled` reached a release that way: a field only used
+      # behind `tui`, so it was dead code without the screen, which `--all-features` can't see.
+      # These are `kamchatka`'s two builds without a screen: the plain one, and the one the README
+      # suggests for embedding
       - name: clippy, no screen
         run: cargo clippy -p kamchatka --no-default-features --all-targets --locked -- -D warnings
       - name: clippy, no screen with mcp
         run: >
           cargo clippy -p kamchatka --no-default-features --features mcp --all-targets --locked
           -- -D warnings
-      # both features are off by default and the documentation links into both, so this is the
-      # configuration docs.rs will build rather than the one the tests happen to use
+      # with all features, as docs.rs builds it, since the docs link to features that are off by
+      # default
       - name: docs
         run: cargo doc --workspace --all-features --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
-      # and the prose rustdoc does not read: a file or a test named in a comment or a document
-      # that is no longer there
+      # and references rustdoc doesn't check: files and tests named in comments or documents that
+      # no longer exist
       - name: references
         run: scripts/references.sh
 
-  # what the dependency tree is held to - advisories, licences, where crates come from - by
-  # `deny.toml`. A job of its own, because a new advisory can turn it red on a commit that changed
-  # nothing, and it should say so without taking the lints' column with it
+  # checks advisories, licences and crate sources against `deny.toml`. A separate job, because a
+  # new advisory can make it fail on a commit that changed nothing, and that shouldn't fail the
+  # lint job too
   deny:
     name: deny
     runs-on: ubuntu-latest
@@ -76,12 +74,11 @@ jobs:
           persist-credentials: false
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
 
-  # note: four columns and two kinds of crate. The libraries - the runtime, the providers, the MCP
-  # bridge, the benchmark - are pure Rust and claim to build anywhere, so they are built and tested
-  # on Linux, macOS and Windows. `kamchatka` builds for Linux on x86_64 and aarch64 and nothing
-  # else - its `lib.rs` refuses any other target - so it is left out of the other two columns and
-  # tested on both of its own. The aarch64 column is the only thing that compiles the network
-  # gate's aarch64 filter at all, and its release binary is built on the same runner.
+  # note: the libraries (runtime, providers, MCP bridge, benchmark) are pure Rust and should build
+  # anywhere, so they're tested on Linux, macOS and Windows. `kamchatka` only builds for Linux on
+  # x86_64 and aarch64 (its `lib.rs` refuses other targets), so it's excluded from macOS and
+  # Windows and tested on both Linux architectures. The aarch64 job is the only one that compiles
+  # the network gate's aarch64 filter, and the aarch64 release binary is built on the same runner.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -107,46 +104,41 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-      # note: the suites run under nextest rather than `cargo test`, which runs one test binary at
-      # a time - so a run took as long as every binary end to end, and the slowest few were most
-      # of it. Nextest runs the tests of every binary side by side, and on four cores the suite
-      # took 35 seconds rather than 116. Its `ci` profile is in `.config/nextest.toml`
+      # note: nextest rather than `cargo test`, which runs one test binary at a time. Nextest runs
+      # them all in parallel: on four cores the suite takes 35 seconds instead of 116. The `ci`
+      # profile is in `.config/nextest.toml`
       - uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
         with:
           tool: nextest
 
-      # the tests turn every feature on, so nothing else exercises the default build
+      # the tests enable every feature, so this is the only check of the default build
       - name: default features
         run: cargo build --workspace ${{ matrix.skip }} --locked
-      # `nachalnik` has to stand up with neither of its features, `kamchatka` without MCP, and the
-      # bridge with no transport at all - which is a real configuration: `Server::connect` takes
-      # one you opened yourself. One step each, so a failure says which
+      # `nachalnik` without its features, `kamchatka` without MCP, and the MCP bridge with no
+      # transport (a real configuration: `Server::connect` takes one you opened yourself). One
+      # step each, so a failure shows which
       - name: nachalnik, no features
         run: cargo check -p nachalnik --no-default-features --locked
       - name: nachalnik-mcp, no features
         run: cargo check -p nachalnik-mcp --no-default-features --locked
-      # `test` rather than `check` for this one, because without `tui` there is a program left to
-      # run: the policy's own questions, real commands under a real ruleset, the introspection
-      # tools through the real loop, a whole session driven through an `App` that has no screen,
-      # and the settings file. It is the only configuration in which any of that is exercised
-      # without one
+      # `test` rather than `check`, because most of the program works without `tui`: the permission
+      # policy, real commands in the sandbox, the introspection tools, whole headless sessions and
+      # the settings file. This is the only place they're tested without a screen
       - name: kamchatka, no features
         if: matrix.kamchatka
         run: cargo nextest run -p kamchatka --no-default-features --locked --profile ci
-      # and the one the readme tells an embedder to build: somebody else's tools, no screen. It is
-      # a third feature combination rather than either of the two above, and nothing else here
-      # compiles it - which is how a settings file naming every key came to be unusable in exactly
-      # this configuration, for a day, over an `mcp` key that asked for nothing
+      # and the build the README suggests for embedding: MCP tools, no screen. Nothing else
+      # compiles this combination, which once let a bug through: a settings file with every key was
+      # rejected in this build because of an empty `mcp` key
       - name: kamchatka, mcp and no screen
         if: matrix.kamchatka
         run: >
           cargo nextest run -p kamchatka --no-default-features --features mcp --locked
           --profile ci
-      # a dialect each, the System One client alone, and the one nobody builds on purpose:
-      # `waiting.rs` is shared, so a constant only one of them reads is dead code in the
-      # other's build, and the client is built without either. `--all-targets`
-      # because the tests are gated by dialect too, and a test that names the provider that
-      # is not there compiles nowhere except under `--all-features`
+      # each API alone, the System One client alone, and no features at all. `waiting.rs` is
+      # shared, so a constant only one API uses is dead code in the others' builds.
+      # `--all-targets` because tests are gated by API too, and a test that names a missing
+      # provider would otherwise only fail to compile when it isn't covered by `--all-features`
       - name: nachalnik-providers, gemini only
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features gemini --locked
       - name: nachalnik-providers, anthropic and the suite
@@ -159,9 +151,9 @@ jobs:
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --locked
 
       - name: tests
-        # the live suites skip themselves without a key, which is how they should behave here
+        # the live tests skip themselves without an API key, as they should here
         run: cargo nextest run --workspace ${{ matrix.skip }} --all-features --locked --profile ci
-      # and the examples in the documentation, which nextest does not run
+      # doc examples, which nextest doesn't run
       - name: doctests
         run: cargo test --workspace ${{ matrix.skip }} --all-features --locked --doc
       - name: the examples that need no key
@@ -184,13 +176,11 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - run: cargo check --workspace --all-features --all-targets --locked
 
-  # every direct dependency at the floor its manifest names, all at once, on the MSRV - the one
-  # configuration nobody builds on purpose and anybody with an old lockfile gets. The
-  # dev-dependencies are left out, since nothing that depends on a crate here builds them; see the
-  # note above `[workspace.dependencies]`.
+  # every direct dependency at its minimum version, together, on the MSRV: what someone with an
+  # old lockfile gets. Dev-dependencies are excluded, since our dependents never build them; see
+  # the note above `[workspace.dependencies]`.
   #
-  # note: no cache. The lockfile this builds is not the one in the repository, and a cache keyed
-  # on that one would be filled with versions nothing else here uses
+  # note: no cache, since this uses a different lockfile from the repository's
   minimal-versions:
     name: minimal versions
     runs-on: ubuntu-latest
@@ -206,14 +196,13 @@ jobs:
           tool: cargo-hack,cargo-minimal-versions
       - run: cargo minimal-versions check --workspace --all-features --direct
 
-  # note: what a crate is on the registry is not what the working tree is - a path dependency that
-  # has to become a version, a symlinked licence, a file `git` never tracked. This
-  # packages all five and builds each from its own tarball, with the members that are being
-  # published unpacked into a temporary registry so the ones above them are built against what
-  # would really be uploaded rather than against the directory next door.
+  # note: a published crate can differ from the working tree (path dependencies turned into
+  # versions, symlinked licences, untracked files). This packages all five crates and builds each
+  # from its tarball, against the packaged versions of the others rather than the local
+  # directories.
   #
-  # note: `package` rather than `publish --dry-run`, so that this job goes on passing after the
-  # versions it is checking exist on the registry
+  # note: `package` rather than `publish --dry-run`, which would fail once the versions being
+  # checked are already published
   package:
     name: package
     runs-on: ubuntu-latest

@@ -1,14 +1,15 @@
-# Mutants that are never generated, for every `cargo mutants` run in this repository.
+# Mutants that `cargo mutants` never generates in this repository, because they are dangerous to
+# run.
 #
-# `Stragglers::call_of` decides which processes the end of a session stops. Answering for every
-# process - `Some(_)` - or for every process another session marked - `!=` against the session -
-# has the end of a test stop everything the person running it has, the desktop and the run among
-# them. The tests that reach it put their own thread under the signal scope a session runs under,
-# which contains that on Linux 6.12 and later; this is for wherever the scope is not there.
+# `Stragglers::call_of` decides which processes are stopped when a session ends. Mutating it to
+# match every process (`Some(_)`) or every other session's processes (`!=`) makes a test kill
+# everything the user is running, including the desktop. The tests use the same signal scope as a
+# session, which prevents this on Linux 6.12 and later; this exclusion covers older kernels.
 #
-# `Sandbox::argv` is what the program confines itself by. Empty, or one empty argument, the probe
-# a session runs at its start (`sandbox::available`) starts a whole session instead, which probes
-# again, and so on: under a test, 14601 processes in a few minutes.
+# `Sandbox::argv` builds the command the program re-runs itself with to apply the sandbox. If it is
+# empty or a single empty argument, the check a session runs at startup (`sandbox::available`)
+# starts a whole new session instead, which runs the check again, and so on: 14601 processes in a
+# few minutes during a test.
 exclude_re = [
     'replace Stragglers::call_of -> Option<usize> with Some',
     'replace == with != in Stragglers::call_of',

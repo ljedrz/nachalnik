@@ -5,8 +5,7 @@ description = "A terminal LLM agent for Linux, built on nachalnik: the context, 
 documentation = "https://docs.rs/kamchatka"
 readme = "README.md"
 categories = ["command-line-utilities", "development-tools"]
-# `tui` rather than `terminal` as well: they are near-duplicates, and the slot buys `ai`, which
-# is where the people who want this actually look
+# `tui` but not also `terminal`, which is nearly the same; the slot goes to `ai` instead
 keywords = ["agent", "llm", "ai", "tui", "nachalnik"]
 authors.workspace = true
 edition.workspace = true
@@ -14,8 +13,7 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
-# the readme's screenshots are linked by address, which is what crates.io renders them from, so the
-# crate does not need to carry them
+# the README links its screenshots by URL, so the package doesn't need them
 exclude = ["assets/"]
 
 [package.metadata.docs.rs]
@@ -36,32 +34,26 @@ default = ["mcp", "tui", "webui"]
 # own. On its own it changes nothing in the program; `shell-advisor` uses it, and so does the
 # `system1_assisted_compaction` example.
 advise = ["nachalnik-providers/system1"]
-# `--advise`: the advisor is asked where each `shell` command a question is about lands on a
-# three-level rubric, drawn in the question in green, yellow or red so that somebody deciding
-# whether to press `y` can see at a glance what they are being asked about. A command joined at
-# its `|`, `&&` or `;` is placed stage by stage - every stage a question in the one request - and
-# rated by the worst of them, with that stage underlined in the command itself.
+# `--advise`: the advisor rates each `shell` command you're asked about on a three-level scale,
+# shown as green, yellow or red in the permission question. A command chained with `|`, `&&` or
+# `;` is rated stage by stage, in one request, and gets the worst stage's rating, with that stage
+# underlined.
 #
-# note: it decides nothing. The rating is drawn and is never folded into a verdict, so a session
-# with this on refuses and allows exactly what the same session without it would - an `allow` is
-# somebody's decision and runs unasked.
+# note: the rating is only displayed. It never affects what is allowed or refused, and commands
+# you've allowed run without being rated.
 #
-# note: optional, and deliberately not in `default`. It sends a command's arguments to a third
-# party - in a default session, every command the model writes, since `exec:run` is a question by
-# default - and that is a decision somebody has to make rather than inherit from a build. See
-# `tools::advice`, which is where the whole of what leaves the machine is written down.
+# note: not in `default`, because it sends commands to a third party: in a default session, every
+# command the model writes, since `exec:run` asks by default. That should be a deliberate choice.
+# `tools::advice` lists exactly what is sent.
 shell-advisor = ["advise"]
-# `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
-# ones. Optional because the runtime does not need it and neither does the terminal.
+# `--mcp 'cmd args'` adds an MCP server's tools alongside the built-in ones.
 mcp = ["dep:nachalnik-mcp"]
 # `--web`: serves the session as a web page. No extra dependencies: the HTTP handling uses the
 # sockets `--serve` already needs, and the page is one embedded file. No authentication: it
 # listens on loopback, or on a private-network address with a warning; see `web`.
 webui = []
-# the screen and the keys: `ui`, the prompt, and the bindings that drive them. Optional because
-# `App` is the program and drawing it is one caller - the dependencies below are wanted by
-# nothing else in here, and a session driven by anything but a person at a terminal pays for none
-# of them
+# the terminal interface: `ui`, the prompt, and the key bindings. Optional so that headless and
+# served builds don't compile the dependencies below, which nothing else uses
 tui = [
     "dep:crossterm",
     "dep:ratatui",
@@ -76,150 +68,117 @@ tui = [
 [dependencies]
 nachalnik = { workspace = true, features = ["selectors"] }
 nachalnik-mcp = { workspace = true, optional = true }
-# every dialect: `--gemini`, `--anthropic` and `--responses` pick between them at startup, and the
-# whole point of having more than one is that nothing above the trait finds out which it got
+# every API: `--gemini`, `--anthropic` and `--responses` choose one at startup, and the rest of
+# the program doesn't need to know which
 nachalnik-providers = { workspace = true, features = ["anthropic", "gemini"] }
 
 parking_lot.workspace = true
-# `--serve` and `--connect` over a port: see `remote::tuned` for what the two options are for and
-# why neither of them matters until the socket stops being a loopback one
+# TCP options for `--serve` and `--connect` over a port; see `remote::tuned`
 socket2.workspace = true
-# `derive` for the settings file, which is the one thing here with a shape somebody else writes
+# `derive` for the settings file
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 tokio = { workspace = true, features = [
     "fs",
-    # `io-std` for the headless loop's stdin, which has to be selected on alongside the kernel's
-    # events rather than read from a thread of its own
+    # `io-std` for reading stdin in headless mode alongside the kernel's events
     "io-std",
     "io-util",
     "macros",
-    # `--serve` and `--connect`: a unix socket, and a loopback port for whatever reaches it through
-    # a tunnel. With `socket2` above, which is one method on a port, that is the whole of what
-    # remote control costs - which is why `remote` is not behind a feature of its own the way `tui`
-    # and `mcp` are: those exist to keep the drawing's dependencies and a bridge out of a build that
-    # wants neither, and a crate `tokio` already builds is nothing to keep out. The other half of the
-    # decision is that a build with no screen is exactly the build a served session runs in
+    # `--serve` and `--connect`, over a unix socket or a loopback port. Together with `socket2`,
+    # that is all remote control costs, so `remote` has no feature of its own; besides, builds
+    # without a screen are exactly the ones that serve sessions
     "net",
     "process",
     "rt-multi-thread",
-    # `ctrl+c` in a headless run means "stop, and keep what arrived" rather than the default,
-    # which is to kill the process and everything it had not written yet
+    # so that `ctrl+c` in a headless run stops and keeps what arrived, instead of killing the
+    # process before it writes anything
     "signal",
     "time",
 ] }
 
 anyhow = "1.0.46"
-# `/attach` reads a file off the disk and `Content::Blob` holds its payload already encoded, so
-# something here has to do the encoding. Hand-rolling a codec in the one place that decides what
-# bytes a paid endpoint is charged for is not a trade worth making for forty lines
+# `/attach` reads files, and `Content::Blob` stores them already encoded. Not hand-rolled, since a
+# bug here would change what a paid endpoint charges for
 base64 = "0.23"
 clap = { version = "4", features = ["derive", "env"] }
-# ripgrep's own engine, which is what `grep` and `glob` are made of: `grep-searcher` is the search
-# loop (line buffering, binary detection, context lines), `grep-regex` the matcher, `ignore` the
-# walker that knows what a `.gitignore` means, and `globset` the patterns both tools filter with.
-# Four crates rather than a search written here, and rather than running `rg`: the binary is these
-# libraries plus a printer, so linking them needs no `rg` on the machine and no second
-# process-spawning path for the sandbox to cover. The printer is the half this program wants of
-# its own - one that cuts at matches and says how many it did not show
+# ripgrep's libraries, used by the `grep` and `glob` tools: `grep-searcher` (line buffering, binary
+# detection, context lines), `grep-regex` (matching), `ignore` (directory walking that respects
+# `.gitignore`) and `globset` (patterns). Linking them instead of running `rg` means `rg` needn't
+# be installed and the sandbox has no extra process to cover. The output formatting is our own, so
+# it can cut long results and say how much was left out
 globset = "0.4.18"
 grep-regex = "0.1"
 grep-searcher = "0.1.4"
 ignore = "0.4.15"
-# `event-stream` so that the terminal's keys arrive as a `Stream` and can be selected on
-# alongside the kernel's events; the same crossterm `ratatui` is built against
+# `event-stream` so key presses arrive as a `Stream` alongside the kernel's events; the same
+# version `ratatui` uses
 crossterm = { version = "0.29", features = ["event-stream"], optional = true }
-# three of the five defaults. `macros` is out because `ui` builds its layout from calls rather
-# than from a declaration, and `all-widgets` because its only member is the calendar. LTO drops
-# both from the binary either way, so what this buys is a crate fewer to compile and a manifest
-# that says which widgets the program is made of
+# three of the five default features: `macros` isn't used, and `all-widgets` only adds a calendar.
+# LTO would remove them from the binary anyway; this saves compiling a crate
 ratatui = { version = "0.30", default-features = false, features = [
     "crossterm",
     # the solved layout is kept across frames, and `ui` redraws the whole screen on every tick
     "layout-cache",
     "underline-color",
 ], optional = true }
-# the editing an input line is expected to do - words, selection, undo, paste - which is not
-# something this crate should be writing
+# text editing for the prompt: word movement, selection, undo, paste
 ratatui-textarea = { version = "0.9", optional = true }
-# models answer in markdown, and a terminal that showed the asterisks would be showing the
-# punctuation instead of the emphasis. `default-features = false` leaves out its syntect-based
-# highlighting, which is done here instead - see `synoptic` below for why
+# renders the models' markdown answers. `default-features = false` leaves out its syntect-based
+# code highlighting; we use `synoptic` instead (see below)
 tui-markdown = { version = "0.3.9", default-features = false, optional = true }
-# fenced code blocks, coloured by token *name* - `comment`, `string`, `keyword` - which is what
-# lets the palette be this program's own. `default-features = false` on `tui-markdown` above is
-# the other half of that decision: its `highlight-code` feature is syntect, whose themes are
-# 24-bit colour chosen against a known background, and which drops the marker that tells this
-# program a line is code at all
+# highlights code blocks by token type (`comment`, `string`, `keyword`), so we can use our own
+# colours. syntect, used by `tui-markdown`'s `highlight-code`, has 24-bit themes made for a known
+# background, and drops the marker that tells us a line is code
 synoptic = { version = "2.2", optional = true }
 
-# `next()` on the terminal's key stream, which is the one stream this program reads - so a build
-# with no screen has no use for it
+# `next()` on the terminal's key stream, so only needed with a screen
 tokio-stream = { version = "0.1.1", optional = true }
-# the local offset from UTC, asked once at startup, and the calendar behind the clock on every
-# trace line. Not optional, because what a line says about itself is what a search over the trace
-# matches on - so the stamp has to be built where the filtering is, which is `app`, not `ui`.
-# `ratatui-widgets` already builds this for a screen build; a headless one now pays for it too,
-# which is the price of the two panes agreeing about what an event says
+# the local UTC offset (read once at startup) and the timestamps on trace lines. Not optional:
+# searching the trace matches on the timestamp, so it is built in `app`, not `ui`. Screen builds
+# already have it through `ratatui-widgets`
 time = { version = "0.3.47", features = ["local-offset"] }
-# the fuzzy matcher behind `/` on the context and trace panes - Helix's, which is where the
-# expectation of what "fuzzy" feels like comes from. The matcher alone rather than `nucleo`: the
-# full crate brings a worker pool and an injector for streaming millions of candidates into a
-# picker, and what is being filtered here is a few hundred rows already in memory
+# fuzzy matching for `/` on the context and trace panes, from Helix. Just the matcher, not
+# `nucleo`, whose worker pool is built for millions of items; we filter a few hundred
 nucleo-matcher = "0.3"
-# the prompt box has to be as tall as its wrapped text, and `ratatui-textarea` wraps when it draws
-# without reporting how many rows that came to. `ui::wrapped_rows` counts them, and counting them
-# the same way means breaking where it breaks: at unicode word bounds, which is why `/` in a long
-# path is a break and a plain search for spaces is not enough
+# the prompt box must be as tall as its wrapped text, but `ratatui-textarea` doesn't report how
+# many rows it wraps to. `ui::wrapped_rows` counts them by breaking at the same unicode word
+# boundaries (which include `/`, so splitting on spaces isn't enough)
 unicode-segmentation = { version = "1.13.2", optional = true }
-# a character is not a column. `ui::text::columns` is the one place this is asked, and everything
-# that decides what fits goes through it - a terminal gives a CJK character two cells and an
-# emoji two, so measuring in characters fits twice as much on a row as there is room for and the
-# overflow is clipped at the right edge by a widget that does not wrap. `ratatui` already builds
-# this for `Span::width`, so naming it here costs a line and no compile time
+# terminal column widths, since CJK characters and emoji take two cells. Used through
+# `ui::text::columns`; `ratatui` already depends on it
 unicode-width = { version = "0.2", optional = true }
 
-# the sandbox the `shell` tool runs under. Landlock is a Linux LSM a process applies to *itself* -
-# no privileges, no setuid helper, no container - which is what makes it light enough to ship in the
-# binary and strong enough that `network: deny` is refused by the kernel rather than by a policy
-# reading the word `curl`.
+# the sandbox for the `shell` tool. Landlock is a Linux security module a process applies to
+# itself, with no privileges, setuid helper or container, and the kernel enforces it.
 #
-# note: under a target table although this crate builds for Linux and nothing else. Without one,
-# a build for any other target fails inside these crates before it reaches the `compile_error!` in
-# `lib.rs`, which is the sentence that says why
+# note: in a target table even though the crate only builds for Linux, so other targets reach the
+# `compile_error!` in `lib.rs`, which explains why, instead of failing inside these crates
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4.7"
-# the raw system calls behind `gate`, which holds a confined command's attempt to open an internet
-# socket until somebody answers: `seccomp(2)` and the notification `ioctl`s, which no crate wraps
-# safely without linking the C `libseccomp`. Already in the tree under `tokio` and `landlock`, so
-# what this line buys is the right to name it
+# raw system calls for `gate`, which pauses a sandboxed command's attempt to open an internet socket
+# until you answer: `seccomp(2)` and its notification `ioctl`s, which no crate wraps safely without
+# linking the C `libseccomp`. Already a dependency of `tokio` and `landlock`
 libc = "0.2.187"
-# `openat2` with `RESOLVE_BENEATH`, so that a path the file tools checked cannot be swapped for a
-# link out before it is opened - `std` has no way to ask for it. `net` and `event` for the gate's
-# safe half: the socket pair its listener is handed over on, and polling that listener. `process`
-# for the `setsid` that leaves a confined command without the terminal. Already in the tree under
-# the screen, through `crossterm`; this names it for the build without one
+# `openat2` with `RESOLVE_BENEATH`, which `std` lacks, so a path the file tools checked can't be
+# swapped for a symlink before it's opened. `net` and `event` for the gate's socket pair and
+# polling; `process` for the `setsid` that detaches sandboxed commands from the terminal. Screen
+# builds already have it through `crossterm`
 rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 
-# using a System One model to decide what a full context can afford to lose, against the age order
-# `ToolTrimmer` really uses. Nothing in the crate does this - it is here to be read and run by somebody
-# wondering what a System One model is for. It wants a real endpoint, so it rides on the feature
-# that brings that client in
 [[example]]
 name = "gateway"
 path = "examples/gateway.rs"
 required-features = ["webui"]
 
+# uses a System One model to choose what to drop from a full context, compared with the age order
+# `ToolTrimmer` uses. The program doesn't do this; it shows what System One models can be used for
 [[example]]
 name = "system1_assisted_compaction"
 path = "examples/system1_assisted_compaction.rs"
 required-features = ["advise"]
 
-# some of the suites are the terminal's: they draw a frame and read the characters back, or press a
-# key to get at a verb. The rest - the policy's own questions, real commands under a real ruleset,
-# the introspection tools through the real loop, and a whole session driven by lines rather
-# than keys - are about the program rather than the screen, so `cargo test --no-default-features`
-# runs them instead of failing to compile them
+# the test suites that need the screen (drawing frames, pressing keys) or another feature say so,
+# so `cargo test --no-default-features` runs the rest instead of failing to compile
 [[test]]
 name = "advise"
 path = "tests/advise.rs"
@@ -235,8 +194,7 @@ name = "live"
 path = "tests/live.rs"
 required-features = ["tui"]
 
-# and one that is neither: a server spawned by `--mcp`, under a run with no screen. It wants the
-# feature that offers the flag and nothing else, so a build with the tools and no terminal runs it
+# an MCP server started by `--mcp`, in a headless run, so it only needs `mcp`
 [[test]]
 name = "mcp"
 path = "tests/mcp.rs"
@@ -248,13 +206,10 @@ path = "tests/screen/main.rs"
 required-features = ["tui"]
 
 [dev-dependencies]
-# the chat-against-the-request property in `tests/screen/chat.rs`, where the sequence of moves is
-# generated and the shrinker is what makes a failure readable
+# the property test in `tests/screen/chat.rs` that checks the chat against the request
 proptest = { workspace = true }
-# the screen is tested by drawing it: a scripted provider answers, and the frame that comes out
-# is asserted against
+# a scripted provider for the screen tests, which draw frames and check them
 nachalnik = { workspace = true, features = ["selectors", "test"] }
-# `net` for the one test that needs a real socket: an endpoint that lists what its model takes,
-# which is where the status line's parameter row comes from; `test-util` for the paused clock a
-# client's minute of giving up on a session that has gone is waited out on
+# `net` for the test that serves a model listing (for the status line's parameters); `test-util`
+# for a paused clock, so a client's one-minute reconnect timeout passes instantly
 tokio = { workspace = true, features = ["net", "test-util"] }

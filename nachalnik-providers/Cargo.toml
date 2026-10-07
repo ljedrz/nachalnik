@@ -4,8 +4,7 @@ version = "0.9.0"
 description = "Providers for the nachalnik agent runtime: the OpenAI chat-completions, Gemini and Anthropic dialects, streamed, retried and interruptible - and a client for System One models, which answer typed questions instead of turns."
 documentation = "https://docs.rs/nachalnik-providers"
 readme = "README.md"
-# `web-programming::http-client` because that is the whole of what this is: somebody else's HTTP
-# API, read carefully
+# `web-programming::http-client` because it is a client for other services' HTTP APIs
 categories = ["api-bindings", "asynchronous", "web-programming::http-client"]
 keywords = ["provider", "agent", "llm", "ai", "nachalnik"]
 authors.workspace = true
@@ -20,26 +19,24 @@ all-features = true
 
 [features]
 default = ["openai"]
-# The OpenAI chat-completions dialect: `/chat/completions`, `choices[].delta`, tool calls
-# assembled from fragments. What OpenRouter, ollama, vLLM, Together and most of the rest speak -
-# and, as a mode of it, OpenAI's Responses API, where a reasoning model's thinking goes back sealed.
+# The OpenAI chat-completions API (`/chat/completions`, `choices[].delta`, tool calls assembled
+# from fragments), which OpenRouter, ollama, vLLM, Together and most others implement. Also
+# OpenAI's Responses API, which returns a reasoning model's thinking in encrypted form.
 openai = []
-# Google's own `generateContent`: `candidates[].content.parts`, whole calls, and ordered
-# `thought` parts - the dialect `nachalnik`'s `Content::Blocks` was built for.
+# Google's own `generateContent` API: `candidates[].content.parts`, whole tool calls, and ordered
+# `thought` parts. `nachalnik`'s `Content::Blocks` was designed around it.
 gemini = []
-# Anthropic's own Messages API: `/messages`, typed content blocks, `input_json_delta` fragments
-# and signed thinking blocks. What `api.anthropic.com` speaks, and OpenRouter at `/api/v1/messages`.
+# Anthropic's Messages API: `/messages`, typed content blocks, `input_json_delta` fragments and
+# signed thinking blocks. Served by `api.anthropic.com`, and by OpenRouter at `/api/v1/messages`.
 anthropic = []
-# System One models - typed questions put to a state, answered with probabilities - at
-# `POST /systemone`: any of the ones OpenRouter serves, or an engine of one's own. The one thing in
-# here that is not a `Dialect`, because it generates no text and calls no tools - so it implements
-# no `Provider` and nothing it returns reaches a kernel. Named for the category rather than any
-# vendor, and favouring none: a provider OpenRouter does not list is reached through its
-# bring-your-own-key rather than by a path of its own in here.
+# A client for System One models, which answer typed questions about a state with probabilities,
+# at `POST /systemone`: the ones OpenRouter serves, or your own server. Unlike the others it is not
+# a `Dialect`: it generates no text and calls no tools, so it isn't a `Provider` and its answers
+# never reach a kernel. Providers OpenRouter doesn't list are reached through OpenRouter's
+# bring-your-own-key, not through separate code here.
 system1 = []
-# The suite the dialects above are held to, for anyone writing a third. It stands up real sockets and
-# wants `nachalnik/test`, so it is off unless asked for - a dev-dependency's feature, not a
-# dependency's.
+# The test suite every dialect above must pass, for anyone writing a new one. It opens real
+# sockets and needs `nachalnik/test`, so it's off by default and meant for dev-dependencies.
 conformance = ["nachalnik/test", "tokio/io-util", "tokio/net", "tokio/rt"]
 
 [dependencies]
@@ -48,14 +45,12 @@ parking_lot.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 serde_json.workspace = true
-# note: `time` is all the library uses - the deadlines and the backoffs; nothing outside its tests
-# spawns or selects, and `conformance`, which does spawn, asks for `rt` itself
+# note: the library only needs `time`, for deadlines and backoff; `conformance` adds `rt` itself
 tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
-# `net` and `io-util` for the tests that need a real socket: a server that answers and then says
-# nothing, and one that breaks a stream at a chosen byte. Neither shape can be mocked. `test-util`
-# for the paused clock the bounded questions are waited out on, rather than their real fifteen
-# seconds
+# `net` and `io-util` for tests that need real sockets (a server that goes silent after answering,
+# and one that cuts a stream at a chosen byte), which can't be mocked. `test-util` for a paused
+# clock, so timeouts don't take their real fifteen seconds
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "test-util"] }

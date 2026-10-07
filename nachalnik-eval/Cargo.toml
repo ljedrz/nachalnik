@@ -5,9 +5,8 @@ description = "A benchmark for model introspection: elicit a claim about its own
 documentation = "https://docs.rs/nachalnik-eval"
 readme = "README.md"
 categories = ["development-tools::testing", "asynchronous"]
-# note: `metacognition` is what the literature calls this and nobody searches the registry for
-# it; `introspection` is the word people arrive by. `eval` buys the crowd that is looking for a
-# harness rather than for a runtime.
+# note: the literature calls this `metacognition`, but people search for `introspection`. `eval`
+# is for people looking for an evaluation harness rather than a runtime.
 keywords = ["llm", "ai", "eval", "introspection", "nachalnik"]
 authors.workspace = true
 edition.workspace = true
@@ -23,24 +22,19 @@ async-trait.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# `time` only, and only for the clock a rate limit is enforced with - see `abreast::Rate`. Not a
-# new crate in anybody's tree: `nachalnik` already depends on tokio for `JoinSet` and
-# `broadcast`, so a suite built on it was never going to run on another executor anyway. What
-# this adds is the timer driver, which is the one thing a count of requests in flight cannot
-# substitute for when an endpoint publishes a rate instead.
+# `time` only, to enforce rate limits; see `abreast::Rate`. `nachalnik` already depends on tokio,
+# so this adds no crate, only the timer, which is needed when an endpoint limits requests per
+# second rather than requests in flight.
 tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
-# the scripted provider and the off-the-shelf policies, for the tests that must not touch a
-# network. The same self-referential trick `nachalnik` uses on itself: a feature turned on for
-# this crate's tests and off for its users
+# the scripted provider and ready-made policies, for tests that must not use the network. The
+# feature is on for this crate's tests only, as in `nachalnik`
 nachalnik = { workspace = true, features = ["test"] }
-# the provider the live suite and the `bench` example talk through, and the environment they read
-# it out of. Both dev-dependencies, and both without a version, which is what makes cargo strip
-# them from the published manifest - see the same pair in `nachalnik/Cargo.toml` for why that
-# matters
+# the provider the live tests and the `bench` example use, and the helper that reads its settings.
+# Unversioned so cargo strips them when publishing; see `nachalnik/Cargo.toml` for why
 nachalnik-providers = { path = "../nachalnik-providers" }
 nachalnik-utils = { path = "../nachalnik-utils" }
-# `test-util` for the paused clock the rate-limit tests run on: a window is then waited out
-# exactly and instantly, rather than by sleeping and hoping the machine was fast enough
+# `test-util` for a paused clock in the rate-limit tests, so they wait exactly and instantly
+# instead of sleeping
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

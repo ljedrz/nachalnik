@@ -9,73 +9,60 @@ members = [
     "kamchatka",
 ]
 
-# note: for the one artifact anybody downloads rather than builds - the `kamchatka` binary a
-# release attaches. A library crate is compiled by whoever depends on it, under *their* profile,
-# so none of this reaches a caller of `nachalnik`; what it changes is this workspace's own
-# `--release` builds, which until there was a binary to publish nothing but a benchmark ran.
+# note: this profile matters for the `kamchatka` binary attached to releases. Library crates are
+# compiled under their dependents' profiles, so none of this affects users of `nachalnik`.
 #
-# note: `strip` rather than a `strip` step in the workflow, so that a binary built by hand is the
-# binary a release attaches. A stripped one is not a worse one to report a bug from: this
-# program's own trace is where a session is reconstructed from, not a backtrace off somebody's
-# machine.
+# note: `strip` is set here rather than in the release workflow, so a binary built by hand matches
+# the released one. Stripping doesn't hurt bug reports: sessions are reconstructed from the
+# program's own trace, not from backtraces.
 #
-# note: `"fat"` rather than `"thin"`, which is the way round it is only because a release build
-# happens once per tag and nobody is sitting in front of it. Measured 2026-09-15 on the static
-# musl build of `kamchatka`: 23.3MB unstripped and 14.3MB stripped at the defaults, 12.0MB with
-# thin and one codegen unit, 10.8MB with fat - against 22s, 22s, 44s and 72s to build. Fat is a
-# tenth of the artifact for half a minute of a job that runs when a tag is pushed. Thin is the
-# right answer for the trade made per-commit, and nothing here is built per-commit in release.
+# note: `"fat"` LTO rather than `"thin"`, because release builds only run once per tag. Measured
+# 2026-09-15 on the static musl `kamchatka` build: 23.3MB unstripped and 14.3MB stripped with the
+# defaults, 12.0MB with thin LTO and one codegen unit, 10.8MB with fat LTO; build times 22s, 22s,
+# 44s and 72s. Fat LTO saves a tenth of the size for an extra half minute per release.
 #
-# note: `panic = "abort"` is the obvious next lever and is deliberately not pulled. The kernel
-# answers a panicking tool as a failed call and says so in `tool.panicked`, and the turn carries
-# on; aborting would take the session with it, which is not a trade a program whose point is an
-# honest account of what happened gets to make for a smaller download.
+# note: `panic = "abort"` would shrink the binary further, but a panicking tool is reported as a
+# failed call (`tool.panicked`) and the turn continues. Aborting would end the whole session.
 #
-# note: `"s"` rather than the default `3`, and not `"z"`. Measured 2026-10-06 on the static musl
-# build of `kamchatka` with the rest of this profile: 13.6MB at `3` and 10.1MB at `"s"`, against
-# 102s and 60s to build; on glibc `"z"` is 0.8MB under `"s"`. What it costs is in the one place
-# this program computes rather than waits - drawing the screen. The sweeps that draw at every size
-# run 15-18% slower at `"s"` and 75-80% slower at `"z"`, and nothing else in the suite moves: the
-# rest of the time a session spends is on the network or in a child process. A quarter of the
-# download for a sixth of a frame nobody is short of is worth it; nearly doubling the frame for
-# another 0.8MB is not.
+# note: `opt-level = "s"` rather than the default `3` or `"z"`. Measured 2026-10-06 on the static
+# musl `kamchatka` build: 13.6MB at `3` and 10.1MB at `"s"`, built in 102s and 60s; on glibc, `"z"`
+# is another 0.8MB smaller than `"s"`. The cost is in drawing the screen, the only CPU-bound part:
+# the tests that draw at every size run 15-18% slower at `"s"` and 75-80% slower at `"z"`, and
+# nothing else changes, since the rest of a session's time goes to the network or child processes.
+# A quarter off the download is worth a slightly slower frame; another 0.8MB is not worth nearly
+# doubling it.
 [profile.release]
 codegen-units = 1
 lto = "fat"
 opt-level = "s"
 strip = true
 
-# note: no debuginfo in a dev build. A panic still names every frame; what goes is the
-# `at src/foo.rs:12` line under each one, and nothing in here is read through a debugger - a
-# failing test is read off its assertion, and a session off this program's own trace, which is
-# the same reason a release is stripped. Measured 2026-09-21 on a `--workspace --all-features
-# --tests --examples` build: 2.6GB of `target` against 9.5GB at the default `debug = 2`, and a
-# touched file in `nachalnik` rebuilding the workspace in 2.5s rather than 3.9s. Both halves go
-# the same way, which is why this is `0` rather than `"line-tables-only"` - that keeps the line
-# numbers and costs 4.5GB.
+# note: no debuginfo in dev builds. Panics still name every frame, just without the file and line.
+# Nothing here is debugged with a debugger: failing tests are read from their assertions, and
+# sessions from the program's trace. Measured 2026-09-21 on a `--workspace --all-features --tests
+# --examples` build: `target` is 2.6GB instead of 9.5GB with `debug = 2`, and touching a file in
+# `nachalnik` rebuilds the workspace in 2.5s instead of 3.9s. `"line-tables-only"` would keep line
+# numbers but costs 4.5GB.
 #
-# note: `incremental` stays on and `strip` stays off, which is where the saving stops. Turning
-# incremental off is another 1GB and takes that rebuild to 6.9s, the wrong side of the one trade
-# a dev profile exists to make. Stripping saves 0.3GB and takes away the function names, which
-# are what `debug = 0` leaves a panic to be read by.
+# note: `incremental` stays on and `strip` stays off. Disabling incremental saves another 1GB but
+# slows that rebuild to 6.9s. Stripping saves 0.3GB but removes the function names that panics
+# are read by.
 [profile.dev]
 debug = 0
 
-# note: the dependencies optimised in a dev build, and the workspace's own crates not, so a touched
-# file rebuilds exactly as fast as before. What a test spends its time in is mostly somebody
-# else's code - ratatui's layout solver and `unicode-width` measuring text were most of the
-# slowest sweep that draws the screen - and unoptimised, that is several times slower than it has
-# to be. Measured 2026-10-05 on four cores, as a CI runner has: the whole suite under nextest in
-# 28.8s at `0`, 19.2s at `1` and 18.7s at `2`, against a cold build of 38s, 80s and 100s. `1` is
-# nearly all of the run for less of the build, and a cold build is what a cache miss costs, once,
-# while every run pays for the tests.
+# note: dependencies are optimised in dev builds and the workspace's own crates are not, so
+# rebuilding after an edit is as fast as before. The tests spend most of their time in dependency
+# code (ratatui's layout solver and `unicode-width` dominate the slowest drawing test), which is
+# several times slower unoptimised. Measured 2026-10-05 on four cores, like a CI runner: the whole
+# suite under nextest takes 28.8s at `0`, 19.2s at `1` and 18.7s at `2`, with cold builds of 38s,
+# 80s and 100s. `1` gets nearly all of the speedup for less build time, and a cold build only
+# happens on a cache miss, while every test run benefits.
 #
-# note: only the level. Debug assertions and overflow checks stay on in the dependencies as
-# everywhere else, and with `debug = 0` there was no debuginfo in them to lose.
+# note: only the optimisation level changes; debug assertions and overflow checks stay on.
 [profile.dev.package."*"]
 opt-level = 1
 
-# what every crate in here agrees on; a member opts in with `edition.workspace = true`
+# shared by every crate; members opt in with `edition.workspace = true` and the like
 [workspace.package]
 authors = ["ljedrz <ljedrz@gmail.com>"]
 edition = "2024"
@@ -84,71 +71,63 @@ repository = "https://github.com/ljedrz/nachalnik"
 homepage = "https://github.com/ljedrz/nachalnik"
 rust-version = "1.95"
 
-# note: declared here rather than in each crate, so that two members cannot quietly end up on
-# two versions of the same thing. The runtime's five are the ones that matter: whatever else
-# arrives in this workspace, `nachalnik` itself is not to grow a sixth without a reason.
+# note: declared here rather than in each crate, so members can't drift onto different versions of
+# the same dependency. `nachalnik` itself has five, and should not gain a sixth without a reason.
 #
-# note: every requirement here and in the members' own manifests is a floor - the lowest version
-# the workspace builds against on its MSRV - and not the version it is built with, which is
-# whatever `Cargo.lock` holds. A floor written lower than that is a promise the source does not
-# keep - `serde_json = "1"` named 1.0.0 for code that needs 1.0.127 - and breaks the build of
-# anybody whose lockfile holds a version in between. CI's `minimal-versions` job holds every
-# member to it: each direct dependency at its floor at once, the dev-dependencies left out, built
-# on the MSRV with warnings denied. The warnings are half of it - `anyhow` before 1.0.46 takes
-# `anyhow!("{e}")` for a plain string and builds, and an error says `{e}`.
+# note: every version here and in the members' manifests is a minimum: the lowest version the
+# workspace builds with on its MSRV, not the one it is built with (that is whatever `Cargo.lock`
+# has). A minimum set too low breaks builds for anyone whose lockfile has an older version - for
+# example, `serde_json = "1"` allowed 1.0.0 for code that needs 1.0.127. CI's `minimal-versions`
+# job checks this: every direct dependency at its minimum together, without dev-dependencies, on
+# the MSRV with warnings denied. Warnings matter too: before 1.0.46, `anyhow!("{e}")` with a
+# plain string compiles but prints `{e}` literally.
 #
-# note: at once is what lifts a floor past what this crate's own source needs, when a dependency
-# needs more: `async-trait` is 0.1.89 because `rmcp` asks for it, and `tokio` 1.47 and `serde`
-# 1.0.220 the same way. A floor nothing can resolve to is not one anybody gets.
+# note: some minimums are higher than our own code needs, because a dependency requires more:
+# `async-trait` 0.1.89 because of `rmcp`, and `tokio` 1.47 and `serde` 1.0.220 likewise.
 [workspace.dependencies]
 nachalnik = { version = "0.9.0", path = "nachalnik" }
 nachalnik-mcp = { version = "0.9.0", path = "nachalnik-mcp" }
 nachalnik-providers = { version = "0.9.0", path = "nachalnik-providers" }
-# no version: it is never published, so nothing may depend on it except as a dev-dependency
+# no version: it is never published, so it may only be used as a dev-dependency
 nachalnik-utils = { path = "nachalnik-utils" }
 async-trait = "0.1.89"
 parking_lot = "0.12"
-# `rc` so that `Content` can be cloned by bumping a refcount rather than copying a tool
-# output; it changes no wire format, and adds no dependency
+# `rc` lets `Content` be cloned by bumping a reference count instead of copying tool output; it
+# doesn't change any wire format or add a dependency
 serde = { version = "1.0.220", features = ["derive", "rc"] }
 serde_json = "1.0.127"
-# keepalive, which is the one socket option `tokio::net` does not offer - `TcpStream::set_nodelay`
-# is tokio's own and `remote::tuned` uses it. Not a new crate in any sense that costs anything:
-# `tokio` itself builds this for the `net` feature, and `reqwest` for its own reasons, so what the
-# line buys is the right to call one method on a socket this workspace already owns
+# for TCP keepalive, which `tokio::net` doesn't expose (`remote::tuned` uses tokio's own
+# `set_nodelay`). It adds nothing to the build: `tokio` (for `net`) and `reqwest` already depend
+# on it
 socket2 = "0.6.3"
 tokio = { version = "1.47" }
-# what the property suites are run by, and it gives them two things: a great many
-# generated cases and, the half that matters, a shrinker: a property that fails comes back as the
-# smallest input that still fails it rather than as whatever random string found it.
+# runs the property tests: it generates many cases and, when one fails, shrinks it to the smallest
+# failing input.
 #
-# note: dev-only, so nothing that depends on a crate in here ever builds it - cargo does not build
-# the dev-dependencies of a dependency. It does stay in the published manifest, which is the part
-# `nachalnik-utils` gets out of by being a path dependency with no version; a versioned
-# dev-dependency is recorded there and simply never reached.
+# note: a dev-dependency, so crates that depend on ours never build it. It does appear in the
+# published manifest; `nachalnik-utils` avoids that by being an unversioned path dependency.
 #
 # note: `default-features = false` with `std` drops `fork` and `timeout`, which run each case in a
-# subprocess so that a panicking or hanging case cannot take the harness with it. That is eleven
-# crates - `rusty-fork`, `tempfile`, `rustix` and the rest - to guard against something that would
-# fail the run anyway, and a property here is a pure function over a string.
+# subprocess so a panicking or hanging case can't kill the test harness. That costs eleven crates
+# (`rusty-fork`, `tempfile`, `rustix` and others), and our properties are pure functions over
+# strings, so a failure would fail the run anyway.
 proptest = { version = "1", default-features = false, features = ["std"] }
-# `rustls-no-provider` rather than `default-tls`: in reqwest 0.13 that name resolves to rustls
-# with `aws-lc-rs`, which is 1,659 C files and, on some platforms, cmake and NASM to build them.
-# The provider is named below instead, which is what `no-provider` means.
+# `rustls-no-provider` rather than `default-tls`: in reqwest 0.13 the default uses rustls with
+# `aws-lc-rs`, which is 1,659 C files and on some platforms needs cmake and NASM. We pick the
+# provider ourselves below.
 #
-# note: no `charset`, which makes `text()` a lossy UTF-8 read rather than a decode honouring the
-# `Content-Type`. Nothing here notices: the three bodies it reads are two error payloads and one
-# whole answer, all JSON, and JSON and SSE are both required to be UTF-8 - the streaming path
-# takes chunks and never calls `text()`. The feature is additive, so a caller who wants the
-# decode turns it on from their own manifest; leaving it off here spares the ones who do not
-# `encoding_rs` and the SIMD crates behind it.
+# note: no `charset`, so `text()` is a lossy UTF-8 read instead of honouring the `Content-Type`.
+# That's fine here: the only bodies read with it are two error payloads and one full answer, all
+# JSON, and both JSON and SSE must be UTF-8 (streaming reads chunks and never calls `text()`).
+# Callers who want charset decoding can enable the feature themselves; leaving it off spares
+# everyone else `encoding_rs` and its SIMD dependencies.
 reqwest = { version = "0.13.2", default-features = false, features = ["http2", "json", "rustls-no-provider"] }
-# the cryptography under the TLS, chosen here because reqwest was told to bring none. `ring` is
-# 17 C and assembly files, wants no cmake and no NASM, and is what rustls shipped with for years.
-# No production Rust TLS stack is free of C altogether - the pure-Rust providers are unaudited,
-# which is not a trade this workspace should make - so this is the smallest one rather than none.
+# the crypto provider for rustls, since reqwest is told not to bring one. `ring` is 17 C and
+# assembly files, needs no cmake or NASM, and was rustls's default for years. Every production
+# Rust TLS stack has some C, and the pure-Rust providers are unaudited, so this is the smallest
+# option rather than none.
 #
-# note: whoever builds a client also installs this, since `no-provider` leaves nothing to fall
-# back on. It must stay on the same major as the rustls reqwest itself uses, or the provider goes
-# into one rustls and the requests come out of another.
+# note: code that builds a client must install this provider, since `no-provider` gives no
+# fallback. It must use the same rustls major version as reqwest, or the provider ends up in a
+# different rustls than the one making requests.
 rustls = { version = "0.23.27", default-features = false, features = ["ring", "std", "tls12"] }

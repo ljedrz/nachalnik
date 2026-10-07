@@ -1,12 +1,10 @@
-# What `cargo nextest run` is held to here. Nextest runs every test as a process of its own, every
-# suite's side by side - see `kamchatka/tests/common/mod.rs` for what that asks of a test's scratch
-# directory.
+# Settings for `cargo nextest run`. Nextest runs each test as its own process, with all suites in
+# parallel; see `kamchatka/tests/common/mod.rs` for what that means for test scratch directories.
 
-# The suites wait more than they compute - on a socket, a child, a deadline - so a runner's four
-# cores are kept busy by more than four tests at once. Measured on four cores: one test a core took
-# 82 seconds, sixteen took 35, and more than that bought nothing, since the run is then as long as
-# its slowest test. And every failure rather than the first, because a red run that names one test
-# sends somebody to fix it and push again to find out about the next.
+# The tests mostly wait (on sockets, child processes, timeouts), so four cores can run more than
+# four at once. Measured on four cores: one test per core took 82 seconds, sixteen took 35, and
+# more made no difference, since the run can't be shorter than its slowest test. All failures are
+# reported, not just the first, so one CI run shows everything that needs fixing.
 [profile.ci]
 test-threads = 16
 fail-fast = false
