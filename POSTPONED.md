@@ -1,221 +1,216 @@
 # postponed, on purpose
 
-Known and decided against *for now*, so that nobody spends an afternoon rediscovering them.
-Each entry says what it is, why it waits, and what would unblock it.
+Known issues and ideas deliberately left for later, written down so nobody wastes time rediscovering
+them. Each entry says what it is, why it waits, and what would unblock it.
 
 ---
 
-- **`nachalnik-mcp` carrying a picture rather than naming one.** The bridge answers an image block
-  with a sentence naming it. Carrying it as a `Content::Blob` is a few lines, but only Anthropic's
-  dialect accepts a picture in a *tool result*; the other two would send the same sentence while
-  the budget counted megabytes of base64 it cannot price. What would unblock it is a decision about
-  **where a tool's picture reaches the model** - hoisted into a message that accepts one, by a
-  `Projector` or a provider - and nothing about the bridge changes until that is made.
+- **`nachalnik-mcp` passing images through instead of describing them.** The bridge replaces an
+  image from an MCP tool with a sentence naming it. Passing it on as a `Content::Blob` would take a
+  few lines, but only Anthropic's API accepts images in a *tool result*; the other two would still
+  send the sentence, while the budget counted megabytes of base64 it can't price. Unblocked by a
+  decision on **where a tool's image should reach the model**: moved into a message type that
+  accepts images, by a `Projector` or a provider. The bridge doesn't change until that's decided.
 
-- **Serving a client older than the session, which is half of what `protocol::VERSION` promises.**
-  The rule on the constant is that a session refuses a version it does not know and serves an older
-  one it does. The first half is machinery - an attach naming a later version is refused, by that
-  name, before anything else in the message is read. The second is not: `watermark` checks the
-  number and does not keep it, so the moment `VERSION` is `2` nothing in a connection knows it is
-  talking to a version-1 client and nothing can stop it being sent a version-2 message.
+- **Serving clients older than the session, half of what `protocol::VERSION` promises.** The rule
+  is that a session refuses protocol versions it doesn't know and serves older ones it does. The
+  first half works: an attach with a newer version is refused, by version, before the rest of the
+  message is read. The second half doesn't: `watermark` checks the version but doesn't store it, so
+  once `VERSION` is `2`, nothing knows a connection is a version-1 client, and nothing stops it
+  being sent version-2 messages.
 
-  Nothing is needed while this is `1`. When it moves, the number has to be kept per connection and
-  every write in `remote::server::connection::attend` has to ask about it, which needs each message
-  variant to declare the version it arrived in. Meanwhile `Message::Unknown` lets a client survive
-  a message it does not know, and `Attached::version` tells it what the other end speaks.
+  Nothing is needed while the version is `1`. When it changes, each connection has to remember its
+  version, and every write in `remote::server::connection::attend` has to check it, which means each
+  message type must declare the version it was added in. Meanwhile, `Message::Unknown` lets clients
+  survive messages they don't know, and `Attached::version` tells them what the server speaks.
 
-- **An `undo` across a change of counter.** `set_counter`, `recalibrate` and `recount` re-price
-  the context and take no checkpoint. An `undo` after one that moved a figure puts back what the old
-  counter gave, with no `context.recounted` to say so, and lists every item it re-priced as changed
-  though nothing in the item did; a recount that moves no figure copies nothing, and `undo` does not
-  see it. Whether a recount is an operation `undo` should see - and so a checkpoint, and the undo
-  history it costs - or a fact that `undo` should re-apply on the way back is the decision.
+- **`undo` after the token counter changes.** `set_counter`, `recalibrate` and `recount` re-price
+  the context without creating a checkpoint. An `undo` after one that changed a figure restores the
+  old counter's figures, with no `context.recounted` event saying so, and reports every re-priced
+  item as changed even though nothing in it changed; a recount that changes nothing copies nothing,
+  and `undo` doesn't notice it. The open question is whether a recount should be an undoable
+  operation (with a checkpoint and the undo history it uses) or something `undo` re-applies.
 
-- **Screenshots in the guide.** `kamchatka`'s readme shows the chat and context tabs, from
-  `kamchatka/assets/`; the guide still carries no pictures, only prose about what each screen
-  holds. A capture pasted in as text is a copy of one session's output: the program's words move
-  on and the copy does not, and one edited by hand is a picture of no session at all. What
-  unblocks it is real screenshots, saved as images beside those two, where the guide's prose now
-  says what a screen holds.
+- **Screenshots in the guide.** `kamchatka`'s README shows the chat and context tabs from
+  `kamchatka/assets/`, but the guide only describes the screens in text. A screen pasted as text is
+  a copy of one session that goes out of date as the program changes, and one edited by hand shows
+  no real session at all. Unblocked by real screenshots, saved as images next to those two, where
+  the guide currently describes a screen.
 
-- **An `--allow-server` for a server this run does not start.** A server rule naming no server
-  is refused, allow and deny alike, as a rule about a domain no tool declares already is. A settings
-  file that allows a server is refused with it when the command line's `--mcp` replaces the file's
-  list and leaves that server out. An unmatched allow grants nothing, so refusing only unmatched
-  denies is the other reading, at the cost of the two rules no longer being held alike.
+- **`--allow-server` for a server this run doesn't start.** A server rule naming a server that isn't
+  running is refused, for both allow and deny, just as rules for a domain no tool uses are. A
+  settings file that allows a server is refused along with it when `--mcp` on the command line
+  replaces the file's server list and leaves that server out. An unused allow grants nothing, so
+  the alternative is to refuse only unused denies, at the cost of treating the two differently.
 
-- **A reference's text is copied on every projection.** `LinearProjector` sends a reference as
-  `{label}:\n{text}`, which builds a new string from the item's content each time the context is
-  projected - the largest cost in a projection, and the one place it copies content the rest of the
-  runtime shares. Not copying means sending the label as a block of its own, which changes what goes
-  out in both dialects.
+- **Reference text is copied on every projection.** `LinearProjector` sends a reference as
+  `{label}:\n{text}`, building a new string from the item's content every time the context is
+  projected. That's the largest cost in a projection, and the one place content shared everywhere
+  else gets copied. Avoiding it means sending the label as a separate block, which changes what is
+  sent in every API.
 
-- **A generation counter for the context.** Several things project the same context twice with
-  nothing between them to say it has not changed: `maybe_compact` and then `build_request`, and a
-  client's frame, which builds `Going` and then asks for `Kernel::budget`. Reusing the first
-  projection is unsound while the context can change in between, and nothing says whether it did.
-  A number the context bumps on every change would make every one of them a cache, and it is a core
-  addition for clients' sake - which is the reason it waits.
+- **A version counter for the context.** Several things project the same context twice in a row
+  with nothing to say it hasn't changed: `maybe_compact` and then `build_request`, and a client's
+  frame, which builds `Going` and then calls `Kernel::budget`. Reusing the first projection isn't
+  safe while the context can change in between. A number the context increments on every change
+  would make all of these cacheable, but it's an addition to the core only for clients' benefit,
+  which is why it waits.
 
-- **The model's `undo` in the person's undo history.** The `context` tool's own undo of a move over
-  several states takes one kernel checkpoint for each state and note it puts items back into,
-  because `set_state` moves items into one state at a time and the kernel has no operation that
-  moves several at once - so walking back one change of the model's can cost the person several
-  undos. What would unblock it is an operation in the core that moves items into several states
-  at once.
+- **The model's `undo` in the person's undo history.** When the `context` tool undoes a change that
+  moved items into several states, it creates one kernel checkpoint per state and note, because
+  `set_state` moves items into one state at a time and the kernel has no operation that moves them
+  into several at once. So undoing one change by the model can take the person several undos.
+  Unblocked by a core operation that moves items into several states at once.
 
-- **The model's undo history after a resume.** What `context`'s `undo` walks is kept by the process
-  and not in the snapshot, so a resumed session has nothing of the model's to walk back, and a
-  change it made before the restart comes back only by `restore`; the refusal says so. Writing the
-  journal into the snapshot is the change, and an entry read back from one meets the rule a live
-  one does: an item that no longer looks the way the entry left it is left alone.
+- **The model's undo history after a resume.** The history `context`'s `undo` uses is kept in memory,
+  not in the snapshot, so a resumed session has nothing for the model to undo, and a change made
+  before the restart can only be reverted with `restore`; the refusal says so. The fix is writing
+  the history into the snapshot. Entries read back from it would follow the same rule as live ones:
+  an item that has changed since the entry was recorded is left alone.
 
-- **`log` stops at the resume.** A resumed session's log begins at `session.resumed`, so `log read`
-  cannot answer for anything before the restart, though the record written beside the snapshot holds
-  all of it; `App::recall` reads that file for `context.replaced`, and `-r` for the model the
-  session was talking to, and nothing reads it for anything else. Reaching further means the tool
-  reading a file the kernel does not hold, and every answer saying which of its records came from
-  there.
+- **`log` stops at the resume.** A resumed session's log starts at `session.resumed`, so `log read`
+  can't show anything before the restart, even though the record saved next to the snapshot has all
+  of it. `App::recall` reads that file for `context.replaced`, and `-r` for the session's model, but
+  nothing else uses it. Going further means the tool reading a file the kernel doesn't hold, with
+  every answer saying which records came from it.
 
-- **Two runs of the live suite at once.** `kamchatka`'s `live.rs` works in `live-{name}`
-  directories under the target directory, so two runs against one `CARGO_TARGET_DIR` at the same
-  moment clear each other's files. `common::scratch` keeps the tests of one run apart - one test
-  binary at a time under `cargo test`, a directory per test under nextest - and two runs share
-  every name either way; a target directory per run, or a run's identifier in the name, is the way
-  round it if concurrent runs are wanted.
+- **Two runs of the live tests at once.** `kamchatka`'s `live.rs` uses `live-{name}` directories
+  under the target directory, so two simultaneous runs with the same `CARGO_TARGET_DIR` delete each
+  other's files. `common::scratch` keeps tests within one run apart (one test binary at a time under
+  `cargo test`, one directory per test under nextest), but two runs share every name either way. A
+  target directory per run, or a run id in the directory name, would fix it if concurrent runs are
+  needed.
 
-- **No bound on an MCP server's first answers.** The handshake, `tools/list` and `resources/read`
-  wait as long as the server takes, and a first `npx -y` can legitimately take minutes to download
-  its package. A bound has to be long enough for that and short enough to mean something, and what
-  a person sees while it runs is part of the same decision. Each server is named on standard error
-  before it starts, and `--deadline` holds a headless run to the person's own bound; a session with
-  a screen waits.
+- **No time limit on an MCP server's startup.** The handshake, `tools/list` and `resources/read`
+  wait as long as the server takes, and the first `npx -y` can legitimately take minutes to
+  download its package. A limit has to be long enough for that and short enough to be useful, and
+  what a person sees while waiting is part of the same decision. Each server is named on stderr
+  before it starts, and `--deadline` limits a headless run; a session with a screen just waits.
 
-- **Schemas and names Gemini refuses.** Google's dialect rejects some JSON Schema an MCP server may
-  send - `$ref`, `additionalProperties` - and a tool name that starts with a digit, so a server
-  that works through the OpenAI dialect can fail a request through Google's. Checking needs a Google
-  key; the fix is a translation of the schema on the way out, or a refusal at install that says why.
+- **Schemas and names Gemini rejects.** Google's API rejects some JSON Schema features an MCP server
+  may use (`$ref`, `additionalProperties`) and tool names starting with a digit, so a server that
+  works with the OpenAI API can fail with Google's. Checking needs a Google key; the fix is either
+  translating the schema before sending, or refusing at install time with an explanation.
 
-- **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused, and told to write
-  `b.txt*`, because a domain, a tool's id and a file name are all bare words. Reading a bare word
-  no domain claims as a path rule would make a typo like `--deny contextt` a rule about a file that
-  quietly matches nothing, so it waits for a spelling that is unambiguous either way.
+- **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused with a suggestion to
+  write `b.txt*`, because a domain, a tool id and a file name are all bare words. Treating a bare
+  word that isn't a domain as a path rule would turn a typo like `--deny contextt` into a rule about
+  a file that silently matches nothing, so this waits for a syntax that's unambiguous.
 
-- **`fs write` makes no directories.** A write into a directory that is not there is refused and
-  names the directory, and a model with `exec` refused has no way to make one. Making the missing
-  parents beneath the reach is a change to what `fs:write` can do, and so a question for the
-  permission table rather than for the tool.
+- **`fs write` doesn't create directories.** Writing into a directory that doesn't exist is refused
+  with the directory's name, and a model without `exec` can't create it. Creating missing parent
+  directories inside the allowed paths would change what `fs:write` allows, so it's a question for
+  the permission rules, not the tool.
 
-- **OpenRouter's `reasoning_details` is neither read nor sent back.** A model whose thinking is
-  carried only there loses it, and one that signs its thinking across tool-call turns gets its
-  turns back without it. Nothing tested here needed it; a model that does, and a live test that
-  shows the difference, would say whether it belongs in the dialect.
+- **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
+  it, and one that signs its reasoning across tool-call turns gets its turns back without it.
+  Nothing tested so far needed it; a model that does, with a live test showing the difference,
+  would show whether the OpenAI client should support it.
 
-- **A heuristic refusal under `--no-sandbox` is described as a person's.** With no confinement,
-  `net:reach` is judged from a command's name; a command that trips it under `--on-ask deny` is
-  refused as though somebody had been asked, and the model is told a different approach may be
-  allowed, though the rule will refuse it for the rest of the session. Saying which subject was
-  asked about means letting a policy name it in `PermissionPolicy::why`, a `nachalnik` change.
+- **Under `--no-sandbox`, a refusal by name-matching is presented as a person's decision.** Without
+  the sandbox, `net:reach` is judged from the command's name. A command refused that way under
+  `--on-ask deny` is reported as if someone had been asked, and the model is told another approach
+  might be allowed, even though the rule will keep refusing for the rest of the session. Saying
+  which rule applied means letting a policy name it in `PermissionPolicy::why`, a change to
+  `nachalnik`.
 
-- **A compressed answer is refused, not read.** An endpoint that compresses its body despite not
-  being asked gets a sentence naming the encoding. Reading it means reqwest's `gzip` feature, one
-  more dependency in a crate that rations them.
+- **Compressed responses are refused, not decompressed.** An endpoint that compresses its response
+  without being asked to gets an error naming the encoding. Supporting it means reqwest's `gzip`
+  feature, one more dependency in a crate that keeps them to a minimum.
 
-- **A `y` typed at `--connect` before its question arrives.** At a terminal it goes to the model as
-  a message, and the question waits for the next one. A pipe does not meet this, because a piped
-  client reads its next line only once the turn is over or a question is open. Holding a bare
-  letter at a terminal until a question comes, and dropping it if none does, is the change, and
-  it makes `y` mean something different depending on when it was typed.
+- **A `y` typed into `--connect` before its question arrives.** At a terminal it's sent to the model
+  as a message, and the question waits for the next one. Piped input doesn't have this problem,
+  because a piped client only reads its next line once the turn is over or a question is open.
+  The fix would be holding a lone letter typed at a terminal until a question arrives and dropping
+  it if none does, but then `y` means different things depending on when it was typed.
 
-- **A record that shows it has not been edited.** Each record could carry a hash of the one before
-  it, so that `--check` could say a log is unedited from its first record to its last. That says
-  "unedited", not "authenticated": whoever edits a record can recompute every hash after it, and a
-  key to sign with is something this workspace does not hold. It is cheap to add on top of `FORMAT`
-  and `Record::format`, because the field is additive, and it waits because it is worth less than
-  what `--check` already reads: a reader that is not this program, and a record that says what went
-  wrong with it.
+- **A record that proves it hasn't been edited.** Each record could include a hash of the previous
+  one, so `--check` could confirm a log is unedited from start to finish. That proves "unedited",
+  not "authentic": whoever edits a record can recompute all the hashes after it, and this workspace
+  has no signing key. It would be cheap to add on top of `FORMAT` and `Record::format`, since the
+  field would be additive; it waits because it's worth less than what `--check` already does: work
+  for readers other than this program, and records that say what went wrong.
 
-- **A session's roots are resolved on every check.** `Reach` canonicalizes the working directory
-  and every `--sandbox-allow` and `--sandbox-read` root each time it judges a path, which a `grep`
-  over a large tree pays per file and per link. Resolving them once would move when a root is read
-  from when it is used to when the session starts, so a root that appears, moves or is relinked
-  during a session would be judged by what it was; that is a change to the boundary, not a speed-up.
+- **A session's root directories are resolved on every check.** `Reach` resolves the working
+  directory and every `--sandbox-allow` and `--sandbox-read` root each time it checks a path, which
+  a `grep` over a large tree pays for every file and symlink. Resolving them once at startup would
+  mean a root that appears, moves or is relinked during the session is judged by its old location;
+  that changes the boundary, so it isn't just an optimisation.
 
-- **The first undo of a fresh session takes its setup back.** `--system` and `-f` are pushed onto
-  the context like anything else, so each is an undo step: `/undo` on a session nobody has typed
-  into yet takes the system instruction out of the context, and a second takes the attached file,
-  each said only as `undone`. A resumed session says there is nothing to undo, because
-  `Kernel::resume` restores its items without a checkpoint. A host cannot do the same for its own
-  setup - the bounded history cannot be read from outside, and an undo followed by a redo is two
-  records for nothing - so what would unblock it is a kernel operation that starts the undo
-  history afresh, which is a core addition for a client's sake.
+- **The first undo in a fresh session removes its setup.** `--system` and `-f` add items to the
+  context like anything else, so each is an undo step: `/undo` in a session nobody has typed in yet
+  removes the system instruction, and a second removes the attached file, each only reported as
+  `undone`. A resumed session says there's nothing to undo, because `Kernel::resume` restores its
+  items without a checkpoint. A host can't do the same for its own setup (the undo history can't be
+  read from outside, and an undo followed by a redo leaves two pointless records), so this needs a
+  kernel operation that clears the undo history, a core addition only for a client's benefit.
 
-- **An output limit that does not know the window.** A call's output is cut at a fixed number of
-  bytes - 32,000 for `fs:read` - whatever the model's context, and the compactor never takes the
-  turn in progress. Against a 14,000-token window one read is over 8,000 tokens: a turn of two
-  reads fills the context past where the full notice leaves any room, the model's next call
-  takes it over the limit, the request is refused, and a headless run passes every message
-  after it over. Either half would settle it, and both change what the program does: limits that
-  scale to a share of the window, or the compactor taking what the model has already been shown
-  in this turn once the request would otherwise be refused.
+- **Output limits that ignore the context window.** A call's output is cut at a fixed number of
+  bytes (32,000 for `fs:read`) regardless of the model's context size, and the compactor never
+  touches the turn in progress. With a 14,000-token window, one read is over 8,000 tokens: two reads
+  in a turn fill the context past the point where the full-context notice leaves any room, the
+  model's next call goes over the limit, the request is refused, and a headless run skips every
+  message after it. Either of two changes would fix it, and both change behaviour: limits that scale
+  with the window, or letting the compactor drop what the model has already seen in this turn when
+  the request would otherwise be refused.
 
-- **`/params` showing a parameter's type and range.** It shows the default and the maximum where
-  the listing publishes them, and nothing else, because no endpoint publishes more. A table kept in
-  this workspace would be somebody's documentation as of the day it was copied. What would unblock
-  it is an endpoint that publishes them, read as `Published` reads the rest. Under `--gemini` it
-  says nothing at all, since that listing's figures go under `generationConfig`, and showing them
-  needs `/params` to speak about a key inside a parameter.
+- **`/params` showing a parameter's type and range.** It shows the default and maximum where the
+  model listing publishes them, and nothing else, because no endpoint publishes more. A table kept
+  in this workspace would just be someone's documentation as of the day it was copied. Unblocked by
+  an endpoint that publishes them, read the way `Published` reads the rest. Under `--gemini` it
+  shows nothing, since that listing puts its figures under `generationConfig`, and showing them
+  needs `/params` to handle keys inside a parameter.
 
-- **A call whose arguments did not parse goes back to the model as `{"_unparsed": "..."}`.** That is
-  the shape `nachalnik-providers` keeps such a call in, and `to_wire` sends it back as written
-  there. A model can copy it and wrap every later call the same way; `kamchatka` reads a wrapper
-  whose text parses as the call inside it, which ends that loop without touching the wire. Sending
-  back the text the model wrote would be the honest echo, and some endpoints refuse it, so one
-  broken call would refuse every request after it; sending `{}` is valid everywhere and leaves the
-  account of what arrived to the tool result, which already quotes it. What would settle it is a
-  decision about what the history should claim the model said, and a live run of the choice on the
-  endpoints that are strict about it.
+- **A tool call with unparseable arguments goes back to the model as `{"_unparsed": "..."}`.**
+  That's how `nachalnik-providers` stores such a call, and `to_wire` sends it back that way. A model
+  can copy it and wrap every later call the same way; `kamchatka` accepts a wrapper whose text parses
+  as the call inside it, which stops that without changing what's sent. Sending back exactly what the
+  model wrote would be more accurate, but some endpoints reject it, so one broken call would make
+  every later request fail; sending `{}` works everywhere and leaves it to the tool result, which
+  already quotes what arrived. Unblocked by a decision on what the history should say the model
+  sent, and a live test of that choice on the strict endpoints.
 
-- **A turn refused four times with 429 is given up on.** With no `Retry-After` the waits are the
-  doubling, two, four and eight seconds, and then the turn fails and a headless run ends with `1`,
-  to be carried on with `-r`. A rate limit shared by several sessions lasts longer. Waiting longer
-  is a trade against a person at the screen, who would rather be told; what would settle it is
-  whether a headless run should wait out a rate limit its own `--deadline` bounds anyway.
+- **A turn that gets 429 four times is abandoned.** Without a `Retry-After`, the waits double (two,
+  four and eight seconds), then the turn fails and a headless run exits with `1`, to be resumed with
+  `-r`. A rate limit shared by several sessions lasts longer. Waiting longer is bad for someone
+  watching the screen, who'd rather be told; the open question is whether a headless run should
+  wait out rate limits, since its `--deadline` limits the total time anyway.
 
-- **The relays hold a browser that sends no `Sec-Fetch-Site` only to its `Origin`.** An image or a
-  no-cors fetch from another site carries no `Origin`, and with fetch metadata the relay refuses
-  it; a browser old enough to send neither gets through to `GET /events` and takes the session
-  from the tab that had it. The page refuses to be framed, which closes the frame; closing the
-  rest for every browser is a token in the page's address that `/events` asks for, which changes
-  how the page is opened.
+- **The web page relies on `Origin` for browsers that don't send `Sec-Fetch-Site`.** An image or a
+  no-cors fetch from another site has no `Origin`, and the page refuses it based on fetch metadata;
+  but a browser old enough to send neither gets through to `GET /events` and takes over the session
+  from the tab that had it. The page can't be framed, which covers frames; covering the rest for
+  every browser would need a token in the page's URL that `/events` checks, which changes how the
+  page is opened.
 
-- **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$`, or
-  a `SIGTSTP`, leaves the call reading pipes nobody will write to, and a headless run sits out its
-  `--deadline`, which ends it and the stopped process cleanly. Waiting with `WUNTRACED` would see
-  the stop; whether the answer then continues the command or kills it, and whether a job the
-  command put in the background stopping counts too, is the decision.
+- **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$` or
+  `SIGTSTP` leaves the call waiting for output that never comes, and a headless run waits until its
+  `--deadline`, which then ends it and the stopped process cleanly. Waiting with `WUNTRACED` would
+  detect the stop; what to do then (continue or kill the command, and whether a background job
+  stopping counts too) is the open question.
 
-- **A malformed answer to an MCP call is waited past.** A response with the call's id and neither
-  a `result` nor an `error`, or a result under another id, is dropped by `rmcp`, and the call waits
-  for an answer that is not coming until an interrupt or `--deadline` ends it - as a call to a
-  server that never answers does. Reporting it means `rmcp` handing the malformed response on,
-  which is its change; a bound on how long a call waits is the other way, and is the same decision
-  as the bound on a server's first answers above.
+- **A malformed MCP response leaves the call waiting.** A response with the call's id but neither a
+  `result` nor an `error`, or a result with a different id, is dropped by `rmcp`, and the call waits
+  for an answer that never comes until an interrupt or `--deadline` ends it, just as with a server
+  that never answers. Reporting it needs `rmcp` to pass malformed responses on, which is up to
+  `rmcp`; a time limit on calls is the alternative, and the same decision as the startup time limit
+  above.
 
-- **An attachment named as a picture goes out as one whatever its bytes are.** `attach.rs` names a
-  media type by the extension alone, so a `.png` holding text goes out as `image/png`; the endpoint
-  refuses the request - a 502, or `Invalid image data-url` - and every request after it while the
-  item stays in, and says so in words that name no item. An empty one is said when it goes in,
-  with the `/exclude` that takes it back out; a full one of the wrong kind is not, since only its
-  bytes could tell. Checking a picture's first bytes against its type would keep the claim from
-  being false, and refuses files that are attached today, which is why it waits.
+- **An attachment named as an image is sent as one, whatever it contains.** `attach.rs` picks the
+  media type from the file extension alone, so a `.png` containing text is sent as `image/png`; the
+  endpoint then rejects the request (a 502, or `Invalid image data-url`) and every later one while
+  the item is in the context, with an error that doesn't say which item. An empty file is reported
+  when it's attached, with the `/exclude` to remove it; a non-empty file of the wrong type isn't,
+  since only its contents would show it. Checking an image's first bytes against its type would
+  prevent this, but would also reject files that can be attached today, which is why it waits.
 
-- **The Anthropic dialect and an edited history.** Two things the `nachalnik_providers::anthropic`
-  docs describe, with the models they apply to, and that neither code nor test handles: some models
-  refuse a signed thinking block sent back after anything ahead of it was edited - which pruning,
-  rewriting and eliding are - and an instruction added mid-session is joined into `system`, so the
-  request it first goes out with writes the whole cache again. The ways out are a retry on one
-  wording of a 400 or a beta header no parameter can set for the first, and a `role: "system"`
-  message only some models take, in some positions, for the second. OpenRouter settles neither -
-  it rewrites the message, and is not the account the thinking is checked against - so what would
-  unblock them is an Anthropic account, to see each refused by the real API and then not.
+- **The Anthropic client and edited history.** Two problems described in the
+  `nachalnik_providers::anthropic` docs, with the models they affect, that neither the code nor the
+  tests handle. Some models reject a signed thinking block sent back after anything before it was
+  edited (which pruning, rewriting and eliding all do). And an instruction added mid-session is
+  merged into `system`, so the first request it goes out with rewrites the whole prompt cache. The
+  possible fixes are retrying on one specific 400 error message, or a beta header no parameter can
+  set, for the first; and a `role: "system"` message, which only some models accept and only in some
+  positions, for the second. OpenRouter doesn't settle either, since it rewrites the message and
+  isn't what checks the thinking signature. Unblocked by an Anthropic account, to see each rejected
+  by the real API and then fixed.
