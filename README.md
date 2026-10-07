@@ -118,7 +118,7 @@ describes, which is what an append-only log of typed events is for.
 | [AGENTS.md](AGENTS.md) | an introduction for anyone, person or model, about to change this workspace: what is being built, what must not break, and the design decisions made so far. |
 | [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there — break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, how to run a sweep, a live run or a soak, the house conventions in full, and the gotchas. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, how to run a sweep, a live run or a soak, the conventions in full, and known pitfalls. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
 | [POSTPONED.md](POSTPONED.md) | known issues and ideas deliberately left for later, each with what would unblock it. |
 
