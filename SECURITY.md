@@ -187,22 +187,23 @@ what stands in the way, and what does not.
   permission question is the only thing in the way.
 - **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
   reaching the machine as the person who started it. `--serve` binds loopback only and makes its
-  socket `0600`, and there is no authentication beyond that. `--web` serves a page for the
-  session, also on loopback only and without authentication; whoever reaches the page drives the
-  session like the person at the keyboard. From another machine, use a tunnel that authenticates.
-  Other web pages open in a browser on the same machine are refused: the page only accepts
-  same-origin JSON requests addressed to an IP address or `localhost`. A client may answer the permission questions, so the session's own commands are kept
-  out too: a port the session or its page is served on is closed to every command confined while it
-  is. A socket file is reachable
-  by every confined command below Linux 7.1, and from 7.1 by one that may write where it is, so a
-  connection is refused when the peer is in the session of a command this process confined - each
-  runs in one of its own - which covers anything it left running. What gets through is a process a
-  command started under a `setsid` of its own, the `gateway` example's page (a separate process, so
-  it can't close its port to the session's commands), and any *other* served session on the
-  machine: a session closes only the ports it serves itself, and a connection
-  carries no pid, so one process's confined command is a client like any other to a session in
-  another. Its addresses belong to whoever started that one. A command allowed the network can reach
-  all three.
+  socket `0600`, and there is no authentication beyond that. `--web` serves a page for the session,
+  without authentication; whoever reaches the page drives the session like the person at the
+  keyboard. It listens on loopback, or on an IP address in a private range, in which case every
+  device on that network can drive and read the session, and kamchatka warns about it at startup and
+  in each session. Host names, wildcards and public addresses are refused. From further away, use a
+  tunnel that authenticates. Other web pages open in a browser on the same machine are refused: the
+  page only accepts same-origin JSON requests addressed to an IP address or `localhost`. A client
+  may answer the permission questions, so the session's own commands are kept out too: a port the
+  session or its page is served on is closed to every command confined while it is. A socket file is
+  reachable by every confined command below Linux 7.1, and from 7.1 by one that may write where it
+  is, so a connection is refused when the peer is in the session of a command this process confined
+  - each runs in one of its own - which covers anything it left running. What gets through is a
+  process a command started under a `setsid` of its own, the `gateway` example's page (a separate
+  process, so it can't close its port to the session's commands), and any *other* served session on
+  the machine: a session closes only the ports it serves itself, and a connection carries no pid, so
+  one process's confined command is a client like any other to a session in another. Its addresses
+  belong to whoever started that one. A command allowed the network can reach all three.
 - **An MCP server.** It is a program the person chose, and it runs unconfined with the person's
   environment and everything the person can read. What `kamchatka` controls is what its answers do:
   a server's tools are judged under the server's name, and what it returns reaches the context like

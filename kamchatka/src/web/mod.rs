@@ -27,8 +27,11 @@
 //! # Security
 //!
 //! There is no authentication or encryption: anyone who can reach the page can drive the session,
-//! including its `shell` tool. So [`Web::bind`] only listens on loopback, like `--serve`. To reach
-//! the page from another machine, use a tunnel that authenticates, such as `ssh -L`.
+//! including its `shell` tool. So [`Web::bind`] only listens on loopback, or on an IP address in a
+//! private range (see [`Reach`]), for a phone on the same network. In the second case
+//! [`Web::exposure`] returns a warning to show the user. Wildcards, public addresses and host names
+//! are refused. From further away, use a tunnel that authenticates, such as `ssh -L`. `--serve`
+//! stays loopback-only: its clients are programs, which can use a tunnel.
 //!
 //! Requests from other web pages open in the same browser are refused by `foreign`. The page can
 //! answer permission questions, so its port is closed to the commands this process confines (see
@@ -94,6 +97,29 @@ pub struct Web {
     session: String,
     /// The listening port, closed to confined commands until this is dropped.
     port: u16,
+    /// Who can reach the page.
+    reach: Reach,
+}
+
+/// Who can reach a page, given the address it listens on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Reach {
+    /// Only this machine (a loopback address).
+    Machine,
+    /// Any device on the local network (an address in 10/8, 172.16/12, 192.168/16 or fc00::/7).
+    Network,
+}
+
+/// Classifies an address, or returns `None` if the page may not listen on it. IPv4-mapped IPv6
+/// addresses are treated as the IPv4 address they contain.
+fn reach(ip: std::net::IpAddr) -> Option<Reach> {
+    match ip.to_canonical() {
+        ip if ip.is_loopback() => Some(Reach::Machine),
+        std::net::IpAddr::V4(v4) if v4.is_private() => Some(Reach::Network),
+        std::net::IpAddr::V6(v6) if v6.is_unique_local() => Some(Reach::Network),
+        _ => None,
+    }
 }
 
 impl Web {
@@ -102,22 +128,46 @@ impl Web {
     ///
     /// # Errors
     ///
-    /// If `session` is not a valid address, `listen` is not a loopback address, or listening fails.
+    /// If `session` is not a valid address; if `listen` is not a loopback address, or is not a
+    /// private-network IP address typed as such; or if listening fails.
     pub async fn bind(listen: &str, session: &str) -> Result<Self, String> {
         // check the session address once, instead of on every browser connection
         protocol::address(session)?;
-        let address = tokio::net::lookup_host(listen)
-            .await
-            .map_err(|e| format!("could not resolve `{listen}`: {e}"))?
-            .next()
-            .ok_or_else(|| format!("could not resolve `{listen}`"))?;
-        if !address.ip().is_loopback() {
-            return Err(format!(
-                "{address} is not a loopback address. The page has no authentication, so it only \
-                 listens on `127.0.0.1:PORT`; to reach it from another machine, use a tunnel such \
-                 as `ssh -L`"
-            ));
-        }
+        let typed = listen.parse::<std::net::SocketAddr>().ok();
+        let address = match typed {
+            Some(address) => address,
+            None => tokio::net::lookup_host(listen)
+                .await
+                .map_err(|e| format!("could not resolve `{listen}`: {e}"))?
+                .next()
+                .ok_or_else(|| format!("could not resolve `{listen}`"))?,
+        };
+        let reach = match reach(address.ip()) {
+            // beyond loopback, only a typed IP address: what a host name resolves to, and which of
+            // its addresses comes first, isn't up to the user
+            reached if typed.is_none() && reached != Some(Reach::Machine) => {
+                return Err(format!(
+                    "`{listen}` is a host name; to listen beyond this machine, give an IP address, \
+                     e.g. `192.168.1.5:8080`"
+                ));
+            }
+            Some(reach) => reach,
+            None if address.ip().is_unspecified() => {
+                return Err(format!(
+                    "{address} would listen on every interface, including public ones. Give a \
+                     specific address: `127.0.0.1:PORT`, or this machine's address on the local \
+                     network"
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "{address} is not a loopback or private-network address. The page has no \
+                     authentication, so it only listens on `127.0.0.1:PORT` or a private address \
+                     (10/8, 172.16/12, 192.168/16, fc00::/7); from further away, use a tunnel such \
+                     as `ssh -L`"
+                ));
+            }
+        };
         let listener = TcpListener::bind(address)
             .await
             .map_err(|e| format!("could not listen on {address}: {e}"))?;
@@ -133,7 +183,26 @@ impl Web {
             listener,
             session: session.to_owned(),
             port,
+            reach,
         })
+    }
+
+    /// Who can reach the page.
+    pub fn reach(&self) -> Reach {
+        self.reach
+    }
+
+    /// A warning to show when the page is reachable from the local network; `None` on loopback.
+    pub fn exposure(&self) -> Option<String> {
+        match self.reach {
+            Reach::Machine => None,
+            Reach::Network => Some(format!(
+                "the page is reachable from the local network at {} with no authentication or \
+                 encryption: any device on the network can control this session, including running \
+                 shell commands as you, and can read its traffic",
+                self.address()
+            )),
+        }
     }
 
     /// The page's URL, e.g. `http://127.0.0.1:8080/`. Read from the socket, so it has the actual
@@ -657,4 +726,44 @@ fn param<'a>(query: &'a str, name: &str) -> Option<&'a str> {
         .filter_map(|pair| pair.split_once('='))
         .find(|(key, _)| *key == name)
         .map(|(_, value)| value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Loopback and private-network addresses are accepted in any notation, and nothing else is.
+    #[test]
+    fn only_loopback_and_private_addresses_are_accepted() {
+        for (address, expected) in [
+            ("127.0.0.1", Some(Reach::Machine)),
+            ("127.8.9.10", Some(Reach::Machine)),
+            ("::1", Some(Reach::Machine)),
+            ("::ffff:127.0.0.1", Some(Reach::Machine)),
+            ("192.168.1.36", Some(Reach::Network)),
+            ("10.0.0.2", Some(Reach::Network)),
+            ("172.16.0.1", Some(Reach::Network)),
+            ("172.31.255.254", Some(Reach::Network)),
+            ("fd73:40c:481a:8::1", Some(Reach::Network)),
+            ("::ffff:192.168.1.36", Some(Reach::Network)),
+            // just outside 172.16/12
+            ("172.15.255.255", None),
+            ("172.32.0.1", None),
+            // wildcards
+            ("0.0.0.0", None),
+            ("::", None),
+            // public, link-local, and carrier-grade NAT
+            ("8.8.8.8", None),
+            ("2001:4860:4860::8888", None),
+            ("169.254.1.1", None),
+            ("fe80::1", None),
+            ("100.64.0.1", None),
+        ] {
+            assert_eq!(
+                reach(address.parse().expect("an address")),
+                expected,
+                "{address}"
+            );
+        }
+    }
 }

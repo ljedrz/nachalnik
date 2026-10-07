@@ -193,8 +193,18 @@ served on a loopback port of its own, which is printed like `--serve`'s. The scr
 where there is a terminal, and a browser that loses the connection reconnects and catches up by
 itself. This is the `webui` feature, which release builds include.
 
-The page has no authentication or encryption, so like `--serve` it only listens on loopback. To
-use it from another machine, such as a phone, tunnel over SSH and open it at `localhost`:
+The page has no authentication or encryption. It listens on loopback, or on this machine's IP
+address on a private network (10/8, 172.16/12, 192.168/16, fc00::/7):
+
+```console
+$ kamchatka --web 192.168.1.5:8080 -m qwen/qwen3-coder
+```
+
+A phone on the same network can then open `http://192.168.1.5:8080/`, but so can every other device
+on it: any of them can control the session, including running shell commands as you, and read its
+traffic. kamchatka warns about this at startup and in each session. Host names, `0.0.0.0` and public
+addresses are refused. On a network you don't trust, tunnel over SSH instead and open the page at
+`localhost`:
 
 ```console
 phone$ ssh -N -L 8080:127.0.0.1:8080 host
@@ -235,7 +245,7 @@ $ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
 $ cargo run --example gateway -- tcp:127.0.0.1:7878 127.0.0.1:8080
 ```
 
-It has the same loopback restriction, but it can't close its port to the session's commands, since
+It has the same address rules, but it can't close its port to the session's commands, since
 those are confined by another process; see [SECURITY.md](../SECURITY.md).
 
 ## 🧩 three dialects, and why the others keep the order

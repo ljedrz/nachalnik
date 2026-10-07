@@ -697,7 +697,7 @@ async fn a_served_port_is_closed_to_commands_while_it_is_served() {
 }
 
 /// The page's port is closed to confined commands while it listens, since the page can answer
-/// permission questions, and non-loopback addresses are refused.
+/// permission questions, and wildcard and public addresses are refused.
 #[cfg(feature = "webui")]
 #[tokio::test]
 async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
@@ -719,13 +719,27 @@ async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
     drop(web);
     assert!(!closed().contains(&port), "{:?}", closed());
 
-    for elsewhere in ["0.0.0.0:0", "[::]:0"] {
+    for (elsewhere, said) in [
+        ("0.0.0.0:0", "every interface"),
+        ("[::]:0", "every interface"),
+        ("8.8.8.8:0", "not a loopback or private-network address"),
+        (
+            "[2001:4860:4860::8888]:0",
+            "not a loopback or private-network address",
+        ),
+    ] {
         let refused = kamchatka::web::Web::bind(elsewhere, "tcp:127.0.0.1:1")
             .await
             .err()
             .unwrap_or_else(|| panic!("{elsewhere} was listened on"));
-        assert!(refused.contains("not a loopback address"), "{refused}");
+        assert!(refused.contains(said), "{elsewhere}: {refused}");
     }
+    // loopback, by name or not, gives no warning
+    let web = kamchatka::web::Web::bind("localhost:0", "tcp:127.0.0.1:1")
+        .await
+        .expect("localhost is fine");
+    assert_eq!(web.reach(), kamchatka::web::Reach::Machine);
+    assert_eq!(web.exposure(), None);
     // an invalid session address is refused before anything listens
     assert!(
         kamchatka::web::Web::bind("127.0.0.1:0", "127.0.0.1:7878")
