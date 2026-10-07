@@ -47,16 +47,16 @@ $ ANTHROPIC_API_KEY=sk-ant-... kamchatka --anthropic -m claude-haiku-4-5 "what d
 **A shell sandboxed by the kernel, not by a list of forbidden commands.** Landlock confines what a
 command can touch: it writes only where you let it and reads nothing private outside the working
 directory. A seccomp filter catches the moment a command reaches for the network, a DNS lookup
-included, and holds it there until it has an answer, which by default is yours: the question comes
-when a command tries, not when it is named. [SECURITY.md](SECURITY.md) says where each of them
+included, and holds it there until it has an answer, which by default is yours: you're asked when
+a command actually tries, not based on what it's called. [SECURITY.md](SECURITY.md) says where each of them
 stops. A released binary reproduces byte for byte and carries a provenance attestation and its own
 dependency list; [its readme](kamchatka/README.md#-installing) says how to check all three.
 
 ![The context tab: five items with what each sends and holds back, and a pinned note opened to show
 why it is there.][shot-context]
 
-`/step` performs one transition of the loop at a time, which is the only way to stand in `Ready`:
-the model has said which calls it wants to make, and none of them has run yet. The model gets
+`/step` runs the loop one transition at a time, so you can stop in `Ready`, where the model has
+said which calls it wants to make and none of them has run yet. The model gets
 tools for its own session too, so it can read what it is carrying, drop what it no longer needs
 and correct what turned out to be wrong — the five transcripts below are what that looks like.
 [Its readme](kamchatka/README.md) has the sandbox, the keys and the rest.
@@ -109,18 +109,18 @@ describes, which is what an append-only log of typed events is for.
 | **[`nachalnik-mcp`](nachalnik-mcp)** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`](nachalnik-eval)** | a benchmark for model introspection. A model commits to a claim about its own context, the harness moves the thing the claim was about on a copy, and the two are compared — so *"why do you think that?"* stops being unfalsifiable. |
 | **[`nachalnik-providers`](nachalnik-providers)** | the three dialects — OpenAI chat-completions (OpenRouter, and local servers such as ollama, vLLM and LM Studio) with OpenAI's Responses API as a mode of it, Google's own and Anthropic's own — streamed, retried and interruptible, behind one trait. The runtime opens no sockets by design; this is where the sockets are. |
-| `nachalnik-utils` | never published: which endpoint, key and models the workspace's examples and live tests use, written once. |
+| `nachalnik-utils` | never published: shared code that picks the endpoint, key and models for the workspace's examples and live tests. |
 
 ### 📖 the docs
 
 | file | what it holds |
 | --- | --- |
-| [AGENTS.md](AGENTS.md) | orientation for whoever — person or model — is about to change this workspace: what is being built, what must not be broken, and which way the arguments have gone. |
+| [AGENTS.md](AGENTS.md) | an introduction for anyone, person or model, about to change this workspace: what is being built, what must not break, and the design decisions made so far. |
 | [INVARIANTS.md](INVARIANTS.md) | what must not be broken, each with the reasoning that put it there — break one and something in `tests/` should go red. |
 | [MAP.md](MAP.md) | the file-by-file map, and the reasoning behind the shapes that are not obvious from the names. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | the commands, what CI does, how to run a sweep, a live run or a soak, the house conventions in full, and the gotchas. |
 | [SECURITY.md](SECURITY.md) | what is enforced, what is only reported, and why the core will never grow a sandbox. |
-| [POSTPONED.md](POSTPONED.md) | known, decided against *for now*, each entry saying what would unblock it. |
+| [POSTPONED.md](POSTPONED.md) | known issues and ideas deliberately left for later, each with what would unblock it. |
 
 Each crate's own readme says what it is and how to start; the longer material sits beside it —
 [`kamchatka`'s guide](kamchatka/GUIDE.md) and [running it](kamchatka/RUNNING.md),
@@ -131,9 +131,9 @@ Each crate's own readme says what it is and how to start; the longer material si
 
 ### 🧩 do the seams hold?
 
-The obvious question about a runtime this abstract is whether its six replaceable parts are real
-seams or a diagram. Three crates in this workspace are the answer, and none of them needed a
-change to the runtime to exist.
+The obvious question about a runtime this abstract is whether its six replaceable parts really
+can be replaced. Three crates in this workspace show they can, and none of them needed a change
+to the runtime.
 
 **[`nachalnik-mcp`](nachalnik-mcp)** is deliberately *not* in the core: speaking MCP means spawning
 processes and reading notifications in the background, which the runtime promises not to do. An
@@ -153,19 +153,19 @@ rather than to serve one: forking a context is `snapshot` and `resume`, what a c
 
 ### 🧪 how it is tested
 
-There is more test code in this workspace than code under test, and the suites are one of several
-checks rather than the whole of them.
+There is more test code in this workspace than code under test, and the test suites are only one
+of several checks.
 
 - **Every invariant is a test.** Each one [INVARIANTS.md](INVARIANTS.md) states has something in
   `tests/` that goes red when it breaks, and the ones that have to hold after *any* sequence of
   operations are property suites: random runs of pushes, state changes, replacements, undo and
   redo, with the context and its projection checked against each other after every step, and a
   snapshot that has to resume into the session it was taken from.
-- **A test's worth is measured.** `cargo mutants` goes over each crate in turn, and a mutant that
-  survives the whole workspace's tests either gets a test that kills it or a written reason it
-  cannot be killed. A ledger of those verdicts keeps the next run to what has changed. A test
-  written by hand is held to the same question with `scripts/mutate.sh`: break what it is about,
-  and see whether anything *other* than it notices.
+- **Tests are checked for whether they catch anything.** `cargo mutants` goes over each crate in
+  turn, and every mutant that survives the whole workspace's tests either gets a test that catches
+  it or a written reason it can't be caught. A ledger of those verdicts limits the next run to
+  what has changed. Hand-written tests get the same check with `scripts/mutate.sh`: break the code
+  a test is about, and see whether anything *other* than that test notices.
 - **CI** runs the suites on Linux (x86_64 and aarch64), macOS and Windows with every feature on,
   builds with the defaults and with none, and checks the workspace on the MSRV, locked and at the
   lowest version of every direct dependency the manifests allow.
@@ -181,7 +181,7 @@ checks rather than the whole of them.
   a SIGKILL, a context wall and an undo, and hold the whole chain of records to the invariants
   that span it, with a checker proven against deliberate corruptions before its verdict counts.
 
-A finding from any of these is a lead until a test or a record proves it. What gets fixed lands
+A finding from any of these only counts once a test or a session record confirms it. What gets fixed lands
 with a test that fails without the fix; what needs a person's decision goes into
 [POSTPONED.md](POSTPONED.md). The methods are in [`.claude/skills`](.claude/skills), written for an
 agent to run.
