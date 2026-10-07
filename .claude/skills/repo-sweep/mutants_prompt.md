@@ -5,7 +5,7 @@
 
 You are verifying tests that a headless model session wrote to kill mutants `cargo mutants` found surviving in the Rust workspace at REPO (branch BRANCH), and turning the good ones into patches. Every mutant here survived the WHOLE workspace suite (all crates, all features), not only its own crate's tests.
 
-Read REPO/AGENTS.md first, and the "a test's worth is measured" part of CONTRIBUTING.md.
+Read REPO/AGENTS.md first, and the "check that tests catch something" part of CONTRIBUTING.md.
 
 HARD RULES
 - Keep scratch files of your own under WORK/scratch-NAME/. Other agents run beside you.
