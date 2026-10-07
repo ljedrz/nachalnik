@@ -6,14 +6,14 @@
 
 **A terminal agent for Linux that gives you full control of the context.**
 
-Built on [`nachalnik`][nachalnik], and everything that makes it an agent is its own: the tools, the
-permission policy, the compactor, the confinement, the served sessions, the drawing, and the three
-providers next door in [`nachalnik-providers`][providers]. The runtime supplies the state machine,
-the context and the paper trail, and none of this needed a change to it.
+Built on [`nachalnik`][nachalnik], which provides the state machine, the context and the session
+record. Everything else is `kamchatka`'s own: the tools, the permission policy, the compactor, the
+sandbox, served sessions, the interface, and the three API clients in
+[`nachalnik-providers`][providers]. None of it needed changes to the runtime.
 
-It builds for Linux, on x86_64 and aarch64, and nothing else: its shell is worth handing a model
-because Landlock confines it and a seccomp filter holds every attempt it makes to reach the network
-until it has an answer, and both are Linux's.
+It only builds for Linux, on x86_64 and aarch64, because its shell sandbox relies on Linux
+features: Landlock restricts what commands can touch, and a seccomp filter pauses every attempt to
+use the network until you answer.
 
 ```console
 $ cargo install kamchatka # or download the released binary
@@ -21,10 +21,10 @@ $ export KAMCHATKA_API_KEY=sk-or-...
 $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 ```
 
-OpenRouter is the default, not the only choice: `KAMCHATKA_BASE_URL` points it at anything that
-speaks OpenAI's chat completions, a model served on this machine by ollama, vLLM or LM Studio
-included (no key needed); `--gemini` and `--anthropic` speak Google's and Anthropic's own APIs, and
-`--responses` OpenAI's Responses API. [Running it][running] has the details.
+OpenRouter is the default, but `KAMCHATKA_BASE_URL` can point it at anything that supports OpenAI's
+chat completions API, including a local model served by ollama, vLLM or LM Studio (no key needed);
+`--gemini` and `--anthropic` use Google's and Anthropic's own APIs, and `--responses` OpenAI's
+Responses API. [Running it][running] has the details.
 
 ## ❓ who this is for
 
@@ -50,39 +50,39 @@ and the result it reads back says what the note did to its next request:
 the result says the note is pinned, goes into every request from then on, and what the next request
 now costs.][shot-chat]
 
-The context tab is the same session from your side: every item, what it puts into the next request
-and what it holds back, and one opened on the page that says why it is there — in the model's
-words, since the model put it there — and that it is pinned:
+The context tab shows the same session from your side: every item, what it adds to the next request
+and what it leaves out, with one item opened to show why it's there (in the model's words, since the
+model added it) and that it's pinned:
 
 ![The context tab. Five items with what each sends and holds back; the pinned note is selected and
 open, showing why it is there and what it says.][shot-context]
 
 ## 🔍 nothing behind your back
 
-**No instructions of its own.** `kamchatka` sends no system prompt. The only system text in a
-session is what you give it with `--system` or a settings file, and that is a pinned row on the
-context tab like any other item. Besides the context, what reaches the model is the tool
-definitions, and `/budget` says what they cost.
+**No hidden instructions.** `kamchatka` sends no system prompt of its own. The only system text in a
+session is what you give it with `--system` or a settings file, and it appears as a pinned row on
+the context tab like any other item. Apart from the context, the model only receives the tool
+definitions, and `/budget` shows what they cost.
 
-**The request before it goes.** <kbd>ctrl+p</kbd> prints the next request as the runtime renders
-it, naming every item left out and why; `/payload` prints what the provider will put on the wire,
-field for field; `/raw` shows what came back from the last one.
+**See the request before it's sent.** <kbd>ctrl+p</kbd> prints the next request as the runtime
+builds it, listing every item left out and why; `/payload` prints exactly what the provider will
+send; `/raw` shows the last response as it arrived.
 
-**Compaction you can see and take back.** No model is asked to summarize your history. A tool
-result the model has read and finished with becomes a one-line marker that says so, and once the
-context fills, the oldest exchanges go whole. Every item taken is still a row on the context tab
-with a note saying why, `/restore` brings it back, and a pinned item cannot be taken at all.
-`/compact` shows a pass before it happens and waits for your answer.
+**Compaction you can see and undo.** No model is asked to summarize your history. A tool result
+the model has already used is replaced by a one-line placeholder, and once the context is full, the
+oldest exchanges are removed entirely. Every removed item is still listed on the context tab with a
+note explaining why, `/restore` brings it back, and pinned items are never removed. `/compact`
+shows what it would do and waits for your answer.
 
-**A token count that says it is a guess.** Nothing here has the model's tokenizer, so the figure
-is written `~2,460`, and the percentage beside it names the limit it is a percentage of. Once a
-response arrives it is anchored on what the provider actually charged, and the counter corrects
-itself from every response it could price in full. Where something in the context has no price
-on it, the figure is a floor and says so.
+**A token count that admits it's an estimate.** `kamchatka` doesn't have the model's tokenizer, so
+the figure is shown as `~2,460`, and the percentage next to it says what limit it's a percentage
+of. Once a response arrives, the figure is based on what the provider actually charged, and the
+counter adjusts itself from every response it can fully price. When something in the context can't
+be priced, the figure is marked as a minimum.
 
-**No telemetry, no update check.** It talks to the endpoint you point it at, and to nothing else
-you did not ask for: an MCP server you name, a session you serve, the advisor you turn on. A
-command the shell runs is held at the network gate until it has an answer.
+**No telemetry, no update check.** It only talks to the endpoint you configure, and to things you
+explicitly ask for: an MCP server you name, a session you serve, the advisor you turn on. Commands
+run by the shell are paused at the network gate until you answer.
 
 ## 📦 installing
 
@@ -98,75 +98,73 @@ $ cargo install --path kamchatka              # from a clone
 A release carries static x86_64 and aarch64 binaries. Building needs Rust 1.95 or newer and no
 system libraries.
 
-A released binary can be checked rather than taken on trust:
+You can verify a released binary instead of trusting it:
 
-- **It reproduces.** The release workflow builds every binary a second time, from a checkout at
-  another path with its crates fetched into another `CARGO_HOME`, and compares the two byte for
-  byte. The release notes give the `rustc -V` it was built with, and
-  [CONTRIBUTING.md][contributing] the command to rebuild it yourself.
-- **It is attested.** Each archive carries a build provenance attestation tying it to this
-  repository, the workflow and the tag, which a checksum beside it cannot do — whoever could
-  replace the one could replace the other. `gh attestation verify ARCHIVE --repo ljedrz/nachalnik`
-  checks it.
-- **It says what is in it.** It is built with `cargo auditable`, so the binary carries its own
-  dependency list, and `cargo audit bin kamchatka` checks the exact versions in it against the
-  advisory database.
-- **Its dependencies are held to a policy.** CI fails on a known vulnerability, an unmaintained
-  crate or a yanked version, with nothing ignored, and on a licence the tree did not already need.
-  Every action in the workflows is pinned to a commit.
+- **It's reproducible.** The release workflow builds every binary a second time, from a checkout at
+  a different path with crates in a different `CARGO_HOME`, and checks the two are identical byte
+  for byte. The release notes give the `rustc -V` it was built with, and
+  [CONTRIBUTING.md][contributing] has the command to rebuild it yourself.
+- **It's attested.** Each archive has a build provenance attestation proving it was built by this
+  repository, workflow and tag, which a checksum can't prove, since whoever could replace the
+  archive could replace the checksum too. Check it with
+  `gh attestation verify ARCHIVE --repo ljedrz/nachalnik`.
+- **It lists its contents.** It's built with `cargo auditable`, so the binary contains its own
+  dependency list, and `cargo audit bin kamchatka` checks those exact versions against the advisory
+  database.
+- **Its dependencies are checked.** CI fails on known vulnerabilities, unmaintained crates, yanked
+  versions and new licences, with no exceptions. Every action in the workflows is pinned to a
+  commit.
 
 ## 🔧 what it comes with
 
-Six tools — `fs`, `shell`, `context`, `fork`, `log`, `setup` — and a policy that asks about all of
-it. Nothing is allowed on your behalf before you have been asked, reading a file included. A tool
-is a *domain* and what it does is an *operation* in it, so `fs:read` is the subject and `fs` is
-every one of them; answering **always** answers for one of those rather than for a tool's name,
-which is what makes it work for tools this program has never heard of:
+Six tools (`fs`, `shell`, `context`, `fork`, `log`, `setup`) and a policy that asks about all of
+them. Nothing is allowed until you've been asked, including reading a file. Permissions are about
+*domains* (like `fs`) and the *operations* in them (like `fs:read`), not tool names, so answering
+**always** works the same for tools `kamchatka` has never seen:
 
 ```console
 $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
-Those arrive through [`nachalnik-mcp`][nachalnik-mcp] declaring `mcp:call` and nothing else,
-whatever their annotations claim, and where they *came from* is a subject of its own:
-`--allow-server files` is one server and not the next one, which is why the `name=` is worth
-giving.
+Those tools arrive through [`nachalnik-mcp`][nachalnik-mcp] and only declare `mcp:call`, whatever
+their annotations claim. Which server they came from is a separate permission: `--allow-server
+files` covers that one server and no other, which is why it's worth giving each server a `name=`.
 
-`fs`'s `grep` and `glob` are ripgrep's engine linked in rather than shelled out to, and the reason
-they exist is the subject they ride: without them, finding a symbol means `exec:run`, which
-subsumes every other permission. As `fs:grep` and `fs:glob`, bound by the same path rules as a
-read, they let a session be asked *about* a repository without handing over the one permission that
-answers for everything — [what they cut and what they skip][guide-find].
+`fs`'s `grep` and `glob` use ripgrep's libraries directly instead of running `rg`, and they exist
+for the sake of permissions: without them, searching for a symbol would need `exec:run`, which
+implies every other permission. As `fs:grep` and `fs:glob`, limited by the same path rules as
+reading files, they let the model explore a repository without that all-powerful permission
+([what they cut and what they skip][guide-find]).
 
-Four of them are about the session itself: `context` reads the context and changes it, `log` reads
-the record kept beside it, `setup` what the session is running with, and `fork` asks a copy of the
-session a question. Every operation in them is a public function the screen was already calling —
-[what each does][guide-introspect].
+Four tools are about the session itself: `context` reads and changes the context, `log` reads the
+session record, `setup` shows the session's configuration, and `fork` asks a copy of the session a
+question. Each operation in them is a public function the screen already used
+([what each does][guide-introspect]).
 
-The registry is live: `/tools toggle shell` stops offering a tool from the next request and offers
-it again the second time, with no restart. How much of a call's output the model is shown is live
-too, per subject, with `/limit`, and a result that was cut keeps its whole beside it to send
-instead. When a model has gone down the wrong path entirely, <kbd>d</kbd> at the permission prompt
-drops *every* call it is waiting on, and the model is told.
+Tools can be changed during a session: `/tools toggle shell` stops offering a tool from the next
+request on, and toggling again brings it back, without a restart. `/limit` changes how much of a
+call's output the model sees, per permission, and the full version of a cut result is kept so it
+can be sent instead. When a model has gone completely off track, <kbd>d</kbd> at the permission
+prompt drops *every* call it's waiting on, and the model is told.
 
 ## 🐢 one transition at a time
 
-The loop is a state machine, and `/step` performs exactly one transition of it instead of a whole
-turn. That is the only way to stand in `ready` — which the runtime documents as *a resting state
-on purpose*, the moment the model has said what it wants and **nothing has happened yet**:
+The loop is a state machine, and `/step` runs one transition at a time instead of a whole turn.
+That lets you stop in `ready`, the point where the model has said what it wants and **nothing has
+happened yet**:
 
 ```text
 /step how many lines are in ledger.py?
 ```
 
-Where the model answers with a call — a `shell` running `wc -l`, say — the session stops in
-`ready`: the command is decided, permitted, and not running. From here you can read it, prune the
-context it would have run against, drop it, or `/step` again to run it. An "approve this command?"
-prompt is a checkpoint put in front of the loop; here it is a state the loop itself stands in.
+If the model answers with a tool call (say, `shell` running `wc -l`), the session stops in `ready`:
+the command has been decided and permitted, but isn't running. From here you can read it, prune
+the context, drop it, or `/step` again to run it. Most agents have an "approve this command?"
+prompt bolted onto the loop; here, stopping is part of the loop itself.
 
-`/step` again for each transition — the tool runs, then the next request goes — or `/continue` for
-the rest of the turn. While stepping, answering a permission does *not* quietly resume: you asked
-to drive.
+Use `/step` again for each transition (the tool runs, then the next request is sent), or
+`/continue` for the rest of the turn. While stepping, answering a permission question doesn't
+resume the turn automatically, since you chose to step through it.
 
 ## 🎛️ features
 
@@ -184,14 +182,13 @@ to drive.
 
 ## 📚 the rest of it
 
-- **[Using it][guide]** — the four tabs and what each is for, everything the keys do, the
-  permission prompt and what answering *always* commits you to, putting a file in, and the tools
-  an agent reads and manages its own context with.
-- **[Running it][running]** — headless, a session with a socket in front of it that you can walk
-  away from, the same session in a browser, the three dialects and which endpoints work, what the
-  number in the status line is a
-  guess *at*, what happens when the context fills, a settings file, every option, embedding it in
-  something else, and what a toolchain in your home directory needs.
+- **[Using it][guide]** — the four tabs and what each is for, all the keys, the permission prompt
+  and what answering *always* means, adding files, and the tools an agent uses to read and manage
+  its own context.
+- **[Running it][running]** — headless mode, serving a session so you can leave and come back, the
+  same session in a browser, the three APIs and which endpoints work, what the status line's
+  numbers estimate, what happens when the context fills up, the settings file, every option,
+  embedding it in other programs, and what toolchains in your home directory need.
 - **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of it.
 
 ## 🎸 the name
@@ -203,8 +200,8 @@ Tsoi shovelled coal in; this is the one where the work actually happens.
 
 MIT.
 
-<!-- crates.io resolves a relative link against the directory this readme was published from,
-     which is not where the repository root is. Links into the tree are absolute. -->
+<!-- crates.io resolves relative links against the directory this README was published from, not
+     the repository root, so links into the tree are absolute. -->
 
 [nachalnik]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik
 [providers]: https://github.com/ljedrz/nachalnik/tree/HEAD/nachalnik-providers
