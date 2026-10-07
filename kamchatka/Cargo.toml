@@ -30,7 +30,7 @@ name = "kamchatka"
 path = "src/main.rs"
 
 [features]
-default = ["mcp", "tui"]
+default = ["mcp", "tui", "webui"]
 # the client for a System One model - any of the ones OpenRouter serves, or an engine of one's own
 # answering the same typed questions over HTTP - and nothing in the program that asks it anything.
 # `shell-advisor` is what does, and `system1_assisted_compaction` shows another use.
@@ -53,6 +53,10 @@ shell-advisor = ["advise"]
 # `--mcp 'cmd args'` puts somebody else's MCP server's tools in the same list as the built-in
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]
+# `--web`: serves the session as a web page. No extra dependencies: the HTTP handling uses the
+# sockets `--serve` already needs, and the page is one embedded file. Loopback only, with no
+# authentication; see `web`.
+webui = []
 # the screen and the keys: `ui`, the prompt, and the bindings that drive them. Optional because
 # `App` is the program and drawing it is one caller - the dependencies below are wanted by
 # nothing else in here, and a session driven by anything but a person at a terminal pays for none
@@ -200,6 +204,11 @@ rustix = { version = "1", features = ["event", "fs", "net", "process"] }
 # `ToolTrimmer` really uses. Nothing in the crate does this - it is here to be read and run by somebody
 # wondering what a System One model is for. It wants a real endpoint, so it rides on the feature
 # that brings that client in
+[[example]]
+name = "gateway"
+path = "examples/gateway.rs"
+required-features = ["webui"]
+
 [[example]]
 name = "system1_assisted_compaction"
 path = "examples/system1_assisted_compaction.rs"

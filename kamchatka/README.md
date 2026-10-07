@@ -170,12 +170,14 @@ to drive.
 
 ## 🎛️ features
 
-Four features, two of them on by default. `--no-default-features --features tui` drops MCP
-support and the `--mcp` flag with it. `tui` is the other default, and it is the screen and the
-keys: without it you get the same program, headless, and none of the crates that draw it.
+Five features, three of them on by default. `--no-default-features --features tui` drops MCP
+support and the `--mcp` flag with it. `tui` is another default, and it is the screen and the
+keys: without it you get the same program, headless, and none of the crates that draw it. `webui`
+is the third, and it is `--web`: the session as a web page, served on loopback. It adds no
+dependencies.
 
-`advise` is the third and is **off**: the client for a System One model, which answers typed
-questions rather than writing text. `shell-advisor` is the fourth, also **off**, and adds
+`advise` is the fourth and is **off**: the client for a System One model, which answers typed
+questions rather than writing text. `shell-advisor` is the fifth, also **off**, and adds
 `--advise`, which colours each shell command you are asked about green, yellow or red by the
 advisor's reading of it. The rating decides nothing. It is behind a feature and a flag because it
 sends command lines off the machine; [running it][advise] says exactly what leaves.
@@ -186,7 +188,8 @@ sends command lines off the machine; [running it][advise] says exactly what leav
   permission prompt and what answering *always* commits you to, putting a file in, and the tools
   an agent reads and manages its own context with.
 - **[Running it][running]** — headless, a session with a socket in front of it that you can walk
-  away from, the three dialects and which endpoints work, what the number in the status line is a
+  away from, the same session in a browser, the three dialects and which endpoints work, what the
+  number in the status line is a
   guess *at*, what happens when the context fills, a settings file, every option, embedding it in
   something else, and what a toolchain in your home directory needs.
 - **[The changelog][changelog]**, and [`nachalnik`][nachalnik] for the runtime under all of it.

@@ -402,7 +402,17 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // refusal in the first second rather than after a round trip to somebody's API. The socket
     // file it may have made is taken away again by `Server`'s own `Drop`, so failing after this
     // point leaves nothing behind
-    let mut server = match &args.serve {
+    //
+    // `--web` without `--serve` still needs a served session for the page to relay to: a loopback
+    // port picked by the kernel
+    #[cfg(feature = "webui")]
+    let served = args
+        .serve
+        .clone()
+        .or_else(|| args.web.as_ref().map(|_| "tcp:127.0.0.1:0".to_owned()));
+    #[cfg(not(feature = "webui"))]
+    let served = args.serve.clone();
+    let mut server = match &served {
         Some(address) => {
             // note: before the bind, for the reason the whole of this comment gives: a refused
             // argument must leave nothing listening either. Asked of the arguments rather than off
@@ -411,9 +421,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             // check on the matches reads a file that says when the run should end as carrying
             // nothing, and the session serves for ever without a word
             let unserved = given.unserved();
+            let flag = match args.serve {
+                Some(_) => "--serve",
+                None => "--web",
+            };
             anyhow::ensure!(
                 unserved.is_empty(),
-                "`--serve` does not read {unserved}: a served session is this program's and goes \
+                "`{flag}` does not read {unserved}: a served session is this program's and goes \
                  on for as long as somebody wants it, while `--deadline` ends a headless run and \
                  `--on-ask` answers a question nobody is there to answer",
             );
@@ -425,6 +439,16 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         None => None,
     };
+    // bind the page now too, so a bad address fails before anything else starts
+    #[cfg(feature = "webui")]
+    let web = match (&args.web, &server) {
+        (Some(listen), Some(server)) => Some(
+            kamchatka::web::Web::bind(listen, &server.address())
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+        ),
+        _ => None,
+    };
     // the screen is drawn to stdout, so a stdout that is nobody's terminal cannot have one. It is
     // announced rather than silently chosen: a program that draws or does not draw depending on
     // what is on the other end of a pipe should say which it decided, and `--headless` is how
@@ -435,7 +459,7 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     let piped = !std::io::stdout().is_terminal();
     // note: asked of a served session too. A session with a socket in front of it draws as well,
     // where there is anything to draw on, so that the person running it can drive it from the desk
-    // it is on and from a phone in the same breath. What the question decides for a served run is
+    // it is on and from a browser in the same breath. What the question decides for a served run is
     // only whether there is a screen, since `--serve` conflicts with `--headless`
     let headless = headless(args.headless, piped);
     if server.is_none() && headless && !args.headless {
@@ -536,6 +560,21 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         // closed it is a run that should go on serving rather than one that should panic on its
         // first line
         let _ = writeln!(stdout(), "· serving on {}", server.address());
+    }
+    // the page runs for the whole run, across `/restart`; browsers reconnect by themselves.
+    // Connection errors go to stderr, except under a drawn screen, which they would corrupt
+    #[cfg(feature = "webui")]
+    if let Some(web) = web {
+        let _ = writeln!(
+            stdout(),
+            "· a browser reaches the session at {}",
+            web.address()
+        );
+        tokio::spawn(web.run(move |said| {
+            if headless {
+                let _ = writeln!(std::io::stderr(), "· {said}");
+            }
+        }));
     }
 
     // note: a loop because `/restart` writes this session out and asks for another. What is inside

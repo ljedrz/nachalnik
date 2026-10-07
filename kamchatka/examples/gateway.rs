@@ -1,55 +1,19 @@
-//! The one thing a browser cannot do for itself: a socket.
+//! Serves the web page for a session running in another process.
 //!
 //! ```console
 //! $ kamchatka --serve tcp:127.0.0.1:7878 -m mercury-2
-//! $ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
+//! $ cargo run --example gateway -- tcp:127.0.0.1:7878 127.0.0.1:8080
 //! ```
 //!
-//! A browser cannot open a TCP connection - not inconveniently, at all - so something has to
-//! terminate HTTP in front of a session. This is that, and it is deliberately the smallest version
-//! of it: no framework, no router, no TLS, no dependency this crate did not already have. Three
-//! routes, and the semantic protocol is not touched.
+//! For a session started without `--web`, or by a build without the `webui` feature; otherwise
+//! `kamchatka --web` does the same in one process. The session address can be `unix:PATH` or
+//! `tcp:HOST:PORT`.
 //!
-//! # why events, not sockets
-//!
-//! `text/event-stream` already has the protocol's own shape in it.
-//!
-//! An SSE event may carry an `id:`, and when a connection drops the browser reconnects **by
-//! itself** and sends `Last-Event-ID:` with the last one it saw. That is exactly
-//! [`Command::Attach`]'s `since`, which means the browser implements resume with no client code at
-//! all - and resume is the fiddliest part of a client, the part [`kamchatka::remote::Client`] needs
-//! a reconnection loop and a backoff for.
-//!
-//! The negative space matches too. An event with **no** `id:` does not move `Last-Event-ID` - so:
-//!
-//! ```text
-//! Message::Record    ->  id: <seq>   data: {…}     numbered, in the log, recoverable
-//! Message::Attached  ->  id: <seq>   data: {…}     the projection, and where the stream starts
-//! everything else    ->              data: {…}     unnumbered, best-effort, gone once past
-//! ```
-//!
-//! A fragment of a model still typing is never something a browser tries to resume from, because
-//! it was never given an id to resume from.
-//!
-//! A WebSocket would be one connection instead of two, and would cost a handshake, client-frame
-//! unmasking and fragmentation - or a dependency - and every line of the reconnection this gets for
-//! nothing. Commands go the other way by `POST`, one request each, and a person does not send
-//! enough of them for that to cost anything.
-//!
-//! # what this is not
-//!
-//! **There is no authentication here, and no encryption.** Whatever reaches this gateway reaches
-//! the session behind it, which runs a `shell` tool as whoever started it. `kamchatka --serve`
-//! refuses to listen anywhere but loopback for that reason; this listens on loopback unless it is
-//! given another address, and says what a non-loopback one means, because an example somebody runs
-//! on their own network for an afternoon is a different thing from a program's default. It is not a
-//! thing to leave running, and it is not a thing to put on a network you share.
-//!
-//! What it does refuse is the one way in that needs no network at all: another page open in the
-//! same browser. A request has to be for an address or `localhost` rather than a name, come from
-//! this page if it says where it came from, and post its command as JSON - see `relay::foreign`.
+//! The page and its address rules are [`kamchatka::web`]'s. Unlike `--web`, this process can't
+//! close the page's port to the session's sandboxed commands, since another process confines them;
+//! see SECURITY.md.
 
-mod relay;
+use kamchatka::web::Web;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
@@ -59,5 +23,9 @@ async fn main() -> Result<(), String> {
         .unwrap_or_else(|| "tcp:127.0.0.1:7878".to_owned());
     let listen = args.next().unwrap_or_else(|| "127.0.0.1:8080".to_owned());
 
-    relay::run(&session, &listen).await
+    let web = Web::bind(&listen, &session).await?;
+    println!("· a browser reaches {session} at {}", web.address());
+    web.run(|said| eprintln!("· {said}")).await;
+
+    Ok(())
 }

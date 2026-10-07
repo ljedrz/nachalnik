@@ -1,33 +1,60 @@
-//! The HTTP half of putting a session in a browser: three routes, no framework, no router.
+//! The web page for a session (`--web`).
 //!
-//! note: a module rather than a part of `gateway.rs`, because two examples want it and only one of
-//! them is about it. `gateway.rs` is a relay to a session somebody else is running, which is the
-//! claim worth making on its own; `phone.rs` is a session and a relay in one process, which is the
-//! convenience. Neither is the other, and an `#[path]`-free `mod relay;` is what stops them being
-//! two copies - the same trick `tests/common` uses - and cargo builds no example out of this
-//! directory, because there is no `main.rs` in it.
+//! ```console
+//! kamchatka --web 127.0.0.1:8080 -m qwen/qwen3-coder
+//! ```
 //!
-//! note: why this is `text/event-stream` rather than a WebSocket is `gateway.rs`'s header: an SSE
-//! `id:` is a record sequence and `Last-Event-ID` is `attach { since }`, so a browser implements
-//! resume with no client code at all.
+//! Browsers can't open raw TCP connections, so this serves the page over HTTP and relays each
+//! browser tab to the session as an ordinary protocol client. It has three routes and needs no
+//! dependency the crate doesn't already have.
+//!
+//! # Why server-sent events
+//!
+//! An SSE event can carry an `id:`. When a connection drops, the browser reconnects on its own and
+//! sends the last id it saw as `Last-Event-ID`, which maps directly onto [`Command::Attach`]'s
+//! `since`, so resuming needs no client code. Only messages that can be fetched again by sequence
+//! number get an id:
+//!
+//! ```text
+//! Message::Record    ->  id: <seq>   data: {…}     in the log, can be fetched again
+//! Message::Attached  ->  id: <seq>   data: {…}     the projection the stream starts from
+//! everything else    ->              data: {…}     best-effort, lost if missed
+//! ```
+//!
+//! Commands go the other way as one `POST` each. A WebSocket would save a connection, but needs a
+//! handshake, frame masking and fragmentation (or a dependency), plus reconnection code.
+//!
+//! # Security
+//!
+//! There is no authentication or encryption: anyone who can reach the page can drive the session,
+//! including its `shell` tool. So [`Web::bind`] only listens on loopback, like `--serve`. To reach
+//! the page from another machine, use a tunnel that authenticates, such as `ssh -L`.
+//!
+//! Requests from other web pages open in the same browser are refused by `foreign`. The page can
+//! answer permission questions, so its port is closed to the commands this process confines (see
+//! `Sandbox::closed`), the same as a served session's port.
 
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
-use kamchatka::remote::protocol::{self, Address, Command};
 use tokio::{
-    io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
-    net::{
-        TcpListener, TcpStream,
-        tcp::{OwnedReadHalf, OwnedWriteHalf},
+    io::{
+        AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader,
+        ReadHalf, WriteHalf,
     },
+    net::{TcpListener, TcpStream},
     sync::mpsc,
 };
 
+use crate::remote::{
+    Connection,
+    protocol::{self, Command},
+};
+
 /// The page, which is the whole client.
-const PAGE: &str = include_str!("../browser.html");
+const PAGE: &str = include_str!("browser.html");
 
 /// How long a browser waits before reconnecting a dropped stream, in milliseconds.
 ///
@@ -51,63 +78,108 @@ type Tabs = Arc<Mutex<HashMap<String, mpsc::UnboundedSender<Command>>>>;
 /// session, which therefore has no projection of its own to read the name off - and a resume that
 /// cannot say which session it came from is the one `Command::Attach` describes as the quiet
 /// failure. The browser keeps its resume with no client code at all; naming the session is the
-/// gateway's half of it.
+/// relay's half of it.
 type Named = Arc<Mutex<Option<String>>>;
 
-/// Serves the page and the stream to browsers, relaying each to `session`, until stopped.
-pub async fn run(session: &str, listen: &str) -> Result<(), String> {
-    let session = session.to_owned();
-    // the session is reached the way any other client reaches it, and this checks the spelling here
-    // rather than on every connection
-    let Address::Tcp(_) = protocol::address(&session)? else {
-        return Err(
-            "this gateway speaks to a port; serve with `--serve tcp:127.0.0.1:PORT`".into(),
-        );
-    };
-    let listener = TcpListener::bind(&listen)
-        .await
-        .map_err(|e| format!("could not listen on {listen}: {e}"))?;
-    let at = listener.local_addr().map_err(|e| e.to_string())?;
-    // note: `0.0.0.0` is not an address anybody can type into a phone, and printing it as though it
-    // were is the first thing somebody reads when they run this for exactly that reason. A wildcard
-    // bind says what it is instead, and leaves finding the address to `ip addr`, which knows
-    println!(
-        "· a browser reaches {session} at {}",
-        match at.ip().is_unspecified() {
-            true => format!("port {} on every address this machine has", at.port()),
-            false => format!("http://{at}/"),
+/// Receives errors from individual browser connections, which would otherwise go unreported.
+type Said = Arc<dyn Fn(String) + Send + Sync>;
+
+/// A listening page, ready to relay browsers to a session.
+///
+/// Binding is separate from [`Web::run`] so that a bad address is reported at startup, before the
+/// session is set up.
+pub struct Web {
+    listener: TcpListener,
+    /// The session's address, as `--connect` takes it.
+    session: String,
+    /// The listening port, closed to confined commands until this is dropped.
+    port: u16,
+}
+
+impl Web {
+    /// Listens on `listen` and will relay browsers to the session at `session` (`unix:PATH` or
+    /// `tcp:HOST:PORT`).
+    ///
+    /// # Errors
+    ///
+    /// If `session` is not a valid address, `listen` is not a loopback address, or listening fails.
+    pub async fn bind(listen: &str, session: &str) -> Result<Self, String> {
+        // check the session address once, instead of on every browser connection
+        protocol::address(session)?;
+        let address = tokio::net::lookup_host(listen)
+            .await
+            .map_err(|e| format!("could not resolve `{listen}`: {e}"))?
+            .next()
+            .ok_or_else(|| format!("could not resolve `{listen}`"))?;
+        if !address.ip().is_loopback() {
+            return Err(format!(
+                "{address} is not a loopback address. The page has no authentication, so it only \
+                 listens on `127.0.0.1:PORT`; to reach it from another machine, use a tunnel such \
+                 as `ssh -L`"
+            ));
         }
-    );
-    if !at.ip().is_loopback() {
-        println!(
-            "· {at} is not a loopback address, and there is no authentication or encryption here: \
-             anything that can reach this page can run the `shell` tool as you, and can read every \
-             word of the session on the way past. That is a thing to do on a network you trust, \
-             for as long as you are watching it."
-        );
+        let listener = TcpListener::bind(address)
+            .await
+            .map_err(|e| format!("could not listen on {address}: {e}"))?;
+        let port = listener
+            .local_addr()
+            .map_err(|e| format!("could not read the address of {address}: {e}"))?
+            .port();
+        // the page can answer permission questions, so close its port to confined commands, as
+        // for a served session's port
+        crate::sandbox::serving_on(port);
+
+        Ok(Self {
+            listener,
+            session: session.to_owned(),
+            port,
+        })
     }
 
-    let tabs: Tabs = Arc::default();
-    let named: Named = Arc::default();
-    loop {
-        // said, like a connection that fails: out of descriptors, this is the loop going round
-        // with nothing on the terminal to say why no page loads
-        let browser = match listener.accept().await {
-            Ok((browser, _)) => browser,
-            Err(e) => {
-                eprintln!("· a browser could not be accepted: {e}");
-                continue;
-            }
-        };
-        let _ = browser.set_nodelay(true);
-        let (session, tabs, named) = (session.clone(), tabs.clone(), named.clone());
-        // a connection that ends in an error is reported here, because nothing else will: a
-        // browser retries a stream a second later, and a request it could not read is hung up on
-        tokio::spawn(async move {
-            if let Err(e) = serve(browser, &session, tabs, named).await {
-                eprintln!("· a browser connection failed: {e}");
-            }
-        });
+    /// The page's URL, e.g. `http://127.0.0.1:8080/`. Read from the socket, so it has the actual
+    /// port when bound to port 0.
+    pub fn address(&self) -> String {
+        match self.listener.local_addr() {
+            Ok(at) => format!("http://{at}/"),
+            Err(_) => format!("port {}", self.port),
+        }
+    }
+
+    /// Serves browsers until the future is dropped. Errors on individual connections are passed
+    /// to `said`.
+    pub async fn run(self, said: impl Fn(String) + Send + Sync + 'static) {
+        let said: Said = Arc::new(said);
+        let tabs: Tabs = Arc::default();
+        let named: Named = Arc::default();
+        loop {
+            // reported, or nothing would explain why pages stop loading (e.g. out of descriptors)
+            let browser = match self.listener.accept().await {
+                Ok((browser, _)) => browser,
+                Err(e) => {
+                    said(format!("a browser could not be accepted: {e}"));
+                    continue;
+                }
+            };
+            let _ = browser.set_nodelay(true);
+            let (session, tabs, named, said) = (
+                self.session.clone(),
+                tabs.clone(),
+                named.clone(),
+                said.clone(),
+            );
+            tokio::spawn(async move {
+                if let Err(e) = serve(browser, &session, tabs, named).await {
+                    said(format!("a browser connection failed: {e}"));
+                }
+            });
+        }
+    }
+}
+
+impl Drop for Web {
+    /// Reopens the port to confined commands.
+    fn drop(&mut self) {
+        crate::sandbox::stopped_serving_on(self.port);
     }
 }
 
@@ -240,15 +312,6 @@ async fn stream<W: AsyncWrite + Unpin>(
     tab: String,
     since: Option<u64>,
 ) -> Result<(), String> {
-    let Ok(Address::Tcp(host)) = protocol::address(session) else {
-        return reply(
-            write,
-            "500 Internal Server Error",
-            "text/plain",
-            b"bad address",
-        )
-        .await;
-    };
     // note: the whole attach happens before the head goes out, which is what makes the retry below
     // possible: nothing has been said to the browser yet, so a second attempt is the first one it
     // hears about. A `200` on this route means "attached", and it is true when it is sent
@@ -256,7 +319,7 @@ async fn stream<W: AsyncWrite + Unpin>(
         mut up,
         mut down,
         first,
-    }) = attach(host, since, &named, write).await?
+    }) = attach(session, since, &named, write).await?
     else {
         return Ok(());
     };
@@ -315,9 +378,9 @@ async fn stream<W: AsyncWrite + Unpin>(
 /// A connection to the session with its attach already answered.
 struct Upstream {
     /// What the session says, framed.
-    up: protocol::Frames<BufReader<OwnedReadHalf>>,
+    up: protocol::Frames<BufReader<ReadHalf<Connection>>>,
     /// What this end says back.
-    down: OwnedWriteHalf,
+    down: WriteHalf<Connection>,
     /// The answer to the attach, which the browser is owed like every message after it.
     first: serde_json::Value,
 }
@@ -341,24 +404,23 @@ struct Upstream {
 /// note: a version refusal is passed on untouched, because nothing mends it: attaching again is
 /// refused for the same reason, and `remote::Client` gives up on it for the same one.
 async fn attach<W: AsyncWrite + Unpin>(
-    host: &str,
+    session: &str,
     since: Option<u64>,
     named: &Named,
     write: &mut W,
 ) -> Result<Option<Upstream>, String> {
     let mut since = since;
     loop {
-        let upstream = match TcpStream::connect(host).await {
-            Ok(stream) => stream,
+        // connect the way `--connect` does, so a `unix:` session works too
+        let upstream = match crate::remote::client::connect(session).await {
+            Ok(connection) => connection,
             Err(e) => {
-                let said = format!("could not reach the session at {host}: {e}");
-                reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await?;
+                reply(write, "502 Bad Gateway", "text/plain", e.as_bytes()).await?;
 
                 return Ok(None);
             }
         };
-        let _ = upstream.set_nodelay(true);
-        let (up, mut down) = upstream.into_split();
+        let (up, mut down) = tokio::io::split(upstream);
         let mut up = protocol::Frames::new(BufReader::new(up));
         // taken out of the lock before the write rather than inside the call, because a guard held
         // across an `await` is a future that cannot be sent between threads
@@ -377,7 +439,7 @@ async fn attach<W: AsyncWrite + Unpin>(
         // error rather than as an empty reply, because that is what it is, and the browser opens
         // another in a second either way
         let Some(first) = protocol::read::<serde_json::Value>(&mut up).await? else {
-            let said = format!("the session at {host} closed without answering the attach");
+            let said = format!("the session at {session} closed without answering the attach");
             reply(write, "502 Bad Gateway", "text/plain", said.as_bytes()).await?;
 
             return Ok(None);

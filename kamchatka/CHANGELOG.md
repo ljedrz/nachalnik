@@ -5,6 +5,32 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### added
+
+- **`--web 127.0.0.1:PORT` serves the session as a web page.** With `--serve` the page relays to
+  that socket; without it the session is served on a loopback port of its own. The screen is still
+  drawn, and browsers reconnect by themselves after `/restart`. This is the `webui` feature, on by
+  default and with no extra dependencies. `kamchatka::web` exposes the same for other programs.
+
+### changed
+
+- **The page listens on loopback only**, like `--serve`; from another machine, use a tunnel such
+  as `ssh -L` and open `http://localhost:PORT/`. `examples/gateway.rs` now uses `kamchatka::web` and
+  has the same restriction.
+- **The page can relay to a session on a `unix:` socket**; it used to require a TCP port.
+
+### removed
+
+- **`examples/phone.rs`**: use `--web` instead.
+
+### security
+
+- **The page's port is closed to the session's sandboxed commands**, like the session's own port.
+  The page can answer permission questions, and `examples/phone.rs` left its port open to commands
+  allowed on the network.
+
 ## [0.19.0] - 2026-10-06
 
 ### added

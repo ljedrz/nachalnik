@@ -345,7 +345,7 @@ impl App {
             // then a marker where it was, then nothing at all
             //
             // note: the ring itself, and why its middle step earns a key, is [`super::App::cycle`],
-            // because the page in `examples/browser.html` puts a button on every row that does
+            // because the page in `web/browser.html` puts a button on every row that does
             // this and the notes it writes are read by the model. Two callers writing their own
             // words for one act is two accounts of it in the context
             KeyCode::Char(' ') => {

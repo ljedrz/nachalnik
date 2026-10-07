@@ -54,7 +54,7 @@
 //! [`protocol::Attached`] carries the conversation as it reads now, every item as a row, the
 //! budget, the questions outstanding and what the policy will say - a *projection*, and
 //! deliberately not a [`nachalnik::Snapshot`], which carries every item's whole content and would
-//! push megabytes at a phone that has asked for nothing. And [`protocol::Command::Inspect`] asks
+//! push megabytes at a browser that has asked for nothing. And [`protocol::Command::Inspect`] asks
 //! for the whole of any one item, when somebody wants it.
 //!
 //! # what is not here

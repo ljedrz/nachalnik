@@ -106,7 +106,7 @@ async fn a_command_answers_the_client_that_ran_it() {
 ///
 /// note: what a client must do about it is drop them, because the item named by that record is now
 /// the authority on what was said. `kamchatka`'s terminal does it under the name
-/// `Entry::transient`; `examples/browser.html` did not, and showed one answer twice and another in
+/// `Entry::transient`; `web/browser.html` did not, and showed one answer twice and another in
 /// two pieces with a message typed in between. A phone is what made it happen, by being slow enough
 /// to stall the writes all the way back to the session - which is the backpressure design working,
 /// with the consequence it is documented to have.
