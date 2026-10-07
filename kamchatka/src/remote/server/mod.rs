@@ -640,7 +640,7 @@ fn apply_press(app: &mut App, stopping: &mut bool) -> bool {
 /// note: it exists because there are two loops that can own the [`App`] and either of them may be
 /// serving. [`Server::run`] is one - a session with a socket and nothing else - and the terminal's
 /// own loop in `main.rs` is the other, which is what lets a session be driven from the desk it is
-/// running on and from a phone at the same time. What that costs a loop is [`pump`] before it
+/// running on and from a browser at the same time. What that costs a loop is [`pump`] before it
 /// waits, [`asked`] as a branch to wait on and [`answer`] for what it yields, [`attend`] for each
 /// connection, and [`last`], awaited once the session has ended. The loop stays the loop, and this
 /// is the part neither should be writing twice.
@@ -882,7 +882,7 @@ impl Serving {
         // should say when somebody else can type into it - but said through `App::say` it would go
         // into `App::loose`, which is the conversation, which is in every projection handed out
         // afterwards. A browser reconnecting on a flaky link opens a connection a second, and
-        // `examples/relay` tells it to with `retry: 1000`, so the chat would fill with arrivals and
+        // `web` tells it to with `retry: 1000`, so the chat would fill with arrivals and
         // departures until somebody typed `/cleanup`.
         //
         // The trace is a ring of the last few hundred lines and is where a thing that happens once

@@ -216,7 +216,7 @@ pub enum Command {
         /// one still kept, counting up to [`Listed::versions`].
         ///
         /// note: the numbering the terminal's own strip of faces uses, so `v1` means the same
-        /// thing on a screen and on a phone. What the item says *now* has no number here because
+        /// thing on a screen and in a browser. What the item says *now* has no number here because
         /// it has no fixed one: it is one past the last, and that moves every time somebody edits.
         #[serde(default)]
         version: Option<usize>,
@@ -448,7 +448,7 @@ pub enum Message {
     /// the records. Without it the new message is a parse error, a closed connection, and a minute
     /// of trying to get back to a session that was working perfectly.
     ///
-    /// note: what it cannot do is carry the payload, so a relay - `examples/gateway.rs` - reads
+    /// note: what it cannot do is carry the payload, so a relay - the page in `web` - reads
     /// the wire as JSON and passes it on rather than parsing each message and writing it out
     /// again. Turning an unknown message into this one and back would be the relay deciding what a
     /// page is allowed to hear.
@@ -460,7 +460,7 @@ pub enum Message {
 ///
 /// note: a projection rather than a [`nachalnik::Snapshot`], which is the obvious thing to send
 /// and the wrong one: a snapshot carries every item's whole content, blobs included, so attaching
-/// a phone to a session that has read four files would push megabytes at it before it had asked
+/// a browser to a session that has read four files would push megabytes at it before it had asked
 /// for anything. What a client needs in order to start rendering is the conversation, what each
 /// item *is*, and what the next request does with it; the whole of any one item is one
 /// [`Command::Inspect`] away.

@@ -201,51 +201,37 @@ async fn a_served_session_does_not_announce_a_headless_run() {
     assert!(quitter.status.success());
 }
 
-/// `examples/phone.rs` writes every session it ran out, the way the program does.
-///
-/// note: the example rather than a driver, because the bug was the example's and nothing
-/// exercised it. It wired a session and waited for `Server::run`, which returns on `/quit` and on
-/// `/restart` alike, so either command from the page ended the process with the session in memory
-/// and nothing on disk. Driven the way a browser drives it: an event stream opens a tab, and
-/// `POST /do` puts a line into the session through it.
+/// `--web`, driven like a browser drives it: the page refuses other origins, `/restart` ends the
+/// stream and a new tab attaches to the next session, and `/quit` ends the run with both sessions
+/// written out.
 ///
 /// note: `TMPDIR` is the whole isolation, as in `restart_writes_the_session_out_and_starts_another`:
 /// the record goes under the temporary directory, so a run pointed at one of its own leaves
 /// exactly the files this counts. No `-m`, so nothing is sent anywhere; what this is about is
 /// which files are there afterwards.
-///
-/// note: `cargo test -p kamchatka` builds the example beside the binary and a run of this suite
-/// alone may not, so the first assertion names that rather than leaving it to a spawn error.
+#[cfg(feature = "webui")]
 #[test]
-fn the_phone_example_writes_every_session_out() {
+fn a_session_on_the_web_writes_every_session_out() {
     use std::io::{BufRead as _, Read as _, Write as _};
 
-    let example = crate::common::example("phone");
-    assert!(
-        example.exists(),
-        "{} is not built: `cargo test -p kamchatka` builds the examples, `--test remote` alone \
-         does not",
-        example.display()
-    );
-    let dir = crate::common::scratch("phone-record");
-    let mut child = std::process::Command::new(example)
-        .current_dir(crate::common::nowhere())
+    let dir = crate::common::scratch("web-record");
+    let mut child = crate::common::command()
+        .args(["--web", "127.0.0.1:0"])
         .env("TMPDIR", &dir)
-        .env("KAMCHATKA_PHONE_LISTEN", "127.0.0.1:0")
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
         .env("KAMCHATKA_API_KEY", "not-a-key")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .expect("the example did not start");
+        .expect("the program did not start");
 
     // the page's address is the second line it prints, and everything after that is the ending
     let mut out = std::io::BufReader::new(child.stdout.take().expect("stdout is a pipe")).lines();
     let page = loop {
         let line = out
             .next()
-            .expect("the example stopped before saying where the page is")
+            .expect("the program stopped before saying where the page is")
             .expect("stdout is readable");
         if let Some((_, at)) = line.split_once(" at http://") {
             break at.trim_end_matches('/').to_owned();
@@ -388,7 +374,7 @@ fn the_phone_example_writes_every_session_out() {
                     .take()
                     .expect("stderr is a pipe")
                     .read_to_string(&mut said);
-                panic!("the example did not end after `/quit`: {said}");
+                panic!("the program did not end after `/quit`: {said}");
             }
         }
     };
@@ -429,6 +415,95 @@ fn the_phone_example_writes_every_session_out() {
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
+}
+
+/// `--web` refuses a non-loopback address and the flags a served session doesn't read, before it
+/// reports serving anything.
+#[cfg(feature = "webui")]
+#[tokio::test(flavor = "multi_thread")]
+async fn the_web_page_is_refused_where_a_served_session_would_be() {
+    for (extra, expected) in [
+        (&["--web", "0.0.0.0:8080"][..], "not a loopback address"),
+        (
+            &["--web", "127.0.0.1:0", "--deadline", "60"][..],
+            "`--web` does not read",
+        ),
+    ] {
+        let said = tokio::process::Command::from(crate::common::command())
+            .args(["--no-record", "-m", "nothing"])
+            .args(extra)
+            .output()
+            .await
+            .expect("the program did not start");
+        let refused = String::from_utf8_lossy(&said.stderr);
+
+        assert!(!said.status.success(), "{extra:?} was accepted");
+        assert!(refused.contains(expected), "{extra:?}: {refused}");
+        assert!(
+            !String::from_utf8_lossy(&said.stdout).contains("serving on"),
+            "{extra:?} listened before it was refused"
+        );
+    }
+}
+
+/// With `--serve unix:PATH`, the page relays to that socket.
+#[cfg(feature = "webui")]
+#[test]
+fn the_web_page_relays_to_a_session_on_a_socket_file() {
+    use std::io::{BufRead as _, Read as _, Write as _};
+
+    let dir = crate::common::scratch("web-on-a-socket");
+    let socket = dir.join("session.sock");
+    let mut child = crate::common::command()
+        .arg("--no-record")
+        .arg("--serve")
+        .arg(format!("unix:{}", socket.display()))
+        .args(["--web", "127.0.0.1:0"])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the program did not start");
+    let mut out = std::io::BufReader::new(child.stdout.take().expect("stdout is a pipe")).lines();
+    let page = loop {
+        let line = out
+            .next()
+            .expect("the program stopped before saying where the page is")
+            .expect("stdout is readable");
+        if let Some((_, at)) = line.split_once(" at http://") {
+            break at.trim_end_matches('/').to_owned();
+        }
+    };
+
+    // the stream only opens once the session has answered the attach
+    let mut stream = std::net::TcpStream::connect(&page).expect("the page is reachable");
+    stream.set_read_timeout(Some(PATIENCE)).expect("a timeout");
+    write!(
+        stream,
+        "GET /events?tab=one HTTP/1.1\r\nHost: {page}\r\n\r\n"
+    )
+    .expect("the request goes out");
+    let mut seen = Vec::new();
+    let mut chunk = [0u8; 4096];
+    while !String::from_utf8_lossy(&seen).contains(r#""is":"attached""#) {
+        let n = stream.read(&mut chunk).expect("the stream opens");
+        assert!(
+            n > 0,
+            "the stream closed before the session answered: {}",
+            String::from_utf8_lossy(&seen)
+        );
+        seen.extend_from_slice(&chunk[..n]);
+    }
+    assert!(
+        String::from_utf8_lossy(&seen).starts_with("HTTP/1.1 200"),
+        "{}",
+        String::from_utf8_lossy(&seen)
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// `--serve` refuses the two flags a served session never reads, rather than serving for ever
@@ -1467,7 +1542,7 @@ async fn ctrl_c_at_a_client_stops_the_turn_and_then_detaches() {
 /// `/cleanup` is said to the client, which has the program's lines on a screen of its own.
 ///
 /// note: a broadcast rather than an answer, for the reason every other notice is one: the program
-/// has one voice, and a session drawn at a desk and watched from a phone does not have half of it
+/// has one voice, and a session drawn at a desk and watched from a browser does not have half of it
 /// cleared - a `/cleanup` typed at the desk reaches the client too.
 #[tokio::test]
 async fn clearing_the_notices_is_said_to_the_client() {
@@ -1673,7 +1748,7 @@ async fn cycling_an_item_that_is_not_there_says_so() {
 /// `rule` changes a row of the permissions tab the way the tab's keys change it, and a row put
 /// back to a question leaves the list.
 ///
-/// note: what a phone has no other way to do. The rows came over the wire and the keys that change
+/// note: what a browser has no other way to do. The rows came over the wire and the keys that change
 /// them did not, so a rule answered `always` from a page could be taken back only at the terminal.
 #[tokio::test]
 async fn a_rule_can_be_put_back_to_a_question_from_a_client() {

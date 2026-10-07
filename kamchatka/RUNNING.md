@@ -108,7 +108,7 @@ compiled in.
 ## 🔌 a session you can walk away from
 
 `--serve` puts a socket in front of a session, and `--connect` attaches to one. The screen stays
-where there is one to draw on, so a session started at a desk is the same session a phone picks up
+where there is one to draw on, so a session started at a desk is the same session a browser picks up
 — keys and clients are two ways into one `App`, and the one loop that owns it answers both.
 
 ```console
@@ -181,25 +181,31 @@ $ cargo run --example attached -- tcp:127.0.0.1:7878 "what is 2+2"
 
 Its header carries the wire transcript, for a client in another language.
 
-And `examples/gateway.rs` with `examples/browser.html` put the session in a browser, which cannot
-reach it on its own:
+`--web` serves the session as a web page, for browsers, which can't connect to the socket
+themselves:
 
 ```console
-$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
-$ cargo run --example gateway -- tcp:127.0.0.1:7878 0.0.0.0:8080
+$ kamchatka --web 127.0.0.1:8080 -m qwen/qwen3-coder
 ```
 
-`examples/phone.rs` is the same thing in one command, for when there is nobody at the machine: a
-session of its own, with the same page in front of it.
+With `--serve`, the page relays to that socket (`unix:` or `tcp:`); without it, the session is
+served on a loopback port of its own, which is printed like `--serve`'s. The screen is still drawn
+where there is a terminal, and a browser that loses the connection reconnects and catches up by
+itself. This is the `webui` feature, which release builds include.
+
+The page has no authentication or encryption, so like `--serve` it only listens on loopback. To
+use it from another machine, such as a phone, tunnel over SSH and open it at `localhost`:
 
 ```console
-$ KAMCHATKA_PHONE_LISTEN=0.0.0.0:8080 cargo run --example phone -- -m qwen/qwen3-coder
+phone$ ssh -N -L 8080:127.0.0.1:8080 host
 ```
 
-It takes the program's own arguments, all of them, because the session it assembles is the
-program's: `-m`, `--advise`, `--allow`, `-s`, a first message, a settings file found where you are
-standing. Where the *page* listens is `KAMCHATKA_PHONE_LISTEN`, loopback unless it says otherwise.
-A browser that loses the stream reconnects and resumes by itself.
+then `http://localhost:8080/`. The page refuses requests from other web pages open in the same
+browser: a request must be addressed to an IP address or `localhost` (not a host name, which a DNS
+rebinding attack would use), must come from the page itself when it says where it came from, and a
+command must be JSON. The host name rule also means a tunnel that forwards its own host name, such
+as `tailscale serve`, is refused. The page can answer permission questions, so its port is closed
+to the session's own commands, like the session's port.
 
 The page has the terminal's four tabs, in the terminal's order: the button in the top right corner
 cycles **chat → context → events → permissions**.
@@ -221,10 +227,16 @@ is then replaced by what was recorded, as at the terminal.
 `/cleanup` (<kbd>ctrl+l</kbd>) takes this program's own lines off the chat and leaves the
 conversation; clearing it on one client clears it on all of them.
 
-The gateway has **no authentication and no encryption**, and says so when you point it at anything
-but loopback. `--serve` itself still refuses to. Whatever reaches the page reaches the `shell`
-tool, so it is a thing for a network you trust while you are watching it, and not a thing to leave
-running.
+`examples/gateway.rs` serves the same page from a separate process, for a session started without
+`--web` or by a build without the `webui` feature:
+
+```console
+$ kamchatka --serve tcp:127.0.0.1:7878 -m qwen/qwen3-coder &
+$ cargo run --example gateway -- tcp:127.0.0.1:7878 127.0.0.1:8080
+```
+
+It has the same loopback restriction, but it can't close its port to the session's commands, since
+those are confined by another process; see [SECURITY.md](../SECURITY.md).
 
 ## 🧩 three dialects, and why the others keep the order
 

@@ -1332,7 +1332,7 @@ async fn a_model_change_reaches_the_client() {
 }
 
 /// A loop that is not `Server::run` can serve the same session, which is what lets one be driven
-/// from a desk and a phone at once.
+/// from a desk and a browser at once.
 ///
 /// note: `main.rs`'s drawn loop is the other caller and cannot be tested from here - it wants a
 /// terminal, and every test of this binary pipes its stdout. What *is* testable is the claim

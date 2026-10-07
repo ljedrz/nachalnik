@@ -20,7 +20,7 @@
 //! it too. [`Recorder`] writes a session down as it goes, [`record`] finishes that record - or
 //! writes the whole session out where nobody started one - and [`Setup::relaunch`] is `/restart`:
 //! the same settings wired a second time, with the first session written out on the way. Without
-//! them a loop like `examples/phone.rs`, a session with a socket in front of it, ends the process
+//! them a custom loop, such as a session with a socket in front of it, ends the process
 //! on `/quit` or `/restart` with the session in memory and nothing on disk. A loop that ends a
 //! session owes it the same safety net the program's loops give one, and gets it from here.
 
@@ -72,8 +72,7 @@ pub struct Setup {
     /// note: [`Setup::wire`] does not read it. Starting a record and finishing one are the acts
     /// of the loop driving the session, which is the caller's - so this is the setting and
     /// [`Recorder::start`] and [`record`] are the acts, and a caller driving an [`App`] with a loop
-    /// of its own honours the one with the others, the way `main.rs` does at both ends of a run
-    /// and `examples/phone.rs` at the end of one.
+    /// of its own honours the one with the others, the way `main.rs` does at both ends of a run.
     pub record: bool,
     /// How many requests one turn may make before it stops; `None` is no limit.
     pub requests: Option<usize>,

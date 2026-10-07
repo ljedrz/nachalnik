@@ -77,7 +77,9 @@ setting up, it is a field on `Setup`, not a line in `main.rs`.
 
 **The loops.** `main.rs` picks one and draws; `headless.rs` is stdin in and the log out;
 `remote/` serves a session over a socket (`protocol/` the wire, `server/` the session's side,
-`client.rs` `--connect`), and `server::Serving` is the part the drawn loop shares. Guards on a
+`client.rs` `--connect`), and `server::Serving` is the part the drawn loop shares. `web/` (feature
+`webui`) is `--web`: the embedded page, `browser.html`, and the HTTP that relays browsers to a
+served session as protocol clients. Guards on a
 session - the spend ceiling - live on `App`, which every loop comes through; `--deadline` lives on
 `Headless`, because wall-clock time is a property of a run.
 
@@ -90,10 +92,11 @@ into the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, and `m
 **Features.** `tui` (default) puts `ui/`, `app/keys.rs` and the prompt behind it: anything taking a
 `KeyEvent` or a `ratatui` type goes behind it, and anything a *command* can reach cannot.
 `cargo test -p kamchatka --no-default-features` is the check, and builds a headless binary.
-`remote/` has no feature: it costs one `tokio` feature and nothing else.
+`remote/` has no feature: it costs one `tokio` feature and nothing else. `webui` (default) is
+`web/`, which adds no dependencies either.
 
 `kamchatka/examples/`: `attached.rs` is a client written against `remote::protocol` alone;
-`gateway.rs` and `phone.rs` relay a browser to a session, sharing `relay/` and `browser.html`;
+`gateway.rs` (feature `webui`) serves `web/`'s page for a session in another process;
 `system1_assisted_compaction.rs` (feature `advise`) asks a System One model what a full context can
 lose; `recorded.rs` runs a session headless and writes it out four ways, into the ignored
 `recorded/`.

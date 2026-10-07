@@ -351,7 +351,7 @@ async fn a_projection_too_long_even_cut_down_is_refused_rather_than_written() {
 /// refused, or away from one that works.
 #[test]
 fn the_page_knows_the_line_limit_the_session_has() {
-    let page = include_str!("../../examples/browser.html");
+    let page = include_str!("../../src/web/browser.html");
     let copy = format!("const MAX_LINE = {};", protocol::MAX_LINE);
     assert!(page.contains(&copy), "the page does not say `{copy}`");
 }

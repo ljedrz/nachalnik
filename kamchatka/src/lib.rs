@@ -123,6 +123,8 @@ pub mod stopping;
 pub mod tools;
 #[cfg(feature = "tui")]
 pub mod ui;
+#[cfg(feature = "webui")]
+pub mod web;
 pub mod wiring;
 
 pub mod help;

@@ -16,9 +16,9 @@
 <title>kamchatka</title>
 
 <!--
-  The whole client. No build step, no framework, no bundler, no dependency - it is served by
-  examples/relay/, for gateway.rs and phone.rs alike, out of an include_str!, and everything it
-  knows about the session it learns from the protocol.
+  The whole client. No build step, no framework, no bundler, no dependency - it is served by the
+  web module (for `kamchatka --web` and the gateway example) out of an include_str!, and
+  everything it knows about the session it learns from the protocol.
 
   * the conversation comes from a projection, and can come from nowhere else. The records name
     things rather than carrying them, so a page fed only the stream can follow a turn as it arrives
@@ -291,8 +291,8 @@
 </footer>
 
 <script>
-// note: not `crypto.randomUUID()`, which is only defined in a secure context - so it is `undefined`
-// on plain http from a phone, which is the one place this page is meant to be opened.
+// note: not `crypto.randomUUID()`, which only exists in a secure context; a page opened over plain
+// http at anything but `localhost` is not one.
 const tab = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 const log = document.getElementById("log");

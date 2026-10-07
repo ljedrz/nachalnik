@@ -559,7 +559,7 @@ impl<'a> Client<'a> {
             // note: counted and not drawn. It answers `project`, `cycle` and `revise`, which this
             // client does not send - it renders the conversation and nothing else - but an answer
             // is an answer whoever asked, and one left uncounted is a count that never comes back
-            // down. A client that wants the figures reads them off it; see `examples/gateway.rs`
+            // down. A client that wants the figures reads them off it; see `web/browser.html`
             Message::Projected(_) => {
                 self.answered();
 
@@ -1285,7 +1285,9 @@ impl<'a> Client<'a> {
 }
 
 /// Opens whichever kind of connection the address asks for.
-async fn connect(address: &str) -> Result<super::Connection, String> {
+///
+/// Also used by `web`, whose page is a client too.
+pub(crate) async fn connect(address: &str) -> Result<super::Connection, String> {
     match protocol::address(address)? {
         Address::Unix(path) => match protocol::overlong_path(path) {
             // note: the same refusal the bind gives, and said before the connect, because a path

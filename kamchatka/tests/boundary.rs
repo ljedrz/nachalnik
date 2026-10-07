@@ -696,6 +696,44 @@ async fn a_served_port_is_closed_to_commands_while_it_is_served() {
     assert!(!closed().contains(&port), "{:?}", closed());
 }
 
+/// The page's port is closed to confined commands while it listens, since the page can answer
+/// permission questions, and non-loopback addresses are refused.
+#[cfg(feature = "webui")]
+#[tokio::test]
+async fn the_page_is_closed_to_commands_and_listens_only_on_loopback() {
+    let dir = common::workdir("page-port-closed");
+    let closed = || Sandbox::of(&Careful::new(), dir.clone(), Vec::new(), Vec::new(), true).closed;
+
+    let web = kamchatka::web::Web::bind("127.0.0.1:0", "tcp:127.0.0.1:1")
+        .await
+        .expect("it listens");
+    let port: u16 = web
+        .address()
+        .trim_end_matches('/')
+        .rsplit(':')
+        .next()
+        .and_then(|port| port.parse().ok())
+        .expect("a port");
+    assert!(closed().contains(&port), "{:?}", closed());
+
+    drop(web);
+    assert!(!closed().contains(&port), "{:?}", closed());
+
+    for elsewhere in ["0.0.0.0:0", "[::]:0"] {
+        let refused = kamchatka::web::Web::bind(elsewhere, "tcp:127.0.0.1:1")
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{elsewhere} was listened on"));
+        assert!(refused.contains("not a loopback address"), "{refused}");
+    }
+    // an invalid session address is refused before anything listens
+    assert!(
+        kamchatka::web::Web::bind("127.0.0.1:0", "127.0.0.1:7878")
+            .await
+            .is_err()
+    );
+}
+
 #[test]
 fn what_goes_out_as_arguments_comes_back_as_the_same_sandbox() {
     use kamchatka::sandbox::Network;

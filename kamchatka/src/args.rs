@@ -1,9 +1,8 @@
 //! The command line: what the program accepts, and what a session made of it looks like.
 //!
 //! note: in the library rather than in `main.rs`. A session assembled from these arguments is the
-//! thing this crate is for, and `examples/phone.rs` builds one too - so a second, smaller
-//! vocabulary in the example would be two sets of flags to keep in step and one of them always
-//! behind.
+//! thing this crate is for, and embedders build sessions from it too, rather than keeping a second
+//! set of flags in sync.
 //!
 //! note: what `main.rs` keeps is the part that is the program's own: which loop drives the session,
 //! where the record is written, and the refusal that `--connect` assembles nothing.
@@ -209,6 +208,14 @@ pub struct Args {
     /// needs an answer.
     #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
     pub serve: Option<String>,
+
+    /// Also serve the session as a web page, e.g. at `127.0.0.1:8080` (loopback only). With
+    /// `--serve`, the page relays to that socket; otherwise the session is served on a loopback port
+    /// of its own. The page has no authentication; to reach it from another machine, use a tunnel
+    /// such as `ssh -L`.
+    #[cfg(feature = "webui")]
+    #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
+    pub web: Option<String>,
 
     /// Attach to a session somebody else is serving and drive it from lines on stdin, in the same
     /// two streams `--headless` writes. Nothing else is accepted on this command line but
