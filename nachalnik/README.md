@@ -10,8 +10,8 @@ reported to you afterwards.
 
 > The agent is not the boss. You are.
 
-It is a library, not a program: it owns no UI, no editor, no model, no tools and no prompt. What
-it owns is the loop, the context, and the paper trail. The rest of the
+It is a library, not a program: it has no UI, no editor, no model, no tools and no prompt. What it
+has is the loop, the context, and a record of everything that happened. The rest of the
 [workspace][workspace] — a terminal agent, an MCP bridge, an introspection benchmark — is what
 gets built on top.
 
@@ -40,8 +40,8 @@ assert_eq!(kernel.budget().used(), 126);   // it was 13,173
 kernel.undo()?;                            // and it is back, with its note and its identifier
 ```
 
-**Stop between transitions, not between functions.** `Ready` is the state in which the model has
-said which tools it wants and none of them have run:
+**Stop at any step of the loop.** In `Ready`, the model has said which tools it wants and none of
+them have run:
 
 ```rust
 match kernel.step().await? {
@@ -61,8 +61,9 @@ Reach for it when **what was in the context is part of your answer**:
   whole previewed request showing that the only variable was the model — and the tokenizers
   disagreeing with each other about identical bytes, which you can see rather than assume.
   (`cargo run --example compare_models`, `--example panel`)
-* **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that are
-  yours to render, over a loop that stops between transitions instead of acting and reporting.
+* **Editor and IDE integration.** A `/context` view, a permission prompt and an undo that you
+  render yourself, over a loop that pauses at each step instead of acting first and reporting
+  afterwards.
 * **Anything that has to be auditable or reproducible.** An append-only log of typed events, plus
   a snapshot that resumes the same session in another process — and an assistant turn recorded in
   the order the model produced it, thinking and tool calls interleaved, rather than rearranged
@@ -72,8 +73,8 @@ Reach for it when **what was in the context is part of your answer**:
   the [write-ups][writeup] are sessions of it.
 
 Reach for something else if you want **an agent today**. This crate ships no provider, no tools,
-no prompt and no UI, so a working agent is yours to assemble; [`kamchatka`][kamchatka] in this
-workspace is what that costs, and most of it is tools and rendering. If you want batteries
+no prompt and no UI, so you have to assemble a working agent yourself; [`kamchatka`][kamchatka] in
+this workspace shows how much work that is, and most of it is tools and rendering. If you want batteries
 included, `goose` and `codex` are good and also Rust. `nachalnik` is what you build a harness
 *out of*.
 
@@ -175,19 +176,18 @@ Model parameters are an opaque `serde_json` map carried to the provider verbatim
 `safety_settings` and `reasoning_effort` are exactly as first-class as `temperature` — and the
 kernel cannot send anything you did not ask for.
 
-The kernel has no wire format, so `preview_request` is as far as its own guarantee reaches. A
-provider that implements `render` closes the rest of the gap: `preview_payload` then shows the
-payload itself, and `Config::record_payloads` puts it in the log. That payload is the provider's
-account of itself, exactly like a tool's declared capabilities, and the kernel has nothing to
-check it against. Render once and send what you rendered; a preview that has quietly stopped
-matching is worse than none.
+The kernel has no wire format, so its own guarantee ends at `preview_request`. A provider that
+implements `render` covers the rest: `preview_payload` then shows the actual payload, and
+`Config::record_payloads` puts it in the log. That payload is the provider's own claim, like a
+tool's declared capabilities, and the kernel can't verify it. So providers should render once and
+send exactly what they rendered; a preview that no longer matches what is sent is worse than none.
 
-A reasoning model's own thinking is treated the same way. It is recorded on the turn that produced
-it, counted like everything else, and offered back to the provider in `Message::reasoning` — some
-APIs verify a signed thinking block against the turn it came from, and a runtime that dropped it
-could not talk to them. It is never separated from its turn, and `LinearProjector::send_reasoning`
-decides whether it goes back out. `ToolCall::extra` is the same idea per call: whatever a provider
-attaches to one is carried back attached to that call, verbatim and uninterpreted.
+A reasoning model's thinking is kept too. It is recorded on the turn that produced it, counted
+like everything else, and passed back to the provider in `Message::reasoning`, since some APIs
+check a signed thinking block against the turn it came from and reject requests without it. It
+always stays with its turn, and `LinearProjector::send_reasoning` decides whether it is sent back.
+`ToolCall::extra` does the same for individual calls: whatever a provider attaches to a call is
+sent back with that call, unchanged and uninterpreted.
 
 ---
 
@@ -201,14 +201,14 @@ in this workspace that runs the commands a model asks for, so it is the one that
 Landlock for the filesystem, and a seccomp filter that holds every attempt to reach the network
 until somebody answers it.)
 
-What the runtime enforces is one thing: a call the `PermissionPolicy` refused is never handed to
-`Tool::invoke`, and the refusal is recorded as an event and as a tool result the model is told
-about. That is a decision point with a paper trail. The refusal says what *kind* it was, because
-that is the only question a refused model can act on: a standing rule means the same call will meet
-the same answer, and an answer to *this* call means a different approach may well be allowed. Which
-of the two it was is the kernel's own knowledge — it resolved the grant. *Why* is not, so the
-kernel asks: `PermissionPolicy::why` is defaulted to `None`, and whatever a policy returns goes
-into the tool result beside the kernel's account of it.
+The runtime enforces one thing: a call the `PermissionPolicy` refused is never passed to
+`Tool::invoke`, and the refusal is recorded as an event and as a tool result the model sees. It is
+a checkpoint with a record, not a security boundary. The refusal says which *kind* it was, since
+that's what a model needs to decide what to do next: a standing rule means the same call will be
+refused again, while a refusal of *this* call means a different approach might be allowed. The
+kernel knows which kind it was, because it resolved the decision. It doesn't know *why*, so it
+asks: `PermissionPolicy::why` returns `None` by default, and whatever a policy returns goes into the
+tool result next to the kernel's own explanation.
 
 What it does not protect you from, by design:
 
@@ -308,8 +308,8 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 | **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection: the model commits to a claim about its own context, the harness moves the thing the claim was about on a forked copy, and the two are compared. |
 | **[`nachalnik-providers`][nachalnik-providers]** | the three dialects this workspace talks — OpenAI chat-completions, Google's `generateContent` and Anthropic's Messages API — as `Provider`s, streamed, retried and interruptible. |
 
-None of them needed a change to this crate to exist, which is the argument that its six seams
-are real ones. See the [workspace readme][workspace].
+None of them needed any change to this crate, which shows that its six traits really are
+replaceable. See the [workspace readme][workspace].
 
 ---
 

@@ -1,8 +1,7 @@
 # the parts that are not obvious
 
-What this runtime does differently from a loop somebody would write in an afternoon, each with
-the reasoning that put it there. [The readme](README.md) says what the crate is and how to start;
-this is what to read before building something that leans on it.
+What this runtime does differently from a simple agent loop, and why. [The README](README.md) says
+what the crate is and how to start; read this before building something that depends on it.
 
 ---
 
@@ -23,33 +22,32 @@ kernel.undo()?;                                           // refused while a tur
 kernel.redo()?;
 ```
 
-`set_state` says what it did to each identifier — `changed`, `unchanged`, `unknown` — because
-"there is no item 12" and "item 12 was already pruned" are different things to tell somebody.
+`set_state` reports what it did to each identifier (`changed`, `unchanged`, `unknown`), because
+"there is no item 12" and "item 12 was already pruned" are different answers.
 
-`annotate` is the exception, and takes no undo of its own: metadata rides with the operation it
-describes, so an `undo` takes an annotation back with the operation before it. It is new work all
-the same, so it leaves nothing for a `redo` to put back.
+`annotate` is the exception: it doesn't create its own undo step. Metadata belongs to the operation
+it describes, so `undo` removes an annotation together with the operation before it. It still
+counts as new work, though, so it clears anything `redo` could have restored.
 
-Excluding an item removes it from the *projection*, not from the record. It keeps its identifier,
-stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a `redo`.
-`Elided` is the third answer between in and out: the item stays in the request as a one-line
-marker, so a tool result can stop costing what it holds without the call that asked for it having
-to come down too. The default projector drops the other half of a call/result pair when one side
-is gone, so pruning cannot produce a request the provider will reject. It says so in
-`Projection::repairs` *and* in the session log, because a request the kernel quietly adjusted is
-exactly the one you want to be able to ask about afterwards.
+Excluding an item removes it from the *projection* (the request), not from the record. It keeps its
+identifier, stays listed and inspectable, and comes back with another `set_state`, an `undo`, or a
+`redo`. `Elided` is in between: the item stays in the request as a one-line placeholder, so a large
+tool result stops costing tokens without its tool call having to be removed too. The default
+projector removes the other half of a call/result pair when one half is gone, so pruning can't
+produce a request the provider will reject. It reports this in `Projection::repairs` *and* in the
+session log, because any request the kernel adjusted is one you'll want to be able to look into
+afterwards.
 
-**Nothing is destroyed, including by a limit.** A tool output over its limit is recorded twice:
-the whole of it, excluded, and the truncated copy the model is shown. Putting the whole thing back
-in front of the model is a `set_state` like any other, rather than a re-run of the tool. Keeping
-it costs a pointer rather than a copy: content, tool-call arguments and tool schemas are all
-shared, so pruning a four-megabyte tool result moves a pointer, projecting it into a request moves
-a pointer, and the event recording it points at the same bytes the context holds. Set
+**Nothing is destroyed, not even by a limit.** A tool output over its limit is recorded twice: the
+full output, excluded, and the truncated copy the model sees. Showing the model the full output is
+a `set_state` like any other, not a re-run of the tool. Keeping it is cheap: content, tool-call
+arguments and tool schemas are all shared, so pruning a four-megabyte tool result, putting it into
+a request, and recording it in an event all just pass a pointer to the same bytes. Set
 `Config::keep_truncated_output` to `false` when a tool can produce more than you are willing to go
 on holding; the truncation is still reported either way.
 
-One agent is one kernel, and a fleet of them shares nothing but whatever you hand to both, so
-running sixteen at once needs no coordination at all. Within a single turn, the tools a model
+One agent is one kernel, and kernels share nothing unless you give them something in common, so
+running sixteen at once needs no coordination. Within a single turn, the tools a model
 asks for run one at a time in the order it asked — which is something you can build on, since two
 edits to the same file then apply in sequence. `Config::parallel_tool_calls` gives that up for
 speed, on purpose and never by default: nothing in the kernel can tell whether a model's calls are
@@ -59,9 +57,9 @@ mutation is atomic, so a client can render, prune and preview while a turn is in
 thing two threads cannot do is drive the loop at the same time, which is `Error::Busy` rather than
 a second request.
 
-Automatic management is allowed, invisible management is not. A `Compactor` gets the budget and
-the items and returns a plan; the kernel refuses to remove anything pinned, applies the rest,
-and broadcasts a report of exactly what it did — which the user can then disagree with.
+Automatic management is allowed; invisible management is not. A `Compactor` gets the budget and the
+items and returns a plan; the kernel refuses to remove anything pinned, applies the rest, and
+broadcasts a report of exactly what it did, which the user can then undo.
 
 ---
 
@@ -100,16 +98,15 @@ cost in `Projection::repairs` rather than doing it quietly.
 
 ## 🎯 a budget that corrects itself, and admits what it cannot reach
 
-Every token figure the kernel reports comes from a `TokenCounter`, and the estimate underneath the
-default one — `bytes / 4` — is admittedly that, and how wrong it is depends on the shape of what you
-are sending: short requests heavy with tool definitions read well low, long conversations a few
-percent low. It cannot see per-message framing and never sees the tokens a reasoning model spends
-thinking. Embedding a tokenizer would mean embedding a model-specific assumption, which this crate
-will not do.
+Every token figure the kernel reports comes from a `TokenCounter`. The default one estimates
+`bytes / 4`, which is only an estimate, and how far off it is depends on what you send: short
+requests with many tool definitions come out well below the real count, long conversations a few
+percent below. It can't see per-message overhead or the tokens a reasoning model spends thinking.
+Embedding a tokenizer would tie the crate to particular models, which it won't do.
 
-So it does the other thing. A provider that reports usage has said, after each response, what the
-request actually cost, and the kernel knows what it estimated for the very same bytes — so it
-hands both numbers to the counter, and a `Kernel::new` is already holding one that acts on them:
+Instead, it learns from the provider. A provider that reports usage says, after each response,
+what the request actually cost, and the kernel knows what it estimated for the same request, so it
+gives both numbers to the counter. A new `Kernel` already has a counter that uses them:
 
 ```rust
 // what a kernel starts with; correcting by 1.0 until a provider has said otherwise
@@ -119,43 +116,42 @@ Calibrating::new(BytesPerToken::default())
 kernel.set_counter(Arc::new(BytesPerToken::default()));
 ```
 
-`Calibrating` keeps one ratio over every response worth learning from, so it settles rather than
-chasing the last request. What it learned is a number you can look at (`calibration()`), not a fudge
-factor buried in the kernel. It ignores requests too small to have a systematic error in them,
-because a percentage drawn from a handful of tokens is noise. And it corrects what is counted *from
+`Calibrating` keeps one ratio across all the responses it learns from, so it settles instead of
+jumping with each request. The ratio is a number you can read (`calibration()`), not a hidden
+fudge factor. It ignores requests too small to show a systematic error, because a percentage from a
+handful of tokens is noise. And it corrects what is counted *from
 then on*: figures already recorded on items do not silently rewrite themselves. `Kernel::recount`
 rewrites them when you ask, and says so on the event stream.
 
-The hook is `TokenCounter::observe`, whose default does nothing. As everywhere else, the kernel
-supplies the facts and your code supplies the judgement.
+The hook is `TokenCounter::observe`, which does nothing by default. As everywhere else, the kernel
+provides the facts and your code decides what to do with them.
 
-And where a counter cannot reach something at all, it says so instead of returning `0`. That is a
-different problem from being a few percent out, and no amount of calibration touches it:
-`Content::Blob` holds base64, and base64 over four is a number about an encoding rather than about
-a model — a 400 KB screenshot would arrive as a hundred thousand tokens and send a compactor after
-a context that is nowhere near full. What a picture really costs is a formula over its
-*dimensions*, every vendor publishes one, and each publishes a different one, so this crate
-carries none of them.
+When a counter can't price something at all, it says so instead of returning `0`. That's a
+different problem from being a few percent off, and calibration can't fix it: `Content::Blob`
+holds base64, and base64 length divided by four says nothing about tokens. A 400 KB screenshot
+would count as a hundred thousand tokens and trigger compaction of a context that is nowhere near
+full. An image's real cost is a formula based on its *dimensions*, and every vendor publishes a
+different one, so this crate includes none of them.
 
-What it carries is the two halves that let you supply one. `TokenCounter::uncounted` is a *count*
+Instead, it gives you two things to supply your own. `TokenCounter::uncounted` is a *count*
 of the pieces a counter declined to price, and it rides up to `Budget::uncounted` and
-`ContextItem::uncounted` — so `budget.fully_counted()` is the difference between a figure that is
-complete and a figure that is a floor, and the row holding the picture can be marked as the one
-nobody priced. `Blob::meta` is a free-form value the kernel never reads, for whatever that counter
-would need: `{"w": 1024, "h": 768}` for a picture, `{"pages": 12}` for a document. Whoever encoded
-the payload had it decoded a moment earlier, so they are the one who knows.
+`ContextItem::uncounted`, so `budget.fully_counted()` tells a complete figure from a minimum, and
+the item holding the image can be marked as unpriced. `Blob::meta` is a free-form value the kernel
+never reads, for whatever your counter needs: `{"w": 1024, "h": 768}` for an image,
+`{"pages": 12}` for a document. Whoever encoded the payload had it decoded just before, so they
+know these values.
 
 ```console
 $ cargo run --example pricing_a_picture
 ```
 
-That counts one context three ways — the default counter, one applying a vendor's tiling formula
-from `meta`, and that same formula handed a blob nobody measured. Knowing a formula does not help
-if the payload has no dimensions on it, so the third abstains exactly as the default one does.
+That counts one context three ways: with the default counter, with one that applies a vendor's
+formula using `meta`, and with that same formula given a blob without dimensions. A formula is no
+use without the dimensions, so the third reports the image as unpriced, like the default counter.
 
-One rule follows: a request carrying anything unpriced never reaches `observe`. `Calibrating`
-corrects with a single multiplier, so a gap it cannot see would be spread over the bytes it can, and
-prose beside one screenshot would read high while the screenshot still read nothing.
+One rule follows: a request containing anything unpriced is never passed to `observe`.
+`Calibrating` uses a single multiplier, so it would spread the unpriced image's cost over the text
+it can see, making the text look too expensive while the image still counted as nothing.
 
 ---
 
@@ -170,15 +166,14 @@ little more cooperation than the last:
 | during a request | a provider that checks `DeltaSink::is_interrupted` stops reading and hands back what it has | the provider |
 | during tool calls | the kernel does not start the serial calls that had not begun; a tool that checks `OutputSink::is_interrupted` can stop the one that had | the tool |
 
-The kernel cannot reach into a `Provider` and stop it — it does not own the socket, the runtime or
-the future — so it offers the fact and lets the provider decide. One that ignores it is not broken,
-only slower to stop.
+The kernel can't stop a `Provider` itself, since it doesn't own the socket, the runtime or the
+future, so it signals the interrupt and lets the provider act on it. A provider that ignores it
+isn't broken, just slower to stop.
 
-What stopping never does is discard work. A half-finished answer and a tool that returned early are
-recorded as ordinary items, because the point of a context you can see is that *you* decide what to
-do with them. The blunt instrument is still there — drop the future driving `step` and the request
-is abandoned mid-flight and the kernel returns to `Idle` rather than wedging — but it costs you
-whatever had been streamed.
+Stopping never throws work away. A half-finished answer and a tool that returned early are recorded
+as ordinary items, so *you* decide what to do with them. There is also a blunter option: drop the
+future driving `step`, and the request is abandoned and the kernel returns to `Idle` instead of
+getting stuck, but you lose whatever had been streamed.
 
 ---
 
@@ -198,11 +193,10 @@ counter.changed    context.full                           permission.decided
 compactor.changed                                         policy.ruled
 ```
 
-Every one of them carries what a client needs to render it without inferring anything. An undo
-names the items it took back and the ones it reverted. A request names the items it left out, and
-why. A seam being swapped names what went out and what came in — because "the projector was
-replaced" leaves a reader unable to say what was projecting the requests on either side of that
-line, and that is the question a log is for.
+Every event carries what a client needs to display it without guessing. An undo names the items it
+removed and the ones it reverted. A request names the items it left out, and why. Swapping a
+component names both the old one and the new one, because "the projector was replaced" doesn't
+tell you which projector built the requests before and after, which is exactly what a log is for.
 
 `Kernel::subscribe` is the live stream; `Kernel::history` is the append-only session log (both
 written under one lock, so their order agrees), which keeps `model.delta` and `tool.output` only
@@ -211,24 +205,23 @@ one line per event. The record a session begins with carries `FORMAT`, and so do
 event a reader's version does not know reads as `Event::Unknown` rather than failing the log. And
 `tests/records/` holds one of every event and a snapshot, per format, as the shapes to read against.
 
-The log stays small by *naming* things rather than copying them: `model.requested` records the
-context ids a request was projected from, not the messages. The one event that carries content is
-`context.replaced`, and it follows the rule that makes the rest work — the log records what nothing
-else can recover. An added item is still in the context; overwritten text is nowhere. An item's
-metadata is copied too, into `context.added` and `context.annotated`, because it is a hint a
-compactor decides by and nothing else keeps the one an annotation replaced. `model.payload`
-holds the rendered request, and is written only when `Config::record_payloads` is on. The log is
-unbounded on purpose (a capped append-only log is not one), and `drain_history` is how a
-long-running session stays affordable: you take the records, you write them somewhere, the kernel
-lets go. Nothing disappears behind your back.
+The log stays small by *referring* to things rather than copying them: `model.requested` records
+the context ids a request was built from, not the messages. The only event that carries content is
+`context.replaced`, because the log records what can't be recovered any other way: an added item is
+still in the context, but overwritten text is gone. Item metadata is copied too, into
+`context.added` and `context.annotated`, because compactors make decisions based on it and nothing
+else keeps the value an annotation replaced. `model.payload` holds the rendered request, and is only
+written when `Config::record_payloads` is on. The log is deliberately unbounded (a capped log isn't
+append-only), and `drain_history` keeps long sessions manageable: you take the records, write them
+somewhere, and the kernel releases them. Nothing disappears without you doing it.
 
 ---
 
 ## 💾 sessions outlive processes
 
-The log and a snapshot answer different questions, and you want both. The log says what happened
-and stays small, because an event *names* an item rather than carrying its contents — which is
-also why it cannot rebuild a context. A `Snapshot` can:
+The log and a snapshot serve different purposes, and you want both. The log says what happened and
+stays small, because events refer to items instead of carrying their contents, which is also why
+it can't rebuild a context. A `Snapshot` can:
 
 ```rust
 let snapshot = kernel.snapshot();          // items, ids, states, notes, params, used call ids
@@ -238,8 +231,8 @@ std::fs::write("session.json", serde_json::to_vec(&snapshot)?)?;
 let kernel = Kernel::resume(Config::default(), snapshot);
 ```
 
-Everything that is easy to lose comes back: a pin, the reason something was pruned, a turn's
-reasoning, the signature attached to a tool call, and the identifiers already handed out — so a
-resumed session cannot reuse one. A provider, a policy and the tools are yours to supply again,
-because they were never the session's to remember. Setting `Config::session_name` resumes under a
+Everything that is easy to lose comes back: pins, the reasons items were pruned, a turn's reasoning,
+the signature attached to a tool call, and the identifiers already used, so a resumed session can't
+reuse one. You supply the provider, policy and tools again, because they aren't part of the
+session. Setting `Config::session_name` resumes under a
 new name, which is how a session gets forked rather than continued.
