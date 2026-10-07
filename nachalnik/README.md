@@ -336,9 +336,8 @@ agent is not the boss, you are. `kamchatka` is the boiler room the work actually
 
 Licensed under the MIT License ([LICENSE-MIT][license]).
 
-<!-- crates.io resolves a relative link against the directory the readme was published from —
-     `nachalnik/` — rather than against the repository root, so every link into the tree is
-     absolute. -->
+<!-- crates.io resolves relative links against the directory this README was published from
+     (`nachalnik/`), not the repository root, so links into the tree are absolute. -->
 
 [workspace]: https://github.com/ljedrz/nachalnik
 [kamchatka]: https://github.com/ljedrz/nachalnik/tree/HEAD/kamchatka
