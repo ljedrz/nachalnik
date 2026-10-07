@@ -1,233 +1,231 @@
 # the security position
 
-What a change in this workspace has to keep true about what is enforced and what is not.
+What changes to this workspace must keep true about what is and isn't enforced.
 
 ---
 
-- **There is no sandbox, and the core will not grow one.** The kernel executes nothing - no
-  filesystem, no network, no process spawning - so it has nothing to contain. Containment belongs
-  inside a `Tool` or around the whole process.
-- **What is enforced is one thing:** a refused call is never handed to `Tool::invoke`, and the
-  refusal is an event and a tool result. A decision point with a paper trail, not a boundary. The
-  rules a policy decides by are the policy's own and the kernel cannot see them, so the trail
-  holds them as `policy.ruled` only where the policy's owner records them - `kamchatka` does for
-  every rule it sets, the answer that made one, and the network opened for one call.
-- **A `Capability` is a declaration, not a verified property**, and `Shell` subsumes every other
-  one. A client that shows `shell: allow` beside `network: deny` without saying so is reporting a
-  restriction that does not exist - which is why `kamchatka`'s permissions tab says so.
-- **A capability is not always fine enough to answer with.** `Careful::judges` is the one place a
-  call's *arguments* become subjects, and two kinds of rule come from there: a path rule
-  (`fs:read: allow` is reasonable, `fs:read .env: allow` is not) and an operation rule
-  (`context: allow` is reasonable for a `note` and not for an `exclude`). Both only ever tighten -
-  the strictest of everything consulted wins - so neither can reopen what a capability refused,
-  and that is the property that makes adding one safe. An operation rule is consulted only where one
-  exists, so a tool nobody has written a rule about is judged exactly as before. A path rule
-  compares names exactly, the way the filesystem here does - `.ENV` is another file than `.env` -
-  and a link past one is refused by `fs` rather than read, since a link is a second name: `alias
-  -> .env` is refused, named as `.env`, and asking for it by that name is a question like any
-  other. A rule about a domain or an operation no call is judged under is refused where it is
-  given rather than kept.
-- **Confinement lives where the process is spawned.** `kamchatka` puts its `shell` tool under
-  Landlock by re-executing itself in a mode that restricts itself and then `exec`s the command, so
-  `network: deny` is a refused TCP `connect` and the working directory is the edge of the world.
-  Landlock governs TCP from ABI 4, which is Linux 6.7: below that the ruleset comes back
-  `Partial`, the files are still confined, TCP is left to the gate below where there is one, and
-  the permissions tab says "partly confined"; below 6.2 truncating a file by name is ungoverned
-  too. UDP is the gate's or nobody's. The `exec` is load-bearing: a helper standing in front of the
-  command is what a stopped call would kill instead.
-  The `fs` tool, which is not a process, is held to the same boundary by its own code, which is
-  weaker in kind: a path is resolved, links followed, and checked, then opened beneath the
-  directory it was allowed under with `openat2` and `RESOLVE_BENEATH`, so a component swapped for a
-  link in between is refused by the kernel - on a kernel older than 5.6 it is an ordinary open and
-  the swap is not caught. A directory swapped in the middle of a walk is caught only at the files
-  opened under it.
-- **The network is asked about when a command tries, not when it is named.** The confined child also
-  installs a seccomp filter - `kamchatka::gate` - that holds every `socket()` for `AF_INET` or
-  `AF_INET6`, which is the first thing any use of the network does, a DNS lookup included, and hands
-  the listener to the process that spawned it. That process answers from `net:reach`: `allow` lets
-  it through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per command, while
-  the call waits. The filter reads only the call's integer arguments - the family's low 32 bits,
-  since that is all the kernel reads - so there is no address a command could change after the
-  answer, and nothing is decided per destination. Where the gate holds, `Careful` stops reading a
-  command for program names, and an allowed `exec:run` runs unasked until a command reaches out. It
-  covers a 32-bit process and an x32 call through their own tables, and refuses `io_uring_setup`
-  outright, since a ring opens a socket without calling `socket()`. What it does not cover: a socket
-  inherited or received over a unix socket from a process outside the confinement - which the
-  unix-socket rule below is what stands in front of - and a family other than the two, such as
-  `AF_PACKET`, which needs a privilege a confined command does not have. An attempt made by
-  something the command left running, after the call is over and with nothing decided, is refused
-  rather than asked, because a question about a command that has ended reaches nothing. Where the
-  gate cannot be installed - under `--no-sandbox`, or on a kernel that cannot hold a call - the
-  question is read off the command's name, and the permissions tab says so. `gate` is the one module
-  in the workspace that writes `unsafe`, each block with its reason beside it.
-- **A command the model runs is not handed this program's keys.** Every variable `kamchatka` reads a
-  key from - `endpoint::KEYS` - is taken out of the `shell` tool's environment, confined or not. The
-  confinement holds a command to its directory and says nothing about what the command was handed
-  when it started, so a key left in the environment is the one secret a confined command could
-  always print, and what it prints goes into the context, the request and the record. The keys are
-  still in this program's own environment, and on Linux `/proc/PID/environ` is how a process reads
-  another's: confined, a command is refused its parent's, because Landlock denies a process in a
-  domain any look into one outside it; with `--no-sandbox` it is not, and stripping the variables
-  keeps them out of the command's environment and no further. MCP servers keep them: those are
-  programs the person chose, running unconfined with everything the person can read, and stripping
-  their environment would be a nuisance rather than a boundary.
-- **A confined command does not have the terminal, and reaches five devices.** The child starts a
-  session of its own before it runs anything, so it has no controlling terminal: `/dev/tty` does not
-  open, and `TIOCSTI` is refused on every other one. With the terminal it could have pushed a `y`
-  into the input this program's screen reads its keys from and answered its own question, where the
-  kernel still allows `TIOCSTI`, or drawn over the question on any kernel. A child that cannot leave
-  the terminal runs nothing. Under `/dev` the ruleset grants `null`, `zero`, `full`, `random` and
-  `urandom` by name and nothing else (`sandbox-device` replaces the list), since the rest reaches
-  past the command: the person's other terminals, shared memory, a camera and a microphone. Under
-  `--no-sandbox` a command keeps the terminal and `/dev`, with everything else the person has.
-- **A stop reaches the command's session, and what leaves it runs on.** Stopping a call kills the
-  command's process group, which is the session it starts in, so whatever it started is stopped
-  with it, and a dropped call does the same. A process that starts a session of its own - under
-  `setsid`, or a daemon detaching itself - is out of that group and runs on after the call has
-  said it stopped. It stays confined and gated, and a network attempt it makes after the call is
-  refused rather than asked, so what it can reach does not grow; a served session cannot tell it
-  from a client. Holding the whole tree would take a cgroup, a PID namespace or a subreaper per
-  command, and each fails somewhere this program runs, so a stop is the group, and says so.
-  A call that *ends* leaves its group alone, so a job it put in the background - `sleep 300 &`, a
-  server - runs on while the session lasts; when the session ends, every such group still running
-  is sent `SIGTERM`, then `SIGKILL`, and named. `--leave-running` leaves them, and names them too.
-  The same holds as above for a process that left its group: it is not on the list.
-- **A boundary that stops at `open` stops short.** A command that can reach a unix socket can have
-  the process behind it act for it, outside the domain - the session bus, the compositor, a
-  container daemon. Landlock governs that from Linux 7.1, and `kamchatka` uses it there: a command
-  may connect to a socket it could have written to, and to no other. Below that kernel nothing
-  governs a `connect`. `sandbox::confines_unix_sockets` says which a machine is. An abstract socket
-  has no path for that right to name, and the X server listens on one, taking any process of the
-  user's - a connection that can type into the person's terminal. Landlock scopes those from ABI 6,
-  which is Linux 6.12, and `kamchatka` asks for the scope where the kernel has it, the same way: a
-  command may connect to an abstract socket made inside its own confinement, and to no other. Below
-  that kernel every abstract socket of the user's is in reach. `sandbox::confines_abstract_sockets`
-  says which.
-- **A confined command signals only the session.** Landlock's signal scope is as old as the
-  abstract-socket one, and a command's own ruleset does not carry it: each command confines
-  itself in a domain of its own, so there it would refuse a command stopping a server an earlier
-  call left running. So `kamchatka` puts it on its own process before it starts anything, where
-  every command inherits it: a command may signal what the session started and `kamchatka` itself,
-  and `kill -9 -1` reaches nothing else the person has. It costs `no_new_privs` on everything
-  `kamchatka` starts, MCP servers included, so a set-user-ID program such as `sudo` gains nothing
-  in them; under `--no-sandbox` it is not asked for. Below Linux 6.12 there is no such scope and
-  every process of the user's is in reach. `sandbox::confines_signals` says which.
-- **A sandbox that might not be there has to say so.** `Confinement` has a variant for every way it
-  can fail and the permissions tab draws it, with the kernel's own reason where a ruleset was
-  refused - `Probed::why` - since a kernel with no Landlock and one that refused this ruleset are
-  different problems. Never let it degrade silently.
-- **A boundary the refused party cannot see is a boundary it will walk into repeatedly.** Landlock
-  refuses an `open` with `EACCES`, which is exactly what the kernel says about a file that belongs
-  to somebody else - so a confined command is handed a permission error indistinguishable from an
-  ordinary one, and a model that cannot tell the two apart spends its turns on `sudo`. A tool
-  description is not enough. Say it at the point of failure, name the path, and say nothing where
-  the refusal was not yours. `Sandbox::note_for` is the shape.
-- **And a refusal names the whole of what the session *does* reach.** The other half of the same
-  rule: a refusal that names the working directory and calls it as far as the session goes stops
-  being true the moment anybody passes `--sandbox-allow` or `--sandbox-read`. Under-reporting a
-  boundary costs more than over-reporting it, because a model reads a refusal as the whole of the
-  rule and never goes near the path somebody opened for exactly this - and it is the one thing in a
-  refusal the model cannot work out for itself. `Reach::range` is the shape, spelled the way
-  `Sandbox`'s `Display` is, so the two do not read as two rules.
-- **A refusal closes the retry, and names no path but the one it refused.** A refusal that does
-  not say the same call will fail again is read as a reason it failed *this time*, and every
-  concrete path in a refusal is read as a path to try. Rare spellings belong in the tool's
-  description; the refusal gets the one instruction that applies. `tests/boundary.rs` pins the
-  sentence.
-- **Nothing expands `~` for the file tools, and that is deliberate.** They run in process with no
-  shell, so `read ~/.gitconfig` would join a directory literally called `~` onto the working
-  directory and come back `No such file or directory` - the same trap as the one below, since a
-  model believes an absent file and concludes the home directory is empty. Expanding it is the
-  wrong fix: under `--no-sandbox` the path is not checked, so `~/.ssh/id_rsa` would resolve for
-  real. It is refused with a sentence instead, and `fs`'s description says so. `shell` is the other
-  way round: `sh -c` expands it, and the confinement refuses what it expands to.
-- **`access(2)` does not know about Landlock.** It answers from the file's own permissions, so a
-  program that probes before it opens is told yes and then refused - and lands in whichever branch
-  it keeps for a *corrupt* file rather than a *missing* one, as git does with `~/.gitconfig`.
-  Anything the confinement puts out of reach may need to be told it is not there.
-- **A protocol that carries the `shell` tool is the machine, so where it listens is the boundary.**
-  `--serve` refuses a non-loopback bind rather than documenting it as a thing not to do, and the
-  socket file is made `0600` the moment after the bind creates it. In the one syscall between, what
-  keeps others out is the directory it is in - which matters only under a umask that leaves a new
-  file writable by group or world. There is deliberately no authentication *in* the protocol: a
-  token in every message is a scheme to keep in step, and it would be guarding a channel whose real
-  boundary is somewhere else. Across a network, tunnel something that does authenticate. Anything
-  added to `remote/` is held to this: it does not grow a credential, and it does not start deciding
-  that some addresses are safe enough.
-- **An answer to a permission question is four things, and two of them are easy to leave out**:
-  telling `Careful` as well as the kernel (or a granted command runs with the network cut),
-  honouring `always` over what the policy *consulted* rather than what the tool declared, sweeping
-  the questions queued behind it, and driving the turn on afterwards. `App::decide` is the one place
-  all three loops answer through. The gate's question has its own, `App::decide_reach`, for the same
-  reason: the kernel never asked it, so the `policy.ruled` it writes is the only record there is
-  that a command was let out.
-- **Do not add a check that implies more than it delivers.** `reaches_the_network` is allowed to
-  exist because its documentation is exact about what it misses, because refusing up front with a
-  reason is kinder than letting a command run and fail, and because it is consulted only where the
-  gate does not hold. It is not what stands between the model and the network. Anything of that
-  shape needs the same treatment.
+- **There is no sandbox in the core, and there won't be.** The kernel executes nothing (no
+  filesystem, no network, no processes), so it has nothing to contain. Containment belongs inside a
+  `Tool` or around the whole process.
+- **The kernel enforces one thing:** a refused call is never passed to `Tool::invoke`, and the
+  refusal is recorded as an event and a tool result. It's a checkpoint with a record, not a
+  security boundary. The kernel can't see the rules a policy uses, so they only appear in the
+  record (as `policy.ruled`) when the policy's owner records them. `kamchatka` records every rule it
+  sets, the answer that created it, and the network access granted for a single call.
+- **A `Capability` is a declaration, not a verified fact**, and `Shell` implies all the others. A
+  client that shows `shell: allow` next to `network: deny` without pointing this out is reporting a
+  restriction that doesn't exist, which is why `kamchatka`'s permissions tab points it out.
+- **Capabilities aren't always detailed enough.** `Careful::judges` is the one place where a call's
+  *arguments* become something rules can match, and two kinds of rules come from it: path rules
+  (`fs:read: allow` is reasonable, `fs:read .env: allow` is not) and operation rules
+  (`context: allow` is reasonable for `note` but not for `exclude`). Both can only make things
+  stricter (the strictest matching rule wins), so neither can reopen something a capability
+  refused, which is what makes them safe to add. Operation rules only apply where one exists, so a
+  tool without any is judged as before. Path rules compare names exactly, as the filesystem does
+  (`.ENV` and `.env` are different files), and `fs` refuses to follow a symlink to a protected path,
+  since a link is just another name for it: reading `alias -> .env` is refused and reported as
+  `.env`, and asking for `.env` directly goes through the normal question. A rule for a domain or
+  operation that no call is ever judged under is rejected when it's given, rather than kept.
+- **Confinement happens where processes are spawned.** `kamchatka` sandboxes its `shell` tool with
+  Landlock: it re-runs itself in a mode that restricts itself and then `exec`s the command, so
+  `network: deny` means a refused TCP `connect`, and nothing outside the allowed directories can be
+  touched. Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as
+  `Partial`: files are still restricted, TCP is left to the network gate (below) where available,
+  and the permissions tab says "partly confined". Below Linux 6.2, truncating a file by name isn't
+  restricted either. UDP is only covered by the gate. The `exec` matters: if a helper process sat
+  in front of the command, stopping a call would kill the helper instead of the command.
+  The `fs` tool runs in-process, so it enforces the same boundary in its own code, which is a
+  weaker guarantee: it resolves the path (following symlinks), checks it, and then opens it with
+  `openat2` and `RESOLVE_BENEATH` relative to the allowed directory, so if a path component is
+  replaced by a symlink in between, the kernel refuses it. On kernels older than 5.6 it is an
+  ordinary open, and such a swap isn't caught. A directory swapped during a directory walk is only
+  caught for the files opened inside it.
+- **Network access is asked about when a command tries to use it, not based on the command's
+  name.** The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
+  `socket()` call for `AF_INET` or `AF_INET6` (the first step of any network use, DNS lookups
+  included) and hands the decision to the parent process. The parent answers from `net:reach`:
+  `allow` lets it through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per
+  command, while the call waits. The filter only reads the call's integer arguments (the low 32
+  bits of the address family, which is all the kernel reads), so there's no address the command
+  could change after the answer; decisions aren't made per destination. Where the gate works,
+  `Careful` stops looking for program names in commands, and an allowed `exec:run` runs without
+  asking until the command tries to use the network. The gate also covers 32-bit processes and x32
+  calls, and refuses `io_uring_setup` entirely, since an io_uring can open sockets without calling
+  `socket()`. It doesn't cover a socket inherited from, or passed over a unix socket by, a process
+  outside the sandbox (the unix socket rules below deal with that), or other address families such
+  as `AF_PACKET`, which need privileges a sandboxed command doesn't have. A network attempt by a
+  process a command left running, after the call has finished and with nothing decided, is refused
+  without asking, since there's no command left to ask about. Where the gate can't be installed
+  (under `--no-sandbox`, or on a kernel that can't pause calls), the question is based on the
+  command's name, and the permissions tab says so. `gate` is the only module in the workspace with
+  `unsafe` code, each block with a comment explaining why it's sound.
+- **Commands the model runs don't get this program's API keys.** Every variable `kamchatka` reads a
+  key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not. The
+  sandbox restricts files and the network but not the environment a command starts with, so a key
+  left there could always be printed, and whatever a command prints goes into the context, the
+  request and the record. The keys are still in `kamchatka`'s own environment, and on Linux a
+  process can read another's through `/proc/PID/environ`. A sandboxed command can't read its
+  parent's, because Landlock prevents processes inside a sandbox from inspecting ones outside it;
+  with `--no-sandbox` it can, so removing the variables only keeps them out of the command's own
+  environment. MCP servers keep the keys: they're programs the person chose, running unconfined with
+  access to everything the person can read, so stripping their environment would be an annoyance,
+  not protection.
+- **A sandboxed command has no terminal, and can open only five devices.** The child starts its
+  own session before running anything, so it has no controlling terminal: `/dev/tty` won't open,
+  and `TIOCSTI` is refused on every other terminal. With terminal access, a command could inject a
+  `y` into the input `kamchatka` reads keys from and answer its own permission question (on kernels
+  that still allow `TIOCSTI`), or draw over the question on any kernel. If the child can't detach
+  from the terminal, it runs nothing. In `/dev`, the ruleset allows `null`, `zero`, `full`, `random`
+  and `urandom` and nothing else (`sandbox-device` replaces the list), since other devices reach
+  beyond the command: the person's other terminals, shared memory, cameras and microphones. Under
+  `--no-sandbox`, a command keeps the terminal and `/dev`, along with everything else the person
+  has access to.
+- **Stopping a call stops the command's session; anything that escapes it keeps running.**
+  Stopping a call kills the command's process group, which is the session it starts in, so
+  everything it started is stopped too, and the same happens when a call is dropped. A process that
+  starts its own session (with `setsid`, or a daemon detaching itself) leaves that group and keeps
+  running after the call reports that it stopped. It stays sandboxed and gated, and its network
+  attempts after the call are refused without asking, so it can't gain access; a served session
+  can't tell it apart from a client, though. Tracking the whole process tree would need a cgroup, a
+  PID namespace or a subreaper per command, and each of those fails on some systems this program
+  runs on, so stopping covers the process group, and says so.
+  A call that *finishes* leaves its process group alone, so a background job it started
+  (`sleep 300 &`, a server) keeps running while the session lasts. When the session ends, every
+  such group still running is sent `SIGTERM`, then `SIGKILL`, and listed. `--leave-running` leaves
+  them running, and also lists them. As above, processes that left their group aren't on the list.
+- **Restricting `open` isn't enough.** A command that can reach a unix socket can ask the process
+  behind it to act on its behalf, outside the sandbox: the session bus, the compositor, a container
+  daemon. Landlock can restrict this from Linux 7.1, and `kamchatka` uses that: a command may only
+  connect to sockets it could have written to. On older kernels, nothing restricts `connect`.
+  `sandbox::confines_unix_sockets` reports which is the case. Abstract sockets have no path for that
+  rule to check, and the X server listens on one and accepts any of the user's processes, which
+  means a connection that can type into the person's terminal. Landlock can restrict abstract
+  sockets from ABI 6 (Linux 6.12), and `kamchatka` uses that where available: a command may only
+  connect to abstract sockets created inside its own sandbox. On older kernels, all of the user's
+  abstract sockets are reachable. `sandbox::confines_abstract_sockets` reports which is the case.
+- **A sandboxed command can only signal processes in the session.** Landlock's signal restriction
+  arrived together with the abstract socket one, but it isn't part of each command's own ruleset:
+  each command gets a separate sandbox, so it would stop a command from stopping a server that an
+  earlier call left running. Instead, `kamchatka` applies it to its own process before starting
+  anything, so every command inherits it: a command can signal what the session started and
+  `kamchatka` itself, and `kill -9 -1` reaches nothing else of the person's. The cost is
+  `no_new_privs` on everything `kamchatka` starts, MCP servers included, so set-user-ID programs
+  like `sudo` gain no privileges in them; under `--no-sandbox` it isn't applied. Below Linux 6.12
+  there's no such restriction, and every process of the user's can be signalled.
+  `sandbox::confines_signals` reports which is the case.
+- **If the sandbox might be missing, say so.** `Confinement` has a variant for every way it can
+  fail, and the permissions tab shows it, with the kernel's own reason when a ruleset was refused
+  (`Probed::why`), since a kernel without Landlock and a kernel that refused this ruleset are
+  different problems. Never let it fail silently.
+- **Tell the model when the sandbox refused something.** Landlock refuses an `open` with `EACCES`,
+  the same error as for a file owned by someone else, so a sandboxed command gets a permission error
+  that looks ordinary, and a model that can't tell the difference wastes its turns trying `sudo`. A
+  tool description isn't enough: say it where the failure happens, name the path, and say nothing
+  when the refusal wasn't the sandbox's. See `Sandbox::note_for`.
+- **And name everything the session *can* reach.** A refusal that names the working directory as
+  the whole of what's allowed becomes false as soon as someone passes `--sandbox-allow` or
+  `--sandbox-read`. Under-reporting is worse than over-reporting here: a model takes a refusal as
+  the complete rule, and won't try a path someone opened for exactly this purpose, and it can't
+  find that out by itself. See `Reach::range`, which is worded the same way as `Sandbox`'s
+  `Display`, so the two don't read like different rules.
+- **A refusal says that retrying won't help, and names no path except the refused one.** If it
+  doesn't say the same call will fail again, the model takes it as a temporary failure, and any
+  other path mentioned in it gets tried next. Rarely used options belong in the tool description;
+  the refusal gets only the instruction that applies. `tests/boundary.rs` checks the wording.
+- **The file tools don't expand `~`, deliberately.** They run in-process without a shell, so
+  `read ~/.gitconfig` looks for a directory literally named `~` inside the working directory and
+  returns `No such file or directory`, and a model would believe the file doesn't exist. Expanding
+  it would be the wrong fix, though: under `--no-sandbox` paths aren't checked, so `~/.ssh/id_rsa`
+  would really resolve. Instead it's refused with an explanation, and `fs`'s description mentions
+  it. `shell` is the opposite: `sh -c` expands `~`, and the sandbox refuses what it expands to.
+- **`access(2)` doesn't know about Landlock.** It answers from the file's own permissions, so a
+  program that checks before opening is told yes and then refused, and ends up in its handling for a
+  *corrupt* file rather than a *missing* one, as git does with `~/.gitconfig`. Files the sandbox
+  hides may need to be reported as not there.
+- **Anything that reaches the session protocol can use the `shell` tool, so where it listens is the
+  security boundary.** `--serve` refuses to bind anywhere but loopback, rather than documenting it
+  as something not to do, and the socket file is made `0600` right after the bind creates it.
+  During the one syscall in between, the directory it's in is what keeps others out, which only
+  matters with a umask that makes new files group- or world-writable. The protocol deliberately has
+  no authentication: a token in every message would be another mechanism to maintain, guarding a
+  channel whose real boundary is the socket. To reach it over a network, use a tunnel that
+  authenticates. Anything added to `remote/` must follow this: no credentials, and no deciding that
+  some addresses are safe enough. (`--web` is the one exception, and only for its page; see below.)
+- **Answering a permission question takes four steps, and two are easy to forget**: telling
+  `Careful` as well as the kernel (or an allowed command runs with the network cut off), applying
+  `always` to what the policy actually *checked* rather than what the tool declared, clearing the
+  questions queued behind it, and continuing the turn afterwards. `App::decide` is the single place
+  all three loops answer through. The network gate's question has its own, `App::decide_reach`, for
+  the same reason: the kernel never asked it, so the `policy.ruled` it writes is the only record
+  that a command was allowed out.
+- **Don't add checks that promise more than they deliver.** `reaches_the_network` is acceptable
+  because its documentation says exactly what it misses, because refusing early with a reason is
+  better than letting a command run and fail, and because it's only used where the gate isn't
+  available. It isn't what keeps the model off the network. Anything similar needs the same care.
 
 ---
 
 ## who `kamchatka` is defending against
 
-The positions above are each about one mechanism. This is the same ground by who could do harm,
-what stands in the way, and what does not.
+The points above are each about one mechanism. This section covers the same ground by who could
+cause harm, what stops them, and what doesn't.
 
-- **The model, and whoever wrote something it read.** A file, a command's output or a tool's answer
-  can carry instructions, and the model acts on what it reads, so the model is treated as a party
-  that may be steered. It acts only through tools the policy lets run. The `shell` tool is confined
-  by Landlock on Linux - files outside the reach, TCP `connect`, and on 7.1 and later a unix socket
-  it could not write - has its internet sockets held by the gate where there is one, and is not
-  handed this program's keys. The `fs` tool is held to the same reach by its own code, and on Linux
-  opens beneath the directory a path was allowed under. What it can still do: send UDP where there
-  is no gate, and reach the network through whatever a person allowed; read anything the reach
-  includes and put it in the context, which goes to the provider; spend the session's budget,
-  including on `fork` drafts. Under `--no-sandbox` the shell is not confined at all and the
-  permission question is the only thing in the way.
-- **Whoever reaches a served session.** The protocol carries the `shell` tool, so reaching it is
-  reaching the machine as the person who started it. `--serve` binds loopback only and makes its
-  socket `0600`, and there is no authentication beyond that. `--web` serves a page for the session,
-  without authentication; whoever reaches the page drives the session like the person at the
-  keyboard. It listens on loopback, or on an IP address in a private range, in which case every
-  device on that network can drive and read the session, and kamchatka warns about it at startup and
-  in each session. Host names, wildcards and public addresses are refused. From further away, use a
-  tunnel that authenticates. Other web pages open in a browser on the same machine are refused: the
-  page only accepts same-origin JSON requests addressed to an IP address or `localhost`. A client
-  may answer the permission questions, so the session's own commands are kept out too: a port the
-  session or its page is served on is closed to every command confined while it is. A socket file is
-  reachable by every confined command below Linux 7.1, and from 7.1 by one that may write where it
-  is, so a connection is refused when the peer is in the session of a command this process confined
-  - each runs in one of its own - which covers anything it left running. What gets through is a
-  process a command started under a `setsid` of its own, the `gateway` example's page (a separate
-  process, so it can't close its port to the session's commands), and any *other* served session on
-  the machine: a session closes only the ports it serves itself, and a connection carries no pid, so
-  one process's confined command is a client like any other to a session in another. Its addresses
-  belong to whoever started that one. A command allowed the network can reach all three.
-- **An MCP server.** It is a program the person chose, and it runs unconfined with the person's
-  environment and everything the person can read. What `kamchatka` controls is what its answers do:
-  a server's tools are judged under the server's name, and what it returns reaches the context like
-  any other tool result, where the model reads it - which is the first actor above again.
-- **Whoever wrote the directory it is run in.** Given no `--config-file`, `kamchatka` reads
-  `./kamchatka.json`, and that file may set every key the command line can: `mcp`, which starts
-  programs unconfined before the first message, `no-sandbox`, `allow`, `allow-server`, `on-ask` and
-  the sandbox lists. So running `kamchatka` in a repository somebody else wrote runs it with their
-  settings: their MCP servers start as you, and a file that turns the sandbox off and allows `exec`
-  leaves the model with nothing between what that repository's files tell it and your machine.
-  So that file is not read until somebody at a terminal says it may be: the question names which
-  of those keys it sets, and anything but a yes runs without it. A run with no terminal to ask at
-  is refused, and names the file with `--config-file` to read it. The file under your own config
-  directory is read without asking, since nobody else writes there.
-- **The provider.** Everything in a request is sent, and a request is the context: the
-  conversation, what the tools returned, and any file the reach let the model read. Nothing here
-  stops that, and nothing can - it is what asking a model is.
-- **Other people on the machine.** The automatic record is written under a `0700` directory in the
-  temporary directory, and not at all if what holds that name is anything but a directory nobody
-  else can read; a served unix socket is made `0600` straight after the bind, and a directory of
-  your own closes the one syscall before that. A served loopback port is not: every account on the
-  machine can connect to one, and a connection is the `shell` tool running as the person serving -
-  so where other people share the machine, `--serve unix:PATH` is the one that keeps them out.
-- **Size.** What a tool keeps of one call stops at `tools::KEPT`, on each of a command's two
-  streams, so a command that writes without end, or a file larger than anybody meant to read,
-  cannot fill the process, the archive or a save.
-  What a tool from an MCP server returns is that server's to bound.
+- **The model, and anyone who wrote something it read.** A file, a command's output or a tool's
+  answer can contain instructions, and the model acts on what it reads, so the model is treated as
+  something that may be manipulated. It can only act through tools the policy allows. The `shell`
+  tool is sandboxed by Landlock on Linux (files outside the allowed paths, TCP `connect`, and from
+  Linux 7.1 unix sockets it couldn't write to), its internet sockets are paused by the gate where
+  available, and it doesn't get this program's keys. The `fs` tool enforces the same paths in its
+  own code, and on Linux opens files relative to the directory they were allowed under. What the
+  model can still do: send UDP where there's no gate, and use the network however a person allowed;
+  read anything inside the allowed paths and put it into the context, which is sent to the
+  provider; and spend the session's budget, including on `fork` drafts. Under `--no-sandbox` the
+  shell isn't sandboxed at all, and the permission question is the only safeguard.
+- **Anyone who reaches a served session.** The protocol can use the `shell` tool, so reaching it
+  means running commands as the person who started it. `--serve` binds to loopback only and makes
+  its socket `0600`, and there is no other authentication. `--web` serves a page for the session,
+  also without authentication; whoever reaches the page controls the session like the person at
+  the keyboard. It listens on loopback, or on an IP address in a private range, in which case every
+  device on that network can control and read the session, and `kamchatka` warns about this at
+  startup and in each session. Host names, wildcards and public addresses are refused. From
+  further away, use a tunnel that authenticates. Other web pages open in a browser on the same
+  machine are refused: the page only accepts same-origin JSON requests addressed to an IP address
+  or `localhost`. Clients can answer permission questions, so the session's own commands are kept
+  out too: ports the session or its page are served on are closed to every command sandboxed while
+  they're open. A socket file can be reached by every sandboxed command below Linux 7.1, and from
+  7.1 by any that may write where it is, so connections are refused when the other end is in the
+  session of a command this process sandboxed (each runs in its own session), which covers anything
+  it left running. What gets through: a process a command started with `setsid`, the `gateway`
+  example's page (a separate process, so it can't close its port to the session's commands), and
+  any *other* served session on the machine. A session only closes its own ports, and a TCP
+  connection doesn't identify the process behind it, so one process's sandboxed command is an
+  ordinary client to a session in another, and that session's addresses are up to whoever started
+  it. A command allowed on the network can reach all three.
+- **An MCP server.** It's a program the person chose, running unconfined with the person's
+  environment and access to everything the person can read. What `kamchatka` controls is what its
+  answers can do: its tools are judged under the server's name, and what it returns goes into the
+  context like any other tool result, where the model reads it, which brings us back to the first
+  point.
+- **Whoever wrote the directory `kamchatka` is run in.** Without `--config-file`, `kamchatka`
+  reads `./kamchatka.json`, and that file can set every setting the command line can: `mcp`, which
+  starts unconfined programs before the first message, `no-sandbox`, `allow`, `allow-server`,
+  `on-ask` and the sandbox paths. So running `kamchatka` in someone else's repository would run it
+  with their settings: their MCP servers would start as you, and a file that turns off the sandbox
+  and allows `exec` would leave nothing between that repository's instructions and your machine.
+  So the file isn't read until someone at a terminal approves it: the question lists which of
+  those settings it changes, and anything but yes runs without it. A run without a terminal to ask
+  at is refused, with a message saying to pass the file with `--config-file`. The file in your own
+  config directory is read without asking, since nobody else writes there.
+- **The provider.** Everything in a request is sent to it, and a request is the context: the
+  conversation, tool results, and any file the model was allowed to read. Nothing here prevents
+  that, and nothing can; that's what using a model means.
+- **Other users on the machine.** The automatic session record is written under a `0700` directory
+  in the temporary directory, and not at all if whatever has that name isn't a directory only you
+  can read. A served unix socket is made `0600` right after the bind, and putting it in a directory
+  of your own covers the moment before that. A served loopback port isn't protected: every account
+  on the machine can connect to it, and a connection can run the `shell` tool as the person
+  serving. So on shared machines, use `--serve unix:PATH`.
+- **Size.** What a tool keeps from one call is capped at `tools::KEPT`, for each of a command's two
+  output streams, so a command that never stops writing, or a huge file, can't exhaust memory, the
+  archive or a saved session.
+  Output from MCP server tools is up to the server to limit.
