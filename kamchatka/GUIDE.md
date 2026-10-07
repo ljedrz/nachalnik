@@ -1,259 +1,258 @@
 # using kamchatka
 
-The screen, the keys, the permission prompt, and the tools an agent reads and manages its own
-session with. [The readme](README.md) says what the program is; this says how to drive it, and
+The screen, the keys, the permission prompt, and the tools an agent uses to read and manage its own
+session. [The README](README.md) says what the program is; this says how to use it, and
 [RUNNING.md](RUNNING.md) covers running it without a screen, configuring it and embedding it.
 
 ---
 
 ## 👉 four tabs, one window
 
-<kbd>ctrl+t</kbd> for the next one, or <kbd>alt+1</kbd> … <kbd>alt+4</kbd> directly. The status line
-is under all of them, so the budget is always in view. The prompt is not: it belongs to the
-conversation, and the other three tabs are read and operated rather than typed into. <kbd>tab</kbd>
-is the way back to it from any of them.
+<kbd>ctrl+t</kbd> switches to the next tab, and <kbd>alt+1</kbd> … <kbd>alt+4</kbd> go to one
+directly. The status line is shown under all of them, so the budget is always visible. The prompt
+is only on the chat tab; the other three are for reading and operating rather than typing.
+<kbd>tab</kbd> takes you back to the prompt from any of them.
 
-The status line opens with the word for what the runtime is doing: `idle`, `asking`, `ready`,
-`running`, `waiting on you` or `done`. While it is working, three dots move beside that word, and
-after five seconds how long it has been; they stop if the program is wedged, and are absent while
-it waits on **you**.
+The status line starts with what the runtime is doing: `idle`, `asking`, `ready`, `running`,
+`waiting on you` or `done`. While it's working, three dots move next to that word, and after five
+seconds it shows how long it's been; the dots stop if the program is stuck, and don't appear while
+it's waiting for **you**.
 
-Next along is the model and the address it is at, both of them, because the same name at a
-different address is a different model. A session started without `-m` has no model yet, and the
-corner says `no model` in its place rather than leaving it out: nothing is sent until `/model`
-picks one, and `/models` lists what the endpoint serves.
+Next is the model and its address, both, because the same model name at a different address is a
+different model. A session started without `-m` has no model yet, and shows `no model` there: nothing
+is sent until `/model` picks one, and `/models` lists what the endpoint offers.
 
-After them comes the budget: what the next request is estimated to cost, marked `~` because it
-is an estimate, as a share of the model's limit and with the limit beside it — green, then yellow
-from 70%, then red from 90%. Once a request has gone out, what the provider really counted
-follows it, and after that how much the context is holding back from the request.
+After that is the budget: the estimated cost of the next request, marked `~` because it's an
+estimate, as a percentage of the model's limit, with the limit next to it. It's green, then yellow
+from 70%, then red from 90%. Once a request has been sent, the provider's actual count follows, and
+then how much the context is holding back from the request.
 
-**chat** is the conversation, and every terminal agent has one — this one also says which of it
-the model is still being sent, and reads a turn as it now stands rather than as it arrived. Both
-of those are read off the context, so a <kbd>u</kbd> that takes an edit back takes it off here too.
-A shell result opens with its exit status in colour: **green** for success, **red** for a failure,
-**yellow** where it never got to report — stopped, killed, or unreadable.
+**chat** is the conversation. Unlike most terminal agents, it also shows which parts are still
+being sent to the model, and shows each turn as it currently is rather than as it originally
+arrived. Both come from the context, so if <kbd>u</kbd> undoes an edit, the chat shows that too. A
+shell result starts with its exit status in colour: **green** for success, **red** for failure,
+**yellow** if it never reported one (stopped, killed, or unreadable).
 
-**context** is why this exists. It is not a summary and not a debug view: it is the list of items
-the runtime is holding, in order, one row each, with what each one costs, whether it is going into
-the next request — and the column that matters most, what the model will actually read of it.
+**context** is the main point of `kamchatka`. It isn't a summary or a debug view: it's the list of
+items the runtime holds, in order, one row each, with what each costs, whether it's going into the
+next request, and, most importantly, what the model will actually read of it.
 
 | column | what it says |
 | --- | --- |
-| **id** | the number `/exclude`, `/copy` and <kbd>G</kbd> take, then the mark for its state |
-| **label** | what the item is called: `user`, `assistant`, a tool's name, a file's |
-| **kind** | `user_message`, `tool_result`, `reference` and so on; dropped below 84 columns |
-| **sending** | what it puts into the next request |
-| **held** | what it is keeping out of one, blank where that is nothing |
-| **what it says** | the first line the model will read of it, or why what it holds is not sent |
+| **id** | the number `/exclude`, `/copy` and <kbd>G</kbd> use, then a mark for its state |
+| **label** | the item's name: `user`, `assistant`, a tool's name, a file's |
+| **kind** | `user_message`, `tool_result`, `reference` and so on; hidden below 84 columns |
+| **sending** | what it adds to the next request |
+| **held** | what it's keeping out of the request, blank if nothing |
+| **what it says** | the first line the model will read, or why its content isn't sent |
 
 | mark | state | what it means for the next request |
 | --- | --- | --- |
-| `·` | active | it goes |
-| `▪` | pinned | it goes, and the compactor is refused if it comes for it |
-| `…` | elided | it goes as a one-line marker in its place |
-| `-` | excluded | it does not go; the row says who took it out, and why |
+| `·` | active | it's sent |
+| `▪` | pinned | it's sent, and the compactor can't remove it |
+| `…` | elided | a one-line placeholder is sent instead |
+| `-` | excluded | it isn't sent; the row says who excluded it, and why |
 
-The line along the bottom counts the items and how many of them are not having what they say
-sent, the elided ones among them; past the limit it also says by how much the request is over.
+The line at the bottom counts the items and how many of them aren't being sent in full, including
+the elided ones; when the request is over the limit, it also says by how much.
 
-A `+` after a figure in **sending** says part of that item could not be priced — a PDF, say — so
-the figure is a **floor**.
+A `+` after a figure in **sending** means part of the item couldn't be priced (a PDF, for example),
+so the figure is a **minimum**.
 
-For most rows **sending** is everything and **held** is blank. Where they differ is worth finding:
-an elided result spends only its marker, an excluded item spends nothing, and an assistant turn
-sends what it said while holding what it thought, where the endpoint takes no thinking back. The
-`sending` column adds up to the status line's figure less the tool definitions (`/budget` gives the
-two apart). An excluded or elided row says why, in its note.
+For most rows **sending** is the whole item and **held** is blank. The interesting rows are where
+they differ: an elided result only costs its placeholder, an excluded item costs nothing, and an
+assistant turn sends what it said but holds back its reasoning when the endpoint doesn't accept
+reasoning back. The `sending` column adds up to the status line's figure minus the tool definitions
+(`/budget` shows the two separately). An excluded or elided row explains why in its note.
 
-A pin is worth most *before* a pass rather than after one, which is what `/compact` is for: it
-lists every item the compactor would take and waits, in the prompt's place, for <kbd>y</kbd> or
-<kbd>n</kbd>. The question is pinned rather than modal, so this tab is one keystroke away while it
-stands: come here, <kbd>p</kbd> what should stay, go back and answer. Saying yes works the pass out
-again, so what you just kept is not in it.
+Pinning is most useful *before* compaction, which is what `/compact` is for: it lists every item
+the compactor would remove and waits for <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt. The
+question doesn't block the screen, so while it's waiting you can switch here, <kbd>p</kbd> the
+items that should stay, go back and answer. Answering yes recalculates the compaction, so the items
+you just pinned are left out of it.
 
-An **elided** item is the third answer between in and out: a one-line marker in place of what it
-holds, so the call it answers still has an answer. Excluding a result would make the projector drop
-its call too. The marker tells the model it had read what it stands in for, and to read it again,
-or only the part it needs, if it still needs it.
+An **elided** item sits between kept and removed: a one-line placeholder replaces its content, so
+the tool call it answers still has an answer. Excluding a result instead would make the projector
+remove its call too. The placeholder tells the model it already read the content, and to read it
+again, or just the part it needs, if necessary.
 
-Once the context is full the compactor takes the oldest exchanges whole, excluded rather than
-elided, and a summary at the end of the context says how many have gone. Each is still a row
-here, one `/restore` from coming back, and <kbd>p</kbd> keeps a row, and the call it is paired
-with, through every pass.
+Once the context is full, the compactor removes the oldest exchanges entirely (excluded, not
+elided), and a summary at the end of the context says how many were removed. Each is still listed
+here, one `/restore` away from coming back, and <kbd>p</kbd> protects a row, and the call it's
+paired with, from every compaction.
 
 <kbd>tab</kbd> moves the keys between the prompt and the table:
 
 | key | what happens |
 | --- | --- |
-| <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` marker → nothing → back |
-| <kbd>p</kbd> | pin it, so that the compactor is refused if it tries |
-| <kbd>e</kbd> | change what it **says** — a tool call is not something a turn says, so a turn that is only a call declines this and tells you why |
-| <kbd>f</kbd> | list only what the next request carries, or everything again |
-| <kbd>y</kbd> | hand the whole of what it says to the terminal, for the clipboard — see below |
-| <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the whole of what an item holds — see below |
-| <kbd>enter</kbd> | read the whole of it — see below |
-| <kbd>←</kbd> / <kbd>→</kbd> | move between its pages, while it is open |
-| <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context — `/undo` and `/redo`, which is the only way in down a pipe or from a browser |
-| <kbd>23G</kbd> | go to the item numbered 23 — the number `/exclude` takes |
+| <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` placeholder → nothing → back |
+| <kbd>p</kbd> | pin it, so the compactor can't remove it |
+| <kbd>e</kbd> | edit what it **says**; a tool call isn't text, so a turn that's only a call can't be edited, and you're told why |
+| <kbd>f</kbd> | show only what the next request contains, or everything again |
+| <kbd>y</kbd> | copy the whole content to the clipboard through the terminal (see below) |
+| <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the full content (see below) |
+| <kbd>enter</kbd> | open the whole item (see below) |
+| <kbd>←</kbd> / <kbd>→</kbd> | switch between its pages, while it's open |
+| <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context; `/undo` and `/redo` do the same, and are the only way when driving through a pipe or a browser |
+| <kbd>23G</kbd> | go to item 23 (the number `/exclude` takes) |
 
-**<kbd>y</kbd> copies an item whole and unwrapped**, which a mouse dragged over the screen cannot.
-`/copy` is the same from the chat tab: the last thing the model said, or `/copy 7` for item 7. It
-uses [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands),
-so it works over `ssh`, but a terminal that does not support it drops it silently (`tmux` needs
-`set-clipboard on`); the line it prints gives the byte count to compare against the paste.
+**<kbd>y</kbd> copies an item in full and without line wrapping**, which selecting with the mouse
+can't do. `/copy` does the same from the chat tab: the last thing the model said, or `/copy 7` for
+item 7. It uses
+[OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands), so
+it works over `ssh`, but terminals that don't support it ignore it silently (`tmux` needs
+`set-clipboard on`); the line it prints gives the byte count, so you can compare it with what you
+paste.
 
-An oversized tool result is held as *two* items: the truncated copy the model was shown, and the
-whole of it beside it, marked `- excluded` and not going. <kbd>space</kbd> or <kbd>p</kbd> on that
-row is how you say **send the whole thing**, as `/restore` with its number is, and the token count
-in the row is what it will cost you.
+An oversized tool result is kept as *two* items: the truncated copy the model saw, and the full
+output next to it, marked `- excluded` and not sent. <kbd>space</kbd> or <kbd>p</kbd> on that row
+(or `/restore` with its number) sends the full output, and the row's token count is what that costs.
 
-<kbd>enter</kbd> opens the item in a paged box; <kbd>←</kbd> / <kbd>→</kbd> move between pages:
+<kbd>enter</kbd> opens the item in a box with pages; <kbd>←</kbd> / <kbd>→</kbd> switch between
+them:
 
-- **`to the model`** is what it puts into the next request, from the projection of the whole
-  context — so a result whose call was taken out, which the projector drops though its row reads
-  `active`, says so here, and the box opens on this page when that is the surprise.
-- **`as stored`** is what the item holds, which for an elided or excluded one is not the same.
-- **`v1`**, **`v2`** and so on are what it said before it was rewritten, newest first, up to eight
-  deep and across a `-r`, with whose hand rewrote it.
+- **`to the model`** is what it adds to the next request, based on the whole context, so a result
+  whose call was removed (which the projector drops even though its row says `active`) shows that
+  here, and the box opens on this page when that's the case.
+- **`as stored`** is the item's actual content, which differs for an elided or excluded item.
+- **`v1`**, **`v2`** and so on are earlier versions from before it was edited, newest first, up to
+  eight, kept across `-r`, with who edited it.
 
-<kbd>e</kbd> decides **what** the model reads of an item, where `space` and `p` decide whether. The
-prompt becomes an editor holding the item's text, and committing rewrites it in place: same number,
-same state, the old text under `v1`, and one <kbd>u</kbd> from coming back. Trimming a 2,000-line
-file down to the function that matters is two keystrokes and a delete.
+<kbd>e</kbd> controls **what** the model reads of an item, while `space` and `p` control
+whether it reads it. The prompt becomes an editor holding the item's text, and saving replaces it
+in place: same number, same state, the old text kept as `v1`, and one <kbd>u</kbd> to undo. Cutting
+a 2,000-line file down to the one function that matters is a few keystrokes.
 
-**trace** is every event the runtime emits, as it happens, in the same names the session log is
-made of. Each is one line: when it happened, the gap since the line above, the event's name, and
-what it carries.
+**trace** is every event the runtime emits, as it happens, with the same names as in the session
+log. Each is one line: when it happened, the time since the line above, the event's name, and its
+details.
 
-Every transition of the state machine is in there, and everything either side of it, down to the
-wiring, and each line says what the event carries rather than just naming it. It is the stream
-`/save` writes to a `.jsonl`.
+Every state machine transition is there, along with everything around it, and each line shows the
+event's contents, not just its name. It's the same stream `/save` writes to a `.jsonl` file.
 
-Two clocks: when it happened, with the date as a rule across the pane where it changes, and the gap
-since the line above, blank under a tenth of a second — so what has a number beside it is the slow
-step. A wait for *you* is given no gap. Streamed fragments get no line each: tool output is one
-`tool.output` line whose byte count grows, and the model's text is on the chat tab. The pane keeps
-the last few hundred lines; `/save` keeps all of them.
+There are two times on each line: when it happened (with a line across the pane when the date
+changes), and the time since the line above, left blank under a tenth of a second, so the slow
+steps stand out. Waits for *you* get no time. Streamed fragments don't get a line each: a tool's
+output is one `tool.output` line whose byte count grows, and the model's text is on the chat tab.
+The pane keeps the last few hundred lines; `/save` keeps all of them.
 
-**<kbd>/</kbd> filters either of those two panes**, fuzzily (`mreq` finds `model.requested`). A
-context row matches on everything the item holds, its label and its kind, so `tool_result` narrows
-a long pane to the tool results; a trace row on its name, detail and clock. Inside the box,
-<kbd>←</kbd> <kbd>→</kbd> <kbd>home</kbd> <kbd>end</kbd> edit the query and <kbd>↑</kbd>
-<kbd>↓</kbd> still move between rows. <kbd>esc</kbd> closes and clears it, and so does changing
+**<kbd>/</kbd> filters either of those two panes**, fuzzily (`mreq` finds `model.requested`). On
+the context tab it matches each item's full content, label and kind, so `tool_result` narrows a
+long list to the tool results; on the trace, an event's name, details and time. In the filter box,
+<kbd>←</kbd> <kbd>→</kbd> <kbd>home</kbd> <kbd>end</kbd> edit the search and <kbd>↑</kbd>
+<kbd>↓</kbd> still move between rows. <kbd>esc</kbd> closes and clears it, and so does switching
 tabs.
 
-And from anywhere, <kbd>ctrl+p</kbd> prints the request those items add up to — the kernel's own
-rendering of it, not a description, under a header that counts the items in and out, names each
-one the projector left out and why, and names each repair it had to make, such as a call dropped
-because its result is not in the projection.
-
-`/payload` goes one further and prints what the provider will put on the wire, field for field.
+And from anywhere, <kbd>ctrl+p</kbd> prints the request all those items add up to, as the kernel
+actually builds it, under a header that counts the items included and left out, names each one the
+projector left out and why, and lists each fix it had to make, such as dropping a call because its
+result isn't in the request.
+`/payload` goes further and prints exactly what the provider will send.
 
 ## ✍️ what the model writes
 
-The chat tab renders a model's answer as markdown — headings, emphasis, lists, fenced code with a
-rule down its left, and tables whose widest columns give way first when the window is narrow.
-Nothing else on the screen is treated as markdown: a tool's output is what the tool said.
+The chat tab renders the model's answers as markdown: headings, emphasis, lists, code blocks with a
+line down the left, and tables whose widest columns shrink first when the window is narrow. Nothing
+else on the screen is treated as markdown: a tool's output is shown exactly as the tool returned it.
 
 ## ⌨️ the rest of the keys
 
 | key | what happens |
 | --- | --- |
-| <kbd>enter</kbd> / <kbd>shift+enter</kbd> | send / a new line; <kbd>alt+enter</kbd> too, for a terminal that sends <kbd>shift+enter</kbd> as <kbd>enter</kbd> |
-| <kbd>up</kbd> | in an empty prompt, the last message back: the one still waiting, or a copy of the last one sent |
-| <kbd>down</kbd> | put a recalled line away again, while nothing has been typed over it |
-| <kbd>ctrl+l</kbd> | take this program's own lines off the chat; the conversation stays |
+| <kbd>enter</kbd> / <kbd>shift+enter</kbd> | send / new line; also <kbd>alt+enter</kbd>, for terminals that send <kbd>shift+enter</kbd> as <kbd>enter</kbd> |
+| <kbd>up</kbd> | in an empty prompt, bring back the last message: the one still waiting to be sent, or a copy of the last one sent |
+| <kbd>down</kbd> | put a recalled message away again, if you haven't changed it |
+| <kbd>ctrl+l</kbd> | remove `kamchatka`'s own notes from the chat; the conversation stays |
 | <kbd>pgup</kbd> / <kbd>pgdn</kbd> | scroll the conversation |
-| <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | the beginning of the conversation / the end of it |
-| <kbd>home</kbd> / <kbd>end</kbd> | the prompt's own, as in any other line editor |
-| <kbd>ctrl+e</kbd> | follow the newest again |
-| <kbd>tab</kbd> | move the keys between the prompt and whatever else on the screen wants them; from a tab with no prompt, back to the chat |
-| <kbd>ctrl+t</kbd> | the next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for one in particular |
-| <kbd>esc</kbd> | close an open search box; otherwise stop what is running, and keep what arrived — or, resting in `ready`, drop the calls waiting to run |
-| <kbd>ctrl+c</kbd> | stop what is running either way, and again to leave |
-| <kbd>ctrl+d</kbd> | leave, from anywhere — including a permission prompt, where <kbd>d</kbd> on its own means something else |
-| <kbd>F1</kbd> | the keys, opened at the tab you are on; also <kbd>?</kbd> on any tab but the chat one |
+| <kbd>ctrl+home</kbd> / <kbd>ctrl+end</kbd> | jump to the start / end of the conversation |
+| <kbd>home</kbd> / <kbd>end</kbd> | start / end of the prompt, as in any text field |
+| <kbd>ctrl+e</kbd> | follow the newest output again |
+| <kbd>tab</kbd> | move the keys between the prompt and whatever else on screen can use them; from a tab without a prompt, go back to the chat |
+| <kbd>ctrl+t</kbd> | next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for a specific one |
+| <kbd>esc</kbd> | close an open search box; otherwise stop what's running and keep what arrived, or, when stopped in `ready`, drop the calls waiting to run |
+| <kbd>ctrl+c</kbd> | stop what's running in any case; press again to quit |
+| <kbd>ctrl+d</kbd> | quit, from anywhere, including a permission prompt, where <kbd>d</kbd> alone means something else |
+| <kbd>F1</kbd> | key help, opened at the current tab; also <kbd>?</kbd> on any tab except chat |
 
-**<kbd>F1</kbd> opens at the page for the tab you are on**, with a page each for the slash commands,
-the keys that mean the same everywhere, and a waiting tool, if there is one.
+**<kbd>F1</kbd> opens on the page for the current tab**, with separate pages for slash commands,
+keys that work everywhere, and the waiting tool call, if there is one.
 
-Where you leave the conversation is where it stays while a turn goes on writing, and the line along
-the bottom says how much has arrived underneath; <kbd>ctrl+e</kbd> or scrolling to the end follows
-again. Nothing said is shortened to fit, except a command's output while it is still running.
+If you scroll away from the end while a turn is still writing, the view stays where you left it,
+and the line at the bottom says how much has arrived below; <kbd>ctrl+e</kbd> or scrolling to the
+end follows the output again. Nothing is shortened to fit, except a command's output while it's
+still running.
 
-Stopping is cooperative: the provider returns the text it has, and the shell tool kills the
-command's process group and still answers the call. The partial turn ends up in the context like
-any other.
+Stopping is cooperative: the provider returns the text it has so far, and the shell tool kills the
+command's process group and still returns a result for the call. The partial turn goes into the
+context like any other.
 
-A message sent while a turn is running **waits for the end of it**, then gets a turn of its own —
-it cannot go in earlier, since it would land after the model's answer or between a call and its
-result. While it waits, <kbd>up</kbd> in an empty prompt takes it back to change; otherwise
-<kbd>up</kbd> brings back a copy of the last line sent, and <kbd>down</kbd> puts it away again
-while it is unchanged.
+A message sent while a turn is running **waits until the turn ends**, then gets a turn of its own;
+it can't be sent sooner, because it would land after the model's answer or between a tool call and
+its result. While it's waiting, <kbd>up</kbd> in an empty prompt brings it back to edit; otherwise
+<kbd>up</kbd> brings back a copy of the last message sent, and <kbd>down</kbd> puts it away again if
+you haven't changed it.
 
-**<kbd>ctrl+l</kbd> takes this program's own lines off the chat** — the notes about what it just
-did — and **the conversation stays**, because it is the context. The trace keeps everything either
+**<kbd>ctrl+l</kbd> removes `kamchatka`'s own notes from the chat** (the notes about what it just
+did), and **the conversation stays**, because it's the context. The trace keeps everything either
 way.
 
 ## 🔑 the permissions tab
 
-The other place the policy appears is the permission prompt — one call at a time, at the moment
-you are least inclined to think about it. **permissions** is every answer you have given, in one
-place, where it can be changed. Each row is a capability or a path, the answer standing for it, and
-what that answer covers.
+The permission prompt asks about one call at a time, at the moment you're least inclined to think
+about it. The **permissions** tab shows every answer you've given in one place, where you can change
+them. Each row is a capability or a path, the answer for it, and what that answer covers.
 
-The line along the top is the policy in force and what it answers about everything the list does
-not mention.
+The line at the top shows the policy in force and its answer for everything not listed.
 
 A fresh session has no rows: everything starts at `ask`, and rows are **decisions**, added as you
-answer. What is not listed is counted along the bottom, as how many more it will ask about, and
-cycling a row back to `ask` takes it off. A rule about a whole domain is one row, naming the
-operations it covers; an operation answered separately — `--allow fs --deny fs:write` — is a row of
-its own. **What it covers** is never wider than the rule, and a rule that reaches nothing says so.
-Deciding in advance means answering the first question with <kbd>a</kbd> or <kbd>n</kbd>, or a flag.
+answer. What isn't listed is counted at the bottom, as how many more it will ask about, and
+setting a row back to `ask` removes it. A rule for a whole domain is one row, listing the operations
+it covers; an operation answered separately (`--allow fs --deny fs:write`) gets its own row. **What
+it covers** is never wider than the rule, and a rule that matches nothing says so. To decide in
+advance, answer the first question with <kbd>a</kbd> or <kbd>n</kbd>, or use a flag.
 
-The line along the bottom opens with the shell, because it is the one thing on this tab that is not
-negotiable. A registered `shell` that is not refused can read, write and reach the network whatever
-the other rows say — so `shell: confined` (or `partly confined`, or `a command can do any of these`)
-is what makes the rest of the table mean anything. After it comes `network gated` or `network not
-gated`: whether a command is asked about when it opens a socket, or read off its name before it
+The line at the bottom starts with the shell, because it's the one thing on this tab you can't
+negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
+the other rows say, so `shell: confined` (or `partly confined`, or `a command can do any of these`)
+is what makes the rest of the table meaningful. After it comes `network gated` or `network not
+gated`: whether a command is asked about when it opens a socket, or judged by its name before it
 runs.
 
-Four kinds of row, and the first two are one thing at two depths. A **domain** is what a tool acts
-in — `fs`, `exec`, `context` — and answering for one answers for everything done in it, which is
-what makes "always" work for tools this program has never heard of. An **operation** is one thing
-done in a domain, spelled `<domain>:<operation>`: `fs:read` and `fs:write` are not the same
-decision, and neither are `context:note`, which adds an item to your context, and
-`context:revise`, which rewrites one. A **path rule** is finer than either — `fs:read: allow` is a
-reasonable thing to want and `fs:read .env: allow` is not. It binds every tool handed a path:
-`grep` and `glob` cannot ask, so they skip a file a rule does not allow and say how many, and a
-link to such a file is refused and named. A **server** is about where a tool came from rather than
-what it does — the one thing about an MCP tool nobody has to take the server's word for.
+There are four kinds of rows, and the first two are the same thing at different levels of detail.
+A **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for a domain covers
+everything done in it, which is what makes "always" work for tools `kamchatka` has never seen. An
+**operation** is one action in a domain, written `<domain>:<operation>`: `fs:read` and `fs:write`
+are separate decisions, and so are `context:note`, which adds an item to your context, and
+`context:revise`, which rewrites one. A **path rule** is more specific than either: `fs:read: allow`
+is a reasonable thing to want, `fs:read .env: allow` is not. It applies to every tool given a path:
+`grep` and `glob` can't ask, so they skip files a rule doesn't allow and say how many, and a
+symlink to such a file is refused and named. A **server** rule is about which MCP server a tool
+came from rather than what it does, which is the one thing about an MCP tool you don't have to
+take the server's word for.
 
-The most specific rule that has an answer decides, and a refusal above it overrules.
-`--allow context` allows the lot; `--allow context:note` allows a note and says nothing about the
-rest; `--allow context --deny context:revise` is everything but that one. What a finer rule cannot
-do is overrule a refusal — a domain you have *denied* stays denied however finely an operation in
-it is named, because the strictest of everything consulted wins and `--deny` is the last word.
-`net:reach` is the one nothing declares: where the network is gated, a command is asked about the
-moment it opens an internet socket; where it is not, it is a guess from the command's name.
+The most specific rule with an answer decides, but a refusal at a broader level always wins.
+`--allow context` allows everything in `context`; `--allow context:note` allows notes and says
+nothing about the rest; `--allow context --deny context:revise` allows everything except that one.
+A more specific rule can't overrule a refusal: a domain you've *denied* stays denied, however
+specifically you allow an operation in it, because the strictest matching rule wins and `--deny`
+always takes precedence. `net:reach` is the one no tool declares: where the network is gated, a
+command is asked about the moment it opens an internet socket; where it isn't, it's a guess based on
+the command's name.
 
-<kbd>space</kbd> cycles a row through **ask → allow → deny**, or
-<kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd> directly, and it takes effect on the next call. Answering
-"always" at a permission prompt writes to this same table — the prompt and the tab are one object,
-not two.
+<kbd>space</kbd> cycles a row through **ask → allow → deny**, or use <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
+directly, and it takes effect from the next call. Answering "always" at a permission prompt writes
+to this same table; the prompt and the tab are the same thing.
 
-`allow` runs with no question. `deny` never runs and never asks, and the transcript and the model
-are both told which rule did it — ``shell: refused by `net:reach`, which this command reaches
-for`` — and which *kind* of refusal it was: a standing rule, which will refuse the same call
-again, or an answer to this call, after which a different approach may be allowed.
+`allow` runs without asking. `deny` never runs and never asks, and both the transcript and the
+model are told which rule refused it (``shell: refused by `net:reach`, which this command reaches
+for``) and which *kind* of refusal it was: a standing rule, which will refuse the same call again,
+or an answer to this specific call, after which a different approach might be allowed.
 
 ### the question itself
 
-It stands in the prompt's place on the **chat** tab, rather than being laid over the middle of
-the screen. It is headed `a tool wants to run`, names the tool and everything the policy will judge
-the call by, shows the arguments, and ends with the answers:
+It appears in place of the prompt on the **chat** tab, rather than over the middle of the screen.
+It's headed `a tool wants to run`, names the tool and everything the policy will judge the call by,
+shows the arguments, and ends with the answers:
 
 | key | what happens |
 | --- | --- |
@@ -261,180 +260,181 @@ the call by, shows the arguments, and ends with the answers:
 | <kbd>a</kbd> | always, for everything the question names |
 | <kbd>n</kbd> / <kbd>esc</kbd> | no |
 | <kbd>i</kbd> | the exact JSON, and the tool's own definition |
-| <kbd>d</kbd> | drop every call it is waiting on, and tell the model why |
+| <kbd>d</kbd> | drop every call it's waiting on, and tell the model why |
 
-**A question you cannot investigate is a question you cannot answer**, so it takes nothing away:
-<kbd>ctrl+t</kbd> to the context tab, read the item it is about, <kbd>alt+1</kbd> back, answer. The
-**chat** tab goes red on the strip while one is waiting.
+**You can investigate before answering**, because the question doesn't block anything:
+<kbd>ctrl+t</kbd> to the context tab, read the item it's about, <kbd>alt+1</kbd> back, and answer.
+The **chat** tab turns red in the tab bar while a question is waiting.
 
-**It never takes the keys by itself.** <kbd>tab</kbd> gives them to it — or coming back to the chat
-tab — and until then none of the answers does anything, nor does <kbd>enter</kbd>, so a letter or
-an <kbd>enter</kbd> meant for the prompt cannot answer it. Whatever was in the prompt is there again
-when the question has gone.
+**It never takes the keys by itself.** Press <kbd>tab</kbd> (or come back to the chat tab) to give
+them to it; until then, none of the answer keys work, and neither does <kbd>enter</kbd>, so typing
+meant for the prompt can't answer it by accident. Whatever was in the prompt is restored when the
+question is gone.
 
-It names **everything the policy consulted**, not just what the tool declared, and <kbd>a</kbd>
-answers for all of it, calls already queued behind this one included. <kbd>y</kbd> is this call
-only. Arguments longer than the box scroll with <kbd>pgup</kbd> and <kbd>pgdn</kbd> while the
-answers stay put.
+It lists **everything the policy checked**, not just what the tool declared, and <kbd>a</kbd>
+answers for all of it, including calls already queued behind this one. <kbd>y</kbd> is for this call
+only. Arguments too long for the box scroll with <kbd>pgup</kbd> and <kbd>pgdn</kbd> while the
+answers stay in place.
 
-A shell command is drawn as code, wrapped at spaces, with the `|`, `&&`, `||` and `;` joining its
-stages coloured — unless it cannot be read to the end, an unterminated quote say, when nothing is
-picked out. <kbd>i</kbd> is the byte-exact view. An `edit` is drawn as a diff, `old` red and `new`
-green.
+A shell command is shown as code, wrapped at spaces, with the `|`, `&&`, `||` and `;` between its
+stages coloured, unless it can't be parsed to the end (an unclosed quote, for example), in which
+case nothing is highlighted. <kbd>i</kbd> shows it byte for byte. An `edit` is shown as a diff,
+`old` in red and `new` in green.
 
-With `--advise` (a `shell-advisor` build), one more line in the header says what the advisor reads
-the command as — green, yellow or red — and how sure it was. It decides nothing.
-[RUNNING.md](RUNNING.md#what-the-colour-says) has the rubric and what is sent out.
+With `--advise` (in a `shell-advisor` build), an extra line in the header shows the advisor's
+rating of the command (green, yellow or red) and how confident it was. It doesn't decide anything.
+[RUNNING.md](RUNNING.md#what-the-colour-says) explains the ratings and what is sent.
 
 ### a command that reaches for the network
 
-Where the network is gated, a command is not asked about for what it is called. It runs, and the
-moment it opens an internet socket — a DNS lookup counts — the call is held and the question stands
-in the prompt's place, headed `a command wants the network`, with the command under it:
+Where the network is gated, a command isn't judged by its name. It runs, and the moment it opens an
+internet socket (DNS lookups included), the call is paused and a question appears in place of the
+prompt, headed `a command wants the network`, with the command below it:
 
 | key | what happens |
 | --- | --- |
-| <kbd>y</kbd> | this command may, for the rest of it |
-| <kbd>a</kbd> | always: `net:reach` allowed from now on, and for every command already waiting |
-| <kbd>n</kbd> | this command may not, and every socket it asks for is refused |
+| <kbd>y</kbd> | this command may use the network, until it finishes |
+| <kbd>a</kbd> | always: `net:reach` is allowed from now on, including for commands already waiting |
+| <kbd>n</kbd> | this command may not, and every socket it opens is refused |
 
-It is asked once per command, and the command waits while it is up; <kbd>esc</kbd> stops the turn,
-command and question with it. The model is told near the top of the result that the command reached
-for the network and what you answered, since a refused lookup otherwise reads like a broken network.
-`deny` refuses every internet socket without asking, UDP too, and an <kbd>a</kbd> reaches the other
-commands still running.
+It's asked once per command, and the command waits while the question is open; <kbd>esc</kbd>
+stops the turn, along with the command and the question. The model is told near the top of the
+result that the command tried to use the network and what you answered, since a refused lookup
+would otherwise look like a broken network. `deny` refuses every internet socket without asking,
+including UDP, and an <kbd>a</kbd> also applies to other commands still running.
 
 ## 🔦 finding things without a shell
 
-`fs`'s `grep` and `glob` let a session be asked about a repository without `exec:run`, which
-subsumes every other capability: they declare `fs:grep` and `fs:glob`, and the path rules that bind
-a read bind them too. Underneath is ripgrep's engine, linked in.
+`fs`'s `grep` and `glob` let the model explore a repository without `exec:run`, which implies every
+other capability: they declare `fs:grep` and `fs:glob`, and the path rules that apply to reading
+apply to them too. They use ripgrep's libraries.
 
-An answer opens with a line counting the matches, the files they are in and the files searched, so
-"the symbol is not there" reads differently from "nothing was opened"; a `skipped:` line names what
-was left unopened and why — a path rule, a link out of reach, a binary file, an unreadable one.
-**It cuts at matches, not at bytes,** at a hundred, and says it stopped, and a line is cut at two
-hundred characters. When the cap fills, it suggests `files_only`, which lists the files that
-matched with how many each has, most first, at a fraction of the cost.
+A result starts with a line counting the matches, the files they're in, and the files searched, so
+"the symbol isn't there" is distinguishable from "nothing was searched"; a `skipped:` line lists
+what wasn't opened and why: a path rule, a symlink outside the allowed paths, a binary file, an
+unreadable one. **It stops after a hundred matches, rather than at a byte count,** and says so, and
+cuts lines at two hundred characters. When it hits the limit, it suggests `files_only`, which lists
+the matching files with their match counts, most first, at a fraction of the cost.
 
-What a `.gitignore` hides is skipped, and `.git` always; hidden files **are** searched; a link is
-followed inside the working directory and counted outside it. The path the call names is judged as
-`read`'s is, so `grep` in `.env` is a question exactly as reading it is.
+Files hidden by `.gitignore` are skipped, and `.git` always is; hidden files **are** searched;
+symlinks are followed inside the working directory and only counted outside it. The search path is
+checked the same way as `read`'s, so `grep` in `.env` asks the same question as reading it would.
 
-`glob` is the same walk: `**/*.rs` in, matching paths out in the shape `ls -R` prints them. Both are
-deterministic, so two identical searches are the same context item.
+`glob` walks the same way: `**/*.rs` in, matching paths out, formatted like `ls -R`. Both are
+deterministic, so two identical searches produce the same context item.
 
-**A long file is read in parts, and `read` says where each one ends.** Past the output limit —
-32,000 bytes, unless `/limit fs:read` says otherwise — it stops at the last whole line that fits,
-and its first line says which lines those are and the `from` to read on with. `from` and `lines`
-read any part of a file, a log too large to hold in memory included. The other way to read a part
-is `sed -n` through `shell`, which is `exec:run` again, for a file the session may already read.
+**A long file is read in parts, and `read` says where each part ends.** Past the output limit
+(32,000 bytes, unless `/limit fs:read` says otherwise), it stops at the last whole line that fits,
+and its first line says which lines were returned and the `from` value to continue with. `from` and
+`lines` read any part of a file, including logs too large to hold in memory. The alternative,
+`sed -n` through `shell`, needs `exec:run`, even for a file the session is already allowed to read.
 
-**How much of a call's output the model is shown is a limit per subject**, so `fs:read` and
-`fs:grep` have one each. It starts at 32,000 bytes, and at 8,000 for the tools whose answer is a
-report of a fixed shape rather than a piece of the session. `/limit` lists them, numbered, and
-changes one from its next call onward — `/limit fs:read 64000`. A result that was cut keeps its
-whole beside it, excluded, and <kbd>space</kbd> on it sends the whole instead. The whole has a
-ceiling of its own, 8 MiB: past it a command's output is let go and the result says how much, and
-`fs` refuses to edit a larger file.
+**The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It starts
+at 32,000 bytes, and at 8,000 for tools whose result is a fixed-format report rather than part of
+the session's content. `/limit` lists them, numbered, and changes one from its next call on, e.g.
+`/limit fs:read 64000`. A result that was cut keeps the full version next to it, excluded, and
+<kbd>space</kbd> on it sends the full version instead. The full version has its own limit, 8 MiB:
+beyond that, a command's extra output is discarded and the result says how much, and `fs` refuses
+to edit larger files.
 
 ## 📎 putting something in, with or without a question
 
-`/attach` takes a path and then whatever you want to ask about it, so the file and the question
-go out as one request:
+`/attach` takes a path followed by an optional question, so the file and the question are sent
+together:
 
 ```text
 /attach reports/q3.pdf what is the headline number, and what is it compared against?
 ```
 
-What goes in depends on what the file is. Anything this program has no media type for goes in as
-**text**, countable, readable on the context tab and compactable. A PDF, an image or a recording
-goes in as **bytes**, with its media type, decided by the extension; a file that is neither a known
+How the file is added depends on its type. Anything `kamchatka` has no media type for is added as
+**text**: counted, readable on the context tab and compactable. A PDF, an image or an audio file is
+added as **bytes**, with its media type, based on the file extension; a file that's neither a known
 type nor valid text is refused.
 
-`-f` at startup is the same thing, and with no question after the path `/attach` just puts the file
-in. The difference is the pin: a file named on the command line is part of how the session was set
-up, so `-f` pins it; one attached at the prompt is not, and <kbd>p</kbd> keeps it.
+`-f` at startup does the same, and `/attach` with no question just adds the file. The difference is
+pinning: a file given on the command line is part of the session's setup, so `-f` pins it; one
+attached at the prompt isn't pinned, and <kbd>p</kbd> pins it.
 
-**`/note` is the same act with a message instead of a file.**
+**`/note` does the same with a message instead of a file.**
 
 ```text
 /note the CI runner has no network; a test that fetches will hang there
 ```
 
-A message starts a turn, so telling the model a fact it will need later costs a request and an
-answer. A note goes into the context and stops there, carried by the next request. It arrives as a
-**reference** labelled `note:`, the shape an attached file goes out in; it is from `memory`, so
-`/exclude memories` names every note you have written, and it is not pinned.
+A normal message starts a turn, so telling the model something it'll need later costs a request and
+an answer. A note goes into the context without starting a turn, and is sent with the next request.
+It's added as a **reference** labelled `note:`, like an attached file; its source is `memory`, so
+`/exclude memories` excludes every note you've written, and it isn't pinned.
 
-Nothing here can price a picture, and it says so: the line the chat prints for an attachment gives
-its media type, size, and how many pieces nothing could price, and its row carries a `+`. Once the
-request has gone out, the provider's figure has it inside. `Kernel::set_counter` takes a counter
-that knows your vendor's formula, and [`pricing_a_picture.rs`][pricing] is one written out.
+`kamchatka` can't price images, and says so: the line the chat prints for an attachment gives its
+media type, its size, and how many parts couldn't be priced, and its row shows a `+`. Once the
+request has been sent, the provider's figure includes it. `Kernel::set_counter` accepts a counter
+that knows your vendor's pricing formula, and [`pricing_a_picture.rs`][pricing] has an example.
 
 [pricing]: https://github.com/ljedrz/nachalnik/blob/HEAD/nachalnik/examples/pricing_a_picture.rs
 
 ## 🔎 letting the agent read and manage its own context
 
-Four of the tools are about the session itself, and they are offered like the rest: `/tools toggle`
-takes one away or gives it back, and the `tools` key in a settings file says which a session starts
+Four of the tools are about the session itself, and they're offered like the rest: `/tools toggle`
+removes or restores one, and the `tools` setting in a settings file says which a session starts
 with. There are [write-ups](https://ljedrz.github.io/nachalnik/) of sessions using them.
 
-**An argument the named action does not read is refused, not ignored**, in these and in `fs`, and
-the refusal names the action it belongs to — a `read` given `old` would otherwise answer with the
-whole file, to a call nobody made.
+**An argument the chosen action doesn't use is refused, not ignored**, in these tools and in `fs`,
+and the refusal says which action it belongs to; otherwise a `read` given `old` would return the
+whole file in answer to a call nobody meant to make.
 
-**`context`** reads. `look` lists every item — what it is, what it puts into the next request, what
-it holds out of one and why — and reads any of them back, block by block, thinking included; a long
-one comes back as its start and end unless `whole: true`, since reading copies it into the context.
-`request` shows the request about to go out, and for each item left out whether its own state did
-it (`restore` puts it back) or the projector dropped it as a consequence of something else.
+**`context`** reads the context. `look` lists every item (what it is, what it adds to the next
+request, what it holds back and why) and reads any of them in full, block by block, including
+reasoning; a long item is shortened to its start and end unless `whole: true`, since reading it
+copies it into the context. `request` shows the request about to be sent, and for each item left
+out, whether its own state caused it (`restore` brings it back) or the projector removed it because
+of something else.
 
-`budget` is the one a decision gets made from: the estimate against the limit, split between the
-context and the tool definitions, what is held back, what the last request really cost, and how far
-the estimate is being corrected — then up to ten of the most expensive items going into the
-request, ranked by what each *sends*, with a running total.
+`budget` is the one to make decisions from: the estimate against the limit, split between the
+context and the tool definitions, what's held back, what the last request really cost, and how much
+the estimate is being corrected; then up to ten of the most expensive items in the request, ranked
+by what each *sends*, with a running total.
 
-`search` reaches what is excluded without bringing it back: how many lines say the text, what
-taking them would cost and which items they are in, and with `take` up to 64 of the lines. Case is
-ignored, and a nil result says what it looked at.
+`search` looks through excluded items without restoring them: how many lines contain the text, what
+restoring them would cost and which items they're in, and with `take`, up to 64 of the lines. It's
+case-insensitive, and when nothing is found it says what it searched.
 
-The other operations change it. `elide`, `exclude`, `pin` and `restore` move items between the
-states the <kbd>space</kbd> and <kbd>p</kbd> keys do, each named for the state it leaves. Items are
-named by `ids` or by `select`, the selector language `/exclude` takes — one or the other, never
-both — and `look` with a `select` previews which items a move would take and which it would refuse.
-`revise` rewrites what an item says, never a message you wrote. `note` writes a plan, a conclusion
-or a thing not to try again, attributed to `agent`, and can be pinned. `undo` and `redo` walk the
-tool's own journal, not the kernel's undo stack, which is yours. Every change takes a `reason`,
-which is what you read in the context pane.
+The other operations change the context. `elide`, `exclude`, `pin` and `restore` move items between
+the same states as the <kbd>space</kbd> and <kbd>p</kbd> keys, each named after the state it moves
+items into. Items are chosen by `ids` or by `select` (the selector language `/exclude` uses), one or
+the other, never both, and `look` with a `select` previews which items a change would affect and
+which it would refuse. `revise` rewrites what an item says, but never a message you wrote. `note`
+writes down a plan, a conclusion or something not to try again, attributed to `agent`, and can pin
+it. `undo` and `redo` go through the tool's own history, not the kernel's undo history, which is
+yours. Every change takes a `reason`, which is what you see in the context tab.
 
-Three things are refused outright: a **pinned** item (it may unpin only what it pinned itself), a
-**system instruction**, and the turn it is speaking in. Each operation is its own subject, so
-`context:look` and `context:revise` are separate rows on the permissions tab, and `--allow context`
-answers for the lot.
+Three things are always refused: changing a **pinned** item (the agent can only unpin items it
+pinned itself), changing a **system instruction**, and changing the turn the agent is currently in.
+Each operation is a separate permission, so `context:look` and `context:revise` are separate rows on
+the permissions tab, and `--allow context` covers all of them.
 
-**`fork`** is its own tool, because it buys a request: `fork:draft` and `fork:ask` take a snapshot,
-resume it as a second kernel with **no tools**, ask it once, and hand back only what it said.
-`draft` is for reading your own answer before giving it; `ask` is for asking whether a piece of
-context is leading you astray, with `without` naming the items the copy is not given — and a fork
-that took nothing away says so, so its answer is not mistaken for an ablation. Nothing it does
-reaches this session's context or log.
+**`fork`** is its own tool, because each use costs a request: `fork:draft` and `fork:ask` take a
+snapshot, resume it as a second kernel with **no tools**, ask it once, and return only its answer.
+`draft` is for checking your own answer before giving it; `ask` is for checking whether part of the
+context is misleading you, with `without` naming the items the copy doesn't get. A fork that removed
+nothing says so, so its answer isn't mistaken for an ablation. Nothing a fork does affects this
+session's context or log.
 
 **`log`** reads the session's own record: what an item *used* to say, which permissions were
-answered and how, which tools came and went. Called bare it gives counts only — how many records,
-what taking them would cost, how many of each kind. `take` (at most 64), `ids`, `since` and `kinds`
-ask for some, and **every answer opens with the true total** before how many matched and how many
-are shown, so a short answer can never read as *nothing happened*. It reports and does not
-interpret.
+answered and how, which tools were added and removed. Called with no arguments, it returns only
+counts: how many records there are, what reading them would cost, how many of each kind. `take` (at
+most 64), `ids`, `since` and `kinds` ask for specific records, and **every answer starts with the
+true total**, then how many matched and how many are shown, so a short answer never looks like
+*nothing happened*. It reports, without interpreting.
 
-**`setup`** reads what the session is running *with*:
+**`setup`** shows what the session is running *with*:
 
-- **`model`** — which model, what parameters, how much context, and whether this conversation was
-  **resumed from a snapshot** — which a model cannot tell from inside, since a restored context
-  carries turns it never produced.
-- **`tools`** — every tool on offer, what each needs, and how much of its output reaches the model.
-- **`permissions`** — what the policy allows, refuses or will ask about, read off its table.
-- **`policy`** — what the compactor and the projector will do to the context unasked.
+- **`model`**: which model, what parameters, how much context, and whether this conversation was
+  **resumed from a snapshot**, which a model can't tell from inside, since a restored context
+  contains turns it didn't produce.
+- **`tools`**: every tool on offer, what each needs, and how much of its output reaches the model.
+- **`permissions`**: what the policy allows, refuses or will ask about.
+- **`policy`**: what the compactor and the projector will do to the context on their own.
 
-A tool can be taken *away* mid-session with `/tools toggle ID`, deliberately: an agent whose ability
-to check its record is revoked halfway through a run is a thing worth watching a model in.
+A tool can be *removed* mid-session with `/tools toggle ID`, deliberately: watching how a model
+behaves when it loses the ability to check its own record partway through a run is worthwhile.
