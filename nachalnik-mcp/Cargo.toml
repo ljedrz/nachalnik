@@ -4,10 +4,9 @@ version = "0.9.0"
 description = "Model Context Protocol (MCP) servers as tools for the nachalnik agent runtime: a tool somebody else wrote, as a Tool like any other."
 documentation = "https://docs.rs/nachalnik-mcp"
 readme = "README.md"
-# `api-bindings` because that is what this is: a binding to somebody else's server
+# `api-bindings` because it binds to other people's servers
 categories = ["api-bindings", "asynchronous", "development-tools"]
-# `nachalnik` is a keyword rather than a wasted slot: it is the one page on the registry that
-# lists all three of these crates together, and reverse dependencies is a tab nobody clicks
+# `nachalnik` so that searching for it lists all of this project's crates together
 keywords = ["mcp", "agent", "llm", "ai", "nachalnik"]
 authors.workspace = true
 edition.workspace = true
@@ -21,14 +20,12 @@ all-features = true
 
 [features]
 default = ["child-process"]
-# Servers run as a child process, talking over its stdin and stdout. This is how most MCP
-# servers are distributed, and it is the reason this crate is not part of the runtime: the
-# runtime spawns no processes.
+# Servers run as child processes, over stdin and stdout. This is how most MCP servers are
+# distributed, and why this crate is separate from the runtime, which spawns no processes.
 #
-# note: `process` because `Server::spawn` names a `tokio::process::Command` in its signature and
-# spawns it, and `io-util` and `rt` for the server's standard error, which is read in the background
-# rather than inherited; see `Server::spawn`. `rmcp` is handed the child's two pipes rather than
-# the command, so that the child is ours to kill; see the note there.
+# note: `process` because `Server::spawn` takes and spawns a `tokio::process::Command`; `io-util`
+# and `rt` to read the server's stderr in the background instead of inheriting it. `rmcp` gets the
+# child's pipes rather than the command, so we can kill the child ourselves; see `Server::spawn`.
 child-process = [
     "rmcp/transport-async-rw",
     "tokio/process",
@@ -38,10 +35,8 @@ child-process = [
 # Servers reached over HTTP.
 http = ["rmcp/transport-streamable-http-client-reqwest"]
 
-# the suite that spawns somebody else's server as a process, which is `Server::spawn` and
-# therefore the feature that brings `tokio::process` in. Without it the crate is a bridge to a
-# server reached some other way, and this suite is not part of it - `bridge.rs`, which stands one
-# up in this process and talks to it over a pipe, is, and needs no feature to build.
+# tests that spawn a third-party server as a process, so they need `child-process`. `bridge.rs`
+# runs a server in-process over a pipe and needs no feature.
 [[test]]
 name = "foreign"
 path = "tests/foreign.rs"
@@ -50,28 +45,24 @@ required-features = ["child-process"]
 [dependencies]
 nachalnik.workspace = true
 serde_json.workspace = true
-# the official MCP SDK. `default-features = false` because its defaults build a *server*, and
-# nothing here is one
+# the official MCP SDK. `default-features = false` because its defaults build a server, and this
+# crate is only a client
 rmcp = { version = "3.1", default-features = false, features = ["client"] }
-# `time` and `macros` for a call that is waited on and an interrupt watched beside it, which every
-# kind of server needs; see `McpTool::invoke`. `rmcp` builds `tokio` whatever this says, so this is
-# features rather than a crate
+# `time` and `macros` to wait for a call while watching for an interrupt; see `McpTool::invoke`.
+# `rmcp` depends on `tokio` anyway, so this only adds features
 tokio = { workspace = true, features = ["macros", "time"] }
 
 [dev-dependencies]
 nachalnik = { workspace = true, features = ["test"] }
-# the one live test: a real model, offered a real server's tools. No version, because
-# `nachalnik-utils` is never published and cargo strips a versionless dev-dependency from the
-# manifest
+# for the one live test, which gives a real model a real server's tools. Unversioned because
+# `nachalnik-utils` is never published; cargo strips unversioned dev-dependencies when publishing
 nachalnik-utils = { workspace = true }
-# the identifier rewriting is a pure function with a collision in its history, which is what a
-# generated case and a shrinker are for; see `tool::tests`
+# for property tests of the tool-name rewriting, which once had a collision bug; see `tool::tests`
 proptest = { workspace = true }
-# the tests stand up a real MCP server in-process and talk to it over a pipe, so that what is
-# being tested is the protocol rather than a mock of it
+# the tests run a real MCP server in-process over a pipe, so they test the actual protocol rather
+# than a mock
 #
-# note: 3.4 where the library above asks for 3.1, because the bench server calls its info type
-# `ServerConfig` and that name arrived in 3.4 - the floor a consumer is held to stays as low as
-# what this crate's own source needs. The two unify to one copy in any build that has both
+# note: 3.4 here but 3.1 for the library, because the test server uses `ServerConfig`, added in
+# 3.4. Users of the crate keep the lower minimum; builds with both get a single copy
 rmcp = { version = "3.4", features = ["server", "transport-async-rw"] }
 tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread", "time"] }

@@ -5,9 +5,8 @@ description = "A minimal, transparent agent runtime: context, tools, permissions
 documentation = "https://docs.rs/nachalnik"
 readme = "README.md"
 categories = ["asynchronous", "development-tools"]
-# note: five is the limit, so each one has to earn its place. `ai` and `llm` are the pair every
-# crate in this corner of the registry is found by; `context` is what this one is actually about,
-# and is how somebody looking for context management rather than for another SDK arrives.
+# note: crates.io allows five. `ai` and `llm` are how crates like this are found; `context` is
+# what this one is about, for people looking for context management rather than another SDK.
 keywords = ["agent", "llm", "ai", "context", "runtime"]
 authors.workspace = true
 edition.workspace = true
@@ -16,8 +15,8 @@ repository.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
 
-# both features are off by default, and the documentation links into both of them; without this,
-# docs.rs would build the default configuration and publish a page whose links do not resolve
+# both features are off by default and the docs link to both, so docs.rs must build with them or
+# the links break
 [package.metadata.docs.rs]
 all-features = true
 
@@ -25,12 +24,11 @@ all-features = true
 crate-type = ["lib"]
 
 [features]
-# The selector language (`tool:grep:latest`, `all:tool_results`, ...) used to name context
-# items. It is a convenience for clients, not part of the runtime, so it is opt-in.
+# The selector language for naming context items (`tool:grep:latest`, `all:tool_results`, ...).
+# A convenience for clients, not part of the runtime, so it is opt-in.
 selectors = []
-# Exposes the scripted provider, dummy tools and off-the-shelf permission policies used by
-# this crate's own tests; useful for testing an agent built on top of the kernel without
-# touching a real model provider.
+# The scripted provider, dummy tools and ready-made permission policies this crate's tests use;
+# useful for testing an agent built on the kernel without a real model provider.
 test = []
 
 [dependencies]
@@ -38,20 +36,18 @@ async-trait.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# `rt` only for `JoinSet`, and only reached when `Config::parallel_tool_calls` is on
+# `rt` only for `JoinSet`, used when `Config::parallel_tool_calls` is on
 tokio = { workspace = true, features = ["rt", "sync"] }
 
 [dev-dependencies]
 nachalnik = { path = ".", features = ["selectors", "test"] } # a workaround to use these features in tests by default
-# the provider the examples and the live suite talk through, and the environment they read it out
-# of. Both are dev-dependencies and only ever dev-dependencies, so cargo strips them from the
-# published manifest - which is what lets `nachalnik-utils` stay unpublished at 0.0.0.
+# the provider the examples and live tests use, and the helper that reads its settings from the
+# environment. Dev-dependencies only, so cargo strips them from the published manifest, which lets
+# `nachalnik-utils` stay unpublished at 0.0.0.
 #
-# note: no version on either, deliberately, and that is what does the stripping: a dev-dependency
-# carrying one is kept, and a kept one would mean this crate could not be packaged until
-# `nachalnik-providers` was on the registry - which depends on *this* crate. The cycle is legal
-# and cargo would resolve it, but it would make the two crates publishable only in one order for
-# ever after, which is a lot to pay for a version number nobody reads.
+# note: deliberately unversioned, which is what makes cargo strip them. A versioned one would stay,
+# and this crate couldn't be packaged until `nachalnik-providers` (which depends on this crate) was
+# on the registry. Cargo allows that cycle, but it would force one publishing order forever.
 nachalnik-providers = { path = "../nachalnik-providers" }
 nachalnik-utils = { path = "../nachalnik-utils" }
 proptest = { workspace = true }

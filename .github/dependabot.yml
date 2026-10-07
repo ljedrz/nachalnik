@@ -1,10 +1,10 @@
-# note: the workflows' actions and nothing else. Every `uses:` is pinned to a commit, which is
-# what keeps a moved tag from changing what runs with a release's token - and a pin nothing
-# updates is a pin that falls behind every fix. One pull request a week, all of them in it, for a
-# release that has been out a week: a compromised one is usually caught and pulled within days.
+# note: only the GitHub Actions used by the workflows. Every `uses:` is pinned to a commit, so a
+# moved tag can't change what runs with a release's token, but pins need updating to get fixes.
+# One pull request a week with all updates, only for releases at least a week old, since a
+# compromised release is usually caught and pulled within days.
 #
-# note: not `cargo`. A dependency moves with `cargo update` when somebody decides it should, and
-# the advisories against the ones locked are Dependabot's alerts, which need no file here
+# note: not `cargo`. Crate dependencies are updated with `cargo update` when we decide to, and
+# Dependabot alerts cover advisories for the locked versions without any configuration here
 version: 2
 updates:
   - package-ecosystem: github-actions
