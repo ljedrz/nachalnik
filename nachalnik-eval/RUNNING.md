@@ -1,15 +1,14 @@
 # running the suite
 
-Pointing it at a model, keeping it inside a rate limit, reading a sweep back, and how the
-harness itself is checked. [The readme](README.md) says what is being measured and why the
-number means anything.
+Running it against a model, staying within rate limits, reading results back, and how the harness
+itself is tested. [The README](README.md) says what is measured and why the numbers mean something.
 
 ---
 
 ## 🛠️ using it on your own model
 
-Any `Provider` works, which is what makes this model-agnostic. There is no HTTP client in the
-crate, for the same reason there is none in the runtime:
+Any `Provider` works, so it isn't tied to any model. The crate has no HTTP client, for the same
+reason the runtime doesn't:
 
 ```rust
 let report = evaluate(suite::all_with(2, 1), |name| {
@@ -24,9 +23,9 @@ println!("{report}");
 std::fs::write("run.json", serde_json::to_string_pretty(&report)?)?;
 ```
 
-A fresh subject per experiment, because a session that has already been asked about itself has
-learnt that it is being measured. The JSON is the whole record — every question, every answer
-verbatim, every copy's reply, every comparison — so a run can be re-scored without being paid for
+Each experiment gets a fresh subject, because a session that has already been asked about itself
+knows it's being measured. The JSON is the complete record (every question, every answer word for
+word, every copy's reply, every comparison), so a run can be scored again without paying for it
 again.
 
 Your own experiment is one trait method:
@@ -54,21 +53,19 @@ impl Experiment for Mine {
 }
 ```
 
-Nothing is accumulated on the side: a `Trial` is an append-only record and every figure is derived
-from it, so a reported score and the steps it came from cannot disagree. An experiment that falls
-over at request forty keeps everything it had established by request thirty-nine and says what
-stopped it.
+Nothing is tracked separately: a `Trial` is an append-only record and every figure is computed
+from it, so a reported score always matches the steps behind it. An experiment that fails at
+request forty keeps everything up to request thirty-nine and reports what stopped it.
 
 ---
 
 ## ⏱️ how fast it is allowed to go
 
-A whole suite against one model is a thousand-odd requests at `-r 2`, and hours of waiting if
-each one waits for the last. Most of that is avoidable. The probes inside a battery — solve, then
-introspect, then predict — are a *conversation*, each question written out of the last answer, so
-they cannot overlap. An ablation sweep is not. Every copy in one is resumed from the `Origin`
-frozen before a single claim was made, so no copy can see another's, and the whole sweep can go at
-once.
+A whole suite against one model is about a thousand requests at `-r 2`, which takes hours if each
+waits for the previous one. Most of that waiting can be avoided. The questions within a battery
+(solve, then introspect, then predict) form a *conversation*, each based on the previous answer, so
+they can't run in parallel. Ablations can: every copy is resumed from the same `Origin`, frozen
+before any claim was made, so no copy sees another's, and they can all run at once.
 
 `evaluate` runs everything one at a time. `evaluate_with` is the opt-in:
 
@@ -82,66 +79,64 @@ let report = evaluate_with(
 .await;
 ```
 
-The two are not interchangeable, and the reason is not the scores — nothing a figure is computed
-from depends on what else was in flight, so those are the same either way. It is that concurrency
-can make a run *fail* where a sequential one would have trickled through: a burst collects 429s,
-the retries behind them eat the budget, probes come back `Unreadable`, and a report quietly becomes
-a page of untested claims.
+The scores are the same either way, since nothing they're computed from depends on what else was
+running. The difference is that concurrency can make a run *fail* where a sequential one would have
+slowly succeeded: a burst of requests gets 429s, the retries use up the budget, probes come back
+`Unreadable`, and the report ends up full of untested claims.
 
-So `Pace` carries the two limits endpoints publish: `at_once` caps how many requests are **in
-flight**, and `per_minute` how many are **started** in a sliding window, spaced out rather than
-fired at its start. It is applied by wrapping the subject's `Provider`, so no experiment can evade
-it however wide it fans; `Ablation::observe` and `Ablation::observe_each` are where the fanning is.
+So `Pace` has the two limits endpoints publish: `at_once` caps how many requests are **in
+progress**, and `per_minute` how many are **started** within a sliding window, spread out rather
+than all at the start. It wraps the subject's `Provider`, so no experiment can get around it, however
+many requests it runs in parallel; `Ablation::observe` and `Ablation::observe_each` are where that
+happens.
 
-What is deliberately *not* here is what to do once a limit has been exceeded anyway. A `429` and
-its `Retry-After` are answered in whichever `Provider` you supplied, because that is the layer that
-knows the wire format they arrived in. These are about not provoking one.
+What to do once a limit is exceeded anyway is deliberately not handled here. A `429` and its
+`Retry-After` are handled by the `Provider` you supplied, since that's the layer that understands
+the response format. `Pace` is about not causing them.
 
-The `bench` example takes `-j` and `--per-minute` for the two, and writes its report atomically
-after every experiment, so a run killed partway keeps every experiment it finished.
+The `bench` example takes `-j` and `--per-minute` for these, and saves its report atomically after
+every experiment, so a run killed partway keeps every finished experiment.
 
 ---
 
 ## 📈 reading a sweep back
 
-Two more examples, and neither asks a model anything: they read the reports `bench` saved, so the
-analysis of a sweep costs nothing and can be repeated months later by somebody who was not there.
-That is what `--json` holding every question and every answer verbatim is *for* — a figure in a
-paper should be recomputable from the record. The runs below were each given a path of their own,
-`--json eval-runs/<study>/<run>/report.json`; without one, `bench` writes
-`bench-<model>-<when>.json` in the working directory.
+Two more examples, neither of which sends any requests: they read the reports `bench` saved, so
+analysing results costs nothing and can be repeated months later by someone else. That's why
+`--json` keeps every question and answer word for word: a figure in a paper should be recomputable
+from the record. The runs below were each saved with `--json eval-runs/<study>/<run>/report.json`;
+without it, `bench` writes `bench-<model>-<when>.json` in the working directory.
 
 ```console
 $ cargo run -p nachalnik-eval --example compare -- eval-runs/*/*/report.json
 $ cargo run -p nachalnik-eval --example pool    -- eval-runs/*/*/report.json
 ```
 
-**`compare`** puts runs side by side and refuses to pretend that runs asked different questions
-are comparable. Everything else it does is arithmetic anybody could do in a spreadsheet; what a
-spreadsheet will not do is notice that one of the files came from an instrument with a word
-changed in it. Runs are grouped by `Instrument::digest` and by `Outcome::rules`, the rules their
-claims were scored by, and where one experiment's rows come from more than one of either they are
-printed under a line saying they are not comparable.
+**`compare`** shows runs side by side, but won't treat runs that asked different questions as
+comparable. The arithmetic could be done in a spreadsheet; what a spreadsheet won't notice is that
+one file came from a version of the questions with a word changed. Runs are grouped by
+`Instrument::digest` and by `Outcome::rules` (the rules their claims were scored by), and if one
+experiment's rows come from more than one of either, they're printed under a line saying they
+aren't comparable.
 
-**`pool`** computes the figures that are about *models*. `bench` measures one model, and every
-figure it prints is computed over items that share a dossier and are therefore not independent.
-So the only test `pool` applies is the sign test, over one run per model, which is honest there
-and nowhere else in this crate: models are independent of each other in a way that items never
-are. A model is its name, whichever endpoint served it, since the same weights reached two ways
-are not two models. `Cohort::is_unanimous` is unanimity and not significance — three models
-agreeing is unanimous at `p = 0.125` — which is why the cohort size is a decision a study registers
-in advance.
+**`pool`** computes figures across *models*. `bench` measures one model, and every figure it prints
+comes from items that share a dossier, so they aren't independent. The only statistical test `pool`
+applies is the sign test, over one run per model, which is valid there and nowhere else in this
+crate, because models are independent of each other in a way items aren't. A model is identified
+by its name, whichever endpoint served it, since the same weights through two endpoints are still
+one model. `Cohort::is_unanimous` means unanimous, not statistically significant (three models
+agreeing is unanimous at `p = 0.125`), which is why a study should fix its cohort size in advance.
 
 ---
 
 ## 🧫 how the harness itself is checked
 
-The obvious problem with a benchmark for introspection is that a run against a real model cannot
-tell you whether the *harness* was right: nobody knows what item 4 was doing.
+The obvious problem with an introspection benchmark is that a run against a real model can't tell
+you whether the *harness* is correct, because nobody knows what item 4 was really doing.
 
-So `tests/harness.rs` runs the whole loop against a provider whose causal structure the test
-wrote — a rulebook that answers `kirov` when a phrase is in the request and `omsk` when it is not.
-Exactly one of the planted notes is then load-bearing, and it is known which, in advance. A
-run that reports any other ranking has a bug in it. `tests/machinery/` checks the arithmetic
-against numbers worked out by hand, and `tests/live.rs` checks the one thing neither can: that a
-real model answers in the shape the probes ask for, and that the record comes back complete.
+So `tests/harness.rs` runs the whole loop against a provider whose behaviour the test defines: it
+answers `kirov` when a certain phrase is in the request and `omsk` when it isn't. Then exactly one
+of the planted notes determines the answer, and the test knows which in advance; a run that reports
+anything else has a bug. `tests/machinery/` checks the arithmetic against numbers worked out by
+hand, and `tests/live.rs` checks what neither can: that a real model answers in the format the
+probes ask for, and that the record comes back complete.
