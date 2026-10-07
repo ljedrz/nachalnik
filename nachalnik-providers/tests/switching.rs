@@ -29,6 +29,10 @@ use tokio::{
 /// note: a loop rather than one answer, because a switch is more than one round trip: the limit is
 /// probed and then the listing is read, and a server that hung up after the first would have the
 /// second fail and the notice go missing for a reason that is not the one under test.
+///
+/// note: `Connection: close`, because the server hangs up after each answer. Without it the client
+/// keeps the connection for its next request, and when it sends that before noticing the server
+/// has closed, the request fails and the notice is lost. That race failed this suite on macOS.
 async fn serving(body: &'static str) -> String {
     counting(body).await.0
 }
@@ -49,7 +53,7 @@ async fn counting(body: &'static str) -> (String, Arc<AtomicUsize>) {
                 .write_all(
                     format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-                         Content-Length: {}\r\n\r\n{body}",
+                         Connection: close\r\nContent-Length: {}\r\n\r\n{body}",
                         body.len()
                     )
                     .as_bytes(),
