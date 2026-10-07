@@ -173,8 +173,8 @@ to drive.
 Five features, three of them on by default. `--no-default-features --features tui` drops MCP
 support and the `--mcp` flag with it. `tui` is another default, and it is the screen and the
 keys: without it you get the same program, headless, and none of the crates that draw it. `webui`
-is the third, and it is `--web`: the session as a web page, served on loopback. It adds no
-dependencies.
+is the third, and it is `--web`: the session as a web page, served on loopback or, if you give
+it one, a local network address. It adds no dependencies.
 
 `advise` is the fourth and is **off**: the client for a System One model, which answers typed
 questions rather than writing text. `shell-advisor` is the fifth, also **off**, and adds

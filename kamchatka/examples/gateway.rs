@@ -25,6 +25,9 @@ async fn main() -> Result<(), String> {
 
     let web = Web::bind(&listen, &session).await?;
     println!("· a browser reaches {session} at {}", web.address());
+    if let Some(exposure) = web.exposure() {
+        eprintln!("· {exposure}");
+    }
     web.run(|said| eprintln!("· {said}")).await;
 
     Ok(())

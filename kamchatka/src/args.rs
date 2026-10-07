@@ -209,10 +209,11 @@ pub struct Args {
     #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
     pub serve: Option<String>,
 
-    /// Also serve the session as a web page, e.g. at `127.0.0.1:8080` (loopback only). With
-    /// `--serve`, the page relays to that socket; otherwise the session is served on a loopback port
-    /// of its own. The page has no authentication; to reach it from another machine, use a tunnel
-    /// such as `ssh -L`.
+    /// Also serve the session as a web page, e.g. at `127.0.0.1:8080`. With `--serve`, the page
+    /// relays to that socket; otherwise the session is served on a loopback port of its own. The
+    /// page has no authentication. This machine's address on a private network (e.g.
+    /// `192.168.1.5:8080`) makes it reachable from that network, with a warning; from further away,
+    /// use a tunnel such as `ssh -L`.
     #[cfg(feature = "webui")]
     #[arg(long, value_name = "ADDRESS", conflicts_with_all = ["headless", "connect"])]
     pub web: Option<String>,

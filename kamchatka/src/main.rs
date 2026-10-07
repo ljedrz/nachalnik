@@ -562,7 +562,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         let _ = writeln!(stdout(), "· serving on {}", server.address());
     }
     // the page runs for the whole run, across `/restart`; browsers reconnect by themselves.
-    // Connection errors go to stderr, except under a drawn screen, which they would corrupt
+    // Connection errors go to stderr, except under a drawn screen, which they would corrupt. A
+    // LAN warning goes to stderr and into each session, since a screen hides stderr and browsers
+    // only see the session
+    #[cfg(feature = "webui")]
+    let exposure = web.as_ref().and_then(kamchatka::web::Web::exposure);
+    #[cfg(not(feature = "webui"))]
+    let exposure: Option<String> = None;
     #[cfg(feature = "webui")]
     if let Some(web) = web {
         let _ = writeln!(
@@ -570,6 +576,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
             "· a browser reaches the session at {}",
             web.address()
         );
+        if let Some(exposure) = &exposure {
+            let _ = writeln!(std::io::stderr(), "· {exposure}");
+        }
         tokio::spawn(web.run(move |said| {
             if headless {
                 let _ = writeln!(std::io::stderr(), "· {said}");
@@ -617,6 +626,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         if let Some(server) = &server {
             remote::opening(&mut app, &server.address());
+        }
+        if let Some(exposure) = &exposure {
+            app.say(Speaker::Note, exposure.clone());
         }
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

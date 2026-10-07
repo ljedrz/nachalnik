@@ -54,8 +54,8 @@ shell-advisor = ["advise"]
 # ones. Optional because the runtime does not need it and neither does the terminal.
 mcp = ["dep:nachalnik-mcp"]
 # `--web`: serves the session as a web page. No extra dependencies: the HTTP handling uses the
-# sockets `--serve` already needs, and the page is one embedded file. Loopback only, with no
-# authentication; see `web`.
+# sockets `--serve` already needs, and the page is one embedded file. No authentication: it
+# listens on loopback, or on a private-network address with a warning; see `web`.
 webui = []
 # the screen and the keys: `ui`, the prompt, and the bindings that drive them. Optional because
 # `App` is the program and drawing it is one caller - the dependencies below are wanted by

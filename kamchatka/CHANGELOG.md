@@ -16,9 +16,11 @@ minor bump may break you.
 
 ### changed
 
-- **The page listens on loopback only**, like `--serve`; from another machine, use a tunnel such
-  as `ssh -L` and open `http://localhost:PORT/`. `examples/gateway.rs` now uses `kamchatka::web` and
-  has the same restriction.
+- **The page listens on loopback, or on a private-network IP address** (10/8, 172.16/12,
+  192.168/16, fc00::/7) for a phone on the same network, with a warning at startup and in each
+  session. Host names, wildcards and public addresses are refused; from further away, use a tunnel
+  such as `ssh -L`. `--serve` stays loopback-only. `examples/gateway.rs` now uses `kamchatka::web`
+  and has the same rules.
 - **The page can relay to a session on a `unix:` socket**; it used to require a TCP port.
 
 ### removed

@@ -417,13 +417,17 @@ fn a_session_on_the_web_writes_every_session_out() {
     assert_eq!(names.len(), 2, "both records have the same name: {logs:?}");
 }
 
-/// `--web` refuses a non-loopback address and the flags a served session doesn't read, before it
-/// reports serving anything.
+/// `--web` refuses wildcard and public addresses and the flags a served session doesn't read,
+/// before it reports serving anything.
 #[cfg(feature = "webui")]
 #[tokio::test(flavor = "multi_thread")]
 async fn the_web_page_is_refused_where_a_served_session_would_be() {
     for (extra, expected) in [
-        (&["--web", "0.0.0.0:8080"][..], "not a loopback address"),
+        (&["--web", "0.0.0.0:8080"][..], "every interface"),
+        (
+            &["--web", "8.8.8.8:8080"][..],
+            "not a loopback or private-network address",
+        ),
         (
             &["--web", "127.0.0.1:0", "--deadline", "60"][..],
             "`--web` does not read",
