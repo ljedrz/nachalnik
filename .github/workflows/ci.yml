@@ -137,8 +137,8 @@ jobs:
           --profile ci
       # each API alone, the System One client alone, and no features at all. `waiting.rs` is
       # shared, so a constant only one API uses is dead code in the others' builds.
-      # `--all-targets` because tests are gated by API too, and a test that names a missing
-      # provider would otherwise only fail to compile when it isn't covered by `--all-features`
+      # `--all-targets` because tests are gated by API too; otherwise a test that uses an API
+      # outside its gate would only ever be compiled with `--all-features`, which hides the mistake
       - name: nachalnik-providers, gemini only
         run: cargo check -p nachalnik-providers --all-targets --no-default-features --features gemini --locked
       - name: nachalnik-providers, anthropic and the suite
