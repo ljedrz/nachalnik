@@ -31,9 +31,10 @@ path = "src/main.rs"
 
 [features]
 default = ["mcp", "tui", "webui"]
-# the client for a System One model - any of the ones OpenRouter serves, or an engine of one's own
-# answering the same typed questions over HTTP - and nothing in the program that asks it anything.
-# `shell-advisor` is what does, and `system1_assisted_compaction` shows another use.
+# a client for System One models (`endpoint::advise`), which answer typed questions with
+# probabilities instead of writing text: the ones OpenRouter serves, or a compatible server of your
+# own. On its own it changes nothing in the program; `shell-advisor` uses it, and so does the
+# `system1_assisted_compaction` example.
 advise = ["nachalnik-providers/system1"]
 # `--advise`: the advisor is asked where each `shell` command a question is about lands on a
 # three-level rubric, drawn in the question in green, yellow or red so that somebody deciding
