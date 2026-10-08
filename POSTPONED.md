@@ -3,22 +3,23 @@
 Known issues and ideas deliberately left for later, written down so nobody wastes time rediscovering
 them. Each entry says what it is, why it waits, and what would unblock it.
 
+Only what is still open belongs here. No finished work, no record of what was tested or checked,
+no history of how an entry got to where it is: those go in the commit message. The fix that closes
+an entry removes it; one that closes part of it leaves only the part that is left.
+
 ---
 
-- **A tool's image on the dialects whose tool results are text.** `nachalnik-mcp` carries an image
-  into the context inside the tool result, and Anthropic's API and OpenAI's Responses send it there.
-  Chat Completions and Gemini send a line naming it, because a tool message there is a string and
-  a `functionResponse` an object. Each could move the picture to where its API takes one - a user
-  message after the tool messages, an `inline_data` part beside the `functionResponse` - without
-  changing the context. Unblocked by a model on each that needs it, and a live test showing it
-  reads the picture once moved.
+- **Chat Completions and Gemini name a tool's image instead of sending it.** A tool message there
+  is a string and a `functionResponse` an object, so an image in a tool result goes out as a line
+  naming it. Each dialect could move the picture to where its API takes one - a user message after
+  the tool messages, an `inline_data` part beside the `functionResponse` - without changing the
+  context. Unblocked by a model on each that needs it, and a live test showing it reads the
+  picture once moved.
 
-- **Serving clients older than the session, half of what `protocol::VERSION` promises.** The rule
-  is that a session refuses protocol versions it doesn't know and serves older ones it does. The
-  first half works: an attach with a newer version is refused, by version, before the rest of the
-  message is read. The second half doesn't: `watermark` checks the version but doesn't store it, so
-  once `VERSION` is `2`, nothing knows a connection is a version-1 client, and nothing stops it
-  being sent version-2 messages.
+- **Serving clients older than the session, which `protocol::VERSION` promises.** A session should
+  serve the older protocol versions it knows, but `watermark` checks a client's version without
+  storing it, so once `VERSION` is `2`, nothing knows a connection is a version-1 client, and
+  nothing stops it being sent version-2 messages.
 
   Nothing is needed while the version is `1`. When it changes, each connection has to remember its
   version, and every write in `remote::server::connection::attend` has to check it, which means each
@@ -105,9 +106,8 @@ them. Each entry says what it is, why it waits, and what would unblock it.
 
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it.
-  Nothing tested so far needed it - Claude included: through OpenRouter, Haiku 5.5 and Sonnet 5.5
-  took a tool turn sent back without it, as they did with it. A model that does need it, with a
-  live test showing the difference, would show whether the OpenAI client should support it.
+  Nothing tested so far needed it; a model that does, with a live test showing the difference,
+  would show whether the OpenAI client should support it.
 
 - **Under `--no-sandbox`, a refusal by name-matching is presented as a person's decision.** Without
   the sandbox, `net:reach` is judged from the command's name. A command refused that way under
@@ -211,8 +211,6 @@ them. Each entry says what it is, why it waits, and what would unblock it.
   code nor the tests: some models reject a signed thinking block sent back after anything before
   it was edited (which pruning, rewriting and eliding all do), on accounts created on or after
   2026-08-31. The possible fixes are retrying on that one 400 error message, or a beta header no
-  parameter can set. OpenRouter doesn't settle it, since it rewrites the message and isn't what
-  checks the signature, and neither does an older account: on one created in June 2026, Sonnet 5.5
-  and Haiku 5.5 took thinking sent back after an earlier message was edited. Unblocked by an
-  Anthropic account created on or after 2026-08-31, to see it rejected by the real API and then
-  fixed.
+  parameter can set. Neither OpenRouter, which rewrites the message and isn't what checks the
+  signature, nor an older account shows the refusal. Unblocked by an Anthropic account created on
+  or after 2026-08-31, to see it rejected by the real API and then fixed.
