@@ -32,7 +32,9 @@ use super::reaching::Reaching;
 /// note: a capability is not fine enough on its own. `fs:read: allow` is a reasonable thing to
 /// want and `fs:read .env: allow` is not, and the difference is a property of the *file* rather
 /// than of the tool that opened it - which is why a path rule is one subject rather than one per
-/// tool, and binds every tool that is handed a path.
+/// tool, and binds every tool that is handed a path as its `path` argument. A tool from an MCP
+/// server names its own arguments, and one calling its path `file_path` meets only the rules about
+/// its server; see [`Careful::judges`].
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Subject {
     /// One operation in one domain: `fs:read`.
