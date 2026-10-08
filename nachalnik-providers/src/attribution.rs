@@ -1,10 +1,11 @@
 //! The app a request is made on behalf of, for an endpoint that keeps a ranking of them.
 //!
-//! note: its own module rather than part of one client, because two unrelated clients send it: the
-//! chat-completions dialect, and the System One client, which is deliberately not a `Dialect`. A
-//! program that asks one service for a conversation and for advice is one app to that service, and
-//! a pair of headers each client wrote for itself would be two copies of one rule about what is
-//! said about it - which is what [`crate::is_openrouter`] was consolidated out of.
+//! note: its own module rather than part of one client, because unrelated clients send it: the
+//! chat-completions dialect, Anthropic's, which OpenRouter also serves, and the System One client,
+//! which is deliberately not a `Dialect`. A program that asks one service for a conversation and
+//! for advice is one app to that service, and headers each client wrote for itself would be copies
+//! of one rule about what is said about it - which is what [`crate::is_openrouter`] was
+//! consolidated out of.
 
 /// The app a request is being made on behalf of, for an endpoint that keeps a ranking of them.
 ///
@@ -12,9 +13,10 @@
 /// page against it - so it wants to be the project's own address and to stay the same.
 ///
 /// note: built once and handed to every client that should send it -
-/// [`OpenAiCompatible::attributed_to`](crate::OpenAiCompatible::attributed_to) and
+/// [`OpenAiCompatible::attributed_to`](crate::OpenAiCompatible::attributed_to),
+/// [`Anthropic::attributed_to`](crate::Anthropic::attributed_to) and
 /// [`system1::Client::attributed_to`](crate::system1::Client::attributed_to) - so that one switch
-/// turning attribution off turns it off for both. Somebody who turned it off for their
+/// turning attribution off turns it off for all of them. Somebody who turned it off for their
 /// conversation has not agreed to be named by a second client on the same account.
 ///
 /// note: the [`Default`] names no app, and sends nothing at all. A category or a visibility with

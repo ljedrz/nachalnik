@@ -56,7 +56,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, Keyed, RETRIES, install_crypto,
+    Attribution, Dialect, Endpoint, Keyed, RETRIES, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
     waiting::{Asking, Sent, interrupted, sent},
@@ -105,6 +105,8 @@ pub struct Anthropic {
     /// rather than joined into `system` at the top: until the model says it takes no such message.
     in_place: AtomicBool,
     notice: Mutex<Option<String>>,
+    /// The app these requests are made on behalf of; see [`Anthropic::attributed_to`].
+    app: Attribution,
 }
 
 /// One block of the turn, being assembled from the stream.
@@ -148,7 +150,19 @@ impl Anthropic {
             tries: AtomicUsize::new(RETRIES),
             in_place: AtomicBool::new(true),
             notice: Mutex::new(None),
+            app: Attribution::default(),
         }
+    }
+
+    /// Says which app these requests are being made on behalf of.
+    ///
+    /// note: OpenRouter serves this API at `/api/v1/messages` and keeps its ranking of apps for it
+    /// as for chat completions, so the same [`Attribution`] a program hands its other clients goes
+    /// here too - sent only to OpenRouter, and not to Anthropic's own API, which keeps no ranking.
+    #[must_use]
+    pub fn attributed_to(mut self, app: Attribution) -> Self {
+        self.app = app;
+        self
     }
 
     /// Where the requests are going.
@@ -733,11 +747,14 @@ impl Anthropic {
 
         let url = format!("{base}/messages");
         let sending = || {
-            self.client
-                .post(&url)
-                .anthropic_key(&self.api_key)
-                .header("anthropic-version", VERSION)
-                .json(body)
+            self.app.sign(
+                self.client
+                    .post(&url)
+                    .anthropic_key(&self.api_key)
+                    .header("anthropic-version", VERSION)
+                    .json(body),
+                &url,
+            )
         };
         let mut streamed = Streamed::default();
         match sent(&asking, &self.attempts, limit, true, sending, &mut streamed).await? {
@@ -1049,5 +1066,93 @@ impl Dialect for Anthropic {
             send_blocks: true,
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nachalnik::{Config, ContextItem, Kernel};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+    };
+
+    use super::*;
+
+    /// The head of the one request `provider` sends for a turn, lowercased, sent to a listener
+    /// whatever host the provider was given.
+    async fn overheard(provider: Anthropic) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+        let at = listener.local_addr().expect("its address");
+        let heard = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("the request");
+            let (mut seen, mut buffer) = (Vec::new(), [0u8; 4096]);
+            while !seen.windows(4).any(|w| w == b"\r\n\r\n") {
+                match socket.read(&mut buffer).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => seen.extend_from_slice(&buffer[..n]),
+                }
+            }
+            let _ = socket
+                .write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n")
+                .await;
+            String::from_utf8_lossy(&seen).to_lowercase()
+        });
+
+        // whatever name the provider was given, the socket is the listener's
+        let mut provider = provider;
+        let base = provider.endpoint();
+        let host = base
+            .split("://")
+            .nth(1)
+            .and_then(|rest| rest.split([':', '/']).next())
+            .unwrap_or_default()
+            .to_owned();
+        provider.client = reqwest::Client::builder()
+            .resolve(&host, at)
+            .build()
+            .expect("a client that resolves one name itself");
+        *provider.base_url.lock() =
+            base.replace(&format!("{host}:1"), &format!("{host}:{}", at.port()));
+
+        let kernel = Kernel::new(Config::default());
+        kernel.set_provider(Arc::new(provider));
+        kernel.push(ContextItem::user("go"));
+        let _ = kernel.step().await;
+
+        heard.await.expect("the listener")
+    }
+
+    /// A conversation over this API is attributed to the app at OpenRouter, which serves it and
+    /// ranks the apps calling it, and nowhere else.
+    ///
+    /// note: the provider took no attribution, so a program speaking this API to OpenRouter was
+    /// an unnamed caller there, while its advice, asked through the System One client, was named.
+    #[tokio::test]
+    async fn a_conversation_names_the_app_to_openrouter_and_nowhere_else() {
+        let app = || Attribution::new("https://example.invalid/app", "kamchatka");
+
+        let seen = overheard(
+            Anthropic::new("m", "http://openrouter.ai:1/api/v1", "k").attributed_to(app()),
+        )
+        .await;
+        assert!(seen.starts_with("post /api/v1/messages "), "{seen}");
+        assert!(
+            seen.contains("referer: https://example.invalid/app"),
+            "{seen}"
+        );
+        assert!(seen.contains("x-openrouter-title: kamchatka"), "{seen}");
+
+        // Anthropic's own API keeps no ranking, and is told nothing about the app
+        let elsewhere = overheard(
+            Anthropic::new("m", "http://api.anthropic.com:1/v1", "k").attributed_to(app()),
+        )
+        .await;
+        assert!(
+            !elsewhere.contains("referer") && !elsewhere.contains("x-openrouter-"),
+            "{elsewhere}"
+        );
     }
 }

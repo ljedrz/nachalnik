@@ -108,7 +108,7 @@ mod markup;
 
 #[cfg(feature = "anthropic")]
 pub mod anthropic;
-#[cfg(any(feature = "openai", feature = "system1"))]
+#[cfg(any(feature = "anthropic", feature = "openai", feature = "system1"))]
 mod attribution;
 #[cfg(feature = "conformance")]
 pub mod conformance;
@@ -126,7 +126,7 @@ pub(crate) mod waiting;
 
 #[cfg(feature = "anthropic")]
 pub use crate::anthropic::Anthropic;
-#[cfg(any(feature = "openai", feature = "system1"))]
+#[cfg(any(feature = "anthropic", feature = "openai", feature = "system1"))]
 pub use crate::attribution::Attribution;
 pub use crate::endpoint::{Dialect, Endpoint, Published};
 #[cfg(feature = "gemini")]
