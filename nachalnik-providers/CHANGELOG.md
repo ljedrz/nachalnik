@@ -45,6 +45,9 @@ minor bump may break you.
   `system1::is_workers_ai` read the host up to the first `:`, so
   `https://openrouter.ai:x@example.com/v1` - a request sent to `example.com` - was OpenRouter's,
   and a caller that keeps a key for OpenRouter, as `kamchatka` does, sent it there.
+- **A Responses stream stopped before its first item is a stopped turn.** Interrupted after the
+  server had said the response existed and before any of it, the turn failed as a stream that
+  carried no data.
 
 ## [0.9.0] - 2026-10-06
 

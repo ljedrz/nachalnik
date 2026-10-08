@@ -886,3 +886,60 @@ async fn a_stream_that_never_says_anything_is_a_stall() {
         "{failed}"
     );
 }
+
+/// A Responses stream stopped after the server said the response exists, and before it said any of
+/// it, stops as a turn that was stopped.
+///
+/// note: `response.created` is an event the reader has seen, so the reader hands it on as a stream
+/// that was interrupted - and the Responses dialect, finding no item started, read that as a
+/// stream that was never one, and failed the turn with a red line for doing what it was told.
+#[cfg(feature = "openai")]
+#[tokio::test]
+async fn a_responses_stream_stopped_after_its_preface_is_not_a_failure() {
+    use tokio::io::AsyncWriteExt as _;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    let (reached, reaching) = oneshot::channel();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("the request");
+        let mut discard = [0u8; 65536];
+        let _ = socket.read(&mut discard).await;
+        let event = "event: response.created\n\
+                     data: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\"}}\n\n";
+        let _ = socket
+            .write_all(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
+                     Transfer-Encoding: chunked\r\n\r\n{:x}\r\n{event}\r\n",
+                    event.len()
+                )
+                .as_bytes(),
+            )
+            .await;
+        let _ = socket.flush().await;
+        let _ = reached.send(());
+        tokio::time::sleep(Duration::from_secs(600)).await;
+    });
+
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(Arc::new(
+        nachalnik_providers::OpenAiCompatible::new("m", format!("http://{address}"), "k")
+            .responses(true),
+    ));
+    kernel.push(ContextItem::user("are you there?"));
+    let running = tokio::spawn({
+        let kernel = kernel.clone();
+        async move { kernel.turn().await }
+    });
+
+    reaching.await.expect("the server answered");
+    tokio::time::sleep(MARGIN).await;
+    kernel.interrupt();
+
+    let stopped = tokio::time::timeout(Duration::from_secs(5), running)
+        .await
+        .expect("the interrupt should reach the stream")
+        .expect("the turn is not a panic");
+    stopped.expect("an interrupted request is not a failed one");
+}

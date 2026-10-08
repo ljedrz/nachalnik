@@ -302,6 +302,9 @@ pub(super) async fn respond(
         Sent::Streamed(Read::Events(events, stopped)) => {
             match streamed.started || streamed.status.is_some() {
                 true => Ok(answer(streamed, events, stopped)),
+                // stopped before it said any of it: a request somebody stopped, which is not a
+                // broken response, as it is not before the stream has said anything at all
+                false if stopped == Stopped::Interrupted => Ok(interrupted()),
                 // a stream that only ever said a response exists has not answered, and read as
                 // an answer it is a turn that finished having said nothing
                 false => Err(not_a_stream(&Value::Array(events).to_string())),
