@@ -338,6 +338,42 @@ fn a_switch_in_place_is_announced_from_what_was_announced() {
     );
 }
 
+/// Setting a provider, or clearing it, names as `from` the model last announced, whatever the
+/// provider being let go has switched to since.
+///
+/// note: both asked the outgoing provider what it was, so one that switched in place and was then
+/// set again was recorded as changing from the new model to itself, and the record never said it
+/// had been the old one.
+#[test]
+fn setting_a_provider_names_the_model_last_announced() {
+    let kernel = Kernel::new(Config::default());
+    let provider = Arc::new(Switching(parking_lot::Mutex::new("first".to_owned())));
+    kernel.set_provider(provider.clone());
+    let mut events = kernel.subscribe();
+
+    *provider.0.lock() = "second".to_owned();
+    kernel.set_provider(provider.clone());
+    *provider.0.lock() = "third".to_owned();
+    kernel.clear_provider();
+
+    let changed: Vec<_> = drain(&mut events)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::ModelChanged { from, to } => {
+                Some((from.map(|it| it.model), to.map(|it| it.model)))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        changed,
+        [
+            (Some("first".to_owned()), Some("second".to_owned())),
+            (Some("second".to_owned()), None),
+        ]
+    );
+}
+
 /// A kernel whose model takes a thousand tokens, answering `answers` in turn.
 fn limited(answers: usize) -> Kernel {
     let provider = Arc::new(

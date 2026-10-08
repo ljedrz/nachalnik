@@ -697,12 +697,12 @@ fn a_panic_in_a_call_unwinds_the_step_however_the_calls_run() {
     }
 }
 
-/// A provider whose `info` waits the second time it is asked, so that a second setter can be let
-/// in while the first is still describing what it replaced.
+/// A provider whose `info` waits the first time it is asked, so that a second setter can be let
+/// in while the first is still describing what it installs.
 ///
-/// note: the second time, because the first is the install: `set_provider` asks the incoming
-/// provider what it is before it takes the lock. What has to wait is the call describing the
-/// provider being replaced, which is the one made under it.
+/// note: the first time, because that is the swap installing it: `set_provider` asks the provider
+/// it has just installed what it is, under the lock and before announcing it, and names the one it
+/// replaced as the log last did, without asking it.
 struct SlowInfo {
     name: &'static str,
     asked: std::sync::atomic::AtomicUsize,
@@ -731,7 +731,7 @@ impl nachalnik::Provider for SlowInfo {
     fn info(&self) -> nachalnik::ModelInfo {
         let asked = self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let _ = self.told.send(asked + 1);
-        if asked == 1
+        if asked == 0
             && let Some(gate) = self.gate.lock().take()
         {
             let _ = gate.recv();
@@ -752,31 +752,31 @@ impl nachalnik::Provider for SlowInfo {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn two_clients_swapping_a_component_are_logged_in_the_order_they_applied() {
     let (open, gate) = std::sync::mpsc::channel();
-    let (told_first, first_asked) = std::sync::mpsc::channel();
-    let (told_third, third_asked) = std::sync::mpsc::channel();
+    let (told_second, second_asked) = std::sync::mpsc::channel();
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(SlowInfo::new("first", Some(gate), told_first));
+    let (told, _) = std::sync::mpsc::channel();
+    kernel.set_provider(SlowInfo::new("first", None, told));
     let mut events = kernel.subscribe();
 
-    // the swap that replaces `first` waits inside the call describing it, which is made under the
-    // lock. Announcing after the lock is let go would let the next swap in here: it would apply
-    // second and be logged first, and the log's last word on the provider would name the one that
-    // is not installed
+    // the swap to `second` waits inside the call describing it, which is made under the lock.
+    // Announcing after the lock is let go would let the next swap in here: it would apply second
+    // and be logged first, and the log's last word on the provider would name the one that is not
+    // installed
     let second = {
         let kernel = kernel.clone();
-        let (told, _) = std::sync::mpsc::channel();
-        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("second", None, told)))
+        std::thread::spawn(move || {
+            kernel.set_provider(SlowInfo::new("second", Some(gate), told_second))
+        })
     };
-    // `first` asked the second time is the swap to `second`, held under the lock
-    while first_asked.recv().unwrap() < 2 {}
+    // `second` asked is its swap, held under the lock
+    second_asked.recv().unwrap();
 
     let third = {
         let kernel = kernel.clone();
-        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("third", None, told_third)))
+        let (told, _) = std::sync::mpsc::channel();
+        std::thread::spawn(move || kernel.set_provider(SlowInfo::new("third", None, told)))
     };
-    // `third` asked once is its swap about to take the lock. Nothing marks a thread as waiting on
-    // one, so a moment more is what puts it there
-    third_asked.recv().unwrap();
+    // nothing marks a thread as waiting on a lock, so a moment is what puts `third` there
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
     open.send(()).unwrap();
 
