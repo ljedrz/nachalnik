@@ -51,6 +51,8 @@ minor bump may break you.
 - **A rate limit inside a whole answer's 200 is read as a stream's is**: its code may be a number,
   a number in a string or a name such as `rate_limit_exceeded`. Only a number was read, so the
   same refusal a stream waited out failed a whole-answer turn at once.
+- **An `error` that is a string is read as the sentence**: `{"error": "..."}` was quoted as the
+  body it came in, braces, key and whatever stood beside it - an account's id among them.
 
 ## [0.9.0] - 2026-10-06
 
