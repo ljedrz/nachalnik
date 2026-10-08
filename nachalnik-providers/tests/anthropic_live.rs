@@ -13,7 +13,7 @@
 //! ```text
 //! OPENROUTER_API_KEY=sk-or-... \
 //! NACHALNIK_ANTHROPIC_BASE_URL=https://openrouter.ai/api/v1 \
-//! NACHALNIK_ANTHROPIC_MODEL=anthropic/claude-haiku-4.5 \
+//! NACHALNIK_ANTHROPIC_MODEL=anthropic/claude-haiku-5.5 \
 //! NACHALNIK_ANTHROPIC_PARAMS='{"provider":{"order":["anthropic"],"allow_fallbacks":false}}' \
 //!   cargo test -p nachalnik-providers --features anthropic --test anthropic_live -- --test-threads=1
 //! ```
@@ -52,7 +52,7 @@ async fn kernel(params: impl FnOnce(&Anthropic) -> Params) -> Option<Kernel> {
     };
     let model = env::var("NACHALNIK_ANTHROPIC_MODEL").unwrap_or_else(|_| {
         match is_openrouter(&base) {
-            true => "anthropic/claude-haiku-4.5",
+            true => "anthropic/claude-haiku-5.5",
             false => "claude-haiku-5-5",
         }
         .to_owned()
@@ -199,16 +199,27 @@ async fn the_second_turn_reads_the_first_from_the_cache() {
 /// note: models differ - Haiku 4.5 takes only `enabled` with a budget, Haiku 5.5 only `adaptive`,
 /// and each refuses the other with a 400 - and Anthropic's `/models` says which, so nothing here
 /// names a model. Adaptive thinking is the model's to skip on a question this easy, so it is asked
-/// for at the most effort where the model takes an effort. Where the endpoint said nothing, as
-/// OpenRouter's may not, it is the budget, which is what a model behind OpenRouter has
-/// taken so far.
+/// for at the most effort.
+///
+/// note: where the endpoint said nothing, it is the adaptive kind at the most effort. OpenRouter
+/// lists `capabilities` as `null`, and takes both kinds for either model, turning each into what
+/// the model takes - but a budget it turns into adaptive thinking at no effort in particular,
+/// which Haiku 5.5 skips here, and no signature comes back to check.
 fn thinking(capabilities: Option<Value>) -> Params {
-    let capabilities = capabilities.unwrap_or_default();
+    let supported = |path: &[&str]| {
+        let Some(capabilities) = &capabilities else {
+            return true;
+        };
+        path.iter()
+            .fold(capabilities, |value, key| &value[key])
+            .get("supported")
+            == Some(&Value::Bool(true))
+    };
     let mut params = Params::new();
-    match capabilities["thinking"]["types"]["adaptive"]["supported"] == true {
+    match supported(&["thinking", "types", "adaptive"]) {
         true => {
             params.insert("thinking".to_owned(), json!({ "type": "adaptive" }));
-            if capabilities["effort"]["supported"] == true {
+            if supported(&["effort"]) {
                 params.insert("output_config".to_owned(), json!({ "effort": "max" }));
             }
         }
