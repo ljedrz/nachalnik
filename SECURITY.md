@@ -116,7 +116,9 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **If the sandbox might be missing, say so.** `Confinement` has a variant for every way it can
   fail, and the permissions tab shows it, with the kernel's own reason when a ruleset was refused
   (`Probed::why`), since a kernel without Landlock and a kernel that refused this ruleset are
-  different problems. Never let it fail silently.
+  different problems. What the kernel is too old to confine - TCP below Linux 6.7, abstract sockets
+  and signals below 6.12 - is said at startup and at the top of each session
+  (`sandbox::weaker_here`), since the tab reads "confined" either way. Never let it fail silently.
 - **Tell the model when the sandbox refused something.** Landlock refuses an `open` with `EACCES`,
   the same error as for a file owned by someone else, so a sandboxed command gets a permission error
   that looks ordinary, and a model that can't tell the difference wastes its turns trying `sudo`. A
@@ -197,8 +199,9 @@ cause harm, what stops them, and what doesn't.
   they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel the ruleset is
   `Partial` and a port is closed only where the network is shut or asked about, which the gate
   holds, so with TCP allowed or refused by Landlock alone, a command can reach a session served
-  over TCP and answer its questions. A socket file can be reached by every sandboxed command below Linux 7.1, and from
-  7.1 by any that may write where it is, so connections are refused when the other end is in the
+  over TCP and answer its questions. That is not worked around, and the startup warning says so. A
+  socket file can be reached by every sandboxed command below Linux 7.1, and from 7.1 by any that
+  may write where it is, so connections are refused when the other end is in the
   session of a command this process sandboxed (each runs in its own session), which covers anything
   it left running. What gets through: a process a command started with `setsid`, the `gateway`
   example's page (a separate process, so it can't close its port to the session's commands), and

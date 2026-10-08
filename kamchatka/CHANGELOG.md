@@ -13,6 +13,10 @@ minor bump may break you.
   that socket; without it the session is served on a loopback port of its own. The screen is still
   drawn, and browsers reconnect by themselves after `/restart`. This is the `webui` feature, on by
   default and with no extra dependencies. `kamchatka::web` exposes the same for other programs.
+- **What the kernel is too old to confine is said at startup** and at the top of each session:
+  TCP connections and the ports a served session listens on below Linux 6.7, abstract unix sockets
+  and signals below 6.12, and the whole sandbox where there is no Landlock. The permissions tab
+  read "confined" either way. `sandbox::weaker_here` is the same sentence for other programs.
 
 ### changed
 

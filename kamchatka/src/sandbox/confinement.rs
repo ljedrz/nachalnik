@@ -96,6 +96,78 @@ pub fn confines_signals() -> bool {
         .is_ok()
 }
 
+/// What this kernel leaves out of a confined command's sandbox, in a sentence for the person; `None`
+/// where it leaves out nothing this program asks it for.
+///
+/// note: said at startup rather than only on the permissions tab, because what is missing is the
+/// kernel's age and the tab draws a sandbox that took as "confined" either way. Not worked around:
+/// every gap here is closed by a kernel that is a year or more old, and a check of its own for each
+/// would be this program re-implementing what Landlock does.
+///
+/// note: three questions put to the kernel the way the others here are, applying nothing. The
+/// socket files Landlock covers from Linux 7.1 are not among them, since a kernel that recent is
+/// still the exception, and a warning most people get is one nobody reads.
+pub fn weaker_here() -> Option<String> {
+    use landlock::{
+        ABI, Access, AccessFs, AccessNet, CompatLevel, Compatible, Ruleset, RulesetAttr,
+    };
+
+    let hard = || Ruleset::default().set_compatibility(CompatLevel::HardRequirement);
+    weaker(Kernel {
+        landlock: hard().handle_access(AccessFs::from_all(ABI::V1)).is_ok(),
+        tcp: hard().handle_access(AccessNet::ConnectTcp).is_ok(),
+        abstract_sockets: confines_abstract_sockets(),
+        signals: confines_signals(),
+    })
+}
+
+/// What a kernel's Landlock confines, of what [`weaker_here`] asks about.
+#[derive(Clone, Copy)]
+struct Kernel {
+    landlock: bool,
+    tcp: bool,
+    abstract_sockets: bool,
+    signals: bool,
+}
+
+/// [`weaker_here`], from the kernel's answers.
+fn weaker(kernel: Kernel) -> Option<String> {
+    if !kernel.landlock {
+        return Some(
+            "this kernel has no Landlock, so shell commands run unconfined: the sandbox needs Linux \
+             5.13 or later with Landlock enabled"
+                .to_owned(),
+        );
+    }
+
+    let open: Vec<&str> = [
+        (
+            kernel.tcp,
+            "TCP connections, apart from the network gate's questions, and the ports a served \
+             session listens on (Linux 6.7)",
+        ),
+        (
+            kernel.abstract_sockets,
+            "abstract unix sockets, the X server's among them (Linux 6.12)",
+        ),
+        (
+            kernel.signals,
+            "signals to your other processes (Linux 6.12)",
+        ),
+    ]
+    .into_iter()
+    .filter(|(confined, _)| !confined)
+    .map(|(_, what)| what)
+    .collect();
+
+    (!open.is_empty()).then(|| {
+        format!(
+            "this kernel's sandbox does not keep shell commands from {}; a newer kernel does",
+            open.join("; ")
+        )
+    })
+}
+
 /// Puts this process in a Landlock domain that refuses a signal to anything outside it, so that
 /// everything it starts from here on - every command, and what a command leaves running - may
 /// signal this process and what it started, and nothing else; whether the kernel took it.
@@ -593,6 +665,60 @@ pub fn run_if_asked() -> Option<i32> {
     eprintln!("could not run the command: {failure}");
 
     Some(127)
+}
+
+#[cfg(test)]
+mod weaker {
+    use super::*;
+
+    /// Each thing a kernel leaves out is named with the version that brings it, and a kernel that
+    /// leaves out nothing says nothing.
+    #[test]
+    fn a_kernel_is_told_what_its_sandbox_leaves_out() {
+        let all = Kernel {
+            landlock: true,
+            tcp: true,
+            abstract_sockets: true,
+            signals: true,
+        };
+        assert_eq!(weaker(all), None);
+
+        // Linux 6.8: TCP, but nothing from 6.12
+        let said = weaker(Kernel {
+            abstract_sockets: false,
+            signals: false,
+            ..all
+        })
+        .expect("a warning");
+        assert!(!said.contains("TCP"), "{said}");
+        assert!(
+            said.contains("abstract unix sockets") && said.contains("6.12"),
+            "{said}"
+        );
+        assert!(said.contains("signals"), "{said}");
+
+        // Linux 6.1: none of the three
+        let said = weaker(Kernel {
+            tcp: false,
+            abstract_sockets: false,
+            signals: false,
+            ..all
+        })
+        .expect("a warning");
+        assert!(said.contains("TCP") && said.contains("6.7"), "{said}");
+        assert!(said.contains("served"), "the ports it cannot close: {said}");
+
+        // and no Landlock at all is the one thing said
+        let said = weaker(Kernel {
+            landlock: false,
+            ..all
+        })
+        .expect("a warning");
+        assert!(
+            said.contains("unconfined") && !said.contains("TCP"),
+            "{said}"
+        );
+    }
 }
 
 #[cfg(test)]
