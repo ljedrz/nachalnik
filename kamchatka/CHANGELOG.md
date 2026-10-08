@@ -31,6 +31,12 @@ minor bump may break you.
   away (`/params generationConfig.temperature 0.5`), and `null` on one takes away a parameter it
   leaves empty.
 
+### fixed
+
+- **An address with no host is refused**, at startup and by `/endpoint`, as one with no scheme
+  is: `http://:8080/v1` and `http://user@/v1` were taken, and the next request failed. One with a
+  password and no host, `http://user:pw@/v1`, was drawn whole on the status line.
+
 ### removed
 
 - **`examples/phone.rs`**: use `--web` instead.
