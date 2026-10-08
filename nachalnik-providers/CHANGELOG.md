@@ -35,6 +35,13 @@ minor bump may break you.
   with are still `system`. A model that takes no such message (Haiku 4.5) is asked again with them
   joined at the top, as before, and is not sent one again until the model or the address changes.
 
+### fixed
+
+- **An address with a `user:password@` is judged by the host after it.** `is_openrouter` and
+  `system1::is_workers_ai` read the host up to the first `:`, so
+  `https://openrouter.ai:x@example.com/v1` - a request sent to `example.com` - was OpenRouter's,
+  and a caller that keeps a key for OpenRouter, as `kamchatka` does, sent it there.
+
 ## [0.9.0] - 2026-10-06
 
 ### added

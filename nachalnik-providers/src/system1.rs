@@ -163,7 +163,7 @@ const ROUTE: &str = "systemone";
 pub fn is_workers_ai(address: &str) -> bool {
     let rest = address.split_once("://").map_or(address, |(_, rest)| rest);
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
-    let host = authority.split(':').next().unwrap_or(authority);
+    let host = crate::host_of(authority);
 
     host == "api.cloudflare.com" && path.contains("/ai/run")
 }
@@ -1284,6 +1284,8 @@ mod tests {
             // and a host that only borrows the name
             "https://api.cloudflare.com.example.com/client/v4/accounts/abc/ai/run",
             "https://example.com/api.cloudflare.com/ai/run",
+            // or puts it before an `@`, which is who the request is sent as and not to
+            "https://api.cloudflare.com:x@example.com/client/v4/accounts/abc/ai/run",
         ] {
             assert!(!is_workers_ai(not), "{not}");
         }
