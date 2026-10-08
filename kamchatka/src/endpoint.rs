@@ -153,13 +153,18 @@ fn key_for(url: &str) -> Result<String, BoxError> {
 /// [`key_for`], with the variables read through `read`: the rule, apart from the environment, so
 /// that it can be checked with no key in it - it is the one thing here that decides whether a
 /// credential leaves for somebody who did not issue it.
+///
+/// note: a variable set to nothing is read as not set, since no key is empty: `KAMCHATKA_API_KEY=`
+/// in a `.env` file came before an `OPENROUTER_API_KEY` that was there, sent no key, and was told
+/// so as a 401 rather than as the line saying which variable to set.
 fn keyed(url: &str, read: impl Fn(&str) -> Option<String>) -> Result<String, BoxError> {
+    let read = |name: &str| read(name).filter(|key| !key.is_empty());
     let named = match () {
         _ if is_openrouter(url) => Some("OPENROUTER_API_KEY"),
         _ if is_openai(url) => Some("OPENAI_API_KEY"),
         _ => None,
     };
-    let key = read("KAMCHATKA_API_KEY").or_else(|| named.and_then(&read));
+    let key = read("KAMCHATKA_API_KEY").or_else(|| named.and_then(read));
 
     match key {
         Some(key) => Ok(key),
@@ -765,9 +770,12 @@ pub mod anthropic {
     /// and one somebody exported for Anthropic has no business being sent to OpenRouter.
     fn key(url: &str) -> Result<String, BoxError> {
         match is_anthropic(url) {
-            true => match env::var("ANTHROPIC_API_KEY") {
-                Ok(key) => Ok(key),
-                Err(_) => key_for(url).map_err(|_| {
+            true => match env::var("ANTHROPIC_API_KEY")
+                .ok()
+                .filter(|key| !key.is_empty())
+            {
+                Some(key) => Ok(key),
+                None => key_for(url).map_err(|_| {
                     format!(
                         "set ANTHROPIC_API_KEY (or KAMCHATKA_API_KEY): {} refuses a request \
                          without one",
@@ -843,6 +851,18 @@ mod tests {
         ] {
             assert_eq!(keyed(url, own).ok().as_deref(), Some("sk-own"), "{url}");
         }
+
+        // and one set to nothing is not set: it neither stands in front of the one that is, nor
+        // passes for a key where one is needed
+        let emptied = |name: &str| match name {
+            "KAMCHATKA_API_KEY" => Some(String::new()),
+            "OPENROUTER_API_KEY" => Some("sk-or".to_owned()),
+            _ => None,
+        };
+        let got = keyed("https://openrouter.ai/api/v1", emptied);
+        assert_eq!(got.ok().as_deref(), Some("sk-or"));
+        let empty = |_: &str| Some(String::new());
+        assert!(keyed("https://openrouter.ai/api/v1", empty).is_err());
 
         // and a refusal names the variable that address reads
         let none = |_: &str| None;

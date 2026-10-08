@@ -36,6 +36,10 @@ minor bump may break you.
 - **An address with no host is refused**, at startup and by `/endpoint`, as one with no scheme
   is: `http://:8080/v1` and `http://user@/v1` were taken, and the next request failed. One with a
   password and no host, `http://user:pw@/v1`, was drawn whole on the status line.
+- **A key variable set to nothing is read as not set.** An empty `KAMCHATKA_API_KEY` came before
+  the `OPENROUTER_API_KEY` beside it and sent no key, so the first turn was a 401 rather than a
+  session using the key that was there - or, with no other, the line saying which one to set.
+  `ANTHROPIC_API_KEY` is read the same way.
 
 ### removed
 
