@@ -40,7 +40,7 @@ pub use crate::help::{SECTIONS, Section, everything};
 use crate::ui::{
     overlay::{BESIDES, MIN_CHAT, MIN_QUESTION, draw_overlay, draw_question, question_rows},
     tabs::{draw_chat, draw_context, draw_permissions, draw_trace},
-    text::{compact, prefix_within, rows_for, suffix_within},
+    text::{clip, columns, compact, prefix_within, rows_for, suffix_within},
 };
 
 /// The first line of a session that is not being resumed.
@@ -229,7 +229,16 @@ fn draw_body(
     let edge = Style::default().fg(app.accent);
     let block = Block::bordered()
         .title(Line::from(strip))
-        .title_bottom(Line::styled(footer(app, going, budget), quiet()).right_aligned())
+        .title_bottom(
+            Line::styled(
+                fitted(
+                    &footer(app, going, budget),
+                    area.width.saturating_sub(2).into(),
+                ),
+                quiet(),
+            )
+            .right_aligned(),
+        )
         .border_style(edge);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -312,8 +321,8 @@ pub(super) fn scrollbar(frame: &mut Frame, window: Rect, border: Style, scrolled
     );
 }
 
-/// What the open tab has to say about itself, along the bottom.
-pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
+/// What the open tab has to say about itself, along the bottom, the most important first.
+pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> Vec<String> {
     match app.tab {
         // note: a conversation somebody has scrolled back through stays where they left it, so
         // this is the line that has to say there is more underneath - and how to get to it. Left
@@ -333,7 +342,7 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                 parts.push("alt+1 chat · alt+2 context · alt+3 trace · alt+4 permissions".into());
             }
 
-            format!(" {} ", parts.join(" · "))
+            parts
         }
         Tab::Context => {
             // counted by whether the model is being shown what the item says, which is the
@@ -362,12 +371,15 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                 .map(|limit| budget.used().saturating_sub(limit))
                 .filter(|over| *over != 0)
             {
-                Some(over) => format!(" {counted} · ~{} over the limit ", thousands(over)),
-                None => format!(" {counted} "),
+                Some(over) => vec![counted, format!("~{} over the limit", thousands(over))],
+                None => vec![counted],
             }
         }
         // the pane keeps the last few hundred; the log keeps everything, and `/save` writes it
-        Tab::Trace => format!(" {} events · /save keeps them all ", app.trace.len()),
+        Tab::Trace => vec![
+            format!("{} events", app.trace.len()),
+            "/save keeps them all".to_owned(),
+        ],
         // note: the caveat comes first because it is the one thing on this tab that is not
         // negotiable. A registered shell that is not refused can read, write and reach the
         // network whatever the other rows answer, so a tab that listed five verdicts and said
@@ -390,8 +402,33 @@ pub(super) fn footer(app: &App, going: &Going, budget: &Budget) -> String {
                 parts.push("space cycles · a allow · n never · r ask again".to_owned());
             }
 
-            format!(" {} ", parts.join(" · "))
+            parts
         }
+    }
+}
+
+/// The footer's parts that fit in a width, padded by a space either side.
+///
+/// note: whole parts, dropped from the end, because the line is right-aligned and a title too
+/// wide for its border is cut from the left - which is where the part that matters most is. A
+/// first part that does not fit by itself is shortened instead, from its end, like everything else
+/// on this screen that runs out of room
+fn fitted(parts: &[String], width: usize) -> String {
+    let mut line = String::new();
+    for part in parts {
+        let longer = match line.is_empty() {
+            true => part.clone(),
+            false => format!("{line} · {part}"),
+        };
+        if columns(&longer) + 2 > width {
+            break;
+        }
+        line = longer;
+    }
+    match (line.is_empty(), parts.first()) {
+        (true, Some(first)) => format!(" {} ", clip(first, width.saturating_sub(2))),
+        (true, None) => String::new(),
+        (false, _) => format!(" {line} "),
     }
 }
 
