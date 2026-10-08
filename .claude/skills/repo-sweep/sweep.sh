@@ -6,12 +6,15 @@
 # Writes $SWEEPS/NAME.jsonl (the stream records) and $SWEEPS/NAME.err (the prose, ending in a line
 # `exit N`). Needs configure.py to have written $SWEEPS/{audit,quality,docs,compact,maintain}.json, the
 # key in the environment (source $SWEEPS/key.env), and a release build of kamchatka. Model
-# parameters go in $SWEEPS/params.txt, one `KEY JSON` per line, sent as `/params` first.
+# parameters go in $SWEEPS/params.txt, one `KEY JSON` per line, sent as `/params` first. FLAGS is
+# passed to kamchatka as it is: `FLAGS=--anthropic` for a Claude model, whose API caches nothing
+# unless asked and which chat completions never asks.
 set -u
 SWEEPS=${SWEEPS:-${TMPDIR:-/tmp}/sweeps}
 REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 BIN=${CARGO_TARGET_DIR:-$REPO/target}/release/kamchatka
 DEADLINE=${DEADLINE:-4500}
+FLAGS=${FLAGS:-}
 kind=$1 name=$2 scope=$3
 case $kind in
     audit) config=$SWEEPS/audit.json; word=audit ;;
@@ -31,6 +34,6 @@ cd "$REPO"
     echo "Continue the $word where you left off: verify anything still unchecked with the tools, and state each verified defect in your reply text on a line starting with FINDING:. If you are completely finished, write the FINDINGS section in prose."
     echo 'Continue once more: look at the parts of the scope you have not yet read, verify, and report new FINDING: lines in your reply text. If there is nothing more, reply DONE.'
     echo 'Now write the final FINDINGS section in prose, in your reply text, listing every verified defect from this session with severity, file:line, the defect, the failure scenario and the fix.'
-} | timeout $((DEADLINE + 300)) "$BIN" --headless --config-file "$config" --deadline "$DEADLINE" \
+} | timeout $((DEADLINE + 300)) "$BIN" $FLAGS --headless --config-file "$config" --deadline "$DEADLINE" \
     > "$SWEEPS/$name.jsonl" 2> "$SWEEPS/$name.err"
 echo "exit $?" >> "$SWEEPS/$name.err"
