@@ -46,6 +46,9 @@ minor bump may break you.
 - **A fork told to leave items out still says what a call beside it wrote.** The reply named what
   `without` took away and nothing else, so beside a `context note` written in the same turn it
   read as the earlier copy less those items, when the copy held the note as well.
+- **`./` is refused as a path rule.** It was taken, and matched only a path spelled with `./` in
+  front: `--deny ./` refused `read ./README.md` and let `read README.md` run. A `./` in front of a
+  path no longer changes which directory rule it meets.
 
 ### removed
 

@@ -143,9 +143,13 @@ const SUSPECT: &[&str] = &[
 pub fn path_matches(pattern: &str, path: &str) -> bool {
     let path = Path::new(path);
 
+    // note: not a `./` at the front, which `Path::components` keeps and which names no directory:
+    // `./README.md` is `README.md`, and a rule that told the two apart would be the `.` that must
+    // not change which rule applies
     if let Some(directory) = pattern.strip_suffix('/') {
         return path
             .components()
+            .filter(|component| *component != std::path::Component::CurDir)
             .any(|component| component.as_os_str().to_str() == Some(directory));
     }
 
@@ -183,10 +187,14 @@ pub fn objection_to(pattern: &str) -> Option<String> {
         return objection("is not a rule at all");
     }
     // a rule without a slash is about the last name in a path, and no path's last name is either
-    // of these. With the slash they are directory rules and do match - `../` is every path that
-    // climbs out - so it is only the bare two that are refused
+    // of these. With the slash they are directory rules, and `../` does match - every path that
+    // climbs out - so it is the bare two that are refused, and `./`, which is no directory a path
+    // is in but a way of spelling one
     if matches!(pattern, "." | "..") {
         return objection("cannot match: no file is called that");
+    }
+    if pattern == "./" {
+        return objection("cannot match: `.` is how a path is spelled, not a directory in it");
     }
     match pattern.strip_suffix('/') {
         Some(directory) if directory.is_empty() || directory.contains('/') => {
