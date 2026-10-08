@@ -463,6 +463,57 @@ async fn a_fork_beside_a_call_that_writes_to_the_context_says_the_two_are_not_al
     );
 }
 
+/// And one that takes items away says what the call beside it wrote as well.
+///
+/// note: the reply's clause about what was named stood in for the whole difference, so a copy
+/// asked without one item, beside a note another call had just written, read as the earlier copy
+/// less that item - when it also held the note, and the two answers differed by both.
+#[tokio::test]
+async fn a_fork_without_items_beside_a_call_that_writes_says_both() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call(
+                "c1",
+                "fork",
+                json!({ "action": "ask", "question": "one way?" }),
+            ),
+            call(
+                "c2",
+                "context",
+                json!({ "action": "note", "content": "a finding", "reason": "because" }),
+            ),
+            call(
+                "c3",
+                "fork",
+                json!({ "action": "ask", "question": "the other way?", "without": [1] }),
+            ),
+        ]),
+        ModelResponse::text("the first copy's answer"),
+        ModelResponse::text("the second copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    let background = kernel.push(ContextItem::user("some background"));
+    assert_eq!(background.to_string(), "1", "the item `without` names");
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["fork"]);
+    let second = &said[1];
+    assert!(second.contains("without 1"), "{second}");
+    let noted = kernel
+        .items()
+        .iter()
+        .find(|item| item.content.to_text().contains("a finding"))
+        .expect("the note is in the context")
+        .id;
+    assert!(second.contains("wrote to your context"), "{second}");
+    assert!(
+        second.contains(&noted.to_string()),
+        "the item the second copy has and the first did not is named: {second}"
+    );
+}
+
 /// Two forks in a turn with nothing between them that writes to the context still say so.
 ///
 /// note: the clause above is earned, not a stock sentence. A turn of two forks and nothing else
