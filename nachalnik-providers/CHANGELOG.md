@@ -16,6 +16,10 @@ minor bump may break you.
   which kinds of `thinking` it takes, whether it takes an `effort`. Read by `probe` along with the
   limits, from the same answer, and passed on uninterpreted; `None` where the endpoint describes
   its models in another shape, as OpenRouter does.
+- **`Anthropic::attributed_to`: the app a conversation over this API is made on behalf of**, the
+  same `Attribution` the other clients take, sent only to OpenRouter, which serves the API at
+  `/api/v1/messages` and ranks the apps calling it there too. `Attribution` is now there with the
+  `anthropic` feature alone.
 
 ### changed
 
