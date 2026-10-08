@@ -90,6 +90,8 @@ pub struct Anthropic {
     context_limit: Mutex<Option<usize>>,
     /// The most the model generates in one turn, where the endpoint said.
     output_limit: Mutex<Option<u64>>,
+    /// What the endpoint said the model supports, as it said it.
+    capabilities: Mutex<Option<Value>>,
     /// The limit the caller set by hand, if it set one, kept so that changing model or endpoint
     /// puts it back rather than dropping it.
     configured: Option<usize>,
@@ -133,6 +135,7 @@ impl Anthropic {
             model: Mutex::new(model.into()),
             context_limit: Mutex::new(None),
             output_limit: Mutex::new(None),
+            capabilities: Mutex::new(None),
             configured: None,
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
@@ -175,26 +178,37 @@ impl Anthropic {
     /// `top_provider.max_completion_tokens`, is read as well, for a proxy that answers with it.
     pub async fn probe(&self) {
         let (base, model) = (self.endpoint(), self.model());
-        let described = self.get(format!("{base}/models/{model}")).await;
-        let mut found = described.as_ref().map(limits).unwrap_or_default();
+        let mut entry = self.get(format!("{base}/models/{model}")).await;
 
-        if found == (None, None)
+        if entry.as_ref().map(limits).unwrap_or_default() == (None, None)
             && let Some(listed) = self.get(format!("{base}/models?limit=1000")).await
         {
-            found = listed["data"]
+            entry = listed["data"]
                 .as_array()
                 .into_iter()
                 .flatten()
                 .find(|entry| entry["id"] == model.as_str())
-                .map(limits)
-                .unwrap_or_default();
+                .cloned();
         }
 
-        let (context, output) = found;
+        let (context, output) = entry.as_ref().map(limits).unwrap_or_default();
         if self.context_limit.lock().is_none() {
             *self.context_limit.lock() = context.map(|limit| limit as usize);
         }
         *self.output_limit.lock() = output;
+        *self.capabilities.lock() = entry
+            .map(|mut entry| entry["capabilities"].take())
+            .filter(Value::is_object);
+    }
+
+    /// What the model supports, as the endpoint's description of it says - which kinds of
+    /// `thinking` it takes, whether it takes an `effort` - or `None` where the endpoint said
+    /// nothing in that shape. Read by [`Anthropic::probe`] and passed on uninterpreted.
+    ///
+    /// note: Anthropic's `/models` answers it; an endpoint that describes its models in another
+    /// shape leaves it `None`.
+    pub fn capabilities(&self) -> Option<Value> {
+        self.capabilities.lock().clone()
     }
 
     /// One question about the endpoint, answered as JSON or not at all.
@@ -923,6 +937,7 @@ impl Endpoint for Anthropic {
         *self.model.lock() = model;
         *self.context_limit.lock() = self.configured;
         *self.output_limit.lock() = None;
+        *self.capabilities.lock() = None;
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -933,6 +948,7 @@ impl Endpoint for Anthropic {
         *self.base_url.lock() = crate::address(url);
         *self.context_limit.lock() = self.configured;
         *self.output_limit.lock() = None;
+        *self.capabilities.lock() = None;
         match model {
             Some(model) => self.set_model(model).await,
             None => {

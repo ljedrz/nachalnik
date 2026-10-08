@@ -38,8 +38,9 @@ use nachalnik::{
 use nachalnik_providers::{Anthropic, anthropic::DEFAULT_BASE_URL, is_openrouter};
 use serde_json::{Value, json};
 
-/// A kernel talking to the configured endpoint, or `None` where no key was given.
-async fn kernel(params: Params) -> Option<Kernel> {
+/// A kernel talking to the configured endpoint, or `None` where no key was given, sending the
+/// parameters `params` makes of the provider once it has asked the endpoint about the model.
+async fn kernel(params: impl FnOnce(&Anthropic) -> Params) -> Option<Kernel> {
     let base = env::var("NACHALNIK_ANTHROPIC_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.into());
     let key = match is_openrouter(&base) {
         true => env::var("OPENROUTER_API_KEY"),
@@ -52,7 +53,7 @@ async fn kernel(params: Params) -> Option<Kernel> {
     let model = env::var("NACHALNIK_ANTHROPIC_MODEL").unwrap_or_else(|_| {
         match is_openrouter(&base) {
             true => "anthropic/claude-haiku-4.5",
-            false => "claude-haiku-4-5",
+            false => "claude-haiku-5-5",
         }
         .to_owned()
     });
@@ -64,7 +65,7 @@ async fn kernel(params: Params) -> Option<Kernel> {
         .ok()
         .and_then(|params| serde_json::from_str(&params).ok())
         .unwrap_or_default();
-    sent.extend(params);
+    sent.extend(params(&provider));
 
     let kernel = Kernel::new(Config::default());
     kernel.set_provider(provider);
@@ -88,7 +89,7 @@ fn said(kernel: &Kernel) -> String {
 
 #[tokio::test]
 async fn an_answer_comes_back_with_what_it_cost() {
-    let Some(kernel) = kernel(Params::new()).await else {
+    let Some(kernel) = kernel(|_| Params::new()).await else {
         return;
     };
     kernel.push(ContextItem::system("You answer in one word."));
@@ -119,7 +120,7 @@ async fn an_answer_comes_back_with_what_it_cost() {
 /// what this API is strict about.
 #[tokio::test]
 async fn a_tool_is_called_and_its_answer_read() {
-    let Some(kernel) = kernel(Params::new()).await else {
+    let Some(kernel) = kernel(|_| Params::new()).await else {
         return;
     };
     round_trip(&kernel).await;
@@ -133,11 +134,13 @@ async fn a_tool_is_called_and_its_answer_read() {
 /// as it came.
 #[tokio::test]
 async fn signed_thinking_goes_back_with_the_call_it_came_before() {
-    let thinking = json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } });
-    let mut params = Params::new();
-    params.insert("max_tokens".to_owned(), json!(4096));
-    params.extend(thinking.as_object().cloned().unwrap_or_default());
-    let Some(kernel) = kernel(params).await else {
+    let Some(kernel) = kernel(|provider| {
+        let mut params = thinking(provider.capabilities());
+        params.insert("max_tokens".to_owned(), json!(4096));
+        params
+    })
+    .await
+    else {
         return;
     };
     round_trip(&kernel).await;
@@ -167,7 +170,7 @@ async fn signed_thinking_goes_back_with_the_call_it_came_before() {
 /// a cent.
 #[tokio::test]
 async fn the_second_turn_reads_the_first_from_the_cache() {
-    let Some(kernel) = kernel(Params::new()).await else {
+    let Some(kernel) = kernel(|_| Params::new()).await else {
         return;
     };
     let rules: String = (1..=600)
@@ -189,6 +192,32 @@ async fn the_second_turn_reads_the_first_from_the_cache() {
             .is_some_and(|cached| cached > 4096),
         "{usage:?}"
     );
+}
+
+/// Thinking turned on the way the model takes it, as the endpoint says it does.
+///
+/// note: models differ - Haiku 4.5 takes only `enabled` with a budget, Haiku 5.5 only `adaptive`,
+/// and each refuses the other with a 400 - and Anthropic's `/models` says which, so nothing here
+/// names a model. Adaptive thinking is the model's to skip on a question this easy, so it is asked
+/// for at the most effort where the model takes an effort. Where the endpoint said nothing, as
+/// OpenRouter's may not, it is the budget, which is what a model behind OpenRouter has
+/// taken so far.
+fn thinking(capabilities: Option<Value>) -> Params {
+    let capabilities = capabilities.unwrap_or_default();
+    let mut params = Params::new();
+    match capabilities["thinking"]["types"]["adaptive"]["supported"] == true {
+        true => {
+            params.insert("thinking".to_owned(), json!({ "type": "adaptive" }));
+            if capabilities["effort"]["supported"] == true {
+                params.insert("output_config".to_owned(), json!({ "effort": "max" }));
+            }
+        }
+        false => {
+            let budget = json!({ "type": "enabled", "budget_tokens": 1024 });
+            params.insert("thinking".to_owned(), budget);
+        }
+    }
+    params
 }
 
 /// Asks for one call to `echo`, and checks the answer used what it returned.
