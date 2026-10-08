@@ -597,6 +597,14 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }));
     }
 
+    // what this kernel leaves out of the sandbox, said the way the page's exposure is: once on
+    // standard error, and into each session, since a screen hides the first. Asked whatever tools
+    // are offered at first, because a shell can be toggled on later and it is the same sandbox
+    let weaker = (!args.no_sandbox).then(sandbox::weaker_here).flatten();
+    if let Some(weaker) = &weaker {
+        let _ = writeln!(std::io::stderr(), "· {weaker}");
+    }
+
     // note: a loop because `/restart` writes this session out and asks for another. What is inside
     // it is everything a *session* is - the opening lines, the driving, and the ending - and what
     // is above it is everything the *run* is: the socket, the servers, the provider and the
@@ -640,6 +648,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         if let Some(exposure) = &exposure {
             app.say(Speaker::Note, exposure.clone());
+        }
+        if let Some(weaker) = &weaker {
+            app.say(Speaker::Note, weaker.clone());
         }
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

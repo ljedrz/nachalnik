@@ -49,20 +49,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   or only that one is set is the open question. Unblocked by a client that needs to tell from the
   log what notice a session had.
 
-- **A served port stays open to commands below Linux 6.7.** The closed ports are Landlock TCP
-  rules, which an older kernel drops, so where the gate doesn't hold - TCP allowed, or refused by
-  Landlock alone - a command can connect to a session served over TCP and answer its own
-  questions. Two ways out, each with a cost: require the TCP rules whenever a port is to be
-  closed, which leaves those kernels with no sandbox at all while a session is served; or have
-  `attend` look up a TCP peer's process, as it checks a unix socket's, which means reading
-  `/proc/net/tcp` for every connection. Unblocked by choosing between them.
-
-- **The permissions tab doesn't say when abstract sockets and signals are left open.** Below Linux
-  6.12 a confined command can reach every abstract socket of the person's - the X server's among
-  them - and signal every process of theirs. SECURITY.md says so and `confines_abstract_sockets`
-  and `confines_signals` report it, but nothing on the tab does, and it reads "confined" either
-  way. Showing it means deciding where on the tab it goes and how much of it a person needs.
-
 - **`/model` and `/endpoint` take effect in the middle of a turn.** They aren't refused while a
   turn runs, as `/attach`, `/undo` and `/load` are, so the rest of the turn goes to the new model
   and the counter's calibration is reset under a request in flight. Refusing them would also
