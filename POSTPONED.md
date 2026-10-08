@@ -33,12 +33,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   and `undo` doesn't notice it. The open question is whether a recount should be an undoable
   operation (with a checkpoint and the undo history it uses) or something `undo` re-applies.
 
-- **Screenshots in the guide.** `kamchatka`'s README shows the chat and context tabs from
-  `kamchatka/assets/`, but the guide only describes the screens in text. A screen pasted as text is
-  a copy of one session that goes out of date as the program changes, and one edited by hand shows
-  no real session at all. Unblocked by real screenshots, saved as images next to those two, where
-  the guide currently describes a screen.
-
 - **`--allow-server` for a server this run doesn't start.** A server rule naming a server that isn't
   running is refused, for both allow and deny, just as rules for a domain no tool uses are. A
   settings file that allows a server is refused along with it when `--mcp` on the command line
