@@ -49,6 +49,9 @@ minor bump may break you.
 - **`./` is refused as a path rule.** It was taken, and matched only a path spelled with `./` in
   front: `--deny ./` refused `read ./README.md` and let `read README.md` run. A `./` in front of a
   path no longer changes which directory rule it meets.
+- **`--anthropic` is attributed to `kamchatka` at OpenRouter**, as a chat-completions session and
+  its advisor already were. Its requests carried no app headers, so a session over the Messages
+  API was an unnamed caller there.
 
 ### removed
 

@@ -790,7 +790,9 @@ pub mod anthropic {
 
     /// Builds a provider from the environment, asking the endpoint what the model takes.
     ///
-    /// note: no attribution, and the model optional, for the reasons the Gemini one gives.
+    /// note: the model optional, for the reason the Gemini one gives. Attributed, unlike that one,
+    /// since OpenRouter serves this API too and ranks the apps calling it here as it does for chat
+    /// completions; the provider sends the headers only to OpenRouter.
     pub async fn connect(model: Option<&str>) -> Result<Arc<Anthropic>, BoxError> {
         let url = base_url();
         let provider = Arc::new(
@@ -799,7 +801,8 @@ pub mod anthropic {
                 addressed(url.clone())?,
                 key(&url)?,
             )
-            .with_context_limit(checked_limit()?),
+            .with_context_limit(checked_limit()?)
+            .attributed_to(attribution()),
         );
         if model.is_some() {
             provider.probe().await;
