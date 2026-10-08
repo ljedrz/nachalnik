@@ -20,6 +20,11 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.9.1, `nachalnik-mcp` 0.9.1 and `nachalnik-providers` 0.9.1. The
+  providers' `Dialect::set_tries` is how a headless run waits longer and `Anthropic::attributed_to`
+  how `--anthropic` is attributed; the bridge carries the pictures a tool returns, which the
+  providers now send; and the runtime records a `/model` switched in place from the model it was.
+
 - **A headless run waits out a busy endpoint for about five minutes**, ten tries rather than four,
   since nobody is watching to be told sooner and a rate limit several sessions share lasts longer
   than fourteen seconds. `--deadline` still bounds the run. A session with a screen is unchanged.
