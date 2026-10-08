@@ -238,15 +238,17 @@ fn output_of(result: CallToolResult) -> ToolOutput {
     // text runs are joined as they always were; a picture splits them
     let mut parts: Vec<Content> = Vec::with_capacity(result.content.len());
     let mut text: Vec<String> = Vec::new();
-    for block in &result.content {
+    // by value: the result is this function's, and a picture is up to five megabytes of base64
+    // that a borrow would have to copy into the `Content` it becomes
+    for block in result.content {
         text.push(match block {
-            ContentBlock::Text(said) => said.text.clone(),
+            ContentBlock::Text(said) => said.text,
             ContentBlock::Image(image) if image.data.len() <= LARGEST_IMAGE => {
                 if !text.is_empty() {
                     parts.push(Content::text(text.join("\n")));
                     text.clear();
                 }
-                parts.push(Content::blob(image.mime_type.clone(), image.data.clone()));
+                parts.push(Content::blob(image.mime_type, image.data));
                 continue;
             }
             ContentBlock::Image(image) => {
