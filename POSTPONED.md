@@ -104,8 +104,9 @@ them. Each entry says what it is, why it waits, and what would unblock it.
 
 - **OpenRouter's `reasoning_details` is ignored.** A model whose reasoning only appears there loses
   it, and one that signs its reasoning across tool-call turns gets its turns back without it.
-  Nothing tested so far needed it; a model that does, with a live test showing the difference,
-  would show whether the OpenAI client should support it.
+  Nothing tested so far needed it - Claude included: through OpenRouter, Haiku 5.5 and Sonnet 5.5
+  took a tool turn sent back without it, as they did with it. A model that does need it, with a
+  live test showing the difference, would show whether the OpenAI client should support it.
 
 - **Under `--no-sandbox`, a refusal by name-matching is presented as a person's decision.** Without
   the sandbox, `net:reach` is judged from the command's name. A command refused that way under
@@ -204,13 +205,13 @@ them. Each entry says what it is, why it waits, and what would unblock it.
   since only its contents would show it. Checking an image's first bytes against its type would
   prevent this, but would also reject files that can be attached today, which is why it waits.
 
-- **The Anthropic client and edited history.** Two problems described in the
-  `nachalnik_providers::anthropic` docs, with the models they affect, that neither the code nor the
-  tests handle. Some models reject a signed thinking block sent back after anything before it was
-  edited (which pruning, rewriting and eliding all do). And an instruction added mid-session is
-  merged into `system`, so the first request it goes out with rewrites the whole prompt cache. The
-  possible fixes are retrying on one specific 400 error message, or a beta header no parameter can
-  set, for the first; and a `role: "system"` message, which only some models accept and only in some
-  positions, for the second. OpenRouter doesn't settle either, since it rewrites the message and
-  isn't what checks the thinking signature. Unblocked by an Anthropic account, to see each rejected
-  by the real API and then fixed.
+- **The Anthropic client and signed thinking after an edited history.** Described in the
+  `nachalnik_providers::anthropic` docs, with the models it affects, and handled by neither the
+  code nor the tests: some models reject a signed thinking block sent back after anything before
+  it was edited (which pruning, rewriting and eliding all do), on accounts created on or after
+  2026-08-31. The possible fixes are retrying on that one 400 error message, or a beta header no
+  parameter can set. OpenRouter doesn't settle it, since it rewrites the message and isn't what
+  checks the signature, and neither does an older account: on one created in June 2026, Sonnet 5.5
+  and Haiku 5.5 took thinking sent back after an earlier message was edited. Unblocked by an
+  Anthropic account created on or after 2026-08-31, to see it rejected by the real API and then
+  fixed.

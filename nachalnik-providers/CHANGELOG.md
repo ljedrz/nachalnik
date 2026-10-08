@@ -5,6 +5,23 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### added
+
+- **`Anthropic::capabilities`: what the model supports, as Anthropic's `/models` describes it** -
+  which kinds of `thinking` it takes, whether it takes an `effort`. Read by `probe` along with the
+  limits, from the same answer, and passed on uninterpreted; `None` where the endpoint describes
+  its models in another shape, as OpenRouter does.
+
+### changed
+
+- **`Anthropic` says an instruction added mid-session where it stands**, as a `role: "system"`
+  message after the user turn it followed, rather than joining it into `system` at the top - which
+  rewrote the start of the prompt and the whole cache of it. The instructions a conversation starts
+  with are still `system`. A model that takes no such message (Haiku 4.5) is asked again with them
+  joined at the top, as before, and is not sent one again until the model or the address changes.
+
 ## [0.9.0] - 2026-10-06
 
 ### added

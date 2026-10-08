@@ -597,3 +597,151 @@ fn a_result_is_text_or_the_blocks_it_is_made_of() {
         }])
     );
 }
+
+// ---------------------------------------------------------------- instructions added mid-session
+
+/// An instruction the conversation starts with goes to the top, and one added later is said where
+/// it stands, after the user turn it followed - so the start of the prompt, and the cache of it,
+/// stays as it was.
+#[test]
+fn an_instruction_added_later_is_said_where_it_stands() {
+    let body = rendered(vec![
+        ContextItem::system("be terse"),
+        ContextItem::user("hello"),
+        ContextItem::system("answer in capitals"),
+        ContextItem::assistant("HELLO", Vec::new()),
+        ContextItem::user("again"),
+    ]);
+
+    assert_eq!(body["system"][0]["text"], "be terse");
+    let roles: Vec<&Value> = body["messages"]
+        .as_array()
+        .expect("messages")
+        .iter()
+        .map(|message| &message["role"])
+        .collect();
+    assert_eq!(roles, ["user", "system", "assistant", "user"]);
+    assert_eq!(body["messages"][1]["content"], "answer in capitals");
+}
+
+/// One added after an answer waits for the next user turn: this API takes a `system` message only
+/// after a user turn, and only before an answer or at the end.
+#[test]
+fn an_instruction_added_after_an_answer_follows_the_next_user_turn() {
+    let body = rendered(vec![
+        ContextItem::user("hello"),
+        ContextItem::assistant("hi", Vec::new()),
+        ContextItem::system("answer in capitals"),
+        ContextItem::user("again"),
+    ]);
+
+    assert!(body.get("system").is_none(), "{body}");
+    assert_eq!(
+        body["messages"],
+        json!([
+            { "role": "user", "content": [{ "type": "text", "text": "hello" }] },
+            { "role": "assistant", "content": [{ "type": "text", "text": "hi" }] },
+            { "role": "user", "content": [{ "type": "text", "text": "again" }] },
+            { "role": "system", "content": "answer in capitals" },
+        ])
+    );
+}
+
+/// Answers each request in turn with the next of these, a status and a body, and keeps the
+/// bodies of the requests.
+async fn answering(
+    answers: Vec<(&'static str, &'static str)>,
+) -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
+    let address = listener.local_addr().expect("its own address");
+    let asked = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let kept = asked.clone();
+
+    tokio::spawn(async move {
+        for (status, body) in answers {
+            let (mut socket, _) = listener.accept().await.expect("the request");
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 16384];
+            // the headers, and then as much of the body as they say there is
+            let request = loop {
+                let read = socket.read(&mut chunk).await.expect("the request");
+                request.extend_from_slice(&chunk[..read]);
+                let text = String::from_utf8_lossy(&request).into_owned();
+                if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                    let length = head
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())?
+                        })
+                        .unwrap_or_default();
+                    if body.len() >= length || read == 0 {
+                        break body.to_owned();
+                    }
+                }
+            };
+            kept.lock()
+                .expect("not poisoned")
+                .push(serde_json::from_str(&request).expect("a JSON request"));
+            let _ = socket
+                .write_all(
+                    format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: text/event-stream\r\n\
+                         Connection: close\r\nContent-Length: {}\r\n\r\n{body}",
+                        body.len()
+                    )
+                    .as_bytes(),
+                )
+                .await;
+            let _ = socket.shutdown().await;
+        }
+    });
+
+    (format!("http://{address}"), asked)
+}
+
+/// A model that takes no `system` message in the conversation is asked again with the instruction
+/// at the top, and from then on is not sent one.
+#[tokio::test]
+async fn a_model_that_takes_no_instruction_in_place_is_asked_again_with_it_at_the_top() {
+    const REFUSED: &str = concat!(
+        "{\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",",
+        "\"message\":\"role 'system' is not supported on this model\"}}",
+    );
+    const ANSWERED: &str = concat!(
+        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":",
+        "{\"type\":\"text\",\"text\":\"HELLO\"}}\n\n",
+        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},",
+        "\"usage\":{\"output_tokens\":1}}\n\n",
+        "data: {\"type\":\"message_stop\"}\n\n",
+    );
+    let (address, asked) =
+        answering(vec![("400 Bad Request", REFUSED), ("200 OK", ANSWERED)]).await;
+    let provider = Arc::new(Anthropic::new("claude-test", address, "no key needed"));
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::system("be terse"));
+    kernel.push(ContextItem::user("hello"));
+    kernel.push(ContextItem::system("answer in capitals"));
+
+    kernel.step().await.expect("answered the second time");
+
+    let asked = asked.lock().expect("not poisoned").clone();
+    assert_eq!(asked.len(), 2, "asked again, once");
+    assert_eq!(asked[0]["messages"][1]["role"], "system");
+    assert_eq!(asked[1]["messages"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        asked[1]["system"][0]["text"],
+        "be terse\n\nanswer in capitals"
+    );
+    let next = provider
+        .render(&kernel.preview_request().expect("a request"))
+        .expect("this provider always renders");
+    assert!(
+        next["messages"]
+            .as_array()
+            .is_some_and(|messages| messages.iter().all(|message| message["role"] != "system")),
+        "not sent one again: {next}"
+    );
+}
