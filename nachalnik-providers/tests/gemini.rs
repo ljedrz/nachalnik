@@ -521,7 +521,12 @@ fn the_tools_registered_are_declared_to_the_model() {
     assert_eq!(declared.as_array().map(Vec::len), Some(1), "{body:#}");
     assert_eq!(declared[0]["name"], "weather");
     assert_eq!(declared[0]["description"], "returns its arguments");
-    assert_eq!(declared[0]["parameters"]["required"], json!(["value"]));
+    // as JSON Schema, which Google's own `Schema` under `parameters` is not
+    assert_eq!(
+        declared[0]["parametersJsonSchema"]["required"],
+        json!(["value"])
+    );
+    assert!(declared[0].get("parameters").is_none(), "{body:#}");
 }
 
 /// A parameter naming a field built from the request does not replace it.

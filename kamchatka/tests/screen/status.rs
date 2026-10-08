@@ -767,6 +767,18 @@ fn listed(screen: &str, opening: &str) -> Vec<String> {
 /// Serves `listing` to whatever asks for it, and, where there is a `refusal`, refuses every other
 /// request with it - then hands back a provider that has read the listing.
 async fn serving(listing: &'static str, refusal: Option<&'static str>) -> Arc<OpenAiCompatible> {
+    let provider = Arc::new(OpenAiCompatible::new(
+        "mercury-2.5",
+        listening(listing, refusal).await,
+        "no key needed",
+    ));
+    provider.probe().await;
+    provider
+}
+
+/// Answers every request for a listing with `listing`, and any other with `refusal` where there is
+/// one, and hands back the address.
+async fn listening(listing: &'static str, refusal: Option<&'static str>) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("a port");
@@ -795,13 +807,7 @@ async fn serving(listing: &'static str, refusal: Option<&'static str>) -> Arc<Op
         }
     });
 
-    let provider = Arc::new(OpenAiCompatible::new(
-        "mercury-2.5",
-        format!("http://{at}"),
-        "no key needed",
-    ));
-    provider.probe().await;
-    provider
+    format!("http://{at}")
 }
 
 /// `/models` marks the one this session is asking, where the endpoint listed it.
@@ -886,6 +892,99 @@ async fn params_lists_what_the_endpoint_publishes_beside_each_parameter() {
         "and one under it is not remarked on: {}",
         harness.screen()
     );
+}
+
+/// Under `--gemini` the figures the listing publishes are about fields of `generationConfig`, and
+/// `/params` names them by their path into it, sets one without taking its neighbours away, and
+/// reads a bound inside one that was set whole.
+#[tokio::test]
+async fn params_reads_inside_a_parameter_where_the_listing_names_fields_inside_it() {
+    // what `GET /models/gemini-3.5-flash-lite` really answers, trimmed to the fields read here
+    let entry = r#"{"name":"models/gemini-3.5-flash-lite","inputTokenLimit":1048576,
+        "outputTokenLimit":65536,"temperature":1,"topP":0.95,"topK":64,"maxTemperature":2,
+        "thinking":true}"#;
+    let provider = Arc::new(nachalnik_providers::Gemini::new(
+        "gemini-3.5-flash-lite",
+        listening(entry, None).await,
+        "no key needed",
+    ));
+    provider.probe().await;
+    let mut harness = Harness::served_by([], provider);
+
+    harness.send("/params").await;
+    let screen = harness.screen();
+    assert_eq!(
+        listed(&screen, "also takes, of the ones it publishes:"),
+        [
+            "generationConfig.maxOutputTokens  at most 65536",
+            "generationConfig.temperature      default 1, at most 2",
+            "generationConfig.topP             default 0.95",
+            "generationConfig.topK             default 64",
+        ],
+        "{screen}"
+    );
+
+    // one set whole is read field by field, and the field the listing never names is the one
+    // nothing is known about
+    harness
+        .send(r#"/params generationConfig {"thinkingConfig":{"thinkingBudget":1024}}"#)
+        .await;
+    let screen = harness.screen();
+    assert!(screen.contains("sent, and unchecked"), "{screen}");
+    assert!(
+        screen.contains("generationConfig.thinkingConfig"),
+        "{screen}"
+    );
+
+    // and a path sets the one field, beside what was already there
+    harness.send("/params generationConfig.temperature 3").await;
+    assert_eq!(
+        serde_json::Value::Object(harness.app.kernel.params()),
+        json!({ "generationConfig": {
+            "thinkingConfig": { "thinkingBudget": 1024 },
+            "temperature": 3,
+        } })
+    );
+    let screen = harness.screen();
+    assert!(
+        screen.contains("generationConfig.temperature is 3, and gemini-3.5-flash-lite"),
+        "a bound is said of a field inside a parameter: {screen}"
+    );
+    assert!(
+        !listed(&screen, "also takes, of the ones it publishes:")
+            .iter()
+            .any(|row| row.starts_with("generationConfig.temperature")),
+        "and one set is no longer on offer: {screen}"
+    );
+
+    // taking both away takes `generationConfig` with them, rather than sending it empty
+    harness
+        .send("/params generationConfig.thinkingConfig null")
+        .await;
+    harness
+        .send("/params generationConfig.temperature null")
+        .await;
+    assert!(
+        harness.app.kernel.params().is_empty(),
+        "{:?}",
+        harness.app.kernel.params()
+    );
+
+    // a path with nothing between two of its dots names nothing, and one into a field built from
+    // the session is refused as that field is
+    harness.send("/params generationConfig..topK 1").await;
+    assert!(
+        harness.screen().contains("is not a parameter"),
+        "{}",
+        harness.screen()
+    );
+    harness.send("/params contents.role 1").await;
+    assert!(
+        harness.screen().contains("built from the session"),
+        "{}",
+        harness.screen()
+    );
+    assert!(harness.app.kernel.params().is_empty());
 }
 
 /// `stream` is not a parameter a model lists, and is not ignored for being missing from the list.

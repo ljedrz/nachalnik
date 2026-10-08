@@ -641,6 +641,9 @@ pub struct ModelInfo {
     /// the opposite mistake: a parameter set for a model that does not take it is accepted, sent
     /// and ignored in silence, and this is the only thing that can say so.
     ///
+    /// note: a name with a `.` in it is a path into a parameter - `generationConfig.temperature`
+    /// is `temperature` inside `generationConfig` - for a dialect that keeps its knobs inside one.
+    ///
     /// note: `serde(default)`, so a record written before this existed still reads - as "not
     /// published", which is what it was.
     #[serde(default)]

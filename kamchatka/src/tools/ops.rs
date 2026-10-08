@@ -165,17 +165,15 @@ pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
 
 /// The schema a model is given: one property, and a branch of an `anyOf` per operation.
 ///
-/// note: `enum` with one value rather than `const` for the discriminator. Both say the same thing
-/// and OpenAI takes either, but Google's `Schema` is a closed set of fields with no `const` in it -
-/// and one schema goes to both dialects, so the discriminator has to be spelled the way the
-/// narrower of the two spells it.
+/// note: `enum` with one value rather than `const` for the discriminator. Both say the same thing,
+/// and `enum` is also what an endpoint reading a schema as Google's own `Schema` - a closed set of
+/// fields with no `const` in it - takes. One schema goes to every dialect, so the discriminator is
+/// spelled the way the narrowest of them spells it.
 ///
 /// note: nothing here is sent `strict`. What that would take, the day an endpoint is worth asking
-/// for it: `additionalProperties: false` on the root and on every branch, every argument in its
-/// branch's `required` with the optional ones typed `["string", "null"]`, and - because
-/// `additionalProperties` is not a field of Google's `Schema` either - `gemini.rs` sending this
-/// under `parametersJsonSchema` rather than `parameters`. The shape is already what strict wants;
-/// it is the two keywords and the provider change that are not done.
+/// for it: `additionalProperties: false` on the root and on every branch, and every argument in
+/// its branch's `required` with the optional ones typed `["string", "null"]`. The shape is already
+/// what strict wants; it is the two keywords that are not done.
 pub(crate) fn schema(ops: &[Op]) -> Value {
     // note: no `anyOf` where there is nothing to choose between. A tool whose operations all read
     // the same arguments - `setup`, `log`, `shell` - has nothing for a union to gate, and wrapping

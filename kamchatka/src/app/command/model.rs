@@ -1,7 +1,8 @@
 //! The commands about the model a session talks to and how: `/endpoint`, `/model`, `/models`,
 //! `/params` and `/limit`.
 
-use nachalnik::Calibration;
+use nachalnik::{Calibration, Params};
+use serde_json::Value;
 
 use crate::{
     app::{App, Speaker, text::thousands},
@@ -105,6 +106,11 @@ impl App {
 
     /// `/params`: one parameter set to a JSON value or taken away with `null`, and then what is
     /// set and what the model makes of it.
+    ///
+    /// note: a key with a `.` in it is a path into a parameter - `generationConfig.temperature`
+    /// is `temperature` inside `generationConfig` - because that is where Google's dialect keeps
+    /// its sampling knobs, and setting the whole of `generationConfig` to change one of them would
+    /// take the rest away. No parameter of the other dialects has a `.` in its name.
     pub(super) fn params(&mut self, rest: &str) {
         // a key alone is half a command, and taken as `/params` it listed the parameters
         // as if it had done something - which reads as the key having been set, or taken
@@ -122,6 +128,16 @@ impl App {
         }
         if let Some((key, value)) = rest.split_once(' ') {
             let key = key.trim();
+            if key.split('.').any(str::is_empty) {
+                self.say(
+                    Speaker::Error,
+                    format!(
+                        "`{key}` is not a parameter: a `.` goes between two names, as in \
+                         `generationConfig.temperature`"
+                    ),
+                );
+                return;
+            }
             let value = match serde_json::from_str(value.trim()) {
                 Ok(value) => value,
                 Err(e) => {
@@ -136,10 +152,12 @@ impl App {
                 // where one is taken at all, and without this nothing once set could be
                 // taken back short of `/restart`. Ahead of the refusal below, so that one
                 // arriving in a snapshot can be taken away too
-                serde_json::Value::Null => {
-                    params.remove(key);
-                }
-                _ if BUILT.contains(&key) => {
+                serde_json::Value::Null => taken(&mut params, key),
+                _ if key
+                    .split('.')
+                    .next()
+                    .is_some_and(|top| BUILT.contains(&top)) =>
+                {
                     self.say(
                         Speaker::Error,
                         format!(
@@ -149,9 +167,7 @@ impl App {
                     );
                     return;
                 }
-                value => {
-                    params.insert(key.to_owned(), value);
-                }
+                value => put(&mut params, key, value),
             }
             self.kernel.set_params(params);
         }
@@ -181,13 +197,15 @@ impl App {
             return;
         };
         let takes = |key: &str| info.parameters.iter().any(|name| name == key);
+        // what is set, by the names the listing would give it
+        let set = by_name(&params, &info.parameters);
 
         // the failure worth naming: a parameter the model does not take is not refused.
         // It is sent, it is ignored, and the run it was supposed to change is the same
         // run it would have been - a `seed` that buys no reproducibility, silently
-        let ignored: Vec<&str> = params
-            .keys()
-            .map(String::as_str)
+        let ignored: Vec<&str> = set
+            .iter()
+            .map(|(key, _)| key.as_str())
             .filter(|key| !takes(key) && !TRANSPORT.contains(key))
             .collect();
         if !ignored.is_empty() {
@@ -223,7 +241,7 @@ impl App {
 
         // a bound is worth saying of one that is set, too, since that is where it can be
         // crossed; what becomes of a value over it is the endpoint's to say, not this
-        for (name, set) in &params {
+        for (name, set) in &set {
             let over = self.provider.published(name).maximum.filter(|most| {
                 matches!((set.as_f64(), most.as_f64()), (Some(set), Some(most)) if set > most)
             });
@@ -244,7 +262,7 @@ impl App {
             .map(String::as_str)
             // `tools` is on some endpoints' lists, and offering one this command refuses
             // would be a line contradicting the next
-            .filter(|name| !params.contains_key(*name) && !BUILT.contains(name))
+            .filter(|name| at(&params, name).is_none() && !BUILT.contains(name))
             .collect();
         if !spare.is_empty() {
             let all = match self.provider.lists_every_parameter() {
@@ -513,4 +531,85 @@ impl App {
             ),
         }
     }
+}
+
+/// Sets the parameter a key names, the key a path into it where it has a `.`.
+///
+/// note: what is in the way is replaced - a path through a number makes it an object - since
+/// the value asked for is the one thing this was told to keep.
+fn put(params: &mut Params, key: &str, value: Value) {
+    let mut path = key.split('.');
+    let Some(top) = path.next() else {
+        return;
+    };
+    let mut at = params.entry(top).or_insert(Value::Null);
+    for name in path {
+        if !at.is_object() {
+            *at = Value::Object(Params::new());
+        }
+        let Value::Object(inside) = at else {
+            return;
+        };
+        at = inside.entry(name).or_insert(Value::Null);
+    }
+    *at = value;
+}
+
+/// Takes away the parameter a key names, and whatever it leaves empty on the way out.
+///
+/// note: an emptied `generationConfig` would still be sent, as `{}`, and would read on the
+/// `/params` line as a parameter still in force.
+fn taken(params: &mut Params, key: &str) {
+    match key.split_once('.') {
+        None => {
+            params.remove(key);
+        }
+        Some((top, rest)) => {
+            let Some(Value::Object(inside)) = params.get_mut(top) else {
+                return;
+            };
+            taken(inside, rest);
+            if inside.is_empty() {
+                params.remove(top);
+            }
+        }
+    }
+}
+
+/// The value a key names, the key a path into the parameters where it has a `.`.
+fn at<'a>(params: &'a Params, key: &str) -> Option<&'a Value> {
+    match key.split_once('.') {
+        None => params.get(key),
+        Some((top, rest)) => match params.get(top) {
+            Some(Value::Object(inside)) => at(inside, rest),
+            _ => None,
+        },
+    }
+}
+
+/// What is set, named the way `listed` names it: a parameter is read field by field where the
+/// listing names fields inside it, and whole where it does not.
+///
+/// note: so that `generationConfig` set to `{"temperature": 3}` is checked as
+/// `generationConfig.temperature` against the most the listing publishes for it, and a field
+/// beside it the listing never names - `thinkingConfig` - is the one said to be unchecked, rather
+/// than the whole of `generationConfig`.
+fn by_name(params: &Params, listed: &[String]) -> Vec<(String, Value)> {
+    fn walk(prefix: String, value: &Value, listed: &[String], out: &mut Vec<(String, Value)>) {
+        let inside = format!("{prefix}.");
+        match value {
+            Value::Object(fields) if listed.iter().any(|name| name.starts_with(&inside)) => {
+                for (name, value) in fields {
+                    walk(format!("{inside}{name}"), value, listed, out);
+                }
+            }
+            _ => out.push((prefix, value.clone())),
+        }
+    }
+
+    let mut out = Vec::new();
+    for (name, value) in params {
+        walk(name.clone(), value, listed, &mut out);
+    }
+    out
 }

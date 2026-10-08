@@ -218,8 +218,8 @@ const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
 ///
 /// note: MCP results are a list of blocks, and not all of them are text. An image goes in as the
 /// picture it is, beside the text it came with, and each provider sends it as its API lets it:
-/// Anthropic's and OpenAI's Responses as an image in the result, the others as a line naming it,
-/// since their tool results are text. Anything else that is not text - audio, a binary resource,
+/// Anthropic's and OpenAI's Responses as an image in the result, Gemini in the `functionResponse`'s
+/// own parts, Chat Completions as a line naming it, since its tool results are text. Anything else that is not text - audio, a binary resource,
 /// an image too large to send - is *named* rather than dropped silently: the model is told that
 /// something came back and what it was, which is a better answer than a gap.
 fn output_of(result: CallToolResult) -> ToolOutput {
@@ -322,14 +322,19 @@ pub(crate) fn spec_of(id: String, tool: &rmcp::model::Tool, trust: &Trust) -> To
         .with_capabilities(trust.capabilities(tool.annotations.as_ref()))
 }
 
-/// What a model provider will accept in a tool's name: `[a-zA-Z0-9_-]`, and no more than this
-/// many of them.
+/// What a model provider will accept in a tool's name: `[a-zA-Z0-9_-]`, starting with a letter or
+/// `_`, and no more than this many of them.
+///
+/// note: the start is Google's rule - its API refuses a declaration named `7zip__list` with a 400,
+/// for every request the tool is offered in - and the charset and the length OpenAI's. A name has
+/// to pass both, since the same tools go to every dialect.
 const LIMIT: usize = 64;
 
 /// What separates a server's name from its tool's.
 const SEPARATOR: &str = "__";
 
-/// Makes an identifier a model provider will accept.
+/// Rewrites a name into the characters a model provider will accept, and no more of them than it
+/// will; [`tool_id`] then sees to how it starts.
 ///
 /// note: An MCP server is under no obligation to have heard of the restriction. Rewriting a name
 /// can produce a collision, which is why [`Server::install`](crate::Server::install) reports what
@@ -363,15 +368,34 @@ pub(crate) fn sanitize(name: &str) -> String {
 pub(crate) fn tool_id(prefix: Option<&str>, remote: &str) -> String {
     let remote = sanitize(remote);
     let Some(prefix) = prefix else {
-        return remote;
+        return led(remote);
     };
 
     let room = LIMIT.saturating_sub(remote.chars().count() + SEPARATOR.len());
-    let prefix: String = sanitize(prefix).chars().take(room).collect();
+    let prefix: String = led(sanitize(prefix)).chars().take(room).collect();
 
     match prefix.is_empty() {
-        true => remote,
+        true => led(remote),
         false => format!("{prefix}{SEPARATOR}{remote}"),
+    }
+}
+
+/// Starts an identifier with a letter or `_`, by putting a `_` in front of one that starts with a
+/// digit or a `-`.
+///
+/// note: put in front rather than written over, so that `1password` and `2password` stay two
+/// tools. Only an identifier already at [`LIMIT`] has its first character replaced instead.
+fn led(id: String) -> String {
+    if id.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_') {
+        return id;
+    }
+
+    match id.chars().count() < LIMIT {
+        true => format!("_{id}"),
+        false => id.chars().skip(1).fold(String::from("_"), |mut out, c| {
+            out.push(c);
+            out
+        }),
     }
 }
 
@@ -384,7 +408,7 @@ mod tests {
     /// Whether an identifier is one a model provider will take, which is all [`sanitize`]
     /// promises.
     fn acceptable(id: &str) -> bool {
-        !id.is_empty()
+        id.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
             && id.chars().count() <= LIMIT
             && id
                 .chars()
@@ -422,7 +446,7 @@ mod tests {
 
         #[test]
         fn a_rewritten_name_is_one_a_provider_will_take(name in a_name()) {
-            let id = sanitize(&name);
+            let id = tool_id(None, &name);
 
             prop_assert!(acceptable(&id), "{id:?} from {name:?}");
         }
@@ -458,14 +482,23 @@ mod tests {
             let id = tool_id(Some(&prefix), &remote);
 
             prop_assert!(acceptable(&id), "{id:?}");
-            prop_assert!(id.ends_with(&sanitize(&remote)), "{id:?} lost {remote:?}");
+            // all of it but a first character that had to give way to the `_` in front
+            let own: String = sanitize(&remote).chars().skip(1).collect();
+            prop_assert!(id.ends_with(&own), "{id:?} lost {remote:?}");
         }
 
         /// note: a server that was asked for no prefix gets none, not an empty one - the
         /// difference being a leading `__` on every tool it offers.
         #[test]
         fn an_unprefixed_tool_is_its_own_rewritten_name(remote in a_name()) {
-            prop_assert_eq!(tool_id(None, &remote), sanitize(&remote));
+            prop_assert_eq!(tool_id(None, &remote), led(sanitize(&remote)));
+        }
+
+        /// note: two names that differ only in a leading digit stay two tools, which writing a
+        /// `_` over the digit would have made one.
+        #[test]
+        fn a_leading_digit_is_kept_behind_an_underscore(remote in "[0-9-][a-zA-Z0-9_-]{0,62}") {
+            prop_assert_eq!(tool_id(None, &remote), format!("_{remote}"));
         }
     }
 
