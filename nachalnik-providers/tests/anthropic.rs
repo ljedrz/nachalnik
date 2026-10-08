@@ -275,6 +275,31 @@ async fn the_reasons_a_turn_ends_are_read() {
     assert_eq!(answered(OUT_OF_ROOM).await.2.stop, StopReason::Length);
 }
 
+/// What the model takes, and what it supports, are asked of the address from the model's own
+/// entry, and what it supports is passed on as the address said it.
+///
+/// note: trimmed from what Anthropic's `/v1/models/claude-haiku-5-5` answered.
+#[tokio::test]
+async fn what_the_model_takes_and_supports_is_asked_of_the_address() {
+    const DESCRIBED: &str = concat!(
+        "{\"type\":\"model\",\"id\":\"claude-test\",\"max_input_tokens\":1000000,",
+        "\"max_tokens\":128000,\"capabilities\":{\"effort\":{\"supported\":true},",
+        "\"thinking\":{\"supported\":true,\"types\":{\"enabled\":{\"supported\":false},",
+        "\"adaptive\":{\"supported\":true}}}}}",
+    );
+    let provider = Anthropic::new("claude-test", server(DESCRIBED).await, "no key needed");
+    assert_eq!(provider.capabilities(), None, "not asked yet");
+
+    provider.probe().await;
+    assert_eq!(provider.info().context_limit, Some(1_000_000));
+    let capabilities = provider.capabilities().expect("what it supports");
+    assert_eq!(
+        capabilities["thinking"]["types"]["adaptive"]["supported"],
+        true
+    );
+    assert_eq!(capabilities["effort"]["supported"], true);
+}
+
 // -------------------------------------------------------------------------------- going out
 
 /// The payload this provider would send for a context.
