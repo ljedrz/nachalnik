@@ -5,12 +5,13 @@ them. Each entry says what it is, why it waits, and what would unblock it.
 
 ---
 
-- **`nachalnik-mcp` passing images through instead of describing them.** The bridge replaces an
-  image from an MCP tool with a sentence naming it. Passing it on as a `Content::Blob` would take a
-  few lines, but only Anthropic's API accepts images in a *tool result*; the other two would still
-  send the sentence, while the budget counted megabytes of base64 it can't price. Unblocked by a
-  decision on **where a tool's image should reach the model**: moved into a message type that
-  accepts images, by a `Projector` or a provider. The bridge doesn't change until that's decided.
+- **A tool's image on the dialects whose tool results are text.** `nachalnik-mcp` carries an image
+  into the context inside the tool result, and Anthropic's API and OpenAI's Responses send it there.
+  Chat Completions and Gemini send a line naming it, because a tool message there is a string and
+  a `functionResponse` an object. Each could move the picture to where its API takes one - a user
+  message after the tool messages, an `inline_data` part beside the `functionResponse` - without
+  changing the context. Unblocked by a model on each that needs it, and a live test showing it
+  reads the picture once moved.
 
 - **Serving clients older than the session, half of what `protocol::VERSION` promises.** The rule
   is that a session refuses protocol versions it doesn't know and serves older ones it does. The

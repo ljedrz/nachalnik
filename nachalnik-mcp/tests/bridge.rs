@@ -10,8 +10,8 @@ use std::sync::{
 };
 
 use nachalnik::{
-    Capability, Config, Content, ContextItem, ContextKind, Grant, Kernel, ModelResponse, State,
-    Tool, ToolCall, ToolOutput,
+    Block, Capability, Config, Content, ContextItem, ContextKind, Grant, Kernel, ModelResponse,
+    State, Tool, ToolCall, ToolOutput,
     test::{AllowAll, DenyAll, ScriptedProvider, call},
 };
 use nachalnik_mcp::{Server, Trust};
@@ -99,7 +99,20 @@ impl ServerHandler for Bench {
             }
             "counts" => CallToolResult::structured(json!({ "files": 3, "ok": true })),
             "explodes" => CallToolResult::error(vec![ContentBlock::text("it blew up")]),
+            // asked to, an image larger than any API takes
+            "draws"
+                if request
+                    .arguments
+                    .as_ref()
+                    .is_some_and(|a| a.contains_key("large")) =>
+            {
+                CallToolResult::success(vec![ContentBlock::image(
+                    "A".repeat(5 * 1024 * 1024 + 4),
+                    "image/png".to_owned(),
+                )])
+            }
             "draws" => CallToolResult::success(vec![
+                ContentBlock::text("the chart:"),
                 ContentBlock::image("aGVsbG8=".to_owned(), "image/png".to_owned()),
                 ContentBlock::resource(
                     ResourceContents::blob("JVBERi0=", "file:///report.pdf")
@@ -468,22 +481,58 @@ async fn a_tool_that_fails_is_an_error_result_rather_than_a_broken_loop() {
     assert_eq!(output.content.to_text(), "it blew up");
 }
 
+/// An image goes in as the picture it is, between the text around it, for each provider to send as
+/// its API lets it; what cannot be carried is named rather than dropped.
 #[tokio::test]
-async fn content_that_cannot_be_text_is_named_rather_than_dropped() {
+async fn an_image_is_carried_and_what_cannot_be_is_named() {
     let (server, _) = bench("files").await;
     let kernel = kernel();
     server.install(&kernel).await.unwrap();
 
     let output = invoke(&kernel.tool("files__draws").unwrap(), json!({})).await;
-    let text = output.content.to_text();
 
-    assert!(text.contains("image/png"), "{text}");
+    let Content::Blocks(blocks) = &output.content else {
+        panic!("text and a picture, in order: {:?}", output.content);
+    };
+    let said: Vec<&Content> = blocks
+        .iter()
+        .filter_map(Block::said)
+        .map(|part| &part.content)
+        .collect();
+    assert_eq!(said.len(), 3, "{said:?}");
+    assert_eq!(said[0].to_text(), "the chart:");
+    let image = said[1].as_blob().expect("the picture itself");
+    assert_eq!(
+        (image.media_type.as_ref(), image.data.as_ref()),
+        ("image/png", "aGVsbG8=")
+    );
+    // an embedded resource says what it was, as one read on its own does
+    let text = said[2].to_text();
+    assert!(text.contains("application/pdf"), "{text}");
     assert!(
         text.contains("not carried into the context"),
         "a gap would be worse than a sentence saying what is missing: {text}"
     );
-    // and an embedded resource says what it was, as one read on its own does
-    assert!(text.contains("application/pdf"), "{text}");
+}
+
+/// An image larger than an API takes is named, as every image was before: carried, it would have
+/// every later request refused while it stayed in the context.
+#[tokio::test]
+async fn an_image_too_large_to_send_is_named() {
+    let (server, _) = bench("files").await;
+    let kernel = kernel();
+    server.install(&kernel).await.unwrap();
+
+    let output = invoke(
+        &kernel.tool("files__draws").unwrap(),
+        json!({ "large": true }),
+    )
+    .await;
+    let text = output.content.to_text();
+
+    assert!(output.content.blobs().is_empty(), "nothing carried");
+    assert!(text.contains("too large to send"), "{text}");
+    assert!(text.contains("image/png"), "{text}");
 }
 
 #[tokio::test]

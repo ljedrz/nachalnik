@@ -61,9 +61,13 @@ name is what tells a server's tools apart.
 | text blocks | joined, as text |
 | `structuredContent` | `Content::Json` in place of any blocks — a server that returned structure meant it |
 | `isError` | `ToolOutput::error`, handed to the model rather than stopping the loop |
-| images, audio, resources | *named*, not dropped: `[an image (image/png), not carried into the context]` |
+| images | carried, as a `Content::Blob` between the text around them, unless larger than 5MB of base64 |
+| audio, resources, larger images | *named*, not dropped: `[audio (audio/wav), not carried into the context]` |
 
-An image can't go into a text context, and saying what was there is better than leaving a gap.
+An image goes to the model as each provider's API allows: inside the tool result for Anthropic's and
+OpenAI's Responses, and as a line naming it for Chat Completions and Gemini, whose tool results are
+text. Anything that can't be carried is named, because saying what was there is better than leaving
+a gap.
 
 Resources are read on request and returned as `ContextItem`s, which you can add to the context or
 not; a server offering forty documents doesn't mean you want all forty in the context. A resource
