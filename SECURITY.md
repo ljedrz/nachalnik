@@ -194,7 +194,10 @@ cause harm, what stops them, and what doesn't.
   machine are refused: the page only accepts same-origin JSON requests addressed to an IP address
   or `localhost`. Clients can answer permission questions, so the session's own commands are kept
   out too: ports the session or its page are served on are closed to every command sandboxed while
-  they're open. A socket file can be reached by every sandboxed command below Linux 7.1, and from
+  they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel the ruleset is
+  `Partial` and a port is closed only where the network is shut or asked about, which the gate
+  holds, so with TCP allowed or refused by Landlock alone, a command can reach a session served
+  over TCP and answer its questions. A socket file can be reached by every sandboxed command below Linux 7.1, and from
   7.1 by any that may write where it is, so connections are refused when the other end is in the
   session of a command this process sandboxed (each runs in its own session), which covers anything
   it left running. What gets through: a process a command started with `setsid`, the `gateway`
