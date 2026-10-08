@@ -61,7 +61,7 @@ fn error_in(event: &Value) -> Option<&Value> {
 /// note: by name because two dialects do not number theirs. The Responses API calls a rate limit
 /// `rate_limit_exceeded` and Anthropic's calls it a `rate_limit_error`, and as `0` neither was
 /// waited out - the one refusal that most wants to be.
-fn code_of(error: &Value) -> u64 {
+pub(crate) fn code_of(error: &Value) -> u64 {
     if let Some(code) = error["code"]
         .as_u64()
         .or_else(|| error["code"].as_str().and_then(|code| code.parse().ok()))

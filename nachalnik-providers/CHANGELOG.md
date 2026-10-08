@@ -48,6 +48,9 @@ minor bump may break you.
 - **A Responses stream stopped before its first item is a stopped turn.** Interrupted after the
   server had said the response existed and before any of it, the turn failed as a stream that
   carried no data.
+- **A rate limit inside a whole answer's 200 is read as a stream's is**: its code may be a number,
+  a number in a string or a name such as `rate_limit_exceeded`. Only a number was read, so the
+  same refusal a stream waited out failed a whole-answer turn at once.
 
 ## [0.9.0] - 2026-10-06
 

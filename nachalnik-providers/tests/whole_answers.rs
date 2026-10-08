@@ -98,6 +98,27 @@ async fn a_rate_limit_inside_a_good_status_is_waited_out_like_any_other() {
     );
 }
 
+/// And one whose code is a name, as OpenAI's own errors give it, is waited out the same way.
+///
+/// note: the streamed path read `rate_limit_exceeded` as the 429 it is, and this one read only a
+/// number, so the same refusal was waited out in a stream and failed the turn outright here.
+#[tokio::test]
+async fn a_rate_limit_named_rather_than_numbered_inside_a_good_status_is_waited_out() {
+    const NAMED: &str = concat!(
+        "{\"error\":{\"code\":\"rate_limit_exceeded\",",
+        "\"message\":\"Rate limit reached, try again shortly\"}}",
+    );
+    let provider = Arc::new(
+        OpenAiCompatible::new("busy", busy_then(NAMED, ANSWERED).await, "no key needed")
+            .streaming(false),
+    );
+    let kernel = Kernel::new(Config::default());
+    kernel.set_provider(provider.clone());
+    kernel.push(ContextItem::user("go"));
+    kernel.step().await.expect("the second attempt is answered");
+    assert_eq!(provider.attempts(), 2, "the refusal was waited out");
+}
+
 /// A spent daily quota is not waited out, because it will still be spent in a minute.
 #[tokio::test]
 async fn a_daily_quota_is_told_apart_from_a_server_that_is_merely_busy() {

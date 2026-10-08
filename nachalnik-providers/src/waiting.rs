@@ -405,7 +405,8 @@ pub(crate) async fn sent(
                         else {
                             return Ok(Sent::Whole(payload));
                         };
-                        let code = error["code"].as_u64().unwrap_or_default();
+                        // read as a stream's would be: a number, a number in a string, or a name
+                        let code = crate::reading::code_of(error);
                         Busy::Refused {
                             code,
                             said: failure(error),
