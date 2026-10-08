@@ -16,6 +16,9 @@ minor bump may break you.
 
 ### changed
 
+- **A headless run waits out a busy endpoint for about five minutes**, ten tries rather than four,
+  since nobody is watching to be told sooner and a rate limit several sessions share lasts longer
+  than fourteen seconds. `--deadline` still bounds the run. A session with a screen is unchanged.
 - **The page listens on loopback, or on a private-network IP address** (10/8, 172.16/12,
   192.168/16, fc00::/7) for a phone on the same network, with a warning at startup and in each
   session. Host names, wildcards and public addresses are refused; from further away, use a tunnel

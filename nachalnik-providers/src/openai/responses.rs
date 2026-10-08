@@ -273,6 +273,7 @@ pub(super) async fn respond(
         model: &model,
         deltas: &deltas,
         notice: &provider.notice,
+        tries: provider.tries(),
     };
 
     let sending = || {

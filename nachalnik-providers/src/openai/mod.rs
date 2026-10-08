@@ -15,7 +15,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, Keyed, Published, install_crypto, same_model, waiting::WHOLE_ANSWER,
+    Dialect, Endpoint, Keyed, Published, RETRIES, install_crypto, same_model, waiting::WHOLE_ANSWER,
 };
 
 mod responses;
@@ -69,6 +69,9 @@ pub struct OpenAiCompatible {
     /// How many HTTP requests this has made in its life, retries counted separately. Never reset:
     /// what it answers is "what did this cost", which a run wants at the end of it.
     attempts: AtomicUsize,
+    /// How many times a request is sent while the server is busy, the first included; see
+    /// [`Dialect::set_tries`].
+    tries: AtomicUsize,
     /// What the last retry was about, taken by [`Endpoint::take_notice`], for a client that has
     /// somewhere to put it and no stderr to spare.
     notice: Mutex<Option<String>>,
@@ -124,6 +127,7 @@ impl OpenAiCompatible {
             configured: None,
             listed: Mutex::new(Entry::default()),
             attempts: AtomicUsize::new(0),
+            tries: AtomicUsize::new(RETRIES),
             notice: Mutex::new(None),
             app: Attribution::default(),
             label: "openai-compatible".to_owned(),
@@ -275,6 +279,11 @@ impl OpenAiCompatible {
     /// listing or a probe is not one.
     pub fn attempts(&self) -> usize {
         self.attempts.load(Ordering::SeqCst)
+    }
+
+    /// How many times a request may be sent while the server is busy; see [`Dialect::set_tries`].
+    fn tries(&self) -> usize {
+        self.tries.load(Ordering::SeqCst)
     }
 
     /// Says which app these requests are being made on behalf of, all of it at once.
@@ -738,6 +747,10 @@ impl Endpoint for OpenAiCompatible {
 }
 
 impl Dialect for OpenAiCompatible {
+    fn set_tries(&self, tries: usize) {
+        self.tries.store(tries.max(1), Ordering::SeqCst);
+    }
+
     /// The default, for chat completions: see [`Dialect::projection`]. The Responses API takes a
     /// turn as the ordered items it was, so it is projected as blocks, as the Gemini and Anthropic
     /// dialects' are.
