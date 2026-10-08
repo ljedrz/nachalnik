@@ -23,6 +23,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.9.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
+
 - **`Gemini` declares a tool's schema as `parametersJsonSchema`**, rather than `parameters`, which
   is Google's own `Schema` and has no `$ref`, `$defs`, `additionalProperties`, `const` or list of
   types: a tool using any of them - ordinary in an MCP server's - made every request a 400.
