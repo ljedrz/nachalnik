@@ -696,6 +696,59 @@ async fn the_permissions_tab_admits_what_a_shell_can_do() {
 }
 
 #[tokio::test]
+async fn the_permissions_footer_keeps_its_first_part_when_it_runs_out_of_room() {
+    let mut harness = Harness::new([]);
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("grep", "found it").with_capabilities([Capability::fs("read")]),
+    ));
+    harness.app.kernel.add_tool(Arc::new(
+        ConstTool::new("sh", "output").with_capabilities([Capability::exec("run")]),
+    ));
+    harness.app.confinement = Confinement::Full;
+    harness.app.policy.gate_the_network();
+    harness
+        .app
+        .policy
+        .set(&Subject::Capability(Capability::fs("read")), Verdict::Allow);
+    harness.tab(Tab::Permissions);
+    let footer = |screen: &str| {
+        screen
+            .lines()
+            .rev()
+            .find(|line| line.starts_with('└'))
+            .unwrap_or_else(|| panic!("the window has a bottom edge: {screen}"))
+            .to_owned()
+    };
+
+    // wide enough for all of it
+    let screen = harness.sized(160, 20);
+    assert!(
+        footer(&screen).contains("shell: confined, network gated"),
+        "{screen}"
+    );
+    assert!(footer(&screen).contains("r ask again"), "{screen}");
+
+    // the line is right-aligned, and a title too wide for its border is cut from the left: the
+    // sandbox line, which is the one part that is not negotiable, would be the first thing to go.
+    // The keys go instead, whole
+    let screen = harness.sized(90, 20);
+    let line = footer(&screen);
+    assert!(
+        line.contains("─ shell: confined, network gated · "),
+        "{screen}"
+    );
+    assert!(line.contains("more it will ask about"), "{screen}");
+    assert!(!line.contains("space cycles"), "{screen}");
+
+    // ... and with no room even for that, it is shortened from its end
+    let screen = harness.sized(24, 20);
+    assert!(
+        footer(&screen).contains(" shell: confined, ne… "),
+        "{screen}"
+    );
+}
+
+#[tokio::test]
 async fn a_path_rule_is_finer_than_the_capability_above_it() {
     let mut harness = Harness::new([
         ModelResponse::tool_calls(vec![call("c1", "read", json!({ "path": "src/main.rs" }))]),
