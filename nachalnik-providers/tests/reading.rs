@@ -91,6 +91,28 @@ fn dialects(url: &str) -> Vec<(&'static str, Arc<dyn Provider>)> {
     ]
 }
 
+/// The same, as [`Dialect`](nachalnik_providers::Dialect)s, with the Anthropic one as well, for a
+/// test about what is set on one rather than what it reads.
+fn turns(url: &str) -> Vec<(&'static str, Arc<dyn nachalnik_providers::Dialect>)> {
+    vec![
+        #[cfg(feature = "openai")]
+        (
+            "openai",
+            Arc::new(nachalnik_providers::OpenAiCompatible::new("m", url, "k")) as Arc<_>,
+        ),
+        #[cfg(feature = "gemini")]
+        (
+            "gemini",
+            Arc::new(nachalnik_providers::Gemini::new("m", url, "k")) as Arc<_>,
+        ),
+        #[cfg(feature = "anthropic")]
+        (
+            "anthropic",
+            Arc::new(nachalnik_providers::Anthropic::new("m", url, "k")) as Arc<_>,
+        ),
+    ]
+}
+
 /// The last event of a body is read when nothing follows it - no blank line, no newline at all.
 ///
 /// note: the reader took a line to be what ends in a newline, so the bytes after the last one
@@ -1031,25 +1053,13 @@ async fn a_refusal_that_names_no_wait_is_waited_out_for_longer_each_time() {
 /// clock, so that the minutes are not sat through.
 #[tokio::test(start_paused = true)]
 async fn a_dialect_given_more_tries_waits_no_more_than_a_minute_between_them() {
-    use nachalnik_providers::Dialect;
-
-    let built: Vec<(&str, fn(&str) -> Arc<dyn Dialect>)> = vec![
-        #[cfg(feature = "openai")]
-        ("openai", |url| {
-            Arc::new(nachalnik_providers::OpenAiCompatible::new("m", url, "k"))
-        }),
-        #[cfg(feature = "gemini")]
-        ("gemini", |url| {
-            Arc::new(nachalnik_providers::Gemini::new("m", url, "k"))
-        }),
-        #[cfg(feature = "anthropic")]
-        ("anthropic", |url| {
-            Arc::new(nachalnik_providers::Anthropic::new("m", url, "k"))
-        }),
-    ];
-    for (dialect, build) in built {
+    for (dialect, _) in turns("http://127.0.0.1:1") {
         let arrived = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let provider = build(&busy(arrived.clone()).await);
+        let url = busy(arrived.clone()).await;
+        let (_, provider) = turns(&url)
+            .into_iter()
+            .find(|(d, _)| *d == dialect)
+            .expect("built above");
         provider.set_tries(9);
 
         asked(provider).await.expect_err("busy every time");
