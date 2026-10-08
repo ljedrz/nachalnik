@@ -172,6 +172,25 @@ async fn an_unsure_rating_is_not_drawn_green() {
     assert!(screen.contains("40% sure"), "{screen}");
 }
 
+/// And a score that is no position on the rubric is no rating at all, rather than the green one.
+///
+/// note: everything under half a level reads as the bottom band, so a score below the bottom - an
+/// engine answering out of its range - was drawn as a command that only looks, and a sure one.
+#[tokio::test]
+async fn a_score_off_the_rubric_is_not_drawn_green() {
+    let mut harness = asking(-3.0, 0.99).await;
+
+    let screen = harness.screen();
+    assert!(
+        !screen.contains("looks, and leaves nothing changed"),
+        "{screen}"
+    );
+    assert!(
+        screen.contains("the advisor could not rate this"),
+        "{screen}"
+    );
+}
+
 /// The stage that earned the band is underlined in the command, and the rest is not.
 ///
 /// note: the whole point of taking a command apart. The band says a command is grave and the
