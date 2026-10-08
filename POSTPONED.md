@@ -32,6 +32,13 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   and `undo` doesn't notice it. The open question is whether a recount should be an undoable
   operation (with a checkpoint and the undo history it uses) or something `undo` re-applies.
 
+- **`Kernel::set_full_notice` is announced by nothing.** It is the one component setter with no
+  event, so a log reads the notice only once one is placed, as a `context.added`, and never says
+  which notice was set, changed or taken away before then. Announcing it needs a new event kind -
+  a change to the record every reader of the log meets - and whether to carry the notice's text
+  or only that one is set is the open question. Unblocked by a client that needs to tell from the
+  log what notice a session had.
+
 - **`--allow-server` for a server this run doesn't start.** A server rule naming a server that isn't
   running is refused, for both allow and deny, just as rules for a domain no tool uses are. A
   settings file that allows a server is refused along with it when `--mcp` on the command line
