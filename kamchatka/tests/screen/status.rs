@@ -1874,6 +1874,75 @@ async fn a_line_after_a_switch_waits_for_the_switch() {
     );
 }
 
+/// A switch typed into a running turn waits for the end of it, and what is typed after the switch
+/// waits behind it.
+///
+/// note: it took effect there and then, so the rest of the turn went to a model it had not
+/// started with, and the counter's calibration was reset under a request in flight.
+#[tokio::test]
+async fn a_switch_typed_into_a_turn_waits_for_the_end_of_it() {
+    let mut harness = Harness::new([
+        ModelResponse::text("the first answer"),
+        ModelResponse::text("the second answer"),
+    ]);
+
+    harness.send("go").await;
+    assert!(harness.app.busy, "the turn is running");
+    harness.send("/model something-else").await;
+    harness.send("and after it").await;
+    // which the loops do on every pass, the turn's included
+    harness.app.release().await;
+
+    let screen = harness.flat();
+    assert!(
+        screen.contains("this switches when the turn ends"),
+        "{screen}"
+    );
+    assert!(
+        harness.app.settling.is_none(),
+        "nothing was switched under the turn"
+    );
+    assert_ne!(harness.app.provider.model(), "something-else");
+
+    // the turn, then the switch it held, then the line that waited behind the switch
+    for _ in 0..3 {
+        harness.settle().await;
+    }
+    assert_eq!(harness.app.provider.model(), "something-else");
+    let items: Vec<String> = harness
+        .app
+        .kernel
+        .items()
+        .iter()
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    let answered = items
+        .iter()
+        .position(|text| text.contains("the first answer"))
+        .expect("the turn the switch waited for");
+    let after = items
+        .iter()
+        .position(|text| text.contains("and after it"))
+        .expect("the line that waited behind the switch went in");
+    assert!(answered < after, "{items:?}");
+}
+
+/// Two switches typed into one turn are made in the order they were typed, so the later one stands.
+#[tokio::test]
+async fn two_switches_typed_into_a_turn_are_made_in_order() {
+    let mut harness = Harness::new([ModelResponse::text("the answer")]);
+
+    harness.send("go").await;
+    harness.send("/model the-first").await;
+    harness.send("/model the-second").await;
+
+    // the turn, then each switch coming back
+    for _ in 0..3 {
+        harness.settle().await;
+    }
+    assert_eq!(harness.app.provider.model(), "the-second");
+}
+
 /// The context tab says how much has to go, because that is the tab somebody goes to in order to
 /// make it go.
 ///

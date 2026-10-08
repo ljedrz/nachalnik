@@ -30,6 +30,10 @@ minor bump may break you.
   tunnel such as `ssh -L`. `--serve` stays loopback-only. `examples/gateway.rs` now uses `kamchatka::web`
   and has the same rules.
 - **The page can relay to a session on a `unix:` socket**; it used to require a TCP port.
+- **`/model` and `/endpoint` typed into a running turn wait for the end of it**, as a message
+  does, rather than switching under a request in flight - the rest of the turn went to a model it
+  had not started with, and the counter's calibration was reset under it. What is typed after the
+  switch waits behind it, so it is answered by the model switched to.
 - **`/params` reads inside a parameter under `--gemini`.** It lists what Google's listing
   publishes - `generationConfig.temperature  default 1, at most 2` and the rest - where it listed
   nothing, a key with a `.` sets the one field inside a parameter without taking its neighbours

@@ -231,11 +231,17 @@ impl App {
     /// carried it has gone. `true` where it handed anything in, which is a loop's cue to draw.
     pub async fn release(&mut self) -> bool {
         let mut released = false;
+        // and not a switch while the turn it waits for is still running; see `App::submit`
         while !self.in_flight()
+            && !(self.mid_turn()
+                && self
+                    .held
+                    .front()
+                    .is_some_and(|(line, _)| super::command::switches(line)))
             && let Some((line, keys)) = self.held.pop_front()
         {
             let had = std::mem::replace(&mut self.keys, keys);
-            let reply = Box::pin(self.submit(&line)).await;
+            let reply = Box::pin(self.submitted(&line, true)).await;
             self.keys = had;
             if !keys && let Some(Overlay::Text { title, pages, .. }) = reply.page {
                 let pages: Vec<String> = pages
