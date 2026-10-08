@@ -32,7 +32,7 @@
 use std::{env, sync::Arc};
 
 use nachalnik::{
-    Block, Config, Content, ContextItem, ContextKind, Kernel, Params, State, StopReason,
+    Block, Config, Content, ContextItem, ContextKind, Kernel, Params, Provider, State, StopReason,
     test::{AllowAll, EchoTool},
 };
 use nachalnik_providers::{Anthropic, anthropic::DEFAULT_BASE_URL, is_openrouter};
@@ -41,6 +41,11 @@ use serde_json::{Value, json};
 /// A kernel talking to the configured endpoint, or `None` where no key was given, sending the
 /// parameters `params` makes of the provider once it has asked the endpoint about the model.
 async fn kernel(params: impl FnOnce(&Anthropic) -> Params) -> Option<Kernel> {
+    connected(params).await.map(|(kernel, _)| kernel)
+}
+
+/// [`kernel`], and the provider it talks through.
+async fn connected(params: impl FnOnce(&Anthropic) -> Params) -> Option<(Kernel, Arc<Anthropic>)> {
     let base = env::var("NACHALNIK_ANTHROPIC_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.into());
     let key = match is_openrouter(&base) {
         true => env::var("OPENROUTER_API_KEY"),
@@ -68,10 +73,10 @@ async fn kernel(params: impl FnOnce(&Anthropic) -> Params) -> Option<Kernel> {
     sent.extend(params(&provider));
 
     let kernel = Kernel::new(Config::default());
-    kernel.set_provider(provider);
+    kernel.set_provider(provider.clone());
     kernel.set_params(sent);
     kernel.set_policy(Arc::new(AllowAll));
-    Some(kernel)
+    Some((kernel, provider))
 }
 
 /// What the model said last, as plain text.
@@ -192,6 +197,51 @@ async fn the_second_turn_reads_the_first_from_the_cache() {
             .is_some_and(|cached| cached > 4096),
         "{usage:?}"
     );
+}
+
+/// An instruction added mid-session is taken and followed, and where it is said in place - on a
+/// model that takes a `system` message in the conversation - the start of it is still read from
+/// the cache. A model that takes none is asked again with it at the top.
+#[tokio::test]
+async fn an_instruction_added_later_is_followed_and_the_cache_kept() {
+    let Some((kernel, provider)) = connected(|_| Params::new()).await else {
+        return;
+    };
+    let rules: String = (1..=600)
+        .map(|n| format!("Rule {n}: the duty officer at post {n} answers in one word.\n"))
+        .collect();
+    kernel.push(ContextItem::system(rules));
+    kernel.push(ContextItem::user("Reply with the word pong."));
+    kernel.turn().await.expect("the first turn is answered");
+
+    kernel.push(ContextItem::user("Reply with the word ping."));
+    kernel.push(ContextItem::system(
+        "From now on, answer in capital letters only.",
+    ));
+    let state = kernel.turn().await.expect("the second turn is answered");
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    assert!(said(&kernel).contains("PING"), "{}", said(&kernel));
+
+    // how the next request would carry it, which is how this one did
+    let next = provider
+        .render(&kernel.preview_request().expect("a request"))
+        .expect("this provider always renders");
+    let in_place = next["messages"]
+        .as_array()
+        .is_some_and(|messages| messages.iter().any(|message| message["role"] == "system"));
+    let usage = kernel
+        .last_response()
+        .and_then(|response| response.usage)
+        .expect("the cost is reported");
+    eprintln!("in place: {in_place}, {usage:?}");
+    if in_place {
+        assert!(
+            usage
+                .cached_input_tokens
+                .is_some_and(|cached| cached > 4096),
+            "{usage:?}"
+        );
+    }
 }
 
 /// Thinking turned on the way the model takes it, as the endpoint says it does.

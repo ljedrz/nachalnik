@@ -20,8 +20,8 @@
 //!
 //! # Two things the newest models hold against an edited history
 //!
-//! Neither is handled here yet, and both come from the same rule on Anthropic's side: that the
-//! start of a conversation, once sent, is sent the same way again.
+//! Both come from the same rule on Anthropic's side: that the start of a conversation, once sent,
+//! is sent the same way again.
 //!
 //! **A signed thinking block is bound to the conversation before it** on Claude Fable 5.1, Opus
 //! 5.5 and Sonnet 5.5. Its signature records the instructions, the tools and every message ahead of
@@ -32,20 +32,21 @@
 //! as a matter of course, so on those models, on such an account, either turn the thinking off -
 //! `{"type": "between_tools"}` as the `thinking` parameter, on Sonnet 5.5, at an effort of `high`
 //! or below - or use a model without the rule: Opus 5, Opus 4.8, Sonnet 5, Haiku 4.5. Opus 5.5's
-//! thinking cannot be turned off.
+//! thinking cannot be turned off. This one is not handled here: what would settle it is in
+//! POSTPONED.md.
 //!
-//! **An instruction added mid-session goes to the top.** Every system message is joined into
-//! `system`, wherever it stood, so one added later - a reconcile's, a fork's question - changes the
-//! start of the prompt, and the request it first goes out with writes the whole cache again (and,
-//! under the rule above, invalidates the thinking before it). Anthropic's newer models take a
-//! `role: "system"` message in place, after the turns it follows, but only on some models and only
-//! in some positions - after a user turn, and last or before an assistant turn - and anything else
-//! is a 400. One rewrite per instruction added is the cost of not finding out by being refused;
-//! the cache is turned off with `cache_control: false` among the parameters.
-//!
-//! What would settle both is in POSTPONED.md.
+//! **An instruction added mid-session is said where it stands.** The instructions a conversation
+//! starts with are `system`; one added later - a reconcile's, a fork's question - is a
+//! `role: "system"` message in the conversation, so the start of the prompt, and the cache of it,
+//! is left as it was. This API takes one only after a user turn, and only before an assistant turn
+//! or at the end - the first message, or one after an answer, is a 400 - so one added after an
+//! answer waits for the next user turn and is said after it. A model that takes none, Haiku 4.5
+//! among them, refuses it with "role 'system' is not supported on this model"; that request is
+//! sent again with every instruction joined into `system`, and so is every later one to the same
+//! model. Nothing in the API's description of a model says which kind it is. OpenRouter takes the
+//! message in place for either kind of model.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use nachalnik::{
     Block, BoxError, Content, DeltaSink, LinearProjector, Message, ModelInfo, ModelRequest,
@@ -97,6 +98,9 @@ pub struct Anthropic {
     configured: Option<usize>,
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
+    /// Whether an instruction added mid-session is sent where it stands, as a `system` message,
+    /// rather than joined into `system` at the top: until the model says it takes no such message.
+    in_place: AtomicBool,
     notice: Mutex<Option<String>>,
 }
 
@@ -138,6 +142,7 @@ impl Anthropic {
             capabilities: Mutex::new(None),
             configured: None,
             attempts: AtomicUsize::new(0),
+            in_place: AtomicBool::new(true),
             notice: Mutex::new(None),
         }
     }
@@ -481,6 +486,29 @@ fn wire_id(id: &ToolCallId) -> String {
     }
 }
 
+/// Puts the instructions waiting for a place after the user turn the conversation ends with, if
+/// it ends with one.
+///
+/// note: the only place this API takes a `system` message is after a user turn and before an
+/// assistant turn or at the end - anywhere else, the first of the conversation included, is a
+/// 400. An instruction added after an answer waits for the next user turn, and is said after it.
+fn instructed(messages: &mut Vec<Value>, waiting: &mut Vec<String>) {
+    if messages.last().is_some_and(|last| last["role"] == "user") {
+        messages.extend(
+            waiting
+                .drain(..)
+                .map(|said| json!({ "role": "system", "content": said })),
+        );
+    }
+}
+
+/// Whether a model refused a `system` message for not taking one anywhere.
+fn takes_no_system_messages(error: &BoxError) -> bool {
+    error
+        .to_string()
+        .contains("role 'system' is not supported on this model")
+}
+
 /// Whether a value says nothing: null, or an empty string, list or object.
 fn is_empty(value: &Value) -> bool {
     match value {
@@ -561,20 +589,26 @@ impl Provider for Anthropic {
 
     /// The payload, rendered once. `respond` sends exactly this.
     fn render(&self, request: &ModelRequest) -> Option<Value> {
+        let in_place = self.in_place.load(Ordering::SeqCst);
         let mut instructions: Vec<String> = Vec::new();
         let mut messages: Vec<Value> = Vec::new();
+        // instructions added mid-session, waiting for the place this API takes them in
+        let mut waiting: Vec<String> = Vec::new();
 
         for message in &request.messages {
             let (role, blocks) = match message.role {
                 Role::System => {
-                    // this API keeps its instructions out of the conversation, as Google's does
-                    instructions.extend(
-                        message
-                            .content
-                            .as_ref()
-                            .map(|said| said.to_text().into_owned())
-                            .filter(|said| !said.is_empty()),
-                    );
+                    let said = message
+                        .content
+                        .as_ref()
+                        .map(|said| said.to_text().into_owned())
+                        .filter(|said| !said.is_empty());
+                    // this API keeps the instructions a conversation starts with out of it, as
+                    // Google's does; see the module docs for the ones added later
+                    match in_place && !messages.is_empty() {
+                        true => waiting.extend(said),
+                        false => instructions.extend(said),
+                    }
                     continue;
                 }
                 Role::Assistant => ("assistant", Self::turn(message)),
@@ -583,6 +617,9 @@ impl Provider for Anthropic {
             };
             if blocks.is_empty() {
                 continue;
+            }
+            if role == "assistant" {
+                instructed(&mut messages, &mut waiting);
             }
 
             // turns alternate here, so three tool results are three blocks of one turn rather
@@ -596,6 +633,11 @@ impl Provider for Anthropic {
                 _ => messages.push(json!({ "role": role, "content": blocks })),
             }
         }
+
+        instructed(&mut messages, &mut waiting);
+        // one that came after the last answer and before anything else has nowhere to go but the
+        // top
+        instructions.append(&mut waiting);
 
         // note: in a user turn the results come first. This API refuses one that answers a call
         // after something else has been said, and a reference or a note the kernel put between
@@ -657,13 +699,30 @@ impl Provider for Anthropic {
         deltas: DeltaSink,
     ) -> Result<ModelResponse, BoxError> {
         let body = self.render(&request).expect("this provider always renders");
+        match self.ask(&body, &deltas).await {
+            // the instructions go to the top from now on, and this request goes again with them
+            // there; a model refuses the message whatever it says, so this is once per model
+            Err(e)
+                if takes_no_system_messages(&e) && self.in_place.swap(false, Ordering::SeqCst) =>
+            {
+                let body = self.render(&request).expect("this provider always renders");
+                self.ask(&body, &deltas).await
+            }
+            answered => answered,
+        }
+    }
+}
+
+impl Anthropic {
+    /// Sends one rendered request and reads what came of it.
+    async fn ask(&self, body: &Value, deltas: &DeltaSink) -> Result<ModelResponse, BoxError> {
         // one lock to a statement; see `info`
         let base = self.endpoint();
         let model = self.model();
         let limit = *self.context_limit.lock();
         let asking = Asking {
             model: &model,
-            deltas: &deltas,
+            deltas,
             notice: &self.notice,
         };
 
@@ -673,16 +732,16 @@ impl Provider for Anthropic {
                 .post(&url)
                 .anthropic_key(&self.api_key)
                 .header("anthropic-version", VERSION)
-                .json(&body)
+                .json(body)
         };
         let mut streamed = Streamed::default();
         match sent(&asking, &self.attempts, limit, true, sending, &mut streamed).await? {
             Sent::Interrupted => Ok(interrupted()),
             // never asked for here, and read as what it would be if it came
-            Sent::Whole(payload) => unstreamed(payload.to_string(), streamed, &deltas),
+            Sent::Whole(payload) => unstreamed(payload.to_string(), streamed, deltas),
             Sent::Streamed(Read::Events(events, stopped)) => Ok(answer(streamed, events, stopped)),
             Sent::Streamed(Read::Interrupted) => Ok(interrupted()),
-            Sent::Streamed(Read::Unstreamed(body)) => unstreamed(body, streamed, &deltas),
+            Sent::Streamed(Read::Unstreamed(body)) => unstreamed(body, streamed, deltas),
             Sent::Streamed(Read::Refused { said, .. }) => Err(refused(said, limit)),
         }
     }
@@ -938,6 +997,7 @@ impl Endpoint for Anthropic {
         *self.context_limit.lock() = self.configured;
         *self.output_limit.lock() = None;
         *self.capabilities.lock() = None;
+        self.in_place.store(true, Ordering::SeqCst);
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -949,6 +1009,7 @@ impl Endpoint for Anthropic {
         *self.context_limit.lock() = self.configured;
         *self.output_limit.lock() = None;
         *self.capabilities.lock() = None;
+        self.in_place.store(true, Ordering::SeqCst);
         match model {
             Some(model) => self.set_model(model).await,
             None => {
