@@ -214,6 +214,10 @@ to the session's own commands, like the session's port.
 The page has the same four tabs as the terminal, in the same order: the button in the top right
 corner cycles **chat → context → events → permissions**.
 
+![The page on a phone, one tab per panel: the chat with the model's reasoning and its answer, the
+context with each item's state button, the events with the time each step took, and the permissions
+with allow, ask and deny for each rule.][shot-web]
+
 The **context** view shows the same rows as the context tab: what each item is, its estimated cost,
 and what the next request will do with it. Tapping a row loads the whole item, since the session
 only sends item summaries; the button on the right of a row shows its state, and tapping it moves
@@ -764,3 +768,5 @@ program goes back to judging commands by name: a short list of programs that exi
 network are asked about before they run, and UDP isn't refused. The permissions tab ends a
 sandboxed shell's line with `network gated` or `network not gated`, so you can see which applies;
 under `--no-sandbox` the line is `shell: a command can do any of these` instead.
+
+[shot-web]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/web.jpg
