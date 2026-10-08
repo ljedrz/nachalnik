@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### changed
+
+- **An image a tool returns is carried into the context**, as a `Content::Blob` beside the text it
+  came with - a result of text and pictures is `Content::Blocks`, in order - rather than named.
+  Each provider sends it as its API allows: Anthropic's and OpenAI's Responses inside the tool
+  result, Chat Completions and Gemini as a line naming it. One larger than 5MB of base64 -
+  Anthropic's limit for an image, past which every request would be refused while it stayed in the
+  context - is named as before. A result with no image is the text it always was.
+
 ## [0.9.0] - 2026-10-06
 
 ### changed

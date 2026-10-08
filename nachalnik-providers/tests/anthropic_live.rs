@@ -33,7 +33,7 @@ use std::{env, sync::Arc};
 
 use nachalnik::{
     Block, Config, Content, ContextItem, ContextKind, Kernel, Params, Provider, State, StopReason,
-    test::{AllowAll, EchoTool},
+    test::{AllowAll, ConstTool, EchoTool},
 };
 use nachalnik_providers::{Anthropic, anthropic::DEFAULT_BASE_URL, is_openrouter};
 use serde_json::{Value, json};
@@ -242,6 +242,41 @@ async fn an_instruction_added_later_is_followed_and_the_cache_kept() {
             "{usage:?}"
         );
     }
+}
+
+/// A picture a tool returned is seen: carried inside the `tool_result`, between the text around it,
+/// as `nachalnik-mcp` hands one over.
+///
+/// note: a 16-pixel square of one colour, so that the answer is one word and cannot be guessed
+/// from the text beside it, which does not say.
+#[tokio::test]
+async fn a_picture_a_tool_returned_is_seen() {
+    const RED_SQUARE: &str = concat!(
+        "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR42mO4ICBAEmIY1TCqYfhqAABYoPABnlzdOQ",
+        "AAAABJRU5ErkJggg==",
+    );
+    let Some(kernel) = kernel(|_| Params::new()).await else {
+        return;
+    };
+    kernel.add_tool(Arc::new(ConstTool::new(
+        "look",
+        Content::blocks([
+            Block::text("the picture:"),
+            Block::text(Content::blob("image/png", RED_SQUARE)),
+        ]),
+    )));
+    kernel.push(ContextItem::user(
+        "Call the look tool once, then tell me in one word which colour the picture it returned \
+         is.",
+    ));
+
+    let state = kernel.turn().await.expect("the turn is answered");
+    assert!(matches!(state, State::Finished { .. }), "{state:?}");
+    assert!(
+        said(&kernel).to_lowercase().contains("red"),
+        "{}",
+        said(&kernel)
+    );
 }
 
 /// Thinking turned on the way the model takes it, as the endpoint says it does.

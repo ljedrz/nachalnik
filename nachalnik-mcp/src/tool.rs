@@ -5,7 +5,7 @@
 //! type.
 
 use nachalnik::{
-    BoxError, Capability, Content, Domain, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec,
+    Block, BoxError, Capability, Content, Domain, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec,
     async_trait,
 };
 use rmcp::{
@@ -207,11 +207,20 @@ impl Tool for McpTool {
     }
 }
 
+/// The largest image carried into the context, in base64.
+///
+/// note: Anthropic's limit for one image, the strictest of the APIs that take one in a tool
+/// result; past it the request is refused - this one and every later one, while the image stays
+/// in the context - so a larger one is named instead, as every image was before.
+const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
+
 /// Turns what a server returned into what the kernel records.
 ///
-/// note: MCP results are a list of blocks, and not all of them are text. Neither dialect this
-/// workspace speaks takes a picture inside a tool result (POSTPONED.md has what carrying one
-/// would take), so it is *named* rather than dropped silently - the model is told that
+/// note: MCP results are a list of blocks, and not all of them are text. An image goes in as the
+/// picture it is, beside the text it came with, and each provider sends it as its API lets it:
+/// Anthropic's and OpenAI's Responses as an image in the result, the others as a line naming it,
+/// since their tool results are text. Anything else that is not text - audio, a binary resource,
+/// an image too large to send - is *named* rather than dropped silently: the model is told that
 /// something came back and what it was, which is a better answer than a gap.
 fn output_of(result: CallToolResult) -> ToolOutput {
     let failed = result.is_error.unwrap_or(false);
@@ -226,11 +235,23 @@ fn output_of(result: CallToolResult) -> ToolOutput {
         };
     }
 
-    let mut parts = Vec::with_capacity(result.content.len());
+    // text runs are joined as they always were; a picture splits them
+    let mut parts: Vec<Content> = Vec::with_capacity(result.content.len());
+    let mut text: Vec<String> = Vec::new();
     for block in &result.content {
-        parts.push(match block {
-            ContentBlock::Text(text) => text.text.clone(),
-            ContentBlock::Image(image) => left_out("an image", Some(&image.mime_type)),
+        text.push(match block {
+            ContentBlock::Text(said) => said.text.clone(),
+            ContentBlock::Image(image) if image.data.len() <= LARGEST_IMAGE => {
+                if !text.is_empty() {
+                    parts.push(Content::text(text.join("\n")));
+                    text.clear();
+                }
+                parts.push(Content::blob(image.mime_type.clone(), image.data.clone()));
+                continue;
+            }
+            ContentBlock::Image(image) => {
+                left_out("an image too large to send", Some(&image.mime_type))
+            }
             ContentBlock::Audio(audio) => left_out("audio", Some(&audio.mime_type)),
             ContentBlock::Resource(resource) => match text_of(&resource.resource) {
                 Ok(text) => text.to_owned(),
@@ -249,10 +270,18 @@ fn output_of(result: CallToolResult) -> ToolOutput {
         });
     }
 
-    let text = parts.join("\n");
+    let content = match parts.is_empty() {
+        true => Content::text(text.join("\n")),
+        false => {
+            if !text.is_empty() {
+                parts.push(Content::text(text.join("\n")));
+            }
+            Content::blocks(parts.into_iter().map(Block::text))
+        }
+    };
     match failed {
-        true => ToolOutput::error(text),
-        false => ToolOutput::new(text),
+        true => ToolOutput::error(content),
+        false => ToolOutput::new(content),
     }
 }
 
