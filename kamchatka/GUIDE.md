@@ -13,6 +13,10 @@ directly. The status line is shown under all of them, so the budget is always vi
 is only on the chat tab; the other three are for reading and operating rather than typing.
 <kbd>tab</kbd> takes you back to the prompt from any of them.
 
+![Four sessions side by side, one on each tab: the chat with a shell command waiting to be allowed,
+the context with an item being edited, the trace of a session starting, and the permissions with
+each rule's answer and what it covers.][shot-tabs]
+
 The status line starts with what the runtime is doing: `idle`, `asking`, `ready`, `running`,
 `waiting on you` or `done`. While it's working, three dots move next to that word, and after five
 seconds it shows how long it's been; the dots stop if the program is stuck, and don't appear while
@@ -438,3 +442,5 @@ true total**, then how many matched and how many are shown, so a short answer ne
 
 A tool can be *removed* mid-session with `/tools toggle ID`, deliberately: watching how a model
 behaves when it loses the ability to check its own record partway through a run is worthwhile.
+
+[shot-tabs]: https://github.com/ljedrz/nachalnik/raw/HEAD/kamchatka/assets/tabs.jpg
