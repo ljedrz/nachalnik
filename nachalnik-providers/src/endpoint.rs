@@ -165,15 +165,15 @@ impl Published {
 mod tests {
     /// A dialect that says nothing about its list claims the list is everything the model takes.
     ///
-    /// note: asked of `Gemini`, which leaves the answer to the default. A client builds a different
-    /// sentence on each answer, and a default of `false` would have it call every parameter off
-    /// the list unchecked rather than ignored.
-    #[cfg(feature = "gemini")]
+    /// note: asked of `Anthropic`, which leaves the answer to the default. A client builds a
+    /// different sentence on each answer, and a default of `false` would have it call every
+    /// parameter off the list unchecked rather than ignored.
+    #[cfg(feature = "anthropic")]
     #[test]
     fn a_dialect_that_says_nothing_claims_its_list_is_all_of_it() {
-        use crate::{Dialect as _, Gemini};
+        use crate::{Anthropic, Dialect as _};
 
-        let provider = Gemini::new("m", "http://127.0.0.1:1", "no key");
+        let provider = Anthropic::new("m", "http://127.0.0.1:1", "no key");
         assert!(provider.lists_every_parameter());
     }
 }

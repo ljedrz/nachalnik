@@ -22,6 +22,11 @@ minor bump may break you.
   such as `ssh -L`. `--serve` stays loopback-only. `examples/gateway.rs` now uses `kamchatka::web`
   and has the same rules.
 - **The page can relay to a session on a `unix:` socket**; it used to require a TCP port.
+- **`/params` reads inside a parameter under `--gemini`.** It lists what Google's listing
+  publishes - `generationConfig.temperature  default 1, at most 2` and the rest - where it listed
+  nothing, a key with a `.` sets the one field inside a parameter without taking its neighbours
+  away (`/params generationConfig.temperature 0.5`), and `null` on one takes away a parameter it
+  leaves empty.
 
 ### removed
 

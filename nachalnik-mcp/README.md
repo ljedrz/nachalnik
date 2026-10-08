@@ -45,7 +45,8 @@ which is why it has to be chosen explicitly.
 
 Two servers may both offer `read`, and a kernel holds one tool per name, so names get the server's
 name as a prefix: `files__read`. Names are also rewritten to fit what model providers accept
-(`[a-zA-Z0-9_-]`, 64 characters), and rewriting can cause collisions, so `Installed::replaced` says
+(`[a-zA-Z0-9_-]`, 64 characters, starting with a letter or `_`, so `7zip__list` is sent as
+`_7zip__list`), and rewriting can cause collisions, so `Installed::replaced` says
 which tools were displaced. `without_prefix()` turns the prefix off, which is fine with a single
 server, but with two, one server's `read` silently replaces the other's.
 
@@ -65,8 +66,8 @@ name is what tells a server's tools apart.
 | audio, resources, larger images | *named*, not dropped: `[audio (audio/wav), not carried into the context]` |
 
 An image goes to the model as each provider's API allows: inside the tool result for Anthropic's and
-OpenAI's Responses, and as a line naming it for Chat Completions and Gemini, whose tool results are
-text. Anything that can't be carried is named, because saying what was there is better than leaving
+OpenAI's Responses, in the `functionResponse`'s own parts for Gemini, and as a line naming it for
+Chat Completions, whose tool results are text. Anything that can't be carried is named, because saying what was there is better than leaving
 a gap.
 
 Resources are read on request and returned as `ContextItem`s, which you can add to the context or

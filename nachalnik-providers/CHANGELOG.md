@@ -16,6 +16,16 @@ minor bump may break you.
 
 ### changed
 
+- **`Gemini` declares a tool's schema as `parametersJsonSchema`**, rather than `parameters`, which
+  is Google's own `Schema` and has no `$ref`, `$defs`, `additionalProperties`, `const` or list of
+  types: a tool using any of them - ordinary in an MCP server's - made every request a 400.
+- **`Gemini` reports the parameters its listing publishes figures for**, by their path into
+  `generationConfig` - `generationConfig.temperature`, `topP`, `topK`, `maxOutputTokens` - with
+  the defaults and maxima through `Dialect::published`, and the model's `max_output_tokens`.
+  `lists_every_parameter` is `false`, since the model takes more than the listing names. `probe`
+  asks even where a context limit was set by hand, and keeps that limit.
+- **`Gemini` sends a picture a tool returned**, as `inlineData` in the `functionResponse`'s own
+  `parts`, with the text around it in `response`, rather than a line naming it.
 - **`Anthropic` says an instruction added mid-session where it stands**, as a `role: "system"`
   message after the user turn it followed, rather than joining it into `system` at the top - which
   rewrote the start of the prompt and the whole cache of it. The instructions a conversation starts

@@ -65,7 +65,8 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
   `KAMCHATKA_CONTEXT_LIMIT` small enough for the compaction test to exceed (`12288` works),
   `KAMCHATKA_DOCUMENT_MODEL` for the PDF test, and `KAMCHATKA_GEMINI_API_KEY` for the tests of
   Google's own API.
-- **`nachalnik-providers`'** `anthropic_live` and `responses_live` read the vendors' own keys;
+- **`nachalnik-providers`'** `anthropic_live`, `responses_live` and `gemini_live` read the
+  vendors' own keys (`GEMINI_API_KEY` for the last);
   `system1` reads `NACHALNIK_SYSTEM1_MODEL`, and `kamchatka`'s `advise` reads
   `KAMCHATKA_SYSTEM1_MODEL` (the `system1` module's docs list which servers they've been run
   against).

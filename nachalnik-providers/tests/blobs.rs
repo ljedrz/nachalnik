@@ -5,11 +5,10 @@
 //! about everything else: this dialect wants a `data:` URI inside a list of typed content parts,
 //! that one wants an `inline_data` part beside the text ones.
 //!
-//! note: and they agree about one thing, which is the case worth pinning. Neither accepts a
-//! picture in a *tool result* - `tool` content is a string in one and a `functionResponse` object
-//! in the other - so a tool that returned one sends the sentence naming it instead. That is the
-//! answer `nachalnik-mcp` has always given, and it beats a 400 by enough to be worth being
-//! deliberate about.
+//! note: and they differ again about a picture in a *tool result*. A `tool` message's content is
+//! a string in this dialect, so a tool that returned one sends the sentence naming it instead,
+//! which beats a 400 by enough to be worth being deliberate about. Google's `functionResponse`
+//! has `parts` of its own, and the picture goes there.
 
 #![cfg(any(feature = "anthropic", feature = "openai", feature = "gemini"))]
 
@@ -87,7 +86,7 @@ fn the_conventional_dialect_sends_a_data_uri_in_a_content_part() {
     );
 }
 
-/// Google's dialect carries it as an `inline_data` part.
+/// Google's dialect carries it as an `inline_data` part, and a tool's in the `functionResponse`.
 #[cfg(feature = "gemini")]
 #[test]
 fn googles_dialect_sends_inline_data_beside_the_text_parts() {
@@ -109,13 +108,58 @@ fn googles_dialect_sends_inline_data_beside_the_text_parts() {
     assert_eq!(contents[1]["role"], "model");
     assert_eq!(contents[1]["parts"][0]["text"], "let me look");
 
-    // and the result is a `functionResponse`, which has nowhere to put a picture
+    // and the result is a `functionResponse` carrying the picture in its own `parts`, with no
+    // line naming it beside
     let answer = contents.last().expect("the result");
     assert_eq!(answer["role"], "user");
+    let answered = &answer["parts"][0]["functionResponse"];
+    assert_eq!(answered["response"], json!({ "result": "" }), "{answered}");
     assert_eq!(
-        answer["parts"][0]["functionResponse"]["response"]["result"],
-        json!(format!("[image/png, {}B]", PIXEL.len()))
+        answered["parts"],
+        json!([{ "inlineData": { "mimeType": "image/png", "data": PIXEL } }])
     );
+}
+
+/// A tool's text and its picture are split between the two fields of a `functionResponse`, the
+/// text around the picture joined in the order it came.
+#[cfg(feature = "gemini")]
+#[test]
+fn googles_dialect_keeps_a_tools_text_beside_its_picture() {
+    use nachalnik_providers::Gemini;
+
+    let call = ToolCall::new("c1", "screenshot", json!({}));
+    let items = vec![
+        ContextItem::user("look"),
+        ContextItem::assistant(Content::text(""), vec![call.clone()]),
+        ContextItem::tool_result(
+            call.id.clone(),
+            "screenshot",
+            Content::blocks([
+                Block::text("before"),
+                Block::text(Content::blob("image/png", PIXEL)),
+                Block::text("after"),
+            ]),
+            false,
+        ),
+    ];
+    let provider = Arc::new(Gemini::new("m", "https://example.invalid", "k"));
+    let body = rendered(provider, items);
+    let answered = &body["contents"][2]["parts"][0]["functionResponse"];
+
+    assert_eq!(answered["response"], json!({ "result": "before\nafter" }));
+    assert_eq!(answered["parts"][0]["inlineData"]["data"], PIXEL);
+    assert_eq!(answered["id"], "c1");
+
+    // and a result with no picture has no `parts` at all, as it never had
+    let plain = vec![
+        ContextItem::user("look"),
+        ContextItem::assistant(Content::text(""), vec![call.clone()]),
+        ContextItem::tool_result(call.id.clone(), "screenshot", "nothing to see", false),
+    ];
+    let provider = Arc::new(Gemini::new("m", "https://example.invalid", "k"));
+    let answered = &rendered(provider, plain)["contents"][2]["parts"][0]["functionResponse"];
+    assert_eq!(answered["response"], json!({ "result": "nothing to see" }));
+    assert!(answered.get("parts").is_none(), "{answered}");
 }
 
 /// Anthropic's carries it as an `image` block, in the user turn and inside the tool's result alike.

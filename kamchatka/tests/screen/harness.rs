@@ -15,7 +15,7 @@ use kamchatka::{
     ui,
 };
 use nachalnik::{Config, Event, Kernel, ModelResponse, test::ScriptedProvider};
-use nachalnik_providers::OpenAiCompatible;
+use nachalnik_providers::{Dialect, OpenAiCompatible};
 use ratatui::{
     Terminal,
     backend::TestBackend,
@@ -38,9 +38,9 @@ impl Harness {
 
     /// The same, over an endpoint that has already been asked what the model takes - so that the
     /// two ways `/params` can word an unlisted parameter are both reachable from here.
-    pub(crate) fn served_by(
+    pub(crate) fn served_by<P: Dialect + 'static>(
         script: impl IntoIterator<Item = ModelResponse>,
-        provider: Arc<OpenAiCompatible>,
+        provider: Arc<P>,
     ) -> Self {
         let mut harness = Self::configured(script, Config::default());
         // both, and the same one, because that is what `main` does: `/params` reads what the

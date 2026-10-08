@@ -32,7 +32,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, Keyed, install_crypto,
+    Dialect, Endpoint, Keyed, Published, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
     waiting::{Asking, Sent, interrupted, sent},
@@ -54,6 +54,55 @@ pub struct Gemini {
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
     notice: Mutex<Option<String>>,
+    /// What the model's listing published about the parameters it takes.
+    listed: Mutex<Listed>,
+}
+
+/// What a model's entry in the listing says about its parameters.
+///
+/// note: the figures are about fields of `generationConfig` - `temperature`, `topP`, `topK` and
+/// the `outputTokenLimit` that bounds `maxOutputTokens` - so they are named by their path into
+/// it, which is what a caller setting one writes. One lock for all of it, learnt from one entry
+/// and forgotten on one switch, for the reason the other dialect's `Entry` gives.
+#[derive(Default)]
+struct Listed {
+    /// The paths of the parameters the entry published a figure for, in a fixed order.
+    parameters: Vec<String>,
+    /// The defaults it published, by path.
+    defaults: Map<String, Value>,
+    /// The maxima it published, by path.
+    maxima: Map<String, Value>,
+}
+
+impl Listed {
+    /// Reads a model's entry, as `GET /models/{model}` answers it.
+    fn read(entry: &Value) -> Self {
+        let mut listed = Self::default();
+        // what the listing calls it, the field of `generationConfig` it is about, and whether
+        // the figure is the field's default or its most
+        let figures = [
+            ("outputTokenLimit", "maxOutputTokens", false),
+            ("temperature", "temperature", true),
+            ("maxTemperature", "temperature", false),
+            ("topP", "topP", true),
+            ("topK", "topK", true),
+        ];
+        for (published, field, default) in figures {
+            let Some(figure) = entry.get(published).filter(|it| it.is_number()) else {
+                continue;
+            };
+            let path = format!("generationConfig.{field}");
+            match default {
+                true => listed.defaults.insert(path.clone(), figure.clone()),
+                false => listed.maxima.insert(path.clone(), figure.clone()),
+            };
+            if !listed.parameters.contains(&path) {
+                listed.parameters.push(path);
+            }
+        }
+
+        listed
+    }
 }
 
 /// A run of parts of one kind, being assembled from the stream.
@@ -84,6 +133,7 @@ impl Gemini {
             configured: None,
             attempts: AtomicUsize::new(0),
             notice: Mutex::new(None),
+            listed: Mutex::new(Listed::default()),
         }
     }
 
@@ -114,15 +164,13 @@ impl Gemini {
         self
     }
 
-    /// Asks the endpoint what the model's context limit is.
+    /// Asks the endpoint what the model's context limit is, and what it publishes about the
+    /// parameters it takes.
     ///
-    /// note: the native listing carries it - `inputTokenLimit` - which the OpenAI-compatible one
-    /// does not, so this is one round trip rather than the two that one needs.
+    /// note: the native listing carries the limit - `inputTokenLimit` - which the
+    /// OpenAI-compatible one does not, so this is one round trip rather than the two that one
+    /// needs. It is asked even where the limit was set by hand, because the parameters are not.
     pub async fn probe(&self) {
-        if self.context_limit.lock().is_some() {
-            return;
-        }
-
         let (base, model) = (self.endpoint(), self.model.lock().clone());
         let Ok(response) = self
             .client
@@ -139,8 +187,9 @@ impl Gemini {
         };
 
         if let Some(limit) = body["inputTokenLimit"].as_u64() {
-            *self.context_limit.lock() = Some(limit as usize);
+            self.context_limit.lock().get_or_insert(limit as usize);
         }
+        *self.listed.lock() = Listed::read(&body);
     }
 
     /// Puts a notice up if the model is not one the endpoint lists.
@@ -316,6 +365,11 @@ impl Gemini {
         }
     }
 
+    /// A blob, as the `inlineData` a `functionResponse` carries it in.
+    fn inline(blob: &nachalnik::Blob) -> Value {
+        json!({ "inlineData": { "mimeType": blob.media_type, "data": blob.data } })
+    }
+
     /// One tool call, as a part.
     fn asking(call: &ToolCall) -> Value {
         let mut asked = json!({ "name": call.tool, "args": *call.args });
@@ -330,12 +384,39 @@ impl Gemini {
     }
 
     /// One tool result, as a part of the user turn that answers the model's.
+    ///
+    /// note: a picture the tool returned goes in the `functionResponse`'s own `parts`, as
+    /// `inlineData`, and the text around it in `response` - the one place this API takes a
+    /// picture as part of a result rather than as something the person said after it. Named
+    /// instead, as the other dialect has to, the model is left to guess: asked the colour of a
+    /// red square it was only told about, `gemini-3.5-flash-lite` answers "blue".
     fn answering(message: &Message) -> Value {
         let said = message.content.clone().unwrap_or_default();
+        let pictures: Vec<Value> = match &said {
+            Content::Blob(blob) => vec![Self::inline(blob)],
+            Content::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(Block::said)
+                .filter_map(|part| part.content.as_blob())
+                .map(Self::inline)
+                .collect(),
+            _ => Vec::new(),
+        };
         // a tool that produced JSON hands it over as it is; anything else is a string, and this
-        // API wants an object either way
+        // API wants an object either way. With its pictures in `parts`, the string is the text
+        // that came with them, without a line naming each
         let answer = match &said {
             Content::Json(value) if value.is_object() => (**value).clone(),
+            Content::Blob(_) => json!({ "result": "" }),
+            Content::Blocks(blocks) if !pictures.is_empty() => json!({
+                "result": blocks
+                    .iter()
+                    .filter_map(Block::said)
+                    .filter(|part| part.content.as_blob().is_none())
+                    .map(|part| part.content.to_text())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            }),
             _ => json!({ "result": said.to_text() }),
         };
 
@@ -345,6 +426,9 @@ impl Gemini {
         });
         if let Some(id) = &message.tool_call_id {
             answered["id"] = json!(id.0);
+        }
+        if !pictures.is_empty() {
+            answered["parts"] = json!(pictures);
         }
 
         json!({ "functionResponse": answered })
@@ -360,9 +444,19 @@ impl Provider for Gemini {
         let context_limit = *self.context_limit.lock();
         let model = self.model.lock().clone();
         let endpoint = crate::recorded(&self.base_url.lock());
+        let (parameters, most) = {
+            let listed = self.listed.lock();
+            let most = listed
+                .maxima
+                .get("generationConfig.maxOutputTokens")
+                .and_then(Value::as_u64);
+            (listed.parameters.clone(), most)
+        };
 
         ModelInfo::new("google", model)
             .with_context_limit(context_limit)
+            .with_max_output_tokens(most.map(|most| most as usize))
+            .with_parameters(parameters)
             .with_tool_calling(true)
             .with_reasoning(true)
             .with_endpoint(endpoint)
@@ -435,7 +529,12 @@ impl Provider for Gemini {
                     .map(|spec| json!({
                         "name": spec.id,
                         "description": spec.description,
-                        "parameters": spec.schema,
+                        // note: `parametersJsonSchema` rather than `parameters`, which is
+                        // Google's own `Schema` - a closed set of fields with no `$ref`,
+                        // `$defs`, `additionalProperties`, `const` or list of types, so an MCP
+                        // server's schema using any of them made every request a 400. This one
+                        // takes JSON Schema as it is written
+                        "parametersJsonSchema": spec.schema,
                     }))
                     .collect::<Vec<_>>()
             }]);
@@ -705,6 +804,7 @@ impl Endpoint for Gemini {
     async fn set_model(&self, model: String) {
         *self.model.lock() = model;
         *self.context_limit.lock() = self.configured;
+        *self.listed.lock() = Listed::default();
         self.probe().await;
         self.say_if_the_model_is_not_there().await;
     }
@@ -715,6 +815,7 @@ impl Endpoint for Gemini {
     async fn set_endpoint(&self, url: String, model: Option<String>) {
         *self.base_url.lock() = crate::address(url);
         *self.context_limit.lock() = self.configured;
+        *self.listed.lock() = Listed::default();
         match model {
             Some(model) => self.set_model(model).await,
             None => {
@@ -730,6 +831,26 @@ impl Endpoint for Gemini {
 }
 
 impl Dialect for Gemini {
+    /// The listing publishes figures for a handful of `generationConfig`'s fields, and the model
+    /// takes many more - `seed`, `stopSequences`, `thinkingConfig`, `safetySettings` - so a
+    /// parameter missing from it is unchecked rather than ignored.
+    fn lists_every_parameter(&self) -> bool {
+        false
+    }
+
+    fn published(&self, parameter: &str) -> Published {
+        let listed = self.listed.lock();
+        Published::default()
+            .with_default(listed.defaults.get(parameter).cloned())
+            .with_maximum(
+                listed
+                    .maxima
+                    .get(parameter)
+                    .and_then(Value::as_number)
+                    .cloned(),
+            )
+    }
+
     /// Both of the things the conventional dialect cannot take. In this one the shape of a turn
     /// is an order, and flattening it into three slots on the way out would undo, one request
     /// later, the ordering that was recorded on the way in; and it takes a turn's thinking back as

@@ -9,12 +9,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
-- **Chat Completions and Gemini name a tool's image instead of sending it.** A tool message there
-  is a string and a `functionResponse` an object, so an image in a tool result goes out as a line
-  naming it. Each dialect could move the picture to where its API takes one - a user message after
-  the tool messages, an `inline_data` part beside the `functionResponse` - without changing the
-  context. Unblocked by a model on each that needs it, and a live test showing it reads the
-  picture once moved.
+- **Chat Completions names a tool's image instead of sending it.** A tool message there is a
+  string, so an image in a tool result goes out as a line naming it. The dialect could move the
+  picture to where its API takes one - a user message after the tool messages - without changing
+  the context. Unblocked by a model that needs it, and a live test showing it reads the picture
+  once moved.
 
 - **Serving clients older than the session, which `protocol::VERSION` promises.** A session should
   serve the older protocol versions it knows, but `watermark` checks a client's version without
@@ -83,11 +82,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   what a person sees while waiting is part of the same decision. Each server is named on stderr
   before it starts, and `--deadline` limits a headless run; a session with a screen just waits.
 
-- **Schemas and names Gemini rejects.** Google's API rejects some JSON Schema features an MCP server
-  may use (`$ref`, `additionalProperties`) and tool names starting with a digit, so a server that
-  works with the OpenAI API can fail with Google's. Checking needs a Google key; the fix is either
-  translating the schema before sending, or refusing at install time with an explanation.
-
 - **A bare file name is a domain, not a path rule.** `--deny b.txt` is refused with a suggestion to
   write `b.txt*`, because a domain, a tool id and a file name are all bare words. Treating a bare
   word that isn't a domain as a path rule would turn a typo like `--deny contextt` into a rule about
@@ -153,9 +147,7 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 - **`/params` showing a parameter's type and range.** It shows the default and maximum where the
   model listing publishes them, and nothing else, because no endpoint publishes more. A table kept
   in this workspace would just be someone's documentation as of the day it was copied. Unblocked by
-  an endpoint that publishes them, read the way `Published` reads the rest. Under `--gemini` it
-  shows nothing, since that listing puts its figures under `generationConfig`, and showing them
-  needs `/params` to handle keys inside a parameter.
+  an endpoint that publishes them, read the way `Published` reads the rest.
 
 - **A tool call with unparseable arguments goes back to the model as `{"_unparsed": "..."}`.**
   That's how `nachalnik-providers` stores such a call, and `to_wire` sends it back that way. A model
