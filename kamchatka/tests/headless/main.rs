@@ -2486,7 +2486,8 @@ async fn a_switch_of_model_is_in_the_record() {
 /// next request failed as a `builder error`; and `/endpoint localhost:11434/v1`, the scheme left
 /// off, is a URL whose scheme is `localhost`. And one with a query string, which every path is
 /// appended after: `…/v1?token=…/chat/completions` never worked, and its failure wrote the token
-/// into the record.
+/// into the record. And one with no host but a port or a `user@`, which the next request could not
+/// be sent to either.
 #[tokio::test]
 async fn provider_refuses_what_is_not_an_address() {
     let Wired {
@@ -2512,7 +2513,8 @@ async fn provider_refuses_what_is_not_an_address() {
             &mut events,
             &mut finished,
             "/endpoint not a url at all\n/endpoint localhost:11434/v1\n/endpoint http:///v1\n\
-             /endpoint http://127.0.0.1:2/v1?token=t\n/endpoint http://127.0.0.1:2/v1#here\n"
+             /endpoint http://127.0.0.1:2/v1?token=t\n/endpoint http://127.0.0.1:2/v1#here\n\
+             /endpoint http://:8080/v1\n/endpoint http://user@/v1\n"
                 .as_bytes(),
         )
         .await
@@ -2525,6 +2527,8 @@ async fn provider_refuses_what_is_not_an_address() {
         "`http:///v1`",
         "`http://127.0.0.1:2/v1?token=t`",
         "`http://127.0.0.1:2/v1#here`",
+        "`http://:8080/v1`",
+        "`http://user@/v1`",
     ] {
         assert!(
             prose.contains(&format!("{typed} is not an address")),

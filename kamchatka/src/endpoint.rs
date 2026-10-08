@@ -253,9 +253,18 @@ pub fn is_an_address(url: &str) -> bool {
         return false;
     };
 
+    // the host, which is neither a `user:password@` before it nor a `:port` after it: `http://:8080`
+    // and `http://user:pw@/v1` name none, and the second was drawn on the status line whole, since
+    // a host that is not there is shown as the address it was not found in
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+
     matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https")
         && !rest.contains(['?', '#'])
-        && rest.split('/').next().is_some_and(|host| !host.is_empty())
+        && !host.is_empty()
+        && !host.starts_with(':')
 }
 
 /// An address as this program says it back: without a `user:password@` before the host.
