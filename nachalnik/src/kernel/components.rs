@@ -20,29 +20,30 @@ use super::Kernel;
 
 impl Kernel {
     /// Sets the provider, returning the previous one.
+    ///
+    /// note: `from` is the model last announced rather than what the previous provider says it is
+    /// now, as in [`Kernel::provider_changed`]: one that switched in place unannounced, or that is
+    /// set again after switching, would otherwise be named as the model it became, and the record
+    /// would never say it had been the one before.
     pub fn set_provider(&self, provider: Arc<dyn Provider>) -> Option<Arc<dyn Provider>> {
-        let to = provider.info();
         let mut held = self.0.provider.write();
         let previous = held.replace(provider);
-        *self.0.announced.lock() = Some(to.clone());
+        // what was installed, asked under the lock that installed it
+        let to = held.as_ref().map(|provider| provider.info());
+        let from = std::mem::replace(&mut *self.0.announced.lock(), to.clone());
         // still under the lock: see the note on `Kernel::emit`
-        self.emit(Event::ModelChanged {
-            from: previous.as_ref().map(|p| p.info()),
-            to: Some(to),
-        });
+        self.emit(Event::ModelChanged { from, to });
 
         previous
     }
 
-    /// Removes the provider, returning it.
+    /// Removes the provider, returning it, and announces it as gone from the model last announced;
+    /// see [`Kernel::set_provider`].
     pub fn clear_provider(&self) -> Option<Arc<dyn Provider>> {
         let mut held = self.0.provider.write();
         let previous = held.take();
-        *self.0.announced.lock() = None;
-        self.emit(Event::ModelChanged {
-            from: previous.as_ref().map(|p| p.info()),
-            to: None,
-        });
+        let from = self.0.announced.lock().take();
+        self.emit(Event::ModelChanged { from, to: None });
 
         previous
     }

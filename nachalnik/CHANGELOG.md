@@ -5,6 +5,17 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [Unreleased]
+
+### fixed
+
+- **`model.changed` names as `from` the model last announced.** `Kernel::set_provider` and
+  `Kernel::clear_provider` asked the provider being let go what it was, so one that switched its
+  model in place and was then set again was recorded as changing from the new model to itself,
+  and the log never said it had been the old one. They now take `from` from what was last
+  announced, as `Kernel::provider_changed` already did, and ask the incoming provider what it is
+  under the lock that installs it.
+
 ## [0.9.0] - 2026-10-06
 
 ### added
