@@ -53,6 +53,9 @@ minor bump may break you.
   same refusal a stream waited out failed a whole-answer turn at once.
 - **An `error` that is a string is read as the sentence**: `{"error": "..."}` was quoted as the
   body it came in, braces, key and whatever stood beside it - an account's id among them.
+- **A System One refusal whose envelope is a string is a refusal**: `{"detail": "..."}`, as a
+  FastAPI engine sends it, or `{"error": "..."}`. Inside a 200 neither was read, and the call came
+  back as an answer to nothing, every question unanswered and no reason given.
 
 ## [0.9.0] - 2026-10-06
 

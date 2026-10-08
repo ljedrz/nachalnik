@@ -956,7 +956,8 @@ fn complaint(parsed: &Value) -> Option<String> {
         (None, Some(first)) => first,
         (None, None) => &parsed["error"],
     };
-    let said = envelope["message"].as_str()?;
+    // or the envelope is the sentence itself: `{"detail": "..."}`, `{"error": "..."}`
+    let said = envelope["message"].as_str().or_else(|| envelope.as_str())?;
 
     let label =
         envelope["error_type"]
@@ -1258,6 +1259,19 @@ mod tests {
         let bare: Value =
             serde_json::from_str(r#"{"error":{"message":"Not Found"}}"#).expect("it parses");
         assert_eq!(complaint(&bare).as_deref(), Some("Not Found"));
+
+        // and an envelope that is the sentence itself, as a FastAPI engine's `detail` usually is
+        for envelope in [
+            r#"{"detail":"Model overloaded, try later"}"#,
+            r#"{"error":"Model overloaded, try later"}"#,
+        ] {
+            let said: Value = serde_json::from_str(envelope).expect("it parses");
+            assert_eq!(
+                complaint(&said).as_deref(),
+                Some("Model overloaded, try later"),
+                "{envelope}"
+            );
+        }
 
         // an ordinary answer is not a complaint, which is what lets a 200 be checked for one
         let fine: Value =
