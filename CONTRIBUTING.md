@@ -263,4 +263,7 @@ without the fix, and anything that needs a person to decide goes into
 - **`cargo package` gives wrong results the second time you run it on an unpublished version.** It
   caches the tarball and its compiled library under that version, and assumes registry crates never
   change, so the second run compiles the first run's code, giving errors like `no method named ...`
-  for a method the tarball does have. Fix it with `cargo clean -p nachalnik`.
+  for a method the tarball does have. `cargo clean -p` doesn't reliably fix it, since the registry
+  copy has the same name and version as the workspace crate; remove the crate's build outright,
+  with its underscores in the second name: `rm -rf target/debug/.fingerprint/nachalnik-providers-*
+  target/debug/deps/libnachalnik_providers-*`.
