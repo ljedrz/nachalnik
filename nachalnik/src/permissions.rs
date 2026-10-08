@@ -31,6 +31,10 @@ pub enum Domain {
     /// Talking to the network.
     Net,
     /// Anything else, named by whoever brought it.
+    ///
+    /// note: not `fs`, `exec` or `net`, which nothing here prevents. Those names are read back as
+    /// the variants above, so an `Other("fs")` is not equal to [`Domain::Fs`], and written out and
+    /// read back it becomes it. [`Domain::from`] gives the right one for any name.
     Other(String),
 }
 
