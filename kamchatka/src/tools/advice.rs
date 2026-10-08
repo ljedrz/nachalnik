@@ -519,8 +519,16 @@ impl Advised {
 
         // note: the score and the confidence together or not at all. A score with no confidence
         // beside it cannot be drawn by `Rated::shown`'s rule, and the safe reading of half an
-        // answer is that nothing was said
-        let read = |name: &str| Some(Rated::of(answers.score(name)?, answers.confidence(name)?));
+        // answer is that nothing was said.
+        //
+        // note: and a score that is no position on `LEVELS` is not an answer either. Everything
+        // below half a level is drawn green, so one under the bottom - an engine's `-3` - was a
+        // clean bill for a command nothing had read
+        let on_the_rubric = |score: &f64| (0.0..=(LEVELS.len() - 1) as f64).contains(score);
+        let read = |name: &str| {
+            let score = answers.score(name).filter(on_the_rubric)?;
+            Some(Rated::of(score, answers.confidence(name)?))
+        };
 
         // note: a `noul`'s number is its own confidence, so there is no second field to pair it
         // with and no half-answer to guard against - see `Rated::claimed`

@@ -40,6 +40,8 @@ minor bump may break you.
   the `OPENROUTER_API_KEY` beside it and sent no key, so the first turn was a 401 rather than a
   session using the key that was there - or, with no other, the line saying which one to set.
   `ANTHROPIC_API_KEY` is read the same way.
+- **An advisor's score off its rubric is no rating**, as half an answer is: one below the bottom
+  level, which an engine can send, was drawn green as a command that only looks.
 
 ### removed
 
