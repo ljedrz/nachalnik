@@ -9,12 +9,16 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.9.1, which is released beside it. Nothing here uses what changed in it;
+  it is the runtime this release was tested with.
+
 - **An image a tool returns is carried into the context**, as a `Content::Blob` beside the text it
-  came with - a result of text and pictures is `Content::Blocks`, in order - rather than named.
-  Each provider sends it as its API allows: Anthropic's and OpenAI's Responses inside the tool
-  result, Gemini in the `functionResponse`'s own parts, Chat Completions as a line naming it. One larger than 5MB of base64 -
-  Anthropic's limit for an image, past which every request would be refused while it stayed in the
-  context - is named as before. A result with no image is the text it always was.
+  came with - a result of text and pictures is `Content::Blocks`, in order - rather than named. Each
+  provider sends it as its API allows: Anthropic's and OpenAI's Responses inside the tool result,
+  Gemini in the `functionResponse`'s own parts, Chat Completions as a line naming it. One larger
+  than 5MB of base64 - Anthropic's limit for an image, past which every request would be refused
+  while it stayed in the context - is named as before. A result with no image is the text it always
+  was.
 - **A tool's name starts with a letter or `_`**, so one from a server whose name, or whose tool's
   name, starts with a digit or a `-` is sent with a `_` in front: `7zip__list` is `_7zip__list`.
   Google's API refuses a declaration starting any other way, with a 400 on every request the tool
