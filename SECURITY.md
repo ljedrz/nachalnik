@@ -121,7 +121,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   the same error as for a file owned by someone else, so a sandboxed command gets a permission error
   that looks ordinary, and a model that can't tell the difference wastes its turns trying `sudo`. A
   tool description isn't enough: say it where the failure happens, name the path, and say nothing
-  when the refusal wasn't the sandbox's. See `Sandbox::note_for`.
+  when the refusal wasn't the sandbox's. Where the error names no path, there is nothing to judge,
+  so the note says only that the sandbox may be the cause. See `Sandbox::note_for`.
 - **And name everything the session *can* reach.** A refusal that names the working directory as
   the whole of what's allowed becomes false as soon as someone passes `--sandbox-allow` or
   `--sandbox-read`. Under-reporting is worse than over-reporting here: a model takes a refusal as
