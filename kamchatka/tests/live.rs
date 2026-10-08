@@ -1032,7 +1032,7 @@ async fn a_pdf_goes_out_as_a_document_in_the_native_dialect() {
     let _serial = SERIAL.lock().await;
     let (mut app, _introspect, mut finished) = gemini!();
 
-    let path = common::scratch("live-gemini-attach").join("marmalade.pdf");
+    let path = scratch("gemini-attach").join("marmalade.pdf");
     std::fs::write(&path, one_word_pdf("MARMALADE")).expect("written");
 
     send(
@@ -1201,9 +1201,45 @@ macro_rules! introspecting {
     };
 }
 
+/// A directory of this run's own, `live-{name}-{pid}`, with any a finished run left under that name
+/// taken away.
+///
+/// note: the process identifier is in the name, unlike everywhere else `common::scratch` is used,
+/// because two runs of this file against different models at once are an ordinary thing to want,
+/// and with one name between them each emptied the other's directory on the way in. A run's
+/// directory is kept after it ends, for whoever is debugging it, until a later run finds its
+/// process gone. Where there is no `/proc` to ask, nothing is taken away, rather than a running
+/// test's directory with the rest.
+fn scratch(name: &str) -> std::path::PathBuf {
+    let ours = std::process::id();
+    let dir = common::scratch(&format!("live-{name}-{ours}"));
+
+    let prefix = format!("live-{name}-");
+    let finished =
+        |pid: u32| pid != ours && !std::path::Path::new(&format!("/proc/{pid}")).exists();
+    let parent = dir.parent().expect("under the scratch root");
+    if std::path::Path::new("/proc/self").exists()
+        && let Ok(entries) = std::fs::read_dir(parent)
+    {
+        for entry in entries.flatten() {
+            let left = entry
+                .file_name()
+                .to_str()
+                .and_then(|it| it.strip_prefix(&prefix))
+                .and_then(|pid| pid.parse().ok())
+                .is_some_and(finished);
+            if left {
+                let _ = std::fs::remove_dir_all(entry.path());
+            }
+        }
+    }
+
+    dir
+}
+
 /// A directory of its own, so that a `read` cannot wander into the repository.
 fn workdir(name: &str) -> std::path::PathBuf {
-    let dir = common::scratch(&format!("live-{name}"));
+    let dir = scratch(name);
 
     // resolved, because `Reach` canonicalises what it is handed and compares: on a machine whose
     // temporary directory is a symlink, an uncanonicalised `workdir` reaches nothing
@@ -1839,7 +1875,7 @@ async fn a_pdf_attached_at_the_prompt_is_read_by_the_model() {
         return;
     };
 
-    let dir = common::scratch("live-attach");
+    let dir = scratch("attach");
     let path = dir.join("marmalade.pdf");
     std::fs::write(&path, one_word_pdf("MARMALADE")).expect("written");
 

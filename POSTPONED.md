@@ -69,13 +69,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   nothing else uses it. Going further means the tool reading a file the kernel doesn't hold, with
   every answer saying which records came from it.
 
-- **Two runs of the live tests at once.** `kamchatka`'s `live.rs` uses `live-{name}` directories
-  under the target directory, so two simultaneous runs with the same `CARGO_TARGET_DIR` delete each
-  other's files. `common::scratch` keeps tests within one run apart (one test binary at a time under
-  `cargo test`, one directory per test under nextest), but two runs share every name either way. A
-  target directory per run, or a run id in the directory name, would fix it if concurrent runs are
-  needed.
-
 - **No time limit on an MCP server's startup.** The handshake, `tools/list` and `resources/read`
   wait as long as the server takes, and the first `npx -y` can legitimately take minutes to
   download its package. A limit has to be long enough for that and short enough to be useful, and
