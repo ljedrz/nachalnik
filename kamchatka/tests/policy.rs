@@ -165,6 +165,8 @@ fn a_rule_that_could_never_match_is_refused_rather_than_kept() {
         "secrets*/",
         ".",
         "..",
+        // which matched only a path spelled with it in front, so `./x` and `x` met different rules
+        "./",
     ] {
         for path in [".", "..", "./x", "../x", "a/../b", "a/./b", "./", "../"] {
             assert!(
