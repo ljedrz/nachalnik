@@ -431,14 +431,8 @@ async fn branch(
         // writes to the context - `context` with a `note` - does, and the copy then holds
         // something the fork beside it did not, which is what the sentence says nothing about
         (true, false) => {
-            let numbers: Vec<String> = extra.iter().map(|id| id.to_string()).collect();
-            out.push_str(&format!(
-                ". Nothing you named with `without` was taken away. Another call in this turn \
-                 wrote to your context while this copy was being taken, so the copy also has {} \
-                 that the fork beside it in this turn did not - the two are not the same context \
-                 and their answers are not a comparison.",
-                numbers.join(", ")
-            ));
+            out.push_str(". Nothing you named with `without` was taken away.");
+            out.push_str(&written_beside(&extra));
         }
         (true, true) => out.push_str(
             ". Nothing you named with `without` was taken away, so this is the same context \
@@ -452,6 +446,11 @@ async fn branch(
                 ", without {}, which the copy could not read at all.",
                 numbers.join(", ")
             ));
+            // and what a sibling wrote, which taking items away does not make any less true: the
+            // two copies differ by those as well as by what was named
+            if !extra.is_empty() {
+                out.push_str(&written_beside(&extra));
+            }
         }
     }
     // and what the calls beside this one kept out of the copy, which is a fact about the context
@@ -518,4 +517,16 @@ async fn branch(
     }
 
     Ok(ToolOutput::new(out))
+}
+
+/// What a copy has that the fork beside it in the turn did not, because another call wrote to the
+/// context between the two, as a sentence to follow the rest of the reply.
+fn written_beside(extra: &[ContextId]) -> String {
+    let numbers: Vec<String> = extra.iter().map(|id| id.to_string()).collect();
+    format!(
+        " Another call in this turn wrote to your context while this copy was being taken, so the \
+         copy also has {} that the fork beside it in this turn did not - the two are not the same \
+         context and their answers are not a comparison.",
+        numbers.join(", ")
+    )
 }

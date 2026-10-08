@@ -42,6 +42,9 @@ minor bump may break you.
   `ANTHROPIC_API_KEY` is read the same way.
 - **An advisor's score off its rubric is no rating**, as half an answer is: one below the bottom
   level, which an engine can send, was drawn green as a command that only looks.
+- **A fork told to leave items out still says what a call beside it wrote.** The reply named what
+  `without` took away and nothing else, so beside a `context note` written in the same turn it
+  read as the earlier copy less those items, when the copy held the note as well.
 
 ### removed
 
