@@ -20,7 +20,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 
 use crate::{
-    RETRIES, out_of_quota,
+    out_of_quota,
     reading::{Events, Read, complaint, compressed, failure, not_json, read},
     refused,
 };
@@ -270,6 +270,9 @@ pub(crate) struct Asking<'a> {
     pub(crate) deltas: &'a DeltaSink,
     /// Where a notice goes, for [`Endpoint::take_notice`](crate::Endpoint::take_notice).
     pub(crate) notice: &'a Mutex<Option<String>>,
+    /// How many times the request may be sent while the server is busy, the first included; see
+    /// [`Dialect::set_tries`](crate::Dialect::set_tries).
+    pub(crate) tries: usize,
 }
 
 impl Asking<'_> {
@@ -312,7 +315,7 @@ enum Busy {
 /// note: waiting and trying again is the *provider's* business. A free tier answers "busy" often
 /// enough that not retrying makes the whole thing look broken when it is not - and the kernel
 /// must not silently send a request twice behind a caller's back. The count is this request's
-/// and nobody else's; see [`RETRIES`].
+/// and nobody else's, and how many it gets is [`Asking::tries`]; see [`RETRIES`](crate::RETRIES).
 ///
 /// note: `request` builds the request afresh for each attempt, because a sent one is spent. It is
 /// also everything the dialects do differently here: a path, a header, a body.
@@ -429,9 +432,12 @@ pub(crate) async fn sent(
             }
         };
 
-        let doubling = Duration::from_secs(1 << tried);
+        // note: held to `LINGER`, which only a caller asking for more than `RETRIES` tries ever
+        // reaches. A doubling past it would be read below as a server asking to be left longer
+        // than this waits, and end the tries it was given at the sixth
+        let doubling = Duration::from_secs(1 << tried.min(6)).min(LINGER);
         let (wait, what) = match busy {
-            Busy::Unsent(reason) if tried >= RETRIES => {
+            Busy::Unsent(reason) if tried >= asking.tries => {
                 return Err(reason.giving_up(asking.model, tried));
             }
             Busy::Unsent(reason) => (doubling, reason.what_happened().to_owned()),
@@ -442,7 +448,7 @@ pub(crate) async fn sent(
                 asked,
             } => {
                 let wait = asked.unwrap_or(doubling);
-                if !transient || tried >= RETRIES || wait > LINGER {
+                if !transient || tried >= asking.tries || wait > LINGER {
                     let mut said = said;
                     if transient && wait > LINGER {
                         said.push_str(&format!(
@@ -885,7 +891,7 @@ mod tests {
         );
 
         // and once there were several, the sentence says how many and what each of them waited
-        for tried in 2..=RETRIES {
+        for tried in 2..=crate::RETRIES {
             let said = Unsent::Silent(PATIENCE)
                 .giving_up("a-model", tried)
                 .to_string();

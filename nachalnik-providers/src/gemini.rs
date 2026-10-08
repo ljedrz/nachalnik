@@ -32,7 +32,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, Keyed, Published, install_crypto,
+    Dialect, Endpoint, Keyed, Published, RETRIES, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
     waiting::{Asking, Sent, interrupted, sent},
@@ -53,6 +53,9 @@ pub struct Gemini {
     configured: Option<usize>,
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
+    /// How many times a request is sent while the server is busy, the first included; see
+    /// [`Dialect::set_tries`].
+    tries: AtomicUsize,
     notice: Mutex<Option<String>>,
     /// What the model's listing published about the parameters it takes.
     listed: Mutex<Listed>,
@@ -132,6 +135,7 @@ impl Gemini {
             context_limit: Mutex::new(None),
             configured: None,
             attempts: AtomicUsize::new(0),
+            tries: AtomicUsize::new(RETRIES),
             notice: Mutex::new(None),
             listed: Mutex::new(Listed::default()),
         }
@@ -578,6 +582,7 @@ impl Provider for Gemini {
             model: &model,
             deltas: &deltas,
             notice: &self.notice,
+            tries: self.tries.load(Ordering::SeqCst),
         };
 
         let url = format!("{base}/models/{model}:streamGenerateContent?alt=sse");
@@ -831,6 +836,10 @@ impl Endpoint for Gemini {
 }
 
 impl Dialect for Gemini {
+    fn set_tries(&self, tries: usize) {
+        self.tries.store(tries.max(1), Ordering::SeqCst);
+    }
+
     /// The listing publishes figures for a handful of `generationConfig`'s fields, and the model
     /// takes many more - `seed`, `stopSequences`, `thinkingConfig`, `safetySettings` - so a
     /// parameter missing from it is unchecked rather than ignored.

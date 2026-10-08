@@ -158,12 +158,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   already quotes what arrived. Unblocked by a decision on what the history should say the model
   sent, and a live test of that choice on the strict endpoints.
 
-- **A turn that gets 429 four times is abandoned.** Without a `Retry-After`, the waits double (two,
-  four and eight seconds), then the turn fails and a headless run exits with `1`, to be resumed with
-  `-r`. A rate limit shared by several sessions lasts longer. Waiting longer is bad for someone
-  watching the screen, who'd rather be told; the open question is whether a headless run should
-  wait out rate limits, since its `--deadline` limits the total time anyway.
-
 - **The web page relies on `Origin` for browsers that don't send `Sec-Fetch-Site`.** An image or a
   no-cors fetch from another site has no `Origin`, and the page refuses it based on fetch metadata;
   but a browser old enough to send neither gets through to `GET /events` and takes over the session

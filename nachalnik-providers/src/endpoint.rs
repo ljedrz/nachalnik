@@ -113,6 +113,21 @@ pub trait Dialect: Endpoint + Provider {
         Published::default()
     }
 
+    /// How many times a request for a turn is sent while the server keeps saying it is busy -
+    /// a `429`, a `503`, a connection that timed out - the first included. Four unless set, and
+    /// never fewer than one.
+    ///
+    /// note: four is for somebody watching, who would rather be told than kept waiting. A run
+    /// nobody watches can ask for more, and a limit shared by several sessions can outlast four:
+    /// the waits double from two seconds and stop growing at a minute, so ten tries are about
+    /// five minutes. A server that asks to be left longer than a minute is still not waited for,
+    /// however many tries are left, since that is a quota spent rather than a server busy.
+    ///
+    /// note: defaulted to doing nothing, for a dialect that does not send a request again.
+    fn set_tries(&self, tries: usize) {
+        let _ = tries;
+    }
+
     /// The projection this dialect can carry.
     ///
     /// note: it is answered here, beside the `to_wire` that has to honour it, because the two drift

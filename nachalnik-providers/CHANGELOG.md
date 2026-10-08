@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### added
 
+- **`Dialect::set_tries`: how many times a request for a turn is sent while the server says it
+  is busy**, the first included. Four unless set, as before. The waits still double from two
+  seconds, and stop growing at a minute, so ten tries are about five minutes.
 - **`Anthropic::capabilities`: what the model supports, as Anthropic's `/models` describes it** -
   which kinds of `thinking` it takes, whether it takes an `effort`. Read by `probe` along with the
   limits, from the same answer, and passed on uninterpreted; `None` where the endpoint describes

@@ -1024,6 +1024,45 @@ async fn a_refusal_that_names_no_wait_is_waited_out_for_longer_each_time() {
     }
 }
 
+/// A dialect asked for more tries gets them, and the waits stop growing at a minute.
+///
+/// note: a doubling past a minute was read as the server asking to be left longer than the
+/// provider waits, which ended the tries at the sixth whatever had been asked for. On a paused
+/// clock, so that the minutes are not sat through.
+#[tokio::test(start_paused = true)]
+async fn a_dialect_given_more_tries_waits_no_more_than_a_minute_between_them() {
+    use nachalnik_providers::Dialect;
+
+    let built: Vec<(&str, fn(&str) -> Arc<dyn Dialect>)> = vec![
+        #[cfg(feature = "openai")]
+        ("openai", |url| {
+            Arc::new(nachalnik_providers::OpenAiCompatible::new("m", url, "k"))
+        }),
+        #[cfg(feature = "gemini")]
+        ("gemini", |url| {
+            Arc::new(nachalnik_providers::Gemini::new("m", url, "k"))
+        }),
+        #[cfg(feature = "anthropic")]
+        ("anthropic", |url| {
+            Arc::new(nachalnik_providers::Anthropic::new("m", url, "k"))
+        }),
+    ];
+    for (dialect, build) in built {
+        let arrived = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let provider = build(&busy(arrived.clone()).await);
+        provider.set_tries(9);
+
+        asked(provider).await.expect_err("busy every time");
+        let arrived = arrived.lock().unwrap().clone();
+        assert_eq!(arrived.len(), 9, "{dialect}: every try it was given");
+        let waits: Vec<_> = arrived
+            .windows(2)
+            .map(|two| (two[1] - two[0]).as_secs())
+            .collect();
+        assert_eq!(waits, [2, 4, 8, 16, 32, 60, 60, 60], "{dialect}");
+    }
+}
+
 /// A 404 says which address was asked, since a wrong address is what it is the answer to.
 ///
 /// note: a server with no route at the path answers in its own words, and those are usually just

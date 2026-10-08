@@ -56,7 +56,7 @@ use parking_lot::Mutex;
 use serde_json::{Map, Value, json};
 
 use crate::{
-    Dialect, Endpoint, Keyed, install_crypto,
+    Dialect, Endpoint, Keyed, RETRIES, install_crypto,
     reading::{Events, Read, Stopped, not_a_stream},
     refused,
     waiting::{Asking, Sent, interrupted, sent},
@@ -98,6 +98,9 @@ pub struct Anthropic {
     configured: Option<usize>,
     /// Every request for an answer this has sent, retries included, never reset.
     attempts: AtomicUsize,
+    /// How many times a request is sent while the server is busy, the first included; see
+    /// [`Dialect::set_tries`].
+    tries: AtomicUsize,
     /// Whether an instruction added mid-session is sent where it stands, as a `system` message,
     /// rather than joined into `system` at the top: until the model says it takes no such message.
     in_place: AtomicBool,
@@ -142,6 +145,7 @@ impl Anthropic {
             capabilities: Mutex::new(None),
             configured: None,
             attempts: AtomicUsize::new(0),
+            tries: AtomicUsize::new(RETRIES),
             in_place: AtomicBool::new(true),
             notice: Mutex::new(None),
         }
@@ -724,6 +728,7 @@ impl Anthropic {
             model: &model,
             deltas,
             notice: &self.notice,
+            tries: self.tries.load(Ordering::SeqCst),
         };
 
         let url = format!("{base}/messages");
@@ -1025,6 +1030,10 @@ impl Endpoint for Anthropic {
 }
 
 impl Dialect for Anthropic {
+    fn set_tries(&self, tries: usize) {
+        self.tries.store(tries.max(1), Ordering::SeqCst);
+    }
+
     /// Both of the things the conventional dialect cannot take, for the reasons the Gemini
     /// dialect gives: the order of a turn, and its thinking going back as blocks - which, signed,
     /// it has to.

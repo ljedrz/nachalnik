@@ -74,6 +74,12 @@ can never be reached, since someone who set a limit expects the run to be limite
 server that never finishes starting, and `/restart` doesn't reset it. It can't interrupt a `/model`
 or `/endpoint` switch, which always finishes first.
 
+A busy endpoint (a `429`, a `503`, a connection that timed out) is asked again after waits that double
+from two seconds. A session with a screen gives up after four tries, because someone watching would
+rather be told; a headless run tries ten times, with the waits capped at a minute, which is about
+five minutes in all. An endpoint that asks to be left for longer than a minute is reported at once
+either way, because that is a spent quota rather than a busy server.
+
 A background job started by a command (`sleep 300 &`, a server, or something detached with
 `setsid`) outlives its call, and is stopped when the session ends: `SIGTERM`, then `SIGKILL` two
 seconds later for anything still running, with a line naming the command each came from. They're

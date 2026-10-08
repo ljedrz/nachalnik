@@ -122,6 +122,10 @@ fn main() -> Result<std::process::ExitCode> {
     }
 }
 
+/// How many times a headless run sends a request for a turn while the endpoint says it is busy;
+/// see `Dialect::set_tries`.
+const UNWATCHED_TRIES: usize = 10;
+
 /// Whether this run is driven by lines rather than by keys.
 ///
 /// note: three ways into it. Somebody says so; or stdout is not a terminal, so there is nowhere to
@@ -503,6 +507,13 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     let setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;
 
     let provider = starting(ends, "reaching the model", args.provider()).await?;
+    // note: a run nobody watches waits out a busy endpoint for about five minutes rather than
+    // fourteen seconds, since there is nobody to tell sooner and a limit several sessions share
+    // lasts longer than that; `--deadline` still bounds the whole run. A restart keeps the
+    // provider, and with it this
+    if headless && server.is_none() {
+        provider.set_tries(UNWATCHED_TRIES);
+    }
     let flagged = kamchatka::wiring::Flagged::of(&*provider);
 
     // note: kept so that `/restart` can wire a second session out of the same settings. That is
