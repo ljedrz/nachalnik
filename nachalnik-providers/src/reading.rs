@@ -486,7 +486,8 @@ fn said(value: &Value) -> Option<String> {
         Some(nested) => nested,
         None => value,
     };
-    let message = match error["message"].as_str() {
+    // and a fourth, `{"error": "..."}`, where the sentence is all the object there is
+    let message = match error["message"].as_str().or_else(|| error.as_str()) {
         Some(message) => message.trim().to_owned(),
         // a third shape, and the one where the sentence matters most: see `refusals`
         None => refusals(&error["message"])?,
@@ -727,6 +728,15 @@ mod tests {
         assert!(serde_json::from_str::<Value>(quoted).is_ok());
         let said = complaint(status, quoted);
         assert_eq!(said.matches("rate-limited upstream").count(), 1, "{said}");
+
+        // an `error` that is the sentence itself, beside the account it was said about
+        let bare = r#"{"error":"Quota exceeded for this key","user_id":"user_3GBJq3JdBGGCK0"}"#;
+        let said = complaint(status, bare);
+        assert!(said.ends_with(": Quota exceeded for this key"), "{said}");
+        assert!(
+            !said.contains("user_"),
+            "the account is nobody's business: {said}"
+        );
 
         // something that is not JSON at all still says what happened
         let plain = complaint(status, "<html>gateway timeout</html>");
