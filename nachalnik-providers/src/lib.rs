@@ -316,16 +316,30 @@ pub(crate) fn unlisted(model: &str, listed: &[String]) -> Option<String> {
 /// note: on the authority alone, so a path, a port and a regional subdomain all still count, and
 /// `openrouter.ai.example.com` does not. A `contains` would match that last one, which is why
 /// this is not one.
+///
+/// note: and on the host *after* any `user:password@`, which a request is sent with and not to:
+/// `https://openrouter.ai:x@example.com` goes to `example.com`, and read up to its first `:` it
+/// was OpenRouter's, so the key a caller keeps for OpenRouter went there too.
 pub fn is_openrouter(address: &str) -> bool {
-    let authority = address
-        .split_once("://")
-        .map_or(address, |(_, rest)| rest)
-        .split('/')
-        .next()
-        .unwrap_or_default();
-    let host = authority.split(':').next().unwrap_or(authority);
+    let host = host_of(
+        address
+            .split_once("://")
+            .map_or(address, |(_, rest)| rest)
+            .split('/')
+            .next()
+            .unwrap_or_default(),
+    );
 
     host == "openrouter.ai" || host.ends_with(".openrouter.ai")
+}
+
+/// The host an authority names: without the `user:password@` in front of it or the port after it.
+pub(crate) fn host_of(authority: &str) -> &str {
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+
+    host.split(':').next().unwrap_or(host)
 }
 
 /// A base URL as the requests are built on it: without the trailing `/` a copied address so often
@@ -508,6 +522,7 @@ mod tests {
             "https://openrouter.ai/api/v1",
             "https://openrouter.ai/api/alpha",
             "https://openrouter.ai",
+            "https://user:secret@openrouter.ai/api/v1",
         ] {
             assert!(is_openrouter(theirs), "{theirs}");
         }
@@ -520,6 +535,8 @@ mod tests {
             "openrouter.ai.example.com",
             "https://openrouter.ai.example.com/api/v1",
             "notopenrouter.ai",
+            "https://openrouter.ai:x@example.com/api/v1",
+            "https://openrouter.ai@example.com/api/v1",
             "",
         ] {
             assert!(!is_openrouter(not), "{not}");
