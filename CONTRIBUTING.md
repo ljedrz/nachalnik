@@ -58,7 +58,9 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 
 - **`nachalnik`'s** read `OPENROUTER_API_KEY` (only when the base URL is OpenRouter's) or
   `NACHALNIK_API_KEY`, plus `NACHALNIK_BASE_URL`, `NACHALNIK_TEST_MODEL` and
-  `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same.
+  `NACHALNIK_CONTEXT_LIMIT`. `nachalnik-eval`'s and `nachalnik-mcp`'s read the same. The PDF and
+  picture tests also need `NACHALNIK_DOCUMENT_MODEL` and `NACHALNIK_VISION_MODEL`, a model that
+  reads each.
 - **`kamchatka`'s** read `KAMCHATKA_API_KEY`, `KAMCHATKA_BASE_URL` and **`KAMCHATKA_TEST_MODEL`**,
   not the binary's `KAMCHATKA_MODEL`. Using the wrong one falls back to the default model, and the
   tests then fail on tool calls rather than on the model name. They also need
@@ -67,10 +69,16 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
   `KAMCHATKA_DOCUMENT_MODEL` for the PDF test, and `KAMCHATKA_GEMINI_API_KEY` for the tests of
   Google's own API.
 - **`nachalnik-providers`'** `anthropic_live`, `responses_live` and `gemini_live` read the
-  vendors' own keys (`GEMINI_API_KEY` for the last);
+  vendors' own keys (`GEMINI_API_KEY` for the last). The first two also run through OpenRouter,
+  with `OPENROUTER_API_KEY` and `NACHALNIK_ANTHROPIC_BASE_URL` or `NACHALNIK_RESPONSES_BASE_URL`
+  set to its address. `gemini_live` doesn't: OpenRouter serves Google's models only through its
+  own APIs, BYOK included, and not Google's native one, which is what the `Gemini` client speaks.
   `system1` reads `NACHALNIK_SYSTEM1_MODEL`, and `kamchatka`'s `advise` reads
-  `KAMCHATKA_SYSTEM1_MODEL` (the `system1` module's docs list which servers they've been run
-  against).
+  `KAMCHATKA_SYSTEM1_MODEL`; OpenRouter lists the models it serves for them at
+  `/models?output_modalities=decisions` (the `system1` module's docs list which servers they've
+  been run against).
+- **The suites can run at the same time**, each with `--test-threads=1`, and so can two runs of
+  `kamchatka`'s, against different models say: it names each run's directories by its process.
 
 Pitfalls:
 
