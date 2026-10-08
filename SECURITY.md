@@ -187,7 +187,8 @@ cause harm, what stops them, and what doesn't.
   also without authentication; whoever reaches the page controls the session like the person at
   the keyboard. It listens on loopback, or on an IP address in a private range, in which case every
   device on that network can control and read the session, and `kamchatka` warns about this at
-  startup and in each session. Host names, wildcards and public addresses are refused. From
+  startup and in each session. A host name is taken only where it resolves to this machine, as
+  `localhost` does; one that resolves elsewhere, wildcards and public addresses are refused. From
   further away, use a tunnel that authenticates. Other web pages open in a browser on the same
   machine are refused: the page only accepts same-origin JSON requests addressed to an IP address
   or `localhost`. Clients can answer permission questions, so the session's own commands are kept
