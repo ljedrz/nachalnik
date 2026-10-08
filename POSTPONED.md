@@ -15,6 +15,16 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   the context. Unblocked by a model that needs it, and a live test showing it reads the picture
   once moved.
 
+- **Anthropic's cache loses everything after an edit that isn't near the end.** The provider marks
+  two cache points, the system prompt and the end of the request, and Anthropic looks back only
+  20 blocks from a mark for an earlier entry. A session that edits its own context, as a sweep's
+  does, falls back to the system prompt after an edit anywhere earlier and writes the rest again,
+  at more than the price of reading it. The API takes four marks, so two are unused, but where to
+  put them is a trade-off: marks that follow the turns or a fixed grid of block positions catch
+  different edits, each mark is a cache write of its own, and blocks are counted after thinking
+  and elision change them. Unblocked by a live comparison of placements on a session that edits
+  its context, measuring what is read and written.
+
 - **Serving clients older than the session, which `protocol::VERSION` promises.** A session should
   serve the older protocol versions it knows, but `watermark` checks a client's version without
   storing it, so once `VERSION` is `2`, nothing knows a connection is a version-1 client, and
