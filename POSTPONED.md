@@ -49,12 +49,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   or only that one is set is the open question. Unblocked by a client that needs to tell from the
   log what notice a session had.
 
-- **`/model` and `/endpoint` take effect in the middle of a turn.** They aren't refused while a
-  turn runs, as `/attach`, `/undo` and `/load` are, so the rest of the turn goes to the new model
-  and the counter's calibration is reset under a request in flight. Refusing them would also
-  refuse a person switching away from a model that is stuck. Unblocked by deciding which matters
-  more, or by switching at the end of the turn.
-
 - **One resource that can't be read loses `Server::resources` the whole listing.** A server
   refusing one read makes the call an error, and the resources that read fine are not returned.
   Naming the failure in place, as a resource with no text is named, would also turn a server that

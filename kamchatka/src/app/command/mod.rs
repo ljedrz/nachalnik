@@ -37,6 +37,12 @@ impl App {
     /// should not have to watch the two of them change to find out. The copy is cheap, and the
     /// alternative is a watermark kept by every caller.
     pub async fn submit(&mut self, line: &str) -> Reply {
+        self.submitted(line, false).await
+    }
+
+    /// [`App::submit`], for a line that was held and is now `released`: one that has already
+    /// waited its turn in the queue, and is not held behind what is still in it.
+    pub(super) async fn submitted(&mut self, line: &str, released: bool) -> Reply {
         let (from, pages) = (self.loose.len(), self.previews);
         // a command still out at the endpoint is finished before this line is read, so that
         // nothing acts on a session part-way through changing model, or on a list somebody has not
@@ -51,6 +57,29 @@ impl App {
                 Speaker::Note,
                 "this waits for the command before it to come back; `ctrl+c` stops a listing or a \
                  compaction pass",
+            );
+
+            return self.replied(Did::Queued, from, pages);
+        }
+        // note: a switch of model or endpoint typed into a running turn waits for the end of it,
+        // as a message does, rather than changing the model under a request in flight - the rest
+        // of the turn would go to a model it did not start with, and the counter's calibration
+        // was reset under it. Held with the lines that wait for a command, and released by the
+        // same loop once the turn is over; see `App::release`. What is typed after it waits
+        // behind it, so a message sent after a switch is answered by the model switched to
+        if !released
+            && line.trim() != "/stop"
+            && (self.held_switch() || self.mid_turn() && switches(line))
+        {
+            self.held.push_back((line.to_owned(), self.keys));
+            self.say(
+                Speaker::Note,
+                match switches(line) && self.held.len() == 1 {
+                    true => "this switches when the turn ends",
+                    false => {
+                        "this waits for the switch before it, which happens when the turn ends"
+                    }
+                },
             );
 
             return self.replied(Did::Queued, from, pages);
@@ -130,6 +159,11 @@ impl App {
         self.start_turn();
 
         self.replied(Did::Asked(id), from, pages)
+    }
+
+    /// Whether a switch of model or endpoint is held for the end of the turn.
+    pub(super) fn held_switch(&self) -> bool {
+        self.held.iter().any(|(line, _)| switches(line))
     }
 
     /// What the lines said and the pages opened since `from` and `pages` add up to.
@@ -490,6 +524,13 @@ impl App {
 /// note: the name goes into the refusal through `one_line`, as every other line this program
 /// quotes back to somebody does. A name is one word, and a word with nothing else on the line is
 /// as long as somebody cares to make it - so a mistyped command of a hundred thousand characters
+/// Whether `line` switches the model or the endpoint: `/model` or `/endpoint` with something after
+/// it. Bare, each only says what is in use.
+pub(super) fn switches(line: &str) -> bool {
+    let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
+    matches!(command, "/model" | "/endpoint") && !rest.trim().is_empty()
+}
+
 /// was a hundred thousand characters of refusal, where every other notice is cut at 96.
 fn no_such_command(name: &str) -> String {
     match name {

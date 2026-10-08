@@ -299,6 +299,10 @@ impl<'a> Headless<'a> {
                 // `/models` is asking for the list. Unless it was told to stop, when what is left
                 // is a switch - a listing or a pass was stopped with the turn - and the way out
                 // waits for that, under its own bound
+                // a switch held for the end of a turn, which a line read while a question was
+                // open can be; see `App::submit`. Nothing else is held here, since no line is read
+                // while a command is out
+                app.release().await;
                 if app.leaving()
                     || (!reading && !app.busy && (!app.in_flight() || self.stopped.is_some()))
                 {
