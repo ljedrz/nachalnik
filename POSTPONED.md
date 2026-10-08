@@ -9,6 +9,14 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
+- **`Intervention::elided` brings back an item that was already excluded.** It sets the named items
+  to `Elided` whatever state they were in, so an item the session had excluded comes back into the
+  treated copy as a marker the control never had, and the record lists it as touched - an
+  intervention that added something while claiming to take it away. Nothing in the suite does
+  this, since every experiment elides an item it has just put in. Skipping such an item, or
+  reporting it apart from the ones moved, changes what `Applied` says; unblocked by choosing
+  which.
+
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
