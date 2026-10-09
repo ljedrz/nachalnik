@@ -2,7 +2,7 @@
 """Runs the sweeps: every scope of each KIND, in the order given, as many at once as the endpoint
 takes, until each one is complete or has been tried `--tries` times.
 
-usage: run.py [--width N] [--max N] [--tries N] [--stall MINUTES] [--only NAME,...] [KIND...]
+usage: run.py [--width N] [--tries N] [--stall MINUTES] [--only NAME,...] [KIND...]
 
 KIND is audit, tests, quality, docs, maintain or compact (all six, in that order, if none is
 given); a scope `scopes/KIND/X.txt` runs as the sweep named `<first letter of KIND>-X`. Run it in
@@ -13,10 +13,12 @@ What it decides on its own:
 - **No time limit.** A sweep runs until the model has answered its last message. One whose records
   have not grown for `--stall` minutes (default 45) is stopped, which writes its session, and is
   run again.
-- **How many at once.** It starts at `--width` (default 4) and moves between 1 and `--max`
-  (default 10) by what kamchatka prints while it waits on the endpoint (`answered 429; trying
-  again`, a timeout, a refused connection): more than three of those per running sweep in ten
-  minutes takes one away, none for twenty minutes adds one back.
+- **How many at once.** There is no ceiling but the endpoint: kamchatka is not the limit, and a
+  session takes tens of megabytes. It starts at `--width` (default 8) and moves by what kamchatka
+  prints while it waits on the endpoint (`answered 429; trying again`, a timeout, a refused
+  connection): more than three of those per running sweep in ten minutes takes a quarter of the
+  width away, and fewer than one per four running sweeps for ten minutes adds half of it again,
+  so a run finds an endpoint that takes hundreds within the hour.
 - **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
   takes one away.
@@ -94,8 +96,7 @@ def main():
     args = sys.argv[1:]
     if "-h" in args or "--help" in args:
         sys.exit(__doc__)
-    width = option(args, "--width", 4)
-    most = option(args, "--max", 10)
+    width = option(args, "--width", 8)
     tries = option(args, "--tries", 3)
     stall = option(args, "--stall", 45) * 60
     only = option(args, "--only", None, lambda s: set(s.split(",")))
@@ -154,7 +155,7 @@ def main():
             given_up.append(name)
         else:
             queue.append(name)
-    log(f"start: {len(queue)} to run, {len(running)} running, width {width} (max {most}), "
+    log(f"start: {len(queue)} to run, {len(running)} running, width {width}, "
         f"reading {tree} at {pinned}")
 
     pressure = collections.deque()  # (when, retry lines printed by every sweep so far)
@@ -172,7 +173,7 @@ def main():
 
     def save():
         with open(os.path.join(sweeps.SWEEPS, "run.json"), "w") as f:
-            json.dump({"pid": os.getpid(), "width": width, "max": most,
+            json.dump({"pid": os.getpid(), "width": width,
                        "paused_until": paused_until, "queued": list(queue),
                        "running": sorted(running), "done": done, "given_up": given_up,
                        "at": time.time()}, f, indent=1)
@@ -180,8 +181,8 @@ def main():
     def narrow(why):
         nonlocal width, changed
         if width > 1:
-            width -= 1
-            log(f"width {width + 1} -> {width}: {why}")
+            was, width = width, width - max(1, width // 4)
+            log(f"width {was} -> {width}: {why}")
         changed = time.time()
 
     def tick():
@@ -235,8 +236,8 @@ def main():
             printed += max(0, now_seen - seen[name])
             seen[name] = now_seen
         pressure.append((now, printed))
-        # kept back to the latest look at least twenty minutes old, which is what widening compares
-        while len(pressure) > 1 and now - pressure[1][0] >= 1200:
+        # kept back to the latest look at least ten minutes old, which is what both directions read
+        while len(pressure) > 1 and now - pressure[1][0] >= 600:
             pressure.popleft()
         recent = printed - next((n for t, n in pressure if now - t <= 600), printed)
         # note: only once what runs is within the width. Narrowing starts nothing new and stops
@@ -245,11 +246,13 @@ def main():
         # with ten still running, and would have gone on to one
         if recent > 3 * max(1, busy) and busy <= width and now - changed > 600:
             narrow(f"{recent} retries in ten minutes across {busy} running")
-        elif pressure[0][1] == printed and now - pressure[0][0] >= 1200 and now - changed > 1200 \
-                and queue and len(running) >= width and width < most:
-            width += 1
+        # note: widening asks for few retries rather than none, since with hundreds running an
+        # endpoint that takes them all still answers the odd one with a 429
+        elif 4 * recent < max(1, busy) and now - pressure[0][0] >= 600 and now - changed > 600 \
+                and queue and len(running) >= width:
+            was, width = width, min(width + max(1, width // 2), len(running) + len(queue))
             changed = now
-            log(f"width {width - 1} -> {width}: no retries for twenty minutes")
+            log(f"width {was} -> {width}: {recent} retries in ten minutes across {busy} running")
 
         while queue and len(running) < width and time.time() >= paused_until:
             name = queue.popleft()

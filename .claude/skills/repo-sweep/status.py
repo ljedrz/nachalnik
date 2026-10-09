@@ -81,8 +81,8 @@ def table(named):
         queued = len(run["queued"])
         paused = max(0, int(run["paused_until"] - now))
         lines.append(
-            f"run.py {'running' if run['alive'] else 'NOT RUNNING'}: width {run['width']}/"
-            f"{run['max']}, {len(run['running'])} running, {queued} queued, "
+            f"run.py {'running' if run['alive'] else 'NOT RUNNING'}: width {run['width']}, "
+            f"{len(run['running'])} running, {queued} queued, "
             f"{len(run['done'])} complete, given up {run['given_up'] or 'none'}"
             + (f", starts paused for {paused // 60} more minutes" if paused else "")
         )

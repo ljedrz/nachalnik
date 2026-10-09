@@ -85,10 +85,12 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
 - **Done means done**, read off the records (`sweeps.py`): exited on its own, every message sent,
   no failed turn, the last answer ended rather than cut off. Anything else is run again from the
   start, up to `--tries` times; what is still not done is listed as given up.
-- **As many at once as the endpoint takes.** It starts at `--width` (4) and narrows by one when
-  the sweeps print more than three retries each in ten minutes (`answered 429; trying again`),
-  widening again after twenty minutes of none, up to `--max` (10). A sweep that ends on a failure
-  narrows it too, and pauses new starts while the endpoint recovers.
+- **As many at once as the endpoint takes, with no ceiling.** kamchatka is not the limit: a
+  session takes tens of megabytes, and hundreds can run at once. The runner starts at `--width`
+  (8), takes a quarter away when the sweeps print more than three retries each in ten minutes
+  (`answered 429; trying again`), and adds half again after ten minutes of fewer than one per four.
+  A sweep that ends on a failure narrows it too, and pauses new starts while the endpoint recovers.
+  Don't hold it lower by hand: what an endpoint took on another day is no guide to today.
 - **A run reads one commit.** It makes a worktree at HEAD in `$SWEEPS/tree` and a copy of the
   binary in `$SWEEPS/kamchatka`, and every sweep reads and runs those, so fixes committed and files
   reverted for mutation checks meanwhile are nothing a sweep half-way through sees. The findings
@@ -211,16 +213,16 @@ json.dump({"model": "<model>", "requests": 0,
     "with the tools you have, and say plainly when something cannot be done. Do not run cargo: "
     "there is no toolchain here."}, open(os.environ["SWEEPS"] + "/fr.json", "w"))
 EOF
-for t in $SKILL/scopes/friction/*.txt; do          # three at a time; a session ends in `done`
-    while [ "$(jobs -rp | wc -l)" -ge 3 ]; do sleep 15; done
+for t in $SKILL/scopes/friction/*.txt; do          # all of them, staggered; each ends in `done`
     $SKILL/friction.sh f-$(basename $t .txt) $t > /dev/null 2>&1 &
-    sleep 60
+    sleep 30
 done
+wait
 python3 $SKILL/friction.py $SWEEPS/fr/tmp/kamchatka/*.json
 ```
 
-- `friction.sh` carries a session lost to the endpoint on, as the sweeps' resume does, so a free
-  model's 429s cost time rather than the session; started all at once, most die anyway.
+- `friction.sh` carries a session lost to the endpoint on, as the sweeps' resume does, so an
+  endpoint's 429s cost time rather than the session, and nothing caps how many run at once.
 - Resumed sessions leave a snapshot per process, each holding the whole history before it, so
   `friction.py` counts an early error once per snapshot. Count sessions by the snapshot name with
   its `-N` suffix taken off before weighing a row.
