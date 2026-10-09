@@ -78,6 +78,12 @@ minor bump may break you.
 - **A restart says an MCP server offering one name twice offers it twice**, as a start does. It
   said every clash was a name another tool already had, about a tool no other server offered.
 
+- **An address or a context limit set to bytes that are not text is refused by its name.** Read as
+  unset, a `KAMCHATKA_BASE_URL` that was not text was OpenRouter's address, and the request went
+  there with the key and the conversation meant for the address written; the advisor's, Gemini's
+  and Anthropic's were read the same way. A `KAMCHATKA_CONTEXT_LIMIT` that was not text was no limit.
+  Each is refused at startup now, as a value that is text but not an address or a number is.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
