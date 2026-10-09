@@ -141,12 +141,25 @@ pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) ->
             }
         };
         let clashes = claim(&mut taken, &tools);
-        if !clashes.is_empty() {
+        // told apart as `attach` tells them: a name another tool has, or one the server offers
+        // twice, which nothing about the other tools would change
+        let (elsewhere, twice): (Vec<String>, Vec<String>) =
+            clashes.into_iter().partition(|id| taken.contains(id));
+        if !elsewhere.is_empty() {
             left_out.push(format!(
                 "`{}` now offers {} under a name another tool already has, so none of its tools \
                  are in this session",
                 server.name(),
-                clashes.join(", ")
+                elsewhere.join(", ")
+            ));
+            continue;
+        }
+        if !twice.is_empty() {
+            left_out.push(format!(
+                "`{}` now offers more than one tool called {}, so none of its tools are in this \
+                 session",
+                server.name(),
+                twice.join(", ")
             ));
             continue;
         }
