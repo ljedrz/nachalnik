@@ -394,8 +394,11 @@ impl Kernel {
     /// note: There is no step between this and the wire where the kernel adds something of its
     /// own.
     ///
-    /// note: The one thing that can still change the request is a [`Compactor`], which runs at
-    /// the start of the next [`Kernel::step`] - and says exactly what it did.
+    /// note: What can still change the request is a [`Compactor`], which runs at the start of
+    /// the next [`Kernel::step`] - and says exactly what it did - and with it the caller's full
+    /// notice, placed or retired as the compactor finds the context full or not; see
+    /// [`Kernel::set_full_notice`]. Each is an ordinary change to the context, with its own event,
+    /// and neither is the kernel's own words.
     ///
     /// [`Compactor`]: crate::Compactor
     pub fn preview_request(&self) -> Result<ModelRequest> {

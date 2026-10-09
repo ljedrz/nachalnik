@@ -120,7 +120,8 @@ each one in full with its reasoning; read it before changing anything under `nac
 
 - **Nothing is destroyed.** Removing something is a state change, and it can be undone.
 - **The previewed request is the request.** Nothing is added between `preview_request()` and the
-  network except by a `Compactor`, which reports exactly what it did.
+  network except by a `Compactor`, which reports exactly what it did, and the caller's full notice,
+  placed or retired with it as an ordinary change to the context.
 - **Identifiers are never reused**, even across a resumed session.
 - **Every state change is an `Event`**, and the log and the broadcast are written under one lock so
   their order matches. No logging that the user can't see.

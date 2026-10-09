@@ -15,8 +15,10 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   kept as an excluded item next to the truncated copy the model sees
   (`Config::keep_truncated_output`).
 - **The previewed request is the request.** The kernel adds nothing of its own between
-  `preview_request()` and sending. The only thing that can still change it is a `Compactor`, which
-  reports exactly what it did.
+  `preview_request()` and sending. What can still change it is the start of the next step: a
+  `Compactor`, which reports exactly what it did, and the caller's full notice
+  (`Kernel::set_full_notice`), placed or retired as the compactor finds the context full or not,
+  each time an ordinary change to the context with its own event.
 - **Identifiers are never reused**, including those of items removed by `undo`, and including tool
   call ids, record numbers and permission ids across a resumed session (`Snapshot::used_calls`,
   `repair_call_ids`, `Snapshot::last_seq`, `Snapshot::next_permission`).
