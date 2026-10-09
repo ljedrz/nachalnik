@@ -327,7 +327,7 @@ async fn every_size_with_text_that_is_not_ascii() {
         .push(ContextItem::file("ścieżka/日本語.rs", AWKWARD));
     let _ = tokio::time::timeout(Duration::from_secs(5), app.kernel.turn()).await;
 
-    for tab in [Tab::Chat, Tab::Context, Tab::Trace, Tab::Permissions] {
+    for tab in Tab::ALL {
         app.tab = tab;
         for width in 1..=48u16 {
             for height in [1u16, 2, 7, 24] {
@@ -433,7 +433,7 @@ fn a_picture_in_the_context_is_named_rather_than_drawn() {
         "A".repeat(4_000),
     )));
 
-    for tab in [Tab::Chat, Tab::Context, Tab::Trace, Tab::Permissions] {
+    for tab in Tab::ALL {
         app.tab = tab;
         for width in [20, 80, 200] {
             draw(&mut app, width, 24);
