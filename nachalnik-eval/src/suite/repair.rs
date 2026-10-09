@@ -312,6 +312,7 @@ impl Repair {
         let repaired = self
             .answer_at(subject, trial, dossier, session, REPAIRED, true)
             .await?;
+        acts.extend(trial.drain(&journal));
         drop(anchor);
 
         // ---------------------------------------------------------------------------- checks
