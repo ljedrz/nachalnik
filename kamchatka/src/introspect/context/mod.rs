@@ -351,7 +351,11 @@ impl Tool for Context {
                     ),
                 }))
             }
-            "budget" => Ok(ToolOutput::new(budget(&kernel, &self.pinned.lock()))),
+            "budget" => Ok(ToolOutput::new(budget(
+                &kernel,
+                &self.pinned.lock(),
+                own_turn(&kernel, &call.id),
+            ))),
             "request" => Ok(ToolOutput::new(request(&kernel))),
             "search" => {
                 let Some(text) = args["text"].as_str().filter(|t| !t.is_empty()) else {
