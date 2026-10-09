@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` answers at once after a command that was refused thousands of paths.** The note on
+  whether a permission error was the sandbox judged every path the refusals named, and `find /`
+  names thousands the session reaches: seconds of work after the command had ended. Each path is
+  judged once and at most a thousand are, and a command whose refusals go past that is told the
+  sandbox may be why, as one naming no path is.
+
 - **`fs read` no longer calls a line under the output limit longer than it.** A line is cut at what
   the limit leaves once the header has its room, so one up to 256 bytes under the limit was shown
   cut and said to be longer than it. The header says the line is too long to show within the limit

@@ -944,6 +944,36 @@ fn the_punctuation_around_a_path_is_not_part_of_it() {
     }
 }
 
+/// A command whose refusals name more paths than are judged is told the boundary may be the cause,
+/// rather than nothing.
+///
+/// note: `find /` names thousands of paths this reaches, each judged with a dozen `canonicalize`
+/// calls and none counted towards the three a note names, so judging stops at `LOOKED`. A confined
+/// path after that is not looked at, and silence would call its refusal the file's own.
+#[test]
+fn a_command_refused_more_paths_than_are_judged_hears_the_boundary_may_be_why() {
+    use kamchatka::sandbox::Sandbox;
+
+    let confined = Sandbox {
+        workdir: PathBuf::from("/w"),
+        extra: Vec::new(),
+        readable: Vec::new(),
+        writable: true,
+        network: kamchatka::sandbox::Network::NoTcp,
+        devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+        closed: Vec::new(),
+    };
+    let mut stderr: String = (0..2_000)
+        .map(|i| format!("find: '/usr/lib/x{i}': Permission denied\n"))
+        .collect();
+    stderr.push_str("find: '/home/someone/.ssh': Permission denied\n");
+
+    let note = confined
+        .note_for(&stderr)
+        .expect("a refusal it did not judge may be the boundary's");
+    assert!(note.contains("may be that boundary"), "{note}");
+}
+
 /// Each of the three spellings of a refusal is a refusal on its own.
 ///
 /// note: they are listed together in `refused` and joined by `||` because any one of them is the

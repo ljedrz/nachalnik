@@ -399,15 +399,22 @@ impl Sandbox {
         // `Vec::dedup` drops only neighbours, and a path is usually named by two lines that are
         // not next to each other - a warning and the failure it led to.
         //
-        // note: and it stops at the three it will name. A command's standard error can be the
-        // whole of what `KEPT` holds, and every path in it compared against every one kept so far,
-        // each costing a dozen `canonicalize` calls, was minutes of work after the command had
-        // already ended, with nothing to interrupt it
+        // note: and it stops at the three it will name, or at `LOOKED` paths judged. A command's
+        // standard error can be the whole of what `KEPT` holds, each path in it costs a dozen
+        // `canonicalize` calls, and `find /` names thousands this reaches, none of which counts
+        // towards the three: seconds of work after the command had already ended, with nothing to
+        // interrupt it. Stopped short with nothing named, it says the general sentence, since
+        // saying nothing would call every refusal after the last one judged the file's own
         let (mut named, mut mentioned): (Vec<(String, Why)>, bool) = (Vec::new(), false);
+        let (mut judged, mut stopped) = (std::collections::HashSet::new(), false);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
             mentioned = true;
-            if named.iter().any(|(named, _)| *named == path) {
+            if !judged.insert(path.clone()) {
                 continue;
+            }
+            if judged.len() > LOOKED {
+                stopped = true;
+                break;
             }
             // note: a relative path is judged where the command started, and named as it was
             // written. A command that moved with `cd` first is judged from the wrong place, which
@@ -435,7 +442,7 @@ impl Sandbox {
                 .collect()
         };
         let (sockets, read_only, outside) = (of(Why::Socket), of(Why::ReadOnly), of(Why::Outside));
-        match (named.is_empty(), !mentioned) {
+        match (named.is_empty(), !mentioned || stopped) {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
             (true, true) => Some(format!(
@@ -739,6 +746,9 @@ fn refused(line: &str) -> bool {
 
 /// The verb for the paths a note names: a command that writes one file and reads another is
 /// refused twice, and the note names both.
+/// How many of the paths a command's refusals name are judged, at most.
+const LOOKED: usize = 1000;
+
 /// Why a path a refusal named was the confinement's doing.
 #[derive(Clone, Copy, PartialEq)]
 enum Why {
