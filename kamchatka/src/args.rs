@@ -139,7 +139,8 @@ pub struct Args {
     #[arg(short, long, value_name = "PATH")]
     pub resume: Option<String>,
 
-    /// An MCP server to run, and offer the tools of, as `[name=]command`. May be repeated.
+    /// An MCP server to run, and offer the tools of, as `[name=]command`. May be repeated. The
+    /// command is split on whitespace, with no quoting, so none of its arguments can hold a space.
     #[cfg(feature = "mcp")]
     #[arg(long, value_name = "COMMAND")]
     pub mcp: Vec<String>,
