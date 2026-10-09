@@ -12,10 +12,9 @@ HARD RULES
 - Never put an API key anywhere. Do not use `git stash` (its refs are shared with the main tree); commit in your worktree or `git diff > file && git checkout .` there instead.
 
 HOW TO READ THE SWEEP
-If a file $SWEEPS/SWEEP.notes.txt exists, the sweep was cut short and its findings are only in that file (the model's notes, recovered from its call arguments; there is no final report). Otherwise:
-The findings are in the model's `context` notes and final reply. Print them with:
-  python3 SKILL/extract.py "$(SKILL/snap.sh SWEEP)" -n
-(the notes are near the end; the final FINDINGS text is the last assistant message).
+The findings are in the model's `context` notes and its replies, the last of which is the final FINDINGS text. Print them with:
+  SWEEPS=SWEEPS python3 SKILL/read.py SWEEP
+(a sweep that could not write its session gives its notes alone, and says so).
 
 VERIFY EACH FINDING
 - Open the actual lines at HEAD. Classify REAL / OVERSTATED / WRONG with file:line and one sentence of why.

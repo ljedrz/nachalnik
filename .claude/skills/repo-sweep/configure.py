@@ -159,7 +159,10 @@ def hygiene(budget: int) -> str:
 def listed_limit(model: str) -> int | None:
     base = os.environ.get("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
     key = os.environ.get("KAMCHATKA_API_KEY", "")
-    request = urllib.request.Request(f"{base}/models", headers={"Authorization": f"Bearer {key}"})
+    # a user agent of its own: some endpoints sit behind a firewall that refuses Python's
+    request = urllib.request.Request(
+        f"{base}/models", headers={"Authorization": f"Bearer {key}", "User-Agent": "repo-sweep"}
+    )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             listing = json.load(response)
