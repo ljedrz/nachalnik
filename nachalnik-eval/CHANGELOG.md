@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **What a subject does on `repair`'s last rung is recorded.** The ladder recorded the acts of every
+  rung with handles but the last, the task asked again once the subject had been told to put its
+  context right. An edit made while answering it was dropped, so the check on what the subject
+  changed reported that the planted note was still standing when it had been excluded, and that
+  question counted towards the preregistered gate as one the subject had done nothing about.
+
 ## [0.8.0] - 2026-10-06
 
 ### changed
