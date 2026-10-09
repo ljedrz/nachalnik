@@ -239,7 +239,11 @@ def main():
         while len(pressure) > 1 and now - pressure[1][0] >= 1200:
             pressure.popleft()
         recent = printed - next((n for t, n in pressure if now - t <= 600), printed)
-        if recent > 3 * max(1, busy) and now - changed > 600:
+        # note: only once what runs is within the width. Narrowing starts nothing new and stops
+        # nothing running, so until enough sweeps end the pressure is the same pressure, and read
+        # again it narrowed again: a run of ten under a busy endpoint went to five in ninety minutes
+        # with ten still running, and would have gone on to one
+        if recent > 3 * max(1, busy) and busy <= width and now - changed > 600:
             narrow(f"{recent} retries in ten minutes across {busy} running")
         elif pressure[0][1] == printed and now - pressure[0][0] >= 1200 and now - changed > 1200 \
                 and queue and len(running) >= width and width < most:
