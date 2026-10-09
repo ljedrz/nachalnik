@@ -498,6 +498,12 @@ async fn a_path_ending_in_a_separator_is_refused_rather_than_trimmed() {
         "nothing was made under the name without it: {said}"
     );
 
+    // and the same written as an absolute path, which the resolver shortens the same way
+    let absolute = format!("{}/made/", dir.display());
+    let said = ask(&dir, "write", json!({ "path": absolute, "content": "x" })).await;
+    assert!(said.contains("ends in a separator"), "{said}");
+    assert!(!dir.join("made").exists(), "nothing was made: {said}");
+
     // a path a `read` is handed is not refused here: it is a path, and what is behind it is
     // refused by name
     let said = ask(&dir, "read", json!({ "path": "sub/" })).await;

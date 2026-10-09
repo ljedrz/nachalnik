@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs write` refuses an absolute path ending in a separator, as it does a relative one.** Such a
+  path names a directory, and `fs` makes none, but the refusal was only for relative paths:
+  `/tmp/build/` where there was no `/tmp/build` made a file called `build`.
+
 - **A long unbroken word in the prompt no longer slows every frame.** Sizing the input box measured
   what was left of such a word again for each row it took, so the work grew with the square of its
   length: a pasted run of a hundred thousand characters with no break in it, such as a hex dump,

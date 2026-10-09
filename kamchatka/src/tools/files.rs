@@ -569,14 +569,14 @@ fn make_directory(path: &Path, policy: &Careful, then: &str) -> Option<String> {
 /// answering as a directory's worth of what was meant to go in one. Checked on the text and
 /// before the reach, so a path outside it is still refused as the path it is.
 ///
-/// note: on a relative path, and only there. An absolute one names a directory that is there,
-/// which the open refuses by name; a name that is not a file - `.`, `..` - is one nobody ends a
-/// path with a separator after.
+/// note: on an absolute path as well as a relative one. The resolver shortens both the same way,
+/// so `/tmp/build/` where there is no `/tmp/build` was a file made there; only `/` itself, which
+/// is nothing once the separator is gone, is left to the open.
 ///
 /// note: the directory is offered to `shell` only where `shell` may run, as [`unmade`] offers it.
 fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
     let without = named.trim_end_matches('/');
-    if without.is_empty() || !named.ends_with('/') || std::path::Path::new(without).is_absolute() {
+    if without.is_empty() || !named.ends_with('/') {
         return None;
     }
     let or = match makes_directories(policy) {
