@@ -1142,7 +1142,8 @@ fn keep(
     let text = text.strip_suffix('\n').unwrap_or(&text);
     let mut text = text.strip_suffix('\r').unwrap_or(text);
     let room = KEPT.saturating_sub(collected.len() + 1);
-    if text.len() > room {
+    // against the newline too, which an empty line is all of
+    if collected.len() + 1 + text.len() > KEPT {
         let mut cut = room;
         while !text.is_char_boundary(cut) {
             cut -= 1;
@@ -1444,6 +1445,21 @@ mod tests {
                 "{command}: said under the status line, not after the output: {unkept}"
             );
         }
+    }
+
+    /// Empty lines are held to the ceiling as well: each one is a byte of what is kept.
+    ///
+    /// note: the ceiling was measured against a line without its newline, so a line that was
+    /// only one never reached it, and `yes ''` grew what was kept without end.
+    #[tokio::test]
+    async fn empty_lines_past_the_ceiling_are_not_kept() {
+        let past = KEPT + 1_000_000;
+        let said = ran(&format!("head -c {past} /dev/zero | tr '\\0' '\\n'")).await;
+
+        assert!(said.starts_with("exit: 0"), "{}", &said[..200]);
+        assert!(said.len() <= KEPT + 1_000, "{} bytes", said.len());
+        let unkept = said.lines().nth(1).unwrap_or_default();
+        assert!(unkept.contains("not kept"), "{unkept}");
     }
 
     /// Standard error that is not text is held to the ceiling as text, cut where a character
