@@ -25,6 +25,11 @@ minor bump may break you.
   the shell kept, the tool result and the saved session with it, without end, where SECURITY.md
   says what a tool keeps is capped.
 
+- **An advisor's danger claim outside 0 to 1 is no rating.** The score it gives was already held to
+  the rubric, and the claim was taken as it came: `-3` read as no danger at "400% sure", so a
+  command nothing had read was drawn green, and `3` red at "300% sure". It is read as no answer
+  now, and a command with nothing else said about it is said to be unrated.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

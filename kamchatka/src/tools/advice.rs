@@ -531,8 +531,11 @@ impl Advised {
         };
 
         // note: a `noul`'s number is its own confidence, so there is no second field to pair it
-        // with and no half-answer to guard against - see `Rated::claimed`
-        let claim = |name: &str| Some(Rated::claimed(answers.noul(name)?));
+        // with and no half-answer to guard against - see `Rated::claimed`. But a number that is
+        // no probability is no claim, for the score's reason: `-3` read as one is no danger at
+        // "400% sure", and drawn green
+        let on_the_line = |danger: &f64| (0.0..=1.0).contains(danger);
+        let claim = |name: &str| Some(Rated::claimed(answers.noul(name).filter(on_the_line)?));
 
         // note: the whole command is what decides whether anything was said at all, and it has
         // two ways of saying it. Either will do; neither is half an answer, because each is a
@@ -1028,6 +1031,41 @@ mod tests {
         }
 
         let advised = Advised::new(Arc::new(Careful::new()), Arc::new(Half));
+        let request = asking("shell", Capability::exec("run"));
+
+        assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
+        assert!(advised.rating(&request.call).is_none());
+        assert!(advised.why_unrated(&request.call).is_some());
+    }
+
+    /// A claim that is no probability is not an answer either.
+    ///
+    /// note: read as one, `-3` was a claim of no danger at "400% sure", which is drawn green - a
+    /// clean bill for a command nothing had read, which is what the score's own range is checked
+    /// against.
+    #[tokio::test]
+    async fn a_claim_that_is_no_probability_is_not_a_rating() {
+        struct Beyond;
+
+        #[async_trait]
+        impl SystemOne for Beyond {
+            async fn ask(
+                &self,
+                _state: Value,
+                _questions: Vec<(String, Question)>,
+            ) -> Result<nachalnik_providers::system1::Answers, nachalnik::BoxError> {
+                Ok(nachalnik_providers::system1::Answers::read(json!({
+                    "model": "beyond",
+                    "answers": { DANGER: { "type": "noul", "noul": -3.0 } },
+                })))
+            }
+
+            fn named(&self) -> String {
+                "beyond".to_owned()
+            }
+        }
+
+        let advised = Advised::new(Arc::new(Careful::new()), Arc::new(Beyond));
         let request = asking("shell", Capability::exec("run"));
 
         assert_eq!(advised.evaluate(&request).await, Verdict::Ask);
