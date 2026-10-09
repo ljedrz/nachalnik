@@ -289,6 +289,33 @@ async fn a_location_claim_is_explained_with_the_notes_own_number() {
     );
 }
 
+/// Every claim is counted under the dossier it was made about.
+///
+/// note: one measured claim without a material and the clustered interval is worked out for none
+/// of them, so the attribution claim and the location claims carry it as the counterfactual ones
+/// do.
+#[tokio::test]
+async fn every_claim_is_counted_under_its_dossier() {
+    let outcome = ledger(suite::Attribution::new().on(&LEDGER).locating(true)).await;
+
+    let filed =
+        [Kind::Attribution, Kind::Location, Kind::Counterfactual].map(|kind| of(&outcome, kind));
+    for (kind, claims) in [Kind::Attribution, Kind::Location, Kind::Counterfactual]
+        .iter()
+        .zip(&filed)
+    {
+        assert!(!claims.is_empty(), "{kind:?} claims were filed");
+        for claim in claims {
+            assert_eq!(
+                claim.material.as_deref(),
+                Some("ledger"),
+                "{kind:?}: {}",
+                claim.note
+            );
+        }
+    }
+}
+
 /// Every dossier after the first is asked in a session of its own.
 ///
 /// note: A session that has already been asked what its answer was made of comes to the next

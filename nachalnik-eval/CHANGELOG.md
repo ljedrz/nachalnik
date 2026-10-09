@@ -14,6 +14,11 @@ minor bump may break you.
   context right. An edit made while answering it was dropped, so the check on what the subject
   changed reported that the planted note was still standing when it had been excluded, and that
   question counted towards the preregistered gate as one the subject had done nothing about.
+- **`attribution`'s naming and location claims are counted under their dossier.** They were filed
+  without one, and one measured claim without a material leaves the clustered interval worked out
+  for none of them, so the `overall:` line of the suite's primary endpoint quoted the unadjusted
+  interval over a run of several dossiers - the one the crate warns is too narrow - with nothing
+  saying it had.
 
 ## [0.8.0] - 2026-10-06
 
