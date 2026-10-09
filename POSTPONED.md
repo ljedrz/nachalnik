@@ -28,6 +28,64 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   for pictures, or a truncation that keeps blobs whole and cuts only the text around them, changes
   what a tool's limit means. Unblocked by choosing which.
 
+- **A headless run goes on sending after a length refusal from an endpoint that publishes no
+  limit.** `App::oversized` is the refusal and the measurement together: the refusal is any
+  `Overrun`, and the measurement compares the budget with the limit the endpoint published. A
+  provider that refused for length and published no limit gives an `Overrun` with no limit, and a
+  budget with none, so the conjunction is false in the one state it was written for - every
+  remaining line is sent and refused, the lines are never passed over unsent, and the person is
+  told no figure to act on. Remembering the overrun and comparing the budget with its own token
+  count where there is no limit would close it; it changes when a headless run stops sending, so it
+  waits for a decision on that.
+
+- **`--connect` to a listener that accepts and then closes retries for a minute.** A first attempt
+  that cannot connect fails at once, and one that connects and cannot send `attach`, or reads the
+  connection closing before anything came back, is taken for a dropped session: the client retries
+  for `GIVE_UP` and then says the session had 0 records when it was last seen, which it never was.
+  The write fails only when the peer has closed before it, so a fix needs the first-read path in the
+  loop as well as that write, and a test needs a peer that closes at a chosen moment. Unblocked by
+  writing that peer.
+
+- **Two `fork`s in one turn under `--parallel` can both call their copies the same context.** The
+  copy before is found by whichever fork takes the `last_read` lock first, and the comparison is one
+  way, so where a call writing to the context lands between the two snapshots and the later fork
+  locks first, neither says the two differ. Taking the lock before the snapshot would make the lock
+  order the snapshot order; what is missing is a test that can order the two forks, since the kernel
+  runs parallel calls on a `JoinSet`.
+
+- **A refused attach still displaces the client that was attached.** `Serving::answer` seats a
+  client before the attach is answered, and `watermark` refuses a projection too long for one frame
+  only after that, so the client there before is let go and the newcomer is refused - nobody is
+  attached. A projection that long is rare, since the conversation is cut down to fit; seating
+  after the size check means a second exchange in the attach, or the check inside the server.
+  Unblocked by choosing which.
+
+- **A Gemini stream that carries no candidate is a turn that said nothing.** A 200 stream of
+  `usageMetadata` alone is read as a finished, empty turn with `EndTurn`, where Chat Completions
+  refuses a stream that never answered. The unstreamed path counts `usageMetadata` as an answer on
+  purpose, and Google is not known to send this shape. Unblocked by deciding what counts
+  as an answer from this dialect, or by a response that shows the shape.
+
+- **Argument fragments streamed before a call's identifier are announced under an empty one.**
+  `Delta::ToolArgs` is sent with the identifier the call has at that moment, so a client drawing
+  calls as they stream shows the opening fragments under no identifier and the rest under the real
+  one. What is recorded is right. Unblocked by a client that needs it; holding the fragments until
+  the identifier comes, or keying deltas on the call's position, are the two ways.
+
+- **A reset HTTP/2 stream is not retried.** `worth_waiting_out` retries a request that never got
+  an answer only when it timed out, on the reasoning that every other transport failure is a
+  decision or a bug. A server resetting the stream - `http2 error: stream error received:
+  unspecific protocol error` - is neither, and a turn fails on it. So
+  does `error decoding response body` partway through an answer, which is not retried because the
+  answer may already be billed. Unblocked by telling a reset before any of the answer arrived from
+  one after it.
+
+- **Two assertions in `kamchatka/tests/introspect/fork.rs` cannot fail.** They check that a reply
+  does not say "Nothing of yours was taken away", a sentence the code no longer writes, so they hold
+  whatever `fork` says. Pointed at the sameness claim instead they contradict
+  `two_forks_with_nothing_writing_between_them_still_say_they_are_the_same_context`, which pins
+  that claim on purpose. Unblocked by saying what they should guard, or removing them.
+
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
