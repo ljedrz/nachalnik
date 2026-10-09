@@ -748,11 +748,11 @@ the sandbox's (`cat /etc/shadow`) gets no such note.
 
 When the shell is sandboxed, network access is asked about when a command opens an internet socket,
 not based on the command's name. The sandboxed child process installs a seccomp filter after the
-Landlock rules, and the filter pauses every `socket()` call for `AF_INET` or `AF_INET6` until
-`kamchatka` answers: from `net:reach` if it says `allow` or `deny`, or by asking you if it says
-`ask`, once per command. So with `--allow exec:run`, `git status` runs without a question, while
-`python3 fetch.py` is asked about as soon as it does a DNS lookup, which couldn't be told apart from
-the command alone.
+Landlock rules, and the filter pauses every `socket()` call for `AF_INET` or `AF_INET6` - and for
+`AF_SMC` and `AF_RDS`, which reach the internet over TCP as well - until `kamchatka` answers: from
+`net:reach` if it says `allow` or `deny`, or by asking you if it says `ask`, once per command. So
+with `--allow exec:run`, `git status` runs without a question, while `python3 fetch.py` is asked
+about as soon as it does a DNS lookup, which couldn't be told apart from the command alone.
 
 An unattended run answers with `--on-ask`, immediately, while the turn is running, since the
 command is waiting on the answer and waiting for the turn to end would wait forever:

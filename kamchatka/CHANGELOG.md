@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The network gate holds `AF_SMC` and `AF_RDS` sockets as it holds internet ones.** Any process
+  can open either, and both reach the internet over TCP: an `AF_SMC` socket's `connect` to an
+  internet address falls back to plain TCP, and `AF_RDS` carries its datagrams over TCP once that
+  transport is asked for. A sandboxed command could reach a host through either with nobody asked,
+  under a session that refused the network as well as one that asks.
+
 - **A `ctrl+c` that ends a served session waits for a `/model` or `/endpoint` still settling**, as
   `/quit` and a headless run do. The session was ended as soon as no turn was running, so
   `session.finished` was written with the switch still out, and its `model.changed` came after

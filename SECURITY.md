@@ -43,9 +43,10 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **Network access is asked about when a command tries to use it, not based on the command's
   name.** The sandboxed child also installs a seccomp filter (`kamchatka::gate`) that pauses every
   `socket()` call for `AF_INET` or `AF_INET6` (the first step of any network use, DNS lookups
-  included) and hands the decision to the parent process. The parent answers from `net:reach`:
-  `allow` lets it through, `deny` refuses it with `EACCES`, and `ask` asks the person, once per
-  command, while the call waits. The filter only reads the call's integer arguments (the low 32
+  included), and for `AF_SMC` and `AF_RDS`, which any process can open and which reach the internet
+  over TCP as well, and hands the decision to the parent process. The parent answers from
+  `net:reach`: `allow` lets it through, `deny` refuses it with `EACCES`, and `ask` asks the person,
+  once per command, while the call waits. The filter only reads the call's integer arguments (the low 32
   bits of the address family, which is all the kernel reads), so there's no address the command
   could change after the answer; decisions aren't made per destination. Where the gate works,
   `Careful` stops looking for program names in commands, and an allowed `exec:run` runs without
