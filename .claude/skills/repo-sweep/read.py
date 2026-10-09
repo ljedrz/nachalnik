@@ -83,7 +83,9 @@ def main():
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
     name = args[0]
-    path = sweeps.snapshot(name)
+    # note: only once the session has finished. kamchatka writes a snapshot as a session starts,
+    # and one still running has that one beside its log - which holds none of what it has found
+    path = sweeps.snapshot(name) if sweeps.state(name).get("finished") else None
     if path:
         from_snapshot(path, "-r" in args)
     else:
