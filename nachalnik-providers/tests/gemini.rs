@@ -27,7 +27,7 @@ use tokio::{
     sync::oneshot,
 };
 
-/// Answers one request with this body, as a stream, and remembers what it was asked.
+/// Answers one request with this body, as a stream.
 async fn server(body: &'static str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("a port");
     let address = listener.local_addr().expect("its own address");
