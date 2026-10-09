@@ -438,6 +438,8 @@ async fn run_in_turn_an_interrupt_stops_the_calls_that_had_not_started() {
 async fn run_in_turn_nothing_starts_after_the_interrupt_that_stopped_it() {
     const CALLS: usize = 32;
 
+    // a round whose interrupt came after the last call checks nothing, so some must not have
+    let mut stopped = 0;
     for round in 0..500 {
         let kernel = Kernel::new(Config::default());
         let calls = (0..CALLS)
@@ -481,6 +483,7 @@ async fn run_in_turn_nothing_starts_after_the_interrupt_that_stopped_it() {
         else {
             continue;
         };
+        stopped += 1;
         let late = records[interrupted..]
             .iter()
             .filter(|record| matches!(record.event, Event::ToolStarted { .. }))
@@ -490,6 +493,7 @@ async fn run_in_turn_nothing_starts_after_the_interrupt_that_stopped_it() {
             "round {round}: {late} calls started after the interrupt that stopped the rest"
         );
     }
+    assert!(stopped > 0, "no round's interrupt stopped anything");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
