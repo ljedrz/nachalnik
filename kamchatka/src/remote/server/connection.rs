@@ -232,7 +232,7 @@ where
                     // the answer from fragments alone, so a late one is printed late there
                     flush(kernel, &mut last, write).await?;
                     if protocol::is_progress(&event) && !progress_recorded {
-                        protocol::write(write, &Message::Progress { after: last, event }).await?;
+                        progress(write, last, event).await?;
                     }
                 }
                 // note: the numbered records are not what this is about - `flush` reads them out
@@ -521,8 +521,7 @@ async fn caught_up<W: AsyncWrite + Unpin>(
             Ok(event) => {
                 flush(kernel, last, write).await?;
                 if protocol::is_progress(&event) && !progress_recorded {
-                    let after = *last;
-                    protocol::write(write, &Message::Progress { after, event }).await?;
+                    progress(write, *last, event).await?;
                 }
             }
             Err(broadcast::error::TryRecvError::Lagged(frames)) => {
@@ -532,6 +531,25 @@ async fn caught_up<W: AsyncWrite + Unpin>(
             // nothing waiting, or the session has ended and the log is the last word either way
             Err(_) => return flush(kernel, last, write).await,
         }
+    }
+}
+
+/// Writes a fragment, or counts it as missed where it is too long for a frame.
+///
+/// note: the rule [`flush`] holds records to, for the half of the stream no record holds. A line
+/// of a command's output goes out as one fragment and is held only to what a tool keeps, which is
+/// far past `MAX_LINE` once JSON has escaped it - and a frame the client refuses closes its
+/// connection, so one long line threw every client off the session. A fragment is best-effort and
+/// the item it is part of arrives whole, so what is said is what a client that fell behind is told.
+async fn progress<W: AsyncWrite + Unpin>(
+    write: &mut W,
+    after: u64,
+    event: Event,
+) -> Result<(), String> {
+    let line = protocol::framed(&Message::Progress { after, event })?;
+    match protocol::overlong(&line) {
+        Some(_) => protocol::write(write, &Message::Missed { frames: 1 }).await,
+        None => protocol::write_frame(write, &line).await,
     }
 }
 

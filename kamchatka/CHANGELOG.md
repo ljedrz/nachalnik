@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A fragment too long for a frame is counted as missed rather than sent.** One line of a
+  command's output went out to every attached client as one `Message::Progress`, held only to what
+  a tool keeps, and escaped it could pass `MAX_LINE`: every client refused the frame and lost its
+  connection mid-turn. It is said as `Message::Missed` now, as a fragment a client fell behind on
+  is, and `--connect` says it was not sent rather than that it was behind.
+
 - **A signal arriving while the network gate looks for an attempt no longer ends the gate.** The
   look was given up on as though nothing under the filter were left, so after a `ctrl+c`,
   `SIGWINCH` or `SIGTERM` landed in it every attempt the command made failed with `ENOSYS`, with

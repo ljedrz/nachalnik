@@ -602,3 +602,77 @@ print('answered' if got else 'hung up')
 
     loop_.abort();
 }
+
+/// A fragment of a tool's output too long for a frame is counted as missed, not sent.
+///
+/// note: a line of a command's output goes out whole as `Message::Progress`, and a line is held
+/// only to what a tool keeps - megabytes, where `MAX_LINE` is what a client reads in one frame, and
+/// a byte JSON escapes as six makes the frame six times the line. Written with no size check, it
+/// was a frame every attached client refused, which closes the connection: one `head -c` of
+/// `/dev/zero` threw everybody off a session mid-turn. A fragment is the half of the stream no
+/// record holds, so it is what `Message::Missed` is for, and the connection carries on.
+#[tokio::test]
+async fn a_fragment_too_long_to_send_is_missed_rather_than_sent() {
+    use std::sync::Arc;
+
+    use crate::{Socket, served_over_a_socket};
+    use nachalnik::{
+        BoxError, ModelResponse, OutputSink, Tool, ToolCall, ToolOutput, ToolSpec, async_trait,
+        test::call,
+    };
+    use serde_json::json;
+
+    /// A tool that says one line of nothing but NULs, longer escaped than a frame.
+    struct Zeroes;
+
+    #[async_trait]
+    impl Tool for Zeroes {
+        fn spec(&self) -> ToolSpec {
+            ToolSpec::new("zeroes", "says a long line of nothing")
+        }
+
+        async fn invoke(
+            &self,
+            _call: &ToolCall,
+            output: OutputSink,
+        ) -> Result<ToolOutput, BoxError> {
+            output.push("\0".repeat(protocol::MAX_LINE / 4));
+            Ok(ToolOutput::new("said"))
+        }
+    }
+
+    let script = vec![
+        ModelResponse::tool_calls(vec![call("c1", "zeroes", json!({}))]),
+        ModelResponse::text("and that was that"),
+    ];
+    let session = served_over_a_socket("oversized-fragment", script, |app| {
+        app.kernel.add_tool(Arc::new(Zeroes));
+    })
+    .await;
+
+    let mut socket = Socket::connect(&session.at).await;
+    socket.send(crate::attaching(None, None)).await;
+    while !matches!(socket.recv_a_whole_frame().await, Message::Attached(_)) {}
+    socket
+        .send(Command::Submit {
+            line: "go".to_owned(),
+        })
+        .await;
+
+    // the connection lasts the turn, and says the fragment went past
+    let mut missed = false;
+    loop {
+        match socket.recv().await {
+            Message::Missed { .. } => missed = true,
+            Message::Busy { busy: false } if missed => break,
+            _ => {}
+        }
+    }
+
+    socket
+        .send(Command::Submit {
+            line: "/quit".to_owned(),
+        })
+        .await;
+    session.ended().await.1.expect("the session failed");
+}
