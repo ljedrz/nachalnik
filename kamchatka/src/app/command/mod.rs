@@ -508,6 +508,13 @@ impl App {
     }
 }
 
+/// Whether `line` switches the model or the endpoint: `/model` or `/endpoint` with something after
+/// it. Bare, each only says what is in use.
+pub(super) fn switches(line: &str) -> bool {
+    let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
+    matches!(command, "/model" | "/endpoint") && !rest.trim().is_empty()
+}
+
 /// What a line beginning with `/` that is not a command is answered with.
 ///
 /// note: here rather than an arm of its own in the dispatch above, because `/clear` is not a
@@ -524,13 +531,6 @@ impl App {
 /// note: the name goes into the refusal through `one_line`, as every other line this program
 /// quotes back to somebody does. A name is one word, and a word with nothing else on the line is
 /// as long as somebody cares to make it - so a mistyped command of a hundred thousand characters
-/// Whether `line` switches the model or the endpoint: `/model` or `/endpoint` with something after
-/// it. Bare, each only says what is in use.
-pub(super) fn switches(line: &str) -> bool {
-    let (command, rest) = line.trim().split_once(' ').unwrap_or((line.trim(), ""));
-    matches!(command, "/model" | "/endpoint") && !rest.trim().is_empty()
-}
-
 /// was a hundred thousand characters of refusal, where every other notice is cut at 96.
 fn no_such_command(name: &str) -> String {
     match name {
