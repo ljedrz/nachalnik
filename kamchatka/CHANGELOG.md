@@ -63,6 +63,11 @@ minor bump may break you.
   turn with words beside its calls goes into the request, and the list an agent reads to decide
   what to drop offered it as a plain row, which an `elide` would only be refused.
 
+- **`context`'s `revise` says when the item it rewrote is not going into the request.** The
+  rewrite goes through whatever the item's state, and the answer gave the new size beside a
+  request figure that did not move, so a model correcting a fact in an excluded or elided note took
+  the correction for one the next request would read.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

@@ -551,6 +551,48 @@ async fn revise_rewrites_an_item_and_says_who_did_it() {
     )));
 }
 
+/// A revision of an item that is not going into the request says so.
+///
+/// note: the write goes through, and the answer gave the new figure beside a request that did not
+/// move - a model correcting a fact in an excluded note took the correction for one the next
+/// request would read.
+#[tokio::test]
+async fn revising_what_is_not_going_says_it_is_not_going() {
+    let revise = |id: u64| {
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise",
+                "ids": [id],
+                "content": "the parser is in src/parse.rs",
+                "reason": "I wrote down the wrong path",
+            }),
+        )
+    };
+
+    for (excluded, says) in [(true, true), (false, false)] {
+        let (kernel, _provider, _anchor) = agent(one_turn(vec![revise(1)]));
+        let note = kernel.push(ContextItem::memory(
+            "scratch",
+            "the parser is in src/parser.rs",
+        ));
+        if excluded {
+            kernel.set_state([note], ContextState::Excluded, None);
+        }
+        kernel.push(ContextItem::user("carry on"));
+        kernel.turn().await.expect("the turn failed");
+
+        let said = answers_from(&kernel, &["context"])[0].clone();
+        assert!(said.contains("now says something else"), "{said}");
+        assert_eq!(
+            said.contains("does not read what it says now"),
+            says,
+            "excluded: {excluded}: {said}"
+        );
+    }
+}
+
 /// `revise` refuses a message the person wrote, and says what to do instead.
 ///
 /// note: found live. A model meaning to revise its note was handed the id of the message asking for
