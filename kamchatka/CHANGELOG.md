@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A `ctrl+c` that ends a served session waits for a `/model` or `/endpoint` still settling**, as
+  `/quit` and a headless run do. The session was ended as soon as no turn was running, so
+  `session.finished` was written with the switch still out, and its `model.changed` came after
+  it or not at all.
+
 - **`/params NAME<tab>VALUE` sets the parameter.** A tab between the name and the value got past
   the check for a missing value, and the command then looked for a space, found none, and only
   listed the parameters, as though one had been set.

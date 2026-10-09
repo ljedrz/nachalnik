@@ -477,7 +477,14 @@ impl Server {
                 failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
                 break;
             }
-            if leaving || (stopping && !app.busy) {
+            if leaving {
+                break;
+            }
+            // and a first `ctrl+c` once the turn has stopped, which waits for a `/model` or
+            // `/endpoint` still settling as `/quit` does: its change is a record, and a session
+            // ended under it is one that changed model after it had finished
+            if stopping && !app.busy {
+                failed = app.wait_for_turn(events, finished, |_| {}).await.or(failed);
                 break;
             }
 
