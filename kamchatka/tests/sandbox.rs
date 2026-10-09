@@ -598,6 +598,50 @@ fn a_refused_network_is_refused_by_the_kernel_rather_than_by_reading_the_command
     }
 }
 
+/// An `AF_SMC` socket is refused under a refused network, as an internet socket is.
+///
+/// note: any process can open one, and its `connect` to an internet address falls back to plain
+/// TCP when the other end does not speak SMC - so a gate that held `AF_INET` and `AF_INET6` alone
+/// let it through, and the TCP it falls back to is the kernel's own socket, which Landlock is not
+/// asked about. Loopback and a listener this test holds, so what it checks is the confinement
+/// rather than whether this machine has a network; skipped where the kernel has no SMC.
+#[test]
+fn an_smc_socket_is_refused_under_a_refused_network() {
+    if !enforced() || !gated() {
+        return;
+    }
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("a port");
+    listener
+        .set_nonblocking(true)
+        .expect("a listener that can be looked at");
+    let port = listener.local_addr().expect("it is bound").port();
+
+    let (_, said) = run(
+        &sandbox(common::workdir("smc"), true, Network::Shut),
+        &format!(
+            "python3 -c \"
+import ctypes, socket, struct
+libc = ctypes.CDLL(None, use_errno=True)
+fd = libc.socket(43, socket.SOCK_STREAM, 0)
+if fd < 0:
+    print('refused', ctypes.get_errno())
+else:
+    at = struct.pack('<HH4s8x', socket.AF_INET, socket.htons({port}), socket.inet_aton('127.0.0.1'))
+    print('connected' if libc.connect(fd, at, len(at)) == 0 else 'no connection')
+\" 2>&1"
+        ),
+    );
+    if said.contains(&format!("refused {}", libc::EAFNOSUPPORT)) {
+        eprintln!("skipped: no SMC in this kernel");
+        return;
+    }
+    assert!(
+        listener.accept().is_err(),
+        "a confined command reached a port through SMC: {said}"
+    );
+    assert!(said.contains("refused"), "{said}");
+}
+
 /// A datagram to a port this test holds, sent from a confined command; what arrived, if anything.
 ///
 /// note: loopback rather than a DNS query, so what it checks is the confinement rather than

@@ -6,8 +6,10 @@
 //! all - which left reading the command line for program names as the only way to know when to
 //! ask. `socket()` for `AF_INET` or `AF_INET6` is the first thing any use of the network does, a
 //! DNS lookup included, and seccomp user notification is the mechanism that lets another process
-//! see that call and answer it. The filter reads only the call's integer arguments, so there is no
-//! address a command could change after the answer, and nothing is decided per destination.
+//! see that call and answer it. `AF_SMC` and `AF_RDS` are held as well, since any process can open
+//! them and they reach the internet over TCP. The filter reads only the call's integer arguments,
+//! so there is no address a command could change after the answer, and nothing is decided per
+//! destination.
 //!
 //! note: the one module in this crate that writes `unsafe`. `seccomp(2)` and the notification
 //! `ioctl`s have no safe wrapper that does not link the C `libseccomp`, which every target a
@@ -64,6 +66,15 @@ const X32: Option<u32> = None;
 const SOCKET: u32 = libc::SYS_socket as u32;
 const IO_URING_SETUP: u32 = libc::SYS_io_uring_setup as u32;
 
+/// The two families besides `AF_INET` and `AF_INET6` that reach the internet with no privilege.
+///
+/// note: `AF_SMC` connects to an internet address and falls back to plain TCP when the other end
+/// does not speak SMC, and `AF_RDS` carries its datagrams over TCP once its TCP transport is
+/// asked for, which any process may do. Both are held as an internet socket is. `AF_SMC` is
+/// `linux/socket.h`'s, which `libc` does not carry
+const SMC: u32 = 43;
+const RDS: u32 = libc::AF_RDS as u32;
+
 /// `socket`, and `socketcall` where there is one, in the table of the 32-bit processes this
 /// kernel also runs.
 ///
@@ -102,10 +113,14 @@ enum Label {
     NativeNext,
     Family,
     Inet6,
+    Smc,
+    Rds,
     Foreign,
     ForeignNumber,
     ForeignFamily,
     ForeignInet6,
+    ForeignSmc,
+    ForeignRds,
     ForeignCall,
     ForeignSocketcall,
     ForeignNext,
@@ -160,7 +175,11 @@ fn program() -> Vec<libc::sock_filter> {
         Op::Load(ARG0),
         Op::Is(libc::AF_INET as u32, Inet, Inet6),
         Op::Mark(Inet6),
-        Op::Is(libc::AF_INET6 as u32, Inet, Allow),
+        Op::Is(libc::AF_INET6 as u32, Inet, Smc),
+        Op::Mark(Smc),
+        Op::Is(SMC, Inet, Rds),
+        Op::Mark(Rds),
+        Op::Is(RDS, Inet, Allow),
         // the architecture is still what was loaded: nothing on the way here loaded over it
         Op::Mark(Foreign),
         Op::Is(FOREIGN, ForeignNumber, Kill),
@@ -173,7 +192,11 @@ fn program() -> Vec<libc::sock_filter> {
         Op::Load(ARG0),
         Op::Is(libc::AF_INET as u32, Inet, ForeignInet6),
         Op::Mark(ForeignInet6),
-        Op::Is(libc::AF_INET6 as u32, Inet, Allow),
+        Op::Is(libc::AF_INET6 as u32, Inet, ForeignSmc),
+        Op::Mark(ForeignSmc),
+        Op::Is(SMC, Inet, ForeignRds),
+        Op::Mark(ForeignRds),
+        Op::Is(RDS, Inet, Allow),
         Op::Mark(ForeignCall),
     ]);
     if let Some(socketcall) = FOREIGN_SOCKETCALL {
@@ -526,6 +549,27 @@ mod tests {
         assert_eq!(run(&held, NATIVE, SOCKET, UNIX), ALLOWED);
         assert_eq!(run(&held, NATIVE, libc::SYS_close as u32, INET), ALLOWED);
         assert_eq!(run(&held, NATIVE, libc::SYS_connect as u32, INET), ALLOWED);
+    }
+
+    /// A family that reaches the internet under another name is held as the internet is.
+    ///
+    /// note: found by a sweep and tried by hand. Any process can open an `AF_SMC` socket, and its
+    /// `connect` to an IPv4 address falls back to plain TCP when the other end does not speak
+    /// SMC - which a server anywhere does not - so a command that let these through had the
+    /// internet with nobody asked. `AF_RDS` is the same through its TCP transport, which a
+    /// process can load by asking for it. Neither needs the privilege `AF_PACKET` does.
+    #[test]
+    fn a_family_that_reaches_the_internet_another_way_is_held() {
+        let held = program();
+
+        for family in [u64::from(SMC), u64::from(RDS)] {
+            assert_eq!(run(&held, NATIVE, SOCKET, family), HELD, "{family}");
+            assert_eq!(
+                run(&held, FOREIGN, FOREIGN_SOCKET, family),
+                HELD,
+                "{family}"
+            );
+        }
     }
 
     /// A family with a high bit set is the family the kernel reads.

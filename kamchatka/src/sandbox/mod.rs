@@ -18,11 +18,11 @@
 //! UDP rights in ABI 10, which is Linux 7.2, but the crate stops at ABI 9 and `AccessNet` is
 //! `#[non_exhaustive]` over a sealed trait, so those two bits cannot be handed to a ruleset from
 //! out here. The rest of the network is the gate's: [`crate::gate`] stops a confined command's
-//! `socket()` for `AF_INET` and `AF_INET6`, which covers UDP and everything else an internet
-//! socket is for, and either refuses it or holds it while the person is asked. Where the gate
-//! cannot be installed a UDP datagram still goes out, which is enough to put bytes in a DNS query,
-//! and [`Network::NoTcp`] is how that case is written everywhere it is shown rather than rounded
-//! up.
+//! `socket()` for `AF_INET` and `AF_INET6`, and for the two families that reach the internet the
+//! same way, which covers UDP and everything else an internet socket is for, and either refuses it
+//! or holds it while the person is asked. Where the gate cannot be installed a UDP datagram still
+//! goes out, which is enough to put bytes in a DNS query, and [`Network::NoTcp`] is how that case
+//! is written everywhere it is shown rather than rounded up.
 //! What still holds against the rest is the filesystem: a command that cannot read a file has
 //! nothing to send.
 //!
@@ -133,10 +133,11 @@ pub struct Sandbox {
 ///
 /// note: four rather than open and closed, because two mechanisms stand in the way and they refuse
 /// different things. Landlock refuses a TCP `connect` or `bind`, and tells nobody. The gate - see
-/// [`crate::gate`] - stops `socket()` for `AF_INET` and `AF_INET6`, which is the first thing any
-/// use of the network does, and it can either refuse there or hold the call while somebody is
-/// asked. Where the gate cannot be installed only Landlock is left, and a UDP datagram still goes
-/// out; that is the one this says as `no TCP` rather than rounding it up.
+/// [`crate::gate`] - stops `socket()` for `AF_INET` and `AF_INET6`, and for the two families that
+/// reach the internet the same way, which is the first thing any use of the network does, and it
+/// can either refuse there or hold the call while somebody is asked. Where the gate cannot be
+/// installed only Landlock is left, and a UDP datagram still goes out; that is the one this says as
+/// `no TCP` rather than rounding it up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Network {
