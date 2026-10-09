@@ -449,6 +449,21 @@ async fn arguments_that_never_parsed_are_not_sent_as_arguments() {
         output.content.to_text()
     );
 
+    // and text that parses to something other than one call is not sent either: a list, which a
+    // provider keeps this way when the arguments arrived as one, or the wrapper beside other keys
+    for unparsed in [
+        json!({ "_unparsed": "[\"hello\"]" }),
+        json!({ "_unparsed": "{\"text\": \"hello\"}", "text": "hello" }),
+    ] {
+        let output = invoke(&echo, unparsed.clone()).await;
+        assert!(output.is_error, "{unparsed}: {}", output.content.to_text());
+        assert_eq!(
+            calls.load(SeqCst),
+            0,
+            "{unparsed}: nothing went to the server"
+        );
+    }
+
     let output = invoke(&echo, json!({ "_unparsed": "{\"text\": \"hello\"}" })).await;
     assert_eq!(output.content.to_text(), "you said: hello");
     assert_eq!(calls.load(SeqCst), 1);

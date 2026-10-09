@@ -14,6 +14,8 @@ minor bump may break you.
   about a missing parameter in a call whose text held it and the model fixed the wrong thing. The
   call is refused now, saying the arguments arrived as text and quoting them, and nothing is sent;
   a whole call a model wrapped in the same key is read as the call, as `kamchatka` reads its own.
+  Text there that parses to something other than one object - a list, which a provider keeps this
+  way when the arguments arrived as one - or the key beside others is refused the same way.
 
 ## [0.9.1] - 2026-10-08
 

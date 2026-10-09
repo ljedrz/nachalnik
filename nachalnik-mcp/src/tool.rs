@@ -133,7 +133,10 @@ impl Tool for McpTool {
         // note: a provider keeps arguments it could not parse as text under `_unparsed`, and that
         // object sent on as the arguments was a server answering about a missing parameter in a
         // call whose text holds it. Said here as what it is, and nothing is sent; text there that
-        // does parse is a model copying the wrapper around a whole call, and that call is read
+        // parses to one object, and stands alone, is a model copying the wrapper around a whole
+        // call, and that call is read. Anything else under it - a list, which a provider keeps
+        // this way when the arguments arrived as one, or the wrapper beside other keys - is not
+        // a call either, and is said to be one rather than sent
         let unwrapped;
         let args = match call.args.get(UNPARSED).and_then(Value::as_str) {
             Some(written) => match serde_json::from_str::<Value>(written) {
@@ -143,7 +146,14 @@ impl Tool for McpTool {
                     unwrapped = inner;
                     &unwrapped
                 }
-                Ok(_) => &*call.args,
+                Ok(_) => {
+                    return Ok(ToolOutput::error(format!(
+                        "the arguments arrived as text that is not one JSON object, so nothing \
+                         was sent to the server. What arrived was `{}`. Send the call again, as \
+                         one JSON object.",
+                        quoted(written)
+                    )));
+                }
                 Err(why) => {
                     return Ok(ToolOutput::error(format!(
                         "the arguments arrived as text rather than as a JSON object ({why}), so \
