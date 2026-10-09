@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`TokenCounter::uncounted_item` and `uncounted_message` look in a turn's tool calls**, as
+  `count_item` and `count_message` charge for them: each call's name, arguments and whatever was
+  attached to it. A counter that could not price JSON abstained on a call's arguments, and
+  `Budget::uncounted` said nothing of it.
+
 - **A context stops being full when its compactor is taken away.** `Kernel::set_compactor(None)`
   on a context found full left it full for good: no `context.full` saying otherwise, and the
   notice from `Kernel::set_full_notice` stayed active and went out with every request. The pass
