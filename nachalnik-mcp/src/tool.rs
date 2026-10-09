@@ -129,7 +129,32 @@ impl Tool for McpTool {
             ));
         }
 
-        let arguments = match &*call.args {
+        // note: a provider keeps arguments it could not parse as text under `_unparsed`, and that
+        // object sent on as the arguments was a server answering about a missing parameter in a
+        // call whose text holds it. Said here as what it is, and nothing is sent; text there that
+        // does parse is a model copying the wrapper around a whole call, and that call is read
+        let unwrapped;
+        let args = match call.args.get(UNPARSED).and_then(Value::as_str) {
+            Some(written) => match serde_json::from_str::<Value>(written) {
+                Ok(inner @ Value::Object(_))
+                    if call.args.as_object().is_some_and(|a| a.len() == 1) =>
+                {
+                    unwrapped = inner;
+                    &unwrapped
+                }
+                Ok(_) => &*call.args,
+                Err(why) => {
+                    return Ok(ToolOutput::error(format!(
+                        "the arguments arrived as text rather than as a JSON object ({why}), so \
+                         nothing was sent to the server. What arrived was `{}`. Send the call \
+                         again, as one JSON object.",
+                        quoted(written)
+                    )));
+                }
+            },
+            None => &*call.args,
+        };
+        let arguments = match args {
             Value::Object(map) => Some(map.clone()),
             Value::Null => None,
             // a model that produced something other than an object for a tool whose schema says
@@ -398,6 +423,20 @@ fn led(id: String) -> String {
             out.push(c);
             out
         }),
+    }
+}
+
+/// The key a provider puts a call's arguments under when they would not parse as JSON.
+const UNPARSED: &str = "_unparsed";
+
+/// How much of the text that did not parse is quoted back.
+const SHOWN: usize = 200;
+
+/// The first [`SHOWN`] characters of `written`, and how much more there was.
+fn quoted(written: &str) -> String {
+    match written.char_indices().nth(SHOWN) {
+        Some((cut, _)) => format!("{}… ({} bytes in all)", &written[..cut], written.len()),
+        None => written.to_owned(),
     }
 }
 
