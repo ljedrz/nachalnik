@@ -261,7 +261,7 @@ impl Kernel {
     /// stops. With no compactor there is nobody to want room, so never full.
     async fn maybe_compact(&self) {
         let Some(compactor) = self.compactor() else {
-            return;
+            return self.mark_full(false);
         };
 
         if !compactor.should_compact(&self.budget()) {

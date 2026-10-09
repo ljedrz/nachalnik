@@ -440,6 +440,51 @@ async fn a_context_nothing_more_can_be_taken_from_is_full() {
     );
 }
 
+/// A context found full stops being full once its compactor is taken away, and the notice it
+/// placed is retired: with no compactor there is nobody wanting room.
+///
+/// note: the pass returned before saying so, so a session that cleared its compactor while full
+/// stayed full for good, and its notice went out with every request after.
+#[tokio::test]
+async fn a_full_context_is_not_full_once_its_compactor_is_taken_away() {
+    let kernel = limited(2);
+    kernel.set_compactor(Some(Arc::new(LargestFirstCompactor {
+        threshold: 0.5,
+        target: 0.2,
+    })));
+    kernel.set_full_notice(Some(ContextItem::user("the context is full")));
+    kernel.push(ContextItem::file("kept.txt", "k".repeat(2_400)).pinned());
+    kernel.push(ContextItem::user("go on"));
+    kernel.turn().await.unwrap();
+    let notice = |kernel: &Kernel| {
+        kernel
+            .items()
+            .iter()
+            .filter(|item| item.content.as_text() == Some("the context is full"))
+            .map(|item| item.state)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        notice(&kernel),
+        [ContextState::Active],
+        "the notice was placed"
+    );
+
+    kernel.set_compactor(None);
+    let mut events = kernel.subscribe();
+    kernel.push(ContextItem::user("and again"));
+    kernel.turn().await.unwrap();
+    let full: Vec<Event> = drain(&mut events)
+        .into_iter()
+        .filter(|event| event.name() == "context.full")
+        .collect();
+    assert!(
+        matches!(full.as_slice(), [Event::ContextFull { full: false, .. }]),
+        "{full:?}"
+    );
+    assert_eq!(notice(&kernel), [ContextState::Excluded]);
+}
+
 /// Whether the context is full is asked of the compactor after a pass, not decided by the pass
 /// having happened - and by default the question is the one it was asked before it, asked again
 /// of the budget the pass left behind.
