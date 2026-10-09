@@ -60,6 +60,14 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   after the size check means a second exchange in the attach, or the check inside the server.
   Unblocked by choosing which.
 
+- **A client that falls behind on the program's own lines can be left with the wrong state.** The
+  session says `Busy`, `Model` and `Reaching` only when they change, and a client more than 256 of
+  these lines behind is told only how many it missed. If one of the lost lines was one of those
+  three, nothing says it again: a piped `--connect` can wait for a `busy: false` that never comes,
+  or miss a network question. A resume already sends the standing state, and a lag could do the
+  same, from the server or by the client resuming. Unblocked by choosing which, and by a client
+  that falls that far behind.
+
 - **A Gemini stream that carries no candidate is a turn that said nothing.** A 200 stream of
   `usageMetadata` alone is read as a finished, empty turn with `EndTurn`, where Chat Completions
   refuses a stream that never answered. The unstreamed path counts `usageMetadata` as an answer on
