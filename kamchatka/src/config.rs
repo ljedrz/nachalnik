@@ -349,6 +349,11 @@ pub const SHIPPED: &str = include_str!("../kamchatka.json");
 ///
 /// note: `XDG_CONFIG_HOME` and then `~/.config`, which is where the people who set the variable
 /// expect it to be read from.
+///
+/// note: either only where it is an absolute path. An empty or relative one names a directory
+/// under wherever the program was started, so the file found there is the repository's and not
+/// the person's, and it would be read without the question [`underfoot`] asks. The XDG spec says
+/// an empty value is unset and a relative one is ignored.
 pub fn found() -> Option<PathBuf> {
     let beside = PathBuf::from(FILE);
     if beside.is_file() {
@@ -357,7 +362,9 @@ pub fn found() -> Option<PathBuf> {
 
     let config = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| home().map(|home| home.join(".config")))?
+        .filter(|path| path.is_absolute())
+        .or_else(|| home().map(|home| home.join(".config")))
+        .filter(|path| path.is_absolute())?
         .join(env!("CARGO_PKG_NAME"))
         .join(FILE);
 

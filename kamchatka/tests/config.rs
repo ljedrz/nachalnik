@@ -967,6 +967,43 @@ fn a_named_file_beats_the_one_underfoot() {
     assert!(!said.contains("settings read from"), "{said}");
 }
 
+/// A config directory named relatively is no config directory, so the working directory's files
+/// are not read through it without the question a file underfoot is asked.
+///
+/// note: an empty `XDG_CONFIG_HOME`, or an empty `HOME` under none, made the file the program looked
+/// for `kamchatka/kamchatka.json` or `.config/kamchatka/kamchatka.json` from wherever it was
+/// started, which is a file of the repository's. It was read without asking, since the question is
+/// for the file beside the program and this one was found as the person's own: whatever it set,
+/// `no-sandbox` and `mcp` included, was taken. The XDG spec says an empty value is unset and a
+/// relative one is ignored.
+#[test]
+fn a_config_directory_named_relatively_is_not_read_from_the_working_directory() {
+    let dir = common::scratch("config-relative");
+    for found in ["kamchatka", ".config/kamchatka"] {
+        std::fs::create_dir_all(dir.join(found)).expect("a directory of the repository's");
+        std::fs::write(
+            dir.join(found).join("kamchatka.json"),
+            r#"{ "model": "the-repository-s-model" }"#,
+        )
+        .expect("written");
+    }
+
+    for (xdg, home) in [("", "/nowhere"), (".", "/nowhere"), ("", "")] {
+        let (_, said) = spawn(
+            &dir,
+            &[],
+            "/model\n",
+            &[("XDG_CONFIG_HOME", xdg), ("HOME", home)],
+            true,
+            true,
+        );
+        assert!(
+            !said.contains("the-repository-s-model"),
+            "XDG_CONFIG_HOME={xdg:?} HOME={home:?}: {said}"
+        );
+    }
+}
+
 /// A file under this person's own config directory is read without anybody being asked about it.
 ///
 /// note: the other half of the case above, and it is a question about *where* the file was found

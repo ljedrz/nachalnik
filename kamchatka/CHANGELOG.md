@@ -9,6 +9,13 @@ minor bump may break you.
 
 ### fixed
 
+- **An empty or relative `XDG_CONFIG_HOME` no longer reads a settings file of the repository's
+  without asking.** The config directory was taken as given, so an empty `XDG_CONFIG_HOME` - or an
+  empty `HOME` with none - made the person's own settings file `kamchatka/kamchatka.json` under the
+  working directory. It was read as the person's, without the question a file beside the program
+  is asked, and whatever it set was taken, `no-sandbox` and `mcp` included. Only an absolute path
+  is a config directory now, as the XDG spec says.
+
 - **`shell` answers at once after a command that was refused thousands of paths.** The note on
   whether a permission error was the sandbox judged every path the refusals named, and `find /`
   names thousands the session reaches: seconds of work after the command had ended. Each path is
