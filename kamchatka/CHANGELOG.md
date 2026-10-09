@@ -17,6 +17,9 @@ minor bump may break you.
   call in the same turn. It was set aside as that call's result first, so the reply said nothing
   named had been taken away and then that the item was not in the copy.
 
+- **A served session sends a lagging client its records before saying what it missed**, when
+  what went past was the program's own lines, as it already did when it was the events.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

@@ -260,6 +260,7 @@ where
                 }
                 // the program's own lines are in no log either, and the same rule applies to them
                 Err(broadcast::error::RecvError::Lagged(frames)) => {
+                    flush(kernel, &mut last, write).await?;
                     protocol::write(write, &Message::Missed { frames }).await?;
                 }
                 // note: the session has ended, and this is the last thing this connection does:
