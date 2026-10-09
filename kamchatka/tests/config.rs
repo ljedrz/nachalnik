@@ -1618,6 +1618,29 @@ fn a_server_rule_naming_no_server_is_refused() {
     assert!(!ok, "{said}");
     assert!(said.contains("it starts none"), "{said}");
 
+    // and one typed is not blamed on a file that carried the other list, as the shipped one does
+    let path = settings(
+        "servers-carried",
+        r#"{ "allow-server": [], "deny-server": [] }"#,
+    );
+    let (ok, said) = run(
+        &[
+            "--config-file",
+            &path,
+            "--mcp",
+            "files=/nowhere",
+            "--deny-server",
+            "filess",
+        ],
+        "",
+    );
+    assert!(!ok, "{said}");
+    assert!(said.contains(refused), "{said}");
+    assert!(
+        !said.contains(&path),
+        "the name was typed, not filed: {said}"
+    );
+
     // a server with no name of its own is called after its program, as `attach` calls it
     let (_, said) = run(
         &[

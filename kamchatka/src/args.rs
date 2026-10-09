@@ -636,17 +636,20 @@ impl Args {
             .collect();
         #[cfg(not(feature = "mcp"))]
         let servers: Vec<String> = Vec::new();
-        if let Some(unknown) = self
-            .allow_server
-            .iter()
-            .chain(&self.deny_server)
-            .find(|name| !servers.contains(name))
+        // with the list it is in, so that the file is named only where the file gave it: the
+        // shipped one carries both lists, and asked of either, it was named for a name typed
+        let listed = [
+            ("allow_server", &self.allow_server),
+            ("deny_server", &self.deny_server),
+        ];
+        if let Some((field, unknown)) = listed
+            .into_iter()
+            .flat_map(|(field, names)| names.iter().map(move |name| (field, name)))
+            .find(|(_, name)| !servers.contains(name))
         {
             anyhow::bail!(
                 "{}`{unknown}` is not a server this run starts; {}",
-                at("allow_server")
-                    .or_else(|| at("deny_server"))
-                    .unwrap_or_default(),
+                at(field).unwrap_or_default(),
                 match servers.is_empty() {
                     true => "it starts none".to_owned(),
                     false => format!("they are {}", servers.join(", ")),
