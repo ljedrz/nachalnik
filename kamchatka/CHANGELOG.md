@@ -13,6 +13,10 @@ minor bump may break you.
   the check for a missing value, and the command then looked for a space, found none, and only
   listed the parameters, as though one had been set.
 
+- **`fork` reports a result named in `without` as left out**, when it is the result of another
+  call in the same turn. It was set aside as that call's result first, so the reply said nothing
+  named had been taken away and then that the item was not in the copy.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

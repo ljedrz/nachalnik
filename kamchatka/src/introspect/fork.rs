@@ -271,20 +271,19 @@ async fn branch(
     let mut left_out = Vec::new();
     let mut unanswered = Vec::new();
     for item in &mut snapshot.items {
-        if let ContextKind::ToolResult { call, .. } = &item.kind
-            && siblings.contains(call)
-        {
-            item.state = ContextState::Excluded;
-            item.note = Some("answered in the same turn this fork was asked in".into());
-            unanswered.push(item.id);
-            continue;
-        }
+        // named first: a sibling's result the caller also named is one it asked to leave out
         if without.contains(&item.id) {
             // excluded rather than deleted, so the fork's own account of itself can still name
             // the item by the number this session knows it by
             item.state = ContextState::Excluded;
             item.note = Some("left out of this fork".into());
             left_out.push(item.id);
+        } else if let ContextKind::ToolResult { call, .. } = &item.kind
+            && siblings.contains(call)
+        {
+            item.state = ContextState::Excluded;
+            item.note = Some("answered in the same turn this fork was asked in".into());
+            unanswered.push(item.id);
         }
     }
     let fork = Kernel::resume(
