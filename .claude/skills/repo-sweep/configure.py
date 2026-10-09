@@ -6,7 +6,12 @@ usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEP
 Without --limit, the model's context length is read from the endpoint's `/models` listing
 (KAMCHATKA_BASE_URL, OpenRouter's shape). The budget the prompts hold the model to, and the
 compaction backstop, scale with it: a sweep keeps its next request under half the window, or
-100k, whichever is smaller.
+100k, whichever is smaller. The window itself goes to DIR/limit, which `sweep.sh` hands kamchatka
+as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts against is the figure the budget came from.
+
+A listing can say more than an endpoint serves: GMI lists Qwen/Qwen3.8-Max at 262,144 and its free
+tier refused requests past about 124k with a bare `400 Bad Request`. A sweep whose largest request
+is followed by a 400 like that has found the real window; configure again with --limit under it.
 """
 
 import json
@@ -212,6 +217,8 @@ def main() -> None:
         with open(path, "w") as f:
             json.dump({**common, "system": system + hygiene(budget)}, f, indent=1)
         print(path)
+    with open(os.path.join(out, "limit"), "w") as f:
+        f.write(f"{limit}\n")
     print(f"context {limit:,}, budget {budget:,}, compact at {common['compact']}", file=sys.stderr)
 
 

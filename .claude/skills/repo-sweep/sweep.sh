@@ -35,6 +35,11 @@ case $kind in
     maintain) config=$SWEEPS/maintain.json; word=review ;;
     *) echo "KIND is audit, quality, tests, docs, compact or maintain" >&2; exit 2 ;;
 esac
+# the window configure.py worked from, so that kamchatka compacts against the same figure rather
+# than what the endpoint lists
+if [ -f "$SWEEPS/limit" ]; then
+    export KAMCHATKA_CONTEXT_LIMIT=$(cat "$SWEEPS/limit")
+fi
 cd "$TREE"
 {
     if [ -f "$SWEEPS/params.txt" ]; then
