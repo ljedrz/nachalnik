@@ -132,14 +132,32 @@ fn a_message_this_build_has_no_name_for_reads_as_one() {
 }
 
 /// Where a session listens is the whole of its authentication, so it refuses to listen elsewhere.
+///
+/// note: a private address and the wildcards as well as a public one, since `--web`'s rule - a
+/// private network is let in, with a warning - is the one a relaxed check would come to look like,
+/// and under it every host on the network would run the shell as you. Each parses as an address
+/// without anybody having to resolve it.
 #[tokio::test]
 async fn a_session_will_not_listen_where_anybody_could_reach_it() {
-    // TEST-NET-1, which parses as an address without anybody having to resolve it
-    let Err(refused) = Server::bind("tcp:192.0.2.1:7878").await else {
-        panic!("it bound a public address");
-    };
-    assert!(refused.contains("no authentication"), "{refused}");
-    assert!(refused.contains("ssh -L"), "it refused without a way out");
+    for address in [
+        "tcp:192.0.2.1:7878",
+        "tcp:192.168.1.5:7878",
+        "tcp:10.0.0.1:7878",
+        "tcp:0.0.0.0:0",
+        "tcp:[::]:0",
+    ] {
+        let Err(refused) = Server::bind(address).await else {
+            panic!("it bound {address}");
+        };
+        assert!(
+            refused.contains("no authentication"),
+            "{address}: {refused}"
+        );
+        assert!(
+            refused.contains("ssh -L"),
+            "{address}: it refused without a way out"
+        );
+    }
 }
 
 /// A path too long to hold a socket is refused with the limit in it, and two shorter places.
