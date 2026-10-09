@@ -86,9 +86,9 @@ slowly succeeded: a burst of requests gets 429s, the retries use up the budget, 
 
 So `Pace` has the two limits endpoints publish: `at_once` caps how many requests are **in
 progress**, and `per_minute` how many are **started** within a sliding window, spread out rather
-than all at the start. It wraps the subject's `Provider`, so no experiment can get around it, however
-many requests it runs in parallel; `Ablation::observe` and `Ablation::observe_each` are where that
-happens.
+than all at the start. `evaluate` and `evaluate_with` wrap the subject's `Provider` in it, so no
+experiment can get around it, however many requests it runs in parallel. Those parallel requests
+are made in `Ablation::observe` and `Ablation::observe_each`.
 
 What to do once a limit is exceeded anyway is deliberately not handled here. A `429` and its
 `Retry-After` are handled by the `Provider` you supplied, since that's the layer that understands
