@@ -368,7 +368,7 @@ async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
     // already in the context when the fork's snapshot was taken
     let said = answers_from(&kernel, &["fork"])[0].clone();
     assert!(
-        said.contains("other call in this turn had not been answered"),
+        said.contains("other call in this turn was answered after you asked"),
         "the copy is one result short of the caller's context, and nothing in the answer said so: \
          {said}"
     );
@@ -378,7 +378,7 @@ async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
          {said}"
     );
     assert!(
-        said.contains("is not in it"),
+        said.contains("is left out of this copy"),
         "and what is missing is named, so a model can go and read it here: {said}"
     );
     assert!(
@@ -421,7 +421,7 @@ async fn a_result_named_in_without_is_left_out_even_when_it_is_a_siblings() {
     let said = answers_from(&kernel, &["fork"])[0].clone();
     assert!(said.contains("without 3"), "{said}");
     assert!(!said.contains("Nothing you named"), "{said}");
-    assert!(!said.contains("had not been answered"), "{said}");
+    assert!(!said.contains("answered after you asked"), "{said}");
 }
 
 /// Two forks in a turn are not called the same context when a call between them wrote to it.
@@ -724,7 +724,7 @@ async fn a_fork_after_an_earlier_turn_reads_that_turns_results() {
     // the copy reads what the earlier turn wrote down, and says so where it counted from
     let said = answers_from(&kernel, &["fork"])[0].clone();
     assert!(
-        !said.contains("had not been answered when this copy was taken"),
+        !said.contains("answered after you asked"),
         "an earlier turn's result was held out of the copy as though it were this turn's: {said}"
     );
 

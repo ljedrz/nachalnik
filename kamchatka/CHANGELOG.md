@@ -41,6 +41,11 @@ minor bump may break you.
   started and an advisor that failed every question, and `…/v1?token=…` one whose failures quoted
   the token.
 
+- **`fork` says a result from the same turn was answered after the question, not before the copy.**
+  It said the other call "had not been answered when this copy was taken", and the only results
+  it ever says that about are ones that had been: answered by then, and left out because they came
+  after the question.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
