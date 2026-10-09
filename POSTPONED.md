@@ -17,6 +17,17 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   reporting it apart from the ones moved, changes what `Applied` says; unblocked by choosing
   which.
 
+- **An MCP tool's picture never reaches the model in `kamchatka`.** The bridge carries a picture a
+  tool returns as a `Content::Blob`, up to 5 MB of base64, and declares no output limit, so
+  `kamchatka`'s floor for tools without one - 32,000 bytes, there so that somebody else's server
+  cannot fill the context - applies. `Content::truncate_to` measures a blob by its base64 and
+  turns a result over the limit into text, which names the picture: any screenshot is replaced by
+  `[image/png, …]` and a note that bytes were cut, which asking for less cannot help. Each half is
+  deliberate, and together they undo what both changelogs say the bridge does. The bridge's own
+  bound as its limit raises the ceiling for all of an MCP tool's text as well; a ceiling of its own
+  for pictures, or a truncation that keeps blobs whole and cuts only the text around them, changes
+  what a tool's limit means. Unblocked by choosing which.
+
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
