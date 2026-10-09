@@ -17,6 +17,10 @@ minor bump may break you.
 - **A `model` parameter is not put in a Gemini request's body**, as every other dialect leaves it
   out. The model is in the address, and in the body it was a field `generateContent` does not
   define, sent beside the model the address asked for.
+- **A `Retry-After` date whose year no date has is no answer.** The year was read as any number
+  at all, and the arithmetic on it overflowed: a panic in a debug build, and in a release build a
+  wait of nothing, so the request went again at once to a server that had asked to be left alone.
+  It is held to the four digits an HTTP date has, and anything else gets the doubling.
 
 ## [0.9.1] - 2026-10-08
 

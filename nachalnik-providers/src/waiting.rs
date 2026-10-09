@@ -510,7 +510,11 @@ fn retry_after(value: &str, now: std::time::SystemTime) -> Option<Duration> {
         + 1;
     let mut clock = clock.split(':').map(|part| part.parse::<u32>().ok());
     let (hours, minutes, seconds) = (clock.next()??, clock.next()??, clock.next()??);
+    // note: the year bounded with the rest, as the four digits an HTTP date has. Unbounded, the
+    // arithmetic below overflowed on one: a panic in a debug build, and in a release build a wait
+    // of nothing - asked again at once, of a server that had asked to be left alone
     if clock.next().is_some()
+        || !(1..=9999).contains(&year)
         || !(1..=31).contains(&day)
         || hours > 23
         || minutes > 59
@@ -729,6 +733,10 @@ mod tests {
             "Sun, 32 Nov 1994 08:49:37 GMT",
             "Sun, 06 Nob 1994 08:49:37 GMT",
             "Sun, 06 Nov 1994 25:49:37 GMT",
+            // a year no date has, which the arithmetic below overflowed on: a panic, or a wait of
+            // nothing asked for again at once
+            "Mon, 01 Jan -9223372036854775808 08:49:37 GMT",
+            "Mon, 01 Jan 1000000000000 08:49:37 GMT",
         ] {
             assert_eq!(retry_after(neither, at(0)), None, "{neither:?}");
         }
