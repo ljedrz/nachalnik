@@ -842,6 +842,23 @@ impl Serving {
                 command,
                 answer,
             } => {
+                // note: the seat is asked here, where the command would be done, and not only by
+                // the replaced connection going. It is told to go and goes when it next looks, and
+                // a command it had read before then arrives after the newcomer has the session.
+                // An attach is the one command that takes the seat rather than needing it
+                if !matches!(command, Command::Attach { .. }) && self.seated != Some(client) {
+                    let _ = answer.send(Answered {
+                        message: Some(Message::Failed {
+                            about: "replaced".to_owned(),
+                            error: "another client has attached to this session, and it serves \
+                                    one at a time; attaching again takes it back"
+                                .to_owned(),
+                        }),
+                        voice: None,
+                        standing: Vec::new(),
+                    });
+                    return;
+                }
                 // taken before the projection rather than after it, so that a line said between the
                 // two would arrive twice rather than not at all. Nothing runs in between today; the
                 // order is which way to be wrong if anything ever does
@@ -1517,6 +1534,51 @@ mod tests {
         // and client 3 finds a session that has an owner
         attach(&mut serving, &mut app, 3).await;
         assert_eq!(serving.seated, Some(3));
+    }
+
+    /// A command from a client that has been replaced is refused, rather than done.
+    ///
+    /// note: the seat is what makes one client at a time true, and nothing else stands between a
+    /// replaced client and the session: its connection is told to go, and goes when it next
+    /// looks. A command it had read before then still arrived here and was done - an interrupt
+    /// stopping the turn the newcomer had just started, or a `y` answering a question the
+    /// newcomer was about to answer for itself - with nothing telling the newcomer it happened.
+    #[tokio::test]
+    async fn a_command_from_a_replaced_client_is_refused() {
+        let Wired { mut app, .. } = session();
+        let mut serving = Serving::new(&app);
+
+        attach(&mut serving, &mut app, 1).await;
+        attach(&mut serving, &mut app, 2).await;
+
+        let (answer, answered) = oneshot::channel();
+        serving
+            .asks
+            .send(FromClient::Asked {
+                client: 1,
+                command: Command::Submit {
+                    line: "/note from a client that was replaced".to_owned(),
+                },
+                answer,
+            })
+            .expect("the session is still listening");
+        let asked = serving.asked().await.expect("something to answer");
+        serving.answer(&mut app, asked).await;
+
+        let answered = answered.await.expect("the command was answered");
+        assert!(
+            matches!(&answered.message, Some(Message::Failed { about, .. }) if about == "replaced"),
+            "a replaced client's command was not refused: {:?}",
+            answered.message
+        );
+        assert!(
+            !app.kernel.items().iter().any(|item| item
+                .content
+                .to_text()
+                .contains("a client that was replaced")),
+            "a replaced client's command was done"
+        );
+        assert_eq!(serving.seated, Some(2), "and the seat is where it was");
     }
 
     /// One client attaching, through the channel it really comes through.
