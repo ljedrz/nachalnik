@@ -33,9 +33,20 @@ async fn every_item_in_the_context_is_on_the_screen_with_what_it_costs() {
 
     let screen = harness.screen();
 
-    // the identifier, the label and the size, for each of them
-    assert!(screen.contains("src/parser.rs"), "{screen}");
-    assert!(screen.contains("user"), "{screen}");
+    // the identifier, the label and what it costs in the next request, for each of them, on its
+    // own row
+    let going = harness.app.going();
+    for item in harness.app.kernel.items() {
+        let row = screen
+            .lines()
+            .find(|line| line.contains(&*item.label))
+            .unwrap_or_else(|| panic!("{} is not listed: {screen}", item.label));
+        let words: Vec<&str> = row.split(|c: char| c.is_whitespace() || c == '│').collect();
+        assert!(words.contains(&&*item.id.to_string()), "{row}");
+        let cost = going.costs[&item.id];
+        assert!(cost > 0, "{row}");
+        assert!(words.contains(&&*cost.to_string()), "{row}");
+    }
     // the pin is visible as a pin, rather than only being true somewhere
     let pinned = screen
         .lines()
