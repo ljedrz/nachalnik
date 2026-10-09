@@ -88,7 +88,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let budget: usize = std::env::var("KAMCHATKA_CONTEXT_LIMIT")
         .ok()
         .and_then(|limit| limit.parse().ok())
-        .ok_or("set KAMCHATKA_CONTEXT_LIMIT, the context budget the model is held to")?;
+        .ok_or(
+            "KAMCHATKA_CONTEXT_LIMIT has to be a number of tokens: the context budget the model \
+             is held to",
+        )?;
 
     // two dialects, one trait. `DIALECT=openai` points this at anything OpenAI-compatible -
     // OpenRouter, ollama, a proxy - and the only thing downstream that changes is whether the
