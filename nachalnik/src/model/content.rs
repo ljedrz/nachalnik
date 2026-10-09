@@ -165,7 +165,8 @@ pub(super) fn sized(bytes: usize) -> String {
 
     let mut size = bytes as f64;
     let mut unit = 0;
-    while size >= 1000.0 && unit + 1 < UNITS.len() {
+    // what two decimals round to a thousand of is one of the next unit, not `1000.00kB`
+    while size >= 999.995 && unit + 1 < UNITS.len() {
         size /= 1000.0;
         unit += 1;
     }

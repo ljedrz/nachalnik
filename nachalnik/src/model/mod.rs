@@ -906,6 +906,10 @@ mod tests {
         assert_eq!(sized(1_000), "1.00kB");
         assert_eq!(sized(292_468), "292.47kB");
         assert_eq!(sized(1_500_000), "1.50MB");
+        // what rounds to a thousand of one unit is one of the next
+        assert_eq!(sized(999_994), "999.99kB");
+        assert_eq!(sized(999_999), "1.00MB");
+        assert_eq!(sized(999_999_999), "1.00GB");
         assert_eq!(sized(2_000_000_000), "2.00GB");
         // nothing above the last unit, so a preposterous payload is still readable
         assert_eq!(sized(5_000_000_000_000), "5000.00GB");
