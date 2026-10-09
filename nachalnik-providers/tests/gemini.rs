@@ -551,6 +551,9 @@ fn a_parameter_does_not_replace_what_the_request_is_built_from() {
         "toolConfig".into(),
         json!({ "functionCallingConfig": { "mode": "ANY" } }),
     );
+    // and the model, which is in the address: in the body it is a field this dialect does not
+    // define, beside the model the address asks for
+    params.insert("model".into(), json!("gemini-other"));
     kernel.set_params(params);
     let body = provider.render(&kernel.preview_request().unwrap()).unwrap();
 
@@ -558,6 +561,7 @@ fn a_parameter_does_not_replace_what_the_request_is_built_from() {
         assert_eq!(body[key], untouched[key], "{key}: {body:#}");
     }
     assert_eq!(body["toolConfig"]["functionCallingConfig"]["mode"], "ANY");
+    assert!(body.get("model").is_none(), "{body:#}");
 }
 
 /// What this provider says about the model behind it.
