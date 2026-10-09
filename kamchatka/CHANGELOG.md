@@ -55,6 +55,10 @@ minor bump may break you.
   itself - and its items were counted among those looked at. A word only the person's latest
   message held was "no line of your context", over a count that included that message.
 
+- **`/endpoint URL MODEL` gives a session started with no model that model**, as `/model` does. It
+  announced `MODEL at URL, from now on` and left the session with no provider, so the next turn
+  was refused for having no model.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

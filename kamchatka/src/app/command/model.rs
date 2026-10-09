@@ -98,9 +98,20 @@ impl App {
         // record like one that does not, and a session resumed from it can say where it
         // had been talking
         let kernel = self.kernel.clone();
+        let named = model.as_deref().is_some_and(|model| !model.is_empty());
         self.switch(async move {
             provider.set_endpoint(url, model).await;
-            kernel.provider_changed();
+            // as `/model` does: a session started without one holds no provider until a model
+            // is named, and told that its provider changed, a kernel holding none has nothing
+            // to have changed - the switch was announced and the session went on with no model
+            match kernel.model_info() {
+                None if named => {
+                    kernel.set_provider(provider);
+                }
+                _ => {
+                    kernel.provider_changed();
+                }
+            }
         });
     }
 
