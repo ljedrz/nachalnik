@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A served session refuses a command from a client another one has replaced.** The replaced
+  client's connection was told to go and went when it next looked, and a command it had read
+  before then was still done: an interrupt stopped the turn the newcomer had just started, or a `y`
+  answered a question the newcomer was about to answer, with nothing telling the newcomer. It is
+  answered as `replaced` now, which the client already takes as the end.
+
 - **`shell` says so when the network gate could not be set up for a command.** The error was
   dropped, and every socket the command asked for failed with `ENOSYS` with nothing said about
   why, to the model or to anybody.
