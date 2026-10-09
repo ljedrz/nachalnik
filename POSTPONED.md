@@ -86,6 +86,20 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `two_forks_with_nothing_writing_between_them_still_say_they_are_the_same_context`, which pins
   that claim on purpose. Unblocked by saying what they should guard, or removing them.
 
+- **`/restart` starts the `--spend` count again.** `--spend` stops "the session" once that much
+  has been charged for it, and `/restart` starts a fresh session in the same process, so the total
+  goes back to nothing and a run already at its ceiling can spend it again; `/spend` meanwhile says
+  what "this run has spent". A script that pipes `/restart` is bounded per session, not per run.
+  Unblocked by deciding which the ceiling is for: carrying the total and the stop across a relaunch,
+  or saying "this session" where `/spend` says "this run".
+
+- **A headless run stopped short after its last turn failed exits 1.** `Headless::run` answers
+  `Err` whenever the last turn failed, and the stop - a deadline, `ctrl+c`, a signal - is read only
+  on the `Ok` path, so a run whose last turn failed and which was then stopped exits 1 rather than
+  124, 130 or 143. An interrupted turn ends as a stop rather than a failure, so it takes a turn that
+  failed on its own. Unblocked by choosing which of the two a script is told: the stop, under the
+  rule that the first cause wins, or the failure.
+
 - **Chat Completions names a tool's image instead of sending it.** A tool message there is a
   string, so an image in a tool result goes out as a line naming it. The dialect could move the
   picture to where its API takes one - a user message after the tool messages - without changing
