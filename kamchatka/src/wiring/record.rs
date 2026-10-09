@@ -151,6 +151,12 @@ impl Recorder {
     /// never behind the snapshot it sits beside - see the note on the type.
     pub fn checkpoint(&self, kernel: &Kernel) -> Result<(), String> {
         let mut kept = self.kept.lock();
+        // asked before the snapshot is taken as well as after, since taking one copies every item:
+        // the fifty announcements of an exclusion over fifty items were fifty copies of the
+        // context, and all but the first were thrown away below
+        if kept.snapshotted == Some(kernel.last_seq()) {
+            return Self::append_into(&mut kept, kernel);
+        }
         let snapshot = kernel.snapshot();
         Self::append_into(&mut kept, kernel)?;
         // note: every change to a session is a record in its log, so a snapshot naming the record
