@@ -7,7 +7,7 @@
 //!
 //! note: Most of this is arithmetic anybody could do in a spreadsheet; what a spreadsheet will not
 //! do is notice that one of the files was produced by an instrument whose questions had a word
-//! changed in them. Runs are grouped by [`Instrument::digest`] and by [`Outcome::rules`], and
+//! changed in them. Runs are grouped by [`nachalnik_eval::Instrument::digest`] and by [`Outcome::rules`], and
 //! where one experiment's rows come from more than one instrument, or were scored by more than
 //! one set of rules, they are printed under a line saying they are not comparable. The one table
 //! that pools is the dissociation, which adds a model's family counts across every instrument it
