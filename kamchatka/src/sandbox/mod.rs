@@ -403,11 +403,10 @@ impl Sandbox {
         // whole of what `KEPT` holds, and every path in it compared against every one kept so far,
         // each costing a dozen `canonicalize` calls, was minutes of work after the command had
         // already ended, with nothing to interrupt it
-        let (mut named, mut mentioned): (Vec<String>, bool) = (Vec::new(), false);
-        let (mut sockets, mut read_only) = (0, 0);
+        let (mut named, mut mentioned): (Vec<(String, Why)>, bool) = (Vec::new(), false);
         for path in refusals.iter().flat_map(|line| paths_in(line)) {
             mentioned = true;
-            if named.contains(&path) {
+            if named.iter().any(|(named, _)| *named == path) {
                 continue;
             }
             // note: a relative path is judged where the command started, and named as it was
@@ -415,24 +414,27 @@ impl Sandbox {
             // is the rarer mistake than reading every relative path as the boundary's
             let judged = self.workdir.join(&path);
             // a socket is judged by connecting and nothing else: see `connecting`
-            let (socket, confined) = match self.connecting(&judged, scratch) {
-                Some(refused) => (true, refused),
-                None if !self.reaches(&judged, scratch) => (false, true),
-                None => {
-                    let barred = self.reads_only(&judged, scratch);
-                    read_only += usize::from(barred);
-                    (false, barred)
-                }
+            let why = match self.connecting(&judged, scratch) {
+                Some(refused) => refused.then_some(Why::Socket),
+                None if !self.reaches(&judged, scratch) => Some(Why::Outside),
+                None => self.reads_only(&judged, scratch).then_some(Why::ReadOnly),
             };
-            if confined {
-                sockets += usize::from(socket);
-                named.push(path);
+            if let Some(why) = why {
+                named.push((path, why));
                 if named.len() == 3 {
                     break;
                 }
             }
         }
 
+        let of = |why: Why| -> Vec<String> {
+            named
+                .iter()
+                .filter(|(_, named)| *named == why)
+                .map(|(path, _)| path.clone())
+                .collect()
+        };
+        let (sockets, read_only, outside) = (of(Why::Socket), of(Why::ReadOnly), of(Why::Outside));
         match (named.is_empty(), !mentioned) {
             // every path it named is one this reaches, so the refusal is the file's own
             (true, false) => None,
@@ -442,39 +444,68 @@ impl Sandbox {
             )),
             // a socket the command could read the path of and not connect to, which "outside what
             // this session reaches" would be false about
-            (false, _) if sockets == named.len() => Some(format!(
+            (false, _) if sockets.len() == named.len() => Some(format!(
                 "[{} {} outside what this session may write, and a confined command may \
                  connect only to a socket it could have written, so the permission error below \
                  is the confinement rather than the socket's own permissions. This command runs \
                  with {self}. Say what you need the socket for and ask for it to be opened up.]",
-                named.join(", "),
-                match named.len() {
+                sockets.join(", "),
+                match sockets.len() {
                     1 => "is a socket",
                     _ => "are sockets",
                 },
             )),
             // reached, and refused a write the person could have made: under `--deny fs:write`
             // the working directory itself, or a path opened up with `--sandbox-read`
-            (false, _) if read_only == named.len() => Some(format!(
+            (false, _) if read_only.len() == named.len() => Some(format!(
                 "[{} {} where this session may read and not write, so the permission error \
                  below is the confinement rather than the file's own permissions. This command \
                  runs with {self}. Say what you need to write there and ask for it to be opened \
                  up.]",
-                named.join(", "),
-                are(&named),
+                read_only.join(", "),
+                are(&read_only),
             )),
-            (false, _) => Some(format!(
-                "[{} {} outside what this session reaches{}, so the permission error below is \
+            (false, _) if outside.len() == named.len() => Some(format!(
+                "[{} {} outside what this session reaches, so the permission error below is \
                  the confinement rather than the file's own permissions. This command runs with \
                  {self}. Work inside the working directory, or say what you need the path for \
                  and ask for it to be opened up.]",
-                named.join(", "),
-                are(&named),
-                match sockets {
-                    0 => "",
-                    _ => " or may connect to",
-                },
+                outside.join(", "),
+                are(&outside),
             )),
+            // note: refused for more than one reason, each path said with its own. One sentence
+            // for all of them calls a path the session may read "outside what this session
+            // reaches", and a model takes that for the whole rule and never reads it
+            (false, _) => {
+                let said = [
+                    (outside, "is", "are", "outside what this session reaches"),
+                    (
+                        read_only,
+                        "is",
+                        "are",
+                        "where this session may read and not write",
+                    ),
+                    (
+                        sockets,
+                        "is a socket",
+                        "are sockets",
+                        "a confined command may not connect to",
+                    ),
+                ]
+                .into_iter()
+                .filter(|(paths, ..)| !paths.is_empty())
+                .map(|(paths, one, more, why)| {
+                    let is = if paths.len() == 1 { one } else { more };
+                    format!("{} {is} {why}", paths.join(", "))
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+                Some(format!(
+                    "[{said}. So the permission errors below are the confinement rather than the \
+                     files' own permissions. This command runs with {self}. Say what you need \
+                     these paths for and ask for them to be opened up.]"
+                ))
+            }
         }
     }
 
@@ -708,6 +739,17 @@ fn refused(line: &str) -> bool {
 
 /// The verb for the paths a note names: a command that writes one file and reads another is
 /// refused twice, and the note names both.
+/// Why a path a refusal named was the confinement's doing.
+#[derive(Clone, Copy, PartialEq)]
+enum Why {
+    /// A socket a confined command may not connect to.
+    Socket,
+    /// A path outside the reach.
+    Outside,
+    /// A path the reach holds for reading and not writing.
+    ReadOnly,
+}
+
 fn are(named: &[String]) -> &'static str {
     match named.len() {
         1 => "is",

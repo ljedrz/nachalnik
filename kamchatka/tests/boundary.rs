@@ -877,6 +877,27 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         ))
         .expect("a write the person could make, refused where this reads only");
     assert!(note.contains("may read and not write"), "{note}");
+
+    // refused for two reasons in one command, as `echo hi > opened/out.txt; cat /elsewhere/in.txt`
+    // is: each path is said with its own, and the one this may read is not called out of reach
+    let note = opened
+        .note_for(&format!(
+            "sh: line 1: {}/out.txt: Permission denied\n\
+             cat: /elsewhere/in.txt: Permission denied\n",
+            opened_up.display()
+        ))
+        .expect("both are the confinement");
+    assert!(
+        note.contains(&format!(
+            "{}/out.txt is where this session may read and not write",
+            opened_up.display()
+        )),
+        "{note}"
+    );
+    assert!(
+        note.contains("/elsewhere/in.txt is outside what this session reaches"),
+        "{note}"
+    );
 }
 
 /// The punctuation a message wraps a path in is not part of it: neither the full stop that ends

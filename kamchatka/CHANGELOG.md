@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **The note under a refused command says each path's own reason.** A command refused for two
+  reasons at once - a write where the session may only read, and a read outside what it reaches -
+  was told that every path it named was outside what the session reaches, so a model took a
+  directory opened for it with `--sandbox-read`, or the working directory under `--deny fs:write`,
+  for one it could not read. Each path is now named with the reason that applies to it.
+
 - **A served session refuses a command from a client another one has replaced.** The replaced
   client's connection was told to go and went when it next looked, and a command it had read
   before then was still done: an interrupt stopped the turn the newcomer had just started, or a `y`
