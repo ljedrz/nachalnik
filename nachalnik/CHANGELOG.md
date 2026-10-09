@@ -15,6 +15,9 @@ minor bump may break you.
   before a request now says the context is not full when there is no compactor, and retires the
   notice.
 
+- **A blob's size no longer reads `1000.00kB`.** A size that two decimals round up to a thousand
+  of one unit, like 999,999 bytes, was written in that unit; it is now `1.00MB`.
+
 ## [0.9.1] - 2026-10-08
 
 ### fixed
