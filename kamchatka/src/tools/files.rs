@@ -437,8 +437,8 @@ fn untext(
 
 /// Replaces the whole of a file `allows` answered for, creating it if it is not there; see
 /// [`Reach::replace`] for why that is not an open that empties it.
-async fn write(reach: &Arc<Reach>, path: &Path, content: &str) -> std::io::Result<()> {
-    let (reach, path, content) = (reach.clone(), path.to_path_buf(), content.to_owned());
+async fn write(reach: &Arc<Reach>, path: &Path, content: String) -> std::io::Result<()> {
+    let (reach, path) = (reach.clone(), path.to_path_buf());
     tokio::task::spawn_blocking(move || reach.replace(&path, content.as_bytes()))
         .await
         .map_err(std::io::Error::other)?
@@ -498,7 +498,7 @@ impl Write {
         }
 
         let _changing = self.2.hold(&path).await;
-        match write(&self.0, &path, content).await {
+        match write(&self.0, &path, content.to_owned()).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "wrote {} bytes to {}",
                 content.len(),
@@ -721,7 +721,7 @@ impl Edit {
         };
 
         let after = format!("{}{new}{}", &before[..at], &before[at + old.len()..]);
-        match write(&self.0, &path, &after).await {
+        match write(&self.0, &path, after).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "replaced one occurrence in {}",
                 path.display()
