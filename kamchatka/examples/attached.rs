@@ -11,13 +11,13 @@
 //! It prints a line naming the session it attached to and what that holds, the conversation so
 //! far, the answer as it is written, and then the item that answer was recorded as.
 //!
-//! note: this reaches for [`kamchatka::remote::protocol`], `tokio`, and three plain data types
-//! that `protocol` itself names - `Speaker`, `Did` and `Page`, which are an enum of seven, an enum
-//! of three, and two strings. It touches no `App`, no wiring and not `remote::Client`. `remote/`
-//! says that when something which is not `kamchatka` needs to speak this, `protocol` is what
-//! moves, and this is the check on that sentence: `protocol` **and those three**. They are the
-//! program's own vocabulary rather than the wire's second copy of it, which is why they are
-//! borrowed instead of redeclared.
+//! note: this reaches for [`kamchatka::remote::protocol`], `tokio`, and two of the three plain
+//! data types that `protocol` itself names - `Speaker` and `Did`, an enum of seven and an enum of
+//! three; the third, `Page`, is two strings in a page this client never opens. It touches no
+//! `App`, no wiring and not `remote::Client`. `remote/` says that when something which is not
+//! `kamchatka` needs to speak this, `protocol` is what moves, and this is the check on that
+//! sentence: `protocol` **and those three**. They are the program's own vocabulary rather than the
+//! wire's second copy of it, which is why they are borrowed instead of redeclared.
 //!
 //! note: a client in another language needs none of that and no Rust at all. The wire is
 //! newline-delimited JSON, one object per line:
