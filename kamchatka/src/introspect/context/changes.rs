@@ -701,7 +701,7 @@ impl Changes {
     /// the one dishonest thing in a program built to show where everything came from.
     ///
     /// note: a note rather than a reasoning block, although a model can already think and thinking
-    /// is free. Reasoning belongs to the turn that produced it, so pruning that turn prunes the
+    /// is free. Reasoning belongs to the turn that produced it, so excluding that turn takes the
     /// thought - deliberately, since for a signed thinking block nothing else is safe. Reasoning is
     /// not addressable: it has no identifier, cannot be revised, cannot be pinned, and a compactor
     /// cannot be told to leave it alone. Reasoning is not reliably carried back either - this
@@ -1091,7 +1091,7 @@ impl Grew {
 /// note: it says which way the figures went in *both* directions. A drop is what the caller asked
 /// for and still needs explaining: a model compares the new figure against one it remembers from a
 /// `budget` call several turns earlier rather than against the `from ~` in the sentence it has
-/// just been handed, reads a drop as growth, concludes that pruning *adds* cost, and walks its
+/// just been handed, reads a drop as growth, concludes that excluding *adds* cost, and walks its
 /// work back. Hence both halves of what follows: the direction in words, and where the number it
 /// is measured against comes from.
 fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
@@ -1117,9 +1117,9 @@ fn cost(kernel: &Kernel, before: usize, grew: Grew) -> String {
             // reads growth even into two numbers that are not different - the same misreading as
             // the one above. It says nothing about *why* it did not move, because
             // that differs by action and this arm serves all of them - a pin changes what
-            // compaction may take rather than what the request carries, and a prune on something
-            // already held back has nothing left to take out. What it does rule out is the other
-            // reading of an unmoved figure, which is a change that never took
+            // compaction may take rather than what the request carries, and an exclusion of
+            // something already held back has nothing left to take out. What it does rule out
+            // is the other reading of an unmoved figure, which is a change that never took
             Ordering::Equal => " That is the same figure as before, to the token, rather than a \
                                 change that did not take."
                 .to_owned(),

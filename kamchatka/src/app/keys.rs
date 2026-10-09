@@ -208,7 +208,7 @@ impl App {
     /// kind, its state and its place in the conversation, and what it said before becomes a
     /// version page like every other rewrite. Superseding would leave a second, excluded row
     /// saying what the `v1` page already says, and would need three things kept upright. A state
-    /// carried over by hand, because a new item starts Active: an edit to a pruned one would
+    /// carried over by hand, because a new item starts Active: an edit to an excluded one would
     /// quietly come back into the request, and an edit to the excluded whole of a shortened output
     /// would put all of an oversized output into it. A kind rebuilt whole, because an assistant
     /// turn carries its tool calls inside it and rebuilding it without them orphans their results.

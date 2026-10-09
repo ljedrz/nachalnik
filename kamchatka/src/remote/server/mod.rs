@@ -1263,7 +1263,7 @@ fn project(app: &App) -> Attached {
             .map(Line::of)
             .collect(),
         // note: every item, rather than `App::listed`, which is the *screen's* list and leaves out
-        // what has been pruned when somebody has asked it to. Which rows to show is a decision
+        // what is not being sent when somebody has asked it to. Which rows to show is a decision
         // belonging to whoever is reading, and a projection that had already made it would be one
         // client's view of the context standing in for the context
         items: items
