@@ -75,6 +75,9 @@ minor bump may break you.
 - **A tool name an MCP server clashes on is named once**, where it was named once for each copy of
   it that clashed: "offers py__add, py__add".
 
+- **A restart says an MCP server offering one name twice offers it twice**, as a start does. It
+  said every clash was a name another tool already had, about a tool no other server offered.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

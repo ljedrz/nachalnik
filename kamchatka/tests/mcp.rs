@@ -604,6 +604,41 @@ async fn a_restart_leaves_out_a_server_whose_tools_would_displace_another() {
     assert_eq!(offered, ["py__add", "py__hang"]);
 }
 
+/// A restart says a server offering one name twice offers it twice, as a start does.
+///
+/// note: it said every clash was a name another tool already had, and a server whose list came
+/// back with one name twice was told it collided with a tool nothing else offered.
+#[tokio::test]
+async fn a_restart_says_a_server_offering_a_name_twice_offers_it_twice() {
+    let spec = spec!();
+    let (_, line) = spec.split_once('=').expect("the spec names its server");
+    let mut words = line.split_whitespace();
+    let mut command = tokio::process::Command::new(words.next().expect("a program"));
+    command.args(words).arg("--twice");
+    let server = nachalnik_mcp::Server::spawn("py", command)
+        .await
+        .expect("the server starts");
+
+    let fresh = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    let left_out = kamchatka::mcp::reinstall(&fresh.app.kernel, &fresh.app.policy, &[server]).await;
+
+    assert_eq!(left_out.len(), 1, "{left_out:?}");
+    assert!(
+        left_out[0].contains("more than one tool called py__add"),
+        "{left_out:?}"
+    );
+}
+
 /// The line that says the old session ended is the first thing the new one says.
 ///
 /// note: a restart hands the new session two things: where the old one went, and what the servers
