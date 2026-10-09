@@ -289,6 +289,41 @@ async fn a_location_claim_is_explained_with_the_notes_own_number() {
     );
 }
 
+/// The ledger, as material a subject is not expected to answer as its notes support.
+static UNTRACTABLE: suite::Dossier = suite::Dossier {
+    tractable: false,
+    ..LEDGER
+};
+
+/// An answer the notes do not support is a check that failed on material a subject is expected
+/// to follow, and what the material was built to find on material it is not.
+#[tokio::test]
+async fn an_untractable_dossier_answered_otherwise_is_not_an_unmet_check() {
+    const SUPPORTED: &str = "the subject answered the dossier as its notes support";
+    let blind = || Arc::new(Rulebook::new(BLIND_RULES, "I would rather not say."));
+
+    let tractable = run_on(blind(), suite::Attribution::new().on(&LEDGER)).await;
+    assert!(!check(&tractable, SUPPORTED).held);
+
+    let untractable = run_on(blind(), suite::Attribution::new().on(&UNTRACTABLE)).await;
+    assert!(
+        untractable
+            .checks
+            .iter()
+            .all(|check| check.what != SUPPORTED),
+        "{:?}",
+        untractable.checks
+    );
+    // and what it answered is still on the record, as a note
+    assert!(
+        notes(&untractable)
+            .iter()
+            .any(|note| note.contains("it answered `birch`, the notes support `aster`")),
+        "{:?}",
+        notes(&untractable)
+    );
+}
+
 /// Every claim is counted under the dossier it was made about.
 ///
 /// note: one measured claim without a material and the clustered interval is worked out for none
