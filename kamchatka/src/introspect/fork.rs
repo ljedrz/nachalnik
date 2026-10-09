@@ -345,6 +345,7 @@ async fn branch(
             last.items = read.clone();
             // in the order the copy has them, so the sentence reads like a context
             earlier.map_or_else(Vec::new, |earlier| {
+                let earlier: std::collections::BTreeSet<ContextId> = earlier.into_iter().collect();
                 read.into_iter()
                     .filter(|id| !earlier.contains(id))
                     .collect()
