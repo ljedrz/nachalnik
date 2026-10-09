@@ -9,6 +9,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` says so when the network gate could not be set up for a command.** The error was
+  dropped, and every socket the command asked for failed with `ENOSYS` with nothing said about
+  why, to the model or to anybody.
+
 - **A fragment too long for a frame is counted as missed rather than sent.** One line of a
   command's output went out to every attached client as one `Message::Progress`, held only to what
   a tool keeps, and escaped it could pass `MAX_LINE`: every client refused the frame and lost its
