@@ -1769,6 +1769,29 @@ fn an_advisor_with_no_model_is_refused_with_where_to_find_one() {
     assert!(said.contains("output_modalities=decisions"), "{said}");
 }
 
+/// An advisor's address that is not one is refused at startup, by the variable's name, as the
+/// session's is.
+///
+/// note: it went to the engine as it was, and the startup check reads an address with no listing
+/// as one that says nothing - so a scheme left off was a session that started, and an advisor
+/// that failed every question as a transport error naming no variable.
+#[cfg(feature = "shell-advisor")]
+#[test]
+fn an_advisor_address_that_is_not_one_is_refused_at_startup() {
+    let unaddressed = [
+        ("KAMCHATKA_SYSTEM1_API_KEY", "not-a-key"),
+        ("KAMCHATKA_SYSTEM1_BASE_URL", "localhost:11434"),
+        ("KAMCHATKA_SYSTEM1_MODEL", "vendor/decider"),
+    ];
+
+    let (ok, said) = run_with(&["--advise"], "", &unaddressed);
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("KAMCHATKA_SYSTEM1_BASE_URL is `localhost:11434`"),
+        "{said}"
+    );
+}
+
 /// A session's own key is borrowed for the advisor only when the session is talking to OpenRouter,
 /// and the dialect is half of which address that is.
 ///

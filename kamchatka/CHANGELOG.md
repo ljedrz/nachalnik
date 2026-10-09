@@ -35,6 +35,12 @@ minor bump may break you.
   OpenRouter key that could have paid was passed over, and so was the refusal that says at the
   start that Workers AI needs a token. `OPENROUTER_API_KEY` set to nothing is read the same way.
 
+- **`KAMCHATKA_SYSTEM1_BASE_URL` that is not an address is refused at startup**, by the variable's
+  name, as `KAMCHATKA_BASE_URL` is. It went to the advisor as it was, and the check at startup
+  reads an address with no listing as one that says nothing: `localhost:11434` was a session that
+  started and an advisor that failed every question, and `…/v1?token=…` one whose failures quoted
+  the token.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

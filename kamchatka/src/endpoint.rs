@@ -294,16 +294,17 @@ pub fn shown(url: &str) -> String {
     }
 }
 
-/// The base URL, if it is one; refused at startup rather than on the first request.
+/// The base URL `variable` held, if it is one; refused at startup rather than on the first
+/// request.
 ///
 /// note: what the variable held is said back with the variable's name, because the failure it
 /// saves is a `builder error` on the first turn that names neither.
-fn addressed(url: String) -> Result<String, BoxError> {
+fn addressed(variable: &str, url: String) -> Result<String, BoxError> {
     match is_an_address(&url) {
         true => Ok(url),
         false => Err(format!(
-            "KAMCHATKA_BASE_URL is `{url}`, which is not an address: it wants http:// or https:// \
-             and a host, and no `?` or `#`, since every path is added after it"
+            "{variable} is `{url}`, which is not an address: it wants http:// or https:// and a \
+             host, and no `?` or `#`, since every path is added after it"
         )
         .into()),
     }
@@ -378,7 +379,7 @@ async fn connected(
 ) -> Result<Arc<OpenAiCompatible>, BoxError> {
     let provider = OpenAiCompatible::new(
         model.unwrap_or_default(),
-        addressed(base_url())?,
+        addressed("KAMCHATKA_BASE_URL", base_url())?,
         key_for(&base_url())?,
     )
     .with_context_limit(checked_limit()?)
@@ -587,9 +588,12 @@ pub mod advise {
     pub async fn connect(session_endpoint: &str) -> Result<Arc<dyn SystemOne>, BoxError> {
         let model = model()?;
         let account = account(session_endpoint)?;
-        let engine = Arc::new(
-            Client::new(model, base_url(), account.api_key()).attributed_to(attribution()),
-        );
+        // note: checked as the session's address is, and not left to the probe below: an address
+        // no request can be built on has no listing either, and an address with no listing is
+        // one the probe says nothing about
+        let url = addressed("KAMCHATKA_SYSTEM1_BASE_URL", base_url())?;
+        let engine =
+            Arc::new(Client::new(model, url, account.api_key()).attributed_to(attribution()));
         engine.probe().await;
 
         Ok(engine)
@@ -768,7 +772,7 @@ pub mod gemini {
         let provider = Arc::new(
             Gemini::new(
                 model.unwrap_or_default(),
-                addressed(base_url())?,
+                addressed("KAMCHATKA_BASE_URL", base_url())?,
                 key_for(&base_url())?,
             )
             .with_context_limit(checked_limit()?),
@@ -829,7 +833,7 @@ pub mod anthropic {
         let provider = Arc::new(
             Anthropic::new(
                 model.unwrap_or_default(),
-                addressed(url.clone())?,
+                addressed("KAMCHATKA_BASE_URL", url.clone())?,
                 key(&url)?,
             )
             .with_context_limit(checked_limit()?)
