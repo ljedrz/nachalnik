@@ -430,7 +430,14 @@ impl Listener {
                 tv_sec: 0,
                 tv_nsec: 0,
             };
-            poll(&mut polled, Some(&now)).ok()?;
+            // a signal landing in the look is a look to take again: this process takes four, and
+            // giving up on one dropped the listener, and every attempt after it failed as though
+            // the kernel had no sockets, with nobody asked and nothing said
+            match poll(&mut polled, Some(&now)) {
+                Ok(_) => {}
+                Err(rustix::io::Errno::INTR) => continue,
+                Err(_) => return None,
+            }
             let seen = polled[0].revents();
             if seen.intersects(PollFlags::HUP | PollFlags::ERR | PollFlags::NVAL) {
                 return None;
