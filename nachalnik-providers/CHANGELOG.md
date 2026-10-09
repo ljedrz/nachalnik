@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A body that breaks off before any of it arrived says why.** reqwest reports it as `error
+  decoding response body`, and what happened - the connection closed short of the length it
+  promised - is in the causes under that line. A stream with nothing in it yet, a whole answer and
+  a System One answer passed the error on without them, and the kernel records an error as its
+  `Display`, so the turn failed on a sentence nobody could act on. All three carry the causes now,
+  as a request that could not be sent already did.
 - **A streamed Chat Completions call whose identifier arrives late is one call.** A call opened
   with neither an index nor an identifier, and named by a later fragment, was filed as two: the
   call the model made, missing what came after, and a call to a tool with no name. The late

@@ -589,7 +589,7 @@ async fn body(
                 }
             }
             Ok(Ok(None)) => return Ok(Some(String::from_utf8_lossy(&body).into_owned())),
-            Ok(Err(e)) => return Err(e.into()),
+            Ok(Err(e)) => return Err(crate::with_causes(&e).into()),
             Err(_) => {
                 if asking.deltas.is_interrupted() {
                     return Ok(None);

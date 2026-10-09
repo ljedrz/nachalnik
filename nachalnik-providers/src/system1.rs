@@ -842,7 +842,7 @@ impl Client {
             let status = response.status();
             let said = match response.text().await {
                 Ok(said) => said,
-                Err(e) if status.is_success() => return Err(e.into()),
+                Err(e) if status.is_success() => return Err(crate::with_causes(&e).into()),
                 // a refusal whose body never arrived is still a refusal, and its status says
                 // which kind
                 Err(_) => String::new(),
@@ -1905,9 +1905,11 @@ mod tests {
         let said = ask(refused).await.to_string();
         assert!(said.starts_with("401"), "{said}");
 
-        let failed = ask(cut).await;
+        // the transport's failure, with the cause under it that says the connection broke
+        let failed = ask(cut).await.to_string();
         assert!(
-            failed.downcast_ref::<reqwest::Error>().is_some(),
+            failed.starts_with("error decoding response body")
+                && failed.contains("error reading a body from connection"),
             "{failed}"
         );
     }

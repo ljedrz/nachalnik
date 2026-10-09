@@ -184,6 +184,10 @@ impl Conformance {
                 self.cut_off_midstream().await,
             ),
             (
+                "a body that ends before any of it arrived says why",
+                self.cut_off_before_anything().await,
+            ),
+            (
                 "a stream cut while the model was still thinking keeps the thinking",
                 self.cut_off_while_thinking().await,
             ),
@@ -433,6 +437,23 @@ impl Conformance {
                 "one of the two summaries the turn carried was dropped rather than kept: \
                  {thought:?}"
             )),
+        }
+    }
+
+    /// A body that ends before any of it arrived is an error that says why.
+    ///
+    /// note: reqwest's own line for it is `error decoding response body`, which is a category.
+    /// What happened - the connection closed short of the length it promised - is in the causes
+    /// under it, and the kernel records an error as its `Display`, so a provider that passes the
+    /// error on without them reports a dropped connection as nothing anybody can act on.
+    async fn cut_off_before_anything(&self) -> Outcome {
+        match self.ask("data: {}\n\n", Delivery::Cut(0)).await {
+            Ok(response) => Outcome::Failed(format!(
+                "a body that never arrived was read as an answer: {:?}",
+                text_of(&response)
+            )),
+            Err(e) if e.contains("error decoding response body: ") => Outcome::Passed,
+            Err(e) => Outcome::Failed(format!("the error does not say why: {e}")),
         }
     }
 

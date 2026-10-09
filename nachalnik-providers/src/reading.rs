@@ -179,9 +179,9 @@ pub(crate) async fn read(
             // outruns an upstream's patience would be paid for four times and fail anyway
             Ok(Err(e)) => {
                 // nothing arrived at all, so there is nothing to keep and the transport's own
-                // account is the most useful thing there is
+                // account, with its causes, is the most useful thing there is
                 if seen.is_empty() {
-                    return Err(e.into());
+                    return Err(crate::with_causes(&e).into());
                 }
                 // a turn whose finish already arrived is a complete answer that lost its trailing
                 // bytes, and calling that cut off would be inventing a fault
