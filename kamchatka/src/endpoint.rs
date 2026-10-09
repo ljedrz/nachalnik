@@ -146,9 +146,9 @@ pub fn api_key() -> Result<String, BoxError> {
 /// note: a key is not a prerequisite, because a model served on the machine in front of you wants
 /// none: ollama, llama.cpp and vLLM check nothing unless they were started with a key of their own,
 /// and a session pointed at one used to be refused at startup until somebody exported a key it
-/// would never read. Refused still for OpenRouter and Google, which are the two defaults and refuse
-/// every request without one - there the line at startup is worth more than a 401 on the first
-/// turn. Anywhere else the endpoint is the one that knows, and its 401 says so.
+/// would never read. Refused still for OpenRouter, Google, OpenAI and Anthropic, which refuse every
+/// request without one ([`checks_a_key`]) - there the line at startup is worth more than a 401 on
+/// the first turn. Anywhere else the endpoint is the one that knows, and its 401 says so.
 ///
 /// note: whose key it is decides where it may go. `KAMCHATKA_API_KEY` is the one somebody set for
 /// this program, so it goes wherever they pointed it; `OPENROUTER_API_KEY` and `OPENAI_API_KEY`
