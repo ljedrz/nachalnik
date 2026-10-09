@@ -163,11 +163,15 @@ pub async fn reinstall(kernel: &Kernel, policy: &Careful, servers: &[Server]) ->
 /// gains the rest only when there are none, so a server left out claims nothing.
 fn claim(taken: &mut HashSet<String>, tools: &[Arc<dyn Tool>]) -> Vec<String> {
     let mut claimed = HashSet::new();
-    let clashes: Vec<String> = tools
+    let mut clashes: Vec<String> = tools
         .iter()
         .map(|tool| tool.spec().id)
         .filter(|id| taken.contains(id) || !claimed.insert(id.clone()))
         .collect();
+    // one name each, however many of its copies clashed: a name taken already and offered twice
+    // was each copy a clash of its own, and said as "py__add, py__add"
+    clashes.sort();
+    clashes.dedup();
     if clashes.is_empty() {
         taken.extend(claimed);
     }
