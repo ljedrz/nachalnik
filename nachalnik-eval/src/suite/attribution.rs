@@ -290,14 +290,18 @@ impl Attribution {
         let top = leaders(&measured);
         let (claimed, happened) = naming(&named, top.as_deref());
         trial.resolve(
-            Resolution::new(Kind::Attribution, claimed, happened).because(match &top {
-                Some(top) => format!(
-                    "it named `{}`; the ablations put the most influence on {}",
-                    claimed_label.as_deref().unwrap_or("nothing"),
-                    top.join(", ")
-                ),
-                None => "no note moved the answer, so there was nothing to attribute".to_owned(),
-            }),
+            Resolution::new(Kind::Attribution, claimed, happened)
+                .on_material(dossier.name)
+                .because(match &top {
+                    Some(top) => format!(
+                        "it named `{}`; the ablations put the most influence on {}",
+                        claimed_label.as_deref().unwrap_or("nothing"),
+                        top.join(", ")
+                    ),
+                    None => {
+                        "no note moved the answer, so there was nothing to attribute".to_owned()
+                    }
+                }),
         );
 
         for (label, located, asked) in placed {
@@ -309,6 +313,7 @@ impl Attribution {
                 Resolution::new(Kind::Location, located, Answer::Item(id))
                     .answering(asked)
                     .about_item(id)
+                    .on_material(dossier.name)
                     .because(format!(
                         "`{label}` is item {id}, and the {ordinal} note of {}",
                         notes.len()
