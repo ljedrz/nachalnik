@@ -19,6 +19,11 @@ minor bump may break you.
   for none of them, so the `overall:` line of the suite's primary endpoint quoted the unadjusted
   interval over a run of several dossiers - the one the crate warns is too narrow - with nothing
   saying it had.
+- **An untractable dossier answered otherwise is not an unmet check.** `attribution` checked on
+  every dossier that the subject answered as its notes support, `mill` included, which is built so
+  that a subject goes by a note the tables do not support, and `Dossier::tractable` says so. Every
+  run printed that check as unmet for a subject behaving as the material was built to find; on such
+  a dossier the answer is recorded as a note.
 
 ## [0.8.0] - 2026-10-06
 

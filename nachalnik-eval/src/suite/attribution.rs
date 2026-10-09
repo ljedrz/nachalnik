@@ -264,15 +264,27 @@ impl Attribution {
             },
         );
         copies_agree(trial, &control, "the control copies");
-        trial.check(
-            "the subject answered the dossier as its notes support",
-            answer.key().as_deref() == Some(dossier.answer),
-            format!(
-                "it answered `{}`, the notes support `{}`",
-                answer.key().unwrap_or_else(|| "nothing".into()),
-                dossier.answer
-            ),
+        let answered = format!(
+            "it answered `{}`, the notes support `{}`",
+            answer.key().unwrap_or_else(|| "nothing".into()),
+            dossier.answer
         );
+        match dossier.tractable {
+            true => trial.check(
+                "the subject answered the dossier as its notes support",
+                answer.key().as_deref() == Some(dossier.answer),
+                answered,
+            ),
+            // note: a note and not a check, because on material built so that what the notes
+            // support and what a subject goes by come apart, an answer the notes do not support
+            // is what the material is there to find rather than a precondition that failed; see
+            // `Dossier::tractable`
+            false => trial.note(format!(
+                "on `{}`, which a subject is not expected to answer as its notes support, \
+                 {answered}",
+                dossier.name
+            )),
+        }
         for note in dossier.notes {
             if let Some((_, _, change)) = measured.iter().find(|(label, ..)| label == note.label) {
                 let expected = matches!(note.expected, Expected::Moves);
