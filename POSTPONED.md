@@ -93,10 +93,10 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Unblocked by deciding which the ceiling is for: carrying the total and the stop across a relaunch,
   or saying "this session" where `/spend` says "this run".
 
-- **A headless run stopped short after its last turn failed exits 1.** `Headless::run` answers
-  `Err` whenever the last turn failed, and the stop - a deadline, `ctrl+c`, a signal - is read only
-  on the `Ok` path, so a run whose last turn failed and which was then stopped exits 1 rather than
-  124, 130 or 143. An interrupted turn ends as a stop rather than a failure, so it takes a turn that
+- **A headless or served run stopped short after its last turn failed exits 1.** `Headless::run`
+  and `Server::run` answer `Err` whenever the last turn failed, and the stop - a deadline,
+  `ctrl+c`, a signal - is read only on the `Ok` path, so a run whose last turn failed and which was
+  then stopped exits 1 rather than 124, 129, 130 or 143. An interrupted turn ends as a stop rather than a failure, so it takes a turn that
   failed on its own. Unblocked by choosing which of the two a script is told: the stop, under the
   rule that the first cause wins, or the failure.
 
