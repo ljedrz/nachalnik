@@ -54,8 +54,11 @@ pub(super) fn rows_for(line: &str, width: usize) -> usize {
 
     for (_, text) in line.split_word_bound_indices() {
         let mut chunk = text;
+        // note: measured once and then less what each cut row took, as `fold` keeps its width.
+        // Measured again on every row, one long word was quadratic in its length - a pasted run of
+        // a hundred thousand letters took a tenth of a second a frame to size the input box
+        let mut chunk_width = columns(chunk);
         while !chunk.is_empty() {
-            let chunk_width = columns(chunk);
             if filled + chunk_width <= width {
                 filled += chunk_width;
                 started = true;
@@ -71,6 +74,7 @@ pub(super) fn rows_for(line: &str, width: usize) -> usize {
             // an empty row and it still does not fit: this is one long word, and it is cut
             let take = prefix_within(chunk, width);
             closed += 1;
+            chunk_width = chunk_width.saturating_sub(columns(&chunk[..take]));
             chunk = &chunk[take..];
             filled = 0;
         }

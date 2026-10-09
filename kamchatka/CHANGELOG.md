@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A long unbroken word in the prompt no longer slows every frame.** Sizing the input box measured
+  what was left of such a word again for each row it took, so the work grew with the square of its
+  length: a pasted run of a hundred thousand characters with no break in it, such as a hex dump,
+  cost a tenth of a second a frame in a release build. It is measured once now.
+
 - **An empty or relative `XDG_CONFIG_HOME` no longer reads a settings file of the repository's
   without asking.** The config directory was taken as given, so an empty `XDG_CONFIG_HOME` - or an
   empty `HOME` with none - made the person's own settings file `kamchatka/kamchatka.json` under the
