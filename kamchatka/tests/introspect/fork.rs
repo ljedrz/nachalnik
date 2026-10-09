@@ -387,6 +387,43 @@ async fn a_fork_beside_another_call_says_what_that_call_kept_out_of_the_copy() {
     );
 }
 
+/// A result named in `without` is said to be left out, even when it is the result of a call in the
+/// same turn.
+///
+/// note: the turn's results were set aside before `without` was read, so one named there was
+/// reported as the other call's, and the reply said nothing named had been taken away right before
+/// saying the item was not in the copy.
+#[tokio::test]
+async fn a_result_named_in_without_is_left_out_even_when_it_is_a_siblings() {
+    let (kernel, _provider, _anchor) = agent([
+        ModelResponse::tool_calls(vec![
+            call("c1", "context", json!({ "action": "budget" })),
+            call(
+                "c2",
+                "fork",
+                json!({ "action": "ask", "question": "and without it?", "without": [3] }),
+            ),
+        ]),
+        ModelResponse::text("the copy's answer"),
+        ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("go"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let budget = kernel
+        .items()
+        .iter()
+        .find(|item| item.calls().next().is_none() && item.content.to_text().contains("tokens"))
+        .expect("the budget's result is in the context")
+        .id;
+    assert_eq!(budget.to_string(), "3", "the item `without` names");
+    let said = answers_from(&kernel, &["fork"])[0].clone();
+    assert!(said.contains("without 3"), "{said}");
+    assert!(!said.contains("Nothing you named"), "{said}");
+    assert!(!said.contains("had not been answered"), "{said}");
+}
+
 /// Two forks in a turn are not called the same context when a call between them wrote to it.
 ///
 /// note: the sentence "this is the same context answering again" is the one a model reads as
