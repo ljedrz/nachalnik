@@ -56,8 +56,9 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   it can see. Anything a counter needs to price a payload goes in `Blob::meta`, which the kernel
   never reads.
 
-  No vendor pricing formulas go into this workspace: prices are per model and change whenever a
-  vendor ships one, and a formula here would silently become wrong.
+  No vendor pricing formulas go into a crate: prices are per model and change whenever a vendor
+  ships one, and a formula here would silently become wrong. An example may write one out, saying
+  whose it is, as `pricing_a_picture` does.
 
 - **A media type is the caller's claim; nothing here guesses one.** Everything that depends on it
   (how an API sends a blob, whether a provider accepts it at all) would be wrong if it were guessed,
