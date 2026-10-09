@@ -959,8 +959,8 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
     let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENROUTER_API_KEY:-none} \
-               ${OPENAI_API_KEY:-none} ${KAMCHATKA_SYSTEM1_API_KEY:-none} \
-               ${HOME:+home}\" > seen.txt";
+               ${OPENAI_API_KEY:-none} ${ANTHROPIC_API_KEY:-none} \
+               ${KAMCHATKA_SYSTEM1_API_KEY:-none} ${HOME:+home}\" > seen.txt";
     for confined in [true, false] {
         let dir = common::scratch(&format!("keys-{confined}"));
         let base = common::endpoint(vec![
@@ -996,6 +996,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
             .env("KAMCHATKA_API_KEY", "sk-the-session-key")
             .env("OPENROUTER_API_KEY", "sk-the-router-key")
             .env("OPENAI_API_KEY", "sk-another-key")
+            .env("ANTHROPIC_API_KEY", "sk-ant-a-key")
             .env("KAMCHATKA_SYSTEM1_API_KEY", "sk-the-system1-key")
             .stdin(std::process::Stdio::null())
             .output()
@@ -1014,7 +1015,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
         });
         assert_eq!(
             seen.trim(),
-            "none none none none home",
+            "none none none none none home",
             "confined: {confined}"
         );
     }
