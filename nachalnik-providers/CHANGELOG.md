@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A streamed Chat Completions call whose identifier arrives late is one call.** A call opened
+  with neither an index nor an identifier, and named by a later fragment, was filed as two: the
+  call the model made, missing what came after, and a call to a tool with no name. The late
+  identifier is now the open call's, as the Responses dialect already read it, unless what arrives
+  is a whole call of its own.
+
 ## [0.9.1] - 2026-10-08
 
 ### added
