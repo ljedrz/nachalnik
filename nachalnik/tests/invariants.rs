@@ -604,19 +604,20 @@ fn the_generators_reach_what_the_properties_are_about() {
                     reached.a_result_before_its_call += 1;
                 }
             }
-            if items
-                .iter()
-                .any(|item| item.calls().count() > 1 && item.state.is_projected())
-            {
-                let projection = world.kernel.project();
-                let answers = projection
+            // the turn's own calls answered, rather than any two results anywhere
+            let projection = world.kernel.project();
+            let answered = |id: &ToolCallId| {
+                projection
                     .messages
                     .iter()
-                    .filter(|message| message.tool_call_id.is_some())
-                    .count();
-                if answers > 1 {
-                    reached.a_turn_with_two_answers += 1;
-                }
+                    .any(|message| message.tool_call_id.as_ref() == Some(id))
+            };
+            if projection
+                .messages
+                .iter()
+                .any(|message| message.calls().filter(|call| answered(&call.id)).count() > 1)
+            {
+                reached.a_turn_with_two_answers += 1;
             }
 
             if !world.kernel.snapshot().used_calls.is_empty() {
