@@ -313,7 +313,7 @@ async fn a_line_too_long_to_show_that_is_not_text_says_so() {
         "the byte is named: {said}"
     );
     assert!(
-        !said.contains("is longer than the output limit"),
+        !said.contains("is too long to show"),
         "and it is not answered as a line cut short: {said}"
     );
 }
@@ -947,7 +947,10 @@ async fn a_line_longer_than_the_limit_is_shown_from_its_start() {
 
     let said = ask(&dir, "read", json!({ "path": "wide.txt" })).await;
     let (header, body) = said.split_once('\n').expect("a header");
-    assert!(header.contains("line 1 of 2 is longer than"), "{header}");
+    assert!(
+        header.contains("line 1 of 2 is too long to show"),
+        "{header}"
+    );
     assert!(said.len() <= 32_000, "{} bytes", said.len());
     assert!(
         !body.is_empty() && body.chars().all(|c| c == '€'),
@@ -957,6 +960,14 @@ async fn a_line_longer_than_the_limit_is_shown_from_its_start() {
     // and the line after it is where reading on starts
     let next = ask(&dir, "read", json!({ "path": "wide.txt", "from": 2 })).await;
     assert_eq!(next, "[lines 2-2 of 2]\nnext\n");
+
+    // a line under the limit is cut too, since the header takes room from it, and is not said to
+    // be longer than the limit it is under
+    std::fs::write(dir.join("near.txt"), format!("{}\n", "a".repeat(31_900))).expect("a file");
+    let said = ask(&dir, "read", json!({ "path": "near.txt" })).await;
+    let (header, body) = said.split_once('\n').expect("a header");
+    assert!(body.len() < 31_900, "it is cut: {header}");
+    assert!(!header.contains("longer than"), "{header}");
 }
 
 /// `write` and `edit` put a new file where the old one was rather than emptying it first, and the

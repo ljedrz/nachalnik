@@ -309,8 +309,8 @@ fn read(
              read on with `from: {next}`]"
         ),
         Some(Stop::Long) => format!(
-            "[line {first}{of} is longer than the output limit ({budget} bytes), so this is its \
-             start{}]",
+            "[line {first}{of} is too long to show within the output limit ({budget} bytes), so \
+             this is its start{}]",
             policy
                 .ways(&[
                     (Capability::fs("grep"), "`grep` finds what is in it"),

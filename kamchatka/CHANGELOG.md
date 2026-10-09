@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`fs read` no longer calls a line under the output limit longer than it.** A line is cut at what
+  the limit leaves once the header has its room, so one up to 256 bytes under the limit was shown
+  cut and said to be longer than it. The header says the line is too long to show within the limit
+  now, which is true of both.
+
 - **The note under a refused command says each path's own reason.** A command refused for two
   reasons at once - a write where the session may only read, and a read outside what it reaches -
   was told that every path it named was outside what the session reaches, so a model took a
