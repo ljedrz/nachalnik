@@ -34,10 +34,7 @@
 //! eliding, the superseded summary - because a copy of those in an example would be a subtly
 //! wrong one.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use std::{collections::BTreeSet, sync::Arc};
 
 use kamchatka::{endpoint, tools::Shedder};
 use nachalnik::{
@@ -365,10 +362,6 @@ async fn main() -> Result<(), BoxError> {
     let going = by_age.elide.len();
     let cut_by_age: BTreeSet<_> = by_age.elide.iter().copied().collect();
     let cut_by_engine: BTreeSet<_> = ranked.iter().take(going).map(|(item, _)| item.id).collect();
-    let scored: BTreeMap<_, _> = ranked
-        .iter()
-        .map(|(item, score)| (item.id, *score))
-        .collect();
 
     println!(
         "\n{going} of the {} results have to go - ✂ is elided, · is kept:\n",
@@ -380,15 +373,22 @@ async fn main() -> Result<(), BoxError> {
     );
     // in the order the session happened, so the age pass can be seen working down from the top
     for item in &candidates {
-        let score = scored.get(&item.id).copied().unwrap_or(f64::NAN);
-        let level = RUBRIC[(score.round() as usize).min(RUBRIC.len() - 1)]
-            .split(':')
-            .next()
-            .unwrap_or("?");
+        // the answer itself rather than the ranking's: an unanswered item ranks as `f64::MAX`, which
+        // is the top of the rubric, and is shown as unanswered instead
+        let (score, level) = match answers.score(&item.id.to_string()) {
+            Some(score) => (
+                format!("{score:.2}"),
+                RUBRIC[(score.round() as usize).min(RUBRIC.len() - 1)]
+                    .split(':')
+                    .next()
+                    .unwrap_or("?"),
+            ),
+            None => ("-".to_owned(), "unanswered"),
+        };
         let mark = |cut: bool| if cut { "✂" } else { "·" };
 
         println!(
-            "  {score:>5.2}  {level:<11} {:<30}  {}    {}",
+            "  {score:>5}  {level:<11} {:<30}  {}    {}",
             item.label,
             mark(cut_by_age.contains(&item.id)),
             mark(cut_by_engine.contains(&item.id)),
