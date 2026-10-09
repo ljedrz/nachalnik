@@ -1307,6 +1307,36 @@ fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
     }
 }
 
+/// A variable holding bytes that are not text is refused by its name, rather than read as unset.
+///
+/// note: read as unset, a base URL that was not text was OpenRouter's - and the request went there
+/// with the key and the conversation meant for the address written - and a context limit that was
+/// not text was no limit, with nothing on the screen either way.
+#[cfg(unix)]
+#[test]
+fn a_variable_that_is_not_text_is_refused_by_name() {
+    use std::os::unix::ffi::OsStrExt;
+
+    for (variable, held) in [
+        ("KAMCHATKA_BASE_URL", &b"http://my\xffhost/v1"[..]),
+        ("KAMCHATKA_CONTEXT_LIMIT", &b"128000\xc2"[..]),
+    ] {
+        let out = common::command()
+            .args(["--no-record", "--headless"])
+            .env_remove("KAMCHATKA_MODEL")
+            .env("KAMCHATKA_API_KEY", "not-a-key")
+            .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+            .env(variable, std::ffi::OsStr::from_bytes(held))
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("the binary under test is built");
+        let said = String::from_utf8_lossy(&out.stderr);
+        assert!(!out.status.success(), "{variable}: {said}");
+        assert!(said.contains(variable), "{variable}: {said}");
+        assert!(!said.contains("openrouter.ai"), "{variable}: {said}");
+    }
+}
+
 /// A session speaks one dialect, and two asked for are refused rather than one of them picked.
 ///
 /// note: clap refuses the two flags together; the settings file is the other way to ask for both,

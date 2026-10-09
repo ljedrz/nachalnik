@@ -93,9 +93,18 @@ pub fn configured_limit() -> Option<usize> {
 /// setting that says `0` here and "no limit" everywhere else is a trap, and this one is the only
 /// place the value is spent rather than merely held.
 pub(crate) fn checked_limit() -> Result<Option<usize>, BoxError> {
+    // note: the two errors told apart. A value that is not text is a value somebody set, and read
+    // as none it was a limit not in force with nothing saying so - the one thing this refuses
     let limit = match env::var("KAMCHATKA_CONTEXT_LIMIT") {
         Ok(limit) => limit,
-        Err(_) => return Ok(None),
+        Err(env::VarError::NotPresent) => return Ok(None),
+        Err(env::VarError::NotUnicode(held)) => {
+            return Err(format!(
+                "KAMCHATKA_CONTEXT_LIMIT is {held:?}, which is not text: a whole number above 0, \
+                 as in `128000`"
+            )
+            .into());
+        }
     };
 
     match limit.parse::<usize>() {
@@ -266,8 +275,9 @@ pub fn is_an_address(url: &str) -> bool {
         .rsplit_once('@')
         .map_or(authority, |(_, host)| host);
 
+    // and nothing that stands for bytes that were not text: see `address_in`
     matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https")
-        && !rest.contains(['?', '#'])
+        && !rest.contains(['?', '#', char::REPLACEMENT_CHARACTER])
         && !host.is_empty()
         && !host.starts_with(':')
 }
@@ -312,7 +322,18 @@ fn addressed(variable: &str, url: String) -> Result<String, BoxError> {
 
 /// The endpoint to talk to; OpenRouter unless told otherwise.
 pub fn base_url() -> String {
-    env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| "https://openrouter.ai/api/v1".to_owned())
+    address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| "https://openrouter.ai/api/v1".to_owned())
+}
+
+/// What an address variable holds, where it is set.
+///
+/// note: a value that is not text is read with what is not text in it replaced, rather than as no
+/// value at all. Read as unset - which is what `env::var` answering `Err` for both made of it - a
+/// base URL a person had set was the default one, and the request went to a third party with the
+/// key and the conversation meant for the address written. Read this way it is a value
+/// [`is_an_address`] refuses, by the variable's name, before anything is sent.
+fn address_in(variable: &str) -> Option<String> {
+    env::var_os(variable).map(|value| value.to_string_lossy().into_owned())
 }
 
 /// The wire format a session speaks, which is what decides the address it goes to by default.
@@ -487,8 +508,8 @@ pub mod advise {
     /// model and is not on OpenRouter's list is reached through OpenRouter's bring-your-own-key,
     /// so it needs nothing here.
     pub fn base_url() -> String {
-        env::var("KAMCHATKA_SYSTEM1_BASE_URL")
-            .unwrap_or_else(|_| system1::DEFAULT_BASE_URL.to_owned())
+        address_in("KAMCHATKA_SYSTEM1_BASE_URL")
+            .unwrap_or_else(|| system1::DEFAULT_BASE_URL.to_owned())
     }
 
     /// Which model answers: `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
@@ -757,7 +778,7 @@ pub mod gemini {
 
     /// The endpoint to talk to; Google's own unless told otherwise.
     pub fn base_url() -> String {
-        env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_owned())
+        address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| DEFAULT_BASE_URL.to_owned())
     }
 
     /// Builds a provider from the environment, asking the endpoint what the model's limit is.
@@ -795,7 +816,7 @@ pub mod anthropic {
     /// note: OpenRouter answers this dialect too, at `https://openrouter.ai/api/v1`, and that is
     /// how a model there is asked in its own dialect rather than through the OpenAI one.
     pub fn base_url() -> String {
-        env::var("KAMCHATKA_BASE_URL").unwrap_or_else(|_| ANTHROPIC_BASE_URL.to_owned())
+        address_in("KAMCHATKA_BASE_URL").unwrap_or_else(|| ANTHROPIC_BASE_URL.to_owned())
     }
 
     /// The key: `ANTHROPIC_API_KEY` where the requests go to Anthropic, and otherwise the one
