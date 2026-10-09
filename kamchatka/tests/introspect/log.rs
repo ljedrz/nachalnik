@@ -256,6 +256,60 @@ async fn take_counts_records_even_where_one_of_them_is_many_lines() {
     );
 }
 
+/// What matched costs no more than the whole log it was matched in, `whole` or not.
+///
+/// note: the total was priced from every record as a line, and the records that matched from
+/// what `whole` prints - so a replaced item's old text, entire, was a part costing more than the
+/// whole of which it is a part.
+#[tokio::test]
+async fn what_matched_costs_no_more_than_the_whole_log() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![
+        call(
+            "c1",
+            "context",
+            json!({
+                "action": "revise",
+                "ids": [1],
+                "content": "one line now",
+                "reason": "it was long",
+            }),
+        ),
+        call(
+            "c2",
+            "log",
+            json!({ "action": "read", "kinds": ["context.replaced"], "whole": true }),
+        ),
+    ]));
+
+    let long: Vec<String> = (0..200)
+        .map(|n| format!("line {n} of what the scratch note said before"))
+        .collect();
+    kernel.push(ContextItem::memory("scratch", long.join("\n")));
+    kernel.push(ContextItem::user("carry on"));
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["log"]);
+    let whole = said.last().unwrap();
+    // `N records, ~T tokens in all. M match ..., ~t tokens.`
+    let figures: Vec<usize> = whole
+        .split('~')
+        .skip(1)
+        .map(|after| {
+            after
+                .split(' ')
+                .next()
+                .unwrap()
+                .replace(',', "")
+                .parse()
+                .unwrap_or_else(|_| panic!("a figure after `~`: {whole}"))
+        })
+        .collect();
+    let [all, matched, ..] = figures[..] else {
+        panic!("a total and a count of what matched: {whole}");
+    };
+    assert!(matched <= all, "{matched} of {all}: {whole}");
+}
+
 #[tokio::test]
 async fn a_revised_item_can_be_read_back_out_of_the_log_by_its_number() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
