@@ -14,6 +14,9 @@ minor bump may break you.
   call the model made, missing what came after, and a call to a tool with no name. The late
   identifier is now the open call's, as the Responses dialect already read it, unless what arrives
   is a whole call of its own.
+- **A `model` parameter is not put in a Gemini request's body**, as every other dialect leaves it
+  out. The model is in the address, and in the body it was a field `generateContent` does not
+  define, sent beside the model the address asked for.
 
 ## [0.9.1] - 2026-10-08
 

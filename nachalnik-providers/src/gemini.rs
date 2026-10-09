@@ -556,11 +556,12 @@ impl Provider for Gemini {
         //
         // note: the three fields built from the request itself are not replaced, for the reason
         // the other dialect gives: a parameter is carried beside the conversation, not in place
-        // of it. The model is in the address rather than the body, so it needs no guarding here
+        // of it. Nor is the model put in: it is in the address, and in the body it is a field
+        // `generateContent` does not define, beside the model the address asks for
         for (key, value) in &request.params {
             match key.as_str() {
                 "generationConfig" => merge(&mut body["generationConfig"], value),
-                "contents" | "systemInstruction" | "tools" => {}
+                "contents" | "systemInstruction" | "tools" | "model" => {}
                 _ => body[key] = value.clone(),
             }
         }
