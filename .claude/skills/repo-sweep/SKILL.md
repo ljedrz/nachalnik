@@ -36,7 +36,7 @@ EOF
 )
 source $SWEEPS/key.env
 python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, quality.json, docs.json, compact.json, maintain.json
-cargo build --release -p kamchatka        # sweeps run the release binary; rebuild before a batch
+cargo build --release -p kamchatka        # run.py copies it, once, for the whole run
 ```
 
 - `configure.py` reads the model's context length from the endpoint's listing (or take
@@ -46,45 +46,74 @@ cargo build --release -p kamchatka        # sweeps run the release binary; rebui
   parameter and not already at its highest by default, put it in `$SWEEPS/params.txt`, one
   `KEY JSON` per line (for example `reasoning {"effort":"high"}`); `sweep.sh` sends each as
   `/params` before the prompt. A null `reasoning_tokens` in usage does not mean no reasoning.
+- **Another endpoint** is `KAMCHATKA_BASE_URL` set to its base (`https://host/v1`, without
+  `/chat/completions`). Check it answers before starting anything: a key that lists models can
+  still be refused completions (`Insufficient balance` on a free tier not yet enabled).
 - `CARGO_TARGET_DIR` may point at the repository's `target`; the scripts honour it.
 
 ## 2. sweep
 
-Scopes are in `scopes/`: `audit/` (correctness against INVARIANTS.md), `quality/` (performance and
-code quality), `tests/` (test code only), `docs/` (prose against the code it describes), `compact/`
-(what can go or be merged with nothing lost; run as `launch.sh compact c ...`), `maintain/` (what
-makes the code or the prose harder to change than it needs to be - a file too large to read at
-once, logic patched over time, duplication that has drifted; run as `launch.sh maintain m ...`,
-and verify a proposed split by checking that the moved lines are the same lines). Each is
-one module or one concern, names its files and lists concrete failure classes - narrow scopes are
-what made the findings real.
+Scopes are in `scopes/`: `audit/` (correctness against INVARIANTS.md), `tests/` (test code only),
+`quality/` (performance and code quality), `docs/` (prose against the code it describes),
+`maintain/` (what makes the code or the prose harder to change than it needs to be - a file too
+large to read at once, logic patched over time, duplication that has drifted; verify a proposed
+split by checking that the moved lines are the same lines) and `compact/` (what can go or be
+merged with nothing lost). Each is one module or one concern, names its files and lists concrete
+failure classes - narrow scopes are what made the findings real.
+
+A sweep is one session given its scope and three continuations, the last asking for the
+FINDINGS. `run.py` runs them all, and decides what this section used to leave to whoever was
+watching:
 
 ```sh
-$SKILL/launch.sh audit a $SKILL/scopes/audit/*.txt
-$SKILL/launch.sh quality q $SKILL/scopes/quality/*.txt
-$SKILL/launch.sh tests t $SKILL/scopes/tests/*.txt
-$SKILL/launch.sh docs d $SKILL/scopes/docs/*.txt
-$SKILL/wait.sh a-kernel a-context ...     # in the background; you are woken when it returns
+nohup python3 $SKILL/run.py > /dev/null 2>&1 &          # every KIND, in order; or name some
+python3 $SKILL/status.py                               # where each sweep stands
+python3 $SKILL/status.py --watch 15                    # in the background; wakes you on news
 ```
 
-- About 20 at once has run with no rate-limit trouble on a free model. Each sweep runs up to
-  75 minutes (`DEADLINE`, seconds) through its prompt and three continuations.
-- **Check each batch 90 seconds in:** `python3 $SKILL/stats.py NAME...` for requests and sizes, and
-  `grep -c 'not permitted' $SWEEPS/NAME.err`. A sweep making few small requests, or refused over
-  and over, has gone wrong (once, a model nested its tool arguments one level too deep and every
-  call was refused): move its files aside and run it again.
-- **A sweep can drift off its scope** (a tests scope that decided to report production code).
-  Read the notes before verifying; re-run a drifted one with the scope restated.
+- **No time limit.** Models differ by ten times in how long an answer takes - a reasoning model
+  on a free tier answered once every two and a half minutes - and a sweep cut off by a deadline
+  had not got past its first message. A sweep is run until it has answered its last; one whose
+  records stop growing for `--stall` minutes is stopped and run again.
+- **Done means done**, read off the records (`sweeps.py`): exited on its own, every message sent,
+  no failed turn, the last answer ended rather than cut off. Anything else is run again from the
+  start, up to `--tries` times; what is still not done is listed as given up.
+- **As many at once as the endpoint takes.** It starts at `--width` (4) and narrows by one when
+  the sweeps print more than three retries each in ten minutes (`answered 429; trying again`),
+  widening again after twenty minutes of none, up to `--max` (10). A sweep that ends on a failure
+  narrows it too, and pauses new starts while the endpoint recovers.
+- **A run reads one commit.** It makes a worktree at HEAD in `$SWEEPS/tree` and a copy of the
+  binary in `$SWEEPS/kamchatka`, and every sweep reads and runs those, so fixes committed and files
+  reverted for mutation checks meanwhile are nothing a sweep half-way through sees. The findings
+  are about that commit: verify each against HEAD. Remove both once the run is read
+  (`git worktree remove $SWEEPS/tree`); the next run makes them again.
+- Run again, it skips what is complete and adopts what is still running. It leaves a sweep's
+  earlier tries in `$SWEEPS/old/`.
+- **Never kill sweeps by hand to change course.** A killed sweep's work is lost; `run.py` reruns
+  it from the start. To change how many run, stop `run.py` alone (its pid is in
+  `$SWEEPS/run.pid`) and start it again with other options: the sweeps carry on and are adopted.
+
+**Watch it, every fifteen minutes or so, with `status.py --watch`.** It returns early when a
+sweep ends or something needs looking at:
+- **refused**: a sweep whose calls keep being refused is spending its turns on nothing (once, a
+  model nested its tool arguments one level too deep and every call was refused). Read its
+  `NAME.err`; if it is the model's habit rather than the scope, every sweep will do it, and that
+  is a finding about the tools before it is anything else.
+- **a sweep that drifted off its scope** (a tests scope that decided to report production code)
+  shows only in what it found: read the notes of the first sweeps to end before trusting the rest.
+- **given up**, or `run.py` not running with work left.
 
 ## 3. read what a sweep found
 
-- Finished: `python3 $SKILL/extract.py "$($SKILL/snap.sh NAME)" -n` - the replies, then the
-  model's `context` notes, which is where a hygiene run keeps its findings.
-- Killed before it wrote a snapshot (`the session was not written` in `NAME.err`):
-  `python3 $SKILL/notes_from_records.py $SWEEPS/NAME.jsonl > $SWEEPS/NAME.notes.txt` recovers
-  every note from the call arguments in the stream records.
+`python3 $SKILL/read.py NAME` - its replies, then the model's `context` notes, which is where a
+hygiene run keeps its findings; `-r` adds its reasoning. A sweep that could not write its session
+is read from its records, and gives its notes alone.
 
 ## 4. verify, in waves
+
+Start as the first sweeps complete, with the run going on beside it; `status.py --watch` says
+when one has. Where agents are not to be used (the person's own instructions decide), verify the
+same way yourself, one sweep at a time.
 
 One agent per finished sweep (two small ones may share), **at most about four at a time**: a debug
 target is 2-3 GB and a per-session disk quota once ran out and killed every running sweep. Start
