@@ -1,8 +1,15 @@
 """What a sweep's files say about it, for `run.py` and `status.py`.
 
 A sweep is complete when the process ended on its own (`exit 0`), every message in `NAME.in`
-reached the model, no turn failed, and the last answer ended as an answer rather than being cut
-off. Anything else that has ended is incomplete, with the reason, and `run.py` runs it again.
+reached the model, every turn got answers from it, and the last answer ended as an answer rather
+than being cut off. Anything else that has ended is incomplete, with the reason, and `run.py` runs
+it again.
+
+note: a turn that failed after the model had answered in it did its work up to there, and the
+session goes on with the next message, which says to continue where it left off; an endpoint that
+refuses one request in a hundred - one larger than it will take, say, which kamchatka answers by
+compacting - is no reason to throw a sweep's hours away. A turn that failed before any answer is
+one the endpoint never served: that sweep is missing a part, and is run again.
 
 note: read from the records and not from what the model says, because models differ in every
 other respect - one writes FINDINGS, one writes DONE, one writes nothing - and the records are the
@@ -58,6 +65,8 @@ class Records:
         self.requests = 0
         self.inputs = []
         self.failed = []
+        self.empty = 0  # turns that failed with nothing answered in them
+        self.answered = 0  # answers in the turn under way
         self.stop = None
 
     def read(self, name):
@@ -83,8 +92,10 @@ class Records:
                 if kind == "context.added" and event.get("kind") == "user_message" \
                         and event.get("source") == "user":
                     self.sent += 1
+                    self.answered = 0
                 elif kind == "model.finished":
                     self.requests += 1
+                    self.answered += 1
                     used = (event.get("usage") or {}).get("input_tokens")
                     if used:
                         self.inputs.append(used)
@@ -92,6 +103,8 @@ class Records:
                     self.stop = stop if isinstance(stop, str) else json.dumps(stop)
                 elif kind in ("model.failed", "step.failed"):
                     self.failed.append(str(event.get("error", ""))[:160])
+                    if not self.answered:
+                        self.empty += 1
 
 
 _records = {}
@@ -127,6 +140,7 @@ def state(name, now=None):
         mean=sum(records.inputs) // max(len(records.inputs), 1),
         largest=max(records.inputs, default=0),
         failed=len(records.failed),
+        empty=records.empty,
         retrying=len(RETRYING.findall(prose)),
         refused=prose.count(REFUSED),
         quiet=int(now - changed),
@@ -151,8 +165,8 @@ def state(name, now=None):
                      130: "it was interrupted"}.get(code, f"exit {code}"))
     if s["expected"] is not None and records.sent < s["expected"]:
         whys.append(f"{records.sent} of {s['expected']} messages sent")
-    if records.failed:
-        whys.append(f"{len(records.failed)} failed turn(s): {records.failed[-1]}")
+    if records.empty:
+        whys.append(f"{records.empty} turn(s) failed with nothing answered: {records.failed[-1]}")
     if records.stop not in ANSWERED:
         whys.append(f"the last answer stopped: {records.stop}")
     s["status"] = "incomplete" if whys else "complete"

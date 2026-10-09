@@ -17,8 +17,9 @@ What it decides on its own:
   (default 10) by what kamchatka prints while it waits on the endpoint (`answered 429; trying
   again`, a timeout, a refused connection): more than three of those per running sweep in ten
   minutes takes one away, none for twenty minutes adds one back.
-- **An endpoint that is down.** A sweep that ends with a turn failed, or on an error, pauses every
-  new start - five minutes, doubling to an hour while it keeps happening - and takes one away.
+- **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
+  error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
+  takes one away.
 - **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
   run again from the start, up to `--tries` times in all (default 3).
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
@@ -213,7 +214,9 @@ def main():
                 log(f"{name}: complete, {s['requests']} requests")
                 continue
             log(f"{name}: incomplete ({s['why']})")
-            if s.get("failed") or s.get("exit") not in (0, 124, 143):
+            # what says the endpoint is not serving: a turn it never answered, or a session that
+            # ended on an error
+            if s.get("empty") or s.get("exit") not in (0, 124, 143):
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause

@@ -13,7 +13,7 @@ Needs looking at:
   deep, or a model calling tools the sweep does not have. The sweep is spending its turns on
   nothing; read NAME.err.
 - quiet: running with no records for twenty minutes. `run.py` stops it at its `--stall`.
-- failed turns, a sweep given up, or `run.py` no longer running with work left.
+- turns failed, a sweep given up, or `run.py` no longer running with work left.
 """
 
 import glob
@@ -45,8 +45,10 @@ def concerns(s):
         found.append(f"quiet for {s['quiet'] // 60} minutes")
     if s.get("refused", 0) > 20:
         found.append(f"{s['refused']} calls refused")
-    if s.get("failed"):
-        found.append(f"{s['failed']} failed turn(s)")
+    if s.get("empty"):
+        found.append(f"{s['empty']} turn(s) failed with nothing answered")
+    if s.get("failed", 0) > s.get("empty", 0):
+        found.append(f"{s['failed'] - s['empty']} turn(s) failed part-way, and it went on")
     return found
 
 
