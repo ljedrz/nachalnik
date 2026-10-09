@@ -50,6 +50,11 @@ minor bump may break you.
   one line a record and the matches were whole, so a replaced item's old text made what matched
   cost several times the log it was found in: `~348 tokens in all. 1 match …, ~2,308 tokens`.
 
+- **A `context` search that found nothing says it did not read the turn asking.** That turn is
+  passed over, the message that started it included, since what the model said in it would match
+  itself - and its items were counted among those looked at. A word only the person's latest
+  message held was "no line of your context", over a count that included that message.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

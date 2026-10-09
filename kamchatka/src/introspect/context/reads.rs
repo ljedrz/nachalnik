@@ -563,11 +563,14 @@ pub(super) fn search(
     // tool saying an item exists and does not contain the text. `look` answers `[99] there is no
     // such item`; a search that quietly counted it would be the less honest of two siblings
     let mut read = 0;
+    // and the items of the turn asking, which are passed over rather than read, so a nil result
+    // can say so: the message that started the turn is one of them, and a word only it holds is
+    // otherwise "no line of your context" with every item counted as looked at
+    let mut passed = 0;
     for item in &items {
         if !only.is_empty() && !only.contains(&item.id) {
             continue;
         }
-        read += 1;
         // but not the turn asking. Its calls carry the text being searched for, and so does
         // whatever it said and thought on the way to making them - and so does the message that
         // started the turn, which is a context item of its own. So a search that read the rest of
@@ -581,16 +584,17 @@ pub(super) fn search(
         // the session itself, which quotes the turn back: a search's own answer names the text it
         // looked for, `log` reads out the calls, a fork's answer may repeat what it was asked,
         // and none of those is the context holding the text
-        let own = own.contains(&item.id) && !told_by_the_world(item);
-        let mut hay = match own {
-            true => String::new(),
-            false => item.content.to_text().into_owned(),
-        };
-        if let Some(reasoning) = item.reasoning().filter(|_| !own) {
+        if own.contains(&item.id) && !told_by_the_world(item) {
+            passed += 1;
+            continue;
+        }
+        read += 1;
+        let mut hay = item.content.to_text().into_owned();
+        if let Some(reasoning) = item.reasoning() {
             hay.push('\n');
             hay.push_str(&reasoning.to_text());
         }
-        for asked in item.calls().filter(|_| !own) {
+        for asked in item.calls() {
             hay.push_str(&format!("\n{} {}", asked.tool, asked.args));
         }
         let lines: Vec<String> = hay
@@ -631,9 +635,17 @@ pub(super) fn search(
         ),
     };
     if matches == 0 {
+        let passed = match passed {
+            0 => String::new(),
+            n => format!(
+                " Not counted among them, the turn you asked from was not read - {n} item(s), the \
+                 message that started it included - since what you said in it would have matched \
+                 itself."
+            ),
+        };
         return format!(
             "no line of your context says `{text}`{where_}. Case was ignored, excluded items were \
-             searched, and {read} item(s) were looked at.{unknown}\n",
+             searched, and {read} item(s) were looked at.{passed}{unknown}\n",
         );
     }
 

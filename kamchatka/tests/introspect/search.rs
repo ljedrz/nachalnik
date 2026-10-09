@@ -117,14 +117,50 @@ async fn a_search_with_no_matches_says_what_it_searched() {
         .next()
         .and_then(|figure| figure.trim().parse::<usize>().ok())
         .unwrap_or_else(|| panic!("a nil result says how much it looked at: {}", said[0]));
-    assert!(
-        looked >= 2,
-        "every item the context holds was read, so the figure is not zero: {}",
+    assert_eq!(
+        looked, 1,
+        "the one item outside the turn asking was read, and only that one is counted: {}",
         said[0]
     );
 
     // and a search with nothing to search for is a mistake to correct
     assert!(said[1].contains("needs the `text`"), "{}", said[1]);
+}
+
+/// A search that found nothing says it did not read the turn it was asked from.
+///
+/// note: the turn asking is left unread, the message that started it included, and its items were
+/// counted among those looked at - so a word only the person's latest message holds was "no line
+/// of your context", with every item it had passed over counted as read.
+#[tokio::test]
+async fn a_search_that_found_nothing_says_it_did_not_read_the_turn_asking() {
+    let (kernel, _provider, _anchor) = agent(one_turn(vec![call(
+        "c1",
+        "context",
+        json!({ "action": "search", "text": "bramble" }),
+    )]));
+
+    kernel.push(ContextItem::file("notes.md", "Landlock, and nothing else"));
+    kernel.push(ContextItem::user("is the bramble patch in the notes?"));
+
+    kernel.turn().await.expect("the turn failed");
+
+    let said = answers_from(&kernel, &["context"]);
+    assert!(
+        said[0].contains("no line of your context says"),
+        "{}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("1 item(s) were looked at"),
+        "the file, and not the turn asking: {}",
+        said[0]
+    );
+    assert!(
+        said[0].contains("the turn you asked from was not read"),
+        "{}",
+        said[0]
+    );
 }
 
 /// Narrowed to some items, it looks only in those and says so.
