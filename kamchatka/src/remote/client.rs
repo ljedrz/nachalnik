@@ -657,8 +657,8 @@ impl<'a> Client<'a> {
                 // this is the count of what this client was not shown while it was not looking,
                 // and the way to see any of it is to ask the session rather than to read the log
                 self.tell(&format!(
-                    "{frames} fragment(s) went by while this client was behind; what it missed is \
-                     not in the records, which name what happened without holding it"
+                    "{frames} fragment(s) went by that this client was not sent; what it missed \
+                     is not in the records, which name what happened without holding it"
                 ))
             }
             // note: printed as nothing, which is the rule this variant is for: ignore what you do

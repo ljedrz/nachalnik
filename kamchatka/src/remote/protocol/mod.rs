@@ -413,7 +413,8 @@ pub enum Message {
         #[serde(default)]
         version: Option<usize>,
     },
-    /// How many fragments went past while this client was not keeping up.
+    /// How many fragments went past that this client was not sent: while it was not keeping up,
+    /// or one too long for a frame.
     ///
     /// note: said rather than swallowed, and said with a number. The **records** are unaffected:
     /// they are read out of the log, which drops nothing, so no record is ever lost this way. What
