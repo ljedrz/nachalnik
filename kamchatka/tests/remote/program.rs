@@ -2413,6 +2413,95 @@ async fn a_ctrl_c_at_a_quiet_served_session_ends_it() {
     assert_eq!(status.code(), Some(130));
 }
 
+/// A switch still settling when a `ctrl+c` ends a served session is in the record before the end.
+///
+/// note: the press leaves once nothing is running, and a switch is not a turn. The way out tested
+/// the turn alone, so `session.finished` was written while the `/model` was still out at the
+/// endpoint, and its `model.changed` landed after it or never - what `/quit` and a headless run
+/// wait for the switch to keep from happening. The endpoint here holds every connection for a
+/// moment and then drops it, so the switch is still settling when the signal arrives.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_switch_settling_when_a_ctrl_c_ends_a_served_session_is_recorded_first() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                drop(socket);
+            });
+        }
+    });
+    let dir = crate::common::scratch("ctrlc-switch");
+    let mut host = crate::common::command()
+        .args(["-m", "first", "--serve", "unix:s.sock"])
+        .env("TMPDIR", &dir)
+        .env("KAMCHATKA_BASE_URL", format!("http://{address}"))
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .current_dir(&dir)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("the program did not start");
+    assert!(
+        crate::listening(&dir.join("s.sock")).await,
+        "nothing ever listened"
+    );
+
+    let at = format!("unix:{}", dir.join("s.sock").display());
+    let mut socket = Socket::connect(&at).await;
+    socket.send(crate::attaching(None, None)).await;
+    while !matches!(socket.recv().await, Message::Attached(_)) {}
+    socket
+        .send(Command::Submit {
+            line: "/model second".to_owned(),
+        })
+        .await;
+    while !matches!(socket.recv().await, Message::Replied { .. }) {}
+
+    let sent = std::process::Command::new("kill")
+        .args(["-INT", &host.id().to_string()])
+        .status()
+        .expect("`kill` is on the path");
+    assert!(sent.success());
+    let deadline = std::time::Instant::now() + PATIENCE;
+    let status = loop {
+        match host.try_wait().expect("it was spawned") {
+            Some(status) => break status,
+            None if std::time::Instant::now() > deadline => {
+                let _ = host.kill();
+                panic!("a `ctrl+c` did not end the session");
+            }
+            None => tokio::time::sleep(Duration::from_millis(50)).await,
+        }
+    };
+    assert_eq!(status.code(), Some(130));
+
+    let log = std::fs::read_dir(dir.join("kamchatka"))
+        .expect("the record directory")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|it| it == "jsonl"))
+        .expect("the session was recorded");
+    let records = std::fs::read_to_string(&log).expect("the record is readable");
+    let names: Vec<&str> = records
+        .lines()
+        .filter_map(|line| {
+            if line.contains("\"model.changed\"") && line.contains("\"second\"") {
+                Some("switched")
+            } else if line.contains("\"session.finished\"") {
+                Some("finished")
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(names, ["switched", "finished"], "{records}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A piped `--connect` that asks for `/models` stays for the list.
 ///
 /// note: found live. The command is answered the moment it is sent and the list comes back after,
