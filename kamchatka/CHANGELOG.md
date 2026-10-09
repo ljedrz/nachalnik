@@ -20,6 +20,11 @@ minor bump may break you.
 - **A served session sends a lagging client its records before saying what it missed**, when
   what went past was the program's own lines, as it already did when it was the events.
 
+- **A command writing only empty lines is held to `tools::KEPT`.** The ceiling was measured
+  against each line without its newline, so an empty line never reached it: `yes ''` grew what
+  the shell kept, the tool result and the saved session with it, without end, where SECURITY.md
+  says what a tool keeps is capped.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
