@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **A context stops being full when its compactor is taken away.** `Kernel::set_compactor(None)`
+  on a context found full left it full for good: no `context.full` saying otherwise, and the
+  notice from `Kernel::set_full_notice` stayed active and went out with every request. The pass
+  before a request now says the context is not full when there is no compactor, and retires the
+  notice.
+
 ## [0.9.1] - 2026-10-08
 
 ### fixed
