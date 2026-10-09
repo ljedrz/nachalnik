@@ -80,8 +80,9 @@ Pitfalls:
   `--nocapture` and search for `skip` to see what ran.
 - **`kamchatka`'s tests default to Google's endpoint**, so a run with only a key set sends that key
   to Google and fails for unrelated reasons. Set `KAMCHATKA_BASE_URL` for any other endpoint.
-- **`NACHALNIK_CONTEXT_LIMIT` is for `kamchatka`'s tests, not `nachalnik`'s.** In `nachalnik`'s it
-  makes the runtime report a context window the endpoint doesn't enforce, and
+- **Leave `NACHALNIK_CONTEXT_LIMIT` unset for `nachalnik`'s live tests.** It's for an endpoint that
+  publishes no limit, in the examples and `nachalnik-eval`'s `bench`. In `nachalnik`'s tests it makes
+  the runtime report a context window the endpoint doesn't enforce, and
   `a_counter_is_told_what_a_refused_request_came_to` fails because nothing gets refused.
 - **Suspect the model before the code when a live test fails.** Small and free models fail tests
   that ask them to *do* things, and not the same ones each time; free tiers return `429`s and time
