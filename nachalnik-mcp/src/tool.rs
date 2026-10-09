@@ -47,7 +47,8 @@ pub enum Trust {
     /// by the server it is describing.
     #[default]
     Nothing,
-    /// Give every tool from this server exactly these capabilities, whatever it says about itself.
+    /// Give every tool from this server exactly these capabilities, whatever it says about itself,
+    /// beside the `mcp:call` every tool from a server declares under every mode.
     ///
     /// note: For when you know what a server is - your own, or one you have read - and want its
     /// tools gated like the rest of your own.
