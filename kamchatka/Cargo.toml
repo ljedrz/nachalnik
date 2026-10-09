@@ -171,7 +171,7 @@ path = "examples/gateway.rs"
 required-features = ["webui"]
 
 # uses a System One model to choose what to drop from a full context, compared with the age order
-# `ToolTrimmer` uses. The program doesn't do this; it shows what System One models can be used for
+# `Shedder` uses. The program doesn't do this; it shows what System One models can be used for
 [[example]]
 name = "system1_assisted_compaction"
 path = "examples/system1_assisted_compaction.rs"
