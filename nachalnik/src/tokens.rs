@@ -15,8 +15,24 @@ use serde_json::Value;
 use crate::{Budget, Kernel, Usage};
 use crate::{
     context::{ContextItem, ContextKind},
-    model::{Content, Message},
+    model::{Content, Message, ToolCall},
 };
+
+/// How many pieces of a turn's tool calls `counter` would not put a number on: the parts
+/// [`TokenCounter::count_item`] and [`TokenCounter::count_message`] charge for in each.
+fn uncounted_calls<C: TokenCounter + ?Sized>(counter: &C, calls: &[ToolCall]) -> usize {
+    calls
+        .iter()
+        .map(|call| {
+            counter.uncounted(&Content::text(&*call.tool))
+                + counter.uncounted(&Content::Json(call.args.clone()))
+                + match call.extra.is_null() {
+                    true => 0,
+                    false => counter.uncounted(&Content::Json(call.extra.clone())),
+                }
+        })
+        .sum()
+}
 
 /// Turns content into a token count.
 ///
@@ -128,16 +144,19 @@ pub trait TokenCounter: Send + Sync {
     /// Returns how many pieces of a whole context item this counter would not put a number on.
     ///
     /// note: The counterpart of [`TokenCounter::count_item`], and it walks the same parts: the
-    /// content, and the reasoning an assistant turn carries.
+    /// content, and the tool calls and the reasoning an assistant turn carries.
     fn uncounted_item(&self, item: &ContextItem) -> usize {
         let mut uncounted = self.uncounted(&item.content);
 
         if let ContextKind::AssistantMessage {
-            reasoning: Some(reasoning),
-            ..
+            tool_calls,
+            reasoning,
         } = &item.kind
         {
-            uncounted += self.uncounted(reasoning);
+            uncounted += uncounted_calls(self, tool_calls);
+            if let Some(reasoning) = reasoning {
+                uncounted += self.uncounted(reasoning);
+            }
         }
 
         uncounted
@@ -153,7 +172,7 @@ pub trait TokenCounter: Send + Sync {
         let content = message.content.as_ref().map_or(0, |c| self.uncounted(c));
         let reasoning = message.reasoning.as_ref().map_or(0, |r| self.uncounted(r));
 
-        content + reasoning
+        content + uncounted_calls(self, &message.tool_calls) + reasoning
     }
 
     /// Reports what a provider charged for a request this counter had estimated.

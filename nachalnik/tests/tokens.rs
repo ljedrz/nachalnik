@@ -60,6 +60,50 @@ fn structured_content_is_counted_like_everything_else() {
     assert_eq!(counter.count_item(&item), counter.count(&item.content));
 }
 
+/// What a counter will not put a number on is found in the parts it counts, a call's arguments
+/// and what was attached to it included.
+///
+/// note: the default walks for what a counter abstains on were the content and the reasoning,
+/// where the counts they are the counterparts of charge each call as well, so a counter that could
+/// not price JSON abstained on a call's arguments and nothing said so.
+#[test]
+fn what_a_counter_abstains_on_in_a_call_is_said() {
+    struct NoJson;
+
+    impl TokenCounter for NoJson {
+        fn count(&self, content: &Content) -> usize {
+            match content {
+                Content::Json(_) => 0,
+                other => other.byte_len(),
+            }
+        }
+
+        fn uncounted(&self, content: &Content) -> usize {
+            usize::from(matches!(content, Content::Json(_)))
+        }
+    }
+
+    let args = json!({ "path": "src/a.rs" });
+    let signed = vec![
+        ToolCall::new("c1", "peek", args.clone()).with_extra(json!({ "thoughtSignature": "El4K" })),
+    ];
+    let item = ContextItem::assistant("done", signed.clone());
+    let message = Message::assistant(Some(Content::text("done")), signed);
+    assert_eq!(
+        NoJson.uncounted_item(&item),
+        2,
+        "the arguments and the attachment"
+    );
+    assert_eq!(NoJson.uncounted_message(&message), 2);
+
+    // and nothing attached is nothing to abstain on, as it is nothing to charge for
+    let bare = vec![ToolCall::new("c1", "peek", args)];
+    assert_eq!(
+        NoJson.uncounted_item(&ContextItem::assistant("done", bare)),
+        1
+    );
+}
+
 /// An assistant turn costs the sum of what it carries: its words, each call's name, arguments
 /// and whatever the provider attached to it, and its reasoning - as an item, and as the message
 /// it is projected to.
