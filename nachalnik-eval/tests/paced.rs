@@ -218,6 +218,7 @@ async fn the_window_is_shared_rather_than_one_each() {
     .await;
 
     let calls = provider.calls();
+    assert!(calls > 8, "too few requests to have needed a third window");
     let windows = (calls - 1) / 4;
     assert!(
         began.elapsed() >= Duration::from_secs(30) * windows as u32,
