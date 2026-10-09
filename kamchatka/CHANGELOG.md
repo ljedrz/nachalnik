@@ -5,6 +5,14 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **`/params NAME<tab>VALUE` sets the parameter.** A tab between the name and the value got past
+  the check for a missing value, and the command then looked for a space, found none, and only
+  listed the parameters, as though one had been set.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

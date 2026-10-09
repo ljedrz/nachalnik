@@ -126,7 +126,7 @@ impl App {
             );
             return;
         }
-        if let Some((key, value)) = rest.split_once(' ') {
+        if let Some((key, value)) = rest.split_once(char::is_whitespace) {
             let key = key.trim();
             if key.split('.').any(str::is_empty) {
                 self.say(

@@ -1627,6 +1627,23 @@ async fn a_parameter_named_without_a_value_is_refused() {
     );
 }
 
+/// A parameter and its value can be parted by any whitespace, as the refusal above already
+/// allows.
+///
+/// note: the refusal let a tab through as a value following, and the split then looked for a
+/// space, found none, and printed the parameters as if one had been set.
+#[tokio::test]
+async fn a_parameter_parted_from_its_value_by_a_tab_is_set() {
+    let run = run("/params temperature\t0.3\n", vec![], |_| {}).await;
+
+    assert_eq!(
+        run.app.kernel.params().get("temperature"),
+        Some(&json!(0.3)),
+        "{}",
+        run.prose
+    );
+}
+
 /// `/compact` down a pipe is taken rather than left waiting for a key that is never coming.
 ///
 /// note: the opposite of what `--on-ask` does with a tool's question, and they are different
