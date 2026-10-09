@@ -86,8 +86,9 @@ What changes to this workspace must keep true about what is and isn't enforced.
   everything it started is stopped too, and the same happens when a call is dropped. A process that
   starts its own session (with `setsid`, or a daemon detaching itself) leaves that group and keeps
   running after the call reports that it stopped. It stays sandboxed and gated, and its network
-  attempts after the call are refused without asking, so it can't gain access; a served session
-  can't tell it apart from a client, though. Tracking the whole process tree would need a cgroup, a
+  attempts after the call are refused without asking unless the command was already let through,
+  so it can't gain access it wasn't given; a served session can't tell it apart from a client,
+  though. Tracking the whole process tree would need a cgroup, a
   PID namespace or a subreaper per command, and each of those fails on some systems this program
   runs on, so stopping covers the process group, and says so.
   A call that *finishes* leaves its process group alone, so a background job it started
