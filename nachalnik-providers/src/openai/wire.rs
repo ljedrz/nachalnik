@@ -444,7 +444,17 @@ impl Gathering {
                 // they are one call to a tool whose name is written twice. A server that repeats
                 // the name on every fragment sends fragments that do not parse alone, and those
                 // still continue the call
-                Some(id) => match self.calls.iter().position(|call| call.id == id) {
+                //
+                // note: and an identifier no call has yet is the one a call opened without one was
+                // waiting for, as the Responses dialect reads a late `call_id` - unless what
+                // arrives is a whole call of its own, which a server that never names its calls
+                // can follow with one that it does
+                Some(id) => match self
+                    .calls
+                    .iter()
+                    .position(|call| call.id == id)
+                    .or_else(|| self.calls.iter().position(|call| call.id.is_empty()))
+                {
                     Some(at) if !whole_again(&self.calls[at], requested) => at,
                     _ => {
                         self.calls.push(PartialCall::default());
@@ -1513,6 +1523,40 @@ mod tests {
                 ("fs", json!({ "path": "b.txt" }))
             ]
         );
+    }
+
+    /// An identifier arriving after the call it names was opened without one is that call's, and
+    /// a whole call with one after a whole call without is a call of its own.
+    ///
+    /// note: a call opened with no index and no identifier was filed as a call with none, and the
+    /// fragment that brought its identifier found no call by that name and started another - a
+    /// call to a tool with no name, beside the one the model made with half its arguments.
+    #[test]
+    fn an_identifier_arriving_late_is_the_open_calls() {
+        let deltas = DeltaSink::disconnected();
+
+        let mut late = Gathering::default();
+        late.fold(
+            &json!({ "function": { "name": "echo", "arguments": "{\"a\":1" } }),
+            &deltas,
+        );
+        late.fold(
+            &json!({ "id": "call_9", "function": { "arguments": "}" } }),
+            &deltas,
+        );
+        assert_eq!(late.calls.len(), 1);
+        assert_eq!(late.calls[0].id, "call_9");
+        assert_eq!(late.calls[0].name, "echo");
+        assert_eq!(arguments_of(&late.calls[0].args), json!({ "a": 1 }));
+
+        let mut two = Gathering::default();
+        for (id, a) in [(None, 1), (Some("call_9"), 2)] {
+            two.fold(
+                &json!({ "id": id, "function": { "name": "echo", "arguments": format!("{{\"a\":{a}}}") } }),
+                &deltas,
+            );
+        }
+        assert_eq!(two.calls.len(), 2);
     }
 
     /// The shape that is actually seen: no opener, because the template supplied it, and the
