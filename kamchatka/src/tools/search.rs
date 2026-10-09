@@ -58,7 +58,8 @@ const CONTEXT: u64 = 10;
 ///
 /// note: enough for any line somebody wrote and not enough for a minified one. `MATCHES * WIDTH`
 /// is deliberately under the byte limit these start with, so the two cuts do not both fire on an
-/// ordinary answer.
+/// ordinary answer without context lines. With them, a hundred matches can pass the limit, and
+/// the answer becomes the files the matches are in.
 pub(super) const WIDTH: usize = 200;
 
 /// What both tools say about a glob.
