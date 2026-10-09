@@ -514,7 +514,7 @@ pub mod advise {
     pub fn account(session_endpoint: &str) -> Result<Account, BoxError> {
         chosen(
             env::var("KAMCHATKA_SYSTEM1_API_KEY").ok(),
-            key_for(session_endpoint).ok().filter(|key| !key.is_empty()),
+            key_for(session_endpoint).ok(),
             env::var("OPENROUTER_API_KEY").ok(),
             session_endpoint,
             &base_url(),
@@ -538,6 +538,11 @@ pub mod advise {
         session_endpoint: &str,
         advisor_endpoint: &str,
     ) -> Result<Account, BoxError> {
+        // note: a key set to nothing is not set, as `keyed` reads the session's: the first one
+        // found wins, so `KAMCHATKA_SYSTEM1_API_KEY=` left in a `.env` was a dedicated key that
+        // sent nothing, ahead of the key that could have paid and the refusal below
+        let set = |key: Option<String>| key.filter(|key| !key.is_empty());
+        let (dedicated, own, openrouter) = (set(dedicated), set(own), set(openrouter));
         if let Some(key) = dedicated {
             return Ok(Account::Dedicated(key));
         }
@@ -683,6 +688,32 @@ pub mod advise {
             let held = chosen(dedicated(), own(), named(), openrouter, workers)
                 .expect("a token held for the advisor pays there");
             assert!(matches!(&held, Account::Dedicated(_)));
+        }
+
+        /// A key set to nothing is a key not set, the advisor's as much as the session's.
+        ///
+        /// note: `KAMCHATKA_SYSTEM1_API_KEY=` left in a `.env` was a dedicated key, and the first
+        /// one wins: an advisor sent no key and was told so as a 401 on every command, with the
+        /// borrowed key it could have had and the Workers AI refusal both passed over.
+        #[test]
+        fn a_key_set_to_nothing_is_not_a_key() {
+            let openrouter = "https://openrouter.ai/api/v1";
+            let blank = || Some(String::new());
+
+            let borrowed = chosen(
+                blank(),
+                blank(),
+                Some("sk-or-by-name".to_owned()),
+                openrouter,
+                openrouter,
+            )
+            .expect("the key by name pays");
+            assert!(matches!(&borrowed, Account::Borrowed(_)), "{borrowed:?}");
+            assert_eq!(borrowed.api_key(), "sk-or-by-name");
+
+            assert!(chosen(blank(), blank(), blank(), openrouter, openrouter).is_err());
+            let workers = "https://api.cloudflare.com/client/v4/accounts/abc/ai/run";
+            assert!(chosen(blank(), None, None, openrouter, workers).is_err());
         }
 
         /// Which account is which, said out loud, and the key never is.

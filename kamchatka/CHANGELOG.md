@@ -30,6 +30,11 @@ minor bump may break you.
   command nothing had read was drawn green, and `3` red at "300% sure". It is read as no answer
   now, and a command with nothing else said about it is said to be unrated.
 
+- **`KAMCHATKA_SYSTEM1_API_KEY` set to nothing is not set.** The advisor took an empty key as its
+  own, ahead of everything else, and sent none: every command's rating came back a 401, the
+  OpenRouter key that could have paid was passed over, and so was the refusal that says at the
+  start that Workers AI needs a token. `OPENROUTER_API_KEY` set to nothing is read the same way.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
