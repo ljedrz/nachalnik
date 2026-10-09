@@ -46,6 +46,10 @@ minor bump may break you.
   it ever says that about are ones that had been: answered by then, and left out because they came
   after the question.
 
+- **`log` with `whole` prices the whole log as it prices what matched.** The total was the log as
+  one line a record and the matches were whole, so a replaced item's old text made what matched
+  cost several times the log it was found in: `~348 tokens in all. 1 match …, ~2,308 tokens`.
+
 ## [0.19.1] - 2026-10-08
 
 ### added

@@ -181,7 +181,9 @@ impl Tool for Log {
                 if let Event::ContextAdded { id, .. } = &record.event {
                     added.insert(*id);
                 }
-                every.push_str(&line(record, false));
+                // as the matches are, or the total is priced from a shorter log than the part of
+                // it that matched: `whole` prints a replaced item's old text entire
+                every.push_str(&line(record, query.whole));
                 if query.wants(record) {
                     hits += 1;
                     matched.push(line(record, query.whole));
@@ -221,7 +223,8 @@ struct Read {
     last_seq: u64,
     /// How many records of each kind, in the kernel's own names.
     kinds: BTreeMap<&'static str, usize>,
-    /// Every record, rendered, which is what "if you take them all" is priced from.
+    /// Every record, rendered as the matches are, which is what "if you take them all" is priced
+    /// from.
     every: String,
     /// The ones that matched, rendered, one entry per record.
     ///
