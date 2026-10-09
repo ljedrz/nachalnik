@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A `Kernel::turn` refused as busy leaves the running turn's request count alone.** The count was
+  stored before the step claimed anything, so a second driver arriving between another's count and
+  its request replaced the count of the turn that was running, and that turn, carried on from
+  `Deciding`, could go past `max_requests_per_turn`.
+
 - **`TokenCounter::uncounted_item` and `uncounted_message` look in a turn's tool calls**, as
   `count_item` and `count_message` charge for them: each call's name, arguments and whatever was
   attached to it. A counter that could not price JSON abstained on a call's arguments, and

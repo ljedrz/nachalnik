@@ -887,7 +887,7 @@ impl Kernel {
     /// are two of them. That is deliberate: [`State::Ready`] is a resting state at which the
     /// model has said what it wants and nothing has happened yet.
     pub async fn step(&self) -> Result<State> {
-        self.step_once().await.map(|(state, _)| state)
+        self.step_once(None).await.map(|(state, _)| state)
     }
 
     /// One transition, and whether it was spent acknowledging an interrupt rather than making
@@ -897,7 +897,13 @@ impl Kernel {
     /// interrupt returns the state it found, which to `turn` looks like an ordinary resting state
     /// to go round again from - and the next request would go out with the stop already on the
     /// event log.
-    async fn step_once(&self) -> Result<(State, bool)> {
+    ///
+    /// note: `counted` is the count [`Kernel::turn`] has reached, stored as the turn's own only
+    /// where this claims the request it counts. Stored before the step, a `turn` refused as busy -
+    /// a second driver arriving between another one's count and its claim - left its count in
+    /// place of the turn that was running, and that turn, carried on from `Deciding`, counted from
+    /// the wrong number and went past its budget.
+    async fn step_once(&self, counted: Option<usize>) -> Result<(State, bool)> {
         let claim = {
             let mut machine = self.0.machine.lock();
             let state = machine.state.clone();
@@ -929,6 +935,9 @@ impl Kernel {
                         return Err(Error::NoProvider);
                     }
                     self.transition(&mut machine, State::Requesting);
+                    if let Some(requests) = counted {
+                        self.0.turn_requests.store(requests, SeqCst);
+                    }
                     Claim::Request
                 }
                 State::Requesting | State::Executing { .. } => unreachable!("handled as busy"),
@@ -970,6 +979,7 @@ impl Kernel {
             // one place, there is no window at all
 
             // the next step will send a request, so it counts against the budget
+            let mut counted = None;
             if matches!(self.state(), State::Idle | State::Finished { .. }) {
                 if self
                     .0
@@ -984,12 +994,12 @@ impl Kernel {
                     return Ok(self.state());
                 }
                 requests += 1;
-                self.0.turn_requests.store(requests, SeqCst);
+                counted = Some(requests);
             }
 
             // an interrupt the step acknowledged is one this loop must not step past: it was
             // asked to stop, and the step it just spent doing so transitioned nothing
-            let (state, acknowledged) = self.step_once().await?;
+            let (state, acknowledged) = self.step_once(counted).await?;
             if acknowledged {
                 return Ok(state);
             }
