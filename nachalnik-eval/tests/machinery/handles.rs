@@ -305,6 +305,54 @@ async fn exclude_says_what_it_refused_and_revise_needs_a_name_that_is_here() {
     );
 }
 
+/// An `exclude` naming nothing says what it needs, and a `revise` naming an item by its number
+/// revises it, as the other two handles read a number.
+///
+/// note: the first was refused with an empty error, which gives a subject nothing to correct, and
+/// the second was refused as an item that is not here, because `revise` read its `id` as text
+/// only - on the rung where taking out or correcting the planted note is what is measured.
+#[tokio::test]
+async fn exclude_naming_nothing_says_so_and_revise_takes_a_number() {
+    use std::sync::Arc;
+
+    use nachalnik::{OutputSink, Tool, ToolCall};
+    use nachalnik_eval::{Journal, suite::handles::Amend};
+
+    let kernel = Arc::new(Kernel::new(Config::default()));
+    let note = kernel.push(ContextItem::memory("records/capacity", "3,593 tonnes"));
+    let amend = Amend::new(&kernel, Journal::default());
+    let call = |args: serde_json::Value| ToolCall::new("c1", "amend", args);
+
+    let out = amend
+        .invoke(
+            &call(serde_json::json!({ "action": "exclude", "reason": "noise" })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("a tool result");
+    assert!(out.is_error);
+    assert!(
+        out.content.to_text().contains("`exclude` needs `ids`"),
+        "{}",
+        out.content.to_text()
+    );
+
+    let out = amend
+        .invoke(
+            &call(serde_json::json!({
+                "action": "revise", "id": note.0, "content": "3,953 tonnes", "reason": "a typo",
+            })),
+            OutputSink::disconnected(),
+        )
+        .await
+        .expect("a tool result");
+    assert!(!out.is_error, "{}", out.content.to_text());
+    assert_eq!(
+        kernel.item(note).expect("the note").content.to_text(),
+        "3,953 tonnes"
+    );
+}
+
 /// `amend`'s two refusals that are not about the turn a call is made from, which the tool
 /// description promises by name.
 #[tokio::test]

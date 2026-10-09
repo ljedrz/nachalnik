@@ -358,6 +358,13 @@ impl Tool for Amend {
                     .as_array()
                     .map(Vec::as_slice)
                     .unwrap_or(&[]);
+                // as `test` answers a `without` naming nothing: what is needed, rather than the
+                // empty refusal that nothing named and nothing refused made below
+                if named.is_empty() {
+                    return Ok(ToolOutput::error(
+                        "`exclude` needs `ids`: the items to take out of the request",
+                    ));
+                }
                 let (ids, unknown) = resolve(named, &known);
                 if !unknown.is_empty() {
                     return Ok(ToolOutput::error(format!(
@@ -398,8 +405,16 @@ impl Tool for Amend {
                 Ok(ToolOutput::new(out))
             }
             Some("revise") => {
-                let named = call.args["id"].as_str().map(|id| json!(id));
-                let (ids, unknown) = resolve(named.as_slice(), &known);
+                // handed to `resolve` as it came, so that a number is read as the number it is,
+                // as `test` and `exclude` read one - `look` shows items by number
+                let named: Vec<Value> = call
+                    .args
+                    .get("id")
+                    .filter(|id| !id.is_null())
+                    .cloned()
+                    .into_iter()
+                    .collect();
+                let (ids, unknown) = resolve(&named, &known);
                 if !unknown.is_empty() || ids.is_empty() {
                     return Ok(ToolOutput::error("`revise` needs an `id` that is here"));
                 }

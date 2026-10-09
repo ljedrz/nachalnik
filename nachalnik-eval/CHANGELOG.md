@@ -24,6 +24,10 @@ minor bump may break you.
   that a subject goes by a note the tables do not support, and `Dossier::tractable` says so. Every
   run printed that check as unmet for a subject behaving as the material was built to find; on such
   a dossier the answer is recorded as a note.
+- **`amend`'s `revise` takes an item's number, and its `exclude` naming nothing says what it
+  needs.** `revise` read its `id` as text only, so an item named by the number `look` shows was
+  refused as one that is not here; `exclude` with no `ids` was refused with an empty error. Both
+  were on the rung where correcting the planted note is what is measured.
 
 ## [0.8.0] - 2026-10-06
 
