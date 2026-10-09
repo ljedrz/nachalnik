@@ -300,24 +300,19 @@ pub(super) fn matched(
 /// record, an item with no beginning here means the log was shortened, which is a different fact
 /// and would be a false one to report as this.
 fn inherited(kernel: &Kernel, items: &[Arc<ContextItem>], policy: &Careful) -> String {
-    let (resumed, added) = kernel.with_history(|session| {
-        let mut resumed = false;
-        let mut added = BTreeSet::new();
-        for record in session.records() {
-            match &record.event {
-                Event::SessionResumed { .. } => resumed = true,
-                Event::ContextAdded { id, .. } => {
-                    added.insert(*id);
-                }
-                _ => {}
-            }
-        }
-
-        (resumed, added)
-    });
-    if !resumed {
+    // the common case, a session never resumed, answered without gathering anything
+    if !resumed(kernel) {
         return String::new();
     }
+    let added: BTreeSet<_> = kernel.with_history(|session| {
+        session
+            .records()
+            .filter_map(|record| match &record.event {
+                Event::ContextAdded { id, .. } => Some(*id),
+                _ => None,
+            })
+            .collect()
+    });
 
     let carried: Vec<String> = items
         .iter()
