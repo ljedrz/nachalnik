@@ -912,6 +912,12 @@ impl Tool for Shell {
                 "[this command reached for the network, which this session refuses, {refused}. \
                  Work without it, or say what you need it for and ask for it to be allowed.]\n"
             ),
+            Some(Reached::Ungated) => "[the network gate could not be set up for this command, so \
+                                       any internet socket it asked for failed with `Function \
+                                       not implemented`, and a name it tried to look up failed \
+                                       the same way. That is this program failing, not a refusal: \
+                                       say so rather than trying another way round.]\n"
+                .to_owned(),
             None => String::new(),
         };
         // and what was not kept, under it for the same reason
@@ -945,6 +951,8 @@ enum Reached {
     Refused,
     /// The session refuses the network, and nobody was asked.
     Shut,
+    /// The gate never got the command's listener, so nothing was there to ask.
+    Ungated,
 }
 
 /// What answers a gated command's attempts to reach the network, for as long as anything the
@@ -985,8 +993,16 @@ impl Gatekeeper {
         tokio::spawn({
             let reached = reached.clone();
             async move {
-                let Ok(Some(listener)) = arriving.listener().await else {
-                    return;
+                // note: an error here is said rather than swallowed. The filter is installed by
+                // then, so every socket the command asks for fails as though the kernel had none,
+                // and a command that cannot tell why goes looking for another way out
+                let listener = match arriving.listener().await {
+                    Ok(Some(listener)) => listener,
+                    Ok(None) => return,
+                    Err(_) => {
+                        *reached.lock() = Some(Reached::Ungated);
+                        return;
+                    }
                 };
                 let mut decided = None;
                 while let Some(attempt) = listener.next().await {
