@@ -39,7 +39,8 @@ pub enum Error {
     /// refused call is taken in - for a step, until [`State::is_busy`] stops being true; a client
     /// that would rather refuse than queue reports this and moves on.
     Busy,
-    /// [`Kernel::step`] was called without a [`Provider`] being set.
+    /// [`Kernel::step`], or [`Kernel::preview_payload`](crate::Kernel::preview_payload), was
+    /// called without a [`Provider`] being set.
     NoProvider,
     /// The [`Provider`] returned an error.
     Provider(BoxError),
