@@ -330,10 +330,22 @@ async fn every_line_says_when_it_happened_and_not_only_how_long_it_took() {
     // wide enough for both columns: the time of day answers "when", the gap answers "which step
     // was slow", and neither can be got from the other
     let screen = harness.sized(120, 30);
-    let count = screen.lines().filter(|line| stamped(line)).count();
+    // a line naming an event, `model.requested` and the like
+    let names_an_event = |line: &str| {
+        line.split_whitespace().any(|word| {
+            word.split_once('.').is_some_and(|(kind, what)| {
+                [kind, what].iter().all(|part| {
+                    !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                })
+            })
+        })
+    };
+    let events: Vec<&str> = screen.lines().filter(|line| names_an_event(line)).collect();
+    assert!(events.len() >= 3, "a turn is more than this: {screen}");
+    let unstamped: Vec<&&str> = events.iter().filter(|line| !stamped(line)).collect();
     assert!(
-        count >= 3,
-        "the trace should carry a time of day on every event, found {count}: {screen}"
+        unstamped.is_empty(),
+        "the trace should carry a time of day on every event: {unstamped:?}"
     );
 
     // and a window too narrow for it spends its columns on what happened rather than on when
