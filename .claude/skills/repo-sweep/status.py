@@ -22,6 +22,7 @@ Needs looking at:
 import glob
 import json
 import os
+import re
 import sys
 import time
 
@@ -31,6 +32,16 @@ import sweeps  # noqa: E402
 # a turn this long may be a model that has stopped finishing turns at all: nothing else would end
 # it, since a sweep has no time limit and a model going round in circles still writes records
 LONG_TURN = 300
+
+
+def kind(trouble):
+    """What a line of trouble is about, without the figures in it.
+
+    note: a figure in it changes while it stands - minutes quiet, requests in a turn, calls
+    refused - and compared whole, the same trouble a minute later was new trouble, so `--watch`
+    returned every minute it lasted.
+    """
+    return re.sub(r"\d[\d,]*", "N", trouble)
 
 
 def names():
@@ -106,13 +117,13 @@ def main():
         print("\n".join(lines + [f"LOOK: {t}" for t in trouble]))
         return
 
-    begun, known = time.time(), set(trouble)
+    begun, known = time.time(), {kind(t) for t in trouble}
     ended = {s["name"] for s in states if s["status"] in ("complete", "incomplete", "lost")}
     while time.time() - begun < watch:
         time.sleep(60)
         states, lines, trouble = table(args or names())
         now_ended = {s["name"] for s in states if s["status"] in ("complete", "incomplete", "lost")}
-        new = [t for t in trouble if t not in known]
+        new = [t for t in trouble if kind(t) not in known]
         run = run_state()
         if now_ended - ended or new or (run and not run["alive"]):
             break
