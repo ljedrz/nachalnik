@@ -777,7 +777,7 @@ fn around(needle: &str) -> impl Fn(&str) -> String + '_ {
 /// model hunting for what those items are hiding spends calls, and carries what they fetch. An
 /// ordinal in a tool whose output is a numbered table has two readings and costs whatever the
 /// wrong one costs.
-pub(super) fn budget(kernel: &Kernel, mine: &Mine) -> String {
+pub(super) fn budget(kernel: &Kernel, mine: &Mine, own: Option<ContextId>) -> String {
     let budget = kernel.budget();
     let going = Going::of(kernel);
     let withheld: usize = kernel
@@ -878,7 +878,7 @@ pub(super) fn budget(kernel: &Kernel, mine: &Mine) -> String {
         running += cost;
         // saying so here saves a call that would only be refused, and the reason is the same one
         // a move would give: it is not the model's to move
-        let whose = match protected(item, mine, None) {
+        let whose = match protected(item, mine, own) {
             Some(_) => " · not yours",
             None => "",
         };

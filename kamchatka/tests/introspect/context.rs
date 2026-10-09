@@ -791,6 +791,32 @@ async fn budget_reports_what_is_really_going_and_what_it_would_buy_to_drop_it() 
     assert!(listed.contains("not yours"), "{listed}");
 }
 
+/// The turn asking for a budget is not offered as the model's to give up.
+///
+/// note: `look` and a narrowed `look` mark it; `budget` drew the same row with nothing beside it,
+/// and a turn with words beside its calls goes into the request, so the row an agent reads to
+/// decide what to drop offered it one an `elide` would only be refused.
+#[tokio::test]
+async fn budget_says_the_turn_asking_is_not_yours() {
+    let (kernel, _provider, _anchor) = agent([
+        nachalnik::ModelResponse::blocks([
+            Block::text(Content::text("Let me see what this costs before going on.")),
+            Block::Call(call("c1", "context", json!({ "action": "budget" }))),
+        ]),
+        nachalnik::ModelResponse::text("done"),
+    ]);
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.expect("the turn ran");
+
+    let said = answered(&kernel);
+    let row = said
+        .lines()
+        .skip_while(|line| !line.contains("most expensive"))
+        .find(|line| line.contains("Let me see what this costs"))
+        .unwrap_or_else(|| panic!("the turn asking is among what is going: {said}"));
+    assert!(row.contains("not yours"), "{row}");
+}
+
 /// The fifth column of the expensive list is the running total of the fourth.
 ///
 /// note: what the model is asked to read the list for. `budget` exists so a compaction decision

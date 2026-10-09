@@ -59,6 +59,10 @@ minor bump may break you.
   announced `MODEL at URL, from now on` and left the session with no provider, so the next turn
   was refused for having no model.
 
+- **`context`'s `budget` marks the turn asking as not the model's to move**, as `look` does. A
+  turn with words beside its calls goes into the request, and the list an agent reads to decide
+  what to drop offered it as a plain row, which an `elide` would only be refused.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
