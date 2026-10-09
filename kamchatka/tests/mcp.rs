@@ -422,6 +422,41 @@ async fn a_server_whose_tools_would_displace_another_is_refused() {
     assert_eq!(wired.app.kernel.tool_ids(), ["py__add"]);
 }
 
+/// A name taken already and offered twice as well is named once.
+///
+/// note: each copy of it was a clash of its own, so the refusal read "offers py__add, py__add",
+/// which is a list of one name read as two.
+#[tokio::test]
+async fn a_name_taken_and_offered_twice_is_named_once() {
+    let spec = spec!();
+    let wired = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "scripted",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    wired
+        .app
+        .kernel
+        .add_tool(Arc::new(nachalnik::test::ConstTool::new("py__add", "")));
+
+    let refused = kamchatka::mcp::attach(
+        &wired.app.kernel,
+        &wired.app.policy,
+        &[format!("{spec} --twice")],
+    )
+    .await
+    .map(|servers| servers.len());
+    let why = refused.expect_err("the name is taken");
+    assert!(why.contains("py__add"), "{why}");
+    assert!(!why.contains("py__add, py__add"), "{why}");
+}
+
 /// A server offering one name twice is refused as that, a program that is not there as one that
 /// could not be started, and one that runs without speaking MCP as a handshake it never answered -
 /// neither as the fault it is not.

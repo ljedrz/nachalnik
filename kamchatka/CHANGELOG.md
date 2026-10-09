@@ -72,6 +72,9 @@ minor bump may break you.
   `--deny-server` name was refused with the file's path in front of it whenever the file carried
   `allow-server`, which the shipped one does, so the person went to edit a file that never said it.
 
+- **A tool name an MCP server clashes on is named once**, where it was named once for each copy of
+  it that clashed: "offers py__add, py__add".
+
 ## [0.19.1] - 2026-10-08
 
 ### added
