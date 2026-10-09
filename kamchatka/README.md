@@ -129,6 +129,8 @@ $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 Those tools arrive through [`nachalnik-mcp`][nachalnik-mcp] and only declare `mcp:call`, whatever
 their annotations claim. Which server they came from is a separate permission: `--allow-server
 files` covers that one server and no other, which is why it's worth giving each server a `name=`.
+The command is split on whitespace and nothing is unquoted, so an argument can't hold a space: a
+path with one in it is two arguments, and a script that starts the server is the way round that.
 
 `fs`'s `grep` and `glob` use ripgrep's libraries directly instead of running `rg`, and they exist
 for the sake of permissions: without them, searching for a symbol would need `exec:run`, which
