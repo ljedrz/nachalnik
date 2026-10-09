@@ -43,12 +43,12 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
   `--limit N`) and scales the context budget the prompts enforce: the next request stays under
   half the window or 100k, whichever is smaller, with kamchatka's own compaction as a backstop.
   The window goes to `$SWEEPS/limit` and from there to kamchatka, so both measure against it.
-- **A listing can claim more than the endpoint serves.** GMI listed Qwen/Qwen3.8-Max at 262,144
-  and its free tier refused anything past about 124k with a bare `400 Bad Request`. A sweep's
-  largest request followed by a 400 has found the real window: run `configure.py` again with
-  `--limit` under it. Sweeps already running keep the settings they started with; kamchatka
-  compacts after such a 400 and the sweep goes on, and a turn failed part-way does not make it
-  incomplete (`sweeps.py`).
+- **A listing can claim more than the endpoint serves**, and then `configure.py --limit` under
+  it fixes it. But a lone 400 is not proof: once, a sweep's largest request so far came back
+  `400 Bad Request`, which looked like the window's edge, and another sweep's next request was
+  larger still and was answered. Look at the largest request that went through (`status.py`'s
+  `max`) before concluding. Either way kamchatka compacts after a failed request and the sweep goes
+  on, and a turn failed part-way does not make it incomplete (`sweeps.py`).
 - **Look at the model's API page** for its supported parameters. Where reasoning or its effort is a
   parameter and not already at its highest by default, put it in `$SWEEPS/params.txt`, one
   `KEY JSON` per line (for example `reasoning {"effort":"high"}`); `sweep.sh` sends each as

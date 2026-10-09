@@ -9,9 +9,9 @@ compaction backstop, scale with it: a sweep keeps its next request under half th
 100k, whichever is smaller. The window itself goes to DIR/limit, which `sweep.sh` hands kamchatka
 as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts against is the figure the budget came from.
 
-A listing can say more than an endpoint serves: GMI lists Qwen/Qwen3.8-Max at 262,144 and its free
-tier refused requests past about 124k with a bare `400 Bad Request`. A sweep whose largest request
-is followed by a 400 like that has found the real window; configure again with --limit under it.
+A listing can say more than an endpoint serves. Before taking a 400 for the window's edge, look
+for a larger request that went through: one 400 after a sweep's largest request so far once looked
+like the edge, and another sweep's next request was larger still and answered.
 """
 
 import json
