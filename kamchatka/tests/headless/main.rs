@@ -2497,6 +2497,50 @@ async fn a_switch_of_model_is_in_the_record() {
     assert!(changes.contains(&named("second", "third")), "{changes:?}");
 }
 
+/// `/endpoint URL MODEL` in a session started with no model is a session with that one.
+///
+/// note: `/model` hands a kernel that has no provider the one it switched, and `/endpoint` only
+/// told the kernel its provider had changed - which, holding none, it had not - so the switch was
+/// announced and the session went on with no model at all.
+#[tokio::test]
+async fn endpoint_with_a_model_gives_a_session_with_none_that_model() {
+    let Wired {
+        mut app,
+        mut events,
+        mut finished,
+    } = Setup {
+        tools: Some(Vec::new()),
+        compact: None,
+        ..Default::default()
+    }
+    .wire(Arc::new(OpenAiCompatible::new(
+        "",
+        "http://127.0.0.1:1",
+        "",
+    )))
+    .expect("the wiring failed");
+    assert!(app.kernel.model_info().is_none(), "it starts with none");
+
+    let (mut records, mut prose) = (Vec::new(), Vec::new());
+    Headless::new(Grant::Deny, &mut records, &mut prose)
+        .run(
+            &mut app,
+            &mut events,
+            &mut finished,
+            "/endpoint http://127.0.0.1:2/v1 served-there\n".as_bytes(),
+        )
+        .await
+        .expect("the run failed");
+
+    let prose = String::from_utf8(prose).expect("utf-8");
+    assert!(prose.contains("served-there at"), "{prose}");
+    assert_eq!(
+        app.kernel.model_info().map(|info| info.model),
+        Some("served-there".to_owned()),
+        "{prose}"
+    );
+}
+
 /// `/endpoint` with something that is not an address refuses it and keeps the one it had.
 ///
 /// note: it took any word, so `/endpoint not a url at all` announced `a url at all at not` and the
