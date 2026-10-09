@@ -353,7 +353,7 @@ async fn a_crash_between_the_log_and_the_snapshot_replays_rather_than_loses() {
     drop(kernel);
 
     // what comes back is the older state, which is behind the log rather than ahead of it
-    let resumed = Kernel::resume(Config::default(), older);
+    let resumed = Kernel::resume(Config::default(), older.clone());
     assert_eq!(
         resumed.items().len(),
         1,
@@ -363,7 +363,7 @@ async fn a_crash_between_the_log_and_the_snapshot_replays_rather_than_loses() {
     // a gap an application can see and close. The other order - a snapshot ahead of the log -
     // leaves a state nothing accounts for, and nothing to read to find out what happened
     assert!(
-        disk.logged_through() > 0,
+        disk.logged_through() > older.last_seq,
         "the log ran ahead, which is the recoverable direction"
     );
 }
