@@ -68,6 +68,10 @@ minor bump may break you.
   request figure that did not move, so a model correcting a fact in an excluded or elided note took
   the correction for one the next request would read.
 
+- **A server name typed on the command line is not blamed on the settings file.** An unknown
+  `--deny-server` name was refused with the file's path in front of it whenever the file carried
+  `allow-server`, which the shipped one does, so the person went to edit a file that never said it.
+
 ## [0.19.1] - 2026-10-08
 
 ### added
