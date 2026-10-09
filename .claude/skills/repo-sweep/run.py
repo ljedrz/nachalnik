@@ -232,7 +232,8 @@ def main():
             printed += max(0, now_seen - seen[name])
             seen[name] = now_seen
         pressure.append((now, printed))
-        while pressure and now - pressure[0][0] > 1200:
+        # kept back to the latest look at least twenty minutes old, which is what widening compares
+        while len(pressure) > 1 and now - pressure[1][0] >= 1200:
             pressure.popleft()
         recent = printed - next((n for t, n in pressure if now - t <= 600), printed)
         if recent > 3 * max(1, busy) and now - changed > 600:
