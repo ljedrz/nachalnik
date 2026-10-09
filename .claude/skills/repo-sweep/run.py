@@ -14,14 +14,15 @@ What it decides on its own:
   have not grown for `--stall` minutes (default 45) is stopped, which writes its session, and is
   run again.
 - **How many at once.** There is no ceiling but the endpoint: kamchatka is not the limit, and a
-  session takes tens of megabytes. It starts at `--width` (default 8) and moves by what kamchatka
-  prints while it waits on the endpoint (`answered 429; trying again`, a timeout, a refused
-  connection): more than three of those per running sweep in ten minutes takes a quarter of the
-  width away, and fewer than one per four running sweeps for ten minutes adds half of it again,
-  so a run finds an endpoint that takes hundreds within the hour.
+  session takes tens of megabytes. It starts at `--width` (default 8) and climbs by what the
+  endpoint answers: once that many have run for ten minutes, it adds half again, and after ten
+  minutes more keeps the new width only if the answers a minute rose by a tenth. If they did not,
+  it goes back to the width that did as well and holds there for half an hour before trying wider
+  again, since an endpoint's capacity changes over a day. 429s are not counted: kamchatka waits
+  them out, so they cost a sweep time, and the answers a minute already show what that time costs.
 - **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
-  takes one away.
+  takes a quarter of the width away.
 - **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
   run again from the start, up to `--tries` times in all (default 3).
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
@@ -47,6 +48,60 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SCOPES = os.environ.get("SCOPES") or os.path.join(HERE, "scopes")
 KINDS = ["audit", "tests", "quality", "docs", "maintain", "compact"]
 TICK = 30
+# how long new sweeps take to reach the endpoint, how long the answers are counted for, by how much
+# a wider run has to beat a narrower one to be kept, and how long a width that did not is held
+SETTLE, WINDOW, GAIN, HOLD = 180, 600, 1.1, 1800
+
+
+class Climb:
+    """The width, moved by how many answers a minute the endpoint gives at each one."""
+
+    def __init__(self, width, now):
+        self.width = width
+        self.changed = now
+        self.full_since = None  # since when exactly `width` sweeps have run
+        self.base = None  # (width, answers a minute) before the latest widening
+        self.hold_until = 0.0
+        self.series = collections.deque()  # (when, answers so far)
+
+    def look(self, now, answered, running, waiting):
+        """Takes the answers so far, how many sweeps run and how many could start; returns what it
+        changed, as a line for the log, or None."""
+        self.series.append((now, answered))
+        while self.series and now - self.series[0][0] > 2 * (SETTLE + WINDOW + HOLD):
+            self.series.popleft()
+        # note: measured only while exactly `width` run. Fewer is a run short of work or paused, and
+        # more is one draining after a narrowing, and neither says what the width does
+        if running != self.width:
+            self.full_since = None
+            return None
+        if self.full_since is None:
+            self.full_since = now
+        start = max(self.changed, self.full_since) + SETTLE
+        if not waiting or now - start < WINDOW:
+            return None
+        t0, n0 = next(((t, n) for t, n in self.series if t >= start), (now, answered))
+        if now - t0 < WINDOW / 2:
+            return None
+        rate = (answered - n0) / (now - t0) * 60
+        if self.base and self.width > self.base[0] and rate < self.base[1] * GAIN:
+            was, (self.width, before) = self.width, self.base
+            self.base, self.changed, self.hold_until = None, now, now + HOLD
+            return (f"width {was} -> {self.width}: {rate:.1f} answers a minute against {before:.1f}"
+                    f" at {self.width}; holding for {HOLD // 60} minutes")
+        if now < self.hold_until:
+            return None
+        was = self.width
+        self.base, self.changed = (was, rate), now
+        self.width = min(was + max(1, was // 2), running + waiting)
+        return f"width {was} -> {self.width}: {rate:.1f} answers a minute at {was}"
+
+    def narrow(self, now):
+        """A quarter less, held for a while, for an endpoint that has stopped answering."""
+        was = self.width
+        self.width = max(1, was - max(1, was // 4))
+        self.base, self.changed, self.hold_until = None, now, now + HOLD
+        return was
 
 
 def option(args, flag, default, kind=int):
@@ -158,12 +213,9 @@ def main():
     log(f"start: {len(queue)} to run, {len(running)} running, width {width}, "
         f"reading {tree} at {pinned}")
 
-    pressure = collections.deque()  # (when, retry lines printed by every sweep so far)
-    seen = collections.Counter()  # retry lines read from each sweep's current files
-    printed = 0
-    # when the width last moved: as though long ago, so that a flood of retries at the start is
-    # answered at once
-    changed = time.time() - 1200
+    seen = collections.Counter()  # the answers counted from each sweep's current records
+    answered = 0
+    climb = Climb(width, time.time())
     paused_until, streak = 0.0, 0
     try:  # a pause a run before this one was in the middle of still stands
         paused_until = json.load(open(os.path.join(sweeps.SWEEPS, "run.json")))["paused_until"]
@@ -173,24 +225,16 @@ def main():
 
     def save():
         with open(os.path.join(sweeps.SWEEPS, "run.json"), "w") as f:
-            json.dump({"pid": os.getpid(), "width": width,
+            json.dump({"pid": os.getpid(), "width": climb.width,
                        "paused_until": paused_until, "queued": list(queue),
                        "running": sorted(running), "done": done, "given_up": given_up,
                        "at": time.time()}, f, indent=1)
 
-    def narrow(why):
-        nonlocal width, changed
-        if width > 1:
-            was, width = width, width - max(1, width // 4)
-            log(f"width {was} -> {width}: {why}")
-        changed = time.time()
-
     def tick():
-        """One look at every sweep: what has ended, how hard the endpoint pushes back, what to start."""
-        nonlocal width, changed, paused_until, streak, printed
+        """One look at every sweep: what has ended, what the endpoint answers, what to start."""
+        nonlocal paused_until, streak, answered
         now = time.time()
         states = {name: sweeps.state(name, now) for name in of}
-        busy = len(running)  # before this check takes away what has ended
 
         for name in list(running):
             s = states[name]
@@ -221,7 +265,8 @@ def main():
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause
-                narrow(f"{name} ended on a failure")
+                was = climb.narrow(now)
+                log(f"width {was} -> {climb.width}: {name} ended on a failure")
                 log(f"pausing new starts for {pause // 60} minutes")
             if earlier(name) < tries:
                 queue.append(name)
@@ -229,32 +274,18 @@ def main():
                 given_up.append(name)
                 log(f"{name}: given up after {tries} tries")
 
-        # how hard the endpoint is pushing back: the retry lines every sweep has printed, over time
-        # counted as it grows, so that a sweep moved aside to run again takes nothing back
+        # every answer the endpoint has given this run, counted as each sweep's records grow; a
+        # sweep resumed into a new log, or moved aside to run again, starts its count again
         for name, s in states.items():
-            now_seen = s.get("retrying", 0)
-            printed += max(0, now_seen - seen[name])
+            now_seen = s.get("requests", 0)
+            answered += now_seen - seen[name] if now_seen >= seen[name] else now_seen
             seen[name] = now_seen
-        pressure.append((now, printed))
-        # kept back to the latest look at least ten minutes old, which is what both directions read
-        while len(pressure) > 1 and now - pressure[1][0] >= 600:
-            pressure.popleft()
-        recent = printed - next((n for t, n in pressure if now - t <= 600), printed)
-        # note: only once what runs is within the width. Narrowing starts nothing new and stops
-        # nothing running, so until enough sweeps end the pressure is the same pressure, and read
-        # again it narrowed again: a run of ten under a busy endpoint went to five in ninety minutes
-        # with ten still running, and would have gone on to one
-        if recent > 3 * max(1, busy) and busy <= width and now - changed > 600:
-            narrow(f"{recent} retries in ten minutes across {busy} running")
-        # note: widening asks for few retries rather than none, since with hundreds running an
-        # endpoint that takes them all still answers the odd one with a 429
-        elif 4 * recent < max(1, busy) and now - pressure[0][0] >= 600 and now - changed > 600 \
-                and queue and len(running) >= width:
-            was, width = width, min(width + max(1, width // 2), len(running) + len(queue))
-            changed = now
-            log(f"width {was} -> {width}: {recent} retries in ten minutes across {busy} running")
+        waiting = len(queue) if now >= paused_until else 0
+        moved = climb.look(now, answered, len(running), waiting)
+        if moved:
+            log(moved)
 
-        while queue and len(running) < width and time.time() >= paused_until:
+        while queue and len(running) < climb.width and time.time() >= paused_until:
             name = queue.popleft()
             kind, scope = of[name]
             # the tries so far are what is kept in old/, so a restarted run counts them too
