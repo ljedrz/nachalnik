@@ -513,6 +513,42 @@ async fn an_answered_question_does_not_refill_the_request_budget() {
     ));
 }
 
+/// A `turn` that sent nothing counts nothing against the turn's budget.
+///
+/// note: the count was stored as the turn's own before the step had claimed anything, so a
+/// `turn` refused - for want of a provider here, or as busy beside another driver - left a
+/// request counted that never went. A turn carried on from `Ready` then loaded it, and paused
+/// one request early with a count that included the one that failed.
+#[tokio::test]
+async fn a_turn_that_sent_nothing_counts_nothing() {
+    let kernel = Kernel::new(Config {
+        max_requests_per_turn: Some(1),
+        ..Default::default()
+    });
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "hi")));
+    kernel.push(ContextItem::user("go"));
+    assert!(matches!(kernel.turn().await, Err(Error::NoProvider)));
+
+    let provider = Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "echo", json!({}))]),
+        ModelResponse::text("done"),
+    ]));
+    kernel.set_provider(provider.clone());
+    assert!(matches!(
+        kernel.step().await.unwrap(),
+        State::Deciding { .. }
+    ));
+    let asked = kernel.pending_permissions();
+    kernel.decide(asked[0].id, Grant::Allow).unwrap();
+
+    // the turn carried on from here has sent nothing, so it has its one request to send
+    assert!(
+        matches!(kernel.turn().await.unwrap(), State::Finished { .. }),
+        "the turn paused on a request that never went"
+    );
+    assert_eq!(provider.remaining(), 0);
+}
+
 #[tokio::test]
 async fn the_context_can_be_rewritten_between_two_steps() {
     let (kernel, provider) = permissive([
