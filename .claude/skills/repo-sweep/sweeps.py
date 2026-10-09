@@ -141,6 +141,7 @@ def state(name, now=None):
         largest=max(records.inputs, default=0),
         failed=len(records.failed),
         empty=records.empty,
+        turn=records.answered,
         retrying=len(RETRYING.findall(prose)),
         refused=prose.count(REFUSED),
         quiet=int(now - changed),

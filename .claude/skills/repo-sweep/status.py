@@ -13,6 +13,9 @@ Needs looking at:
   deep, or a model calling tools the sweep does not have. The sweep is spending its turns on
   nothing; read NAME.err.
 - quiet: running with no records for twenty minutes. `run.py` stops it at its `--stall`.
+- a long turn: over 300 requests in one turn. Read the end of NAME.err: a model reading its scope
+  file after file is working; one making the same calls over and over is not, and nothing stops
+  it - what to do about it is the person's call, not `run.py`'s.
 - turns failed, a sweep given up, or `run.py` no longer running with work left.
 """
 
@@ -24,6 +27,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sweeps  # noqa: E402
+
+# a turn this long may be a model that has stopped finishing turns at all: nothing else would end
+# it, since a sweep has no time limit and a model going round in circles still writes records
+LONG_TURN = 300
 
 
 def names():
@@ -43,6 +50,8 @@ def concerns(s):
     found = []
     if s["status"] == "running" and s["quiet"] > 1200:
         found.append(f"quiet for {s['quiet'] // 60} minutes")
+    if s["status"] == "running" and s.get("turn", 0) > LONG_TURN:
+        found.append(f"{s['turn']} requests in its current turn")
     if s.get("refused", 0) > 20:
         found.append(f"{s['refused']} calls refused")
     if s.get("empty"):
