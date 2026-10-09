@@ -5,6 +5,16 @@ All notable changes to this crate are recorded here. The format follows
 [semantic versioning](https://semver.org/spec/v2.0.0.html) - with the usual pre-1.0 caveat that a
 minor bump may break you.
 
+## [unreleased]
+
+### fixed
+
+- **Arguments a provider could not parse are not sent to the server as the arguments.** A provider
+  keeps such text under `_unparsed`, and the bridge sent that object on, so the server answered
+  about a missing parameter in a call whose text held it and the model fixed the wrong thing. The
+  call is refused now, saying the arguments arrived as text and quoting them, and nothing is sent;
+  a whole call a model wrapped in the same key is read as the call, as `kamchatka` reads its own.
+
 ## [0.9.1] - 2026-10-08
 
 ### changed

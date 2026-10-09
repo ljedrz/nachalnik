@@ -427,6 +427,33 @@ async fn a_call_reaches_the_server_and_the_answer_comes_back() {
     assert!(!output.is_error);
 }
 
+/// Arguments a provider could not parse are said not to have parsed, and are not sent as though
+/// they were the arguments; a whole call the model wrapped in the same key is the call.
+///
+/// note: a provider keeps text that would not parse under `_unparsed`, and the bridge sent that
+/// object to the server as it was, so the model was told about a missing parameter in a call whose
+/// text holds it - and fixed the wrong thing.
+#[tokio::test]
+async fn arguments_that_never_parsed_are_not_sent_as_arguments() {
+    let (server, calls) = bench("files").await;
+    let kernel = kernel();
+    server.install(&kernel).await.unwrap();
+    let echo = kernel.tool("files__echo").unwrap();
+
+    let output = invoke(&echo, json!({ "_unparsed": "{\"text\": \"hello\"" })).await;
+    assert!(output.is_error, "{}", output.content.to_text());
+    assert_eq!(calls.load(SeqCst), 0, "nothing went to the server");
+    assert!(
+        output.content.to_text().contains(r#"{"text": "hello""#),
+        "what arrived is quoted: {}",
+        output.content.to_text()
+    );
+
+    let output = invoke(&echo, json!({ "_unparsed": "{\"text\": \"hello\"}" })).await;
+    assert_eq!(output.content.to_text(), "you said: hello");
+    assert_eq!(calls.load(SeqCst), 1);
+}
+
 /// A call to a server whose connection has closed says that every tool it offers is gone with it.
 #[tokio::test]
 async fn a_call_to_a_server_that_has_gone_says_its_other_tools_have_gone_too() {
