@@ -415,8 +415,7 @@ impl App {
             // note: one word per mechanism, and the mechanism here is a state. The command moves
             // an item to `excluded` and every place the result is read back says `excluded`, so it
             // is named for that - and `context`'s own moves are named the same way, so the person
-            // and the model reach for the same word. The old spellings still work: accepting a
-            // word somebody typed costs nothing
+            // and the model reach for the same word
             "exclude" => self.by_selector("exclude", rest),
             "pin" => self.by_selector("pin", rest),
             "restore" => self.by_selector("restore", rest),

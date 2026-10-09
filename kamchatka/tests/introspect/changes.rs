@@ -1317,8 +1317,7 @@ async fn a_note_without_a_reason_says_it_was_not_written() {
 /// one of them over all five - `pin` and `restore` included, so "prune to pin it" was the
 /// documented way to protect something, and an item you pruned read back as `archived`. Two live
 /// models in a row spent a call each asking for `restore` as an action and being told it was a
-/// state; they were right and the levels were wrong. The old spelling still works, because
-/// accepting a word somebody reached for costs nothing and refusing it costs a turn.
+/// state; they were right and the levels were wrong.
 #[tokio::test]
 async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
     let (kernel, _provider, _anchor) = agent(one_turn(vec![
@@ -1327,7 +1326,7 @@ async fn each_move_is_an_action_named_for_what_it_leaves_behind() {
             "context",
             json!({ "action": "elide", "ids": [1], "reason": "it is enormous" }),
         ),
-        // the way it was spelled before, which is still a way to spell it
+        // another move, named for the state it leaves behind
         call(
             "c2",
             "context",
