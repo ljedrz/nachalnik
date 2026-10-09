@@ -13,7 +13,10 @@ use parking_lot::Mutex;
 use serde_json::{Value, json};
 
 use crate::{
-    app::text::{beyond_a_prompt, thousands},
+    app::{
+        Going,
+        text::{beyond_a_prompt, thousands},
+    },
     introspect::{ids, named, protected, unknown},
     tools::{Careful, yes_or_no},
 };
@@ -653,10 +656,28 @@ impl Changes {
         );
 
         let now = kernel.item(id).map(|item| item.tokens).unwrap_or_default();
+        // note: the write goes through whatever the item's state, and an item the request does not
+        // carry is one whose new words nobody reads until it is put back - which the figures
+        // below cannot say, since they are the same figures either way
+        let going = Going::of(kernel);
+        let unread = match kernel.item(id) {
+            Some(now) if !going.sends_content(&now) => match going.left_out.get(&id) {
+                Some(why) => format!(
+                    " It is not going into the next request ({why}), so that request does not \
+                     read what it says now."
+                ),
+                None => format!(
+                    " It is `{}`, so the next request does not read what it says now; `restore` \
+                     puts it back.",
+                    now.state
+                ),
+            },
+            _ => String::new(),
+        };
         ToolOutput::new(format!(
-            "[{id}] {} now says something else: ~{} tokens instead of ~{}. What it said before is \
-             on the trace as `context.replaced`, is on the context pane under `enter`, and one \
-             undo brings it back.\n{}",
+            "[{id}] {} now says something else: ~{} tokens instead of ~{}.{unread} What it said \
+             before is on the trace as `context.replaced`, is on the context pane under `enter`, \
+             and one undo brings it back.\n{}",
             item.label,
             thousands(now),
             thousands(was),
