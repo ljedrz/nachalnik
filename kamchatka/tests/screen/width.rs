@@ -149,10 +149,10 @@ async fn a_wide_label_keeps_the_columns_after_it_where_they_belong() {
 /// note: the only column of that pane with no width of its own - it is what an item says, and it
 /// is as long as the window allows. So the widths in front of it are what has to be right, and
 /// this reads where they put the boundary rather than repeating their arithmetic: eighty columns
-/// wide and the `kind` column given up, the row spends four on the identifier, five on the
-/// label, one between them, eight on the figure being sent, seven on the one being held and five
-/// of gaps, and what is left is forty-eight columns of the item with the ellipsis on the end of
-/// it. Every one of those is a number a change to any of them would move.
+/// wide and the `kind` column given up, the row spends two on the pane's border, four on the
+/// identifier, five on the label, eight on the figure being sent, seven on the one being held and
+/// five of gaps, and what is left is forty-eight columns of the item with the ellipsis on the end
+/// of it. Every one of those is a number a change to any of them would move.
 ///
 /// note: and a window a column wider shows a column more, which is what says the column is the
 /// leftover rather than a figure of its own.
@@ -167,7 +167,8 @@ async fn the_last_column_of_the_context_pane_is_what_the_columns_in_front_of_it_
     let shown = row.chars().filter(|c| *c == 'x').count();
     assert_eq!(
         shown, 48,
-        "eighty columns, less the twenty-nine in front of the last column and the ellipsis: {row}"
+        "eighty columns, less the border, the twenty-nine in front of the last column and the \
+         ellipsis: {row}"
     );
     assert!(
         row.contains(&format!("{}…", "x".repeat(shown))),

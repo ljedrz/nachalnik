@@ -65,7 +65,8 @@ impl Harness {
         kernel.set_provider(Arc::new(ScriptedProvider::new(script)));
         kernel.set_policy(policy.clone());
         let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
-        // the screen never talks to this one; it is here for `/model`, which the tests do not use
+        // what `/model` switches, which several tests send; the scripted provider above answers
+        // the turns, and nothing listens at this address
         let provider = Arc::new(OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""));
 
         Self {
