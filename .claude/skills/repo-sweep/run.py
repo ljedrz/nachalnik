@@ -15,11 +15,13 @@ What it decides on its own:
   run again.
 - **How many at once.** There is no ceiling but the endpoint: kamchatka is not the limit, and a
   session takes tens of megabytes. It starts at `--width` (default 8) and climbs by what the
-  endpoint answers: once that many have run for ten minutes, it adds half again, and after ten
-  minutes more keeps the new width only if the answers a minute rose by a tenth. If they did not,
-  it goes back to the width that did as well and holds there for half an hour before trying wider
-  again, since an endpoint's capacity changes over a day. 429s are not counted: kamchatka waits
-  them out, so they cost a sweep time, and the answers a minute already show what that time costs.
+  endpoint answers: once that many have run for a quarter of an hour, it adds a quarter again, and
+  keeps the new width only if the answers a minute rose by a tenth and no turn failed on a 429. If
+  not, it goes back to the width that did as well and holds there, for half an hour and twice as
+  long each time in a row, up to two hours, since an endpoint's capacity changes over a day. A 429
+  kamchatka waits out is not counted, since the answers a minute already show what it costs; a turn
+  that fails on one loses the rest of its message's work, which they do not show. The step is a
+  quarter because a sweep started at a width too wide runs to its end, which is hours.
 - **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
   takes a quarter of the width away.
@@ -49,12 +51,14 @@ SCOPES = os.environ.get("SCOPES") or os.path.join(HERE, "scopes")
 KINDS = ["audit", "tests", "quality", "docs", "maintain", "compact"]
 TICK = 30
 # how long new sweeps take to reach the endpoint, how long the answers are counted for, by how much
-# a wider run has to beat a narrower one to be kept, and how long a width that did not is held
-SETTLE, WINDOW, GAIN, HOLD = 180, 600, 1.1, 1800
+# a wider run has to beat a narrower one to be kept, and how long a width that did not is held at
+# first; each try in a row that fails doubles the hold, up to the longest
+SETTLE, WINDOW, GAIN, HOLD, LONGEST = 180, 600, 1.1, 1800, 2 * 3600
 
 
 class Climb:
-    """The width, moved by how many answers a minute the endpoint gives at each one."""
+    """The width, moved by how many answers a minute the endpoint gives at each one, and by the turns
+    it turns away for good."""
 
     def __init__(self, width, now):
         self.width = width
@@ -62,14 +66,34 @@ class Climb:
         self.full_since = None  # since when exactly `width` sweeps have run
         self.base = None  # (width, answers a minute) before the latest widening
         self.hold_until = 0.0
+        self.hold = HOLD  # how long the next width that does not pay is held
         self.series = collections.deque()  # (when, answers so far)
+        # turns failed on a 429: so far, and at the last move, or at the first look, so that what
+        # sweeps adopted from a run before met there is not taken for this width's doing
+        self.throttled, self.throttled_at = 0, None
 
-    def look(self, now, answered, running, waiting):
-        """Takes the answers so far, how many sweeps run and how many could start; returns what it
-        changed, as a line for the log, or None."""
+    def look(self, now, answered, throttled, running, waiting):
+        """Takes the answers so far, the turns failed on a 429 so far, how many sweeps run and how
+        many could start; returns what it changed, as a line for the log, or None."""
         self.series.append((now, answered))
         while self.series and now - self.series[0][0] > 2 * (SETTLE + WINDOW + HOLD):
             self.series.popleft()
+        self.throttled = throttled
+        if self.throttled_at is None:
+            self.throttled_at = throttled
+        # note: a turn that fails on a 429 loses the rest of its message's work, which the answers a
+        # minute do not show, so one is enough to step back. Not while more run than the width:
+        # those started at a width already left, and a sweep is never stopped to make room
+        if running > self.width:
+            self.throttled_at = throttled
+        if throttled > self.throttled_at:
+            failed, was = throttled - self.throttled_at, self.width
+            if self.base and self.width > self.base[0]:
+                self.width = self.base[0]
+            else:
+                self.width = max(1, was - max(1, was // 4))
+            self.throttled_at = throttled
+            return f"width {was} -> {self.width}: {failed} turn(s) failed on a 429; " + self.held(now)
         # note: measured only while exactly `width` run. Fewer is a run short of work or paused, and
         # more is one draining after a narrowing, and neither says what the width does
         if running != self.width:
@@ -86,21 +110,30 @@ class Climb:
         rate = (answered - n0) / (now - t0) * 60
         if self.base and self.width > self.base[0] and rate < self.base[1] * GAIN:
             was, (self.width, before) = self.width, self.base
-            self.base, self.changed, self.hold_until = None, now, now + HOLD
             return (f"width {was} -> {self.width}: {rate:.1f} answers a minute against {before:.1f}"
-                    f" at {self.width}; holding for {HOLD // 60} minutes")
+                    f" at {self.width}; " + self.held(now))
         if now < self.hold_until:
             return None
+        if self.base:  # the widening before this one paid
+            self.hold = HOLD
         was = self.width
         self.base, self.changed = (was, rate), now
-        self.width = min(was + max(1, was // 2), running + waiting)
+        self.width = min(was + max(1, was // 4), running + waiting)
         return f"width {was} -> {self.width}: {rate:.1f} answers a minute at {was}"
+
+    def held(self, now):
+        """Holds the width it has just moved to, and says for how long."""
+        self.base, self.changed, self.hold_until = None, now, now + self.hold
+        line = f"holding for {self.hold // 60} minutes"
+        self.hold = min(2 * self.hold, LONGEST)
+        return line
 
     def narrow(self, now):
         """A quarter less, held for a while, for an endpoint that has stopped answering."""
         was = self.width
         self.width = max(1, was - max(1, was // 4))
-        self.base, self.changed, self.hold_until = None, now, now + HOLD
+        self.held(now)
+        self.throttled_at = self.throttled
         return was
 
 
@@ -214,7 +247,8 @@ def main():
         f"reading {tree} at {pinned}")
 
     seen = collections.Counter()  # the answers counted from each sweep's current records
-    answered = 0
+    seen_throttled = collections.Counter()  # and the turns failed on a 429
+    answered = throttled = 0
     climb = Climb(width, time.time())
     paused_until, streak = 0.0, 0
     try:  # a pause a run before this one was in the middle of still stands
@@ -232,7 +266,7 @@ def main():
 
     def tick():
         """One look at every sweep: what has ended, what the endpoint answers, what to start."""
-        nonlocal paused_until, streak, answered
+        nonlocal paused_until, streak, answered, throttled
         now = time.time()
         states = {name: sweeps.state(name, now) for name in of}
 
@@ -280,8 +314,12 @@ def main():
             now_seen = s.get("requests", 0)
             answered += now_seen - seen[name] if now_seen >= seen[name] else now_seen
             seen[name] = now_seen
+            now_seen = s.get("throttled", 0)
+            throttled += now_seen - seen_throttled[name] if now_seen >= seen_throttled[name] \
+                else now_seen
+            seen_throttled[name] = now_seen
         waiting = len(queue) if now >= paused_until else 0
-        moved = climb.look(now, answered, len(running), waiting)
+        moved = climb.look(now, answered, throttled, len(running), waiting)
         if moved:
             log(moved)
 
@@ -290,7 +328,7 @@ def main():
             kind, scope = of[name]
             # the tries so far are what is kept in old/, so a restarted run counts them too
             tried = aside(name) + 1
-            seen[name] = 0
+            seen[name] = seen_throttled[name] = 0
             subprocess.Popen([os.path.join(HERE, "sweep.sh"), kind, name, scope],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True,

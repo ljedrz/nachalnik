@@ -112,6 +112,7 @@ class Records:
         self.inputs = []
         self.failed = []
         self.empty = 0  # turns that failed with nothing answered in them
+        self.throttled = 0  # turns that failed on a 429 kamchatka's own retries did not outlast
         self.answered = 0  # answers in the turn under way
         self.stop = None
         self.finished = False  # the log's last record, written as the session ends on its own
@@ -154,6 +155,7 @@ class Records:
                     self.finished = True
                 elif kind in ("model.failed", "step.failed"):
                     self.failed.append(str(event.get("error", ""))[:160])
+                    self.throttled += "429" in self.failed[-1]
                     if not self.answered:
                         self.empty += 1
 
@@ -192,6 +194,7 @@ def state(name, now=None):
         largest=max(records.inputs, default=0),
         failed=len(records.failed),
         empty=records.empty,
+        throttled=records.throttled,
         turn=records.answered,
         retrying=len(RETRYING.findall(prose)),
         refused=prose.count(REFUSED),
