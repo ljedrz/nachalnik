@@ -14,6 +14,14 @@ one the endpoint never served: that sweep is missing a part, and is run again.
 note: read from the records and not from what the model says, because models differ in every
 other respect - one writes FINDINGS, one writes DONE, one writes nothing - and the records are the
 same for all of them.
+
+note: the records read are the session's own log, which kamchatka writes under
+$TMPDIR/kamchatka/ by the session's name, and not the copy `sweep.sh` sends to NAME.jsonl. The
+copy is only as safe as the shell that redirected it: a `sweep.sh` edited while sweeps ran was read
+on by each of them when its session ended, from the byte it had got to, and a fragment of the
+launch line truncated NAME.jsonl and NAME.err after four hours of work. The log is written by the
+session alone and ends in `session.finished`; the copy's first record names it, and the name is
+kept in NAME.session the first time it is read.
 """
 
 import json
@@ -22,6 +30,8 @@ import re
 import time
 
 SWEEPS = os.environ.get("SWEEPS") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "sweeps")
+# where kamchatka writes each session's log and snapshot: its temporary directory's `kamchatka`
+LOGS = os.environ.get("KAMCHATKA_LOGS") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "kamchatka")
 
 # what kamchatka prints while it waits on the endpoint: `MODEL answered 429; trying again in 4s`,
 # and the same for a timeout or a refused connection
@@ -46,6 +56,42 @@ def alive(pid):
     return True
 
 
+def session(name):
+    """The name of the sweep's session, which is the name of its log: kept in NAME.session, and
+    read from the first record of NAME.jsonl the first time."""
+    kept = path(name, ".session")
+    try:
+        return open(kept).read().strip() or None
+    except FileNotFoundError:
+        pass
+    try:
+        with open(path(name, ".jsonl"), "rb") as f:
+            first = f.readline()
+        event = json.loads(first)["event"]
+    except (FileNotFoundError, ValueError, KeyError, TypeError):
+        return None
+    if event.get("event") != "session.started" or not event.get("session"):
+        return None
+    with open(kept, "w") as f:
+        f.write(event["session"] + "\n")
+    return event["session"]
+
+
+def log(name):
+    """The session's own record of itself, or the copy in NAME.jsonl while its name is not known."""
+    named = session(name)
+    if named and os.path.exists(os.path.join(LOGS, named + ".jsonl")):
+        return os.path.join(LOGS, named + ".jsonl")
+    return path(name, ".jsonl")
+
+
+def snapshot(name):
+    """The session kamchatka wrote when it ended, if it did."""
+    named = session(name)
+    found = named and os.path.join(LOGS, named + ".json")
+    return found if found and os.path.exists(found) else None
+
+
 def expected(name):
     """How many messages the session was given: the lines of NAME.in that are not commands."""
     try:
@@ -68,16 +114,19 @@ class Records:
         self.empty = 0  # turns that failed with nothing answered in them
         self.answered = 0  # answers in the turn under way
         self.stop = None
+        self.finished = False  # the log's last record, written as the session ends on its own
+        self.read_from = None
 
     def read(self, name):
-        p = path(name, ".jsonl")
+        p = log(name)
         try:
             st = os.stat(p)
         except FileNotFoundError:
             return
-        if st.st_ino != self.inode or st.st_size < self.offset:
+        if p != self.read_from or st.st_ino != self.inode or st.st_size < self.offset:
             self.__init__()
             self.inode = st.st_ino
+            self.read_from = p
         with open(p, "rb") as f:
             f.seek(self.offset)
             for raw in f:
@@ -101,6 +150,8 @@ class Records:
                         self.inputs.append(used)
                     stop = event.get("stop")
                     self.stop = stop if isinstance(stop, str) else json.dumps(stop)
+                elif kind == "session.finished":
+                    self.finished = True
                 elif kind in ("model.failed", "step.failed"):
                     self.failed.append(str(event.get("error", ""))[:160])
                     if not self.answered:
@@ -127,9 +178,9 @@ def state(name, now=None):
     exits = re.findall(r"^exit (\d+)$", prose, re.M)
     # the latest of them: a model's answer streams to the prose while no record is written
     times = []
-    for suffix in (".in", ".jsonl", ".err"):
+    for p in [path(name, suffix) for suffix in (".in", ".jsonl", ".err")] + [log(name)]:
         try:
-            times.append(os.stat(path(name, suffix)).st_mtime)
+            times.append(os.stat(p).st_mtime)
         except FileNotFoundError:
             pass  # not written yet, or moved aside while this read
     changed = max(times, default=now)
@@ -147,23 +198,27 @@ def state(name, now=None):
         quiet=int(now - changed),
         stop=records.stop,
     )
-    if not exits:
-        try:
-            pid = int(open(path(name, ".pid")).read())
-        except (FileNotFoundError, ValueError):
-            pid = None
-        s["pid"] = pid
-        if pid and alive(pid):
-            s["status"] = "running"
-        else:
-            s["status"], s["why"] = "lost", "the session ended without saying how"
+    try:
+        pid = int(open(path(name, ".pid")).read())
+    except (FileNotFoundError, ValueError):
+        pid = None
+    s["pid"] = pid
+    s["finished"] = records.finished
+    if exits:
+        s["exit"] = int(exits[-1])
+    if pid and alive(pid):
+        s["status"] = "running"
         return s
-    code = int(exits[-1])
-    s["exit"] = code
+    if not exits and not records.finished:
+        s["status"], s["why"] = "lost", "the session ended without saying how"
+        return s
     whys = []
-    if code != 0:
+    # note: the exit code says why a session did not finish, and nothing about one that did:
+    # kamchatka exits 1 when any turn failed, which a turn failed part-way is
+    if not records.finished:
+        code = s.get("exit")
         whys.append({124: "its deadline ended it", 143: "it was terminated",
-                     130: "it was interrupted"}.get(code, f"exit {code}"))
+                     130: "it was interrupted"}.get(code, f"it ended without finishing (exit {code})"))
     if s["expected"] is not None and records.sent < s["expected"]:
         whys.append(f"{records.sent} of {s['expected']} messages sent")
     if records.empty:

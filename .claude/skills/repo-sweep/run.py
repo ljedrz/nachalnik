@@ -216,7 +216,7 @@ def main():
             log(f"{name}: incomplete ({s['why']})")
             # what says the endpoint is not serving: a turn it never answered, or a session that
             # ended on an error
-            if s.get("empty") or s.get("exit") not in (0, 124, 143):
+            if s.get("empty") or not s.get("finished") and s.get("exit") not in (124, 143):
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause

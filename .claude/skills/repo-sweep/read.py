@@ -4,15 +4,14 @@ findings. With -r, its reasoning as well.
 
 usage: read.py NAME [-r]
 
-From the snapshot the session wrote where there is one. Where there is not - a session killed
-before it could write one, or whose snapshot failed - from the stream records, which hold every
-note as the arguments of a `context` call but none of the replies, so that reading gives the notes
-alone and says so.
+From the snapshot the session wrote where there is one, beside its log (see `sweeps.py`). Where
+there is not - a session killed before it could write one, or whose snapshot failed - from its
+records, which hold every note as the arguments of a `context` call but none of the replies, so
+that reading gives the notes alone and says so.
 """
 
 import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,17 +35,6 @@ def text(content):
     return str(content)
 
 
-def snapshot(name):
-    """The last session the prose names: a model quoting the line in its own reply puts another
-    before it."""
-    try:
-        prose = open(sweeps.path(name, ".err"), errors="replace").read()
-    except FileNotFoundError:
-        return None
-    found = re.findall(r"a session in (\S+\.json)", prose)
-    return found[-1] if found and os.path.exists(found[-1]) else None
-
-
 def from_snapshot(path, reasoning):
     items = json.load(open(path))["items"]
     for item in items:
@@ -67,7 +55,7 @@ def from_snapshot(path, reasoning):
 
 def from_records(name):
     print(f"(no snapshot for {name}: the notes from its records, without its replies)\n")
-    for line in open(sweeps.path(name, ".jsonl"), errors="replace"):
+    for line in open(sweeps.log(name), errors="replace"):
         try:
             event = json.loads(line)["event"]
         except (ValueError, KeyError, TypeError):
@@ -95,7 +83,7 @@ def main():
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
     name = args[0]
-    path = snapshot(name)
+    path = sweeps.snapshot(name)
     if path:
         from_snapshot(path, "-r" in args)
     else:
