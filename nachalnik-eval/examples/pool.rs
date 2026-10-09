@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    let cohort = Cohort::over(figures.clone(), at_least);
+    let cohort = Cohort::over(figures, at_least);
     println!("\n  at least {:+.0} points: {cohort}", at_least * 100.0);
     if !cohort.is_unanimous() && cohort.is_measurable() {
         println!(
