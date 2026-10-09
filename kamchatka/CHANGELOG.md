@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A signal arriving while the network gate looks for an attempt no longer ends the gate.** The
+  look was given up on as though nothing under the filter were left, so after a `ctrl+c`,
+  `SIGWINCH` or `SIGTERM` landed in it every attempt the command made failed with `ENOSYS`, with
+  nobody asked and nothing said - an allowed network included.
+
 - **The network gate holds `AF_SMC` and `AF_RDS` sockets as it holds internet ones.** Any process
   can open either, and both reach the internet over TCP: an `AF_SMC` socket's `connect` to an
   internet address falls back to plain TCP, and `AF_RDS` carries its datagrams over TCP once that
