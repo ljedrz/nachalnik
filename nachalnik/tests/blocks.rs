@@ -465,16 +465,24 @@ async fn sending_blocks_carries_the_order_through() {
     );
 }
 
+/// A turn recorded the conventional way - reasoning, text and calls in their own slots - goes out
+/// as blocks in that order: what it thought, what it said, what it asked for.
 #[tokio::test]
 async fn sending_blocks_assembles_a_conventional_turn_into_the_conventional_order() {
-    let (kernel, _) = permissive([ModelResponse::text("plain old text")]);
+    let kernel = Kernel::new(Config::default());
+    let asked = call("c1", "grep", json!({}));
     kernel.push(ContextItem::user("go"));
-    kernel.turn().await.expect("the turn ran");
+    kernel.push(
+        ContextItem::assistant("plain old text", vec![asked.clone()])
+            .with_reasoning(Some(Content::text("thinking it over"))),
+    );
+    kernel.push(ContextItem::tool_result(asked.id, "grep", "found", false));
 
     let projection = project(
         &kernel,
         LinearProjector {
             send_blocks: true,
+            send_reasoning: true,
             ..Default::default()
         },
     );
@@ -486,9 +494,12 @@ async fn sending_blocks_assembles_a_conventional_turn_into_the_conventional_orde
 
     // a context holding some of each projects to one shape rather than two
     let blocks = assistant.blocks().expect("assembled into blocks");
-    assert_eq!(blocks.iter().map(Block::name).collect::<Vec<_>>(), ["text"]);
     assert_eq!(
-        blocks[0].said().unwrap().content.to_text(),
+        blocks.iter().map(Block::name).collect::<Vec<_>>(),
+        ["reasoning", "text", "call"]
+    );
+    assert_eq!(
+        blocks[1].said().unwrap().content.to_text(),
         "plain old text"
     );
 }
