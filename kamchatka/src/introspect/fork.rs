@@ -457,13 +457,15 @@ async fn branch(
     if !unanswered.is_empty() {
         let numbers: Vec<String> = unanswered.iter().map(|id| id.to_string()).collect();
         out.push_str(&match numbers.as_slice() {
+            // note: answered by the time the copy was taken, or there would be no item to leave
+            // out - what keeps it out is that it came after the question
             [one] => format!(
-                " Your other call in this turn had not been answered when this copy was taken, \
-                 so its result ({one}) is not in it."
+                " Your other call in this turn was answered after you asked, so its result \
+                 ({one}) is left out of this copy."
             ),
             _ => format!(
-                " Your other calls in this turn had not been answered when this copy was taken, \
-                 so their results ({}) are not in it.",
+                " Your other calls in this turn were answered after you asked, so their results \
+                 ({}) are left out of this copy.",
                 numbers.join(", ")
             ),
         });
