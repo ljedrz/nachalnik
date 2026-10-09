@@ -44,8 +44,8 @@ Two rules settle most questions:
     └── decide ── Deciding <──(calls, one to ask about)
 ```
 
-`Ready` is deliberately a state you can stop in: the model has said what it wants and nothing has
-run yet.
+A step from `Finished` sends the next request as one from `Idle` does. `Ready` is deliberately a
+state you can stop in: the model has said what it wants and nothing has run yet.
 
 ---
 
@@ -57,7 +57,7 @@ run yet.
 | `nachalnik-mcp` | MCP servers as `Tool`s. Kept out of the core because MCP needs spawning processes and reading notifications in the background, which the runtime doesn't do. | yes |
 | `kamchatka` | a terminal agent built on the runtime, with a sandboxed shell and a permission policy in front of every call; the client that proves the runtime's extension points work. **Linux only**, on x86_64 and aarch64, because its sandbox relies on Landlock and seccomp. | yes |
 | `nachalnik-eval` | a benchmark for model introspection: get a model to make a claim about its context, change what the claim was about in a copy, and check the claim against what happens. No provider, no network, and no dependency the runtime doesn't already have. | yes |
-| `nachalnik-providers` | clients for the three APIs this workspace uses - OpenAI chat completions (plus its Responses API), Google's `generateContent` and Anthropic's Messages API - each behind a feature, streamed, retried and interruptible. Kept out of the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
+| `nachalnik-providers` | clients for the three APIs this workspace uses - OpenAI chat completions (plus its Responses API), Google's `generateContent` and Anthropic's Messages API - each behind a feature, streamed, retried and interruptible, and one for System One models, which answer typed questions about a state with probabilities (behind `system1`; `kamchatka`'s shell advisor uses it). Kept out of the core for the same reason as `nachalnik-mcp`: the runtime opens no sockets. | yes |
 | `nachalnik-utils` | reads the settings the examples, the live tests and `nachalnik-eval`'s `bench` example use: endpoint, key and models. One file. **Never published, always `0.0.0`, used only as an unversioned dev-dependency**, which makes cargo strip it from published manifests. Nothing may depend on it normally. | no |
 
 `nachalnik-mcp`, `kamchatka`'s introspection tools and `nachalnik-eval` were all written **without
@@ -127,7 +127,8 @@ each one in full with its reasoning; read it before changing anything under `nac
   their order matches. No logging that the user can't see.
 - **The log refers to things, it doesn't copy them.** `context.replaced` is the one exception, for
   content the caller didn't ask for; an item's metadata is copied too, both the old and the new.
-- **A pin is a promise**: the kernel rejects a `Compactor` that tries to touch a pinned item.
+- **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove or elide a pinned
+  item, and reports it in `CompactionReport::refused`.
 - **One operation is one undo step**, and an operation that changes nothing creates no checkpoint.
 - **A failing `Tool` is not a kernel error.** It becomes an error result that the model sees.
 - **Nothing in a model's output reaches the permission policy** except the tool name and the
