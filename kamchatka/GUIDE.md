@@ -433,8 +433,8 @@ session's context or log.
 answered and how, which tools were added and removed. Called with no arguments, it returns only
 counts: how many records there are, what reading them would cost, how many of each kind. `take` (at
 most 64), `ids`, `since` and `kinds` ask for specific records, and **every answer starts with the
-true total**, then how many matched and how many are shown, so a short answer never looks like
-*nothing happened*. It reports, without interpreting.
+true total**, then how many matched where `ids`, `since` or `kinds` narrowed them, and how many
+are shown, so a short answer never looks like *nothing happened*. It reports, without interpreting.
 
 **`setup`** shows what the session is running *with*:
 
