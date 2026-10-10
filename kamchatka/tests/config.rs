@@ -1737,7 +1737,8 @@ fn an_allow_for_mcp_is_refused_and_a_deny_is_not() {
         assert!(!ok, "{said}");
         assert!(said.contains("`--allow-server NAME`"), "{said}");
 
-        let (_, said) = run(&["--deny", rule], "");
+        let (ok, said) = run(&["--deny", rule], "");
+        assert!(ok, "a `deny` of {rule} was refused: {said}");
         assert!(!said.contains("grants nothing"), "{said}");
     }
 }
