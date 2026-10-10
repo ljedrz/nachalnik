@@ -88,14 +88,14 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
 - **As many at once as the endpoint takes, with no ceiling.** kamchatka is not the limit: a
   session takes tens of megabytes, and hundreds can run at once. The runner starts at `--width`
   (8) and climbs by the answers a minute the endpoint gives: it adds a quarter again, keeps the
-  wider width only if the answers a minute rose by a tenth and no turn failed on a 429, and
-  otherwise goes back and holds, from half an hour doubling up to two hours, before trying again.
-  A 429 kamchatka waits out is not the measure: many of them at a width that answers more is still
-  the faster run. A turn that fails on one is, since it loses the rest of its message's work. A
-  sweep that ends on a failure takes a quarter of the width away and pauses new starts while the
-  endpoint recovers. Don't hold it lower
-  by hand: what an endpoint took on another day is no guide to today. Restart it at the number
-  running, so that it measures that width rather than waiting for sweeps to end.
+  wider width only if the answers a minute rose by a tenth, and otherwise goes back and holds,
+  from half an hour doubling up to two hours, before trying again. A 429 kamchatka waits out is
+  not the measure: many of them at a width that answers more is still the faster run. A turn that
+  fails on one loses the rest of its message's work, but one is as likely chance as load: three
+  failed turns in ten minutes step the width back. A sweep that ends on a failure pauses new
+  starts while the endpoint recovers, and counts towards those three. Don't hold it lower by hand:
+  what an endpoint took on another day is no guide to today. Restart it at the number running, so
+  that it measures that width rather than waiting for sweeps to end.
 - **A run reads one commit.** It makes a worktree at HEAD in `$SWEEPS/tree` and a copy of the
   binary in `$SWEEPS/kamchatka`, and every sweep reads and runs those, so fixes committed and files
   reverted for mutation checks meanwhile are nothing a sweep half-way through sees. The findings

@@ -16,15 +16,18 @@ What it decides on its own:
 - **How many at once.** There is no ceiling but the endpoint: kamchatka is not the limit, and a
   session takes tens of megabytes. It starts at `--width` (default 8) and climbs by what the
   endpoint answers: once that many have run for a quarter of an hour, it adds a quarter again, and
-  keeps the new width only if the answers a minute rose by a tenth and no turn failed on a 429. If
-  not, it goes back to the width that did as well and holds there, for half an hour and twice as
-  long each time in a row, up to two hours, since an endpoint's capacity changes over a day. A 429
-  kamchatka waits out is not counted, since the answers a minute already show what it costs; a turn
-  that fails on one loses the rest of its message's work, which they do not show. The step is a
-  quarter because a sweep started at a width too wide runs to its end, which is hours.
+  keeps the new width only if the answers a minute rose by a tenth. If not, it goes back to the
+  width that did as well and holds there, for half an hour and twice as long each time in a row, up
+  to two hours, since an endpoint's capacity changes over a day. The step is a quarter because a
+  sweep started at a width too wide runs to its end, which is hours.
+- **Repeated failures.** A 429 kamchatka waits out is not counted, since the answers a minute
+  already show what it costs. A turn that fails on one loses the rest of its message's work, which
+  they do not show, but one such turn is as likely chance as load: it takes `BURST` of them in
+  `BURST_WINDOW` (three in ten minutes) to step back - to the width before the latest widening, or
+  by a quarter - and hold there.
 - **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
-  takes a quarter of the width away.
+  counts as one more failure towards a step back.
 - **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
   run again from the start, up to `--tries` times in all (default 3).
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
@@ -54,6 +57,8 @@ TICK = 30
 # a wider run has to beat a narrower one to be kept, and how long a width that did not is held at
 # first; each try in a row that fails doubles the hold, up to the longest
 SETTLE, WINDOW, GAIN, HOLD, LONGEST = 180, 600, 1.1, 1800, 2 * 3600
+# how many failed turns, inside how many seconds, step the width back
+BURST, BURST_WINDOW = 3, 600
 
 
 class Climb:
@@ -71,6 +76,7 @@ class Climb:
         # turns failed on a 429: so far, and at the last move, or at the first look, so that what
         # sweeps adopted from a run before met there is not taken for this width's doing
         self.throttled, self.throttled_at = 0, None
+        self.failures = collections.deque()  # when each failure still counted happened
 
     def look(self, now, answered, throttled, running, waiting):
         """Takes the answers so far, the turns failed on a 429 so far, how many sweeps run and how
@@ -81,19 +87,15 @@ class Climb:
         self.throttled = throttled
         if self.throttled_at is None:
             self.throttled_at = throttled
-        # note: a turn that fails on a 429 loses the rest of its message's work, which the answers a
-        # minute do not show, so one is enough to step back. Not while more run than the width:
-        # those started at a width already left, and a sweep is never stopped to make room
+        # note: not counted while more run than the width: those started at a width already left,
+        # and a sweep is never stopped to make room
         if running > self.width:
             self.throttled_at = throttled
-        if throttled > self.throttled_at:
-            failed, was = throttled - self.throttled_at, self.width
-            if self.base and self.width > self.base[0]:
-                self.width = self.base[0]
-            else:
-                self.width = max(1, was - max(1, was // 4))
-            self.throttled_at = throttled
-            return f"width {was} -> {self.width}: {failed} turn(s) failed on a 429; " + self.held(now)
+        self.failures.extend([now] * (throttled - self.throttled_at))
+        self.throttled_at = throttled
+        moved = self.burst(now)
+        if moved:
+            return moved
         # note: measured only while exactly `width` run. Fewer is a run short of work or paused, and
         # more is one draining after a narrowing, and neither says what the width does
         if running != self.width:
@@ -128,13 +130,30 @@ class Climb:
         self.hold = min(2 * self.hold, LONGEST)
         return line
 
-    def narrow(self, now):
-        """A quarter less, held for a while, for an endpoint that has stopped answering."""
-        was = self.width
-        self.width = max(1, was - max(1, was // 4))
-        self.held(now)
-        self.throttled_at = self.throttled
-        return was
+    def failed(self, now):
+        """Counts a sweep that ended on a failure; returns what it changed, as `look` does."""
+        self.failures.append(now)
+        return self.burst(now)
+
+    def burst(self, now):
+        """Steps back once `BURST` failures fall inside `BURST_WINDOW`: to the width before the
+        latest widening, or by a quarter.
+
+        note: a turn that fails on a 429 loses the rest of its message's work, which the answers a
+        minute do not show. But one is as likely chance as load, and a step back costs every new
+        start for half an hour or more."""
+        while self.failures and now - self.failures[0] > BURST_WINDOW:
+            self.failures.popleft()
+        if len(self.failures) < BURST:
+            return None
+        failed, was = len(self.failures), self.width
+        self.failures.clear()
+        if self.base and self.width > self.base[0]:
+            self.width = self.base[0]
+        else:
+            self.width = max(1, was - max(1, was // 4))
+        return (f"width {was} -> {self.width}: {failed} failures in {BURST_WINDOW // 60} minutes; "
+                + self.held(now))
 
 
 def option(args, flag, default, kind=int):
@@ -300,9 +319,10 @@ def main():
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause
-                was = climb.narrow(now)
-                log(f"width {was} -> {climb.width}: {name} ended on a failure")
-                log(f"pausing new starts for {pause // 60} minutes")
+                log(f"{name} ended on a failure; pausing new starts for {pause // 60} minutes")
+                moved = climb.failed(now)
+                if moved:
+                    log(moved)
             if earlier(name) < tries:
                 queue.append(name)
             else:
