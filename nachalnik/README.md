@@ -306,7 +306,7 @@ $ OPENROUTER_API_KEY=sk-or-... cargo test --test live -- --test-threads=1 --noca
 | **[`kamchatka`][kamchatka]** | a terminal agent built on this, for Linux — the thing you actually run, with a confined shell, a permission policy in front of every call, and sessions that can be served and rejoined. |
 | **[`nachalnik-mcp`][nachalnik-mcp]** | a bridge to [MCP](https://modelcontextprotocol.io) servers, so that a tool somebody else wrote is a `Tool` like any other. |
 | **[`nachalnik-eval`][nachalnik-eval]** | a benchmark for model introspection: the model commits to a claim about its own context, the harness moves the thing the claim was about on a forked copy, and the two are compared. |
-| **[`nachalnik-providers`][nachalnik-providers]** | the three dialects this workspace talks — OpenAI chat-completions, Google's `generateContent` and Anthropic's Messages API — as `Provider`s, streamed, retried and interruptible. |
+| **[`nachalnik-providers`][nachalnik-providers]** | the three APIs this workspace talks — OpenAI chat-completions (and its Responses API), Google's `generateContent` and Anthropic's Messages API — as `Provider`s, streamed, retried and interruptible. |
 
 None of them needed any change to this crate, which shows that its six traits really are
 replaceable. See the [workspace readme][workspace].

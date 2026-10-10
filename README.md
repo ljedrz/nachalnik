@@ -169,7 +169,7 @@ of several checks.
 - **CI** runs the suites on Linux (x86_64 and aarch64), macOS and Windows with every feature on,
   builds with the defaults and with none, and checks the workspace on the MSRV, locked and at the
   lowest version of every direct dependency the manifests allow.
-- **The live suites** send what this workspace builds to real APIs in all three dialects, because
+- **The live suites** send what this workspace builds to real APIs in every dialect, because
   a mock cannot say whether an API accepts it.
 - **The program is used as well as tested.** Again and again, and with many different models —
   large and small, free, stealth, a diffusion one — headless `kamchatka` sessions are turned on the
