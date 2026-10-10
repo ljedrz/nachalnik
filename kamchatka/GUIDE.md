@@ -320,34 +320,38 @@ other capability: they declare `fs:grep` and `fs:glob`, and the path rules that 
 apply to them too. They use ripgrep's libraries.
 
 A result starts with a line counting the matches, the files they're in, and the files searched, so
-"the symbol isn't there" is distinguishable from "nothing was searched"; a `skipped:` line lists
-what wasn't opened and why: a path rule, a symlink outside the allowed paths, a binary file, an
+"the symbol isn't there" is distinguishable from "nothing was searched"; a `skipped:` line counts
+what wasn't opened, by why: a path rule, a symlink outside the allowed paths, a binary file, an
 unreadable one. **It stops after a hundred matches, rather than at a byte count,** and says so, and
 cuts lines at two hundred characters. When it hits the limit, it suggests `files_only`, which lists
 the matching files with their match counts, most first, at a fraction of the cost.
 
-Files hidden by `.gitignore` are skipped, and `.git` always is; hidden files **are** searched;
-symlinks are followed inside the working directory and only counted outside it. The search path is
-checked the same way as `read`'s, so `grep` in `.env` asks the same question as reading it would.
+Files hidden by `.gitignore` are skipped, and `.git` always is; hidden files **are** searched. A
+link to a file the session may read is searched; a link to a directory is not followed, and is
+counted if it leads somewhere the search doesn't come to; a link outside the allowed paths, or to
+nothing, is counted. The search path is checked the same way as `read`'s, so `grep` in `.env` asks
+the same question as reading it would.
 
 `glob` walks the same way: `**/*.rs` in, matching paths out, formatted like `ls -R`. Both are
 deterministic, so two identical searches produce the same context item.
 
 **A long file is read in parts, and `read` says where each part ends.** Past the output limit
 (32,000 bytes, unless `/limit fs:read` says otherwise), it stops at the last whole line that fits,
-and its first line says which lines were returned and the `from` value to continue with. `from` and
-`lines` read any part of a file, including logs too large to hold in memory. The alternative,
-`sed -n` through `shell`, needs `exec:run`, even for a file the session is already allowed to read.
+and its first line says which lines were returned and the `from` value to continue with. A single
+line too long for the limit comes back as its start, with `grep` or `shell` named as the way to the
+rest. `from` and `lines` read any part of a file, including logs too large to hold in memory. The
+alternative, `sed -n` through `shell`, needs `exec:run`, even for a file the session is already
+allowed to read.
 
-**The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It starts
-at 32,000 bytes, and at 8,000 for tools whose result is a fixed-format report rather than part of
-the session's content. `/limit` lists them, numbered, and changes one from its next call on, e.g.
-`/limit fs:read 64000`. A result that was cut keeps the full version next to it, excluded, and
-<kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
-stops at a line and says where to read on from, and a `grep` too long for its limit says which
-files matched instead. The full version has its own limit, 8 MiB:
-beyond that, a command's extra output is discarded and the result says how much, and `fs` refuses
-to edit larger files.
+**The output limit is set per permission**, so `fs:read` and `fs:grep` each have their own. It
+starts at 32,000 bytes, and at 8,000 where the result is a fixed-format report rather than part of
+the session's content: `fs:write`, `fs:edit`, `context:budget`, `context:note`, `context:revise`,
+`setup:model` and `setup:policy`. `/limit` lists them, numbered, and changes one from its next call
+on, e.g. `/limit fs:read 64000`. A result that was cut keeps the full version next to it, excluded,
+and <kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
+stops at a line and says where to read on from, and a `grep` too long for its limit says which files
+matched instead. The full version has its own limit, 8 MiB: beyond that, a command's extra output is
+discarded and the result says how much, and `fs` refuses to edit larger files.
 
 ## 📎 putting something in, with or without a question
 
@@ -359,9 +363,9 @@ together:
 ```
 
 How the file is added depends on its type. Anything `kamchatka` has no media type for is added as
-**text**: counted, readable on the context tab and compactable. A PDF, an image or an audio file is
-added as **bytes**, with its media type, based on the file extension; a file that's neither a known
-type nor valid text is refused.
+**text**: counted, readable on the context tab and compactable. A PDF, an image, an audio file or an
+mp4 is added as **bytes**, with its media type, based on the file extension; a file that's neither a
+known type nor valid text is refused.
 
 `-f` at startup does the same, and `/attach` with no question just adds the file. The difference is
 pinning: a file given on the command line is part of the session's setup, so `-f` pins it; one
