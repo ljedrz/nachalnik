@@ -166,6 +166,11 @@ sake - goes into **POSTPONED.md** as an entry in its form: what it is, why it wa
 settle it; plain prose, no souvenir numbers. Before adding, check the existing entries are still
 true (the code moves on; an entry that was wrong says so rather than being quietly corrected).
 
+**Everything actionable that is not fixed goes there too**, as it is found: a test that could not
+be checked on this machine, a refactor worth doing with the next change, a follow-up for this
+skill. A scratch report outside the repository is for what was rejected and why, and nothing that
+someone still has to do may live only in it - it is uncommitted, and it is forgotten.
+
 ## 7. finish
 
 The CI-equivalent pass, with `RUSTFLAGS=-D warnings`:
