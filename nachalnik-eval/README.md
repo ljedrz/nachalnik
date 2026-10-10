@@ -143,10 +143,11 @@ figure from that result, then runs copies with the result left alone, elided and
 asks each *did you run anything?* and *is this the whole conversation?*. Both have a known correct
 answer, because the harness wrote the record.
 
-Read `repair` first. A false note is planted; the subject answers wrongly; asked which note is
-false, it **names it correctly**; asked the question again, it's *still wrong*; then it's given
-`amend`, removes the note, and gets it right. Spotting an error isn't the same as being unaffected
-by it, and the only thing that helped was editing the context.
+Read `repair` first. A false note is planted and the subject answers wrongly. It is asked a second
+time, and then given `inspect` and `amend` with no hint that anything is wrong. Asked which note is
+false, it **names it correctly**; asked the question again, it's *still wrong*; asked to put it
+right, it removes the note with `amend` and gets it right. Spotting an error isn't the same as
+being unaffected by it, and the only thing that helped was editing the context.
 
 `conflict` is `lie` without a way to decide. The same contradiction is planted, but both sides are
 `records/...` and the brief says the records are accurate, so nothing in the context says which to
