@@ -115,7 +115,7 @@ screen belongs to whoever owns it.
 
 It **adds no parameters**. Whatever the caller set is sent unchanged, alongside the conversation and
 never instead of it: a parameter with the same name as a field the request is built from
-(`messages` or `tools`) is left out.
+(`model`, `messages` or `tools`) is left out.
 
 ---
 
