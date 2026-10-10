@@ -125,7 +125,7 @@ minor bump may break you.
 
 - **`log` with `whole` prices the whole log as it prices what matched.** The total was the log as
   one line a record and the matches were whole, so a replaced item's old text made what matched
-  cost several times the log it was found in: `~348 tokens in all. 1 match …, ~2,308 tokens`.
+  cost several times the log it was found in.
 
 - **A `context` search that found nothing says it did not read the turn asking.** That turn is
   passed over, the message that started it included, since what the model said in it would match
