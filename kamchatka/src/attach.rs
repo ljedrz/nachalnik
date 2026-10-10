@@ -31,9 +31,10 @@ const MOST: u64 = 16 * 1024 * 1024;
 ///
 /// note: short on purpose. Every entry is a claim that this media type is what an endpoint should
 /// be told, and the ones here are the ones the dialects next door actually carry: pictures and
-/// documents everywhere, recordings where Google's own API is being spoken. Anything not named
-/// here is read as text and refused if it is not, which is the right answer for the overwhelming
-/// majority of what a person points this at - source, markdown, logs, CSV, JSON.
+/// documents everywhere, recordings and films where Google's own API or chat completions is being
+/// spoken (chat completions takes a recording only as mp3 or wav). Anything not named here is
+/// read as text and refused if it is not, which is the right answer for the overwhelming majority
+/// of what a person points this at - source, markdown, logs, CSV, JSON.
 const TYPES: &[(&str, &str)] = &[
     ("pdf", "application/pdf"),
     ("png", "image/png"),
