@@ -1,4 +1,4 @@
-//! The knobs, with the reasoning for each default beside it.
+//! The knobs, with the reasoning beside each default that needs it.
 
 #[cfg(doc)]
 use crate::{Event, Kernel, TokenCounter, ToolSpec};
