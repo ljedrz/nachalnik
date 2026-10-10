@@ -290,7 +290,9 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   or cut off by the endpoint is moved aside and rerun, hours of work for one answer. `friction.sh`
   already carries a lost session on from its snapshot. `sweep.sh` could do the same, but
   `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
-  to be read as one first.
+  to be read as one first. The opposite case is counted complete: a last answer that ended with
+  reasoning and no text never wrote its FINDINGS section, and its findings are only in its notes.
+  It is one more message away from done, so it waits on the same resume.
 
 - **An outage the runner starts a sweep into can still cost it a try.** `run.py` sets a try aside
   without counting it only if the endpoint never answered it once. When an endpoint fails every
