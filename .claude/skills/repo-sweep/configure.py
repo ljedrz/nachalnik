@@ -176,8 +176,11 @@ def listed_limit(model: str) -> int | None:
         return None
     for entry in listing.get("data", []):
         if entry.get("id") == model:
-            return entry.get("context_length") or entry.get("top_provider", {}).get(
-                "context_length"
+            # OpenRouter says `context_length`, Vercel's AI Gateway `context_window`
+            return (
+                entry.get("context_length")
+                or entry.get("context_window")
+                or entry.get("top_provider", {}).get("context_length")
             )
     return None
 
