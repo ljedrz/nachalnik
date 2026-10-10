@@ -1301,7 +1301,7 @@ async fn ctrl_d_leaves_even_when_a_tool_is_waiting_to_run() {
 /// and must not be read as a request to stop the turn, which is what taking the first key's
 /// meaning for every key here would do.
 #[tokio::test]
-async fn each_of_the_two_keys_means_the_same_thing_whatever_is_running() {
+async fn ctrl_c_leaves_a_session_at_rest_and_ctrl_d_leaves_one_mid_turn() {
     let mut idle = Harness::new([]);
     idle.app
         .on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL))
