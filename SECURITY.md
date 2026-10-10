@@ -29,7 +29,9 @@ What changes to this workspace must keep true about what is and isn't enforced.
 - **Confinement happens where processes are spawned.** `kamchatka` sandboxes its `shell` tool with
   Landlock: it re-runs itself in a mode that restricts itself and then `exec`s the command, so
   `network: deny` means a refused TCP `connect`, and nothing outside the allowed directories can be
-  touched. Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as
+  touched. One more directory is writable: a command's own temporary directory, handed to it as
+  `TMPDIR`, even where the working directory is read-only, and removed when the command ends.
+  Landlock covers TCP from ABI 4 (Linux 6.7). On older kernels the ruleset is reported as
   `Partial`: files are still restricted, TCP is left to the network gate (below) where available,
   and the permissions tab says "partly confined". Below Linux 6.2, truncating a file by name isn't
   restricted either. UDP is only covered by the gate. The `exec` matters: if a helper process sat
