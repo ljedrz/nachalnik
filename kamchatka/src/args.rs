@@ -402,7 +402,7 @@ impl Args {
             })?;
             // note: a file is read by the runs that have nobody else to ask, and `leave` there is
             // a question nobody will ever answer. `--connect` does not read the file's `on-ask`
-            // at all; see `Args::connecting`
+            // at all; see `Args::given`
             if self.on_ask == OnAsk::Leave {
                 return Err(anyhow::anyhow!(
                     "`on-ask` in the settings file is `leave`, which only `--connect` can do - \

@@ -78,7 +78,8 @@ shows what it would do and waits for your answer.
 the figure is shown as `~2,460`, and the percentage next to it says what limit it's a percentage
 of. Once a response arrives, the figure is based on what the provider actually charged, and the
 counter adjusts itself from every response it can fully price. When something in the context can't
-be priced, the figure is marked as a minimum.
+be priced, the context tab marks that item's figure with a `+`, and `/budget` says its totals are a
+minimum.
 
 **No telemetry, no update check.** It only talks to the endpoint you configure, and to things you
 explicitly ask for: an MCP server you name, a session you serve, the advisor you turn on. Commands

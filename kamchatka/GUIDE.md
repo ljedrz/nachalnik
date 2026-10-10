@@ -184,8 +184,8 @@ keys that work everywhere, and the waiting tool call, if there is one.
 
 If you scroll away from the end while a turn is still writing, the view stays where you left it,
 and the line at the bottom says how much has arrived below; <kbd>ctrl+e</kbd> or scrolling to the
-end follows the output again. Nothing is shortened to fit, except a command's output while it's
-still running.
+end follows the output again. Nothing is shortened to fit, except a tool's output while it's
+still arriving.
 
 Stopping is cooperative: the provider returns the text it has so far, and the shell tool kills the
 command's process group and still returns a result for the call. The partial turn goes into the
