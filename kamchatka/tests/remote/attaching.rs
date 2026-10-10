@@ -109,6 +109,10 @@ async fn the_records_alone_cannot_say_what_was_said() {
     let (_, attached) = Peer::attached(&session.at).await;
     let log = app_history(&session.at).await;
     assert!(
+        log.contains("context.added"),
+        "the item was not recorded: {log}"
+    );
+    assert!(
         !log.contains("a sentence nothing else carries"),
         "the log copied an item's content: {log}"
     );
@@ -129,8 +133,11 @@ async fn app_history(at: &str) -> String {
     let (mut peer, _) = Peer::attached(at).await;
     peer.send(attaching(Some(0), None)).await;
     let mut log = String::new();
-    // everything already recorded arrives at once; `session.started` is always the first of them
-    for message in peer.until_record("session.started").await {
+    // everything already recorded arrives before anything else the session says
+    for message in peer
+        .until(|message| !matches!(message, Message::Record(_)))
+        .await
+    {
         if let Message::Record(record) = message {
             log.push_str(&serde_json::to_string(&record).expect("a record is JSON"));
         }
