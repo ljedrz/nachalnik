@@ -251,6 +251,47 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   field would be additive; it waits because it's worth less than what `--check` already does: work
   for readers other than this program, and records that say what went wrong.
 
+- **A confined command isn't told its `$TMPDIR` is writable.** Every command is handed a scratch
+  directory of its own as `TMPDIR`, writable even where the working directory is read-only, as
+  SECURITY.md says. The `shell` tool's description and the permissions tab's sandbox line name the
+  working directory and the extra paths and not it, so a model in a read-only session doesn't know
+  it has anywhere to write. Saying so is a sentence in a description every request carries, so it
+  waits for a decision on whether that's worth its tokens.
+
+- **A question about a call whose arguments can't be read shows the raw wrapper.** The policy
+  (`Careful::judges`), the question panel and the shell advisor read a call's arguments through
+  `ops::inner`, and where that fails they fall back to the arguments as sent. A malformed `call`
+  wrapper is then judged, rated and shown as the wrapper itself, and only the tool, once allowed,
+  says it can't read it. Whether the question should say up front that the call will be refused is
+  a choice about what a question is for.
+
+- **No test that a confined command can't write `/dev/shm`, or open IPv6 or RDS through the gate.**
+  A confined command may use the devices in `sandbox::DEVICES` and nothing else under `/dev`, and
+  the gate holds `AF_INET6`, `AF_SMC` and `AF_RDS` as it does `AF_INET`. The devices aren't
+  enumerated by any test, and the other families are tested at the filter, not through a command.
+  A `/dev/shm` test needs a machine where `/dev/shm` is writable outside the sandbox, or it passes
+  for the wrong reason; that is what unblocks it.
+
+- **The terminal's loop and a served session's loop handle the kernel's events in two copies.**
+  `main.rs` and `remote/server/mod.rs` each take in the broadcast, drain the outcomes, answer held
+  questions around `serving.answer` and pump the server twice, and the copies have drifted in
+  wording: a client that fails to connect is a note at the terminal and an error when served.
+  Sharing them is a refactor of both loops, worth doing together with the next change to either.
+
+- **"Prune" is still the documents' word for taking something out.** `prune` is gone as a command
+  and as an action of `context`, in favour of exclude and elide, but CONCEPTS.md, the root README,
+  `kamchatka`'s README and RUNNING.md, `nachalnik-providers`' README and INVARIANTS.md still use it
+  for excluding or eliding in general. Each reads as ordinary English where it stands; replacing
+  them is a pass over the prose, and waits on whether the one-word rule covers a document's general
+  verbs as well as the program's own.
+
+- **A sweep whose last turn fails is run again from the start.** The repo-sweep skill counts a
+  sweep complete only when every message was answered, so one whose last turn was lost to a 429
+  or cut off by the endpoint is moved aside and rerun, hours of work for one answer. `friction.sh`
+  already carries a lost session on from its snapshot. `sweep.sh` could do the same, but
+  `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
+  to be read as one first.
+
 - **A session's root directories are resolved on every check.** `Reach` resolves the working
   directory and every `--sandbox-allow` and `--sandbox-read` root each time it checks a path, which
   a `grep` over a large tree pays for every file and symlink. Resolving them once at startup would
