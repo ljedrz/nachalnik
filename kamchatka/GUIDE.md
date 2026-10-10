@@ -10,7 +10,8 @@ session. [The README](README.md) says what the program is; this says how to use 
 
 <kbd>ctrl+t</kbd> switches to the next tab, and <kbd>alt+1</kbd> … <kbd>alt+4</kbd> go to one
 directly. The status line is shown under all of them, so the budget is always visible. The prompt
-is only on the chat tab; the other three are for reading and operating rather than typing.
+is on the chat tab, and on the context tab while an item is being edited; otherwise the other
+three are for reading and operating rather than typing.
 <kbd>tab</kbd> takes you back to the prompt from any of them.
 
 ![Four sessions side by side, one on each tab: the chat with a shell command waiting to be allowed,
@@ -218,9 +219,9 @@ advance, answer the first question with <kbd>a</kbd> or <kbd>n</kbd>, or use a f
 The line at the bottom starts with the shell, because it's the one thing on this tab you can't
 negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
 the other rows say, so `shell: confined` (or `partly confined`, or `a command can do any of these`)
-is what makes the rest of the table meaningful. After it comes `network gated` or `network not
-gated`: whether a command is asked about when it opens a socket, or judged by its name before it
-runs.
+is what makes the rest of the table meaningful. Where the shell is confined, after it comes
+`network gated` or `network not gated`: whether a command is asked about when it opens a socket,
+or judged by its name before it runs.
 
 There are four kinds of rows, and the first two are the same thing at different levels of detail.
 A **domain** is what a tool acts on (`fs`, `exec`, `context`), and an answer for a domain covers
@@ -337,7 +338,9 @@ and its first line says which lines were returned and the `from` value to contin
 at 32,000 bytes, and at 8,000 for tools whose result is a fixed-format report rather than part of
 the session's content. `/limit` lists them, numbered, and changes one from its next call on, e.g.
 `/limit fs:read 64000`. A result that was cut keeps the full version next to it, excluded, and
-<kbd>space</kbd> on it sends the full version instead. The full version has its own limit, 8 MiB:
+<kbd>space</kbd> on it sends the full version instead. `fs read` and `grep` cut nothing: a read
+stops at a line and says where to read on from, and a `grep` too long for its limit says which
+files matched instead. The full version has its own limit, 8 MiB:
 beyond that, a command's extra output is discarded and the result says how much, and `fs` refuses
 to edit larger files.
 
