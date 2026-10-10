@@ -20,7 +20,7 @@
 //! you can see that they do before anything is sent.
 //!
 //! ```text
-//! compare [-m MODEL].. [-f FILE].. [-s SYSTEM] [--seq] [--payload] [--save DIR] [-i] [prompt...]
+//! compare_models [-m MODEL].. [-f FILE].. [-s SYSTEM] [--seq] [--payload] [--save DIR] [-i] [prompt...]
 //! ```
 //!
 //! With no prompt on the command line it asks for one, and keeps asking. From the second round
@@ -46,7 +46,7 @@ mod common;
 use common::{save, thousands, wrap};
 
 const USAGE: &str = "\
-usage: compare [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
+usage: compare_models [-m MODEL].. [-f FILE].. [-s SYSTEM] [options] [prompt...]
 
   -m, --model MODEL    a model to ask; repeat it, or set NACHALNIK_MODELS=a,b,c
   -f, --file FILE      put a file in every context, pinned
