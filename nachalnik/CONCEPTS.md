@@ -225,7 +225,7 @@ stays small, because events refer to items instead of carrying their contents, w
 it can't rebuild a context. A `Snapshot` can:
 
 ```rust
-let snapshot = kernel.snapshot();          // items, ids, states, notes, params, used call ids
+let snapshot = kernel.snapshot(); // items, ids, states, notes, params, used call ids, calibration
 std::fs::write("session.json", serde_json::to_vec(&snapshot)?)?;
 
 // ... a process later
@@ -233,7 +233,8 @@ let kernel = Kernel::resume(Config::default(), snapshot);
 ```
 
 Everything that is easy to lose comes back: pins, the reasons items were pruned, a turn's reasoning,
-the signature attached to a tool call, and the identifiers already used, so a resumed session can't
-reuse one. You supply the provider, policy and tools again, because they aren't part of the
-session. Setting `Config::session_name` resumes under a
-new name, which is how a session gets forked rather than continued.
+the signature attached to a tool call, what the token counter had learned about the real cost of a
+request, and the identifiers already used, so a resumed session can't reuse one. You supply the
+provider, policy and tools again, because they aren't part of the session. Setting
+`Config::session_name` resumes under a new name, which is how a session gets forked rather than
+continued.
