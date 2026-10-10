@@ -114,7 +114,8 @@ every API client must pass. `waiting.rs`, `reading.rs` and `markup.rs` are priva
 sending and retrying, reading a stream one event at a time, and extracting the text from an error
 body that isn't JSON. `system1.rs` (feature `system1`) is the client for System One models; it
 isn't a `Dialect`, and its docs list the servers that support it and how they differ.
-`attribution.rs` is the app headers both clients send to OpenRouter.
+`attribution.rs` is the app headers the chat-completions, Anthropic and System One clients send to
+OpenRouter.
 
 The crate **reads no environment variables**: `kamchatka/src/endpoint.rs` reads `KAMCHATKA_*` and
 `nachalnik-utils` reads `NACHALNIK_*`. A library that read `OPENAI_API_KEY` by itself could spend
