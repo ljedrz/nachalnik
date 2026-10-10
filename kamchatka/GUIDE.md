@@ -214,7 +214,8 @@ answer. What isn't listed is counted at the bottom, as how many more it will ask
 setting a row back to `ask` removes it. A rule for a whole domain is one row, listing the operations
 it covers; an operation answered separately (`--allow fs --deny fs:write`) gets its own row. **What
 it covers** is never wider than the rule, and a rule that matches nothing says so. To decide in
-advance, answer the first question with <kbd>a</kbd> or <kbd>n</kbd>, or use a flag.
+advance, answer the first question with <kbd>a</kbd>, which allows it from then on, or use a flag;
+<kbd>n</kbd> refuses that one call, and a standing refusal is a row here or `--deny`.
 
 The line at the bottom starts with the shell, because it's the one thing on this tab you can't
 negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
