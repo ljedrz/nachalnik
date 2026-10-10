@@ -97,10 +97,10 @@ file to the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, and
 `remote/` has no feature, since it only needs one more `tokio` feature. `webui` (default) is
 `web/`.
 
-`kamchatka/examples/`: `attached.rs` is a client written against `remote::protocol` alone;
-`gateway.rs` (feature `webui`) serves `web/`'s page for a session in another process;
-`system1_assisted_compaction.rs` (feature `advise`) asks a System One model what to drop from a
-full context; `recorded.rs` runs a headless session and saves it in four formats into the
+`kamchatka/examples/`: `attached.rs` is a client written against `remote::protocol` and the three
+`app` types it names; `gateway.rs` (feature `webui`) serves `web/`'s page for a session in another
+process; `system1_assisted_compaction.rs` (feature `advise`) asks a System One model what to drop
+from a full context; `recorded.rs` runs a headless session and saves it in four formats into the
 git-ignored `recorded/`.
 
 ---
