@@ -144,7 +144,8 @@ let payload = kernel.preview_payload()?;   // and the provider's own bytes, if i
 match kernel.turn().await? {
     State::Finished { .. } => println!("{:?}", kernel.last_response()),
     State::Deciding { .. } => { /* ask a person, then kernel.decide(..) */ }
-    State::Idle => { /* the turn's request budget ran out; your call */ }
+    State::Idle => { /* the turn's request budget ran out, or an interrupt stopped it */ }
+    State::Ready { .. } => { /* an interrupt stopped it before the calls ran */ }
     other => unreachable!("a turn does not end in {other:?}"),
 }
 
