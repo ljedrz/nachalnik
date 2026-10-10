@@ -208,7 +208,8 @@ pub(crate) fn yes_or_no(args: &Value, name: &str) -> Result<bool, String> {
 pub(crate) const CEILING: usize = 32_000;
 
 /// The most of one call's output a tool here keeps, in bytes: what a command writes to each of its
-/// two streams, the largest file `fs` edits, and the largest `read` counts the lines of to the end.
+/// two streams, and the largest file `fs` edits. How far `read` counts lines is
+/// [`COUNTED`], since counting keeps nothing.
 ///
 /// note: a limit decides what the model is shown, and the kernel keeps the whole of what a tool
 /// returned, excluded - so without this the whole was whatever arrived: a `yes` nobody stopped,
