@@ -98,6 +98,10 @@ impl Kernel {
     /// hints, and a hint you can only set before the item exists is not much use - by the time
     /// you know a tool result was worthless, it has already been recorded.
     ///
+    /// note: no checkpoint of its own. Metadata belongs to the operation it describes, so an
+    /// undo takes an annotation back with the operation before it. It still clears what a redo
+    /// could have put back.
+    ///
     /// [`Compactor`]: crate::Compactor
     /// [`Projector`]: crate::Projector
     pub fn annotate(&self, id: ContextId, meta: Value) -> Result<()> {

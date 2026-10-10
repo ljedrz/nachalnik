@@ -36,7 +36,8 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   that a pinned item is paired with, because the two are always sent together or not at all.
 - **One operation is one undo step.** `push_all`, `set_state` over eight ids, `supersede`, a
   recorded turn: one checkpoint each. An operation that changes nothing creates no checkpoint, and
-  neither does one that is about to fail.
+  neither does one that is about to fail. `annotate` is the one exception: it takes no checkpoint
+  of its own, so an undo takes an annotation back with the operation before it.
 - **A failing `Tool` is not a kernel error.** It becomes an error result that the model sees.
   `Error` is only for conditions that stop the loop. A panicking tool counts as failed: the panic is
   caught where the kernel polls the tool, handled the same way, and reported as `tool.panicked`.
