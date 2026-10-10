@@ -24,12 +24,12 @@ Two rules settle most questions:
 
 1. **Anything that can be built on top stays out of the core.** The runtime has six traits and only
    minimal implementations (`AskAlways`, `LinearProjector` and `BytesPerToken`, just enough for a
-   kernel to exist). Providers, tools, a CLI, an editor protocol, a `/context` renderer, a
-   permission table, MCP, subagents and stats all live in `examples/`, in the off-by-default `test`
-   and `selectors` features, or in other crates. There is no prompt text in `nachalnik/src`, and
-   model parameters are an opaque `serde_json` map passed to the provider unchanged. Before adding
-   to `nachalnik/src`, ask: *could this be an optional capability instead of core behaviour?* If
-   so, it doesn't go in.
+   kernel to exist). Providers, tools, a CLI, a `/context` renderer, a permission table, MCP,
+   subagents and stats all live in `examples/`, in the off-by-default `test` and `selectors`
+   features, or in other crates, and so would an editor protocol, which nothing here builds yet.
+   There is no prompt text in `nachalnik/src`, and model parameters are an opaque `serde_json` map
+   passed to the provider unchanged. Before adding to `nachalnik/src`, ask: *could this be an
+   optional capability instead of core behaviour?* If so, it doesn't go in.
 2. **The loop is an explicit state machine**, one transition per `Kernel::step`. That is what makes
    a second concurrent step return `Error::Busy` instead of sending a duplicate request, what makes
    a dropped step future return to `Idle` instead of getting stuck, and what gives a client one
@@ -82,10 +82,11 @@ file per extension point or per kind of data the kernel keeps: `context/`, `mode
 `session.rs`. `test.rs` (feature `test`) has the scripted provider, fake tools and table policy;
 use those instead of writing new mocks.
 
-`kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem
-and the shell, `introspect/` is the tools an agent uses to inspect and manage its own session,
-`wiring/` assembles a session, `args.rs` combines flags and the settings file, and `main.rs` picks
-the loop and reports where the session was saved. Keep it that way.
+`kamchatka/src`: `app/` is the state, `ui/` draws and decides nothing, `tools/` is the filesystem,
+the shell, the permission policy and the compactor, `introspect/` is the tools an agent uses to
+inspect and manage its own session, `wiring/` assembles a session, `args.rs` combines flags and the
+settings file, and `main.rs` picks the loop and reports where the session was saved. Keep it that
+way.
 
 The file-by-file map is in [MAP.md](MAP.md).
 
