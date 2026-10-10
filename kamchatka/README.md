@@ -61,7 +61,9 @@ open, showing why it is there and what it says.][shot-context]
 
 **No hidden instructions.** `kamchatka` sends no system prompt of its own. The only system text in a
 session is what you give it with `--system` or a settings file, and it appears as a pinned row on
-the context tab like any other item. Apart from the context, the model only receives the tool
+the context tab like any other item. Two things that make a session of their own write an
+instruction into it: a `fork` is told it is a copy with no tools, and a session `kamchatka
+reconcile` makes says which notes came from which fork, pinned where you can read it. Apart from the context, the model only receives the tool
 definitions, and `/budget` shows what they cost.
 
 **See the request before it's sent.** <kbd>ctrl+p</kbd> prints the next request as the runtime
