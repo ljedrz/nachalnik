@@ -98,8 +98,8 @@ cost in `Projection::repairs` rather than doing it quietly.
 
 ## 🎯 a budget that corrects itself, and admits what it cannot reach
 
-Every token figure the kernel reports comes from a `TokenCounter`. The default one estimates
-`bytes / 4`, which is only an estimate, and how far off it is depends on what you send: short
+Every token figure the kernel reports comes from a `TokenCounter`. The default one estimates text
+as `bytes / 4`, which is only an estimate, and how far off it is depends on what you send: short
 requests with many tool definitions come out well below the real count, long conversations a few
 percent below. It can't see per-message overhead or the tokens a reasoning model spends thinking.
 Embedding a tokenizer would tie the crate to particular models, which it won't do.
@@ -126,12 +126,13 @@ rewrites them when you ask, and says so on the event stream.
 The hook is `TokenCounter::observe`, which does nothing by default. As everywhere else, the kernel
 provides the facts and your code decides what to do with them.
 
-When a counter can't price something at all, it says so instead of returning `0`. That's a
-different problem from being a few percent off, and calibration can't fix it: `Content::Blob`
-holds base64, and base64 length divided by four says nothing about tokens. A 400 KB screenshot
+When a counter can't price something at all, it says so instead of returning `0`. That's a different
+problem from being a few percent off, and calibration can't fix it: `Content::Blob` holds base64,
+and base64 length divided by four says nothing about tokens: divided that way, a 400 KB screenshot
 would count as a hundred thousand tokens and trigger compaction of a context that is nowhere near
-full. An image's real cost is a formula based on its *dimensions*, and every vendor publishes a
-different one, so this crate includes none of them.
+full. So the default counter leaves every blob out of its figure and counts it as unpriced instead.
+An image's real cost is a formula based on its *dimensions*, and every vendor publishes a different
+one, so this crate includes none of them.
 
 Instead, it gives you two things to supply your own. `TokenCounter::uncounted` is a *count*
 of the pieces a counter declined to price, and it rides up to `Budget::uncounted` and
