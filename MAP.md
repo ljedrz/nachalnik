@@ -141,9 +141,10 @@ declared answer format, `intervene.rs` and `fork.rs` change a copy of a `Snapsho
 the model being tested.
 What the experiments measure is in its [README](nachalnik-eval/README.md).
 
-**Be careful with `Instrument`.** Every outcome includes a hash of all the text the experiment
-sends, and `tests/machinery/` checks those hashes: if it fails, a question changed, and earlier
-results are no longer comparable.
+**Be careful with `Instrument`.** Every outcome includes a hash of the text the experiment sends -
+its dossiers, its templates and the fork's preamble, though not the answer-format sentence after
+each question (see POSTPONED.md) - and `tests/machinery/` checks those hashes: if it fails, a
+question changed, and earlier results are no longer comparable.
 
 `examples/`: `bench` runs the suite against an OpenAI-compatible endpoint; `compare` and `pool`
 read saved reports and send no requests.

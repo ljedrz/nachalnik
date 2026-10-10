@@ -292,6 +292,14 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
   to be read as one first.
 
+- **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
+  `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
+  dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
+  what every subject is asked while every digest, and the test pinning them, stayed the same.
+  Hashing it moves every digest at once, so runs made before could no longer be compared with runs
+  after though nothing they were asked changed; it waits for the next change that bumps
+  `script::VERSION` anyway.
+
 - **A session's root directories are resolved on every check.** `Reach` resolves the working
   directory and every `--sandbox-allow` and `--sandbox-read` root each time it checks a path, which
   a `grep` over a large tree pays for every file and symlink. Resolving them once at startup would
