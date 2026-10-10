@@ -11,6 +11,7 @@ Newline-delimited JSON-RPC over stdin and stdout, which is what the transport sp
 """
 
 import json
+import os
 import sys
 import time
 
@@ -78,6 +79,10 @@ def result_for(method, params):
 
 
 def main():
+    # `--needs NAME` stops before the handshake unless NAME is in the environment, for the test that
+    # a server is handed the program's keys, which the shell is not
+    if "--needs" in sys.argv[1:] and sys.argv[sys.argv.index("--needs") + 1] not in os.environ:
+        sys.exit(3)
     for line in sys.stdin:
         line = line.strip()
         if not line:

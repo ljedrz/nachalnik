@@ -304,9 +304,14 @@ async fn a_dropped_server_fails_its_calls_instead_of_hanging() {
 /// meets: `--mcp name=command` as an argument, the spec split into a program and its arguments,
 /// and a server spawned after the wiring rather than during it. This one runs the binary, and it
 /// needs no model to do it - `/tools` is answered here.
+///
+/// note: the server is started with `--needs KAMCHATKA_API_KEY`, so it stops before offering
+/// anything unless it was handed the program's key. The shell's commands are not handed
+/// `endpoint::KEYS`, and SECURITY.md says why a server is: it is a program the person chose, and
+/// one that calls an API of its own may read one of these names for its key.
 #[test]
 fn the_program_offers_a_spawned_servers_tools() {
-    let spec = spec!();
+    let spec = format!("{} --needs KAMCHATKA_API_KEY", spec!());
 
     let mut child = common::command()
         .args(["-m", "nothing-serves-this", "--no-record", "--mcp", &spec])
