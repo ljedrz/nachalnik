@@ -293,9 +293,10 @@ def main():
                 log(f"{name}: complete, {s['requests']} requests")
                 continue
             log(f"{name}: incomplete ({s['why']})")
-            # what says the endpoint is not serving: a turn it never answered, or a session that
-            # ended on an error
-            if s.get("empty") or not s.get("finished") and s.get("exit") not in (124, 143):
+            # what says the endpoint is not serving now: a last message it never answered, or a
+            # session that ended on an error. Not a turn it failed to answer hours before, which
+            # makes the sweep incomplete but says nothing of the endpoint as it is
+            if s.get("turn") == 0 or not s.get("finished") and s.get("exit") not in (124, 143):
                 streak += 1
                 pause = min(3600, 300 * 2 ** (streak - 1))
                 paused_until = now + pause
