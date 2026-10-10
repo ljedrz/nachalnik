@@ -164,7 +164,7 @@ trait object you can set, swap at runtime, and inspect:
 | trait | you provide | the kernel provides |
 | --- | --- | --- |
 | `Provider` | a model, however you reach it | the request, verbatim |
-| `Tool` | what the model can do | the schema, the gating, the recording |
+| `Tool` | what the model can do, and its schema | sending the schema, the gating, the recording |
 | `PermissionPolicy` | what is allowed | the question, and the refusal |
 | `Projector` | the shape of a request | the context it is projected from |
 | `TokenCounter` | how tokens are counted | every number it reports, and what each request really cost |
