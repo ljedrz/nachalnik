@@ -207,9 +207,9 @@ The runtime enforces one thing: a call the `PermissionPolicy` refused is never p
 a checkpoint with a record, not a security boundary. The refusal says which *kind* it was, since
 that's what a model needs to decide what to do next: a standing rule means the same call will be
 refused again, while a refusal of *this* call means a different approach might be allowed. The
-kernel knows which kind it was, because it resolved the decision. It doesn't know *why*, so it
-asks: `PermissionPolicy::why` returns `None` by default, and whatever a policy returns goes into the
-tool result next to the kernel's own explanation.
+kernel knows which kind it was, because it resolved the decision. It doesn't know *why*, so where
+the policy is what refused it asks: `PermissionPolicy::why` returns `None` by default, and whatever
+a policy returns goes into the tool result next to the kernel's own explanation.
 
 What it does not protect you from, by design:
 
