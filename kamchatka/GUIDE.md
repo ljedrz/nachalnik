@@ -67,8 +67,11 @@ so the figure is a **minimum**.
 For most rows **sending** is the whole item and **held** is blank. The interesting rows are where
 they differ: an elided result only costs its placeholder, an excluded item costs nothing, and an
 assistant turn sends what it said but holds back its reasoning when the endpoint doesn't accept
-reasoning back. The `sending` column adds up to the status line's figure minus the tool definitions
-(`/budget` shows the two separately). An excluded or elided row explains why in its note.
+reasoning back. The `sending` column adds up to the context half of `/budget`'s estimate, which
+puts the tool definitions beside it. The status line shows that estimate only until the first
+answer: after it, the status line starts from the provider's count for the last request and adds
+what has changed since, and `/budget` shows both figures. An excluded or elided row explains why
+in its note.
 
 Pinning is most useful *before* compaction, which is what `/compact` is for: it lists every item
 the compactor would remove and waits for <kbd>y</kbd> or <kbd>n</kbd> in place of the prompt. The
