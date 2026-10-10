@@ -29,7 +29,8 @@ What it decides on its own:
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
   counts as one more failure towards a step back.
 - **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
-  run again from the start, up to `--tries` times in all (default 3).
+  run again from the start, up to `--tries` times in all (default 3). A try the endpoint never
+  answered once is kept in $SWEEPS/old/void/ and not counted.
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
   running from before rather than starting them twice.
 """
@@ -177,10 +178,10 @@ def earlier(name):
     return kept + os.path.exists(sweeps.path(name, ".in"))
 
 
-def aside(name):
+def aside(name, under="old"):
     """Moves a sweep's files to old/, numbered, so a fresh run starts from nothing, and says how
     many tries are kept there."""
-    old = os.path.join(sweeps.SWEEPS, "old")
+    old = os.path.join(sweeps.SWEEPS, under)
     os.makedirs(old, exist_ok=True)
     n = 1
     while glob.glob(os.path.join(old, f"{name}.{n}.*")):
@@ -325,6 +326,12 @@ def main():
                 moved = climb.failed(now)
                 if moved:
                     log(moved)
+            # note: a try the endpoint never answered once did no work, and counting it would let
+            # an endpoint failing every new connection use up every sweep's tries in a few
+            # pauses. It is kept apart, in old/void/, where `earlier` does not count it
+            if not s.get("requests"):
+                aside(name, os.path.join("old", "void"))
+                log(f"{name}: nothing was answered, so the try is not counted")
             if earlier(name) < tries:
                 queue.append(name)
             else:
