@@ -97,16 +97,16 @@ paired with, from every compaction.
 | <kbd>p</kbd> | pin it, so the compactor can't remove it |
 | <kbd>e</kbd> | edit what it **says**; a tool call isn't text, so a turn that's only a call can't be edited, and you're told why |
 | <kbd>f</kbd> | show only what the next request sends whole, leaving out the elided as well as the excluded, or everything again |
-| <kbd>y</kbd> | copy the whole content to the clipboard through the terminal (see below) |
+| <kbd>y</kbd> | copy its text to the clipboard through the terminal (see below) |
 | <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the full content (see below) |
 | <kbd>enter</kbd> | open the whole item (see below) |
 | <kbd>←</kbd> / <kbd>→</kbd> | switch between its pages, while it's open |
 | <kbd>u</kbd> / <kbd>U</kbd> | undo / redo the last change to the context; `/undo` and `/redo` do the same, and are the only way when driving through a pipe or a browser |
 | <kbd>23G</kbd> | go to item 23 (the number `/exclude` takes) |
 
-**<kbd>y</kbd> copies an item in full and without line wrapping**, which selecting with the mouse
-can't do. `/copy` does the same from the chat tab: the last thing the model said, or `/copy 7` for
-item 7. It uses
+**<kbd>y</kbd> copies an item's text in full and without line wrapping**, which selecting with the
+mouse can't do; a turn's reasoning is left out, and a picture is a line naming it. `/copy` does the
+same from the chat tab: the last thing the model said, or `/copy 7` for item 7. It uses
 [OSC 52](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands), so
 it works over `ssh`, but terminals that don't support it ignore it silently (`tmux` needs
 `set-clipboard on`); the line it prints gives the byte count, so you can compare it with what you
@@ -124,8 +124,8 @@ them:
   here, and the box opens on this page when that's the case.
 - **`as stored`** is the item's actual content, which differs for an elided or excluded item. If
   it has been rewritten, the page starts with who rewrote it last and why.
-- **`v1`**, **`v2`** and so on are earlier versions from before it was edited, newest first, up to
-  eight, kept across `-r`.
+- **`v1`**, **`v2`** and so on are earlier versions from before it was edited, numbered from the
+  oldest and shown newest first, up to eight, kept across `-r`.
 
 <kbd>e</kbd> controls **what** the model reads of an item, while `space` and `p` control
 whether it reads it. The prompt becomes an editor holding the item's text, and saving replaces it
@@ -137,13 +137,14 @@ log. Each is one line: when it happened, the time since the line above, the even
 details.
 
 Every state machine transition is there, along with everything around it, and each line shows the
-event's contents, not just its name. It's the same stream `/save` writes to a `.jsonl` file.
+event's contents, not just its name. It's the same stream `/save` writes to a `.jsonl` file, except
+for streamed output, which the log doesn't keep.
 
 There are two times on each line: when it happened (with a line across the pane when the date
-changes), and the time since the line above, left blank under a tenth of a second, so the slow
-steps stand out. Waits for *you* get no time. Streamed fragments don't get a line each: a tool's
-output is one `tool.output` line whose byte count grows, and the model's text is on the chat tab.
-The pane keeps the last few hundred lines; `/save` keeps all of them.
+changes), and the time since the line above, left blank under a tenth of a second, so the slow steps
+stand out. Waits for *you* get no time. Streamed fragments don't get a line each: a tool's output is
+one `tool.output` line whose byte count grows, and the model's text is on the chat tab. The pane
+keeps the last few hundred lines; `/save` keeps every one the log has.
 
 **<kbd>/</kbd> filters either of those two panes**, fuzzily (`mreq` finds `model.requested`). On
 the context tab it matches each item's full content, label and kind, so `tool_result` narrows a
