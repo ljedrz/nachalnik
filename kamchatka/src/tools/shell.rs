@@ -600,9 +600,14 @@ impl Tool for Shell {
             }
         };
 
-        // the program's keys stay with the program; see `endpoint::KEYS`
+        // the program's keys stay with the program; see `endpoint::KEYS` and `endpoint::ADDRESSES`
         for key in crate::endpoint::KEYS {
             command.env_remove(key);
+        }
+        for address in crate::endpoint::ADDRESSES {
+            if std::env::var(address).is_ok_and(|url| crate::endpoint::has_credentials(&url)) {
+                command.env_remove(address);
+            }
         }
         // and the mark everything it starts carries, which is how the end of the session finds what
         // it left running; see `Stragglers`

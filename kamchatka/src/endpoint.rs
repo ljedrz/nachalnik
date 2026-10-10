@@ -249,6 +249,19 @@ pub const KEYS: [&str; 5] = [
     "KAMCHATKA_SYSTEM1_API_KEY",
 ];
 
+/// Every variable this program reads an address from, which a command it runs for the model does
+/// not inherit where the address carries a `user:password@`.
+///
+/// note: that part of an address is a key written into it, which [`shown`] already keeps off every
+/// screen, and it would reach the context through `printenv` as a key in [`KEYS`] would. An
+/// address without one is no secret, and a command is handed it as before.
+pub const ADDRESSES: [&str; 2] = ["KAMCHATKA_BASE_URL", "KAMCHATKA_SYSTEM1_BASE_URL"];
+
+/// Whether `url` carries a `user:password@` before its host.
+pub fn has_credentials(url: &str) -> bool {
+    shown(url) != url
+}
+
 /// Whether requests can be sent to `url` at all: an `http://` or `https://` scheme, a host, and
 /// nothing after the path.
 ///

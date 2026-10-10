@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A command the model runs is not handed an address with a key in it.** `KAMCHATKA_BASE_URL` and
+  `KAMCHATKA_SYSTEM1_BASE_URL` may carry a `user:password@`, which the program keeps off every
+  screen, and a command was handed the variable as it was, so `printenv` put the password into the
+  context, the request and the record. Where the address carries one, the variable is taken out of
+  the command's environment with the keys; an address without one is still handed on.
+
 - **`fs write` refuses an absolute path ending in a separator, as it does a relative one.** Such a
   path names a directory, and `fs` makes none, but the refusal was only for relative paths:
   `/tmp/build/` where there was no `/tmp/build` made a file called `build`.

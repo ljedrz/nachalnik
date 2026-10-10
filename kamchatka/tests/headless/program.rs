@@ -960,7 +960,8 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
 async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
     let cmd = "echo \"${KAMCHATKA_API_KEY:-none} ${OPENROUTER_API_KEY:-none} \
                ${OPENAI_API_KEY:-none} ${ANTHROPIC_API_KEY:-none} \
-               ${KAMCHATKA_SYSTEM1_API_KEY:-none} ${HOME:+home}\" > seen.txt";
+               ${KAMCHATKA_SYSTEM1_API_KEY:-none} ${KAMCHATKA_BASE_URL:-none} \
+               ${HOME:+home}\" > seen.txt";
     for confined in [true, false] {
         let dir = common::scratch(&format!("keys-{confined}"));
         let base = common::endpoint(vec![
@@ -992,7 +993,11 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
         let ran = command
             .arg("go")
             .current_dir(&dir)
-            .env("KAMCHATKA_BASE_URL", &base)
+            // an address with a key written into it, which is a key like the rest
+            .env(
+                "KAMCHATKA_BASE_URL",
+                base.replacen("http://", "http://user:sk-in-the-address@", 1),
+            )
             .env("KAMCHATKA_API_KEY", "sk-the-session-key")
             .env("OPENROUTER_API_KEY", "sk-the-router-key")
             .env("OPENAI_API_KEY", "sk-another-key")
@@ -1015,7 +1020,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
         });
         assert_eq!(
             seen.trim(),
-            "none none none none none home",
+            "none none none none none none home",
             "confined: {confined}"
         );
     }

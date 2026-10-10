@@ -61,10 +61,11 @@ What changes to this workspace must keep true about what is and isn't enforced.
   command's name, and the permissions tab says so. `gate` is the only module in the workspace with
   `unsafe` code, each block with a comment explaining why it's sound.
 - **Commands the model runs don't get this program's API keys.** Every variable `kamchatka` reads a
-  key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not. The
-  sandbox restricts files and the network but not the environment a command starts with, so a key
-  left there could always be printed, and whatever a command prints goes into the context, the
-  request and the record. The keys are still in `kamchatka`'s own environment, and on Linux a
+  key from (`endpoint::KEYS`) is removed from the `shell` tool's environment, sandboxed or not, and
+  so is an address variable (`endpoint::ADDRESSES`) that carries a `user:password@`. The sandbox
+  restricts files and the network but not the environment a command starts with, so a key left
+  there could always be printed, and whatever a command prints goes into the context, the request
+  and the record. The keys are still in `kamchatka`'s own environment, and on Linux a
   process can read another's through `/proc/PID/environ`. A sandboxed command can't read its
   parent's, because Landlock prevents processes inside a sandbox from inspecting ones outside it;
   with `--no-sandbox` it can, so removing the variables only keeps them out of the command's own
