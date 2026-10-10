@@ -48,7 +48,8 @@ name as a prefix: `files__read`. Names are also rewritten to fit what model prov
 (`[a-zA-Z0-9_-]`, 64 characters, starting with a letter or `_`, so `7zip__list` is sent as
 `_7zip__list`), and rewriting can cause collisions, so `Installed::replaced` says
 which tools were displaced. `without_prefix()` turns the prefix off, which is fine with a single
-server, but with two, one server's `read` silently replaces the other's.
+server, but with two, one server's `read` replaces the other's, and only `Installed::replaced` says
+so.
 
 When the prefix and name together are too long, the *prefix* is shortened, because the tool's own
 name is what tells a server's tools apart.

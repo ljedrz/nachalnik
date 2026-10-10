@@ -173,7 +173,7 @@ impl Server {
     /// Offers the tools under their own names rather than the server's plus theirs.
     ///
     /// note: Shorter, and worth it for a single server. With two of them it is how one server's
-    /// `read` quietly becomes the other's.
+    /// `read` becomes the other's, said only in [`Installed::replaced`].
     pub fn without_prefix(mut self) -> Self {
         self.prefix = false;
         self
