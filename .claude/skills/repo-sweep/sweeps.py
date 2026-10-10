@@ -36,7 +36,6 @@ LOGS = os.environ.get("KAMCHATKA_LOGS") or os.path.join(os.environ.get("TMPDIR",
 # what kamchatka prints while it waits on the endpoint: `MODEL answered 429; trying again in 4s`,
 # and the same for a timeout or a refused connection
 RETRYING = re.compile(r"; trying again in \d+s")
-REFUSED = "not permitted"
 # the stop reason of a last answer that is an answer: `tool_use` there is a turn that stopped
 # partway, and `max_tokens` one cut off
 ANSWERED = {"end_turn"}
@@ -114,6 +113,9 @@ class Records:
         self.empty = 0  # turns that failed with nothing answered in them
         self.throttled = 0  # turns that failed on a 429 kamchatka's own retries did not outlast
         self.answered = 0  # answers in the turn under way
+        # calls the policy refused, read off the records: the prose holds what a sweep read and
+        # grepped as well, and one that searched for a refusal's wording counted as refused
+        self.refused = 0
         self.stop = None
         self.finished = False  # the log's last record, written as the session ends on its own
         self.read_from = None
@@ -151,6 +153,8 @@ class Records:
                         self.inputs.append(used)
                     stop = event.get("stop")
                     self.stop = stop if isinstance(stop, str) else json.dumps(stop)
+                elif kind == "permission.decided" and event.get("grant") == "deny":
+                    self.refused += 1
                 elif kind == "session.finished":
                     self.finished = True
                 elif kind in ("model.failed", "step.failed"):
@@ -197,7 +201,7 @@ def state(name, now=None):
         throttled=records.throttled,
         turn=records.answered,
         retrying=len(RETRYING.findall(prose)),
-        refused=prose.count(REFUSED),
+        refused=records.refused,
         quiet=int(now - changed),
         stop=records.stop,
     )
