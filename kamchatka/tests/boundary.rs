@@ -219,14 +219,6 @@ fn a_directory_that_may_only_be_searched_is_still_reached() {
     );
 }
 
-/// A refusal names everywhere the session reaches, not only the directory it started in.
-///
-/// note: it used to say "outside {workdir}, which is as far as this session reaches", which was
-/// true until somebody passed `--sandbox-allow` and false afterwards - and false in the direction
-/// that costs something. A model reads a refusal as the whole boundary, so a path opened up for it
-/// on purpose is one it then never goes near, and nothing in front of it says otherwise. The
-/// `shell` tool has named them in its own description since the same thing happened to a confined
-/// command; these three run in process and were the half left behind.
 /// A path checked and then changed into a link out, before it is opened, is refused at the open
 /// rather than followed - for reading, and for writing, which would create or empty a file there.
 ///
@@ -300,6 +292,14 @@ fn a_path_turned_into_a_link_out_after_it_was_checked_is_not_opened() {
     assert_eq!(said, "mine");
 }
 
+/// A refusal names everywhere the session reaches, not only the directory it started in.
+///
+/// note: it used to say "outside {workdir}, which is as far as this session reaches", which was
+/// true until somebody passed `--sandbox-allow` and false afterwards - and false in the direction
+/// that costs something. A model reads a refusal as the whole boundary, so a path opened up for it
+/// on purpose is one it then never goes near, and nothing in front of it says otherwise. The
+/// `shell` tool has named them in its own description since the same thing happened to a confined
+/// command; these three run in process and were the half left behind.
 #[test]
 fn a_refusal_names_what_was_opened_up() {
     use kamchatka::sandbox::{Access, Reach};
