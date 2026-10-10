@@ -157,7 +157,8 @@ And from anywhere, <kbd>ctrl+p</kbd> prints the request all those items add up t
 actually builds it, under a header that counts the items included and left out, names each one the
 projector left out and why, and lists each fix it had to make, such as dropping a call because its
 result isn't in the request.
-`/payload` goes further and prints exactly what the provider will send.
+`/payload` goes further and prints exactly what the provider will send, except that an
+attachment's base64 is replaced by its media type and size.
 
 ## ✍️ what the model writes
 
