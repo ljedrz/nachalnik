@@ -897,7 +897,8 @@ impl Tool for Shell {
         // resolution`, which reads as a network having trouble. A model that does not know it was
         // refused goes looking for another way out rather than asking
         let refused = "so every internet socket it asked for was refused with `Permission \
-                       denied`, and a name it tried to look up failed the same way";
+                       denied`, and a name it tried to look up failed with `Temporary failure in \
+                       name resolution`";
         //
         // note: "when it was asked about" and not "the person said", in the kernel's words for its
         // own questions, because what answered may be `--on-ask` in a run nobody is watching, and

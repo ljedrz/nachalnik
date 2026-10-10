@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`shell` says how a refused name lookup reads.** A command the network gate refused was said to
+  have had its sockets refused with `Permission denied` and its name lookups refused "the same
+  way". A lookup fails as `Temporary failure in name resolution`, which is what the note is there
+  to explain, and it says so now.
+
 - **`grep` and `glob` say when a link leads to a directory they did not search.** The walk
   follows no links, which is right for one into the directory being searched, since its files are
   reached by their own names. A link out of it to somewhere else in reach was passed over without
