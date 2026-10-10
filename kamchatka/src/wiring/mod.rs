@@ -873,7 +873,7 @@ impl Setup {
             true => match record(app) {
                 Ok(written) => format!(
                     "{name} ended: {written} (`kamchatka -r {}` carries on from it)",
-                    written.state
+                    written.state.display()
                 ),
                 // the restart still happens: a session nobody could write down is a worse reason
                 // to refuse somebody a fresh one than it is to carry on with the old

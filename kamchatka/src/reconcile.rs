@@ -740,9 +740,9 @@ pub fn write(reconciled: &Reconciled, into: &str) -> Result<(String, String), St
     let snapshot = serde_json::to_vec_pretty(&reconciled.snapshot)
         .map_err(|e| format!("could not render the session: {e}"))?;
 
-    let log_beside = beside(&log, (records.join("\n") + "\n").as_bytes())
+    let log_beside = beside(log.as_ref(), (records.join("\n") + "\n").as_bytes())
         .map_err(|e| format!("could not write {log}: {e}"))?;
-    let state_beside = beside(&state, &snapshot).map_err(|e| {
+    let state_beside = beside(state.as_ref(), &snapshot).map_err(|e| {
         let _ = std::fs::remove_file(&log_beside);
         format!("could not write {state}: {e}")
     })?;
