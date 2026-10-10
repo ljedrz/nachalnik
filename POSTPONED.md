@@ -208,6 +208,15 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   word that isn't a domain as a path rule would turn a typo like `--deny contextt` into a rule about
   a file that silently matches nothing, so this waits for a syntax that's unambiguous.
 
+- **`--allow .env` doesn't stop the question about `.env`.** The default rule `.env*` asks, every
+  path rule that matches a call is consulted, and the strictest answer wins, so an allow for the
+  exact file never beats the broader ask; `--allow '.env*'` does, because it replaces the default.
+  Capability rules don't work this way: there `--allow fs:read` decides over an ask for `fs`. It
+  fails safe, but the rule is accepted and nothing says it changes nothing. Saying so at
+  startup, refusing the rule with the pattern that would work, or letting an exact path's allow
+  decide over a default pattern are all changes to what a rule means, so it waits for a decision
+  on how path rules combine.
+
 - **`fs write` doesn't create directories.** Writing into a directory that doesn't exist is refused
   with the directory's name, and a model without `exec` can't create it. Creating missing parent
   directories inside the allowed paths would change what `fs:write` allows, so it's a question for
