@@ -244,6 +244,8 @@ struct Skipped {
     elsewhere: usize,
     /// Links to nothing: what they name is not there, or is a link back to themselves.
     nowhere: usize,
+    /// Links to a directory outside the one walked, which the walk does not follow.
+    away: usize,
 }
 
 impl Skipped {
@@ -253,6 +255,11 @@ impl Skipped {
             (self.asked, "file(s) a path rule says to ask about"),
             (self.refused, "file(s) a path rule refuses"),
             (self.links, "link(s) pointing out of reach"),
+            (
+                self.away,
+                "link(s) to a directory outside the one searched, not followed - search it by its \
+                 own path",
+            ),
             (
                 self.binary,
                 "binary file(s) - one holding a NUL, where the search stops",
@@ -328,6 +335,7 @@ fn walked(
     mut each: impl FnMut(Seen, &mut Skipped) -> ControlFlow<()>,
 ) -> (bool, Skipped) {
     let mut skipped = Skipped::default();
+    let inside = under(root);
     for entry in walk(root) {
         if sink.is_interrupted() {
             return (true, skipped);
@@ -354,9 +362,13 @@ fn walked(
         // that stays beneath the root refuses a link however it was made
         let mut leads = None;
         if kind.is_symlink() {
-            match followed(reach, entry.path()) {
+            match followed(reach, entry.path(), &inside) {
                 Link::Read(resolved) => leads = Some(resolved),
                 Link::Skip => continue,
+                Link::Away => {
+                    skipped.away += 1;
+                    continue;
+                }
                 // a link to something that is not a file, so nothing to search or list
                 Link::Elsewhere => {
                     skipped.elsewhere += 1;
@@ -415,14 +427,18 @@ fn walked(
 /// same call, with the same answer, that `read` makes about the same path. So "outside the reach"
 /// means here exactly what it means there, rather than being a second opinion that can drift.
 ///
-/// note: a link to a *directory* is left alone rather than descended, and nothing is counted for
-/// it. Where it points inside the reach, the walk arrives at those files by their real names
-/// anyway, and following it as well would report each of them twice - or walk a cycle for ever.
+/// note: a link to a *directory* is left alone rather than descended. Where it points beneath
+/// the directory walked, the walk arrives at those files by their real names anyway, and
+/// following it as well would report each of them twice - or walk a cycle for ever, so nothing
+/// is said of it. Where it points elsewhere, nothing of what it leads to is searched, and an
+/// answer that said nothing of it would read as that directory having no matches.
 enum Link {
     /// A file with a second name: search it, by its first.
     Read(PathBuf),
     /// A directory the walk reaches by its own name: nothing to do and nothing to say.
     Skip,
+    /// A directory in reach that the walk does not come to: passed over, and counted.
+    Away,
     /// Something that is not a file at all - a pipe, a socket, a device: passed over, and counted
     /// as the thing itself would be.
     Elsewhere,
@@ -434,11 +450,12 @@ enum Link {
     Refuse,
 }
 
-fn followed(reach: &Reach, path: &Path) -> Link {
+fn followed(reach: &Reach, path: &Path, inside: &Path) -> Link {
     match reach.allows(&path.to_string_lossy(), Access::Reading) {
         Err(_) => Link::Refuse,
         Ok(resolved) if path.is_file() => Link::Read(resolved),
-        Ok(_) if path.is_dir() => Link::Skip,
+        Ok(resolved) if path.is_dir() && resolved.starts_with(inside) => Link::Skip,
+        Ok(_) if path.is_dir() => Link::Away,
         // `metadata` follows the link, so it fails where the chain ends at nothing
         Ok(_) if std::fs::metadata(path).is_err() => Link::Nowhere,
         // a link to a pipe or a device is passed over as the thing itself would be

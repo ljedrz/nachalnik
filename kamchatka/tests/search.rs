@@ -435,6 +435,35 @@ async fn a_path_that_is_not_a_file_is_counted_rather_than_passed_over() {
     assert!(said.contains("1 path(s) that are not files"), "{said}");
 }
 
+/// A link to a directory outside the one searched is counted, since nothing it leads to was
+/// searched; one to a directory beneath it is not, since the walk reaches those files anyway.
+///
+/// note: the walk follows no links, so a search of `docs` with `docs/src -> ../src` in it searched
+/// nothing of `src`, and said "no matches" with nothing skipped - which reads as `src` not having
+/// any.
+#[tokio::test]
+async fn a_link_to_a_directory_outside_the_search_is_counted() {
+    let dir = tree("grep-away");
+    std::fs::create_dir(dir.join("docs")).expect("a directory to search");
+    std::os::unix::fs::symlink(dir.join("src"), dir.join("docs/src")).expect("a link out of it");
+
+    for (action, args) in [
+        ("grep", json!({ "pattern": "Kernel", "path": "docs" })),
+        ("glob", json!({ "pattern": "**/*.rs", "path": "docs" })),
+    ] {
+        let said = ask(&dir, action, args.clone()).await;
+        assert!(
+            said.contains("1 link(s) to a directory outside the one searched"),
+            "{action} {args}: {said}"
+        );
+    }
+
+    // and from above both, where the walk comes to `src` by its own name, nothing is said of it
+    let said = ask(&dir, "grep", json!({ "pattern": "Kernel" })).await;
+    assert!(!said.contains("outside the one searched"), "{said}");
+    assert!(said.contains("src/kernel.rs"), "{said}");
+}
+
 /// A link to nothing - one whose file is not there, or a loop of links - is counted as that,
 /// rather than as a pipe, a socket or a device.
 #[tokio::test]

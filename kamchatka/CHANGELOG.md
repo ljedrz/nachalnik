@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **`grep` and `glob` say when a link leads to a directory they did not search.** The walk
+  follows no links, which is right for one into the directory being searched, since its files are
+  reached by their own names. A link out of it to somewhere else in reach was passed over without
+  a word, so a search of `docs` holding `docs/src -> ../src` said `no matches` with nothing
+  skipped. It is counted now, with a line saying to search that directory by its own path.
+
 - **A permission question says why the advisor could not rate it.** The reason was cut to its
   first 120 characters, and a transport's failure reaches the advisor as its causes in a chain,
   the address first and what went wrong last: the question showed the address and stopped before
