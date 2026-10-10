@@ -1155,6 +1155,41 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
     assert!(made.contains("/dev/made-up-by-a-test"), "{made}");
 }
 
+/// A root the person named under `/dev` is reached like one anywhere else, so a refusal beneath it
+/// is the file's own permissions and nothing is said.
+///
+/// note: `--sandbox-allow` and `--sandbox-read` are granted under `/dev` as anywhere, and only
+/// `--sandbox-device` is limited to it. Judging `/dev` by the devices alone told a command that a
+/// terminal beneath an allowed `/dev/pts` was out of reach, when it was the terminal's owner who
+/// refused it.
+#[test]
+fn a_root_named_under_dev_is_reached() {
+    for (extra, readable) in [
+        (vec![PathBuf::from("/dev/pts")], Vec::new()),
+        (Vec::new(), vec![PathBuf::from("/dev/pts")]),
+    ] {
+        let confined = Sandbox {
+            workdir: common::workdir("dev-root"),
+            extra,
+            readable,
+            writable: true,
+            network: kamchatka::sandbox::Network::NoTcp,
+            devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
+            closed: Vec::new(),
+        };
+
+        assert_eq!(
+            confined.note_for("cat: /dev/pts/4096: Permission denied\n"),
+            None,
+            "a terminal under a root that was named is one the command reached"
+        );
+        let other = confined
+            .note_for("cat: /dev/made-up-by-a-test: Permission denied\n")
+            .expect("the rest of /dev is still the boundary");
+        assert!(other.contains("/dev/made-up-by-a-test"), "{other}");
+    }
+}
+
 /// What the kernel says about a scope, asked out of the crate rather than out of the program.
 ///
 /// note: the crate's own spelling deliberately - a hard requirement, and a ruleset that is only

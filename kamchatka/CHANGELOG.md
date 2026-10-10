@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal under a root named in `/dev` is not blamed on the confinement.** `--sandbox-allow`
+  and `--sandbox-read` are granted under `/dev` as anywhere else, but `shell` judged a path there
+  by the named devices alone. A command refused a terminal under an allowed `/dev/pts` was told
+  the path was outside what the session reaches, when the terminal's own permissions refused it.
+
 - **`shell` says how a refused name lookup reads.** A command the network gate refused was said to
   have had its sockets refused with `Permission denied` and its name lookups refused "the same
   way". A lookup fails as `Temporary failure in name resolution`, which is what the note is there
