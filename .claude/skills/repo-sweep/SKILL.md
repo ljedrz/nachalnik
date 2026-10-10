@@ -56,6 +56,15 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
 - **Another endpoint** is `KAMCHATKA_BASE_URL` set to its base (`https://host/v1`, without
   `/chat/completions`). Check it answers before starting anything: a key that lists models can
   still be refused completions (`Insufficient balance` on a free tier not yet enabled).
+- **Know what it costs before anything is sent.** A run is hundreds of millions of tokens, so a
+  model that is not free costs hundreds of dollars. Read the model's price in the listing, and
+  ask the person before running anything that is not free, or before switching to another model
+  id. For a run that is meant to be free, start `price.py MODEL` beside `run.py`: it stops the
+  run when the listing gives the model a price or drops it. It cannot see a promotion that ends
+  without the listing changing. Once, a free offer's model began failing new requests while the
+  sweeps already connected were billed at full price for five hours. **A free endpoint that
+  suddenly fails is a reason to stop the run and ask the person to check their balance**, not an
+  outage to wait out.
 - `CARGO_TARGET_DIR` may point at the repository's `target`; the scripts honour it.
 
 ## 2. sweep
@@ -74,6 +83,7 @@ watching:
 
 ```sh
 nohup python3 $SKILL/run.py > /dev/null 2>&1 &          # every KIND, in order; or name some
+nohup python3 $SKILL/price.py <model> > $SWEEPS/price.log 2>&1 &   # a run meant to be free
 python3 $SKILL/status.py                               # where each sweep stands
 python3 $SKILL/status.py --watch 15                    # in the background; wakes you on news
 ```
@@ -116,6 +126,9 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
 - **Don't kill sweeps by hand to change course.** A stopped sweep is resumed from its last rest,
   but the turn it was in is lost. To change how many run, stop `run.py` alone (its pid is in
   `$SWEEPS/run.pid`) and start it again with other options: the sweeps carry on and are adopted.
+  Money is the exception: when a run may be costing something it should not, stop all of it as
+  `price.py` does, `run.py` first and then each `NAME.pid` with SIGTERM, which makes a sweep write
+  its session so it can be resumed.
 
 **Watch it, every fifteen minutes or so, with `status.py --watch`.** It returns early when a
 sweep ends or something needs looking at:
