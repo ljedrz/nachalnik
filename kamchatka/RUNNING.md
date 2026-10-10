@@ -347,7 +347,7 @@ image or document the model was shown in a finished exchange, unless the placeho
 bigger than the original. The second only applies when space runs out: once the context goes past
 the `--compact` threshold (0.8 of the limit by default), the oldest exchanges are removed entirely
 until it gets down to the target, the second number in `--compact 0.8,0.6`. If the target isn't
-given, it's twenty percentage points below the threshold or half of it, whichever is lower, so
+given, it's twenty percentage points below the threshold or half of it, whichever is higher, so
 removals happen in batches instead of changing the cached start of the request every turn.
 
 Neither rule touches the turn in progress, pinned items, or notes the model wrote for itself, and
