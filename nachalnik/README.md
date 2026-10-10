@@ -37,7 +37,7 @@ of passing tests:
 let ids = Selector::parse("tool:cargo_test:latest")?.matches(&kernel.items());
 kernel.set_state(ids, ContextState::Excluded, Some("13k tokens of nothing".into()));
 assert_eq!(kernel.budget().used(), 126);   // it was 13,173
-kernel.undo()?;                            // and it is back, with its note and its identifier
+kernel.undo()?;                            // and it is back as it was, under the same identifier
 ```
 
 **Stop at any step of the loop.** In `Ready`, the model has said which tools it wants and none of
