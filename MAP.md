@@ -125,8 +125,8 @@ someone's money with a key they set for a different program.
 
 ## nachalnik-mcp
 
-`server.rs` is a connection to one MCP server, open as long as the `Server` exists, and tracks
-which tools it installed; `tool.rs` wraps one of its tools as a `Tool`, and defines `Trust`, how
+`server.rs` is a connection to one MCP server, open as long as the `Server` exists, whose
+`install` hands back which tools it installed for the caller to keep; `tool.rs` wraps one of its tools as a `Tool`, and defines `Trust`, how
 much of what the server says is believed.
 
 ---
