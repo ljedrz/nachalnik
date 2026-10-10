@@ -13,7 +13,7 @@ use kamchatka::{
 use nachalnik::{ContextId, ModelResponse, test::call};
 use serde_json::json;
 
-use crate::{Peer, Slow, Trickle, records, served, streamed};
+use crate::{Peer, Slow, Trickle, served, streamed};
 
 /// `inspect` says what an item holds, which nothing on the record stream can.
 #[tokio::test]
@@ -227,8 +227,8 @@ async fn an_interrupt_from_a_client_stops_the_turn() {
     let (mut two, _) = Peer::attached(&session.at).await;
     two.send(Command::Interrupt).await;
 
-    let heard = two.until_record("turn.interrupted").await;
-    assert!(records(&heard).contains(&"turn.interrupted".to_owned()));
+    // the wait is the check: it returns on the record and on nothing else
+    two.until_record("turn.interrupted").await;
 
     two.send(Command::Submit {
         line: "/quit".to_owned(),
