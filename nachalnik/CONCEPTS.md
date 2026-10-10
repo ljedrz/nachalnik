@@ -7,9 +7,9 @@ what the crate is and how to start; read this before building something that dep
 
 ## 🔍 context as a data structure
 
-Items are public data — an id, a kind, a source, a label, content, a size, a state, a note and
-whatever metadata you attach — so a client can render `/context` however it likes. One method
-covers every state change, and each call is one undoable operation:
+Items are public data — an id, a kind, a source, a label, content, a size, a state, a note, why it
+is there and whatever metadata you attach — so a client can render `/context` however it likes. One
+method covers every state change, and each call is one undoable operation:
 
 ```rust
 kernel.set_state(ids, ContextState::Excluded, Some("an enormous test output".into()));
