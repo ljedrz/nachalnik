@@ -219,6 +219,8 @@ async fn a_dossier_that_was_wrong_about_a_note_is_said_so() {
     // get one
     let moved = ledger(suite::Attribution::new().on(&LEDGER)).await;
     assert!(check(&moved, "the material moves this subject's answer").held);
+    // the run has notes of its own, so a check that none of them is the line has something to look at
+    assert!(!notes(&moved).is_empty(), "the run left no notes at all");
     assert!(
         notes(&moved)
             .iter()
