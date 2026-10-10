@@ -292,6 +292,14 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
   to be read as one first.
 
+- **An outage the runner starts a sweep into can still cost it a try.** `run.py` sets a try aside
+  without counting it only if the endpoint never answered it once. When an endpoint fails every
+  request but a few, a sweep that got one answer before the failures counts as a try, and a long
+  outage can use up all of a sweep's tries. A probe can come back fine during such an outage: GMI
+  once answered one request in ten. Checking the endpoint before each start would not have
+  helped. What would settle it is a rule for what makes a try the endpoint's fault, such as
+  failures with no answer after them, read from the records like the rest of `sweeps.py`.
+
 - **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
   `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
   dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
