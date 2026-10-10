@@ -363,9 +363,6 @@ pub(super) fn question_rows(app: &App, columns: usize) -> u16 {
     (head.len() + args.len() + foot.len()) as u16 + BORDERS_AND_GAP
 }
 
-/// A tool is waiting to be told whether it may run, in the prompt's place.
-///
-/// Returns the offset the arguments were really drawn at.
 /// Whether the keys reach what is open over the screen: the chat tab, with the prompt's keys
 /// handed to the body.
 ///
@@ -383,6 +380,9 @@ fn until_keys(app: &App) -> &'static str {
     }
 }
 
+/// A tool is waiting to be told whether it may run, in the prompt's place.
+///
+/// Returns the offset the arguments were really drawn at.
 pub(super) fn draw_question(frame: &mut Frame, app: &App, area: Rect) -> usize {
     let columns = area.width.saturating_sub(4) as usize;
     let Some((head, args, foot)) = question_parts(app, columns, false) else {
