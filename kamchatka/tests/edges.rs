@@ -354,11 +354,13 @@ async fn every_size_with_text_that_is_not_ascii() {
     }
 }
 
-/// Every key this program looks at, pressed at every tab, in a session with nothing in it.
+/// Every key this program looks at, pressed at every tab, in a session with nothing in it and then
+/// in one with a conversation in it.
 ///
 /// note: an empty context is the state a program is in for the first few seconds of its life and
 /// the one nobody drives it in, because the way to get to the context tab is to have something to
-/// look at. Every key there acts on a selected row, and there is none.
+/// look at. Every key there acts on a selected row, and there is none. The second session is the
+/// same keys with rows to act on.
 #[tokio::test]
 async fn every_key_at_every_tab_with_nothing_to_act_on() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
