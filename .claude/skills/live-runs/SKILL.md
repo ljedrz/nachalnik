@@ -138,8 +138,9 @@ Each is fixed with a test, so a return of any of them is a regression:
 - a full `context look` skipping the ids of removed items, with nothing to say a gap was removed
   rather than hidden
 
-And three decisions in POSTPONED.md: the first undo of a fresh session, output limits that ignore
-the window, and `revise` of the person's words.
+And three decisions: two in POSTPONED.md, the first undo of a fresh session and output limits that
+ignore the window, and a `note:` in `introspect/context/changes.rs` on why `revise` refuses the
+person's words.
 
 ## what goes wrong
 
