@@ -31,7 +31,7 @@ let payload = kernel.preview_payload()?;   // and the provider's own bytes, if i
 ```
 
 **Throw out what you do not want, and change your mind about it.** A tool just returned 600 lines
-of passing tests:
+of passing tests, picked out here with the `selectors` feature:
 
 ```rust
 let ids = Selector::parse("tool:cargo_test:latest")?.matches(&kernel.items());
