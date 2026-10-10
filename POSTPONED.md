@@ -290,11 +290,9 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   or cut off by the endpoint is moved aside and rerun, hours of work for one answer. `friction.sh`
   already carries a lost session on from its snapshot. `sweep.sh` could do the same, but
   `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
-  to be read as one first. The opposite case is counted complete: a last answer that ended with
-  reasoning and no text never wrote its FINDINGS section, and its findings are only in its notes
-  and that reasoning. On GMI those answers were streams cut off and read as finished (see the
-  `[DONE]` entry), so the text being empty is the sign to go by. It is one more message away from
-  done, so it waits on the same resume.
+  to be read as one first. A last answer cut off after the reasoning alone, which GMI ends with
+  `[DONE]` and nothing said, is rerun the same way, though `/continue` on the resumed session
+  finished such a sweep in one request.
 
 - **An outage the runner starts a sweep into can still cost it a try.** `run.py` sets a try aside
   without counting it only if the endpoint never answered it once. When an endpoint fails every
@@ -348,13 +346,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   every later request fail; sending `{}` works everywhere and leaves it to the tool result, which
   already quotes what arrived. Unblocked by a decision on what the history should say the model
   sent, and a live test of that choice on the strict endpoints.
-
-- **A stream that sends `[DONE]` and no `finish_reason` is an end of turn, even after reasoning
-  alone.** `nachalnik-providers` reads the marker as the server ending the turn on purpose, which a
-  note in `openai/wire.rs` defends. GMI ends a stream that way when its backend fails mid-answer:
-  several thousand tokens of reasoning, no text, no finish and no usage, though every stream asks
-  for usage. The turn is then recorded as finished with nothing said. Settled by deciding whether a
-  marker with neither a finish nor usage after it is a cut-off rather than an end.
 
 - **The web page relies on `Origin` for browsers that don't send `Sec-Fetch-Site`.** An image or a
   no-cors fetch from another site has no `Origin`, and the page refuses it based on fetch metadata;
