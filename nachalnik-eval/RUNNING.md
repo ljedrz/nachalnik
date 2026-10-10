@@ -28,7 +28,7 @@ knows it's being measured. The JSON is the complete record (every question, ever
 word, every copy's reply, every comparison), so a run can be scored again without paying for it
 again.
 
-Your own experiment is one trait method:
+Your own experiment is a name and one method that runs it:
 
 ```rust
 #[async_trait]
