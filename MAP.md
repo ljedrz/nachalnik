@@ -95,8 +95,8 @@ file to the context, `clipboard.rs` OSC 52, `stopping.rs` <kbd>ctrl+c</kbd>, and
 **Features.** `tui` (default) covers `ui/`, `app/keys.rs` and the prompt: anything using a
 `KeyEvent` or a `ratatui` type goes behind it, and nothing a *command* can reach may.
 `cargo test -p kamchatka --no-default-features` is the check, and builds a headless binary.
-`remote/` has no feature, since it only needs one more `tokio` feature. `webui` (default) is
-`web/`.
+`remote/` has no feature, since all it needs beyond the rest is `socket2` and one more `tokio`
+feature. `webui` (default) is `web/`.
 
 `kamchatka/examples/`: `attached.rs` is a client written against `remote::protocol` and the three
 `app` types it names; `gateway.rs` (feature `webui`) serves `web/`'s page for a session in another
