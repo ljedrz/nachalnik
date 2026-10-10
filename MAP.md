@@ -110,7 +110,7 @@ git-ignored `recorded/`.
 `openai/` is `OpenAiCompatible` (`mod.rs`), one request sent and read back (`wire.rs`), and the
 Responses mode (`responses.rs`). `gemini.rs` and `anthropic.rs` are the other two dialects,
 `endpoint.rs` the `Endpoint` and `Dialect` traits, and `conformance.rs` (its own feature) the suite
-every API client must pass. `waiting.rs`, `reading.rs` and `markup.rs` are private shared helpers:
+every dialect must pass. `waiting.rs`, `reading.rs` and `markup.rs` are private shared helpers:
 sending and retrying, reading a stream one event at a time, and extracting the text from an error
 body that isn't JSON. `system1.rs` (feature `system1`) is the client for System One models; it
 isn't a `Dialect`, and its docs list the servers that support it and how they differ.
