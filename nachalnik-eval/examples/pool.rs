@@ -19,7 +19,8 @@ use std::{env, fs};
 
 use nachalnik_eval::{Cohort, Kind, Report, Step, Surface, per_model, suite};
 
-/// The default effect size the sign test counts against, in points.
+/// The default effect size the sign test counts against, as a fraction: thirty points is `0.30`,
+/// and `--at-least` takes points and divides them by a hundred.
 ///
 /// note: a study's registered effect and not zero, because "the difference was positive" is a much
 /// weaker claim than any preregistration makes and the two must not be reported in the same
