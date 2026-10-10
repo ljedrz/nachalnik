@@ -267,8 +267,8 @@ pub(crate) fn full_notice(kernel: &Kernel, policy: &Careful) -> ContextItem {
 ///
 /// note: read off tools built and dropped rather than from a list written out here. A list is a
 /// second thing to forget, and what it would drift from is exactly what the refusal in
-/// `Setup::check` is about - a name that is not a tool. Building them costs six schemas and
-/// happens once.
+/// `Setup::check` is about - a name that is not a tool. Building them costs six schemas, at
+/// startup, once for `tools` and once for each rule checked.
 fn offered() -> Vec<nachalnik::ToolSpec> {
     let kernel = Kernel::new(Config::default());
     let policy = Arc::new(Careful::new());
