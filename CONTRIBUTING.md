@@ -235,8 +235,8 @@ without the fix, and anything that needs a person to decide goes into
   Describe what the screen shows and what each part means instead; commands a person types,
   settings, code and design diagrams are fine.
 - **Style.** Lowercase headings. British spelling (`behaviour`, `defence`), but `-ize` for words
-  like `summarize`. Rust source and the workspace's own documents use hyphens; the `README.md`s and
-  the guides next to them use em dashes.
+  like `summarize`. Rust source and the workspace's own documents, the guides included, use hyphens;
+  the `README.md`s and `nachalnik/CONCEPTS.md` use em dashes.
 
 ---
 
