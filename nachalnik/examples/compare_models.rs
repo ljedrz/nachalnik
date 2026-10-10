@@ -452,7 +452,7 @@ async fn main() -> Result<(), BoxError> {
             &dir,
         )?;
         println!(
-            "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` picks any of them up."
+            "\n  each is a session of its own: `kamchatka -r` with any `.json` file above picks it up."
         );
     }
 

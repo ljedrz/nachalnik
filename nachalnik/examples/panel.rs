@@ -715,8 +715,7 @@ async fn main() -> Result<(), BoxError> {
         heading("SAVED");
         save(panel.iter().map(|p| (p.model.as_str(), &p.kernel)), &dir)?;
         println!(
-            "\n  each is a session of its own: `kamchatka -r {dir}/<model>.json` carries any of them \
-             on."
+            "\n  each is a session of its own: `kamchatka -r` with any `.json` file above carries it on."
         );
     }
 
