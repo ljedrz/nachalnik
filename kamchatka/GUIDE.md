@@ -174,7 +174,7 @@ else on the screen is treated as markdown: a tool's output is shown exactly as t
 | <kbd>tab</kbd> | move the keys between the prompt and whatever else on screen can use them; from a tab without a prompt, go back to the chat |
 | <kbd>ctrl+t</kbd> | next tab; <kbd>alt+1</kbd> … <kbd>alt+4</kbd> for a specific one |
 | <kbd>esc</kbd> | close an open search box; otherwise stop what's running and keep what arrived, or, when stopped in `ready`, drop the calls waiting to run |
-| <kbd>ctrl+c</kbd> | stop what's running in any case; press again to quit |
+| <kbd>ctrl+c</kbd> | stop what's running, or quit when nothing is |
 | <kbd>ctrl+d</kbd> | quit, from anywhere, including a permission prompt, where <kbd>d</kbd> alone means something else |
 | <kbd>F1</kbd> | key help, opened at the current tab; also <kbd>?</kbd> on any tab except chat |
 

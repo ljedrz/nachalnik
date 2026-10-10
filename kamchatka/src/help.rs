@@ -258,7 +258,7 @@ pub const EVERYWHERE: &str = "  WHEREVER YOU ARE
                         tab but the chat one
     esc                 stop what is running; in ready, drop the calls waiting
                         to run
-    ctrl+c              stop what is running; again to leave
+    ctrl+c              stop what is running, or leave when nothing is
     ctrl+d              leave
     (over the screen - this, the request, an item read whole - up / down and
      pgup / pgdn scroll, left / right turn to its other pages where it has
