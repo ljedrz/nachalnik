@@ -119,9 +119,10 @@ them:
 - **`to the model`** is what it adds to the next request, based on the whole context, so a result
   whose call was removed (which the projector drops even though its row says `active`) shows that
   here, and the box opens on this page when that's the case.
-- **`as stored`** is the item's actual content, which differs for an elided or excluded item.
+- **`as stored`** is the item's actual content, which differs for an elided or excluded item. If
+  it has been rewritten, the page starts with who rewrote it last and why.
 - **`v1`**, **`v2`** and so on are earlier versions from before it was edited, newest first, up to
-  eight, kept across `-r`, with who edited it.
+  eight, kept across `-r`.
 
 <kbd>e</kbd> controls **what** the model reads of an item, while `space` and `p` control
 whether it reads it. The prompt becomes an editor holding the item's text, and saving replaces it
