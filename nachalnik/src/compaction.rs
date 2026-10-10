@@ -112,7 +112,8 @@ pub struct CompactionPlan {
     pub reason: String,
 }
 
-/// An item a compaction pass removed.
+/// An item a compaction pass accounted for: one it removed or elided, one the kernel refused it,
+/// or the summary it added. Which of them it was is the [`CompactionReport`] field it is in.
 ///
 /// note: `#[non_exhaustive]`, with [`CompactionReport`] - both are accounts of what the kernel
 /// did, and neither is built by a [`Compactor`], which hands over a [`CompactionPlan`] and is
@@ -120,7 +121,7 @@ pub struct CompactionPlan {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Removed {
-    /// The item's identifier; it can be brought back with [`Kernel::set_state`].
+    /// The item's identifier; one taken out can be brought back with [`Kernel::set_state`].
     pub id: ContextId,
     /// The item's label.
     pub label: String,

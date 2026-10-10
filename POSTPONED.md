@@ -141,6 +141,12 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   and `undo` doesn't notice it. The open question is whether a recount should be an undoable
   operation (with a checkpoint and the undo history it uses) or something `undo` re-applies.
 
+- **`compaction::Removed` is the type of every item a compaction report names.** The elided items,
+  the ones the kernel refused to touch and the summary that was added are each a `Removed`, so a
+  report's type says the opposite of three of its four fields, against the rule of one word per
+  mechanism. Its doc says what it is. Renaming it is a breaking change to `nachalnik`, so it waits
+  for the next release that breaks anything; a type alias for the old name would ease it.
+
 - **`Kernel::set_full_notice` is announced by nothing.** It is the one component setter with no
   event, so a log reads the notice only once one is placed, as a `context.added`, and never says
   which notice was set, changed or taken away before then. Announcing it needs a new event kind -
