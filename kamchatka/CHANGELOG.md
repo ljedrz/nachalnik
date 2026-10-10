@@ -9,6 +9,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A kernel that refuses the signal scope is said to have.** A session puts itself where its
+  shell commands can signal nothing of the person's outside it, and a kernel that has the scope
+  could still refuse to apply it, which nothing reported: every command could then signal every
+  process of the person's while the sandbox was said to hold them. The line at startup that says
+  what this kernel's sandbox leaves out says this too, and does not blame the kernel's age.
+
 - **A command the model runs is not handed an address with a key in it.** `KAMCHATKA_BASE_URL` and
   `KAMCHATKA_SYSTEM1_BASE_URL` may carry a `user:password@`, which the program keeps off every
   screen, and a command was handed the variable as it was, so `printenv` put the password into the

@@ -118,8 +118,12 @@ pub fn weaker_here() -> Option<String> {
         tcp: hard().handle_access(AccessNet::ConnectTcp).is_ok(),
         abstract_sockets: confines_abstract_sockets(),
         signals: confines_signals(),
+        scope_refused: SCOPE_REFUSED.load(std::sync::atomic::Ordering::Relaxed),
     })
 }
+
+/// Whether [`scope_signals`] was refused by a kernel that has the scope.
+static SCOPE_REFUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// What a kernel's Landlock confines, of what [`weaker_here`] asks about.
 #[derive(Clone, Copy)]
@@ -128,6 +132,8 @@ struct Kernel {
     tcp: bool,
     abstract_sockets: bool,
     signals: bool,
+    /// Whether the kernel has the signal scope and refused to put this process in one.
+    scope_refused: bool,
 }
 
 /// [`weaker_here`], from the kernel's answers.
@@ -160,12 +166,23 @@ fn weaker(kernel: Kernel) -> Option<String> {
     .map(|(_, what)| what)
     .collect();
 
-    (!open.is_empty()).then(|| {
+    let older = (!open.is_empty()).then(|| {
         format!(
             "this kernel's sandbox does not keep shell commands from {}; a newer kernel does",
             open.join("; ")
         )
-    })
+    });
+    // note: said apart from the list, since it is not the kernel's age: this kernel has the scope
+    // and would not apply it, so every command may signal every process of yours, as on an older
+    // one, and a newer kernel is not the answer
+    let refused = (kernel.signals && kernel.scope_refused).then_some(
+        "the kernel would not put this session where its shell commands cannot signal your other \
+         processes, so they can",
+    );
+    match (older, refused) {
+        (Some(older), Some(refused)) => Some(format!("{older}; and {refused}")),
+        (older, refused) => older.or_else(|| refused.map(str::to_owned)),
+    }
 }
 
 /// Puts this process in a Landlock domain that refuses a signal to anything outside it, so that
@@ -201,15 +218,24 @@ pub fn scope_signals() -> bool {
         path_beneath_rules,
     };
 
-    confines_signals()
-        && Ruleset::default()
-            .set_compatibility(CompatLevel::HardRequirement)
-            .handle_access(AccessFs::Refer)
-            .and_then(|ruleset| ruleset.scope(Scope::Signal))
-            .and_then(|ruleset| ruleset.create())
-            .and_then(|created| created.add_rules(path_beneath_rules(["/"], AccessFs::Refer)))
-            .and_then(|created| created.restrict_self())
-            .is_ok()
+    if !confines_signals() {
+        return false;
+    }
+    let scoped = Ruleset::default()
+        .set_compatibility(CompatLevel::HardRequirement)
+        .handle_access(AccessFs::Refer)
+        .and_then(|ruleset| ruleset.scope(Scope::Signal))
+        .and_then(|ruleset| ruleset.create())
+        .and_then(|created| created.add_rules(path_beneath_rules(["/"], AccessFs::Refer)))
+        .and_then(|created| created.restrict_self())
+        .is_ok();
+    // a kernel that has the scope and would not apply it is a sandbox weaker than the one it says
+    // it is, and `weaker_here` says so
+    if !scoped {
+        SCOPE_REFUSED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    scoped
 }
 
 /// Applies the sandbox to *this* process, returning how much of it the kernel took.
@@ -680,6 +706,7 @@ mod weaker {
             tcp: true,
             abstract_sockets: true,
             signals: true,
+            scope_refused: false,
         };
         assert_eq!(weaker(all), None);
 
@@ -716,6 +743,28 @@ mod weaker {
         .expect("a warning");
         assert!(
             said.contains("unconfined") && !said.contains("TCP"),
+            "{said}"
+        );
+
+        // a kernel that has the signal scope and refused it is said to have, and not to be old
+        let said = weaker(Kernel {
+            scope_refused: true,
+            ..all
+        })
+        .expect("a warning");
+        assert!(
+            said.contains("would not put this session") && !said.contains("newer kernel"),
+            "{said}"
+        );
+        // and beside what an older kernel leaves out, both are said
+        let said = weaker(Kernel {
+            tcp: false,
+            scope_refused: true,
+            ..all
+        })
+        .expect("a warning");
+        assert!(
+            said.contains("TCP") && said.contains("would not put this session"),
             "{said}"
         );
     }
