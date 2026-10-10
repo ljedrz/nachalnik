@@ -875,11 +875,11 @@ impl Client {
 
             // 429 is a rate limit and 529 is an overloaded upstream; the documentation names both
             // and asks for a backoff. 502 and 503 are what a proxy in front of it says for a
-            // moment, and get one more try and no more: the dialects retry every 5xx, but this is
-            // answering a person at a permission prompt, and a service that is down is better
-            // said at once. Everything else here is a decision - 400 for a model that does not
-            // exist, 401 for a key, 422 for a request that would not validate - and sending it
-            // again would only spend the wait
+            // moment, and get one more try and no more. The dialects retry every 5xx but 501 and
+            // 505, and this is answering a person at a permission prompt, where a service that is
+            // down is better said at once. Everything else here is a decision - 400 for a model
+            // that does not exist, 401 for a key, 422 for a request that would not validate - and
+            // sending it again would only spend the wait
             let busy_now = status.as_u16() == 429 || status.as_u16() == 529;
             let blip = matches!(status.as_u16(), 502 | 503) && attempt == 1;
             if (busy_now && attempt < RETRIES) || blip {
