@@ -308,8 +308,15 @@ impl Compactor for Shedder {
                     // a sentence of this file's. Priced at this pass's marker, three of those read
                     // as a hundred and fifty tokens freed, and a drop of short lines that freed
                     // almost nothing passed for one worth its summary and grew the request
+                    //
+                    // note: and for what this pass elides, the smaller of the marker and the item.
+                    // `used` took off what the elision frees, which for a picture priced at
+                    // nothing is nothing - so its marker was never counted in, and crediting the
+                    // marker when the picture went with its exchange was a saving the request
+                    // never had. Three screenshots passed a drop of two short questions for one
+                    // worth its summary, and the request grew by the summary
                     let sending = match (item.state.is_elided(), routine.contains(&item.id)) {
-                        (_, true) => marker,
+                        (_, true) => marker.min(item.tokens),
                         (true, false) => {
                             marker_tokens(item.note.as_deref().unwrap_or_default(), scale)
                         }

@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A compaction does not drop short exchanges for the screenshots in them.** A picture is priced
+  at nothing, and one the pass was eliding was credited with its marker as freed when it went
+  with its exchange instead. A few short questions with screenshots in them then read as worth
+  the summary their going leaves, and the request grew by that summary.
+
 - **A refusal under a root named in `/dev` is not blamed on the confinement.** `--sandbox-allow`
   and `--sandbox-read` are granted under `/dev` as anywhere else, but `shell` judged a path there
   by the named devices alone. A command refused a terminal under an allowed `/dev/pts` was told

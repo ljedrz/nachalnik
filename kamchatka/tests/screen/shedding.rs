@@ -825,6 +825,57 @@ async fn what_somebody_else_elided_is_priced_at_its_own_marker() {
     assert_eq!(kernel.item(pinned).unwrap().state, ContextState::Pinned);
 }
 
+/// A picture this pass elides frees nothing when it goes with its exchange, so short questions
+/// with screenshots in them are not dropped for a summary longer than they are.
+///
+/// note: found by the property below. A picture is priced at nothing, so its marker never went
+/// into what the pass counted as used - and was credited as freed when the picture went with its
+/// exchange. Three screenshots passed a drop of two short questions for one worth its summary,
+/// and the request grew by the summary.
+#[tokio::test]
+async fn a_picture_this_pass_elides_frees_nothing_when_its_exchange_goes() {
+    let kernel = Kernel::new(Config::default());
+    kernel.push(ContextItem::system("be brief").pinned());
+    let screenshot = |n: usize| {
+        let shot = call(&format!("c{n}"), "screenshot", json!({}));
+        kernel.push(ContextItem::assistant(
+            Content::text(""),
+            vec![shot.clone()],
+        ));
+        kernel.push(ContextItem::tool_result(
+            shot.id.clone(),
+            "screenshot",
+            Content::blob("image/png", "A".repeat(60_000)),
+            false,
+        ));
+    };
+    kernel.push(ContextItem::assistant(
+        Content::text("w".repeat(10)),
+        vec![],
+    ));
+    kernel.push(ContextItem::user(words(17)));
+    screenshot(1);
+    kernel.push(ContextItem::assistant(
+        Content::text("w".repeat(10)),
+        vec![],
+    ));
+    screenshot(2);
+    kernel.push(ContextItem::user(words(10)));
+    screenshot(3);
+    kernel.push(ContextItem::user(words(405)));
+
+    let trim = Shedder {
+        threshold: 0.05,
+        target: 0.05 * 0.05,
+    };
+    let limit = filled_to(&kernel, 0.2);
+    let plan = planned(&trim, &kernel, Some(limit))
+        .await
+        .expect("the screenshots are read and can be elided");
+    assert!(plan.remove.is_empty(), "{plan:?}");
+    assert!(plan.summary.is_none(), "{plan:?}");
+}
+
 /// A turn with nothing left in it for the request is not named when its exchange goes: the
 /// projector leaves out a turn that said nothing and whose only call lost its result.
 ///
