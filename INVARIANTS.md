@@ -39,8 +39,9 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   neither does one that is about to fail. `annotate` is the one exception: it takes no checkpoint
   of its own, so an undo takes an annotation back with the operation before it.
 - **A failing `Tool` is not a kernel error.** It becomes an error result that the model sees.
-  `Error` is only for conditions that stop the loop. A panicking tool counts as failed: the panic is
-  caught where the kernel polls the tool, handled the same way, and reported as `tool.panicked`.
+  `Error` is for what stops the loop and for a caller's own mistake, such as an item id that does
+  not exist; never for a tool. A panicking tool counts as failed: the panic is caught where the
+  kernel polls the tool, handled the same way, and reported as `tool.panicked`.
 - **Nothing in a model's output reaches the permission policy** except the tool name and the
   arguments, both as data. A model claiming it already has permission changes nothing.
 - **`Content` is shared, not copied.** Every variant is behind an `Arc`, so pruning a four-megabyte
