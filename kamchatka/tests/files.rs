@@ -1382,8 +1382,8 @@ async fn a_write_refused_for_anything_else_is_not_told_to_make_a_directory() {
     )
     .await;
 
-    // the last two restore the mode whatever the assertions do, so a failure is a directory this
-    // suite can remove rather than one it cannot
+    // the mode is put back before any assertion, so a failure leaves a directory this suite can
+    // remove rather than one it cannot
     std::fs::set_permissions(&outer, std::fs::Permissions::from_mode(0o755)).expect("its mode");
 
     assert!(
