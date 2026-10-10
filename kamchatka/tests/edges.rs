@@ -755,32 +755,15 @@ fn a_long_model_name_gives_way_after_the_address_and_before_the_figures() {
 /// the one thing this ladder exists to prevent.
 #[test]
 fn a_name_in_wide_characters_is_cut_by_the_cell_and_the_figures_stay() {
-    let status_at = |model: &str, width: u16| {
-        let kernel = Kernel::new(Config::default());
-        let policy = Arc::new(Careful::new());
+    const NAME: &str = "dots-studio/日本語のモデルuz";
+    let row = |width| {
         let provider = Arc::new(OpenAiCompatible::new(
-            model,
+            NAME,
             "https://openrouter.ai/api/v1",
             "",
         ));
-        kernel.set_provider(provider.clone());
-        kernel.set_policy(policy.clone());
-        let (outcomes, keep) = tokio::sync::mpsc::unbounded_channel();
-        std::mem::forget(keep);
-        let mut app = App::new(kernel, policy, provider, Limits::default(), outcomes);
-
-        let mut terminal = Terminal::new(TestBackend::new(width, 12)).expect("a backend");
-        terminal
-            .draw(|frame| ui::draw(frame, &mut app))
-            .expect("a frame");
-        let buffer = terminal.backend().buffer().clone();
-        (0..width)
-            .map(|x| buffer[(x, 11)].symbol())
-            .collect::<String>()
+        status_line(provider.clone(), provider, width)
     };
-
-    const NAME: &str = "dots-studio/日本語のモデルuz";
-    let row = |width| status_at(NAME, width);
 
     // and the figure is whole at every width where it can be: the address has already gone and
     // the vendor with it by now, so the name is what has to give
