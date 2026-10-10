@@ -199,7 +199,9 @@ cause harm, what stops them, and what doesn't.
   `localhost` does; one that resolves elsewhere, wildcards and public addresses are refused. From
   further away, use a tunnel that authenticates. Other web pages open in a browser on the same
   machine are refused: the page only accepts same-origin JSON requests addressed to an IP address
-  or `localhost`. Clients can answer permission questions, so the session's own commands are kept
+  or `localhost`. That rests on the browser saying where a request came from, with `Origin` or
+  `Sec-Fetch-Site`; one old enough to send neither lets another page's image or no-cors fetch take
+  the session from the tab that had it (see [POSTPONED.md](POSTPONED.md)). Clients can answer permission questions, so the session's own commands are kept
   out too: ports the session or its page are served on are closed to every command sandboxed while
   they're open. That takes Landlock's TCP rules, from Linux 6.7: on an older kernel the ruleset is
   `Partial` and a port is closed only where the network is shut or asked about, which the gate
