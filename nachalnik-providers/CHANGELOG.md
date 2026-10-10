@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A Chat Completions stream that ends on `[DONE]` after saying nothing is cut off.** A marker
+  with no `finish_reason` was always read as the end of the turn, so an upstream that failed
+  mid-answer and closed the stream with `[DONE]` after the reasoning alone left a turn recorded as
+  finished, with no text and no calls, that a client had no reason to carry on. Such a turn now
+  stops as `cut off`, as a stream broken off does; a marker after text or a call is still an end.
 - **A body that breaks off before any of it arrived says why.** reqwest reports it as `error
   decoding response body`, and what happened - the connection closed short of the length it
   promised - is in the causes under that line. A stream with nothing in it yet, a whole answer and

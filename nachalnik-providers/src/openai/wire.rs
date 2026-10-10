@@ -345,23 +345,6 @@ impl OpenAiCompatible {
             usage,
             ..
         } = streamed;
-        match stopped {
-            // note: the server's own end of the stream is an end of the turn, and it is the only
-            // thing that says so where no `finish_reason` came with it. Filling it in here rather
-            // than leaving the turn unreported is what keeps the two apart: a turn the server
-            // finished on purpose and a turn that was cut off before it said anything are the
-            // same absence of a `finish_reason` and must not get the same word - which is what
-            // `unreported` is for, below.
-            //
-            // note: a finish that *was* reported is not overwritten. Some endpoints send the
-            // marker and then nothing, and some send a reason and the marker both; where the
-            // server named the reason it is more precise than what the marker implies.
-            Stopped::Done if finish.is_none() => finish = Some("stop".to_owned()),
-            Stopped::Done => {}
-            Stopped::Interrupted => finish = Some("interrupted".to_owned()),
-            Stopped::CutOff => finish = Some("cut off".to_owned()),
-        }
-
         // note: the fragments have already gone out as `Delta::Text`, thinking and all, because
         // nothing streaming them knows a `</think>` is coming until it arrives - and holding them
         // back on the chance that one might would leave a model that never writes one silent to the
@@ -372,6 +355,35 @@ impl OpenAiCompatible {
             (!reasoning.is_empty()).then_some(reasoning.as_str()),
             self.thinking_in_content,
         );
+        let said_nothing = gathering.calls.is_empty()
+            && content
+                .as_ref()
+                .is_none_or(|content| content.to_text().trim().is_empty());
+
+        match stopped {
+            // note: the server's own end of the stream is an end of the turn, and it is the only
+            // thing that says so where no `finish_reason` came with it. Filling it in here rather
+            // than leaving the turn unreported is what keeps the two apart: a turn the server
+            // finished on purpose and a turn that was cut off before it said anything are the
+            // same absence of a `finish_reason` and must not get the same word - which is what
+            // `unreported` is for, below.
+            //
+            // note: except a turn that said nothing and called nothing, which is a cut-off the
+            // marker hides rather than a turn ended on purpose. An upstream that fails mid-answer
+            // can end the stream on `[DONE]` after the reasoning alone, and read as an end of the
+            // turn that is a finished turn with nothing in it, which nothing offers to carry on.
+            //
+            // note: a finish that *was* reported is not overwritten. Some endpoints send the
+            // marker and then nothing, and some send a reason and the marker both; where the
+            // server named the reason it is more precise than what the marker implies.
+            Stopped::Done if finish.is_none() && said_nothing => {
+                finish = Some("cut off".to_owned());
+            }
+            Stopped::Done if finish.is_none() => finish = Some("stop".to_owned()),
+            Stopped::Done => {}
+            Stopped::Interrupted => finish = Some("interrupted".to_owned()),
+            Stopped::CutOff => finish = Some("cut off".to_owned()),
+        }
 
         ModelResponse {
             content,
@@ -1198,6 +1210,16 @@ mod tests {
             StopReason::Length,
             "what the server said is more precise than what the marker implies"
         );
+
+        // and a marker after nothing but reasoning is a cut-off it hides, not an end of the turn
+        let mut thought = Streamed::default();
+        thought.event(
+            &json!({ "choices": [{ "delta": { "reasoning_content": "let me think" } }] }),
+            &deltas,
+        );
+        let ended = provider.answer(thought, Vec::new(), Stopped::Done);
+        assert_eq!(ended.stop, StopReason::Other("cut off".to_owned()));
+        assert!(ended.reasoning.is_some(), "and what it thought is kept");
 
         // and a turn cut off before it said anything is still the one that word is for
         let mut cut = Streamed::default();
