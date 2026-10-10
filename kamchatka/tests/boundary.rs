@@ -1078,6 +1078,8 @@ fn the_gate_is_reported_only_where_the_child_said_it_went_on() {
         ("full", false),
         // the ruleset did not take, whatever the gate said about itself
         ("unavailable gated", false),
+        // both went on, which is gated wherever this kernel has the gate at all
+        ("full gated", kamchatka::gate::holds()),
     ] {
         std::fs::write(
             &stand_in,
