@@ -149,7 +149,7 @@ pub const CHAT: &str =
 /// The context tab's own keys.
 pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is open
     up / down, j / k    pick an item
-    pgup / pgdn         a screenful at a time
+    pgup / pgdn         half a screenful at a time
     g / G, home / end   the first item / the last
     23G                 the item numbered 23
     space               cycle how much of it the model gets: all of it, then
