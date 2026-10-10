@@ -2,8 +2,8 @@
 //!
 //! note: `bridge.rs` stands an `rmcp` server up in-process, which tests the mapping but leaves
 //! two things untested: the child-process transport, and whether any of this works against an
-//! implementation that has never heard of `rmcp`. The server here is eighty lines of Python
-//! speaking newline-delimited JSON-RPC by hand.
+//! implementation that has never heard of `rmcp`. The server here is Python with no
+//! dependencies, speaking newline-delimited JSON-RPC by hand.
 //!
 //! note: They skip if `python3` is not on the path, the way the runtime's live tests skip without
 //! an API key - a missing interpreter is not a failing bridge.
