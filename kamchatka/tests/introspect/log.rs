@@ -984,7 +984,9 @@ async fn a_resumed_log_says_so_in_its_summary_and_in_what_it_found() {
 
     kernel.turn().await.expect("the turn failed");
 
-    for answer in answers_from(&kernel, &["log"]) {
+    let said = answers_from(&kernel, &["log"]);
+    assert_eq!(said.len(), 2, "both calls were answered: {said:?}");
+    for answer in said {
         assert!(
             answer.contains(&format!("begins at record {resumed}")),
             "{answer}"
@@ -1345,8 +1347,9 @@ async fn an_ids_filter_finds_a_record_by_its_number_whatever_kind_of_record_it_i
     assert!(said[3].contains("1 match"), "{}", said[3]);
     assert!(said[4].contains("1 match"), "{}", said[4]);
 
-    // and none of them is about item 1, which none of those five kinds names - a filter that
-    // matched every record would answer every one of these with the record it must not
+    // and none of them is about item 1, which none of those kinds names - a filter that matched
+    // every record would answer every one of these with the record it must not. `model.requested`
+    // has no case here: the request carries item 1 as well, so it names it.
     for answer in &said[5..] {
         assert!(
             answer.contains("0 match"),
