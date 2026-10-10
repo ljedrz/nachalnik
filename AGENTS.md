@@ -169,9 +169,10 @@ them.
   to a variant is a breaking change.
 - **One word per mechanism, and it's the word the user sees.** Truncate, elide, exclude, and
   `supersede` (an exclusion with a new item next to it, shown as an exclusion with a note naming
-  the new item). This is about what the program *says*: a synonym in a `match` is fine, a synonym
-  in an enum or a help line is a bug. A state with no behaviour of its own is a synonym: why an
-  item is excluded goes in its note, not in another word for excluded.
+  the new item). This is about what the program *says* and *accepts*: a synonym in a variable
+  name is fine, a synonym in an enum, a help line, a tool's schema or a command that changes the
+  session is a bug. A state with no behaviour of its own is a synonym: why an item is excluded
+  goes in its note, not in another word for excluded.
 - **Extension points identify themselves** with a `name()`, so a client can display them. For
   showing to people, not for matching on.
 - **Check that tests catch something**, with `scripts/mutate.sh` and `--no-fail-fast`. The
