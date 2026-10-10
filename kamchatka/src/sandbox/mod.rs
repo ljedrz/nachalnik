@@ -332,15 +332,12 @@ impl Sandbox {
         {
             return false;
         }
-        // note: under `/dev` only the devices named are granted - see `confine` - so one of those
-        // was reached and a refusal of it is its own permissions, and anything else there is the
-        // boundary
-        if resolved.starts_with("/dev") {
-            return self
-                .devices
-                .iter()
-                .filter_map(|named| device(named))
-                .any(|device| resolved.starts_with(device));
+        // note: a device named was reached, so a refusal of it is its own permissions. Anything
+        // else under `/dev` is the boundary unless a root the person named covers it:
+        // `--sandbox-allow` and `--sandbox-read` are granted under `/dev` as anywhere else, so
+        // answering `false` for all of `/dev` blamed the confinement for a file's own permissions
+        if self.names_device(&resolved) {
+            return true;
         }
 
         SYSTEM
@@ -530,13 +527,21 @@ impl Sandbox {
             return false;
         };
         // a device that was reached was granted writing as well; see `reaches`
-        if resolved.starts_with("/dev") || self.writes(&resolved, scratch) {
+        if self.names_device(&resolved) || self.writes(&resolved, scratch) {
             return false;
         }
         resolved
             .ancestors()
             .find(|part| part.symlink_metadata().is_ok())
             .is_some_and(|there| rustix::fs::access(there, rustix::fs::Access::WRITE_OK).is_ok())
+    }
+
+    /// Whether a resolved path is one of the devices named, or beneath one.
+    fn names_device(&self, resolved: &Path) -> bool {
+        self.devices
+            .iter()
+            .filter_map(|named| device(named))
+            .any(|device| resolved.starts_with(device))
     }
 
     /// Whether a resolved path is under one of the roots a confined command may write.
