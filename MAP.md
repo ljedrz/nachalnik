@@ -134,12 +134,12 @@ much of what the server says is believed.
 
 ## nachalnik-eval
 
-`subject.rs` is a `Kernel` that can be asked questions and awaited, `probe.rs` a question with a
-declared answer format, `intervene.rs` and `fork.rs` change a copy of a `Snapshot` and run it once,
-`trial.rs` is the append-only record, `score/` computes scores from it, `experiment.rs` has
-`Experiment` and `Instrument`, `abreast.rs` limits concurrency without a new dependency, and
-`suite/` holds the experiments, their descriptions, and the tools `instrumented` and `repair` give
-the model being tested.
+`subject.rs` owns a `Kernel` and adds asking it a question and awaiting the turn, `probe.rs` a
+question with a declared answer format, `intervene.rs` and `fork.rs` change a copy of a `Snapshot`
+and run it once, `trial.rs` is the append-only record, `score/` computes scores from it,
+`experiment.rs` has `Experiment` and `Instrument`, `abreast.rs` limits concurrency without a new
+dependency, and `suite/` holds the experiments, their descriptions, and the tools `instrumented` and
+`repair` give the model being tested.
 What the experiments measure is in its [README](nachalnik-eval/README.md).
 
 **Be careful with `Instrument`.** Every outcome includes a hash of the text the experiment sends -
