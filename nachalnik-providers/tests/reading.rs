@@ -1051,6 +1051,12 @@ async fn a_refusal_that_names_no_wait_is_waited_out_for_longer_each_time() {
 /// note: a doubling past a minute was read as the server asking to be left longer than the
 /// provider waits, which ended the tries at the sixth whatever had been asked for. On a paused
 /// clock, so that the minutes are not sat through.
+///
+/// note: each wait is held to its backoff with up to three seconds over, not to the second. The
+/// clock is paused but the sockets are real, and a request waits on them in `HEARTBEAT` steps,
+/// each of which a paused clock skips through when nothing else is ready - so the time between
+/// two arrivals is the backoff plus however many heartbeats the I/O took, more than a second of
+/// them on a slow runner. Three seconds over a minute still tells the cap from a doubling to 64.
 #[tokio::test(start_paused = true)]
 async fn a_dialect_given_more_tries_waits_no_more_than_a_minute_between_them() {
     for (dialect, _) in turns("http://127.0.0.1:1") {
@@ -1065,11 +1071,14 @@ async fn a_dialect_given_more_tries_waits_no_more_than_a_minute_between_them() {
         asked(provider).await.expect_err("busy every time");
         let arrived = arrived.lock().unwrap().clone();
         assert_eq!(arrived.len(), 9, "{dialect}: every try it was given");
-        let waits: Vec<_> = arrived
-            .windows(2)
-            .map(|two| (two[1] - two[0]).as_secs())
-            .collect();
-        assert_eq!(waits, [2, 4, 8, 16, 32, 60, 60, 60], "{dialect}");
+        let waits: Vec<_> = arrived.windows(2).map(|two| two[1] - two[0]).collect();
+        let backoffs = [2, 4, 8, 16, 32, 60, 60, 60].map(std::time::Duration::from_secs);
+        assert!(
+            waits.iter().zip(backoffs).all(|(wait, backoff)| {
+                (backoff..backoff + std::time::Duration::from_secs(3)).contains(wait)
+            }),
+            "{dialect}: {waits:?} against backoffs of {backoffs:?}"
+        );
     }
 }
 
