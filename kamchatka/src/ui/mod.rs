@@ -643,7 +643,8 @@ fn draw_status(frame: &mut Frame, app: &App, going: &Going, budget: &Budget, are
     // what sits at that end is the figures, which are worth more than the address. The address is
     // what gives way, and `generativelanguage.googleapis.com` is a third of a 100-column line
     let line = Line::from(spans);
-    let over = line.width().saturating_sub(area.width as usize);
+    let width: usize = line.spans.iter().map(|span| columns(&span.content)).sum();
+    let over = width.saturating_sub(area.width as usize);
     let line = match over {
         0 => line,
         _ => Line::from(shrink_address(line.spans, over)),
@@ -678,7 +679,7 @@ fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> 
             };
 
             // one column of the saving goes on the ellipsis that says it was shortened
-            let keep = Span::raw(host).width().saturating_sub(over + 1);
+            let keep = columns(host).saturating_sub(over + 1);
             if keep >= HOST_FLOOR {
                 // from the right: the leftmost label is the one that distinguishes an endpoint -
                 // `generativelanguage` in Google's, the resource name in an Azure deployment -
@@ -690,7 +691,7 @@ fn shrink_address(spans: Vec<Span<'static>>, over: usize) -> Vec<Span<'static>> 
             }
 
             // the address is gone; whatever is still over has to come out of the name
-            let short = over.saturating_sub(Span::raw(format!(" @ {host}")).width());
+            let short = over.saturating_sub(columns(&format!(" @ {host}")));
 
             Span::styled(shrink_model(model, short), style)
         })
@@ -708,13 +709,13 @@ fn shrink_model(model: &str, over: usize) -> String {
     }
 
     let named = model.split_once('/').map_or(model, |(_, rest)| rest);
-    let saved = Span::raw(model).width() - Span::raw(named).width();
+    let saved = columns(model) - columns(named);
     let Some(short) = over.checked_sub(saved).filter(|short| *short != 0) else {
         return named.to_owned();
     };
 
     // one column of the saving goes on the ellipsis, as with a host
-    let keep = Span::raw(named).width().saturating_sub(short + 1);
+    let keep = columns(named).saturating_sub(short + 1);
     match keep >= MODEL_FLOOR {
         true => format!("…{}", &named[named.len() - suffix_within(named, keep)..]),
         // below the floor there is nothing left to say and nothing to be gained by saying half of
