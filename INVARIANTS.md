@@ -31,9 +31,9 @@ inconvenient. [AGENTS.md](AGENTS.md) lists them without the reasons.
   are only kept if `Config::record_payloads` and `Config::record_progress` are set. Item metadata is
   copied too (into `context.added`, and the replaced metadata into `context.annotated`), because
   compactors make decisions based on it and nothing else keeps the old value.
-- **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove a pinned item and
-  reports it in `CompactionReport::refused`. The same goes for removing the tool call or result
-  that a pinned item is paired with, because the two are always sent together or not at all.
+- **A pin is a promise**: the kernel refuses a `Compactor`'s attempt to remove or elide a pinned
+  item and reports it in `CompactionReport::refused`. The same goes for removing the tool call or
+  result that a pinned item is paired with, because the two are always sent together or not at all.
 - **One operation is one undo step.** `push_all`, `set_state` over eight ids, `supersede`, a
   recorded turn: one checkpoint each. An operation that changes nothing creates no checkpoint, and
   neither does one that is about to fail. `annotate` is the one exception: it takes no checkpoint
