@@ -59,7 +59,11 @@ impl App {
     /// note: each file is written beside itself, flushed to disk and renamed over, both before
     /// either is renamed. `/save good` a second time is the checkpoint `/load good` is for, and an
     /// overwrite that ran out of disk half way would have destroyed the one it was replacing.
-    pub fn write_session(&self, log: &str, state: &str) -> Result<usize, String> {
+    pub fn write_session(
+        &self,
+        log: &std::path::Path,
+        state: &std::path::Path,
+    ) -> Result<usize, String> {
         let snapshot = self.kernel.snapshot();
         let history = self.kernel.history();
         let records = history
@@ -75,23 +79,24 @@ impl App {
 
         // named, because "No such file or directory" on its own leaves somebody guessing which
         // one; `-r` says which file it could not read and this should match it
+        let (log_shown, state_shown) = (log.display(), state.display());
         let log_beside = beside(log, (records.join("\n") + "\n").as_bytes())
-            .map_err(|e| format!("could not write {log}: {e}"))?;
+            .map_err(|e| format!("could not write {log_shown}: {e}"))?;
         let state_beside = match beside(state, &snapshot) {
             Ok(it) => it,
             Err(e) => {
                 let _ = std::fs::remove_file(&log_beside);
-                return Err(format!("could not write {state}: {e}"));
+                return Err(format!("could not write {state_shown}: {e}"));
             }
         };
         std::fs::rename(&log_beside, log).map_err(|e| {
             let _ = std::fs::remove_file(&log_beside);
             let _ = std::fs::remove_file(&state_beside);
-            format!("could not write {log}: {e}")
+            format!("could not write {log_shown}: {e}")
         })?;
         std::fs::rename(&state_beside, state).map_err(|e| {
             let _ = std::fs::remove_file(&state_beside);
-            format!("wrote {log}, and could not write {state} beside it: {e}")
+            format!("wrote {log_shown}, and could not write {state_shown} beside it: {e}")
         })?;
 
         Ok(records.len())
@@ -330,7 +335,11 @@ impl App {
             );
         }
         let (log, state, claimed) = match (directory, self.saved_into.get(&into)) {
-            (false, _) => (format!("{stem}.jsonl"), format!("{stem}.json"), false),
+            (false, _) => (
+                format!("{stem}.jsonl").into(),
+                format!("{stem}.json").into(),
+                false,
+            ),
             (true, Some((log, state))) => (log.clone(), state.clone(), false),
             (true, None) => {
                 match crate::wiring::unclaimed(&into.join(self.kernel.session_name())) {
@@ -343,9 +352,10 @@ impl App {
         // said rather than asked about: writing the same session again is the ordinary case and
         // a prompt every time would be noise, but a typo landing on somebody else's file should
         // not pass in silence. A name just claimed is this save's own, empty file
-        let replacing: Vec<&str> = [log.as_str(), state.as_str()]
+        let replacing: Vec<String> = [&log, &state]
             .into_iter()
-            .filter(|path| !claimed && std::path::Path::new(path).exists())
+            .filter(|path| !claimed && path.exists())
+            .map(|path| path.display().to_string())
             .collect();
 
         let written = self.write_session(&log, &state);
@@ -364,6 +374,7 @@ impl App {
                         format!("replaced {}", replacing.join(" and ")),
                     );
                 }
+                let (log, state) = (log.display(), state.display());
                 self.say(
                     Speaker::Note,
                     format!(
@@ -384,18 +395,20 @@ impl App {
 /// of the target's, so under an ordinary umask a save over a file somebody had made private came
 /// back readable by everyone. The record the session writes on its own goes through here too, into
 /// a directory only its owner can open; this is the same rule for a path somebody named.
-pub(crate) fn beside(path: &str, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+pub(crate) fn beside(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
     use std::{io::Write as _, os::unix::fs::OpenOptionsExt as _};
 
     static MADE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     // `create_new`, which follows no link, because `/save` names a path anywhere - a shared
     // directory included - and a name somebody predicted could be a link they left there
     let (at, mut file) = loop {
-        let at = std::path::PathBuf::from(format!(
-            "{path}.{}.{}.writing",
+        let mut at = path.as_os_str().to_owned();
+        at.push(format!(
+            ".{}.{}.writing",
             std::process::id(),
             MADE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
+        let at = std::path::PathBuf::from(at);
         match std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

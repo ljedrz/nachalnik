@@ -7,6 +7,15 @@ minor bump may break you.
 
 ## [unreleased]
 
+### breaking
+
+- **A session is recorded in a directory whose name is not UTF-8.** The record's names were built
+  from how the temporary directory displays, which puts a replacement character where the bytes
+  are not UTF-8, so under such a `$TMPDIR` they named a directory that was not there and the
+  session was not recorded. The paths are `Path`s now: `Recorded::log` and `Recorded::state` are
+  `PathBuf`s, `Recorder::log` and `Recorder::state` return `&Path`, and `App::write_session` takes
+  two `&Path`s.
+
 ### fixed
 
 - **A compaction does not drop short exchanges for the screenshots in them.** A picture is priced

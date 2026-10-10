@@ -1,5 +1,7 @@
 //! Where a session goes when it is over: written down as it goes, or all at once at the end.
 
+use std::path::{Path, PathBuf};
+
 use nachalnik::Kernel;
 
 use crate::app::App;
@@ -11,9 +13,9 @@ pub struct Recorded {
     /// How many records the log holds.
     pub records: usize,
     /// The event log, one record per line.
-    pub log: String,
+    pub log: PathBuf,
     /// The snapshot `kamchatka -r` starts from.
-    pub state: String,
+    pub state: PathBuf,
 }
 
 impl std::fmt::Display for Recorded {
@@ -22,7 +24,9 @@ impl std::fmt::Display for Recorded {
         write!(
             f,
             "{} records in {}, and a session in {}",
-            self.records, self.log, self.state
+            self.records,
+            self.log.display(),
+            self.state.display()
         )
     }
 }
@@ -82,8 +86,8 @@ pub fn record(app: &App) -> Result<Recorded, String> {
 /// tool streams. The snapshot is synced every time, since it is a whole file replaced by rename.
 #[derive(Debug)]
 pub struct Recorder {
-    log: String,
-    state: String,
+    log: PathBuf,
+    state: PathBuf,
     kept: parking_lot::Mutex<Kept>,
 }
 
@@ -111,7 +115,7 @@ impl Recorder {
     /// note: the check is the one [`record`] makes of the temporary directory, and it is made of
     /// any directory rather than only that one because what goes into the record is the same
     /// wherever it is put.
-    pub fn start_under(app: &App, dir: &std::path::Path) -> Result<Self, String> {
+    pub fn start_under(app: &App, dir: &Path) -> Result<Self, String> {
         private(dir)?;
         let (log, state, file) = unclaimed(&dir.join(app.kernel.session_name()))?;
         let recorder = Self {
@@ -130,12 +134,12 @@ impl Recorder {
     }
 
     /// The event log, one record per line.
-    pub fn log(&self) -> &str {
+    pub fn log(&self) -> &Path {
         &self.log
     }
 
     /// The snapshot `kamchatka -r` starts from.
-    pub fn state(&self) -> &str {
+    pub fn state(&self) -> &Path {
         &self.state
     }
 
@@ -170,10 +174,10 @@ impl Recorder {
         let snapshot = serde_json::to_vec_pretty(&snapshot)
             .map_err(|e| format!("could not render the session: {e}"))?;
         let beside = crate::app::beside(&self.state, &snapshot)
-            .map_err(|e| format!("could not write {}: {e}", self.state))?;
+            .map_err(|e| format!("could not write {}: {e}", self.state.display()))?;
         std::fs::rename(&beside, &self.state).map_err(|e| {
             let _ = std::fs::remove_file(&beside);
-            format!("could not write {}: {e}", self.state)
+            format!("could not write {}: {e}", self.state.display())
         })?;
         kept.snapshotted = Some(reflects);
 
@@ -186,7 +190,7 @@ impl Recorder {
         let kept = self.kept.lock();
         kept.file
             .sync_all()
-            .map_err(|e| format!("could not write {}: {e}", self.log))?;
+            .map_err(|e| format!("could not write {}: {e}", self.log.display()))?;
 
         Ok(Recorded {
             records: kept.records,
@@ -213,7 +217,7 @@ impl Recorder {
 }
 
 /// The directory under the temporary one that a record goes in, made and checked.
-fn private_dir() -> Result<std::path::PathBuf, String> {
+fn private_dir() -> Result<PathBuf, String> {
     use std::os::unix::fs::DirBuilderExt as _;
 
     let mut dir = std::env::temp_dir();
@@ -231,7 +235,7 @@ fn private_dir() -> Result<std::path::PathBuf, String> {
 }
 
 /// Refuses `dir` unless it is a directory of this user's that only its owner can enter.
-fn private(dir: &std::path::Path) -> Result<(), String> {
+fn private(dir: &Path) -> Result<(), String> {
     use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _};
 
     // note: opened without following a link, and made private and looked at through what was
@@ -298,16 +302,25 @@ fn private(dir: &std::path::Path) -> Result<(), String> {
 /// note: a name that is taken is passed over and nothing else is: a directory that cannot be
 /// written in, or a full disk, is the reason the record is not there, and saying "no unused name"
 /// a thousand tries later would be the wrong one.
-pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String, std::fs::File), String> {
+///
+/// note: the suffixes are added to the stem's bytes, not to how it displays. A directory whose
+/// name is not UTF-8 displays with a replacement character, and a name built from that is a
+/// directory that is not there.
+pub(crate) fn unclaimed(stem: &Path) -> Result<(PathBuf, PathBuf, std::fs::File), String> {
     use std::os::unix::fs::OpenOptionsExt as _;
 
+    let with = |suffix: &str| {
+        let mut path = stem.as_os_str().to_owned();
+        path.push(suffix);
+        PathBuf::from(path)
+    };
     // bounded, so that a directory full of these is an error rather than a loop
     for nth in 1..1_000 {
-        let stem = match nth {
-            1 => stem.display().to_string(),
-            nth => format!("{}-{nth}", stem.display()),
+        let nth = match nth {
+            1 => String::new(),
+            nth => format!("-{nth}"),
         };
-        let (log, state) = (format!("{stem}.jsonl"), format!("{stem}.json"));
+        let (log, state) = (with(&format!("{nth}.jsonl")), with(&format!("{nth}.json")));
         // anything there at all, a link to nothing included, which `exists` answers no to and
         // a write would follow
         if std::fs::symlink_metadata(&state).is_ok() {
@@ -324,7 +337,7 @@ pub(crate) fn unclaimed(stem: &std::path::Path) -> Result<(String, String, std::
         {
             Ok(file) => return Ok((log, state, file)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(format!("could not write {log}: {e}")),
+            Err(e) => return Err(format!("could not write {}: {e}", log.display())),
         }
     }
 
@@ -354,16 +367,16 @@ mod tests {
         let stem = dir.join("2026-09-15T13-34-29Z");
 
         let (log, state, _) = unclaimed(&stem).expect("nothing is there yet");
-        assert!(log.ends_with("2026-09-15T13-34-29Z.jsonl"), "{log}");
-        assert!(state.ends_with("2026-09-15T13-34-29Z.json"), "{state}");
+        assert_eq!(log, dir.join("2026-09-15T13-34-29Z.jsonl"));
+        assert_eq!(state, dir.join("2026-09-15T13-34-29Z.json"));
         // what a session that got this far would leave behind
         std::fs::write(&log, "one").expect("written");
         std::fs::write(&state, "{}").expect("written");
 
         // the same name again - two runs in one second, or a resume - lands beside it
         let (again, beside, _) = unclaimed(&stem).expect("a second name");
-        assert!(again.ends_with("2026-09-15T13-34-29Z-2.jsonl"), "{again}");
-        assert!(beside.ends_with("2026-09-15T13-34-29Z-2.json"), "{beside}");
+        assert_eq!(again, dir.join("2026-09-15T13-34-29Z-2.jsonl"));
+        assert_eq!(beside, dir.join("2026-09-15T13-34-29Z-2.json"));
         assert_eq!(
             std::fs::read_to_string(&log).expect("still there"),
             "one",
@@ -373,7 +386,7 @@ mod tests {
         // and the claim is the file itself, so a third does not get the second's name back
         std::fs::write(&beside, "{}").expect("written");
         let (third, _, _) = unclaimed(&stem).expect("a third name");
-        assert!(third.ends_with("2026-09-15T13-34-29Z-3.jsonl"), "{third}");
+        assert_eq!(third, dir.join("2026-09-15T13-34-29Z-3.jsonl"));
     }
 
     /// A log with no snapshot beside it has still been claimed, and the next name is the next one.
@@ -390,8 +403,8 @@ mod tests {
         std::fs::write(dir.join("2026-09-16T08-00-00Z.jsonl"), "one").expect("written");
 
         let (log, state, _) = unclaimed(&stem).expect("a name beside the log that is there");
-        assert!(log.ends_with("2026-09-16T08-00-00Z-2.jsonl"), "{log}");
-        assert!(state.ends_with("2026-09-16T08-00-00Z-2.json"), "{state}");
+        assert_eq!(log, dir.join("2026-09-16T08-00-00Z-2.jsonl"));
+        assert_eq!(state, dir.join("2026-09-16T08-00-00Z-2.json"));
         assert_eq!(
             std::fs::read_to_string(dir.join("2026-09-16T08-00-00Z.jsonl")).expect("still there"),
             "one",
@@ -478,7 +491,7 @@ mod tests {
             .expect("a link");
 
         let (log, state, _) = unclaimed(&stem).expect("a name beside it");
-        assert!(log.ends_with("2026-09-22T12-00-00Z-2.jsonl"), "{log}");
-        assert!(state.ends_with("2026-09-22T12-00-00Z-2.json"), "{state}");
+        assert_eq!(log, dir.join("2026-09-22T12-00-00Z-2.jsonl"));
+        assert_eq!(state, dir.join("2026-09-22T12-00-00Z-2.json"));
     }
 }

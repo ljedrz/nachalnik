@@ -1098,8 +1098,8 @@ async fn a_session_can_be_written_without_anybody_having_asked() {
         .push(ContextItem::user("something to keep"));
 
     let dir = common::scratch("files");
-    let log = dir.join("s.jsonl").display().to_string();
-    let state = dir.join("s.json").display().to_string();
+    let log = dir.join("s.jsonl");
+    let state = dir.join("s.json");
 
     // the writer the program calls on its way out, where `say` has nowhere left to put a sentence
     let records = harness
@@ -1148,8 +1148,8 @@ async fn a_resumed_session_reads_back_what_its_items_used_to_say() {
         .expect("the item is there");
 
     let dir = common::scratch("recall");
-    let log = dir.join("s.jsonl").display().to_string();
-    let state = dir.join("s.json").display().to_string();
+    let log = dir.join("s.jsonl");
+    let state = dir.join("s.json");
     first.app.write_session(&log, &state).expect("written");
 
     // a second session, resumed from the snapshot alone - which is all `-r` reads
@@ -1160,7 +1160,7 @@ async fn a_resumed_session_reads_back_what_its_items_used_to_say() {
     second.app.kernel = Kernel::resume(Config::default(), snapshot);
 
     assert_eq!(
-        second.app.recall(Path::new(&state)),
+        second.app.recall(&state),
         1,
         "the rewrite is in the log beside the snapshot"
     );
@@ -1201,8 +1201,8 @@ async fn a_record_that_is_not_past_the_snapshot_says_nothing_about_the_run_that_
         .expect("the item is there");
 
     let dir = common::scratch("recall-whole");
-    let log = dir.join("s.jsonl").display().to_string();
-    let state = dir.join("s.json").display().to_string();
+    let log = dir.join("s.jsonl");
+    let state = dir.join("s.json");
     first.app.write_session(&log, &state).expect("written");
 
     let snapshot: nachalnik::Snapshot =
@@ -1214,7 +1214,7 @@ async fn a_record_that_is_not_past_the_snapshot_says_nothing_about_the_run_that_
     // the log was written beside the snapshot and stops where the snapshot was taken, so nothing
     // in it is past it
     assert_eq!(
-        second.app.recall(Path::new(&state)),
+        second.app.recall(&state),
         1,
         "the rewrite is still the one record this reads back"
     );
@@ -1245,11 +1245,11 @@ async fn a_session_resumed_without_its_record_is_still_a_session() {
         .expect("the item is there");
 
     let dir = common::scratch("recall-torn");
-    let log = dir.join("s.jsonl").display().to_string();
-    let state = dir.join("s.json").display().to_string();
+    let log = dir.join("s.jsonl");
+    let state = dir.join("s.json");
     first.app.write_session(&log, &state).expect("written");
 
-    let resumed = |state: &str| {
+    let resumed = |state: &Path| {
         let snapshot: nachalnik::Snapshot =
             serde_json::from_str(&std::fs::read_to_string(state).expect("the snapshot is there"))
                 .expect("the snapshot parses");
@@ -1263,7 +1263,7 @@ async fn a_session_resumed_without_its_record_is_still_a_session() {
     let whole = std::fs::read_to_string(&log).expect("the log is there");
     std::fs::write(&log, format!("{whole}{{\"seq\":99,\"at\":")).expect("a torn log");
     assert_eq!(
-        resumed(&state).app.recall(Path::new(&state)),
+        resumed(&state).app.recall(&state),
         1,
         "the records before the torn one are still records"
     );
@@ -1271,7 +1271,7 @@ async fn a_session_resumed_without_its_record_is_still_a_session() {
     // and with no log at all beside it, the session is the session and the pages are empty
     std::fs::remove_file(&log).expect("the log goes");
     let mut second = resumed(&state);
-    assert_eq!(second.app.recall(Path::new(&state)), 0);
+    assert_eq!(second.app.recall(&state), 0);
     second.tab(Tab::Context);
     second.press(KeyCode::Home).await;
     second.press(KeyCode::Enter).await;

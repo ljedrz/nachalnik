@@ -892,7 +892,7 @@ fn finish(
     match written {
         Some(Ok(written)) => say(&format!(
             "{written}\n`kamchatka -r {}` carries on from it",
-            written.state
+            written.state.display()
         )),
         Some(Err(e)) => {
             let _ = writeln!(std::io::stderr(), "the session was not written: {e}");

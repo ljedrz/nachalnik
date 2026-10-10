@@ -1469,10 +1469,7 @@ async fn a_record_kept_as_it_goes_holds_the_whole_log() {
         .await
         .expect("the run failed");
     let written = kamchatka::wiring::record(&app).expect("finished");
-    assert_eq!(
-        (written.log.as_str(), written.state.as_str()),
-        (log.as_str(), state.as_str())
-    );
+    assert_eq!((written.log, written.state), (log.clone(), state.clone()));
 
     let kept: Vec<Record> = std::fs::read_to_string(&log)
         .expect("readable")
@@ -1505,7 +1502,7 @@ async fn a_record_kept_as_it_goes_holds_the_whole_log() {
     for path in [&log, &state] {
         use std::os::unix::fs::PermissionsExt as _;
         let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "{path} is {mode:o}");
+        assert_eq!(mode, 0o600, "{} is {mode:o}", path.display());
     }
 }
 
@@ -1535,6 +1532,33 @@ async fn a_snapshot_is_written_again_only_when_the_log_has_moved() {
         first,
         "an item was added, and the snapshot shows it"
     );
+}
+
+/// A record goes in a directory whose name is not UTF-8, rather than in one named after how that
+/// name displays.
+///
+/// note: a `$TMPDIR` is whatever bytes somebody's environment holds, and a display of it puts a
+/// replacement character where those were - a path to a directory that is not there, and a
+/// session that is not recorded.
+#[tokio::test]
+async fn a_record_goes_in_a_directory_whose_name_is_not_utf8() {
+    use std::os::unix::ffi::OsStrExt as _;
+
+    let dir = common::scratch("not-utf8").join(std::ffi::OsStr::from_bytes(b"\xff"));
+    std::fs::create_dir(&dir).expect("a directory whose name is not UTF-8");
+    let Wired { mut app, .. } = capped(vec![], None);
+    let recorder = kamchatka::wiring::Recorder::start_under(&app, &dir).expect("a record");
+    app.kernel.push(ContextItem::user("a"));
+    app.recorder = Some(recorder);
+
+    let written = kamchatka::wiring::record(&app).expect("finished");
+    assert_eq!(written.log.parent(), Some(dir.as_path()));
+    assert_eq!(written.state.parent(), Some(dir.as_path()));
+    let snapshot: nachalnik::Snapshot =
+        serde_json::from_str(&std::fs::read_to_string(&written.state).expect("the snapshot"))
+            .expect("the snapshot parses");
+    assert_eq!(snapshot.items.len(), 1);
+    assert!(written.log.is_file());
 }
 
 /// A run with no keys to press is handed the commands, and nothing about keys.

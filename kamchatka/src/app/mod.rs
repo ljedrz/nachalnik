@@ -702,7 +702,7 @@ pub struct App {
     /// ordinary case, while the first save into it takes a name nothing else has written. A
     /// session's name is shared with the session it resumed and with any other started in the
     /// same second, so the name alone would have written over theirs.
-    saved_into: BTreeMap<std::path::PathBuf, (String, String)>,
+    saved_into: BTreeMap<std::path::PathBuf, (std::path::PathBuf, std::path::PathBuf)>,
     /// What the last request failed with, while no answer has come since.
     ///
     /// note: for `/raw`. The kernel keeps the last *answer*, and a request that failed leaves the
