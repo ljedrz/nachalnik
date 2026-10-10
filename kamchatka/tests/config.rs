@@ -403,7 +403,7 @@ fn the_file_says_which_tools_a_session_starts_with() {
     let on = said
         .find("▸ fork")
         .unwrap_or_else(|| panic!("`/tools toggle fork` offered nothing: {said}"));
-    assert!(off < on, "it was offered before it was turned on: {said}");
+    assert!(off < on, "`fork` was on before it was turned on: {said}");
 }
 
 /// A tool the file names that this program does not have stops it, the way an unknown key does.
