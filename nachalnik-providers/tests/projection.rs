@@ -95,6 +95,7 @@ fn the_gemini_dialect_pays_for_the_thinking_it_does_send() {
     );
 
     let thinking_costs = kernel.counter().count(&Content::text(thinking.as_str()));
+    assert!(thinking_costs > 500, "the fixture is too small to see it");
     assert!(
         kernel.budget().context_tokens > thinking_costs,
         "the request carries the thinking, so the estimate has to as well"
@@ -139,6 +140,7 @@ fn the_anthropic_dialect_pays_for_the_thinking_it_signed_and_sends() {
     );
 
     let thinking_costs = kernel.counter().count(&Content::text(thinking.as_str()));
+    assert!(thinking_costs > 500, "the fixture is too small to see it");
     assert!(
         kernel.budget().context_tokens > thinking_costs,
         "the request carries the thinking, so the estimate has to as well"
@@ -179,4 +181,7 @@ fn the_gemini_dialect_is_handed_a_turn_in_the_order_it_was_recorded() {
     let parts = &payload["contents"][1]["parts"];
     assert_eq!(parts[0]["text"], "Checking.");
     assert_eq!(parts[0]["thoughtSignature"], "SIG-TEXT", "{parts:#?}");
+    // and the call after it, once
+    assert_eq!(parts.as_array().map(Vec::len), Some(2), "{parts:#?}");
+    assert_eq!(parts[1]["functionCall"]["name"], "weather", "{parts:#?}");
 }
