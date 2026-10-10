@@ -42,15 +42,15 @@ CI; `compare_models` and `panel` talk to a real API through `examples/common`.
 `questions.rs` handles the questions shown in place of the prompt (permissions and the like),
 `events.rs` applies kernel events, and `spend.rs` is the spending limit. `transcript.rs` is the chat
 as a person reads it, and `views.rs` is what only the screen needs. `going.rs` works out what the
-next request does with each item; it's a separate file because the screen, the request and the
-`context` tool all use it, so the model and the person always see the same budget. `keys.rs` is
+next request does with each item; it's a separate file because the screen, the `context` tool and
+a served session's protocol all use it, so the model and the person always see the same budget. `keys.rs` is
 what the keys do, `command/` the slash commands, `session.rs` saving and loading sessions, and
 `text.rs` formatting values as lines. `search.rs` (the `/` filter) and `when.rs` (trace
 timestamps) are here rather than in `ui/` so a pane searches the same text it draws.
 
 **`ui/`** draws and decides nothing: `mod.rs` the frame, `tabs.rs` the tab contents, `overlay.rs`
 the floating panel, `markdown.rs` and `table.rs` render a model's answers as styled lines, and
-`text.rs` is the only place text width is measured.
+`text.rs` wraps and fits text by the columns it takes on screen rather than by its characters.
 
 **`tools/`**: `fs.rs` is the filesystem tool (`files.rs` for single files, `search.rs` for
 searching), `shell.rs` the shell, including `joints`, which splits a command line into stages
