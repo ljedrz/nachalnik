@@ -92,7 +92,7 @@ paired with, from every compaction.
 | <kbd>space</kbd> | cycle how much of it the model gets: all of it → a `…` placeholder → nothing → back |
 | <kbd>p</kbd> | pin it, so the compactor can't remove it |
 | <kbd>e</kbd> | edit what it **says**; a tool call isn't text, so a turn that's only a call can't be edited, and you're told why |
-| <kbd>f</kbd> | show only what the next request contains, or everything again |
+| <kbd>f</kbd> | show only what the next request sends whole, leaving out the elided as well as the excluded, or everything again |
 | <kbd>y</kbd> | copy the whole content to the clipboard through the terminal (see below) |
 | <kbd>/</kbd> | filter the rows: fuzzy, over the label, the kind and the full content (see below) |
 | <kbd>enter</kbd> | open the whole item (see below) |

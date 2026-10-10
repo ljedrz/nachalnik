@@ -162,7 +162,7 @@ pub const CONTEXT: &str = "  THE CONTEXT TAB, which has the keys whenever it is 
                          turn that is only a tool call declines the key;
                          esc here leaves it as it was, as it does in the
                          prompt)
-    f                   list only what the next request carries, or everything
+    f                   list only what the next request sends whole, or everything
     y                   hand the whole of what it says to the terminal, for the
                         clipboard - unwrapped, and with no frame down the sides
                         of it, which is what dragging a mouse over the pane gets
