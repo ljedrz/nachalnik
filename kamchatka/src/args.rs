@@ -847,7 +847,7 @@ impl Args {
             endpoint::Wire::Responses => endpoint::responses::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
-            _ => endpoint::connect(model)
+            endpoint::Wire::OpenAi => endpoint::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
         }
