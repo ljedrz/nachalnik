@@ -163,8 +163,9 @@ without the fix, and anything that needs a person to decide goes into
 - **Comments explain decisions, not mechanics.** If a line needs a comment saying what it does,
   rewrite the line.
 - **Dependencies are kept to a minimum.** `nachalnik` doesn't gain one without a reason worth
-  writing down. Versions are declared in the workspace manifest so members can't drift apart, and
-  any dependency whose purpose isn't obvious has a comment.
+  writing down. A dependency more than one crate uses is declared in the workspace manifest so
+  members can't drift apart; one only a single crate uses, as most of `kamchatka`'s are, is declared
+  there. Any dependency whose purpose isn't obvious has a comment.
 - **`#[non_exhaustive]`** on every public enum that may gain variants; adding a variant is then not
   a breaking change, but forgetting the attribute on a new enum is. An enum that covers every
   possible case (`Grant`, `Verdict`) goes without it. For structs, the question is **"does anything

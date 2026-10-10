@@ -161,8 +161,8 @@ them.
   how a bug was found, one-off measurements, alternatives that were dropped, and closing lines
   that repeat the opening. Include a number only if it's a default or limit a reader will run
   into. On tool descriptions in particular, every word costs tokens on every request.
-- **Dependencies are kept to a minimum**, declared in the workspace manifest, with a comment on
-  any that aren't obvious.
+- **Dependencies are kept to a minimum**, declared in the workspace manifest where more than one
+  crate uses them, with a comment on any that aren't obvious.
 - **`#[non_exhaustive]`** on every public enum that may gain variants, and on every struct this
   workspace returns but nothing outside it constructs. Forgetting it on a new enum is a breaking
   change later; adding a variant then isn't. It doesn't cover an enum's variants: adding a field
