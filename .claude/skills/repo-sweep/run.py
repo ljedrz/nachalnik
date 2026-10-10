@@ -185,7 +185,9 @@ def aside(name):
     n = 1
     while glob.glob(os.path.join(old, f"{name}.{n}.*")):
         n += 1
-    for suffix in (".in", ".jsonl", ".err", ".pid"):
+    # note: `.session` too. It names the log a sweep is read from, so one left behind had a rerun
+    # read and judged by the try before it
+    for suffix in (".in", ".jsonl", ".err", ".pid", ".session"):
         p = sweeps.path(name, suffix)
         if os.path.exists(p):
             os.rename(p, os.path.join(old, f"{name}.{n}{suffix}"))
