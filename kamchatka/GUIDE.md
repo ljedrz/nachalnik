@@ -198,7 +198,8 @@ context like any other.
 
 A message sent while a turn is running **waits until the turn ends**, then gets a turn of its own;
 it can't be sent sooner, because it would land after the model's answer or between a tool call and
-its result. While it's waiting, <kbd>up</kbd> in an empty prompt brings it back to edit; otherwise
+its result. If the turn was stopped or failed, the message goes into the context and waits for
+`/continue`. While it's waiting, <kbd>up</kbd> in an empty prompt brings it back to edit; otherwise
 <kbd>up</kbd> brings back a copy of the last message sent, and <kbd>down</kbd> puts it away again if
 you haven't changed it.
 
