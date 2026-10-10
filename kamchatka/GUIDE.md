@@ -408,7 +408,7 @@ the estimate is being corrected; then up to ten of the most expensive items in t
 by what each *sends*, with a running total.
 
 `search` looks through excluded items without restoring them: how many lines contain the text, what
-restoring them would cost and which items they're in, and with `take`, up to 64 of the lines. It's
+taking them all would cost and which items they're in, and with `take`, up to 64 of the lines. It's
 case-insensitive, and when nothing is found it says what it searched.
 
 The other operations change the context. `elide`, `exclude`, `pin` and `restore` move items between
