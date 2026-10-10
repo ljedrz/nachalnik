@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A permission question says why the advisor could not rate it.** The reason was cut to its
+  first 120 characters, and a transport's failure reaches the advisor as its causes in a chain,
+  the address first and what went wrong last: the question showed the address and stopped before
+  `Connection refused`. A chain keeps its last cause now, after as much of its start as fits.
+
 - **A kernel that refuses the signal scope is said to have.** A session puts itself where its
   shell commands can signal nothing of the person's outside it, and a kernel that has the scope
   could still refuse to apply it, which nothing reported: every command could then signal every

@@ -73,13 +73,28 @@ const UNREAD: &str = "it answered nothing this program could read";
 const SAID: usize = 120;
 
 /// A reason cut to [`SAID`], saying where it was cut.
+///
+/// note: a reason that is a chain of causes - what `nachalnik-providers` makes of a transport's
+/// failure, each cause after a `: ` - keeps its last one, which is the part somebody can act on:
+/// `Connection refused` is under a head that is mostly the address. Anything else keeps its start.
 fn cut(reason: &str) -> String {
-    match reason.chars().count() > SAID {
-        true => format!(
-            "{}…",
-            reason.chars().take(SAID).collect::<String>().trim_end()
-        ),
-        false => reason.to_owned(),
+    let head = |room: usize| {
+        reason
+            .chars()
+            .take(room)
+            .collect::<String>()
+            .trim_end()
+            .to_owned()
+    };
+    if reason.chars().count() <= SAID {
+        return reason.to_owned();
+    }
+    let last = reason.rsplit(": ").next().unwrap_or(reason);
+    match SAID.checked_sub(last.chars().count() + 2) {
+        Some(room) if last.len() < reason.len() && room >= SAID / 4 => {
+            format!("{}… {last}", head(room))
+        }
+        _ => format!("{}…", head(SAID)),
     }
 }
 
@@ -860,6 +875,19 @@ mod tests {
         let long = cut(&"a firewall's page about it ".repeat(20));
         assert!(long.ends_with('…'), "{long}");
         assert!(long.chars().count() <= SAID + 1, "{long}");
+
+        // and a chain of causes keeps the last, which is the one that says what to do
+        let chain = cut(
+            "error sending request for url (http://127.0.0.1:8080/v1/systemone): client error \
+             (Connect): tcp connect error: Connection refused (os error 111)",
+        );
+        assert!(
+            chain.ends_with("Connection refused (os error 111)"),
+            "{chain}"
+        );
+        assert!(chain.starts_with("error sending request"), "{chain}");
+        assert!(chain.contains('…'), "{chain}");
+        assert!(chain.chars().count() <= SAID + 1, "{chain}");
     }
 
     /// The rubric is read by the nearest level, not by the one it has passed.
