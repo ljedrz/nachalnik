@@ -2386,14 +2386,19 @@ async fn a_job_that_left_its_group_is_stopped_too() {
     };
     let jobs = [job("away.pid"), job("forked.pid")];
     // note: the identifier is written just before `exec sleep`, and while the exec is under way a
-    // process's environment reads as empty, mark and all - so the jobs are looked for once they are
-    // `sleep`, or a loaded machine finds the one written last without a mark
+    // process's environment reads as empty, mark and all - so the jobs are looked for once the mark
+    // can be read, or a loaded machine finds the one written last without one. Not once they are
+    // `sleep`: the kernel names the new program before it places its environment, so for a moment
+    // a job is `sleep` and still reads as empty
     let until = std::time::Instant::now() + Duration::from_secs(5);
-    let slept = |pid: i32| {
-        std::fs::read_to_string(format!("/proc/{pid}/comm"))
-            .is_ok_and(|comm| comm.trim() == "sleep")
+    let marked = |pid: i32| {
+        std::fs::read(format!("/proc/{pid}/environ")).is_ok_and(|environ| {
+            environ.split(|byte| *byte == 0).any(|entry| {
+                entry.starts_with(format!("{}=", kamchatka::tools::CALL_VAR).as_bytes())
+            })
+        })
     };
-    while !jobs.iter().all(|job| slept(*job)) && std::time::Instant::now() < until {
+    while !jobs.iter().all(|job| marked(*job)) && std::time::Instant::now() < until {
         std::thread::sleep(Duration::from_millis(20));
     }
     let running = |pid: i32| std::path::Path::new(&format!("/proc/{pid}")).exists();
