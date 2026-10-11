@@ -285,22 +285,26 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   them is a pass over the prose, and waits on whether the one-word rule covers a document's general
   verbs as well as the program's own.
 
-- **A sweep whose last turn fails is run again from the start.** The repo-sweep skill counts a
-  sweep complete only when every message was answered, so one whose last turn was lost to a 429
-  or cut off by the endpoint is moved aside and rerun, hours of work for one answer. `friction.sh`
-  already carries a lost session on from its snapshot. `sweep.sh` could do the same, but
-  `sweeps.py` reads completeness from one session's log, so a resumed sweep's two logs would have
-  to be read as one first. A last answer cut off after the reasoning alone, which GMI ends with
-  `[DONE]` and nothing said, is rerun the same way, though `/continue` on the resumed session
-  finished such a sweep in one request.
+- **A sweep resumed eight times is run again from nothing.** `run.py` resumes an incomplete sweep
+  from its snapshot up to eight parts, and a resume the endpoint never answered is a part like any
+  other. Once there are eight, `resumable` gives up and the sweep is set aside and run again from
+  its first message, which throws away every part - the one thing the skill otherwise never does.
+  A long outage gets there: `drive.py` closes a part after ten failed turns, an hour or so of
+  waits, so about nine hours of an endpoint refusing everything is enough. Giving the sweep up
+  with its parts kept for a person, or not counting a part the endpoint never answered, would
+  settle it; which one is the choice.
 
-- **An outage the runner starts a sweep into can still cost it a try.** `run.py` sets a try aside
-  without counting it only if the endpoint never answered it once. When an endpoint fails every
-  request but a few, a sweep that got one answer before the failures counts as a try, and a long
-  outage can use up all of a sweep's tries. A probe can come back fine during such an outage: GMI
-  once answered one request in ten. Checking the endpoint before each start would not have
-  helped. What would settle it is a rule for what makes a try the endpoint's fault, such as
-  failures with no answer after them, read from the records like the rest of `sweeps.py`.
+- **`run.py` lets running sweeps spend turns on an endpoint that refuses everything.** Its pause
+  holds only new starts, and each running sweep's `drive.py` goes on retrying, with its waits
+  growing, until it closes the part. Freezing the running sessions (`SIGSTOP`) and probing until
+  the endpoint answers would spend nothing, but what a frozen request's connection does after
+  `SIGCONT` is untested. It matters less now that failed turns are retried in place; unblocked by
+  deciding it is worth the code.
+
+- **Tests spell the default tool layout as `Default::default()`.** The tests that build a `Shell`
+  or a `wiring::Setup`, or call `introspect::install`, pass `layout: Default::default()` (a few
+  dozen places). `Layout::Wrapped` would say which layout they test. Worth doing with the next
+  change that touches those tests.
 
 - **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
   `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
