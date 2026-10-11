@@ -37,6 +37,12 @@ minor bump may break you.
   parse error the tool would have given was never read. The refusal now says what is wrong with
   the text, shows where, and asks for `call` as an object.
 
+- **A refusal says when `action` is an operation with more written after it.** A model whose own
+  call format is a list of keys and values can write the next argument into `action`, as
+  `read<arg_key>from</arg_key><arg_value>658`, even when offered the tools flat. Told only that
+  this is not an operation, it sent the same call again and again. The refusal now names the
+  operation, shows what came after it, and asks for `action` as the operation alone.
+
 - **A compaction does not drop short exchanges for the screenshots in them.** A picture is priced
   at nothing, and one the pass was eliding was credited with its marker as freed when it went
   with its exchange instead. A few short questions with screenshots in them then read as worth

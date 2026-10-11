@@ -772,6 +772,17 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         .and_then(|args| args["action"].as_str().map(str::to_owned));
     let why = match named {
         Some(action) if ops.contains(&action.as_str()) => return None,
+        // note: an operation's name with more after it is what a model whose call format is a
+        // list of keys and values sends when it slips into that format after `action`. Told only
+        // that the name is not an operation, it sent the same call over and over
+        Some(action) if let Some(op) = prefix(&action, &ops) => format!(
+            "`{action}` is not one of the {} operations `{}` has, so the call is judged against \
+             all of them; it is `{op}` with `{}` after it, which belongs in arguments of its own: \
+             send `action` as `{op}` alone",
+            ops.len(),
+            spec.id,
+            around(&action[op.len()..], 0, SHOWN)
+        ),
         Some(action) => format!(
             "`{action}` is not one of the {} operations `{}` has, so the call is judged against \
              all of them",
@@ -792,6 +803,18 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         "{why} - a rule about one of them, like `{}:{}`, does not answer it",
         spec.capabilities[0].domain, ops[0]
     ))
+}
+
+/// The longest of `ops` that `action` begins with, where what follows it cannot continue a name.
+fn prefix<'a>(action: &str, ops: &[&'a str]) -> Option<&'a str> {
+    ops.iter()
+        .copied()
+        .filter(|op| {
+            action.strip_prefix(op).is_some_and(|rest| {
+                !rest.is_empty() && !rest.starts_with(|c: char| c.is_alphanumeric() || c == '_')
+            })
+        })
+        .max_by_key(|op| op.len())
 }
 
 /// What a call that named no operation held where its arguments go, for saying so.
@@ -1249,6 +1272,26 @@ mod tests {
         let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "fly" } })))
             .expect("`fly` is not one of these");
         assert!(said.contains("`fly` is not one of the"), "{said}");
+
+        // an operation with the next argument written into it, in the model's own markup, is
+        // said to be that operation with the rest after it
+        let said = unnamed_operation(
+            &spec,
+            &asking(json!({
+                "action": "read<arg_key>from</arg_key><arg_value>658",
+                "path": "x"
+            })),
+        )
+        .expect("the action is not an operation");
+        assert!(
+            said.contains("it is `read` with `<arg_key>from</arg_key><arg_value>658` after it"),
+            "{said}"
+        );
+        assert!(said.contains("send `action` as `read` alone"), "{said}");
+        // and a name that merely begins with one is not taken for it
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: { "action": "reader" } })))
+            .expect("`reader` is not one of these");
+        assert!(!said.contains("after it"), "{said}");
 
         // one operation cannot be widened to, and a tool that takes no wrapper is not this
         // convention, so neither gets a sentence about it
