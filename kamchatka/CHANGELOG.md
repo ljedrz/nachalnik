@@ -18,6 +18,12 @@ minor bump may break you.
 
 ### fixed
 
+- **A refusal says when `call` arrived as text that does not parse.** A call whose `call` was a
+  string that is not a JSON object, which is what a model's own call markup leaking into its
+  arguments arrives as, was refused by the policy as one that named no operation, and the
+  parse error the tool would have given was never read. The refusal now says what is wrong with
+  the text, shows where, and asks for `call` as an object.
+
 - **A compaction does not drop short exchanges for the screenshots in them.** A picture is priced
   at nothing, and one the pass was eliding was credited with its marker as freed when it went
   with its exchange instead. A few short questions with screenshots in them then read as worth

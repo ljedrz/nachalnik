@@ -529,6 +529,30 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
         ));
     }
 
+    // note: the same for a `call` that arrived as text the tool cannot read as an object. A model
+    // whose own call markup leaks into the arguments sends `{"call": "{\"action\": ... </arg_key>"}`,
+    // and told only that it named no operation it sends the next call the same way
+    if let Some(Value::String(written)) = request.args.get(WRAPPER)
+        && !matches!(serde_json::from_str::<Value>(written), Ok(Value::Object(_)))
+    {
+        let (why, at, rule) = match serde_json::from_str::<Value>(written) {
+            Err(e) => (
+                format!(" ({e})"),
+                at(written, e.line(), e.column()),
+                remedy(written, &e),
+            ),
+            Ok(_) => (String::new(), 0, String::new()),
+        };
+        return Some(format!(
+            "`{WRAPPER}` arrived as text that is not a JSON object{why} - what arrived there was \
+             `{}` - so no operation could be read from it, and the call is judged against all {} \
+             `{}` has; send it again with `{WRAPPER}` an object{rule}",
+            around(written, at, SHOWN),
+            ops.len(),
+            spec.id
+        ));
+    }
+
     // the same reading the tool will do, so that a call this cannot place is one the tool could
     // not place either
     let args = inner(&request.args).ok();
@@ -899,6 +923,17 @@ mod tests {
         assert!(said.contains("not JSON"), "{said}");
         assert!(
             said.contains("`{\"call\": {\"action\"`"),
+            "and it says what arrived, which is the thing to fix: {said}"
+        );
+        // and so does a `call` written as text that does not parse, which is what a model's own
+        // call markup leaking into the arguments arrives as
+        let leaked = "{\"action\": \"grep\", \"pattern</arg_key><arg_value>fn x";
+        let said = unnamed_operation(&spec, &asking(json!({ WRAPPER: leaked })))
+            .expect("a wrapper that does not parse places nothing");
+        assert!(said.contains("not a JSON object"), "{said}");
+        assert!(said.contains("EOF while parsing"), "{said}");
+        assert!(
+            said.contains("</arg_key><arg_value>"),
             "and it says what arrived, which is the thing to fix: {said}"
         );
         // and the fault is named and shown where it is, not only the end of what arrived
