@@ -4,14 +4,18 @@ findings. With -r, its reasoning as well.
 
 usage: read.py NAME [-r]
 
-From the snapshot the session wrote where there is one, beside its log (see `sweeps.py`). Where
-there is not - a session killed before it could write one, or whose snapshot failed - from its
-records, which hold every note as the arguments of a `context` call but none of the replies, so
-that reading gives the notes alone and says so.
+From the snapshot the session wrote, beside its log (see `sweeps.py`): kamchatka rewrites it each
+time the session comes to rest, so a sweep still running is read as of the end of its last turn,
+and says so. A resumed sweep's snapshot holds everything before the resume as well. Where the
+current part has none, from the newest earlier part's in `old/parts/`; and where no part has one,
+from the records, which hold every note as the arguments of a `context` call but none of the
+replies, so that reading gives the notes alone and says so.
 """
 
+import glob
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -78,14 +82,29 @@ def from_records(name):
             print(f"=== note {json.dumps(rest)[:200]} ===\n{said}\n")
 
 
+def earlier_parts(name):
+    """The snapshots of the parts before a resume, newest first."""
+    found = []
+    for kept in glob.glob(os.path.join(sweeps.SWEEPS, "old", "parts", f"{name}.*.session")):
+        n = int(re.search(r"\.(\d+)\.session$", kept).group(1))
+        snapshot = os.path.join(sweeps.LOGS, open(kept).read().strip() + ".json")
+        if os.path.exists(snapshot):
+            found.append((n, snapshot))
+    return [snapshot for _, snapshot in sorted(found, reverse=True)]
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
     name = args[0]
-    # note: only once the session has finished. kamchatka writes a snapshot as a session starts,
-    # and one still running has that one beside its log - which holds none of what it has found
-    path = sweeps.snapshot(name) if sweeps.state(name).get("finished") else None
+    path = sweeps.snapshot(name)
+    if path and sweeps.state(name)["status"] == "running":
+        print("(still running: as of the end of its last turn)\n")
+    if not path:
+        path = next(iter(earlier_parts(name)), None)
+        if path:
+            print(f"(no snapshot of the current part: read from the part before it, {path})\n")
     if path:
         from_snapshot(path, "-r" in args)
     else:
