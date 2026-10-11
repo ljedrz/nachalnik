@@ -21,16 +21,17 @@ What it decides on its own:
   to two hours, since an endpoint's capacity changes over a day. The step is a quarter because a
   sweep started at a width too wide runs to its end, which is hours.
 - **Repeated failures.** A 429 kamchatka waits out is not counted, since the answers a minute
-  already show what it costs. A turn that fails on one loses the rest of its message's work, which
-  they do not show, but one such turn is as likely chance as load: it takes `BURST` of them in
-  `BURST_WINDOW` (three in ten minutes) to step back - to the width before the latest widening, or
-  by a quarter - and hold there.
+  already show what it costs. A turn that fails on one is carried on by `drive.py` after a wait of
+  a minute or more, which they do not show, but one such turn is as likely chance as load: it
+  takes `BURST` of them in `BURST_WINDOW` (three in ten minutes) to step back - to the width before
+  the latest widening, or by a quarter - and hold there.
 - **An endpoint that is down.** A sweep that ends with a turn the model never answered, or on an
   error, pauses every new start - five minutes, doubling to an hour while it keeps happening - and
   counts as one more failure towards a step back.
-- **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
-  run again from the start, up to `--tries` times in all (default 3). A try the endpoint never
-  answered once is kept in $SWEEPS/old/void/ and not counted.
+- **What counts as done**; see `sweeps.py`. One that is not, and has nothing to resume (below), is
+  moved aside to $SWEEPS/old/ and run again from the start, up to `--tries` times in all
+  (default 3). A try the endpoint never answered once is kept in $SWEEPS/old/void/ and not
+  counted.
 - **Resuming rather than starting again.** An incomplete sweep the endpoint answered at least once
   is carried on from the session it saved, not run again from nothing: `/continue` if its last
   turn did not end in an answer, then the messages it never got. The part before is kept in
@@ -147,9 +148,9 @@ class Climb:
         """Steps back once `BURST` failures fall inside `BURST_WINDOW`: to the width before the
         latest widening, or by a quarter.
 
-        note: a turn that fails on a 429 loses the rest of its message's work, which the answers a
-        minute do not show. But one is as likely chance as load, and a step back costs every new
-        start for half an hour or more."""
+        note: a turn that fails on a 429 waits a minute or more before `drive.py` carries it on,
+        which the answers a minute do not show. But one is as likely chance as load, and a step
+        back costs every new start for half an hour or more."""
         while self.failures and now - self.failures[0] > BURST_WINDOW:
             self.failures.popleft()
         if len(self.failures) < BURST:
@@ -222,7 +223,7 @@ def resumable(name):
     s = sweeps.state(name)
     if s["status"] != "incomplete":
         return None
-    if len(glob.glob(os.path.join(sweeps.SWEEPS, "old", "parts", f"{name}.*.in"))) >= PARTS:
+    if s["parts"] >= PARTS:
         return None
     snapshot = sweeps.snapshot(name)
     if not s.get("requests") or not snapshot:
@@ -237,7 +238,7 @@ def resumable(name):
     sent = sum(1 for i in items if i["kind"].get("kind") == "user_message"
                and i.get("source") == "user")
     last = items[-1]["kind"].get("kind") if items else None
-    cont = last != "assistant_message" or s.get("stop") not in sweeps.ANSWERED
+    cont = last != "assistant_message" or not s.get("ended")
     return {"RESUME": snapshot, "SENT": str(sent), "CONTINUE": "1" if cont else ""}
 
 

@@ -16,7 +16,12 @@ Needs looking at:
 - a long turn: over 300 requests in one turn. Read the end of NAME.err: a model reading its scope
   file after file is working; one making the same calls over and over is not, and nothing stops
   it - what to do about it is the person's call, not `run.py`'s.
-- turns failed, a sweep given up, or `run.py` no longer running with work left.
+- messages passed over: sent before the one ahead of them had an answer, which only a sweep
+  started before `drive.py` does. Its exploration rounds were spent on failed turns.
+- a sweep given up, or `run.py` no longer running with work left.
+
+note: a failed turn is not on the list. `drive.py` carries it on with `/continue`, and the
+`retries` column and `drive:` lines in NAME.err show what the endpoint costs.
 """
 
 import glob
@@ -65,10 +70,8 @@ def concerns(s):
         found.append(f"{s['turn']} requests in its current turn")
     if s.get("refused", 0) > 20:
         found.append(f"{s['refused']} calls refused")
-    if s.get("empty"):
-        found.append(f"{s['empty']} turn(s) failed with nothing answered")
-    if s.get("failed", 0) > s.get("empty", 0):
-        found.append(f"{s['failed'] - s['empty']} turn(s) failed part-way, and it went on")
+    if s.get("skipped"):
+        found.append(f"{s['skipped']} message(s) passed over after a turn that did not end")
     return found
 
 
@@ -96,7 +99,8 @@ def table(named):
         lines.append(
             f"{s['name']:24} {s['status']:10} {s['sent']}/{s['expected']} sent, "
             f"{s['requests']} requests (mean {s['mean']:,}, max {s['largest']:,}), "
-            f"{s['retrying']} retries, quiet {s['quiet'] // 60}m"
+            f"{s['retrying']} retries, {s['failed']} failed turns, quiet {s['quiet'] // 60}m"
+            + (f", part {s['parts'] + 1}" if s.get("parts") else "")
             + (f" - {s['why']}" if s["why"] else "")
         )
         trouble += [f"{s['name']}: {c}" for c in concerns(s)]
