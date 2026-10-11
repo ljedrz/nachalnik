@@ -1,15 +1,21 @@
 """What a sweep's files say about it, for `run.py` and `status.py`.
 
-A sweep is complete when the process ended on its own (`exit 0`), every message in `NAME.in`
-reached the model, every turn got answers from it, and the last answer ended as an answer rather
-than being cut off. Anything else that has ended is incomplete, with the reason, and `run.py` runs
-it again.
+A sweep is complete when the session ended on its own, every message in `NAME.in` reached the
+model, and the last of them got an answer that ended (a `finished` state with stop `end_turn`)
+before the session did. Anything else that has ended is incomplete, with the reason, and `run.py`
+resumes it, or runs it again where there is nothing to resume.
 
-note: a turn that failed after the model had answered in it did its work up to there, and the
-session goes on with the next message, which says to continue where it left off; an endpoint that
-refuses one request in a hundred - one larger than it will take, say, which kamchatka answers by
-compacting - is no reason to throw a sweep's hours away. A turn that failed before any answer is
-one the endpoint never served: that sweep is missing a part, and is run again.
+note: the last message, and not every one, because the last is the one a resume can still answer.
+`drive.py` does not send a message before the one ahead of it is answered, so under it the two
+are the same. A sweep piped its lines all at once, as `sweep.sh` used to, went on to the next
+message after a failed turn, and the message passed over is counted in `skipped` and said by
+`status.py` rather than making the sweep incomplete: nothing can answer it now, and judged
+incomplete, such a sweep would be resumed with nothing to send until it ran out of parts, and then
+run again from nothing.
+
+note: a failed turn is not a failure of the sweep. `drive.py` carries it on with `/continue`, and
+an endpoint that refuses one request in a hundred - one larger than it will take, say, which
+kamchatka answers by compacting - is no reason to throw a sweep's hours away.
 
 note: read from the records and not from what the model says, because models differ in every
 other respect - one writes FINDINGS, one writes DONE, one writes nothing - and the records are the
@@ -37,9 +43,9 @@ LOGS = os.environ.get("KAMCHATKA_LOGS") or os.path.join(os.environ.get("TMPDIR",
 # what kamchatka prints while it waits on the endpoint: `MODEL answered 429; trying again in 4s`,
 # and the same for a timeout or a refused connection
 RETRYING = re.compile(r"; trying again in \d+s")
-# the stop reason of a last answer that is an answer: `tool_use` there is a turn that stopped
-# partway, and `max_tokens` one cut off
-ANSWERED = {"end_turn"}
+# the stop reasons of an answer that ended: `tool_use` there is a turn that stopped partway, and
+# `length` or `{"other": "cut off"}` one cut off. A refusal is not continued: `/continue` refuses it
+ANSWERED = {"end_turn", "refusal"}
 
 
 def path(name, suffix):
@@ -128,7 +134,8 @@ class Records:
         self.requests = 0
         self.inputs = []
         self.failed = []
-        self.empty = 0  # turns that failed with nothing answered in them
+        self.ended = False  # whether the last message has had an answer that ended
+        self.skipped = 0  # messages sent before the one ahead of them had such an answer
         self.throttled = 0  # turns that failed on a 429 kamchatka's own retries did not outlast
         self.answered = 0  # answers in the turn under way
         # calls the policy refused, read off the records: the prose holds what a sweep read and
@@ -161,8 +168,18 @@ class Records:
                 kind = event.get("event")
                 if kind == "context.added" and event.get("kind") == "user_message" \
                         and event.get("source") == "user":
+                    # not the first in this log: what came before it is in the snapshot a
+                    # resumed session started from, which the log does not show
+                    if self.sent and not self.ended:
+                        self.skipped += 1
                     self.sent += 1
                     self.answered = 0
+                    self.ended = False
+                elif kind == "state.changed":
+                    to = event.get("to") or {}
+                    if to.get("state") == "finished" and isinstance(to.get("stop"), str) \
+                            and to["stop"] in ANSWERED:
+                        self.ended = True
                 elif kind == "model.finished":
                     self.requests += 1
                     self.answered += 1
@@ -178,8 +195,6 @@ class Records:
                 elif kind in ("model.failed", "step.failed"):
                     self.failed.append(str(event.get("error", ""))[:160])
                     self.throttled += "429" in self.failed[-1]
-                    if not self.answered:
-                        self.empty += 1
 
 
 _records = {}
@@ -208,6 +223,15 @@ def state(name, now=None):
         except FileNotFoundError:
             pass  # not written yet, or moved aside while this read
     changed = max(times, default=now)
+    ended = records.ended
+    # note: a resume with nothing to continue and no message in its log yet carries on from an
+    # answer that ended, which is in its snapshot and not in its log. Read off the log alone, a
+    # sweep killed after its last answer would be resumed, send nothing, and be incomplete again
+    if not records.sent:
+        try:
+            ended = ended or json.load(open(path(name, ".resume"))).get("CONTINUE") == ""
+        except (OSError, ValueError, AttributeError):
+            pass
     s.update(
         expected=expected(name),
         sent=records.sent,
@@ -215,13 +239,15 @@ def state(name, now=None):
         mean=sum(records.inputs) // max(len(records.inputs), 1),
         largest=max(records.inputs, default=0),
         failed=len(records.failed),
-        empty=records.empty,
         throttled=records.throttled,
         turn=records.answered,
         retrying=len(RETRYING.findall(prose)),
         refused=records.refused,
         quiet=int(now - changed),
         stop=records.stop,
+        ended=ended,
+        skipped=records.skipped,
+        parts=len(glob.glob(os.path.join(SWEEPS, "old", "parts", f"{name}.*.in"))),
     )
     try:
         pid = int(open(path(name, ".pid")).read())
@@ -246,10 +272,9 @@ def state(name, now=None):
                      130: "it was interrupted"}.get(code, f"it ended without finishing (exit {code})"))
     if s["expected"] is not None and records.sent < s["expected"]:
         whys.append(f"{records.sent} of {s['expected']} messages sent")
-    if records.empty:
-        whys.append(f"{records.empty} turn(s) failed with nothing answered: {records.failed[-1]}")
-    if records.stop not in ANSWERED:
-        whys.append(f"the last answer stopped: {records.stop}")
+    if not ended:
+        whys.append(f"the last message has no answer that ended (last stop: {records.stop})"
+                    + (f"; last failure: {records.failed[-1]}" if records.failed else ""))
     s["status"] = "incomplete" if whys else "complete"
     s["why"] = "; ".join(whys)
     return s

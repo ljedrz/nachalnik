@@ -10,7 +10,8 @@
 # `--sandbox-read` here would replace that list rather than add to it, and cargo would be gone.
 set -u
 SWEEPS=${SWEEPS:-${TMPDIR:-/tmp}/sweeps}
-REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+here=$(cd "$(dirname "$0")" && pwd)
+REPO=$(git -C "$here" rev-parse --show-toplevel)
 BIN=${CARGO_TARGET_DIR:-$REPO/target}/release/kamchatka
 DEADLINE=${DEADLINE:-3000}
 name=$1 tasks=$(realpath "$2") diffs=$(realpath "$3")
@@ -27,8 +28,14 @@ cd "$wt"
         grep -v '^[[:space:]]*$' "$SWEEPS/params.txt" | sed 's|^|/params |'
     fi
     grep -v '^[[:space:]]*$' "$tasks"
-} | TMPDIR=$out/tmp CARGO_TARGET_DIR=$wt/target GIT_CONFIG_GLOBAL=/dev/null timeout $((DEADLINE + 300)) "$BIN" --headless --config-file "$SWEEPS/mt.json" \
-    --deadline "$DEADLINE" > "$out/$name.jsonl" 2> "$out/$name.err"
+} > "$out/$name.in"
+: > "$out/$name.jsonl"
+: > "$out/$name.err"
+# a turn the endpoint failed on is carried on with `/continue`, and a session given up on resumed
+# in the same worktree; see drive.py
+TMPDIR=$out/tmp CARGO_TARGET_DIR=$wt/target GIT_CONFIG_GLOBAL=/dev/null DRIVE_OUT=$out \
+    DRIVE_RESUMES=6 python3 "$here/drive.py" "$name" "$out/$name.in" \
+    "$BIN" --headless --config-file "$SWEEPS/mt.json" --deadline "$DEADLINE"
 echo "exit $?" >> "$out/$name.err"
 git -C "$wt" add -N . 2> /dev/null
 # the crates' sources and tests and nothing else: a session leaves scripts, `.orig` files and

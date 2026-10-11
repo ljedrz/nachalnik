@@ -82,21 +82,27 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   on a free tier answered once every two and a half minutes - and a sweep cut off by a deadline
   had not got past its first message. A sweep is run until it has answered its last; one whose
   records stop growing for `--stall` minutes is stopped and resumed.
-- **Done means done**, read off the records (`sweeps.py`): exited on its own, every message sent,
-  no failed turn, the last answer ended rather than cut off. One that is not, but was answered at
-  least once, is **resumed** from the session it saved: `/continue` where its last turn did not
-  end in an answer (a failed turn leaves the next message waiting for one), then the messages it
-  never got. The part before goes to `old/parts/` and is not a try. Only a sweep with nothing to
-  resume is run again from the start, up to `--tries` times; what is still not done is listed as
-  given up.
+- **A turn at a time.** `sweep.sh` hands the session to `drive.py`, which sends each message only
+  once the turn before it has ended in an answer, read off the records. A turn the endpoint failed
+  on, or cut off, gets `/continue` after a wait (a minute, doubling to ten), so a 429 storm costs
+  time and not the message's work; ten failed turns in a row with nothing answered close the
+  session, and `run.py` resumes it later. Its decisions are the `drive:` lines in `NAME.err`.
+- **Never throw a session away.** Every session is a log and a snapshot, rewritten each time it
+  comes to rest, and every sweep cut short is carried on from it rather than run again.
+- **Done means done**, read off the records (`sweeps.py`): ended on its own, every message sent,
+  and the last one answered with a turn that ended (stop `end_turn`). One that is not, but was
+  answered at least once, is **resumed** from the session it saved: `/continue` where its last
+  turn did not end in an answer, then the messages it never got. The part before goes to
+  `old/parts/` and is not a try, up to eight parts. Only a sweep with nothing to resume is run
+  again from the start, up to `--tries` times; what is still not done is listed as given up.
 - **As many at once as the endpoint takes, with no ceiling.** kamchatka is not the limit: a
   session takes tens of megabytes, and hundreds can run at once. The runner starts at `--width`
   (8) and climbs by the answers a minute the endpoint gives: it adds a quarter again, keeps the
   wider width only if the answers a minute rose by a tenth, and otherwise goes back and holds,
   from half an hour doubling up to two hours, before trying again. A 429 kamchatka waits out is
   not the measure: many of them at a width that answers more is still the faster run. A turn that
-  fails on one loses the rest of its message's work, but one is as likely chance as load: three
-  failed turns in ten minutes step the width back. A sweep that ends on a failure pauses new
+  fails on one waits before it is carried on, but one is as likely chance as load: three failed
+  turns in ten minutes step the width back. A sweep that ends on a failure pauses new
   starts while the endpoint recovers, and counts towards those three. Don't hold it lower by hand:
   what an endpoint took on another day is no guide to today. Restart it at the number running, so
   that it measures that width rather than waiting for sweeps to end.
@@ -107,8 +113,8 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   (`git worktree remove $SWEEPS/tree`); the next run makes them again.
 - Run again, it skips what is complete and adopts what is still running. It leaves a sweep's
   earlier tries in `$SWEEPS/old/`.
-- **Never kill sweeps by hand to change course.** A killed sweep's work is lost; `run.py` reruns
-  it from the start. To change how many run, stop `run.py` alone (its pid is in
+- **Don't kill sweeps by hand to change course.** A stopped sweep is resumed from its last rest,
+  but the turn it was in is lost. To change how many run, stop `run.py` alone (its pid is in
   `$SWEEPS/run.pid`) and start it again with other options: the sweeps carry on and are adopted.
 
 **Watch it, every fifteen minutes or so, with `status.py --watch`.** It returns early when a
@@ -121,11 +127,15 @@ sweep ends or something needs looking at:
   shows only in what it found: read the notes of the first sweeps to end before trusting the rest.
 - **given up**, or `run.py` not running with work left.
 
+A failed turn is not on the list: `drive.py` carries it on, and the `retries` and `failed turns`
+columns say what the endpoint costs.
+
 ## 3. read what a sweep found
 
 `python3 $SKILL/read.py NAME` - its replies, then the model's `context` notes, which is where a
-hygiene run keeps its findings; `-r` adds its reasoning. A sweep that could not write its session
-is read from its records, and gives its notes alone.
+hygiene run keeps its findings; `-r` adds its reasoning. It reads the snapshot, so a sweep still
+running is read as of the end of its last turn, and a resumed one with everything before the
+resume. A sweep with no snapshot in any part is read from its records, and gives its notes alone.
 
 ## 4. verify, in waves
 
@@ -235,8 +245,9 @@ wait
 python3 $SKILL/friction.py $SWEEPS/fr/tmp/kamchatka/*.json
 ```
 
-- `friction.sh` carries a session lost to the endpoint on, as the sweeps' resume does, so an
-  endpoint's 429s cost time rather than the session, and nothing caps how many run at once.
+- `friction.sh` drives its session with `drive.py`, as the sweeps are driven, and resumes one
+  it gave up on up to six times (`kill.sh` does the same), so an endpoint's 429s cost time rather
+  than the session, and nothing caps how many run at once.
 - Resumed sessions leave a snapshot per process, each holding the whole history before it, so
   `friction.py` counts an early error once per snapshot. Count sessions by the snapshot name with
   its `-N` suffix taken off before weighing a row.

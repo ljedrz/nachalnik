@@ -6,7 +6,8 @@
 #
 # Writes, under $SWEEPS: NAME.in, the lines the session is given (`/params` commands, the scope,
 # three continuations); NAME.pid, the session's process id while it runs; NAME.jsonl, the stream
-# records; NAME.err, the prose, ending in a line `exit N`.
+# records; NAME.err, the prose, ending in a line `exit N`. `drive.py` feeds the session the lines a
+# turn at a time, and carries a failed turn on with `/continue`; see its notes.
 #
 # With RESUME set to a session's snapshot, the sweep carries on from it rather than starting
 # again: NAME.in is `/continue` where CONTINUE is set, then the messages after the first SENT.
@@ -67,14 +68,13 @@ main() {
     [ -n "${RESUME:-}" ] && resume=(-r "$RESUME")
     local limit=()
     [ -n "${DEADLINE:-}" ] && limit=(--deadline "$DEADLINE")
+    : > "$SWEEPS/$name.jsonl"
+    : > "$SWEEPS/$name.err"
     # shellcheck disable=SC2086 # FLAGS is words
-    "$bin" ${FLAGS:-} --headless --config-file "$config" "${limit[@]}" "${resume[@]}" \
-        < "$SWEEPS/$name.in" > "$SWEEPS/$name.jsonl" 2> "$SWEEPS/$name.err" &
-    echo $! > "$SWEEPS/$name.pid"
-    wait $!
+    DRIVE_OUT=$SWEEPS DRIVE_RESUMES=0 python3 "$(dirname "$0")/drive.py" "$name" "$SWEEPS/$name.in" \
+        "$bin" ${FLAGS:-} --headless --config-file "$config" "${limit[@]}" "${resume[@]}"
     local code=$?
     echo "exit $code" >> "$SWEEPS/$name.err"
-    rm -f "$SWEEPS/$name.pid"
     return $code
 }
 main "$@"; exit $?
