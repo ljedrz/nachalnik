@@ -1,0 +1,4 @@
+In what year was the lighthouse keeper who made the first recorded sighting of the green flash at Skerryvane born? The files in results/round1/ are search results already fetched for you; read them with fs and tell me what you found. Don't answer yet.
+Your context is yours to edit with the context tool. Compact it now, keeping only your key findings and current plan. For example: revise your previous reply to hold just the findings and the plan, and exclude the search results.
+Now read results/round2/ and answer the question.
+/save ../out4

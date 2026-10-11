@@ -1,0 +1,8 @@
+{
+  "tools": ["fs", "context"],
+  "allow": ["fs:read", "fs:glob", "context"],
+  "on-ask": "deny",
+  "requests": 20,
+  "spend": 400000,
+  "deadline": 900
+}
