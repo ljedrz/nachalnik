@@ -24,6 +24,7 @@ session alone and ends in `session.finished`; the copy's first record names it, 
 kept in NAME.session the first time it is read.
 """
 
+import glob
 import json
 import os
 import re
@@ -57,7 +58,12 @@ def alive(pid):
 
 def session(name):
     """The name of the sweep's session, which is the name of its log: kept in NAME.session, and
-    read from the first record of NAME.jsonl the first time."""
+    read from the first record of NAME.jsonl the first time.
+
+    note: a resumed session's first record is `session.resumed`, naming the session it carried
+    on from, and its own log is that name with a suffix (`-2`, `-3`). Which one is the log whose
+    first line is the same as the copy's. Without it a resumed sweep had no snapshot of its own,
+    and a second resume started from the first one's, losing what came between."""
     kept = path(name, ".session")
     try:
         return open(kept).read().strip() or None
@@ -69,11 +75,23 @@ def session(name):
         event = json.loads(first)["event"]
     except (FileNotFoundError, ValueError, KeyError, TypeError):
         return None
-    if event.get("event") != "session.started" or not event.get("session"):
+    found = event.get("session")
+    if not found:
+        return None
+    if event.get("event") == "session.resumed":
+        found = None
+        for candidate in glob.glob(os.path.join(LOGS, glob.escape(event["session"]) + "*.jsonl")):
+            with open(candidate, "rb") as f:
+                if f.readline() == first:
+                    found = os.path.basename(candidate)[: -len(".jsonl")]
+                    break
+    elif event.get("event") != "session.started":
+        return None
+    if not found:
         return None
     with open(kept, "w") as f:
-        f.write(event["session"] + "\n")
-    return event["session"]
+        f.write(found + "\n")
+    return found
 
 
 def log(name):
