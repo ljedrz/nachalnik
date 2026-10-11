@@ -2129,6 +2129,7 @@ async fn the_question_about_a_change_says_which_items_it_would_change() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         Limits::default(),
+        Default::default(),
     );
     harness
         .app
@@ -2175,6 +2176,7 @@ async fn the_question_expands_a_selector_into_the_items_it_matches() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         Limits::default(),
+        Default::default(),
     );
     harness.app.kernel.push(ContextItem::user("read them"));
     harness

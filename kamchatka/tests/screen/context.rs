@@ -1702,6 +1702,7 @@ async fn the_output_limit_can_be_raised_without_restarting() {
             confiner: None,
             limits: limits.clone(),
             stragglers: Default::default(),
+            layout: Default::default(),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
@@ -1900,6 +1901,7 @@ async fn a_limit_for_a_tool_nobody_is_offering_says_which_ones_those_are() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         harness.app.limits.clone(),
+        Default::default(),
     ));
     let looking = nachalnik::ToolCall::new("c", "context", json!({ "action": "look" }));
     assert_eq!(

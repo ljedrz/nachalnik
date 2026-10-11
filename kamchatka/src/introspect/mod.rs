@@ -40,7 +40,7 @@ use nachalnik::{
 };
 use serde_json::{Value, json};
 
-use crate::tools::{Careful, Limits};
+use crate::tools::{Careful, Layout, Limits};
 
 mod context;
 mod fork;
@@ -64,19 +64,27 @@ pub use crate::introspect::{context::Context, fork::Fork, log::Log, setup::Setup
 /// reference cycle that keeps the whole session alive after the last handle to it is gone, which
 /// the runtime's own documentation warns about; an [`Arc`] somebody *else* owns, pointed at weakly
 /// from in here, is the shape that has an end.
-pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits) -> Installed {
+///
+/// note: `layout` is how all four lay out their arguments, which is the layout `fs` and `shell`
+/// were given: a model offered two layouts in one request writes one of them wrong.
+pub fn install(kernel: &Kernel, policy: Arc<Careful>, limits: Limits, layout: Layout) -> Installed {
     let anchor = Arc::new(kernel.clone());
     let reach = Reach(Arc::downgrade(&anchor), policy.clone());
     let forked = Arc::new(AtomicU64::new(0));
 
-    kernel.add_tool(Arc::new(Context::new(reach.clone(), limits.clone())));
+    kernel.add_tool(Arc::new(Context::new(
+        reach.clone(),
+        limits.clone(),
+        layout,
+    )));
     kernel.add_tool(Arc::new(Fork::new(
         reach.clone(),
         limits.clone(),
         forked.clone(),
+        layout,
     )));
-    kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone())));
-    kernel.add_tool(Arc::new(Setup::new(reach, policy, limits)));
+    kernel.add_tool(Arc::new(Log::new(reach.clone(), limits.clone(), layout)));
+    kernel.add_tool(Arc::new(Setup::new(reach, policy, limits, layout)));
 
     Installed {
         _anchor: anchor,

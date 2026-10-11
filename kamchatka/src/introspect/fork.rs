@@ -29,7 +29,7 @@ use crate::{
     app::text::thousands,
     tools::{
         Limits, domains,
-        ops::{Arg, Op, action_of, actions, inner, schema},
+        ops::{Arg, Layout, Op, action_of, actions, inner, schema},
     },
 };
 
@@ -90,14 +90,19 @@ pub struct Fork {
 
 impl Fork {
     /// Builds one; see [`super::install`], which is the only caller, and which holds `forked`.
-    pub(super) fn new(reach: Reach, limits: Limits, forked: Arc<AtomicU64>) -> Self {
+    pub(super) fn new(
+        reach: Reach,
+        limits: Limits,
+        forked: Arc<AtomicU64>,
+        layout: Layout,
+    ) -> Self {
         let ops = ops();
         Self {
             reach,
             limits,
             forked,
             read: Arc::default(),
-            schema: Arc::new(schema(&ops)),
+            schema: Arc::new(schema(&ops, layout)),
             ops,
         }
     }
@@ -144,7 +149,7 @@ impl Tool for Fork {
 
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
         };
         let args = &*args;
 

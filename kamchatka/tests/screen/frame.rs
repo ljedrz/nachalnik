@@ -344,6 +344,7 @@ async fn the_help_lists_the_keys_that_exist() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         Limits::default(),
+        Default::default(),
     );
     // note: the tool's own description rather than the `select` argument's. Five operations take a
     // `select` and they are five branches of one schema now, so the grammar is stated once where

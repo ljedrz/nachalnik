@@ -31,7 +31,41 @@ use serde_json::{Map, Value, json};
 /// refused - the call is unambiguous and refusing it costs a
 /// turn. What is refused is arguments in both places at once, which is the only reading that could
 /// silently do something nobody asked for; see [`inner`].
+///
+/// note: a session can be offered no wrapper at all, with [`Layout::Flat`]. A model whose own call
+/// format is a flat list of keys and values can slip back into it inside a nested object: it starts
+/// `call` as a JSON object and finishes it in its own markup, and the call is lost. The same
+/// tools offered flat give it nothing nested to slip inside. What that costs is the per-operation
+/// `required` and the branch that keeps one operation's arguments away from another's, so it is a
+/// setting for the models that need it rather than the default.
 pub(crate) const WRAPPER: &str = "call";
+
+/// How this program's own tools lay out their arguments for a model: inside one `call` object, or
+/// at the top level. `fs`, `shell` and the four that read the session are built either way; a
+/// tool from an MCP server is offered as its server wrote it.
+///
+/// note: carried by the schema once it is built - a tool's schema has a `call` property in one
+/// layout and not in the other - so a tool that holds its schema knows its layout, and so does
+/// the policy, which is handed every tool's schema.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Layout {
+    /// Every argument inside one `call` object, with a branch of an `anyOf` per operation.
+    #[default]
+    Wrapped,
+    /// Every argument at the top level, beside an `action` that names the operation.
+    Flat,
+}
+
+impl Layout {
+    /// The layout a schema made by this module offers.
+    pub(crate) fn of(schema: &Value) -> Self {
+        match schema["properties"].get(WRAPPER) {
+            Some(_) => Self::Wrapped,
+            None => Self::Flat,
+        }
+    }
+}
 
 /// What the wrapper says it is, which is the same sentence for every tool that has one.
 const ABOUT: &str = "the operation to perform, and the arguments that operation takes";
@@ -163,7 +197,8 @@ pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
         .collect()
 }
 
-/// The schema a model is given: one property, and a branch of an `anyOf` per operation.
+/// The schema a model is given: one property, and a branch of an `anyOf` per operation - or, in
+/// the [`Layout::Flat`] layout, every argument at the top level; see [`flat`].
 ///
 /// note: `enum` with one value rather than `const` for the discriminator. Both say the same thing,
 /// and `enum` is also what an endpoint reading a schema as Google's own `Schema` - a closed set of
@@ -174,7 +209,11 @@ pub(crate) fn actions(ops: &[Op]) -> Vec<&'static str> {
 /// for it: `additionalProperties: false` on the root and on every branch, and every argument in
 /// its branch's `required` with the optional ones typed `["string", "null"]`. The shape is already
 /// what strict wants; it is the two keywords that are not done.
-pub(crate) fn schema(ops: &[Op]) -> Value {
+pub(crate) fn schema(ops: &[Op], layout: Layout) -> Value {
+    if layout == Layout::Flat {
+        return flat(ops);
+    }
+
     // note: no `anyOf` where there is nothing to choose between. A tool whose operations all read
     // the same arguments - `setup`, `log`, `shell` - has nothing for a union to gate, and wrapping
     // one branch in a one-element `anyOf` is scaffolding charged for on every request. The wrapper
@@ -242,6 +281,126 @@ fn branch(op: &Op) -> Value {
     branch
 }
 
+/// The table as one object: `action` naming the operation, and every argument any operation takes
+/// beside it, once.
+///
+/// note: `action`'s description says what each operation does, so nothing a branch would have
+/// said is lost. An argument taken by only some operations says which, and an argument that
+/// several take with different descriptions keeps each one, named by the operations it belongs
+/// to. Without that, `path` would be "the file to read" for `glob` as well, and an argument that
+/// is `revise`'s alone would read as one `look` takes too.
+///
+/// note: only an argument every operation requires goes in `required`. One that some require says
+/// so in its description, since the schema has nowhere else to say it; [`unread`] and the tool's
+/// own check of what is missing hold the call to the table either way.
+///
+/// note: where several operations give one argument different schemas, it keeps the keywords they
+/// all agree on. `revise`'s `ids` is a list of exactly one, and the others' are lists of any
+/// length: in one property that is a list, and `revise`'s description says it takes one.
+fn flat(ops: &[Op]) -> Value {
+    let every = actions(ops);
+    let mut action = json!({ "type": "string", "enum": every });
+    let does: Vec<String> = ops
+        .iter()
+        .filter(|op| !op.does.is_empty())
+        .map(|op| format!("{}: {}", named(&op.actions), op.does))
+        .collect();
+    if !does.is_empty() {
+        action["description"] = json!(sentences(&does));
+    }
+
+    let mut properties = Map::new();
+    properties.insert("action".to_owned(), action);
+    let mut required = vec![json!("action")];
+
+    let mut names: Vec<&str> = Vec::new();
+    for arg in ops.iter().flat_map(|op| &op.takes) {
+        if arg.schema.is_some() && !names.contains(&arg.name) {
+            names.push(arg.name);
+        }
+    }
+
+    for name in names {
+        // the operations that take it, gathered by what each says about it
+        let mut takers: Vec<(&Value, bool, Vec<&str>)> = Vec::new();
+        for op in ops {
+            for arg in op.takes.iter().filter(|arg| arg.name == name) {
+                let Some(schema) = &arg.schema else {
+                    continue;
+                };
+                match takers
+                    .iter_mut()
+                    .find(|(said, needed, _)| *said == schema && *needed == arg.required)
+                {
+                    Some((_, _, actions)) => actions.extend(&op.actions),
+                    None => takers.push((schema, arg.required, op.actions.clone())),
+                }
+            }
+        }
+
+        if let [(schema, needed, actions)] = &takers[..]
+            && actions.len() == every.len()
+        {
+            properties.insert(name.to_owned(), (*schema).clone());
+            if *needed {
+                required.push(json!(name));
+            }
+            continue;
+        }
+
+        let mut merged: Map<String, Value> = takers[0]
+            .0
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, value)| {
+                *key != "description"
+                    && takers
+                        .iter()
+                        .all(|(schema, _, _)| schema.get(key.as_str()) == Some(value))
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        let said: Vec<String> = takers
+            .iter()
+            .map(|(schema, needed, actions)| {
+                format!(
+                    "{}{}: {}",
+                    named(actions),
+                    if *needed { " (required)" } else { "" },
+                    schema["description"].as_str().unwrap_or_default()
+                )
+            })
+            .collect();
+        merged.insert("description".to_owned(), json!(sentences(&said)));
+        properties.insert(name.to_owned(), Value::Object(merged));
+    }
+
+    json!({
+        "type": "object",
+        "properties": properties,
+        "required": required,
+    })
+}
+
+/// Operations by name, as a description lists them: `` `read`, `write` ``.
+fn named(actions: &[&str]) -> String {
+    actions
+        .iter()
+        .map(|action| format!("`{action}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Several clauses as one description, a full stop between each.
+fn sentences(parts: &[String]) -> String {
+    parts
+        .iter()
+        .map(|part| part.trim_end_matches('.'))
+        .collect::<Vec<_>>()
+        .join(". ")
+}
+
 /// The key a provider puts a call's arguments under when they would not parse as JSON.
 ///
 /// note: `nachalnik-providers` plants it so that "a model that produces invalid JSON gets to see
@@ -289,7 +448,7 @@ const SHOWN: usize = 200;
 /// last of a multi-call turn one `}` short - reproducibly, streamed and whole alike, so it is the
 /// model rather than anything in the way - and closing it here would be this program deciding what
 /// a half-written call meant. Saying where it stops is the part that is known.
-fn unreadable(written: &str) -> String {
+fn unreadable(written: &str, layout: Layout) -> String {
     let Err(why) = serde_json::from_str::<Value>(written) else {
         return format!(
             "the arguments arrived as text rather than as an object, so nothing was read and \
@@ -302,7 +461,7 @@ fn unreadable(written: &str) -> String {
         "the arguments were not JSON, so nothing was read and nothing was done: {why}. What \
          arrived there was `{}`. Send the call again, as one JSON object{}.",
         around(written, at(written, why.line(), why.column()), SHOWN),
-        remedy(written, &why)
+        remedy(written, &why, layout)
     )
 }
 
@@ -315,7 +474,7 @@ fn unreadable(written: &str) -> String {
 /// the same thing; what it lacks is the rule, which is one clause. The bare action is the
 /// commonest of the three: `{"call": glob, ...}`, often with the model's own markup for the rest
 /// of the call after it, and the clause shows the shape with the word it wrote.
-fn remedy(written: &str, why: &serde_json::Error) -> String {
+fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
     let said = why.to_string();
     if said.starts_with("invalid escape") {
         return ", with every backslash inside a string written twice, as `\\\\`".to_owned();
@@ -333,12 +492,16 @@ fn remedy(written: &str, why: &serde_json::Error) -> String {
                 .unwrap_or_default()
         })
         .filter(|word| word.starts_with(|c: char| c.is_ascii_alphabetic()));
-    match bare {
-        Some(word) => format!(
+    match (bare, layout) {
+        (Some(word), Layout::Flat) => format!(
+            ", with every argument at the top level and the action named by `action`, as in \
+             `{{\"action\": \"{word}\", ...}}`"
+        ),
+        (Some(word), _) => format!(
             ", with `{WRAPPER}` holding an object that names the action, as in \
              `{{\"{WRAPPER}\": {{\"action\": \"{word}\", ...}}}}`"
         ),
-        None => String::new(),
+        (None, _) => String::new(),
     }
 }
 
@@ -401,14 +564,19 @@ fn around(written: &str, at: usize, width: usize) -> String {
 /// same reason. One that does not is refused here, saying so, rather than falling through to
 /// `the \`action\` argument is required` - which is the [`UNPARSED`] failure again: a model sent
 /// to fix an argument it did write.
-pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
+///
+/// note: what is wrong comes back as a [`Misread`] rather than a sentence, because the sentence
+/// depends on the [`Layout`] the tool offered and this does not know it. Most of the callers only
+/// want the arguments, and drop the error; the tool that answers the call says it with
+/// [`Misread::said`].
+pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, Misread> {
     if let Some(written) = args.get(UNPARSED).and_then(Value::as_str) {
         return match serde_json::from_str::<Value>(written) {
             // the model's own wrapper round the call it meant; see [`unparsed`]
             Ok(wrapped) if unparsed(args).is_none() => {
                 inner(&wrapped).map(|call| Cow::Owned(call.into_owned()))
             }
-            _ => Err(unreadable(written)),
+            _ => Err(Misread::Unparsed(written.to_owned())),
         };
     }
 
@@ -416,38 +584,69 @@ pub(crate) fn inner(args: &Value) -> Result<Cow<'_, Value>, String> {
         Some(it) if it.is_object() => Cow::Borrowed(it),
         Some(Value::String(written)) => match serde_json::from_str::<Value>(written) {
             Ok(parsed) if parsed.is_object() => Cow::Owned(parsed),
-            _ => {
-                return Err(format!(
-                    "`{WRAPPER}` arrived as text rather than as an object, and nothing was read \
-                     and nothing was done. What was in it was `{}`. Send the call again, with \
-                     `{WRAPPER}` an object: `{{\"{WRAPPER}\": {{\"action\": ...}}}}`.",
-                    written.chars().take(200).collect::<String>()
-                ));
-            }
+            _ => return Err(Misread::Text(written.chars().take(SHOWN).collect())),
         },
         _ => return Ok(Cow::Borrowed(args)),
     };
 
-    let beside: Vec<&str> = args
+    let beside: Vec<String> = args
         .as_object()
-        .map(|it| it.keys().map(String::as_str).filter(|k| *k != WRAPPER))
+        .map(|it| it.keys().filter(|k| *k != WRAPPER).cloned())
         .into_iter()
         .flatten()
         .collect();
     if !beside.is_empty() {
-        return Err(format!(
-            "arguments inside `{WRAPPER}` and beside it ({}), and nothing was done. Every \
-             argument goes inside `{WRAPPER}`, `action` included: reading one of the two places \
-             would have answered a call nobody made.",
-            beside
-                .iter()
-                .map(|key| format!("`{key}`"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        return Err(Misread::Both(beside));
     }
 
     Ok(deeper(inside))
+}
+
+/// Why the arguments of a call could not be read; see [`inner`].
+#[derive(Debug)]
+pub(crate) enum Misread {
+    /// Arguments that never parsed, as they arrived under [`UNPARSED`].
+    Unparsed(String),
+    /// A [`WRAPPER`] holding text that is not a JSON object: the start of that text.
+    Text(String),
+    /// Arguments inside [`WRAPPER`] and beside it: the names of the ones beside it.
+    Both(Vec<String>),
+}
+
+impl Misread {
+    /// What the model is told, in the layout it was offered.
+    ///
+    /// note: a model offered [`Layout::Flat`] is never told to put anything inside `call`, which
+    /// was not in its schema. It is told that this tool takes no `call` only where it sent one -
+    /// a resumed session's history can show it calls in the wrapped layout - since naming the key
+    /// it wrote is the shortest way to say what to drop.
+    pub(crate) fn said(&self, layout: Layout) -> String {
+        match (self, layout) {
+            (Self::Unparsed(written), _) => unreadable(written, layout),
+            (Self::Text(written), Layout::Flat) => format!(
+                "`{WRAPPER}` arrived as text, and this tool takes no `{WRAPPER}`; nothing was read \
+                 and nothing was done. What was in it was `{written}`. Send the call again with \
+                 every argument at the top level, beside `action`: `{{\"action\": ...}}`."
+            ),
+            (Self::Text(written), _) => format!(
+                "`{WRAPPER}` arrived as text rather than as an object, and nothing was read and \
+                 nothing was done. What was in it was `{written}`. Send the call again, with \
+                 `{WRAPPER}` an object: `{{\"{WRAPPER}\": {{\"action\": ...}}}}`."
+            ),
+            (Self::Both(beside), Layout::Flat) => format!(
+                "arguments inside `{WRAPPER}` and beside it ({}), and nothing was done. This tool \
+                 takes no `{WRAPPER}`: every argument goes at the top level, beside `action`, and \
+                 reading one of the two places would have answered a call nobody made.",
+                named(&beside.iter().map(String::as_str).collect::<Vec<_>>())
+            ),
+            (Self::Both(beside), _) => format!(
+                "arguments inside `{WRAPPER}` and beside it ({}), and nothing was done. Every \
+                 argument goes inside `{WRAPPER}`, `action` included: reading one of the two \
+                 places would have answered a call nobody made.",
+                named(&beside.iter().map(String::as_str).collect::<Vec<_>>())
+            ),
+        }
+    }
 }
 
 /// The call inside a wrapper whose one entry is the call, and otherwise the wrapper as it is.
@@ -486,13 +685,19 @@ pub(crate) fn action_of(call: &ToolCall, ops: &[Op]) -> Option<String> {
 /// which sends a model looking for a different *approach* when what is wrong is the shape of the
 /// call it just made.
 ///
-/// note: only for a tool whose schema puts its arguments under [`WRAPPER`], because that is the
-/// convention the sentence is about. Read off the tool's own schema rather than off a list of
-/// names kept here: a tool that takes no `call` may declare several capabilities for reasons of
-/// its own, and telling its caller that such a call named no operation would be inventing a
-/// vocabulary it never claimed.
+/// note: only for a tool whose schema is laid out the way this module lays one out - its
+/// arguments under [`WRAPPER`], or an `action` with an `enum` of the operations at the top level -
+/// because that is the convention the sentence is about. Read off the tool's own schema rather
+/// than off a list of names kept here: a tool that takes no `action` may declare several
+/// capabilities for reasons of its own, and telling its caller that such a call named no operation
+/// would be inventing a vocabulary it never claimed.
 pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) -> Option<String> {
-    spec.schema["properties"].get(WRAPPER)?;
+    let offered = &spec.schema["properties"];
+    let layout = match offered.get(WRAPPER) {
+        Some(_) => Layout::Wrapped,
+        None if offered["action"]["enum"].is_array() => Layout::Flat,
+        None => return None,
+    };
 
     let ops: Vec<&str> = spec
         .capabilities
@@ -515,7 +720,7 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
             Err(e) => (
                 format!(" ({e})"),
                 at(written, e.line(), e.column()),
-                remedy(written, &e),
+                remedy(written, &e, layout),
             ),
             Ok(_) => (String::new(), written.len(), String::new()),
         };
@@ -539,14 +744,20 @@ pub(crate) fn unnamed_operation(spec: &ToolSpec, request: &PermissionRequest) ->
             Err(e) => (
                 format!(" ({e})"),
                 at(written, e.line(), e.column()),
-                remedy(written, &e),
+                remedy(written, &e, layout),
             ),
             Ok(_) => (String::new(), 0, String::new()),
+        };
+        let again = match layout {
+            Layout::Flat => format!(
+                "with every argument at the top level, since this tool takes no `{WRAPPER}`"
+            ),
+            _ => format!("with `{WRAPPER}` an object"),
         };
         return Some(format!(
             "`{WRAPPER}` arrived as text that is not a JSON object{why} - what arrived there was \
              `{}` - so no operation could be read from it, and the call is judged against all {} \
-             `{}` has; send it again with `{WRAPPER}` an object{rule}",
+             `{}` has; send it again {again}{rule}",
             around(written, at, SHOWN),
             ops.len(),
             spec.id
@@ -669,10 +880,13 @@ pub(crate) fn unread(op: &str, args: &Value, ops: &[Op]) -> Option<String> {
 /// table, so this guards against that ceasing to be true.
 #[cfg(test)]
 pub(crate) fn offered(schema: &Value) -> Vec<&str> {
-    let inside = &schema["properties"][WRAPPER];
+    let inside = match Layout::of(schema) {
+        Layout::Flat => schema,
+        _ => &schema["properties"][WRAPPER],
+    };
     let branches = match inside["anyOf"].as_array() {
         Some(several) => several.iter().collect::<Vec<_>>(),
-        // a tool with one shape carries it directly; see `schema`
+        // a tool with one shape carries it directly, and a flat schema is one object; see `schema`
         None => vec![inside],
     };
 
@@ -714,6 +928,63 @@ mod tests {
         ]
     }
 
+    /// The flat layout is one object: no wrapper and no union, every operation in `action`'s enum,
+    /// every argument once, and what a branch would have said kept in the descriptions.
+    #[test]
+    fn a_flat_schema_keeps_what_the_branches_said() {
+        let flat = schema(&ops(), Layout::Flat);
+        assert_eq!(Layout::of(&flat), Layout::Flat);
+        assert!(
+            flat["properties"].get(WRAPPER).is_none() && !flat.to_string().contains("anyOf"),
+            "nothing nested to write a call inside: {flat}"
+        );
+        assert_eq!(
+            flat["properties"]["action"]["enum"],
+            json!(["read", "grep", "list"])
+        );
+        let does = flat["properties"]["action"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(
+            does.contains("`read`: reads one") && does.contains("`grep`: searches"),
+            "{does}"
+        );
+
+        // `path` is required by `read` and described differently by `grep`: both are said, and
+        // it is not required of the call, which `list` makes without it
+        let path = flat["properties"]["path"]["description"].as_str().unwrap();
+        assert!(
+            path.contains("`read` (required): which") && path.contains("`grep`: where"),
+            "{path}"
+        );
+        assert_eq!(flat["properties"]["path"]["type"], "string");
+        assert_eq!(flat["required"], json!(["action"]));
+        // and an argument one operation takes says whose it is
+        let case = flat["properties"]["ignore_case"]["description"]
+            .as_str()
+            .unwrap();
+        assert!(case.starts_with("`grep`"), "{case}");
+    }
+
+    /// A model offered the flat layout is never told to put its arguments inside `call`.
+    #[test]
+    fn a_flat_refusal_does_not_ask_for_the_wrapper() {
+        for misread in [
+            Misread::Unparsed("{\"action\": glob, \"pattern\": 1".to_owned()),
+            Misread::Text("{\"action\": \"read\", \"path</arg_key>".to_owned()),
+            Misread::Both(vec!["path".to_owned()]),
+        ] {
+            let flat = misread.said(Layout::Flat);
+            assert!(
+                !flat.contains(&format!("{{\"{WRAPPER}\"")) && !flat.contains("an object:"),
+                "{flat}"
+            );
+        }
+        let why = serde_json::from_str::<Value>("{\"call\": glob, \"p\": 1}").unwrap_err();
+        let rule = remedy("{\"call\": glob, \"p\": 1}", &why, Layout::Flat);
+        assert!(rule.contains("`{\"action\": \"glob\", ...}`"), "{rule}");
+    }
+
     /// Every branch is its own operation, and carries its own arguments and nobody else's.
     ///
     /// note: a flat schema would have `read` and `grep` share one property bag, with only a
@@ -721,7 +992,7 @@ mod tests {
     /// branch.
     #[test]
     fn an_operation_declares_its_own_arguments() {
-        let schema = schema(&ops());
+        let schema = schema(&ops(), Layout::Wrapped);
         let branches = schema["properties"][WRAPPER]["anyOf"]
             .as_array()
             .expect("a branch per operation")
@@ -807,7 +1078,7 @@ mod tests {
         }
 
         let mut keywords = Vec::new();
-        walk(&schema(&ops()), "", &mut keywords);
+        walk(&schema(&ops(), Layout::Wrapped), "", &mut keywords);
         assert!(!keywords.is_empty(), "nothing was walked");
 
         for keyword in &keywords {
@@ -825,18 +1096,21 @@ mod tests {
     /// an accident is a thing to pin. The union's absence is pinned for the reason in `schema`.
     #[test]
     fn the_wrapper_is_typed_only_where_it_is_one_shape() {
-        let several = schema(&ops());
+        let several = schema(&ops(), Layout::Wrapped);
         assert!(
             several["properties"][WRAPPER].get("type").is_none(),
             "a `type` beside the union has models write an operation's name there"
         );
         assert!(several["properties"][WRAPPER]["anyOf"].is_array());
 
-        let one = schema(&[Op::new(
-            "run",
-            "runs it",
-            vec![Arg::text("cmd", "what").needed()],
-        )]);
+        let one = schema(
+            &[Op::new(
+                "run",
+                "runs it",
+                vec![Arg::text("cmd", "what").needed()],
+            )],
+            Default::default(),
+        );
         assert_eq!(one["properties"][WRAPPER]["type"], json!("object"));
     }
 
@@ -851,7 +1125,7 @@ mod tests {
     fn a_call_that_names_no_operation_says_so() {
         let ops = ops();
         let spec = ToolSpec::new("fs", "the filesystem")
-            .with_schema(std::sync::Arc::new(schema(&ops)))
+            .with_schema(std::sync::Arc::new(schema(&ops, Layout::Wrapped)))
             .with_capabilities(
                 actions(&ops)
                     .into_iter()
@@ -979,11 +1253,10 @@ mod tests {
         // one operation cannot be widened to, and a tool that takes no wrapper is not this
         // convention, so neither gets a sentence about it
         let one = ToolSpec::new("shell", "runs things")
-            .with_schema(std::sync::Arc::new(schema(&[Op::new(
-                "run",
-                "runs it",
-                vec![],
-            )])))
+            .with_schema(std::sync::Arc::new(schema(
+                &[Op::new("run", "runs it", vec![])],
+                Default::default(),
+            )))
             .with_capabilities(vec![Capability::exec("run")]);
         assert_eq!(unnamed_operation(&one, &asking(json!({}))), None);
 
@@ -1024,7 +1297,9 @@ mod tests {
         assert_eq!(inner(&flat).expect("flat")["path"], json!("x"));
 
         let both = json!({ WRAPPER: { "action": "read" }, "path": "x" });
-        let refusal = inner(&both).expect_err("arguments in two places is not a call");
+        let refusal = inner(&both)
+            .expect_err("arguments in two places is not a call")
+            .said(Layout::Wrapped);
         assert!(refusal.contains("`path`"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
     }
@@ -1041,7 +1316,9 @@ mod tests {
         assert_eq!(inner(&written).expect("written")["path"], json!("x"));
 
         let neither = json!({ WRAPPER: "read the file" });
-        let refusal = inner(&neither).expect_err("that is not a call");
+        let refusal = inner(&neither)
+            .expect_err("that is not a call")
+            .said(Layout::Wrapped);
         assert!(refusal.contains("as text"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
         assert!(refusal.contains("read the file"), "{refusal}");
@@ -1049,7 +1326,9 @@ mod tests {
         // text that parses is still only a call when what it parses to is one
         for not_a_call in ["42", "[1, 2, 3]", "null", "\"read the file\""] {
             let written = json!({ WRAPPER: not_a_call });
-            let refusal = inner(&written).expect_err("text that is not a call is not one");
+            let refusal = inner(&written)
+                .expect_err("text that is not a call is not one")
+                .said(Layout::Wrapped);
             assert!(refusal.contains("as text"), "{not_a_call}: {refusal}");
             assert!(refusal.contains(not_a_call), "{not_a_call}: {refusal}");
         }
@@ -1095,7 +1374,9 @@ mod tests {
             UNPARSED: "{\"call\": {\"action\": \"note\", \"content</arg_key>\nthe project is",
         });
 
-        let refusal = inner(&broken).expect_err("this is not a call");
+        let refusal = inner(&broken)
+            .expect_err("this is not a call")
+            .said(Layout::Wrapped);
         assert!(refusal.contains("not JSON"), "{refusal}");
         assert!(refusal.contains("nothing was done"), "{refusal}");
         assert!(
@@ -1125,7 +1406,7 @@ mod tests {
             json!({ UNPARSED: "42" }),
             json!({ UNPARSED: "{\"action\": \"read\"}", "path": "x" }),
         ] {
-            let refusal = inner(&still).expect_err("not a call");
+            let refusal = inner(&still).expect_err("not a call").said(Layout::Wrapped);
             assert!(refusal.contains("nothing was done"), "{refusal}");
         }
     }
@@ -1137,14 +1418,20 @@ mod tests {
     /// pattern it meant and was sent again unchanged after being told only where it failed.
     #[test]
     fn a_string_written_wrong_says_how_to_write_it() {
-        let said = unreadable("{\"call\": {\"action\": \"grep\", \"pattern\": \"fn held\\(\"}}");
+        let said = unreadable(
+            "{\"call\": {\"action\": \"grep\", \"pattern\": \"fn held\\(\"}}",
+            Layout::Wrapped,
+        );
         assert!(said.contains("invalid escape"), "{said}");
         assert!(
             said.contains("every backslash inside a string written twice, as `\\\\`"),
             "{said}"
         );
 
-        let said = unreadable("{\"call\": {\"action\": \"note\", \"content\": \"one\ntwo\"}}");
+        let said = unreadable(
+            "{\"call\": {\"action\": \"note\", \"content\": \"one\ntwo\"}}",
+            Layout::Wrapped,
+        );
         assert!(said.contains("control character"), "{said}");
         assert!(
             said.contains("a line break inside a string written as `\\n`"),
@@ -1163,7 +1450,7 @@ mod tests {
             "{\"call\": glob, \"path\": \".\", \"pattern\": \"src/kernel/mod.rs\"}",
             "{\"call\": grep\n<arg_key>path</arg_key>\n<arg_value>., \"pattern\": \"odd\"}",
         ] {
-            let said = unreadable(written);
+            let said = unreadable(written, Layout::Wrapped);
             let word = if written.contains("glob") {
                 "glob"
             } else {
@@ -1178,7 +1465,10 @@ mod tests {
             );
         }
 
-        let quoted = unreadable("{\"call\": {\"action\": \"read\", \"path\": x}}");
+        let quoted = unreadable(
+            "{\"call\": {\"action\": \"read\", \"path\": x}}",
+            Layout::Wrapped,
+        );
         assert!(
             !quoted.contains("names the action"),
             "a bare word anywhere else is not the action out of its object: {quoted}"
@@ -1195,7 +1485,7 @@ mod tests {
     fn a_payload_that_never_parsed_says_where_it_stops() {
         let short = "{\"call\": {\"action\": \"run\", \"cmd\": \"curl -sL \
                      'https://api.github.com/repos/ljedrz/nac' | python3 -m json.tool\"}";
-        let said = unreadable(short);
+        let said = unreadable(short, Layout::Wrapped);
         assert!(said.contains("not JSON"), "{said}");
         assert!(said.contains("nothing was done"), "{said}");
         assert!(
@@ -1221,7 +1511,7 @@ mod tests {
                 > SHOWN,
             "the case is a fault past the first {SHOWN} characters"
         );
-        let said = unreadable(&escaped);
+        let said = unreadable(&escaped, Layout::Wrapped);
         assert!(
             !said.contains("backslash"),
             "a quote left open is not a backslash to double: {said}"
@@ -1252,7 +1542,7 @@ mod tests {
         ]
         .join("\n");
 
-        let said = unreadable(&payload);
+        let said = unreadable(&payload, Layout::Wrapped);
         assert!(said.contains("not JSON"), "{said}");
         assert!(
             said.contains("THERE"),
@@ -1277,7 +1567,7 @@ mod tests {
             "A".repeat(400)
         );
 
-        let said = unreadable(&payload);
+        let said = unreadable(&payload, Layout::Wrapped);
         assert!(said.contains("not JSON"), "{said}");
         assert!(
             said.contains('B') && said.contains('A'),

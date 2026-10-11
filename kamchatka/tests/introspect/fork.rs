@@ -676,7 +676,7 @@ async fn a_refusal_names_where_the_numbers_come_from_only_while_context_is_reach
     }
     policy.set(&Subject::parse("context"), Verdict::Deny);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what do you make of this?"));
     kernel.turn().await.expect("the turn failed");

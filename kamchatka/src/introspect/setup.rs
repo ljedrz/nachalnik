@@ -29,7 +29,7 @@ use crate::{
     app::text::{short, thousands, verdict_word},
     tools::{
         Careful, Limits, Subject, domains,
-        ops::{Op, action_of, actions, inner, schema},
+        ops::{Layout, Op, action_of, actions, inner, schema},
     },
 };
 
@@ -64,13 +64,13 @@ pub struct Setup {
 
 impl Setup {
     /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, policy: Arc<Careful>, limits: Limits) -> Self {
+    pub(super) fn new(reach: Reach, policy: Arc<Careful>, limits: Limits, layout: Layout) -> Self {
         let ops = ops();
         Self {
             reach,
             policy,
             limits,
-            schema: Arc::new(schema(&ops)),
+            schema: Arc::new(schema(&ops, layout)),
             ops,
         }
     }
@@ -117,7 +117,7 @@ impl Tool for Setup {
 
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
         };
         let args = &*args;
 

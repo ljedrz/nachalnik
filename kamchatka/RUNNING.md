@@ -306,6 +306,13 @@ prompt caching, which `/params cache_control false` turns off for endpoints that
 Parameters named after parts of the request itself (`messages`, `tools`, `model` and similar, in
 each API) are refused.
 
+`--flat-calls` (`"flat-calls": true` in a settings file) offers this program's own tools with every
+argument at the top level of a call, beside `action`, rather than inside one `call` object. Some
+models whose own call format is a flat list of keys and values slip back into it partway through
+the nested object, and the call can't be read; offered flat, they don't. The cost is that the
+schema can no longer say which arguments belong to which operation except in their descriptions,
+so it's off by default. Tools from an MCP server are offered as the server wrote them.
+
 ## 📏 the number in the status line is an estimate, and says which kind
 
 `kamchatka` doesn't have the model's tokenizer, so the main figure in the status line is an

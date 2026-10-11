@@ -32,7 +32,7 @@ use crate::{
     app::text::{thousands, trace_line},
     tools::{
         Limits, domains, number,
-        ops::{Arg, Op, actions, inner, schema, unread},
+        ops::{Arg, Layout, Op, actions, inner, schema, unread},
         yes_or_no,
     },
 };
@@ -105,12 +105,12 @@ pub struct Log {
 
 impl Log {
     /// Builds one; see [`super::install`], which is the only caller.
-    pub(super) fn new(reach: Reach, limits: Limits) -> Self {
+    pub(super) fn new(reach: Reach, limits: Limits, layout: Layout) -> Self {
         let ops = ops();
         Self {
             reach,
             limits,
-            schema: Arc::new(schema(&ops)),
+            schema: Arc::new(schema(&ops, layout)),
             ops,
         }
     }
@@ -144,7 +144,7 @@ impl Tool for Log {
         // be told there is no such thing, not handed the log
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
         };
         let args = &*args;
         let named = &args["action"];

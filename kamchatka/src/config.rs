@@ -66,6 +66,9 @@ pub struct Settings {
     pub compact: Option<Compact>,
     /// Whether tool calls may run at the same time rather than in the order they were asked for.
     pub parallel: Option<bool>,
+    /// Whether this program's own tools are offered with every argument at the top level of a
+    /// call, as `--flat-calls` does, rather than inside one `call` object.
+    pub flat_calls: Option<bool>,
     /// Which of this program's tools to offer, by id; left out, all of them are.
     ///
     /// note: a key with no argument behind it, for the reason `border-color` is one: which tools a

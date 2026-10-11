@@ -160,6 +160,13 @@ pub struct Args {
     #[arg(long)]
     pub parallel: bool,
 
+    /// Offer this program's own tools with every argument at the top level of a call, rather than
+    /// inside one `call` object. For a model whose own call format is flat, which can slip back
+    /// into it partway through a nested object and send a call that cannot be read. Tools from an
+    /// MCP server are offered as the server wrote them.
+    #[arg(long)]
+    pub flat_calls: bool,
+
     /// Run with no confinement at all: the shell reaches whatever the user running this can, and
     /// `fs`, which is not a process, stops holding itself to the working directory.
     #[arg(long)]
@@ -342,6 +349,7 @@ impl Args {
             requests,
             compact,
             parallel,
+            flat_calls,
             no_sandbox,
             sandbox_allow,
             sandbox_read,
@@ -728,6 +736,10 @@ impl Args {
             reachable: self.sandbox_allow.clone(),
             readable: self.sandbox_read.clone(),
             devices: self.sandbox_device.clone(),
+            layout: match self.flat_calls {
+                true => crate::tools::Layout::Flat,
+                false => crate::tools::Layout::Wrapped,
+            },
             allow: self
                 .allow
                 .iter()

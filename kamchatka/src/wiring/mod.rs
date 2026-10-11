@@ -143,6 +143,13 @@ pub struct Setup {
     /// The devices under `/dev` a confined command may read and write, and no others;
     /// [`sandbox::DEVICES`] unless somebody says otherwise.
     pub devices: Vec<std::path::PathBuf>,
+    /// How this program's own tools lay out their arguments for the model; `--flat-calls` is
+    /// [`tools::Layout::Flat`].
+    ///
+    /// note: for this run only, and nothing about it is recorded. A resumed session's history may
+    /// hold calls in the other layout, and the tools read either; what changes is the schema the
+    /// model is offered and the words a refusal uses.
+    pub layout: tools::Layout,
     /// Capabilities and path rules to allow before anything runs.
     ///
     /// note: answered in advance is the only way to decide in advance - [`Careful`] asks about
@@ -191,6 +198,7 @@ impl Default for Setup {
                 .iter()
                 .map(std::path::PathBuf::from)
                 .collect(),
+            layout: tools::Layout::Wrapped,
             allow: Vec::new(),
             deny: Vec::new(),
             system: None,
@@ -282,6 +290,7 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
             confiner: None,
             limits: Limits::default(),
             stragglers: tools::Stragglers::default(),
+            layout: tools::Layout::default(),
         },
         crate::sandbox::Reach {
             workdir: std::path::PathBuf::new(),
@@ -293,7 +302,7 @@ fn offered() -> Vec<nachalnik::ToolSpec> {
     ) {
         kernel.add_tool(tool);
     }
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.tool_specs()
 }
@@ -750,6 +759,7 @@ impl Setup {
                     confiner: confinement.is_confined().then(|| program.clone()),
                     limits: limits.clone(),
                     stragglers: stragglers.clone(),
+                    layout: self.layout,
                 },
                 reach,
                 limits.clone(),
@@ -761,8 +771,8 @@ impl Setup {
         // the handle the tools reach the kernel through, which `App` then holds for the rest of
         // the session; see `introspect::install` for why it is a weak handle to something out here
         // rather than a kernel the tools hold
-        let introspect =
-            building.then(|| introspect::install(&kernel, policy.clone(), limits.clone()));
+        let introspect = building
+            .then(|| introspect::install(&kernel, policy.clone(), limits.clone(), self.layout));
         for spec in kernel.tool_specs() {
             policy.offers(spec);
         }

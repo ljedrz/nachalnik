@@ -1085,7 +1085,7 @@ async fn look_says_which_items_this_session_did_not_produce() {
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     kernel.push(ContextItem::user("and now?"));
 
     kernel.turn().await.expect("the turn failed");
