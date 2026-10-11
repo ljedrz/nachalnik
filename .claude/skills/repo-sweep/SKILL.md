@@ -81,10 +81,14 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
 - **No time limit.** Models differ by ten times in how long an answer takes - a reasoning model
   on a free tier answered once every two and a half minutes - and a sweep cut off by a deadline
   had not got past its first message. A sweep is run until it has answered its last; one whose
-  records stop growing for `--stall` minutes is stopped and run again.
+  records stop growing for `--stall` minutes is stopped and resumed.
 - **Done means done**, read off the records (`sweeps.py`): exited on its own, every message sent,
-  no failed turn, the last answer ended rather than cut off. Anything else is run again from the
-  start, up to `--tries` times; what is still not done is listed as given up.
+  no failed turn, the last answer ended rather than cut off. One that is not, but was answered at
+  least once, is **resumed** from the session it saved: `/continue` where its last turn did not
+  end in an answer (a failed turn leaves the next message waiting for one), then the messages it
+  never got. The part before goes to `old/parts/` and is not a try. Only a sweep with nothing to
+  resume is run again from the start, up to `--tries` times; what is still not done is listed as
+  given up.
 - **As many at once as the endpoint takes, with no ceiling.** kamchatka is not the limit: a
   session takes tens of megabytes, and hundreds can run at once. The runner starts at `--width`
   (8) and climbs by the answers a minute the endpoint gives: it adds a quarter again, keeps the

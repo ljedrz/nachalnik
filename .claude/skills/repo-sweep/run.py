@@ -12,7 +12,7 @@ writes what it does to $SWEEPS/run.log and where it stands to $SWEEPS/run.json.
 What it decides on its own:
 - **No time limit.** A sweep runs until the model has answered its last message. One whose records
   have not grown for `--stall` minutes (default 45) is stopped, which writes its session, and is
-  run again.
+  resumed from it.
 - **How many at once.** There is no ceiling but the endpoint: kamchatka is not the limit, and a
   session takes tens of megabytes. It starts at `--width` (default 8) and climbs by what the
   endpoint answers: once that many have run for a quarter of an hour, it adds a quarter again, and
@@ -31,6 +31,10 @@ What it decides on its own:
 - **What counts as done**; see `sweeps.py`. One that is not is moved aside to $SWEEPS/old/ and
   run again from the start, up to `--tries` times in all (default 3). A try the endpoint never
   answered once is kept in $SWEEPS/old/void/ and not counted.
+- **Resuming rather than starting again.** An incomplete sweep the endpoint answered at least once
+  is carried on from the session it saved, not run again from nothing: `/continue` if its last
+  turn did not end in an answer, then the messages it never got. The part before is kept in
+  $SWEEPS/old/parts/ and is not a try; a resume is, once it ends, like any other run.
 - **Picking up where it left off.** Run again, it skips what is complete and adopts sweeps still
   running from before rather than starting them twice.
 """
@@ -60,6 +64,9 @@ TICK = 30
 SETTLE, WINDOW, GAIN, HOLD, LONGEST = 180, 600, 1.1, 1800, 2 * 3600
 # how many failed turns, inside how many seconds, step the width back
 BURST, BURST_WINDOW = 3, 600
+# how many times one sweep is resumed before it counts as a try: each resume was answered, so this
+# only stops a turn that fails the same way every time from being carried on for ever
+PARTS = 8
 
 
 class Climb:
@@ -195,6 +202,45 @@ def aside(name, under="old"):
     return len(glob.glob(os.path.join(old, f"{name}.*.in")))
 
 
+def resumable(name):
+    """How to carry an incomplete sweep on from the session it saved, as the environment
+    `sweep.sh` reads, or None where it has to start again.
+
+    note: a 429 storm or a stall used to cost a sweep every hour it had run, since an incomplete
+    one was run again from its first message. And a failed turn in headless leaves the next message
+    waiting for `/continue`, so a sweep cut short near its end had its last messages unanswered and
+    started over for want of one command.
+
+    note: what was delivered is counted in the snapshot rather than in the records, because a
+    resumed session's log holds only what happened after it, and a sweep may be resumed more than
+    once. `/continue` only where the last item is not an answer that ended: sent to a session at
+    rest, it would ask the model for another answer to a question it has answered.
+
+    note: a resume the endpoint never answered is carried on from what it was itself carried on
+    from, which NAME.resume keeps: its own snapshot holds nothing new, and moved aside as void it
+    would leave the sweep to start again from nothing."""
+    s = sweeps.state(name)
+    if s["status"] != "incomplete":
+        return None
+    if len(glob.glob(os.path.join(sweeps.SWEEPS, "old", "parts", f"{name}.*.in"))) >= PARTS:
+        return None
+    snapshot = sweeps.snapshot(name)
+    if not s.get("requests") or not snapshot:
+        try:
+            return json.load(open(sweeps.path(name, ".resume")))
+        except (OSError, ValueError):
+            return None
+    try:
+        items = json.load(open(snapshot))["items"]
+    except (OSError, ValueError, KeyError):
+        return None
+    sent = sum(1 for i in items if i["kind"].get("kind") == "user_message"
+               and i.get("source") == "user")
+    last = items[-1]["kind"].get("kind") if items else None
+    cont = last != "assistant_message" or s.get("stop") not in sweeps.ANSWERED
+    return {"RESUME": snapshot, "SENT": str(sent), "CONTINUE": "1" if cont else ""}
+
+
 def signal_(pid, sig):
     try:
         os.kill(pid, sig)
@@ -261,7 +307,7 @@ def main():
         if s["status"] == "running":
             running[name] = time.time()
             log(f"adopted {name}, still running from before")
-        elif s["status"] != "queued" and earlier(name) >= tries:
+        elif s["status"] != "queued" and earlier(name) >= tries and not resumable(name):
             given_up.append(name)
         else:
             queue.append(name)
@@ -329,10 +375,10 @@ def main():
             # note: a try the endpoint never answered once did no work, and counting it would let
             # an endpoint failing every new connection use up every sweep's tries in a few
             # pauses. It is kept apart, in old/void/, where `earlier` does not count it
-            if not s.get("requests"):
+            if not s.get("requests") and not os.path.exists(sweeps.path(name, ".resume")):
                 aside(name, os.path.join("old", "void"))
                 log(f"{name}: nothing was answered, so the try is not counted")
-            if earlier(name) < tries:
+            if earlier(name) < tries or resumable(name):
                 queue.append(name)
             else:
                 given_up.append(name)
@@ -356,15 +402,28 @@ def main():
         while queue and len(running) < climb.width and time.time() >= paused_until:
             name = queue.popleft()
             kind, scope = of[name]
-            # the tries so far are what is kept in old/, so a restarted run counts them too
-            tried = aside(name) + 1
+            carry = resumable(name)
+            if carry:
+                # the part before is kept, and not counted as a try; see `resumable`
+                aside(name, os.path.join("old", "parts"))
+                how = f"resumed after {carry['SENT']} message(s)" + \
+                    (", with /continue" if carry["CONTINUE"] else "")
+            else:
+                # the tries so far are what is kept in old/, so a restarted run counts them too
+                how = f"try {aside(name) + 1}"
+                carry = {}
+            if carry:
+                with open(sweeps.path(name, ".resume"), "w") as f:
+                    json.dump(carry, f)
+            elif os.path.exists(sweeps.path(name, ".resume")):
+                os.remove(sweeps.path(name, ".resume"))
             seen[name] = seen_throttled[name] = 0
             subprocess.Popen([os.path.join(HERE, "sweep.sh"), kind, name, scope],
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True,
-                             env={**os.environ, "TREE": tree, "BIN": binary})
+                             env={**os.environ, "TREE": tree, "BIN": binary, **carry})
             running[name] = time.time()
-            log(f"started {name} (try {tried}), {len(running)} running")
+            log(f"started {name} ({how}), {len(running)} running")
             time.sleep(5)  # so a batch does not arrive at the endpoint in one burst
 
     while queue or running:
