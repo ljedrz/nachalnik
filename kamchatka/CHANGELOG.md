@@ -15,6 +15,19 @@ minor bump may break you.
   session was not recorded. The paths are `Path`s now: `Recorded::log` and `Recorded::state` are
   `PathBuf`s, `Recorder::log` and `Recorder::state` return `&Path`, and `App::write_session` takes
   two `&Path`s.
+- **The tools can be offered flat.** `introspect::install` takes a `tools::Layout`, and `Shell`
+  and `wiring::Setup` have a `layout` field, which is `Layout::Wrapped` unless `--flat-calls` says
+  otherwise.
+
+### added
+
+- **`--flat-calls`**, and `flat-calls` in a settings file, offers this program's own tools with
+  every argument at the top level of a call, beside `action`, rather than inside one `call` object.
+  A model whose own call format is a flat list of keys and values can slip back into it partway
+  through the nested object, and the call cannot be read; offered flat, it has nothing nested to
+  slip inside. Off by default, since the flat schema says which arguments belong to which operation
+  only in their descriptions. A refusal tells a model offered flat to write its arguments at the
+  top level, never inside `call`.
 
 ### fixed
 

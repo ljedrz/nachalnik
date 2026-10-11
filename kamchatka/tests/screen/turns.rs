@@ -241,6 +241,7 @@ async fn the_tools_that_read_this_session_go_off_and_on_like_any_other() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         harness.app.limits.clone(),
+        Default::default(),
     ));
     let offered = harness.app.kernel.tool_ids();
     assert_eq!(offered, ["context", "fork", "log", "setup"]);
@@ -825,6 +826,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
             confiner: Some(std::path::PathBuf::from("/self")),
             limits: Limits::default(),
             stragglers: Default::default(),
+            layout: Default::default(),
         },
         kamchatka::sandbox::Reach {
             workdir: std::path::PathBuf::from("/w"),
@@ -840,6 +842,7 @@ async fn every_tool_says_what_it_is_and_what_each_argument_is_for() {
         &harness.app.kernel,
         harness.app.policy.clone(),
         Limits::default(),
+        Default::default(),
     );
 
     // a loop over nothing passes, so there has to be something to loop over

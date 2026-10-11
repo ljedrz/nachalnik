@@ -454,6 +454,7 @@ async fn the_shell_says_how_much_of_an_answer_it_will_hand_back() {
         confiner: None,
         limits: limits.clone(),
         stragglers: Default::default(),
+        layout: Default::default(),
     };
 
     let said = nachalnik::Tool::spec(&shell).description;

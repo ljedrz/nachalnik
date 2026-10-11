@@ -2493,6 +2493,7 @@ async fn a_command_reaching_for_the_network_is_answered_by_on_ask_mid_turn() {
                 confiner: Some(common::program()),
                 limits: kamchatka::tools::Limits::default(),
                 stragglers: Default::default(),
+                layout: Default::default(),
             }));
         }),
     )

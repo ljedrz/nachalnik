@@ -2521,6 +2521,51 @@ fn the_parallel_flag_reaches_the_sessions_configuration() {
     );
 }
 
+/// `--flat-calls` reaches every tool of this program's own, and a session not asked for it offers
+/// them wrapped in `call`.
+///
+/// note: every tool rather than one, because a model offered two layouts in one request writes one
+/// of them wrong; the introspection tools are installed apart from `fs` and `shell`.
+#[test]
+fn the_flat_calls_flag_reaches_every_tool() {
+    use clap::Parser;
+    use kamchatka::args::Args;
+
+    let wrapped = |args: &[&str]| -> Vec<(String, bool)> {
+        Args::try_parse_from(std::iter::once("kamchatka").chain(args.iter().copied()))
+            .expect("the arguments parse")
+            .setup()
+            .expect("a setup")
+            .wire(std::sync::Arc::new(
+                nachalnik_providers::OpenAiCompatible::new("scripted", "http://127.0.0.1:1", ""),
+            ))
+            .expect("the wiring failed")
+            .app
+            .kernel
+            .tool_specs()
+            .into_iter()
+            .map(|spec| {
+                (
+                    spec.id.clone(),
+                    spec.schema["properties"].get("call").is_some(),
+                )
+            })
+            .collect()
+    };
+
+    let flat = wrapped(&["--flat-calls"]);
+    assert!(flat.iter().any(|(id, _)| id == "context"), "{flat:?}");
+    assert!(
+        flat.iter().all(|(_, wrapped)| !wrapped),
+        "no tool is offered wrapped: {flat:?}"
+    );
+    let default = wrapped(&[]);
+    assert!(
+        default.iter().all(|(_, wrapped)| *wrapped),
+        "and every tool is, by default: {default:?}"
+    );
+}
+
 /// A key is not a prerequisite: a session pointed at this machine starts without one, and one
 /// pointed at OpenRouter, which refuses every request without one, is refused at startup.
 ///

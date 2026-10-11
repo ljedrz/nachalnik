@@ -736,7 +736,12 @@ fn gemini() -> Option<(
     }
     kernel.set_policy(policy.clone());
     kernel.add_tool(Arc::new(Secret));
-    let introspect = kamchatka::introspect::install(&kernel, policy.clone(), Limits::default());
+    let introspect = kamchatka::introspect::install(
+        &kernel,
+        policy.clone(),
+        Limits::default(),
+        Default::default(),
+    );
 
     let (outcomes, finished) = tokio::sync::mpsc::unbounded_channel();
 
@@ -1121,6 +1126,7 @@ async fn agent(
             confiner: None,
             limits: limits.clone(),
             stragglers: Default::default(),
+            layout: Default::default(),
         },
         reach,
         limits.clone(),
@@ -1168,6 +1174,7 @@ async fn introspecting(
         &app.kernel,
         app.policy.clone(),
         limits.clone(),
+        Default::default(),
     ));
 
     Some((app, limits, finished))

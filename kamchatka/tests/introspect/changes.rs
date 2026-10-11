@@ -1116,8 +1116,12 @@ async fn undo_after_a_resume_says_the_earlier_changes_were_not_carried_over() {
         nachalnik::Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor =
-        kamchatka::introspect::install(&kernel, policy, kamchatka::tools::Limits::default());
+    let _anchor = kamchatka::introspect::install(
+        &kernel,
+        policy,
+        kamchatka::tools::Limits::default(),
+        Default::default(),
+    );
     kernel.push(ContextItem::user("undo that"));
 
     kernel.turn().await.expect("the turn failed");
@@ -1165,8 +1169,12 @@ async fn a_pin_the_model_made_is_still_its_own_after_a_resume() {
         nachalnik::Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _resumed =
-        kamchatka::introspect::install(&kernel, policy, kamchatka::tools::Limits::default());
+    let _resumed = kamchatka::introspect::install(
+        &kernel,
+        policy,
+        kamchatka::tools::Limits::default(),
+        Default::default(),
+    );
     kernel.push(ContextItem::user("let them go"));
     kernel.turn().await.expect("the turn failed");
 

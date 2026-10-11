@@ -10,6 +10,7 @@
   "requests": 8,
   "compact": [0.8, 0.6],
   "parallel": false,
+  "flat-calls": false,
   "tools": ["context", "fork", "fs", "log", "setup", "shell"],
   "forget-truncated": false,
   "send-oversized": false,

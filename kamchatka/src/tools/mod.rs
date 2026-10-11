@@ -35,6 +35,7 @@ mod shell;
 pub use crate::tools::advice::{Advised, Rated, Rating};
 pub use crate::tools::{
     files::COUNTED,
+    ops::Layout,
     policy::{Careful, Subject, objection_to, path_matches, reaches_the_network},
     reaching::{Reached, Reaching},
     shedder::Shedder,
@@ -371,6 +372,9 @@ impl Limits {
 /// disagree - and two tools in one session honouring two different sets of path rules is the kind
 /// of wrong that nothing on the screen would show. There is one `Careful` in a session; this is
 /// the handle to it that is already here.
+///
+/// note: `fs` takes its [`Layout`] off the `shell` for the same reason: two tools of one session
+/// offered in two layouts would have a model writing one of them wrong.
 pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>> {
     let reach = Arc::new(reach);
     let looking = Looking {
@@ -380,7 +384,7 @@ pub fn builtin(shell: Shell, reach: Reach, limits: Limits) -> Vec<Arc<dyn Tool>>
     };
 
     vec![
-        Arc::new(fs::Fs::new(reach, looking, limits)),
+        Arc::new(fs::Fs::new(reach, looking, limits, shell.layout)),
         Arc::new(shell),
     ]
 }

@@ -28,7 +28,7 @@ async fn setup_tools_says_what_each_answer_is_cut_at_by_subject() {
         policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, limits.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone(), Default::default());
 
     // one subject held to something else, which is what the sentence has to be able to say
     limits.set("context:search", 4_000).expect("a row for it");
@@ -78,7 +78,7 @@ async fn setup_says_what_each_answer_is_cut_at_because_it_is_cut_at_it() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, limits.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone(), Default::default());
 
     // held below what the answer weighs, which is the whole of what this is about
     limits.set("setup:tools", 400).expect("a row for it");
@@ -131,7 +131,7 @@ async fn setup_tools_says_whether_what_is_cut_is_kept() {
         let policy = Arc::new(Careful::new());
         policy.set(&Subject::parse("setup"), Verdict::Allow);
         kernel.set_policy(policy.clone());
-        let _anchor = introspect::install(&kernel, policy, Limits::default());
+        let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
         kernel.push(ContextItem::user("what are you offered?"));
         kernel.turn().await.expect("the turn failed");
@@ -223,7 +223,7 @@ async fn setup_model_says_whether_this_conversation_was_inherited() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     second.set_policy(policy.clone());
-    let _anchor = introspect::install(&second, policy, Limits::default());
+    let _anchor = introspect::install(&second, policy, Limits::default(), Default::default());
     second.push(ContextItem::user("who are you?"));
     second.turn().await.expect("the turn failed");
 
@@ -306,7 +306,12 @@ async fn an_undecided_domain_says_that_a_row_above_it_can_answer_for_one_operati
     policy.set(&Subject::parse("fs"), Verdict::Ask);
     policy.set(&Subject::parse("fs:read"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+    let _anchor = introspect::install(
+        &kernel,
+        policy.clone(),
+        Limits::default(),
+        Default::default(),
+    );
 
     kernel.push(ContextItem::user("what may you do?"));
     kernel.turn().await.expect("the turn failed");
@@ -451,7 +456,7 @@ async fn setup_permissions_lists_a_path_rule_somebody_has_decided() {
     policy.set(&Subject::Path("build/".to_owned()), Verdict::Allow);
     policy.set(&Subject::Path(".env*".to_owned()), Verdict::Deny);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what may you touch?"));
     kernel.turn().await.expect("the turn failed");
@@ -501,7 +506,12 @@ async fn setup_permissions_says_an_undecided_server_stops_a_call_whatever_its_ro
     policy.came_from("py__spew", "py");
     policy.set(&Subject::Server("py".to_owned()), Verdict::Ask);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+    let _anchor = introspect::install(
+        &kernel,
+        policy.clone(),
+        Limits::default(),
+        Default::default(),
+    );
 
     kernel.push(ContextItem::user("what may you do?"));
     kernel.turn().await.expect("the turn failed");
@@ -585,7 +595,7 @@ async fn setup_permissions_puts_a_domain_rule_in_a_section_of_its_own() {
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     policy.set(&Subject::parse("context"), Verdict::Deny);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what may you touch?"));
     kernel.turn().await.expect("the turn failed");
@@ -635,7 +645,7 @@ async fn setup_permissions_names_the_shell_for_the_rule_the_network_gate_consult
     ));
     policy.set(&Subject::parse("net:reach"), Verdict::Deny);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what may you touch?"));
     kernel.turn().await.expect("the turn failed");
@@ -689,7 +699,7 @@ async fn setup_tools_reports_the_kernel_ceiling_only_where_it_is_what_cuts() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what are you offered?"));
     kernel.turn().await.expect("the turn failed");
@@ -725,7 +735,12 @@ async fn setup_permissions_does_not_credit_mcp_with_a_server_s_tools() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy.clone(), Limits::default());
+    let _anchor = introspect::install(
+        &kernel,
+        policy.clone(),
+        Limits::default(),
+        Default::default(),
+    );
 
     let unvouched = nachalnik::Capability::of(nachalnik::Domain::Other("mcp".to_owned()), "call");
     for id in ["big__spew", "loose"] {
@@ -769,7 +784,7 @@ async fn setup_permissions_names_the_calls_waiting_on_an_answer() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     // a call nobody has answered for, and which therefore leaves the turn in `Deciding`
     kernel.add_tool(Arc::new(
         nachalnik::test::ConstTool::new("danger", "did it")
@@ -823,7 +838,7 @@ async fn setup_tools_says_what_each_tool_is() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("setup"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("what are you offered?"));
     kernel.turn().await.expect("the turn failed");

@@ -26,7 +26,7 @@ use serde_json::Value;
 
 use crate::tools::{
     Limits, domains,
-    ops::{Arg, Op, action_of, actions, inner, schema, unread},
+    ops::{Arg, Layout, Op, action_of, actions, inner, schema, unread},
     yes_or_no,
 };
 
@@ -248,7 +248,7 @@ impl Context {
     /// note: the pinned set is made here and shared with the changing half rather than handed in.
     /// It is one tool's memory of which pins are its own, so a second holder of it could only ever
     /// be something that would disagree about a promise.
-    pub(super) fn new(reach: Reach, limits: Limits) -> Self {
+    pub(super) fn new(reach: Reach, limits: Limits, layout: Layout) -> Self {
         let ops = ops();
         let pinned = Pinned::default();
         Self {
@@ -256,7 +256,7 @@ impl Context {
             reach,
             pinned,
             limits,
-            schema: Arc::new(schema(&ops)),
+            schema: Arc::new(schema(&ops, layout)),
             ops,
         }
     }
@@ -315,7 +315,7 @@ impl Tool for Context {
         // before anything is done with it
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
         };
         let args = &*args;
         if let Some(refusal) = unread(action(args)?, args, &self.ops) {
@@ -466,6 +466,7 @@ mod tests {
                 Arc::new(crate::tools::Careful::new()),
             ),
             Limits::default(),
+            Default::default(),
         )
     }
 }

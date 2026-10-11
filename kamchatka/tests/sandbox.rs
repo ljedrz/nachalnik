@@ -152,6 +152,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
             confiner: Some(common::program()),
             limits: Limits::default(),
             stragglers: Default::default(),
+            layout: Default::default(),
         }
         .spec()
         .description
@@ -1004,6 +1005,7 @@ fn confined_agent(workdir: &Path, script: impl IntoIterator<Item = ModelResponse
     kernel.add_tool(Arc::new(Shell {
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: workdir.to_path_buf(),
         extra: Vec::new(),
@@ -1065,6 +1067,7 @@ async fn a_dropped_call_takes_its_temporary_directory_with_it() {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),
@@ -1456,6 +1459,7 @@ async fn a_refusal_in_the_commands_own_temporary_directory_is_its_own() {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: common::workdir("scratch-refusal"),
         extra: Vec::new(),
@@ -1519,6 +1523,7 @@ async fn a_command_reading_its_input_reads_end_of_file() {
         confiner: None,
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
     };
 
     let said = through(&open, "read line; echo read").await;
@@ -1545,6 +1550,7 @@ fn gated_shell(dir: &Path) -> (Shell, Arc<Careful>) {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
         policy: policy.clone(),
         workdir: dir.to_path_buf(),
         extra: Vec::new(),
@@ -2019,6 +2025,7 @@ async fn a_confined_command_leads_a_session_of_its_own() {
         confiner: Some(common::program()),
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
     };
 
     let said = through(
@@ -2234,6 +2241,7 @@ async fn what_a_command_leaves_running_is_remembered_and_stopped() {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: stragglers.clone(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),
@@ -2284,6 +2292,7 @@ async fn a_job_is_given_a_grace_to_leave_and_no_more_than_it_needs() {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: stragglers.clone(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),
@@ -2347,6 +2356,7 @@ async fn a_job_that_left_its_group_is_stopped_too() {
     let shell = Shell {
         limits: Limits::default(),
         stragglers: stragglers.clone(),
+        layout: Default::default(),
         policy: Arc::new(Careful::new()),
         workdir: dir.clone(),
         extra: Vec::new(),

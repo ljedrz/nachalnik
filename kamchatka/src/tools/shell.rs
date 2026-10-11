@@ -17,7 +17,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 
 use crate::tools::{
     Careful, KEPT, Limits, arg,
-    ops::{self, Arg, Op, inner, schema},
+    ops::{self, Arg, Layout, Op, inner, schema},
 };
 
 /// How long a running command may say nothing before the tool looks up to check whether it has
@@ -244,6 +244,9 @@ pub struct Shell {
     /// What a command left running when its call ended, for whoever ends the session to stop;
     /// see [`Stragglers`].
     pub stragglers: Stragglers,
+    /// How the schema lays out the call's arguments, and so how a refusal tells a model to write
+    /// them.
+    pub layout: Layout,
 }
 
 /// What the commands of this session left running when their calls ended.
@@ -528,7 +531,7 @@ impl Tool for Shell {
         // offers takes an `action` and a model should not have to remember which of them is the
         // exception. It costs a word in the call and buys a rule with no holes in it - the same
         // reasoning `log` is written to
-        .with_schema(schema(&ops()))
+        .with_schema(schema(&ops(), self.layout))
         .with_capabilities([Capability::exec("run")])
     }
 
@@ -543,7 +546,7 @@ impl Tool for Shell {
         // which is what a permission rule is written against
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(self.layout))),
         };
         let args = &*args;
         let named = &args["action"];
@@ -1300,6 +1303,7 @@ mod tests {
             confiner: None,
             limits: Limits::default(),
             stragglers: Default::default(),
+            layout: Default::default(),
         }
     }
 
@@ -1567,6 +1571,7 @@ mod tests {
                 confiner: Some(std::env::temp_dir().join("kamchatka-is-not-run-here")),
                 limits: Limits::default(),
                 stragglers: Default::default(),
+                layout: Default::default(),
             }
             .spec()
             .description

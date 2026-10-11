@@ -26,7 +26,7 @@ use crate::{
     tools::{
         Limits,
         files::{Changing, Edit, PATH_ARG, Read, Write},
-        ops::{Arg, Op, action_of, actions, inner, schema, unread},
+        ops::{Arg, Layout, Op, action_of, actions, inner, schema, unread},
         search::{GLOB_ARG, Glob, Grep, Looking, MATCHES, PATHS, WIDTH},
     },
 };
@@ -146,7 +146,7 @@ pub(super) struct Fs {
 }
 
 impl Fs {
-    pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits) -> Self {
+    pub(super) fn new(reach: Arc<Reach>, looking: Looking, limits: Limits, layout: Layout) -> Self {
         let (ops, changing) = (ops(), Arc::new(Changing::default()));
         Self {
             read: Read(reach.clone(), limits.clone(), looking.policy.clone()),
@@ -155,7 +155,7 @@ impl Fs {
             glob: Glob(looking.clone()),
             grep: Grep(looking),
             limits,
-            schema: Arc::new(schema(&ops)),
+            schema: Arc::new(schema(&ops, layout)),
             ops,
         }
     }
@@ -210,7 +210,7 @@ impl Tool for Fs {
         // before anything here reads one
         let args = match inner(&call.args) {
             Ok(args) => args,
-            Err(refusal) => return Ok(ToolOutput::error(refusal)),
+            Err(misread) => return Ok(ToolOutput::error(misread.said(Layout::of(&self.schema)))),
         };
         let args = &*args;
 
@@ -270,6 +270,7 @@ mod tests {
                 limits: Limits::default(),
             },
             Limits::default(),
+            Default::default(),
         )
     }
 
@@ -324,7 +325,7 @@ mod tests {
         ];
 
         for (op, mut expected) in wanted {
-            let branch = schema(&ops())["properties"]["call"]["anyOf"]
+            let branch = schema(&ops(), Default::default())["properties"]["call"]["anyOf"]
                 .as_array()
                 .expect("a branch per operation")
                 .iter()

@@ -548,7 +548,7 @@ async fn the_records_come_back_in_one_order_however_the_calls_were_run() {
         policy.set(&Subject::parse(domain), Verdict::Allow);
     }
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
 
     kernel.push(ContextItem::user("all three at once"));
     kernel.turn().await.expect("the turn failed");
@@ -761,7 +761,7 @@ async fn an_inherited_item_is_reported_as_having_no_beginning_here() {
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     kernel.push(ContextItem::user("and now?"));
 
     kernel.turn().await.expect("the turn failed");
@@ -814,7 +814,7 @@ async fn since_the_first_record_is_not_since_the_beginning_and_the_schema_says_s
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     kernel.push(ContextItem::user("and now?"));
 
     kernel.turn().await.expect("the turn failed");
@@ -895,7 +895,7 @@ async fn a_resumed_log_says_it_was_resumed_rather_than_drained_where_it_matters(
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     kernel.push(ContextItem::user("what did I do before you started?"));
 
     kernel.turn().await.expect("the turn failed");
@@ -979,7 +979,7 @@ async fn a_resumed_log_says_so_in_its_summary_and_in_what_it_found() {
         Verdict::Allow,
     );
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, Limits::default());
+    let _anchor = introspect::install(&kernel, policy, Limits::default(), Default::default());
     kernel.push(ContextItem::user("how many tool calls have there been?"));
 
     kernel.turn().await.expect("the turn failed");
@@ -1486,7 +1486,7 @@ async fn the_log_says_no_more_than_the_limits_table_allows_it_to() {
     let policy = Arc::new(Careful::new());
     policy.set(&Subject::parse("log"), Verdict::Allow);
     kernel.set_policy(policy.clone());
-    let _anchor = introspect::install(&kernel, policy, limits.clone());
+    let _anchor = introspect::install(&kernel, policy, limits.clone(), Default::default());
 
     for n in 0..150 {
         kernel.push(ContextItem::memory("scratch", format!("note number {n}")));

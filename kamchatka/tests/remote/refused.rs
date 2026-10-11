@@ -601,6 +601,7 @@ print('answered' if got else 'hung up')
         confiner: Some(program),
         limits: Limits::default(),
         stragglers: Default::default(),
+        layout: Default::default(),
     };
     let said = tokio::time::timeout(
         PATIENCE,
