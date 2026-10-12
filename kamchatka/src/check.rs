@@ -185,6 +185,9 @@ fn begins(records: &[(usize, Record)]) -> bool {
 fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
     let mut open: Vec<(String, String, u64)> = Vec::new();
     let mut asked: HashSet<String> = HashSet::new();
+    // calls a turn said it ended with, waiting, and the record that said so: one finished after
+    // that was not finished before it
+    let mut left: HashMap<String, u64> = HashMap::new();
     // whether a call finished here could have been asked for before the log begins
     let mut cut = !begins(records);
 
@@ -201,6 +204,7 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
             Event::SessionStarted { .. } | Event::SessionResumed { .. } => {
                 close(&mut open, findings, "another session begins after it");
                 asked.clear();
+                left.clear();
                 cut = false;
             }
             Event::ToolRequested { call, tool, .. } => {
@@ -215,6 +219,7 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
             // the session said it ended with these waiting, which is an ending and not a loss
             Event::TurnUnfinished { calls } => {
                 open.retain(|(open, ..)| !calls.iter().any(|call| call.0 == *open));
+                left.extend(calls.iter().map(|call| (call.0.clone(), record.seq)));
             }
             Event::ToolFinished { call, .. } => {
                 match open.iter().position(|(open, ..)| *open == call.0) {
@@ -226,9 +231,11 @@ fn calls(records: &[(usize, Record)], findings: &mut Vec<String>) {
                         "record {} finishes the call `{}`, which {}",
                         record.seq,
                         call.0,
-                        match asked.contains(&call.0) {
-                            true => "had already finished",
-                            false => "this session never asked for",
+                        match (left.get(&call.0), asked.contains(&call.0)) {
+                            (Some(said), _) =>
+                                format!("record {said} said its turn left unfinished"),
+                            (None, true) => "had already finished".to_owned(),
+                            (None, false) => "this session never asked for".to_owned(),
                         }
                     )),
                 }

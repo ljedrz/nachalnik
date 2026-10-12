@@ -3889,6 +3889,42 @@ fn calls_a_session_said_it_ended_with_are_not_findings() {
     assert!(findings[0].contains("`c2`"), "{findings:?}");
 }
 
+/// A call finished after its turn said it ended with it unfinished is named as that, and not as a
+/// call finished twice.
+#[test]
+fn a_call_finished_after_its_turn_left_it_unfinished_is_named_as_that() {
+    use kamchatka::check::check;
+
+    let line = |seq: u64, event: serde_json::Value| {
+        serde_json::to_string(&json!({"seq": seq, "at": 1, "event": event})).unwrap()
+    };
+    let log = [
+        line(
+            1,
+            json!({"event": "session.started", "session": "one", "format": 1}),
+        ),
+        line(
+            2,
+            json!({"event": "tool.requested", "call": "c1", "tool": "peek", "args": {}}),
+        ),
+        line(3, json!({"event": "turn.unfinished", "calls": ["c1"]})),
+        line(
+            4,
+            json!({"event": "tool.finished", "call": "c1", "tool": "peek", "is_error": false,
+            "truncated": null, "tokens": 1, "item": 1}),
+        ),
+    ]
+    .join("\n");
+
+    let findings = check(Some(&log), None).findings;
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(
+        findings[0].contains("`c1`")
+            && findings[0].contains("record 3 said its turn left unfinished"),
+        "{findings:?}"
+    );
+}
+
 /// A log that begins part way through a session is not held to the calls before the cut, and one
 /// that begins where a session does is.
 ///
