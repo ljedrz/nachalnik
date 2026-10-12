@@ -88,6 +88,18 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   answer may already be billed. Unblocked by telling a reset before any of the answer arrived from
   one after it.
 
+- **How long a stream may stay silent can't be set.** `PATIENCE` in `nachalnik-providers` is a
+  fixed 150 seconds, and a request that says nothing for that long is given up on. A free endpoint
+  under load can hold a request in its queue for longer before the first byte and then answer it
+  normally, so every request fails and the model is unusable, though it would answer if waited
+  for. A `with_patience` on each provider, and a `patience` setting in `kamchatka.json` with a
+  `--patience` flag, would let the caller choose. One thing to settle with it: the OpenAI-compatible
+  provider's default client has a ten-minute timeout (`WHOLE_ANSWER`) over the whole request, so a
+  patience near it lets a long queue followed by a long answer be cut off by the client instead, as
+  a connection error.
+  Raising the client's timeout with the patience, or saying how the two combine, is part of the
+  change. Unblocked by choosing the names and that rule.
+
 - **Two assertions in `kamchatka/tests/introspect/fork.rs` cannot fail.** They check that a reply
   does not say "Nothing of yours was taken away", a sentence the code no longer writes, so they hold
   whatever `fork` says. Pointed at the sameness claim instead they contradict
