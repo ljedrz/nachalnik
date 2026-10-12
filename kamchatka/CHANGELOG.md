@@ -31,6 +31,11 @@ minor bump may break you.
 
 ### fixed
 
+- **`--check` names a call finished after its turn left it unfinished.** A log that finishes a
+  call after a `turn.unfinished` named it was reported as finishing a call that "had already
+  finished", which it never had. The finding now names the record that said the turn left it
+  unfinished.
+
 - **A refusal says when `call` arrived as text that does not parse.** A call whose `call` was a
   string that is not a JSON object, which is what a model's own call markup leaking into its
   arguments arrives as, was refused by the policy as one that named no operation, and the
