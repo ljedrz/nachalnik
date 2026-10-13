@@ -259,6 +259,9 @@ def main() -> None:
         print(path)
     with open(os.path.join(out, "limit"), "w") as f:
         f.write(f"{limit}\n")
+    # for `status.py`, which points out a sweep that has gone far past it
+    with open(os.path.join(out, "ceiling"), "w") as f:
+        f.write(f"{ceiling}\n")
     print(f"context {limit:,}, full past {ceiling:,} (compact {common['compact']})",
           file=sys.stderr)
 

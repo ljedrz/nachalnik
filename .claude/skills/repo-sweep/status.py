@@ -16,6 +16,10 @@ Needs looking at:
 - a long turn: over 300 requests in one turn. Read the end of NAME.err: a model reading its scope
   file after file is working; one making the same calls over and over is not, and nothing stops
   it - what to do about it is the person's call, not `run.py`'s.
+- past the ceiling: a running sweep whose largest request is over twice the size at which it was
+  told the context is full (`$SWEEPS/ceiling`, from `configure.py`). The model has not cleaned up,
+  every request it makes from there costs that much and takes as long, and only stopping it ends
+  that - which is the person's call, since what it has found so far is in its replies.
 - messages passed over: sent before the one ahead of them had an answer, which only a sweep
   started before `drive.py` does. Its exploration rounds were spent on failed turns.
 - a sweep given up, or `run.py` no longer running with work left.
@@ -62,8 +66,18 @@ def run_state():
     return run
 
 
+def ceiling():
+    try:
+        return int(open(os.path.join(sweeps.SWEEPS, "ceiling")).read())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
 def concerns(s):
     found = []
+    past = ceiling()
+    if s["status"] == "running" and past and s.get("largest", 0) > 2 * past:
+        found.append(f"a request of {s['largest']:,} tokens, past twice the ceiling of {past:,}")
     if s["status"] == "running" and s["quiet"] > 1200:
         found.append(f"quiet for {s['quiet'] // 60} minutes")
     if s["status"] == "running" and s.get("turn", 0) > LONG_TURN:
