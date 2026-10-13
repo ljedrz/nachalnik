@@ -307,6 +307,15 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   it has anywhere to write. Saying so is a sentence in a description every request carries, so it
   waits for a decision on whether that's worth its tokens.
 
+- **A command's scratch directory is granted by name.** `make_scratch` makes it, and the ruleset
+  opens it again by its path when the rules are built, following whatever is there by then. Where
+  the session's own `TMPDIR` is inside what its commands may write, a job an earlier command left
+  running could swap the new directory for a link between the two, and the command would be
+  granted writing wherever the link led. The window is a few system calls wide and needs that
+  `TMPDIR`, so it waits; closing it means holding the directory open from the moment it is made,
+  refusing a link, and building the rule from that descriptor rather than from a path, which
+  `path_beneath_rules` does not take.
+
 - **A question about a call whose arguments can't be read shows the raw wrapper.** The policy
   (`Careful::judges`), the question panel and the shell advisor read a call's arguments through
   `ops::inner`, and where that fails they fall back to the arguments as sent. A malformed `call`
