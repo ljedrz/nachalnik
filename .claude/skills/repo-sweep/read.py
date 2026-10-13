@@ -40,6 +40,7 @@ def text(content):
 
 
 def from_snapshot(path, reasoning):
+    """The replies, their reasoning where asked for, then the notes: `(heading, text)` each."""
     items = json.load(open(path))["items"]
     for item in items:
         kind = item["kind"]
@@ -47,18 +48,18 @@ def from_snapshot(path, reasoning):
             continue
         said = text(item.get("content"))
         if said.strip():
-            print(f"=== item {item['id']} TEXT ===\n{said}\n")
+            yield f"item {item['id']} TEXT", said
         thought = text(kind.get("reasoning"))
         if reasoning and thought.strip():
-            print(f"--- item {item['id']} reasoning ---\n{thought}\n")
+            yield f"item {item['id']} reasoning", thought
     for item in items:
         if item.get("source") == "agent":
-            print(f"=== note {item['id']} [{item.get('label', '')}] ({item.get('state', '')}) ===\n"
-                  f"{text(item.get('content'))}\n")
+            yield (f"note {item['id']} [{item.get('label', '')}] ({item.get('state', '')})",
+                   text(item.get("content")))
 
 
 def from_records(name):
-    print(f"(no snapshot for {name}: the notes from its records, without its replies)\n")
+    """The notes, as the arguments of the `context` calls that made them."""
     for line in open(sweeps.log(name), errors="replace"):
         try:
             event = json.loads(line)["event"]
@@ -72,14 +73,14 @@ def from_records(name):
             try:
                 args = json.loads(args["_unparsed"])
             except ValueError:
-                print(f"=== note (did not parse) ===\n{args['_unparsed']}\n")
+                yield "note (did not parse)", args["_unparsed"]
                 continue
         if isinstance(args, dict) and isinstance(args.get("call"), dict):
             args = args["call"]
         if isinstance(args, dict) and args.get("action") == "note":
             rest = {k: v for k, v in args.items() if k != "action"}
             said = rest.pop("content", None) or rest.pop("text", None) or rest.pop("note", None)
-            print(f"=== note {json.dumps(rest)[:200]} ===\n{said}\n")
+            yield f"note {json.dumps(rest)[:200]}", said
 
 
 def earlier_parts(name):
@@ -93,22 +94,34 @@ def earlier_parts(name):
     return [snapshot for _, snapshot in sorted(found, reverse=True)]
 
 
+def entries(name, reasoning=False):
+    """What a sweep found, as `(heading, text)`, after a line saying where it was read from if
+    that is not the current part's snapshot: from it, an earlier part's, or the records."""
+    path = sweeps.snapshot(name)
+    if path and sweeps.state(name)["status"] == "running":
+        yield None, "(still running: as of the end of its last turn)"
+    if not path:
+        path = next(iter(earlier_parts(name)), None)
+        if path:
+            yield None, f"(no snapshot of the current part: read from the part before it, {path})"
+    if path:
+        yield from from_snapshot(path, reasoning)
+    else:
+        yield None, f"(no snapshot for {name}: the notes from its records, without its replies)"
+        yield from from_records(name)
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
-    name = args[0]
-    path = sweeps.snapshot(name)
-    if path and sweeps.state(name)["status"] == "running":
-        print("(still running: as of the end of its last turn)\n")
-    if not path:
-        path = next(iter(earlier_parts(name)), None)
-        if path:
-            print(f"(no snapshot of the current part: read from the part before it, {path})\n")
-    if path:
-        from_snapshot(path, "-r" in args)
-    else:
-        from_records(name)
+    for heading, said in entries(args[0], "-r" in args):
+        if heading is None:
+            print(f"{said}\n")
+        elif heading.startswith("item ") and heading.endswith(" reasoning"):
+            print(f"--- {heading} ---\n{said}\n")
+        else:
+            print(f"=== {heading} ===\n{said}\n")
 
 
 if __name__ == "__main__":
