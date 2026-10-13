@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A tool's error tells the model what it wraps.** A `Tool::invoke` that returned an error with a
+  cause - "reading the config", from a permission error - was recorded as the top line alone, and
+  the reason it failed never reached the model. Each cause is now written after it, unless the
+  message already says it.
+
 - **A `Kernel::turn` that sent nothing counts nothing against the turn's budget.** The count was
   stored before the step claimed anything, so a `turn` refused for want of a provider left a
   request counted that never went, and the turn carried on afterwards paused one request early. A
