@@ -180,8 +180,8 @@ impl StateChange {
 /// A run of recorded items that one [`Kernel::undo`] takes back whole; see [`Context::fold_since`].
 ///
 /// note: `None` until the first of them is added, which takes the checkpoint the rest belong to.
-/// A batch that joins a checkpoint already taken - the turn a call nobody can run answers - starts
-/// with that one's number.
+/// Joining a checkpoint already taken - the answer to a call nobody can run joins the turn that
+/// asked for it - is being handed the same batch, already holding its number.
 #[derive(Default)]
 struct Batch(Option<u64>);
 
