@@ -5,9 +5,10 @@ usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEP
 
 Without --limit, the model's context length is read from the endpoint's `/models` listing
 (KAMCHATKA_BASE_URL, OpenRouter's shape). The budget the prompts hold the model to, and the
-compaction backstop, scale with it: a sweep keeps its next request under half the window, or
-100k, whichever is smaller. The window itself goes to DIR/limit, which `sweep.sh` hands kamchatka
-as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts against is the figure the budget came from.
+point at which kamchatka tells the model the context is full, scale with it: a sweep keeps its
+next request under half the window, or 50k, whichever is smaller. The window itself goes to
+DIR/limit, which `sweep.sh` hands kamchatka as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts
+against is the figure the budget came from.
 
 A listing can say more than an endpoint serves. Before taking a 400 for the window's edge, look
 for a larger request that went through: one 400 after a sweep's largest request so far once looked
@@ -134,30 +135,24 @@ def hygiene(budget: int) -> str:
     n = f"{budget:,}"
     return (
         " CONTEXT HYGIENE, which is part of the job: you have the `context` tool, and you keep "
-        "your own context healthy with it at all times. Check `context` with action `budget` "
-        f"every few tool calls. Keep the next request under about {n} tokens: whenever it is "
-        "above that, or whenever you have finished with a file or a search result, first write "
-        "down anything you will still need with action `note` (the verified finding with "
-        "file:line, or the fact you learnt), then put the finished tool results away with action "
-        "`elide` (or `exclude` for ones that are pure noise), giving a reason. Never put away "
-        "something whose finding you have not written down; a finding you did not note is lost. "
-        "`search` reads a line of an elided item back without restoring it, and `restore` "
-        "returns one if you must. Your notes are what you write the final report from. HARD "
-        "RULE: call `context` with action `budget` after every third tool call, without "
-        f"exception. If the next request is above {n} tokens, cleaning up comes before anything "
-        "else: first `note` what you still need (the verified finding with file:line, or the "
-        "fact you learnt), then `elide` the finished tool results (or `exclude` pure noise) with "
-        f"a reason, until it is back under {n}. "
+        f"your own context healthy with it. Keep the next request under about {n} tokens. "
+        "`note` each verified finding the moment you have it, with file:line and the exact words "
+        "it rests on, and any fact you will still need: a note is never elided, and your notes "
+        "are what the final report is written from. Once you have finished with a file or a "
+        "search result and noted what you need from it, put it away with action `elide` (or "
+        "`exclude` for pure noise), giving a reason; never put away something whose finding you "
+        "have not noted. `search` reads a line of an elided item back without restoring it, and "
+        "`restore` returns one if you must. There is no need to check `budget` as you go: when "
+        f"the context reaches about {n} tokens the program tells you so inside the turn, and then "
+        "cleaning up comes before anything else. "
         "WHAT THE PROGRAM DOES ON ITS OWN: when the next message arrives, every tool result "
         "from before it - each file you read, each search you ran - is elided and left as a "
-        "marker saying it was compacted after you had read it, and every follow-up message you "
-        "are sent starts such a pass. So: compare two places in the turn you read them, and "
-        "`note` each verified finding at once, with file:line and the exact words it rests on; "
-        "a note is never elided. Before a reply with no tool call, which ends the turn, `note` "
-        "anything still unnoted. When a marker stands for something you still need, `restore` "
+        "marker saying it was compacted after you had read it. So: compare two places in the "
+        "turn you read them, and `note` anything still unnoted before a reply with no tool call, "
+        "which ends the turn. When a marker stands for something you still need, `restore` "
         "that item by id with a reason, or `search` it for the line you need, rather than "
-        "reading the file again: a restored item is not elided again, and a fresh read is at "
-        "the next message. `look` lists every item with its id, elided ones included."
+        "reading the file again: a restored item is not elided again. `look` lists every item "
+        "with its id, elided ones included."
     )
 
 
@@ -198,7 +193,7 @@ def main() -> None:
     )
     os.makedirs(out, exist_ok=True)
 
-    budget = min(100_000, limit // 2)
+    budget = min(50_000, limit // 2)
     common = {
         "model": model,
         "requests": 0,
@@ -206,8 +201,9 @@ def main() -> None:
         "allow": ["fs:read", "fs:grep", "fs:glob", "context"],
         "deny": ["fs:write", "fs:edit", "exec"],
         "on-ask": "deny",
-        # the backstop, if the model does not clean up after itself: a little past the budget
-        "compact": round(min(0.9, budget * 1.5 / limit), 3),
+        # where kamchatka tells the model the context is full, which is how it learns it is over
+        # the budget: the prompts no longer have it check, since every check was a whole request
+        "compact": round(min(0.9, budget / limit), 3),
     }
     for kind, system in (
         ("audit", AUDIT),

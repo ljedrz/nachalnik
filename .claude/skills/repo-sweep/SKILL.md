@@ -40,9 +40,12 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
 ```
 
 - `configure.py` reads the model's context length from the endpoint's listing (or take
-  `--limit N`) and scales the context budget the prompts enforce: the next request stays under
-  half the window or 100k, whichever is smaller, with kamchatka's own compaction as a backstop.
-  The window goes to `$SWEEPS/limit` and from there to kamchatka, so both measure against it.
+  `--limit N`) and scales the context budget the prompts set: the next request stays under half
+  the window or 50k, whichever is smaller. A request costs about what the context holds, so the
+  budget is most of what a sweep costs. The model is not told to check `budget` as it goes, since
+  each check is a whole request; kamchatka tells it inside the turn once the context reaches the
+  budget (the settings' `compact`). The window goes to `$SWEEPS/limit` and from there to
+  kamchatka, so both measure against it.
 - **A listing can claim more than the endpoint serves**, and then `configure.py --limit` under
   it fixes it. But a lone 400 is not proof: once, a sweep's largest request so far came back
   `400 Bad Request`, which looked like the window's edge, and another sweep's next request was
@@ -77,9 +80,10 @@ split by checking that the moved lines are the same lines) and `compact/` (what 
 merged with nothing lost). Each is one module or one concern, names its files and lists concrete
 failure classes - narrow scopes are what made the findings real.
 
-A sweep is one session given its scope and three continuations, the last asking for the
-FINDINGS. `run.py` runs them all, and decides what this section used to leave to whoever was
-watching:
+A sweep is one session given two messages: its scope, which asks for the whole scope in that one
+turn, and then the FINDINGS. Every message after the first starts with what was read before it
+elided, so a message that only says "continue" buys a round of reading the same files again.
+`run.py` runs them all, and decides what this section used to leave to whoever was watching:
 
 ```sh
 nohup python3 $SKILL/run.py > /dev/null 2>&1 &          # every KIND, in order; or name some
