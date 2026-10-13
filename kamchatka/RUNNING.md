@@ -590,11 +590,12 @@ any. [The client's documentation][differ] describes what has been observed. In p
 unexpected colour may be the model's quirk rather than the command's danger, and a command is never
 shown green on a rating the model itself reported as uncertain.
 
-To see how a model handles the scale before relying on it, run `tests/advise.rs` with
-`KAMCHATKA_SYSTEM1_MODEL` set (and `KAMCHATKA_SYSTEM1_BASE_URL` for your own server): it sends a
-couple of dozen commands and reports how each was rated. A failure there tells you something about
-the model rather than indicating a bug; the scale was worded for the models it was first tested
-with.
+To see how a model handles the scale before relying on it, run `tests/advise.rs` with the
+`shell-advisor` feature, `KAMCHATKA_SYSTEM1_MODEL` and a key for it set (and
+`KAMCHATKA_SYSTEM1_BASE_URL` for your own server); without both it skips. It sends a couple of dozen
+commands and fails on each one the model puts on the wrong level. A failure there tells you
+something about the model rather than indicating a bug; the scale was worded for the models it was
+first tested with.
 
 [differ]: https://docs.rs/nachalnik-providers/latest/nachalnik_providers/system1/#where-engines-differ
 
