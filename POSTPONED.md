@@ -9,6 +9,20 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
+- **Nothing bounds how many tool calls one answer may make.** The kernel prepares and runs every
+  call a response carries, so a model caught in a repetition loop - one answer of thousands of
+  calls, most of them the same call - has every one of them run and recorded, and the context
+  fills with copies. A ceiling on calls per answer (`Config`, the rest answered with an error
+  saying so), or one run of a call repeated with the same arguments in one answer, would stop it;
+  each changes what a response with many calls means to a client. Unblocked by choosing which.
+
+- **`fs` refuses a call whose text has a backslash JSON does not allow.** A model that writes a
+  regex into its arguments as `"\.source\("` rather than `"\\.source\\("` gets the call
+  refused, with a sentence saying to write every backslash twice, and some models make the same
+  mistake on every call after it. Reading such text again with the stray backslashes doubled
+  would recover what was meant, but it is the tool guessing at arguments it was not given, which
+  nothing else in it does. Unblocked by deciding whether that guess is worth making.
+
 - **A tool that panics outside `invoke` takes the step with it.** The kernel catches a panic where
   it polls a tool, as INVARIANTS.md says, but calls `Tool::needs` and `Tool::limit` with the
   model's arguments, and `Tool::spec` wherever it labels a result, outside that catch. A tool that
@@ -21,15 +35,16 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 - **`nachalnik/src/kernel/mod.rs` is best changed with the state machine moved out.** The loop -
   `state`, `decide`, `cancel_pending_calls`, `step`, `step_once`, `turn`, with `Machine`, `Claim`,
   `Restore`, `PreparedCall`, `state_for` and `transition` - is one banner-marked region sharing the
-  file with construction and observation, and a private `kernel/machine.rs` could take it with
-  `pub(super)` on what the other files use. Done with it, or alone: the interrupt flag and the
-  turn's request count are atomics beside the `Machine` mutex though every write already holds it,
-  and as plain fields under it would need none of the notes about orderings; `turn` and
-  `step_once` pass a bare `(State, bool)` whose second half is a named outcome only in a note;
-  "announce, then transition, under one hold of the lock" is written out in `decide`,
-  `cancel_pending_calls` and `prepare_calls`; and the serial half of `execute` repeats `invoke`'s
-  refuse-or-start sequence. Each is a refactor with no change in behaviour, and waits for the next
-  change that touches the loop, which would review it.
+  file with construction and observation, and a private module of its own beside `request.rs` and
+  `calls.rs` could take it, with `pub(super)` on what the other files use, and the full notice's
+  setter could join `mark_full` and `carries`, which place and retire it. Done with it, or alone:
+  the interrupt flag and the turn's request count are atomics beside the `Machine` mutex though
+  every write already holds it, and as plain fields under it would need none of the notes about
+  orderings; `turn` and `step_once` pass a bare `(State, bool)` whose second half is a named
+  outcome only in a note; "announce, then transition, under one hold of the lock" is written out
+  in `decide`, `cancel_pending_calls` and `prepare_calls`; and the serial half of `execute`
+  repeats `invoke`'s refuse-or-start sequence. Each is a refactor with no change in behaviour, and
+  waits for the next change that touches the loop, which would review it.
 
 - **`Intervention::elided` brings back an item that was already excluded.** It sets the named items
   to `Elided` whatever state they were in, so an item the session had excluded comes back into the
