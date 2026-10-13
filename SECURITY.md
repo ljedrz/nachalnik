@@ -96,8 +96,10 @@ What changes to this workspace must keep true about what is and isn't enforced.
   runs on, so stopping covers the process group, and says so.
   A call that *finishes* leaves its process group alone, so a background job it started
   (`sleep 300 &`, a server) keeps running while the session lasts. When the session ends, every
-  such group still running is sent `SIGTERM`, then `SIGKILL`, and listed. `--leave-running` leaves
-  them running, and also lists them. As above, processes that left their group aren't on the list.
+  such process still running is sent `SIGTERM`, then `SIGKILL`, and listed. `--leave-running`
+  leaves them running, and also lists them. They are found by a mark every command carries in its
+  environment, so a process that left its group is found as well; one that cleared its own
+  environment (`env -i`) isn't.
 - **Restricting `open` isn't enough.** A command that can reach a unix socket can ask the process
   behind it to act on its behalf, outside the sandbox: the session bus, the compositor, a container
   daemon. Landlock can restrict this from Linux 7.1, and `kamchatka` uses that: a command may only
