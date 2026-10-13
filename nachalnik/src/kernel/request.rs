@@ -91,13 +91,12 @@ impl Kernel {
         //
         // note: unless the counter said it could not price part of what went out, in which case
         // the two numbers are not about the same thing and the difference between them is not an
-        // error to learn from. `Calibrating` corrects with a single multiplier, so a screenshot
-        // it estimated at nothing and the provider billed a thousand tokens for gets spread over
-        // the bytes it *could* see: two thousand tokens of prose beside one picture settles on a
-        // scale of about 1.5, and from then on the prose reads three thousand while the picture
-        // still reads nothing. The ratio is cumulative, so deleting the picture does not undo it.
-        // The counter disowned that content; respecting the disownment is the kernel's half, and
-        // both figures below go through this one door so that neither can skip it
+        // error to learn from. `Calibrating` corrects with a single multiplier, so what the
+        // provider billed for a picture it priced at nothing would be spread over the bytes it
+        // *could* see, and every estimate of prose after it would read high. The ratio is
+        // cumulative, so deleting the picture would not undo it. The counter disowned that
+        // content; respecting the disownment is the kernel's half, and both figures below go
+        // through this one door so that neither can skip it
         let observe = |reported: usize| {
             if cost.uncounted == 0 {
                 counter.observe(cost.tokens, reported);
