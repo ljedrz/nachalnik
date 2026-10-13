@@ -264,11 +264,12 @@ impl Kernel {
             return self.mark_full(false);
         };
 
-        if !compactor.should_compact(&self.budget()) {
+        let budget = self.budget();
+        if !compactor.should_compact(&budget) {
             return self.mark_full(false);
         }
 
-        let (items, budget) = (self.items(), self.budget());
+        let items = self.items();
         if let Some(plan) = compactor.plan(&items, &budget).await {
             self.apply_compaction(plan);
         }
