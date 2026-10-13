@@ -31,15 +31,12 @@ main() {
     # what the session reads and runs: `run.py` pins both for the length of a run
     local tree=${TREE:-$repo}
     local bin=${BIN:-${CARGO_TARGET_DIR:-$repo/target}/release/kamchatka}
-    local kind=$1 name=$2 scope=$3 config word
+    local kind=$1 name=$2 scope=$3
     case $kind in
-        audit) config=$SWEEPS/audit.json; word=audit ;;
-        quality|tests) config=$SWEEPS/quality.json; word=review ;;
-        docs) config=$SWEEPS/docs.json; word=check ;;
-        compact) config=$SWEEPS/compact.json; word=review ;;
-        maintain) config=$SWEEPS/maintain.json; word=review ;;
+        audit|quality|tests|docs|compact|maintain) ;;
         *) echo "KIND is audit, quality, tests, docs, compact or maintain" >&2; return 2 ;;
     esac
+    local config=$SWEEPS/$kind.json
     # the window configure.py worked from, so that kamchatka compacts against the same figure
     if [ -f "$SWEEPS/limit" ]; then
         export KAMCHATKA_CONTEXT_LIMIT=$(cat "$SWEEPS/limit")

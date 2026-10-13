@@ -47,15 +47,30 @@ QUALITY = (
     "context items, a full copy of every message per frame), and a realistic size at which it "
     "costs something noticeable; skip micro-optimisations nobody would measure. Note that "
     "kamchatka's terminal loop redraws only when something changed, not at a fixed frame rate. "
-    "CODE-QUALITY findings are: duplicated logic that has drifted or will drift, dead code, "
-    "functions doing several unrelated things, names or messages that say something other than "
-    "what the code does, comments that contradict the code, error handling that loses "
-    "information, needless clones of shared content, and abstractions with a single trivial use. "
-    "No formatting or naming-taste nits, no speculation, nothing POSTPONED.md says is "
-    "deliberately absent. Each finding: kind (perf/quality), severity (high/medium/low), "
-    "file:line, the problem in one sentence, why it matters concretely, and a minimal suggested "
-    "change. When you are done exploring, end with a section titled FINDINGS listing everything, "
-    "most important first."
+    "CODE-QUALITY findings are: error handling that loses information, a lock held across an "
+    "await or blocking work inside async code, a background task never cancelled or a loop that "
+    "polls, needless clones of shared content, state kept in two places that can disagree, and "
+    "code that breaks an architectural rule AGENTS.md states. No formatting or naming-taste "
+    "nits, no speculation, nothing POSTPONED.md says is deliberately absent. Each finding: kind "
+    "(perf/quality), severity (high/medium/low), file:line, the problem in one sentence, why it "
+    "matters concretely, and a minimal suggested change. When you are done exploring, end with "
+    "a section titled FINDINGS listing everything, most important first."
+)
+
+
+TESTS = (
+    f"You are a senior Rust engineer reviewing the test code of the workspace in the current "
+    f"directory ({ROLE}). You have read-only tools: fs read, grep and glob. Read AGENTS.md and "
+    "CONTRIBUTING.md first: they state the project's conventions, and a finding that "
+    "contradicts a documented decision is not a finding. A finding is a test that would not "
+    "catch what it is there to catch: an assertion that cannot fail, a test that checks less "
+    "than its name or doc comment says, one that would still pass with the behaviour it is "
+    "named after removed (name the production line you would delete), or an enforced claim no "
+    "test pins; the scope message lists the classes to look for. Open the actual lines before "
+    "claiming anything. Each finding: severity (high/medium/low), the test's file:line, what it "
+    "claims, why it does not hold, and the minimal change that would make it hold. When you are "
+    "done exploring, end with a section titled FINDINGS listing everything, most important "
+    "first."
 )
 
 
@@ -92,8 +107,9 @@ COMPACT = (
     "program does: a paragraph or doc comment that restates the signature above it, another "
     "document, or another paragraph; two documents saying one thing where one could point to the "
     "other; a `note:` that tells a story rather than a reason; a type, function, trait, "
-    "constant, module or wrapper with one trivial use; two near-identical functions or test "
-    "helpers; dead code; a test that checks exactly what another test already checks. For "
+    "constant, module or wrapper with one trivial use; dead code; two test helpers that do the "
+    "same thing, test setup a helper already does, and a test that checks exactly what another "
+    "test already checks. For "
     "every finding, name where the value still lives once it is gone: the other document and "
     "line, the caller that absorbs the wrapper, the test that already checks it. Not findings: "
     "anything whose removal changes behaviour, a public item of a published crate (that is an "
@@ -115,20 +131,53 @@ MAINTAIN = (
     "for a model reading it in pieces. Findings are: a file too large to read and hold at once "
     "that has a natural seam to split along (name the seam and the pieces); a function that "
     "does several unrelated things or has grown branches patched on over time and would be "
-    "simpler redesigned (say the shape it should have); the same logic written twice that has "
-    "drifted or will drift; a special case bolted on beside a general mechanism that could "
-    "absorb it; flags or booleans threaded through several layers where a type would do; "
-    "dead code; a name that says something other than what the code does; a comment that "
-    "contradicts the code or narrates history; documentation that is out of date, repeats "
-    "another document, or has ballooned past what a reader needs (AGENTS.md: the prose argues "
-    "plainly). Not findings: formatting, naming taste, anything whose fix changes behaviour a "
-    "person should choose, speculation. Open the actual lines before claiming anything, and "
-    "for a split or a redesign say concretely what moves where and what gets simpler. Each "
+    "simpler redesigned (say the shape it should have); the same production logic written "
+    "twice that has drifted or will drift; a special case bolted on beside a general mechanism "
+    "that could absorb it; flags or booleans threaded through several layers where a type would "
+    "do; a name that says something other than what the code does; a document too large to "
+    "read at once that has a natural seam to split along. Not findings: formatting, naming "
+    "taste, anything whose fix changes behaviour a person should choose, speculation. Open the "
+    "actual lines before claiming anything, and for a split or a redesign say concretely what "
+    "moves where and what gets simpler. Each "
     "finding: kind (size/redesign/duplication/smell/docs), severity (high/medium/low), "
     "file:line range, the problem in one sentence, why it matters concretely, and the minimal "
     "change. When you are done exploring, end with a section titled FINDINGS listing "
     "everything, most important first."
 )
+
+
+# what each kind looks for and the others leave, so that sweeps of several kinds over the same
+# files do not each report the same defect
+#
+# note: duplicated production code is maintain's and duplicated test code compact's, since one
+# is about what drifts and the other about what can go; prose that is wrong is docs' wherever it
+# is, and prose that repeats is compact's
+OWNS = {
+    "audit": "a behaviour defect - code that does the wrong thing, or breaks a rule INVARIANTS.md "
+    "or SECURITY.md states",
+    "tests": "a test that cannot fail, checks less than its name says, or would still pass with "
+    "its behaviour removed",
+    "quality": "performance, error handling that loses information, misuse of locks, tasks or "
+    "async, and state kept twice that can disagree",
+    "docs": "prose - a document, a doc comment, a note:, a help line, a tool description, an "
+    "error message - that says something the code does not do",
+    "maintain": "production code written twice that has drifted or will, a file or function too "
+    "large or too patched to change safely, flags threaded where a type would do, and a name "
+    "that misleads",
+    "compact": "what can go with nothing lost - dead code, a helper or type with one trivial use, "
+    "prose that restates the signature or another document, test helpers, setup or tests that "
+    "repeat each other",
+}
+
+
+def others(kind: str) -> str:
+    """The sentence that leaves the other kinds' findings to them."""
+    rest = "; ".join(f"{k}: {v}" for k, v in OWNS.items() if k != kind)
+    return (
+        " Other sweeps read the same files for other things, and what they look for is not a "
+        "finding here even where you see it - leave it to them and spend the turn on your own "
+        f"kind. They are, by kind: {rest}."
+    )
 
 
 def hygiene(budget: int) -> str:
@@ -207,6 +256,7 @@ def main() -> None:
     }
     for kind, system in (
         ("audit", AUDIT),
+        ("tests", TESTS),
         ("quality", QUALITY),
         ("docs", DOCS),
         ("compact", COMPACT),
@@ -214,7 +264,7 @@ def main() -> None:
     ):
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
-            json.dump({**common, "system": system + hygiene(budget)}, f, indent=1)
+            json.dump({**common, "system": system + others(kind) + hygiene(budget)}, f, indent=1)
         print(path)
     with open(os.path.join(out, "limit"), "w") as f:
         f.write(f"{limit}\n")
