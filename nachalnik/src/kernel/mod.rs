@@ -900,7 +900,8 @@ impl Kernel {
     /// event log.
     ///
     /// note: `counted` is the count [`Kernel::turn`] has reached, stored as the turn's own only
-    /// where this claims the request it counts. Stored before the step, a `turn` refused as busy -
+    /// where this claims the request it counts; a request claimed with none, by a `step`, starts
+    /// it again from nothing. Stored before the step, a `turn` refused as busy -
     /// a second driver arriving between another one's count and its claim - left its count in
     /// place of the turn that was running, and that turn, carried on from `Deciding`, counted from
     /// the wrong number and went past its budget.
@@ -936,9 +937,10 @@ impl Kernel {
                         return Err(Error::NoProvider);
                     }
                     self.transition(&mut machine, State::Requesting);
-                    if let Some(requests) = counted {
-                        self.0.turn_requests.store(requests, SeqCst);
-                    }
+                    // a request a `step` claims is not a turn's, and nothing before it is either:
+                    // it is claimed from a resting state no `turn` was counting through. Left
+                    // alone, the count a `turn` carried on from it would read was the last turn's
+                    self.0.turn_requests.store(counted.unwrap_or(0), SeqCst);
                     Claim::Request
                 }
                 State::Requesting | State::Executing { .. } => unreachable!("handled as busy"),
