@@ -31,6 +31,10 @@ minor bump may break you.
 
 ### fixed
 
+- **An address with a password in it is kept from a command even when it is not text.** The
+  address variables were read with `env::var`, which answers a value that is not UTF-8 as no value,
+  so such a `KAMCHATKA_SYSTEM1_BASE_URL` with a `user:password@` stayed in every command's
+  environment. They are read as the endpoint reads them now, with what is not text replaced.
 - **A permission error where the session reads only is blamed on the confinement only as a
   write.** Such a path is held for reading and running as well, so running a script there that has
   no execute bit is refused by its own mode, with the same error - and the note said the
