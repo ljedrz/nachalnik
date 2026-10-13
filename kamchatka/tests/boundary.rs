@@ -880,6 +880,12 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
         ))
         .expect("a write the person could make, refused where this reads only");
     assert!(note.contains("may read and not write"), "{note}");
+    // and only a write: running a script there that has no execute bit is refused by its own
+    // mode, with the same error
+    assert!(
+        note.contains("if the permission error below is a write"),
+        "{note}"
+    );
 
     // refused for two reasons in one command, as `echo hi > opened/out.txt; cat /elsewhere/in.txt`
     // is: each path is said with its own, and the one this may read is not called out of reach

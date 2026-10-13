@@ -460,12 +460,15 @@ impl Sandbox {
                 },
             )),
             // reached, and refused a write the person could have made: under `--deny fs:write`
-            // the working directory itself, or a path opened up with `--sandbox-read`
+            // the working directory itself, or a path opened up with `--sandbox-read`. Only a
+            // write, since such a path is held for reading and running as well - so a script
+            // without its execute bit is refused by its own mode there, and the error does not
+            // say which of the two it was
             (false, _) if read_only.len() == named.len() => Some(format!(
-                "[{} {} where this session may read and not write, so the permission error \
-                 below is the confinement rather than the file's own permissions. This command \
-                 runs with {self}. Say what you need to write there and ask for it to be opened \
-                 up.]",
+                "[{} {} where this session may read and not write, so if the permission error \
+                 below is a write, it is the confinement rather than the file's own \
+                 permissions. This command runs with {self}. Say what you need to write there \
+                 and ask for it to be opened up.]",
                 read_only.join(", "),
                 are(&read_only),
             )),
