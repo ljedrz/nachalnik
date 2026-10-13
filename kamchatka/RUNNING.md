@@ -269,7 +269,7 @@ line work the same with all of them.
 
 ```console
 $ export KAMCHATKA_API_KEY=...        # a Google AI Studio key
-$ kamchatka --gemini "what does src/kernel.rs do?"
+$ kamchatka --gemini -m gemini-3.5-flash "what does src/kernel.rs do?"
 $ export ANTHROPIC_API_KEY=...        # an Anthropic Console key
 $ kamchatka --anthropic -m claude-haiku-4-5 "what does src/kernel.rs do?"
 $ export KAMCHATKA_BASE_URL=https://api.openai.com/v1 KAMCHATKA_API_KEY=...   # an OpenAI key
@@ -467,7 +467,7 @@ command line takes precedence**; a list given there *replaces* the file's. For t
 is the command line, then `KAMCHATKA_MODEL`, then the file. A leading `~` in `sandbox-allow` and
 `sandbox-read` means your home directory. An unknown key stops the program with its name, and so
 does a key that doesn't apply to the current run: `deadline` and `on-ask` (other than `deny`) with
-`--serve`. Things that only apply to one run (a message, `-r`, `-f`, `--headless`) have no key.
+`--serve` or `--web`. Things that only apply to one run (a message, `-r`, `-f`, `--headless`) have no key.
 
 Two keys have no command-line equivalent:
 
