@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A `Kernel::turn` carried on from a `step` counts from nothing.** `turn` carries the count on
+  from `Deciding` and `Ready`, and a request `step` sent left the count of the turn before it in
+  place, so a turn finished at its `max_requests_per_turn`, then a `step`, then a `turn` paused at
+  once without sending anything.
+
 - **A tool's error tells the model what it wraps.** A `Tool::invoke` that returned an error with a
   cause - "reading the config", from a permission error - was recorded as the top line alone, and
   the reason it failed never reached the model. Each cause is now written after it, unless the

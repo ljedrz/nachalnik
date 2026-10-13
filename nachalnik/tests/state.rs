@@ -549,6 +549,46 @@ async fn a_turn_that_sent_nothing_counts_nothing() {
     assert_eq!(provider.remaining(), 0);
 }
 
+/// A `turn` carried on from a `step` counts from nothing, not from the turn before the step.
+///
+/// note: `turn` carries the count on from `Deciding` and `Ready`, and only a request it claims
+/// stored one, so a `step` from a finished turn reached `Ready` with the finished turn's count
+/// still there - and the `turn` carried on from it paused at the budget without sending anything.
+#[tokio::test]
+async fn a_turn_carried_on_from_a_step_does_not_count_the_turn_before_it() {
+    let kernel = Kernel::new(Config {
+        max_requests_per_turn: Some(2),
+        ..Default::default()
+    });
+    kernel.set_policy(Arc::new(AllowAll));
+    let provider = Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "echo", json!({}))]),
+        ModelResponse::text("one"),
+        ModelResponse::tool_calls(vec![call("c2", "echo", json!({}))]),
+        ModelResponse::text("two"),
+    ]));
+    kernel.set_provider(provider.clone());
+    kernel.add_tool(Arc::new(ConstTool::new("echo", "hi")));
+    kernel.push(ContextItem::user("go"));
+
+    // a turn that spends its whole budget
+    assert!(matches!(
+        kernel.turn().await.unwrap(),
+        State::Finished { .. }
+    ));
+
+    // then a step, which sends one request
+    kernel.push(ContextItem::user("again"));
+    assert!(matches!(kernel.step().await.unwrap(), State::Ready { .. }));
+
+    // and the turn carried on from it has its budget, as one from a step always has
+    assert!(
+        matches!(kernel.turn().await.unwrap(), State::Finished { .. }),
+        "the turn paused on the count of the one before it"
+    );
+    assert_eq!(provider.remaining(), 0);
+}
+
 #[tokio::test]
 async fn the_context_can_be_rewritten_between_two_steps() {
     let (kernel, provider) = permissive([
