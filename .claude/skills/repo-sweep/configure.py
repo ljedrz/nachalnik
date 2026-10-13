@@ -4,10 +4,12 @@
 usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEPS)
 
 Without --limit, the model's context length is read from the endpoint's `/models` listing
-(KAMCHATKA_BASE_URL, OpenRouter's shape). Where kamchatka tells the model the context is full
-scales with it: half the window, or 100k, whichever is smaller. The window itself goes to
-DIR/limit, which `sweep.sh` hands kamchatka as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts
-against is the figure the settings came from.
+(KAMCHATKA_BASE_URL, OpenRouter's shape). Where `drive.py` cuts a turn scales with it: half the
+window or 100k, whichever is smaller, times a factor by kind (`CUTS`), and never past three fifths
+of the window, so that the requests a turn makes before it pauses still fit. It goes to
+DIR/KIND.cut with the number of cuts, for `sweep.sh`. The window itself goes to DIR/limit, which
+`sweep.sh` hands kamchatka as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts against is the
+figure the settings came from.
 
 A listing can say more than an endpoint serves. Before taking a 400 for the window's edge, look
 for a larger request that went through: one 400 after a sweep's largest request so far once looked
@@ -196,6 +198,24 @@ def report(kind: str) -> str:
     )
 
 
+# by kind: how much larger than the base a request may get before the turn is cut, and how many
+# cuts before the sweep is wrapped up and asked for its findings
+#
+# note: audit gets the most of both, because a correctness question needs several files open at
+# once and its leads are the ones most worth the cost; a docs, compact or maintain finding is
+# local - one document against one function, one block against another - and needs least
+CUTS = {
+    "audit": (2.0, 6),
+    "tests": (1.5, 4),
+    "quality": (1.5, 4),
+    "docs": (1.0, 3),
+    "compact": (1.0, 3),
+    "maintain": (1.0, 3),
+}
+# the request ceiling a turn pauses at; a cut lands at most this many requests past its size
+PAUSE_EVERY = 4
+
+
 def listed_limit(model: str) -> int | None:
     base = os.environ.get("KAMCHATKA_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
     key = os.environ.get("KAMCHATKA_API_KEY", "")
@@ -233,17 +253,20 @@ def main() -> None:
     )
     os.makedirs(out, exist_ok=True)
 
-    # a backstop and not a budget: the model is not asked to keep to one, and kamchatka tells it
-    # the context is full only past this
-    ceiling = min(100_000, limit // 2)
+    # where `drive.py` cuts a turn, and how many cuts a sweep gets before it is wrapped up; the
+    # model is not asked to keep to any of it, and three fifths of the window leaves room for the
+    # reads of a turn's last requests before it pauses
+    base = min(100_000, limit // 2)
+    cut = {kind: (min(round(base * factor), limit * 3 // 5), cuts) for kind, (factor, cuts)
+           in CUTS.items()}
     common = {
         "model": model,
-        "requests": 0,
+        # how often a turn pauses, which is how often `drive.py` gets to look at its size
+        "requests": PAUSE_EVERY,
         "tools": ["fs", "context"],
         "allow": ["fs:read", "fs:grep", "fs:glob", "context"],
         "deny": ["fs:write", "fs:edit", "exec"],
         "on-ask": "deny",
-        "compact": round(min(0.9, ceiling / limit), 3),
     }
     for kind, system in (
         ("audit", AUDIT),
@@ -253,18 +276,26 @@ def main() -> None:
         ("compact", COMPACT),
         ("maintain", MAINTAIN),
     ):
+        ceiling, cuts = cut[kind]
+        settings = {
+            **common,
+            # kamchatka's notice that the context is full, at twice the cut: past it only where
+            # the cuts did not hold, and told sooner it costs the model a call to look
+            "compact": round(min(0.9, 2 * ceiling / limit), 3),
+            "system": system + others(kind) + report(kind),
+        }
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
-            json.dump({**common, "system": system + others(kind) + report(kind)}, f, indent=1)
+            json.dump(settings, f, indent=1)
+        # read by `sweep.sh` for `drive.py`, and by `status.py`
+        with open(os.path.join(out, f"{kind}.cut"), "w") as f:
+            f.write(f"{ceiling} {cuts}\n")
         print(path)
     with open(os.path.join(out, "limit"), "w") as f:
         f.write(f"{limit}\n")
-    # for `status.py`, which points out a sweep that has gone far past it
-    with open(os.path.join(out, "ceiling"), "w") as f:
-        f.write(f"{ceiling}\n")
-    print(f"context {limit:,}, full past {ceiling:,} (compact {common['compact']})",
+    print(f"context {limit:,}; cut at "
+          + ", ".join(f"{kind} {ceiling:,} x{cuts}" for kind, (ceiling, cuts) in cut.items()),
           file=sys.stderr)
-
 
 if __name__ == "__main__":
     main()
