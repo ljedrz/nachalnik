@@ -7,7 +7,7 @@ usage: dedupe.py [NAME...]          the places more than one sweep names, and ho
 
 A place is any `file:line` (or `file:start-end`) in a sweep's replies and notes, read as `read.py`
 reads them; a path given in part (`kernel/mod.rs`) is taken for the one tracked file it ends.
-Places in one file less than `NEAR` lines apart are one place.
+Places in one file less than `NEAR` lines apart are one place, and `file:a-b,c-d` is two.
 
 With --give, the lines printed go into the verification agent's prompt (`agent_prompt.md`), and
 NAME is added to $SWEEPS/given, the sweeps given out so far, one a line: give each sweep out with
@@ -30,10 +30,14 @@ import status  # noqa: E402
 import sweeps  # noqa: E402
 
 NEAR = 5
+# a range wider than this names a region rather than a place, and would make one place of
+# everything in the file; it stands for its first line
+WIDEST = 30
 PLACE = re.compile(
     r"([A-Za-z0-9_./-]+\.(?:rs|md|toml|yml|yaml|sh|py|html|json))"
-    r"(?::|#L)(\d+)(?:\s*[-–]\s*L?(\d+))?"
+    r"(?::|#L)(\d+(?:\s*[-–]\s*L?\d+)?(?:,\s*\d+(?:\s*[-–]\s*\d+)?)*)"
 )
+SPAN = re.compile(r"(\d+)(?:\s*[-–]\s*L?(\d+))?")
 
 
 def tracked():
@@ -71,9 +75,13 @@ def places(name, resolve):
             continue
         for line in said.splitlines():
             for m in PLACE.finditer(line):
-                start = int(m.group(2))
-                end = max(start, int(m.group(3) or start))
-                found.add((resolve(m.group(1)), start, end, line.strip()[:240]))
+                # `mod.rs:233-244,278-282` is two places
+                for span in SPAN.finditer(m.group(2)):
+                    start = int(span.group(1))
+                    end = max(start, int(span.group(2) or start))
+                    if end - start > WIDEST:
+                        end = start
+                    found.add((resolve(m.group(1)), start, end, line.strip()[:240]))
     return found
 
 
