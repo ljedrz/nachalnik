@@ -125,7 +125,8 @@ What changes to this workspace must keep true about what is and isn't enforced.
   (`Probed::why`), since a kernel without Landlock and a kernel that refused this ruleset are
   different problems. What the kernel is too old to confine - TCP below Linux 6.7, abstract sockets
   and signals below 6.12 - is said at startup and at the top of each session
-  (`sandbox::weaker_here`), since the tab reads "confined" either way. Never let it fail silently.
+  (`sandbox::weaker_here`), since the tab reads "confined" without the last two and only "partly
+  confined" without the first. Never let it fail silently.
 - **Tell the model when the sandbox refused something.** Landlock refuses an `open` with `EACCES`,
   the same error as for a file owned by someone else, so a sandboxed command gets a permission error
   that looks ordinary, and a model that can't tell the difference wastes its turns trying `sudo`. A
