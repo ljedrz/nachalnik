@@ -5,7 +5,7 @@ line, so that a place two sweeps name is verified once.
 usage: dedupe.py [NAME...]          the places more than one sweep names, and how many
        dedupe.py --give NAME        the places NAME names that a sweep given out before it does
 
-A place is any `file:line` (or `file:start-end`) in a sweep's replies and notes, read as `read.py`
+A place is any `file:line` (or `file:start-end`) in a sweep's `FINDING:` lines, read as `read.py -f`
 reads them; a path given in part (`kernel/mod.rs`) is taken for the one tracked file it ends.
 Places in one file less than `NEAR` lines apart are one place, and `file:a-b,c-d` is two.
 
@@ -68,20 +68,17 @@ def resolver(files):
 
 
 def places(name, resolve):
-    """Every place NAME's findings name, as (file, start, end, the line naming it)."""
+    """Every place NAME's FINDING lines name, as (file, start, end, the line naming it)."""
     found = set()
-    for heading, said in read.entries(name):
-        if heading is None or not said:
-            continue
-        for line in said.splitlines():
-            for m in PLACE.finditer(line):
-                # `mod.rs:233-244,278-282` is two places
-                for span in SPAN.finditer(m.group(2)):
-                    start = int(span.group(1))
-                    end = max(start, int(span.group(2) or start))
-                    if end - start > WIDEST:
-                        end = start
-                    found.add((resolve(m.group(1)), start, end, line.strip()[:240]))
+    for line in read.findings(name):
+        for m in PLACE.finditer(line):
+            # `mod.rs:233-244,278-282` is two places
+            for span in SPAN.finditer(m.group(2)):
+                start = int(span.group(1))
+                end = max(start, int(span.group(2) or start))
+                if end - start > WIDEST:
+                    end = start
+                found.add((resolve(m.group(1)), start, end, line[:240]))
     return found
 
 

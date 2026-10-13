@@ -154,7 +154,8 @@ sweep ends or something needs looking at:
   there; stop it with SIGTERM to its `NAME.pid` (its findings so far are in its replies) rather
   than let it run.
 - **a sweep that drifted off its scope** (a tests scope that decided to report production code)
-  shows only in what it found: read the notes of the first sweeps to end before trusting the rest.
+  shows only in what it found: read the findings of the first sweeps to end before trusting the
+  rest.
 - **given up**, or `run.py` not running with work left.
 
 A failed turn is not on the list: `drive.py` carries it on, and the `retries` and `failed turns`
@@ -162,10 +163,11 @@ columns say what the endpoint costs.
 
 ## 3. read what a sweep found
 
-`python3 $SKILL/read.py NAME` - its replies, which hold its `FINDING:` lines, then any `context`
-notes it kept; `-r` adds its reasoning. It reads the snapshot, so a sweep still
-running is read as of the end of its last turn, and a resumed one with everything before the
-resume. A sweep with no snapshot in any part is read from its records, and gives its notes alone.
+`python3 $SKILL/read.py NAME -f` - its `FINDING:` lines, each once, which is what to verify.
+Without `-f`, its replies and any `context` notes, for the reasoning around a line; `-r` adds the
+model's reasoning. It reads the snapshot, so a sweep still running is read as of the end of its
+last turn, and a resumed one with everything before the resume; `-f` falls back to the prose in
+`NAME.err` where no part has a snapshot.
 
 ## 4. verify, in waves
 

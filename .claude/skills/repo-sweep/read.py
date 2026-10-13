@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """What a sweep found: its replies, which hold its `FINDING:` lines, and any `context` notes it
-kept. With -r, its reasoning as well.
+kept. With -r, its reasoning as well; with -f, its `FINDING:` lines alone, each once.
 
-usage: read.py NAME [-r]
+usage: read.py NAME [-r | -f]
 
 From the snapshot the session wrote, beside its log (see `sweeps.py`): kamchatka rewrites it each
 time the session comes to rest, so a sweep still running is read as of the end of its last turn,
 and says so. A resumed sweep's snapshot holds everything before the resume as well. Where the
 current part has none, from the newest earlier part's in `old/parts/`; and where no part has one,
 from the records, which hold every note as the arguments of a `context` call but none of the
-replies, so that reading gives the notes alone and says so.
+replies, so that reading gives the notes alone and says so. -f reads what no snapshot holds from
+the prose instead, NAME.err and the parts' before it, which has every reply as it was written.
 """
 
 import glob
@@ -111,10 +112,38 @@ def entries(name, reasoning=False):
         yield from from_records(name)
 
 
+FINDING = re.compile(r"FINDING:\s*(.*\S)")
+
+
+def findings(name):
+    """The sweep's `FINDING:` lines, each once, in the order first written: from its snapshot, or
+    from its prose where no part has one.
+
+    note: each once because a sweep's last message asks for every line again, and a model that
+    writes them as it goes and then in its answer writes each twice more."""
+    if sweeps.snapshot(name) or earlier_parts(name):
+        texts = (said for heading, said in entries(name) if heading and said)
+    else:
+        parts = sorted(glob.glob(os.path.join(sweeps.SWEEPS, "old", "parts", f"{name}.*.err")),
+                       key=lambda p: int(re.search(r"\.(\d+)\.err$", p).group(1)))
+        texts = (open(p, errors="replace").read()
+                 for p in parts + [sweeps.path(name, ".err")] if os.path.exists(p))
+    seen = {}
+    for said in texts:
+        for line in said.splitlines():
+            m = FINDING.search(line)
+            if m:
+                seen.setdefault(" ".join(m.group(1).split()), None)
+    return list(seen)
+
+
 def main():
     args = sys.argv[1:]
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
+    if "-f" in args:
+        print("\n".join(findings(args[0])))
+        return
     for heading, said in entries(args[0], "-r" in args):
         if heading is None:
             print(f"{said}\n")
