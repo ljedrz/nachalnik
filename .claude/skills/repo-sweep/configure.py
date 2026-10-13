@@ -95,9 +95,11 @@ COMPACT = (
     "other; a `note:` that tells a story rather than a reason; a type, function, trait, "
     "constant, module or wrapper with one trivial use; dead code; two test helpers that do the "
     "same thing, test setup a helper already does, and a test that checks exactly what another "
-    "test already checks. For "
-    "every finding, name where the value still lives once it is gone: the other document and "
-    "line, the caller that absorbs the wrapper, the test that already checks it. Not findings: "
+    "test already checks. A doc comment on a public item of a library crate (nachalnik, "
+    "nachalnik-providers, nachalnik-mcp, nachalnik-eval) stays even where a document says the "
+    "same: the API documentation is where a caller reads it. For every finding, name where the "
+    "value still lives once it is gone: the other document and line, the caller that absorbs the "
+    "wrapper, the test that already checks it. Not findings: "
     "anything whose removal changes behaviour, a public item of a published crate (that is an "
     "API break: report it as DECISION instead), a `note:` that says why or what it costs, a "
     "test's doc comment saying what it checks, changelog entries, and rewording for its own "
@@ -181,14 +183,15 @@ def report(kind: str) -> str:
     model needs nothing else to keep. It is not asked to keep notes or a context budget with the
     `context` tool: most models handle that badly, and every check is a whole request.
     """
+    severity = ", where SEVERITY is high, medium or low" if "SEVERITY" in FORMAT[kind] else ""
     return (
         " REPORTING: the moment you have verified a finding, state it in your reply text (not "
-        f"only in your reasoning) on one line: `FINDING: {FORMAT[kind]}`. Terse: at most 50 "
-        "words a line, no elaboration, no headings, nothing restated from what you read. Then "
-        "carry on exploring. Severity is high, medium or low. A defect you have not verified in the "
-        "source is not a finding. Tool results are elided when the next message arrives, and "
-        "your replies are not, so your FINDING lines are your record. If the program tells you "
-        "the context is full, `elide` the tool results you are done with, using the `context` "
+        f"only in your reasoning) on one line: `FINDING: {FORMAT[kind]}`{severity}. Terse: at "
+        "most 50 words a line, no elaboration, no headings, nothing restated from what you read. "
+        "Then carry on exploring. A defect you have not verified in the source is not a finding. "
+        "Tool results are elided when the next message arrives, and your replies are not, so "
+        "your FINDING lines are your record. If the program tells you the context is full, "
+        "`elide` the tool results you are done with, using the `context` "
         "tool."
     )
 
