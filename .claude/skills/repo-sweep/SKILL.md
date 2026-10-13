@@ -35,7 +35,7 @@ export KAMCHATKA_TEST_MODEL=<model>       # for kamchatka's live suite
 EOF
 )
 source $SWEEPS/key.env
-python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, quality.json, docs.json, compact.json, maintain.json
+python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, tests.json, quality.json, docs.json, compact.json, maintain.json
 cargo build --release -p kamchatka        # run.py copies it, once, for the whole run
 ```
 
@@ -79,6 +79,14 @@ large to read at once, logic patched over time, duplication that has drifted; ve
 split by checking that the moved lines are the same lines) and `compact/` (what can go or be
 merged with nothing lost). Each is one module or one concern, names its files and lists concrete
 failure classes - narrow scopes are what made the findings real.
+
+**Each failure class belongs to one kind.** Sweeps of several kinds read the same files, and when
+their classes overlapped (dead code in three kinds, duplication in three, a comment that
+contradicts the code in three) each reported the same defect. `OWNS` in `configure.py` says what
+each kind looks for, and every system prompt tells the model to leave the others' to them:
+duplicated production code is maintain's, duplicated test code compact's, prose that is wrong is
+docs' wherever it is, prose that repeats is compact's, dead code is compact's. A scope lists only
+its own kind's classes; keep both to that when writing one.
 
 A sweep is one session given two messages: its scope, which asks for the whole scope in that one
 turn, and then the FINDINGS. Every message after the first starts with what was read before it
