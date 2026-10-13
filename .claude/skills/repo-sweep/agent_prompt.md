@@ -1,7 +1,7 @@
 <!-- The prompt a verification agent gets. Fill in REPO (the repository root), BRANCH, SKILL (this
      skill's directory), SWEEPS (the sweeps directory) and, per agent, NAME and SWEEP, then add
-     the context lines described in SKILL.md: what is already fixed at HEAD, and what is a known
-     decision. -->
+     the context lines described in SKILL.md: what is already given to another agent, what is
+     already fixed at HEAD, and what is a known decision. -->
 
 You are verifying findings from an automated code-review sweep of the Rust workspace at REPO (branch BRANCH), and preparing fixes for the valid ones.
 
@@ -17,6 +17,7 @@ The findings are in the model's `context` notes and its replies, the last of whi
 (a sweep that could not write its session gives its notes alone, and says so).
 
 VERIFY EACH FINDING
+- A finding at a place listed below as given to another agent is that agent's: classify it GIVEN and do not verify it, unless the line given with it shows it is a different defect at the same place.
 - Open the actual lines at HEAD. Classify REAL / OVERSTATED / WRONG with file:line and one sentence of why.
 - A finding contradicting a documented decision is WRONG: check AGENTS.md, INVARIANTS.md, SECURITY.md, POSTPONED.md, CONTRIBUTING.md and the `note:` comments near the code. Tests that pin behaviour on purpose count as documentation.
 - Performance findings are only REAL if the cost is on a real hot path at a realistic size; micro-optimisations nobody would measure are OVERSTATED. Skip taste nits.

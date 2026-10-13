@@ -173,7 +173,11 @@ target is 2-3 GB and a per-session disk quota once ran out and killed every runn
 the next agent as one finishes.
 
 The prompt is `agent_prompt.md` with REPO, BRANCH, SKILL, SWEEPS, NAME and SWEEP filled in, plus
-two lists that make or break the result:
+three lists that make or break the result:
+- **given to another agent** - what `python3 $SKILL/dedupe.py --give SWEEP` prints: the places
+  this sweep's findings name that a sweep given out before it names too, with that sweep's line,
+  so that a defect two sweeps found is verified once. Run it as each agent is started, since it
+  records the sweep as given; `dedupe.py` alone lists every place more than one sweep names;
 - **already fixed at HEAD** - the commits on this branch that touch the scope, one line each, so
   the agent does not re-find them;
 - **known decisions** - what POSTPONED.md and the documented `note:`s already settle.
