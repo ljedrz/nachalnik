@@ -461,23 +461,23 @@ pub fn scratch_for(pid: u32) -> PathBuf {
 ///
 /// note: `0700`, for the same reason [`crate::app::App::write_session`]'s directory is. What a
 /// command puts in here is whatever it was working on, written without anybody asking for it;
-/// under the default umask a fresh directory is one everyone on the machine can read.
+/// under the default umask a fresh directory is one everyone on the machine can read. Made so
+/// rather than changed after, since a directory opened while it could be read can be listed
+/// through that handle for as long as it is held.
 ///
 /// note: nothing is said about a failure, because there is nowhere honest to say it. A confined
 /// command's standard error goes to the model, and this program's own bookkeeping does not belong
 /// in it. What the model gets instead is the truth at the point it matters: no `TMPDIR`, a `/tmp`
 /// that is not writable, and [`Sandbox::note_for`] on the permission error that follows.
 pub fn make_scratch(path: &Path) -> Option<PathBuf> {
-    if std::fs::create_dir(path).is_err() {
+    use std::os::unix::fs::DirBuilderExt as _;
+
+    let private = || std::fs::DirBuilder::new().mode(0o700).create(path);
+    if private().is_err() {
         // ours from a run whose identifier has come round, or somebody else's; only the first can
         // be unlinked, and `/tmp` being sticky is what makes that true rather than hopeful
         let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
-        std::fs::create_dir(path).ok()?;
-    }
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-
-        let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700));
+        private().ok()?;
     }
 
     Some(path.to_path_buf())
