@@ -5,8 +5,7 @@ description: Run a full code sweep of this workspace - audit, performance and co
 
 # a kamchatka-driven sweep
 
-The whole method, as it was worked out over three rounds with `stealth/space-bunny-alpha`. What
-the person gives: a **model id** and a **key** (and optionally an endpoint; OpenRouter is the
+What the person gives: a **model id** and a **key** (and optionally an endpoint; OpenRouter is the
 default). Everything else has a default below. Report progress as batches finish; do not stop to
 ask about anything this file decides.
 
@@ -35,7 +34,7 @@ export KAMCHATKA_TEST_MODEL=<model>       # for kamchatka's live suite
 EOF
 )
 source $SWEEPS/key.env
-python3 $SKILL/configure.py <model>       # writes $SWEEPS/audit.json, tests.json, quality.json, docs.json, compact.json, maintain.json
+python3 $SKILL/configure.py <model>       # writes one settings file per KIND, and limit and ceiling
 cargo build --release -p kamchatka        # run.py copies it, once, for the whole run
 ```
 
@@ -63,9 +62,12 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
 - **Know what it costs before anything is sent.** A run is hundreds of millions of tokens, so a
   model that is not free costs hundreds of dollars. Read the model's price in the listing, and
   ask the person before running anything that is not free, or before switching to another model
-  id. For a run that is meant to be free, start `price.py MODEL` beside `run.py`: it stops the
-  run when the listing gives the model a price or drops it. It cannot see a promotion that ends
-  without the listing changing. Once, a free offer's model began failing new requests while the
+  id. A key of the run's own with a spending limit on it is the cap that cannot be missed: on
+  OpenRouter, `curl -s $KAMCHATKA_BASE_URL/key -H "Authorization: Bearer $KAMCHATKA_API_KEY"`
+  gives its `limit_remaining`, and what it fell by since the start is what the run has cost. For
+  a run that is meant to be free, start `price.py MODEL` beside `run.py`: it stops the run when
+  the listing gives the model a price or drops it. It cannot see a promotion that ends without
+  the listing changing. Once, a free offer's model began failing new requests while the
   sweeps already connected were billed at full price for five hours. **A free endpoint that
   suddenly fails is a reason to stop the run and ask the person to check their balance**, not an
   outage to wait out.
@@ -81,13 +83,12 @@ split by checking that the moved lines are the same lines) and `compact/` (what 
 merged with nothing lost). Each is one module or one concern, names its files and lists concrete
 failure classes - narrow scopes are what made the findings real.
 
-**Each failure class belongs to one kind.** Sweeps of several kinds read the same files, and when
-their classes overlapped (dead code in three kinds, duplication in three, a comment that
-contradicts the code in three) each reported the same defect. `OWNS` in `configure.py` says what
-each kind looks for, and every system prompt tells the model to leave the others' to them:
-duplicated production code is maintain's, duplicated test code compact's, prose that is wrong is
-docs' wherever it is, prose that repeats is compact's, dead code is compact's. A scope lists only
-its own kind's classes; keep both to that when writing one.
+**Each failure class belongs to one kind**, because sweeps of several kinds read the same files
+and a class two kinds look for comes back twice. `OWNS` in `configure.py` says what each kind
+looks for, and every system prompt tells the model to leave the others' to them: duplicated
+production code is maintain's, duplicated test code compact's, prose that is wrong is docs'
+wherever it is, prose that repeats and dead code are compact's. A scope lists only its own kind's
+classes; keep to that when writing one.
 
 A sweep is one session given two messages: its scope, which asks for the whole scope in that one
 turn, and then the FINDINGS. Every message after the first starts with what was read before it
