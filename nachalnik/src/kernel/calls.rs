@@ -274,7 +274,7 @@ impl Kernel {
 
         match caught {
             Ok(Ok(output)) => output,
-            Ok(Err(e)) => ToolOutput::error(e.to_string()),
+            Ok(Err(e)) => ToolOutput::error(described(&*e)),
             Err(panic) => {
                 self.emit(Event::ToolPanicked {
                     call: call.id.clone(),
@@ -462,6 +462,25 @@ fn refusal(source: GrantSource, why: Option<String>) -> String {
             .to_owned(),
         other => format!("the call was not permitted: {other:?}"),
     }
+}
+
+/// What a call whose tool failed is told: the error, and each cause beneath it.
+///
+/// note: the causes because the top of a wrapped error is often only what was being done - "reading
+/// the config" - and the reason it failed is the error it wraps, which `to_string` leaves out. A
+/// cause whose words the message already holds is not said again, for an error that prints its
+/// cause itself as well as returning it.
+fn described(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut said = error.to_string();
+    let mut cause = error.source();
+    while let Some(error) = cause {
+        let more = error.to_string();
+        if !said.contains(&more) {
+            said = format!("{said}: {more}");
+        }
+        cause = error.source();
+    }
+    said
 }
 
 /// What a call whose tool panicked is told: that it crashed, and what the panic said.

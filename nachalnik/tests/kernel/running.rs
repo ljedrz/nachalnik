@@ -246,6 +246,56 @@ async fn a_failing_tool_is_reported_to_the_model() {
 }
 
 #[tokio::test]
+async fn a_failing_tool_is_reported_with_what_its_error_wraps() {
+    #[derive(Debug)]
+    struct Wrapped(std::io::Error);
+
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("reading the config")
+        }
+    }
+
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    struct Failing;
+
+    #[nachalnik::async_trait]
+    impl nachalnik::Tool for Failing {
+        fn spec(&self) -> nachalnik::ToolSpec {
+            nachalnik::ToolSpec::new("failing", "fails with a cause")
+        }
+
+        async fn invoke(
+            &self,
+            _call: &nachalnik::ToolCall,
+            _output: OutputSink,
+        ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+            Err(Box::new(Wrapped(std::io::Error::other(
+                "permission denied",
+            ))))
+        }
+    }
+
+    let (kernel, _) = permissive([
+        ModelResponse::tool_calls(vec![call("c1", "failing", json!({}))]),
+        ModelResponse::text("ok"),
+    ]);
+    kernel.add_tool(Arc::new(Failing));
+    kernel.push(ContextItem::user("try it"));
+    kernel.turn().await.unwrap();
+
+    assert_eq!(
+        tool_results(&kernel)[0].content.to_text(),
+        "reading the config: permission denied"
+    );
+}
+
+#[tokio::test]
 async fn a_running_tool_reports_its_progress() {
     let (kernel, _) = permissive([ModelResponse::tool_calls(vec![call(
         "c1",
