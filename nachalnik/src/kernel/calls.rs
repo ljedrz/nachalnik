@@ -117,7 +117,7 @@ impl Kernel {
         // note: if this future is dropped, the calls it had claimed are gone with it; their
         // results are simply never recorded, and the projector drops the orphaned calls from
         // the next request
-        let mut restore = Restore::new(self, State::Idle);
+        let mut restore = Restore::new(self);
 
         if self.0.config.parallel_tool_calls {
             // whatever order they finished in, they are recorded in the order the model asked
