@@ -604,14 +604,7 @@ impl Tool for Shell {
         };
 
         // the program's keys stay with the program; see `endpoint::KEYS` and `endpoint::ADDRESSES`
-        for key in crate::endpoint::KEYS {
-            command.env_remove(key);
-        }
-        for address in crate::endpoint::ADDRESSES {
-            if std::env::var(address).is_ok_and(|url| crate::endpoint::has_credentials(&url)) {
-                command.env_remove(address);
-            }
-        }
+        scrub(&mut command, |name| std::env::var_os(name));
         // and the mark everything it starts carries, which is how the end of the session finds what
         // it left running; see `Stragglers`
         command.env(CALL_VAR, self.stragglers.mark(cmd));
@@ -1185,10 +1178,62 @@ fn keep(
     collected.push('\n');
 }
 
+/// Takes the program's keys out of what `command` is given, and an address with a password in it,
+/// as `value` reads each variable.
+///
+/// note: an address is read as `endpoint::address_in` reads it, with what is not text replaced,
+/// since one that is not text is still in the environment the command inherits. Read with
+/// `env::var`, which answers such a value as no value, its password went along with it.
+fn scrub(
+    command: &mut tokio::process::Command,
+    value: impl Fn(&str) -> Option<std::ffi::OsString>,
+) {
+    for key in crate::endpoint::KEYS {
+        command.env_remove(key);
+    }
+    for address in crate::endpoint::ADDRESSES {
+        if value(address)
+            .is_some_and(|url| crate::endpoint::has_credentials(&url.to_string_lossy()))
+        {
+            command.env_remove(address);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tools::Subject;
+
+    /// An address with a password in it is taken out of a command's environment whether or not it
+    /// is text, and one without is left.
+    #[test]
+    fn an_address_with_a_password_is_kept_from_a_command_whatever_its_bytes() {
+        use std::os::unix::ffi::OsStringExt as _;
+
+        let [base, advisor] = crate::endpoint::ADDRESSES;
+        let mut not_text = b"http://user:password@example.com/v1/".to_vec();
+        not_text.push(0xff);
+        let value = |variable: &str| match variable {
+            name if name == advisor => Some(std::ffi::OsString::from_vec(not_text.clone())),
+            name if name == base => Some("http://127.0.0.1:1/v1".into()),
+            _ => None,
+        };
+        let mut command = tokio::process::Command::new("true");
+        scrub(&mut command, value);
+
+        let removed: Vec<_> = command
+            .as_std()
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(name, _)| name.to_string_lossy().into_owned())
+            .collect();
+        assert!(removed.iter().any(|name| name == advisor), "{removed:?}");
+        assert!(!removed.iter().any(|name| name == base), "{removed:?}");
+        for key in crate::endpoint::KEYS {
+            assert!(removed.iter().any(|name| name == key), "{key}: {removed:?}");
+        }
+    }
 
     /// What no command of this session started is left alone at its end - a process of this user's
     /// with no mark, and one carrying another session's - and is not named as stopped.
