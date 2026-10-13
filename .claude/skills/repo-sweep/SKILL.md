@@ -149,6 +149,10 @@ sweep ends or something needs looking at:
   model nested its tool arguments one level too deep and every call was refused). Read its
   `NAME.err`; if it is the model's habit rather than the scope, every sweep will do it, and that
   is a finding about the tools before it is anything else.
+- **past the ceiling**: a running sweep whose requests are over twice the size at which kamchatka
+  told it the context is full. The model ignored the notice and every request costs that much from
+  there; stop it with SIGTERM to its `NAME.pid` (its findings so far are in its replies) rather
+  than let it run.
 - **a sweep that drifted off its scope** (a tests scope that decided to report production code)
   shows only in what it found: read the notes of the first sweeps to end before trusting the rest.
 - **given up**, or `run.py` not running with work left.
