@@ -49,7 +49,7 @@ main() {
         # the scope is one message, however many lines its file has
         printf '%s' "$(tr '\n' ' ' < "$scope")"
         echo ' Cover every file and every failure class the scope names in this one turn before you reply: a reply with no tool call ends your exploration, and nothing after it sends you back.'
-        echo 'Now list every FINDING line from this session again, one a line, in the same terse form, leaving out any you no longer stand by. Nothing else.'
+        echo 'Now list every FINDING line from this session again, one a line, in the same terse form, leaving out any you no longer stand by. Then, on lines starting with LEAD:, anything you suspected and did not get to verify, with file:line and what would settle it, at most 30 words each. Nothing else.'
     }
     local resume=()
     {

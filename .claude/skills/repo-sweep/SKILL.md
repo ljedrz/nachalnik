@@ -117,7 +117,8 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   result before it as any message does; the model's replies stay, and an elided result is a
   marker it can `restore`, so a lead in progress costs one file read again rather than the lead.
   A request already over the window gets `/exclude tool_results` first. After its kind's number
-  of cuts a sweep is wrapped up: sent its last message, which asks for its `FINDING:` lines. A stop loses what the model had not
+  of cuts a sweep is wrapped up: sent its last message, which asks for its `FINDING:` lines and
+  for `LEAD:` lines, what it suspected and did not verify. A stop loses what the model had not
   written down, so a sweep is stopped only for money.
 - **Never throw a session away.** Every session is a log and a snapshot, rewritten each time it
   comes to rest, and every sweep cut short is carried on from it rather than run again.
@@ -170,7 +171,8 @@ columns say what the endpoint costs.
 
 ## 3. read what a sweep found
 
-`python3 $SKILL/read.py NAME -f` - its `FINDING:` lines, each once, which is what to verify.
+`python3 $SKILL/read.py NAME -f` - its `FINDING:` lines, each once, which is what to verify, and
+then its `LEAD:` lines, each a suspicion worth a quick look.
 Without `-f`, its replies and any `context` notes, for the reasoning around a line; `-r` adds the
 model's reasoning. It reads the snapshot, so a sweep still running is read as of the end of its
 last turn, and a resumed one with everything before the resume; `-f` falls back to the prose in

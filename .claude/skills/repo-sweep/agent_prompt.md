@@ -12,7 +12,7 @@ HARD RULES
 - Never put an API key anywhere. Do not use `git stash` (its refs are shared with the main tree); commit in your worktree or `git diff > file && git checkout .` there instead.
 
 HOW TO READ THE SWEEP
-The findings are the sweep's `FINDING:` lines, one terse line each. Print them with:
+The findings are the sweep's `FINDING:` lines, one terse line each, and after them its `LEAD:` lines: what it suspected and did not get to verify. Check each lead briefly; one that holds is a finding like any other. Print them with:
   SWEEPS=SWEEPS python3 SKILL/read.py SWEEP -f
 and without `-f` for the replies around them, where a line needs its context.
 

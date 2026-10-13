@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """What a sweep found: its replies, which hold its `FINDING:` lines, and any `context` notes it
-kept. With -r, its reasoning as well; with -f, its `FINDING:` lines alone, each once.
+kept. With -r, its reasoning as well; with -f, its `FINDING:` lines alone, each once, and then its
+`LEAD:` lines - what it suspected and did not verify.
 
 usage: read.py NAME [-r | -f]
 
@@ -112,12 +113,9 @@ def entries(name, reasoning=False):
         yield from from_records(name)
 
 
-FINDING = re.compile(r"FINDING:\s*(.*\S)")
-
-
-def findings(name):
-    """The sweep's `FINDING:` lines, each once, in the order first written: from its snapshot, or
-    from its prose where no part has one.
+def findings(name, word="FINDING"):
+    """The sweep's `FINDING:` lines (or another word's), each once, in the order first written:
+    from its snapshot, or from its prose where no part has one.
 
     note: each once because a sweep's last message asks for every line again, and a model that
     writes them as it goes and then in its answer writes each twice more."""
@@ -128,10 +126,11 @@ def findings(name):
                        key=lambda p: int(re.search(r"\.(\d+)\.err$", p).group(1)))
         texts = (open(p, errors="replace").read()
                  for p in parts + [sweeps.path(name, ".err")] if os.path.exists(p))
+    pattern = re.compile(word + r":\s*(.*\S)")
     seen = {}
     for said in texts:
         for line in said.splitlines():
-            m = FINDING.search(line)
+            m = pattern.search(line)
             if m:
                 seen.setdefault(" ".join(m.group(1).split()), None)
     return list(seen)
@@ -142,7 +141,8 @@ def main():
     if not args or args[0].startswith("-"):
         sys.exit(__doc__)
     if "-f" in args:
-        print("\n".join(findings(args[0])))
+        leads = [f"LEAD: {lead}" for lead in findings(args[0], "LEAD")]
+        print("\n".join(findings(args[0]) + leads))
         return
     for heading, said in entries(args[0], "-r" in args):
         if heading is None:
