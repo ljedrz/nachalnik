@@ -131,8 +131,9 @@ def findings(name, word="FINDING"):
     for said in texts:
         for line in said.splitlines():
             m = pattern.search(line)
-            # a model with nothing to report writes `FINDING: (none ...)` as often as nothing
-            if m and not m.group(1).startswith("(none"):
+            # a model with nothing to report writes `FINDING: (none ...)` or `None stand.` as
+            # often as nothing
+            if m and not re.match(r"\(?none\b", m.group(1), re.IGNORECASE):
                 seen.setdefault(" ".join(m.group(1).split()), None)
     return list(seen)
 
