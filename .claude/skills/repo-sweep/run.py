@@ -196,7 +196,7 @@ def aside(name, under="old"):
         n += 1
     # note: `.session` too. It names the log a sweep is read from, so one left behind had a rerun
     # read and judged by the try before it
-    for suffix in (".in", ".jsonl", ".err", ".pid", ".session"):
+    for suffix in (".in", ".jsonl", ".err", ".pid", ".session", ".carried"):
         p = sweeps.path(name, suffix)
         if os.path.exists(p):
             os.rename(p, os.path.join(old, f"{name}.{n}{suffix}"))
@@ -235,8 +235,9 @@ def resumable(name):
         items = json.load(open(snapshot))["items"]
     except (OSError, ValueError, KeyError):
         return None
+    # a cut's message is not one of NAME.in's
     sent = sum(1 for i in items if i["kind"].get("kind") == "user_message"
-               and i.get("source") == "user")
+               and i.get("source") == "user" and sweeps.CARRIED not in json.dumps(i.get("content")))
     last = items[-1]["kind"].get("kind") if items else None
     cont = last != "assistant_message" or not s.get("ended")
     return {"RESUME": snapshot, "SENT": str(sent), "CONTINUE": "1" if cont else ""}

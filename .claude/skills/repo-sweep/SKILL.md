@@ -39,8 +39,9 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
 ```
 
 - `configure.py` reads the model's context length from the endpoint's listing (or take
-  `--limit N`), and sets where kamchatka tells the model the context is full: half the window or
-  100k, whichever is smaller. That is a backstop, not a budget. The model is not asked to keep
+  `--limit N`), and sets by kind where a sweep's turns are cut (`CUTS`: half the window or 100k,
+  whichever is smaller, twice that for audit, half as much again for tests and quality, never
+  past three fifths of the window) and how many cuts it gets. The model is not asked to keep
   notes or a budget with the `context` tool, which most models handle badly and which costs a
   whole request each time; it states each finding as it verifies it, on one terse `FINDING:`
   line in its reply text (`FORMAT` in `configure.py`), and the replies are its record, since
@@ -111,6 +112,13 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   on, or cut off, gets `/continue` after a wait (a minute, doubling to ten), so a 429 storm costs
   time and not the message's work; ten failed turns in a row with nothing answered close the
   session, and `run.py` resumes it later. Its decisions are the `drive:` lines in `NAME.err`.
+- **A turn too large is cut, not stopped.** A turn pauses every four requests, and one paused
+  past its kind's size is sent a message of `drive.py`'s own saying so, which elides every tool
+  result before it as any message does; the model's replies stay, and an elided result is a
+  marker it can `restore`, so a lead in progress costs one file read again rather than the lead.
+  A request already over the window gets `/exclude tool_results` first. After its kind's number
+  of cuts a sweep is wrapped up: sent its last message, which asks for its `FINDING:` lines. A stop loses what the model had not
+  written down, so a sweep is stopped only for money.
 - **Never throw a session away.** Every session is a log and a snapshot, rewritten each time it
   comes to rest, and every sweep cut short is carried on from it rather than run again.
 - **Done means done**, read off the records (`sweeps.py`): ended on its own, every message sent,
@@ -150,10 +158,8 @@ sweep ends or something needs looking at:
   model nested its tool arguments one level too deep and every call was refused). Read its
   `NAME.err`; if it is the model's habit rather than the scope, every sweep will do it, and that
   is a finding about the tools before it is anything else.
-- **past the ceiling**: a running sweep whose requests are over twice the size at which kamchatka
-  told it the context is full. The model ignored the notice and every request costs that much from
-  there; stop it with SIGTERM to its `NAME.pid` (its findings so far are in its replies) rather
-  than let it run.
+- **past the ceiling**: a running sweep whose requests are over twice the size its turns are cut
+  at. The cuts have not held it; read its `drive:` lines to see why before anything else.
 - **a sweep that drifted off its scope** (a tests scope that decided to report production code)
   shows only in what it found: read the findings of the first sweeps to end before trusting the
   rest.

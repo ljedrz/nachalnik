@@ -16,10 +16,9 @@ Needs looking at:
 - a long turn: over 300 requests in one turn. Read the end of NAME.err: a model reading its scope
   file after file is working; one making the same calls over and over is not, and nothing stops
   it - what to do about it is the person's call, not `run.py`'s.
-- past the ceiling: a running sweep whose largest request is over twice the size at which it was
-  told the context is full (`$SWEEPS/ceiling`, from `configure.py`). The model has not cleaned up,
-  every request it makes from there costs that much and takes as long, and only stopping it ends
-  that - which is the person's call, since what it has found so far is in its replies.
+- past the ceiling: a running sweep whose largest request is over twice the size its turns are cut
+  at (`$SWEEPS/KIND.cut`, from `configure.py`). The cuts have not held it - one read larger than
+  the room left, or a sweep started without them - and every request from there costs that much.
 - messages passed over: sent before the one ahead of them had an answer, which only a sweep
   started before `drive.py` does. Its exploration rounds were spent on failed turns.
 - a sweep given up, or `run.py` no longer running with work left.
@@ -66,16 +65,21 @@ def run_state():
     return run
 
 
-def ceiling():
+# a sweep's name is its kind's first letter, a dash and its scope (`run.py`)
+KINDS = {kind[0]: kind for kind in ("audit", "tests", "quality", "docs", "maintain", "compact")}
+
+
+def ceiling(name):
+    """Where `drive.py` cuts this sweep's turns, from `configure.py`'s KIND.cut."""
     try:
-        return int(open(os.path.join(sweeps.SWEEPS, "ceiling")).read())
-    except (FileNotFoundError, ValueError):
+        return int(open(os.path.join(sweeps.SWEEPS, KINDS[name[0]] + ".cut")).read().split()[0])
+    except (KeyError, FileNotFoundError, ValueError, IndexError):
         return None
 
 
 def concerns(s):
     found = []
-    past = ceiling()
+    past = ceiling(s["name"])
     if s["status"] == "running" and past and s.get("largest", 0) > 2 * past:
         found.append(f"a request of {s['largest']:,} tokens, past twice the ceiling of {past:,}")
     if s["status"] == "running" and s["quiet"] > 1200:

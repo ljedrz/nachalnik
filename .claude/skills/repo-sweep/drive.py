@@ -22,10 +22,25 @@ waited for, read off the records:
 - a message that starts no turn within `DRIVE_START` seconds (60) ends the session: kamchatka
   passes messages over once a ceiling or the context limit is reached.
 After `DRIVE_TRIES` (10) failed turns in a row with nothing answered, or `DRIVE_TURNS` (40) turns
-for one message, it closes the input and the session ends. With `DRIVE_RESUMES` set, it then
-resumes the session from its snapshot that many times at most, after a wait doubling from
-`DRIVE_LONGEST`: the commands again, `/continue`, and the lines not yet delivered. `run.py` leaves
-it unset and resumes a sweep itself, keeping each part.
+for one message, or `DRIVE_PAUSES` (100) pauses at the request ceiling, it closes the input and the
+session ends. With `DRIVE_RESUMES` set, it then resumes the session from its snapshot that many
+times at most, after a wait doubling from `DRIVE_LONGEST`: the commands again, `/continue`, and
+the lines not yet delivered. `run.py` leaves it unset and resumes a sweep itself, keeping each
+part.
+
+With `DRIVE_CUT` set (tokens), a turn paused at its request ceiling whose last request was at
+least that large, or one that failed for a request over the model's limit, and that has another
+message after it, is cut rather than carried on: the session is sent `CARRY`, a message of its
+own, and every tool result before it is elided as any new message elides them, while what the
+model wrote stays. Over the limit, kamchatka passes messages over, so the results are excluded
+first with `/exclude tool_results` and the message is `OVERRUN`. After `DRIVE_CUTS` (3) cuts it is
+wrapped up instead: taken as answered, so that the next line - a sweep's request for its
+findings - goes. Each cut and each wrap-up is a line, `carry` or `wrap`, in NAME.carried, since
+the records cannot tell such a message from one in INFILE.
+
+note: a cut and not a stop, because a stop loses what the model had not yet written down, and a
+cut loses nothing: its replies stay whole, an elided result is a marker it can `restore` by id,
+and what a lead in progress costs is reading one file again.
 
 note: piped all at once, as `sweep.sh` used to, every line after a failed turn was a new message:
 the turn's work stopped wherever the endpoint refused it, the message that would have finished it
@@ -54,6 +69,25 @@ TRIES = int(os.environ.get("DRIVE_TRIES", 10))
 TURNS = int(os.environ.get("DRIVE_TURNS", 40))
 START = float(os.environ.get("DRIVE_START", 60))
 RESUMES = int(os.environ.get("DRIVE_RESUMES", 0))
+PAUSES = int(os.environ.get("DRIVE_PAUSES", 100))
+CUT = int(os.environ.get("DRIVE_CUT", 0))
+CUTS = int(os.environ.get("DRIVE_CUTS", 3))
+# what a cut sends; `sweeps.CARRIED`, how both start, is how a snapshot's copy is known
+CARRY = (
+    "The context passed its ceiling, so the tool results you had read are now elided: each stands "
+    "as a marker you can `restore` by id with the `context` tool. Your FINDING lines stand; do "
+    "not repeat them. Carry on with the scope where you left off: first finish what you were in "
+    "the middle of, restoring only what it needs, then the parts not yet read."
+)
+# what a cut sends when the request was already over the model's limit, which kamchatka sends no
+# message past; `/exclude tool_results` goes first, being a command, which it still reads
+OVERRUN = (
+    "The context passed its ceiling and the model's limit, so every tool result so far is now "
+    "excluded to make room: `look` with the `context` tool lists them by id, and `restore` brings "
+    "back one you need. Your FINDING lines stand; do not repeat them. Carry on with the scope "
+    "where you left off: first finish what you were in the middle of, restoring only what it "
+    "needs, then the parts not yet read."
+)
 # the stops after which there is nothing to continue: `/continue` refuses both
 ENDED = {"end_turn", "refusal"}
 # how kamchatka names the snapshot a session can be resumed from, as it leaves
@@ -94,6 +128,10 @@ class Session:
         self.err_from = self.err.tell()
         out = open(os.path.join(OUT, name + ".jsonl"), "a")
         self.records = Records(out.name)
+        self.name = name
+        self.cuts = 0
+        self.last_input = 0  # how large the latest request was, in tokens
+        self.overrun = False  # whether the latest turn failed for a request over the limit
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=out, stderr=self.err,
                                      text=True)
         out.close()
@@ -119,13 +157,16 @@ class Session:
         """Waits for the turn the line just sent starts and ends; returns how it ended and how many
         answers it got: `answer`, `failed`, `cut`, `paused`, `none` (no turn started) or `exited`."""
         sent, started, failed, answers = time.monotonic(), False, False, 0
+        self.overrun = False
         while True:
             for event in self.records.new():
                 kind = event.get("event")
                 if kind == "model.finished":
                     answers += 1
+                    self.last_input = (event.get("usage") or {}).get("input_tokens") or 0
                 elif kind in ("model.failed", "step.failed"):
                     failed = True
+                    self.overrun = bool(event.get("overrun"))
                 elif kind == "turn.paused":
                     return "paused", answers
                 elif kind == "state.changed":
@@ -146,16 +187,26 @@ class Session:
                 return "none", answers
             time.sleep(1)
 
-    def deliver(self, line):
+    def carried(self, how):
+        with open(os.path.join(OUT, self.name + ".carried"), "a") as f:
+            f.write(how + "\n")
+
+    def deliver(self, line, more=False):
         """Sends one message (or `/continue`) and carries its turn on until it ends in an answer.
         Returns `answered`, `left` (given up on, the message in the context), `none` (it started
-        no turn) or `exited`."""
-        wait, fails, turns = WAIT, 0, 0
+        no turn) or `exited`. With `more`, a message follows it, and a turn past `CUT` may be cut
+        or wrapped up (see above)."""
+        wait, fails, turns, pauses = WAIT, 0, 0, 0
         while True:
             if not self.send(line):
                 return "exited"
             how, answers = self.turn()
-            turns += 1
+            # note: a pause is the request ceiling doing its job, not a turn going wrong, and an
+            # exploration of a large scope pauses dozens of times
+            if how == "paused":
+                pauses += 1
+            else:
+                turns += 1
             if how == "answer":
                 return "answered"
             if how == "exited":
@@ -165,9 +216,29 @@ class Session:
                     return "answered"  # nothing was waiting for an answer
                 self.say("the message started no turn; ending the session")
                 return "none"
-            if turns >= TURNS:
-                self.say(f"{turns} turns for one message; ending the session")
+            if turns >= TURNS or pauses >= PAUSES:
+                self.say(f"{turns} turns and {pauses} pauses for one message; ending the session")
                 return "left"
+            # note: a turn whose request was too large to send is cut as well: every `/continue`
+            # would fail on the same request, and only a new message makes it smaller
+            over = (how == "paused" and CUT and self.last_input >= CUT) \
+                or (how == "failed" and self.overrun)
+            if over and more:
+                what = ("a request too large to send" if how == "failed"
+                        else f"a request of {self.last_input:,} tokens")
+                # note: over the limit, kamchatka sends no message, and a command still goes
+                if how == "failed" and not self.send("/exclude tool_results"):
+                    return "exited"
+                if self.cuts >= CUTS:
+                    self.say(f"{what} after {self.cuts} cuts; wrapped up, and the next message "
+                             "goes")
+                    self.carried("wrap")
+                    return "answered"
+                self.cuts += 1
+                self.say(f"{what}; cut {self.cuts} of {CUTS}")
+                self.carried("carry")
+                line = OVERRUN if how == "failed" else CARRY
+                continue
             if how == "failed":
                 # a failed turn that got answers made progress, and starts the count again
                 if answers:
@@ -241,14 +312,15 @@ def main():
         todo += list(enumerate(lines))[at:]
         how = "answered"
         try:
-            for i, line in todo:
+            for k, (i, line) in enumerate(todo):
                 if command(line):
                     if not session.send(line):
                         how = "exited"
                         break
                     at = i + 1 if i is not None else at
                     continue
-                how = session.deliver(line)
+                more = any(not command(rest) for _, rest in todo[k + 1:])
+                how = session.deliver(line, more)
                 if how in ("answered", "left", "exited") and i is not None:
                     at = i + 1
                 waiting = how in ("left", "exited")

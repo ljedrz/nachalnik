@@ -68,8 +68,15 @@ main() {
     [ -n "${DEADLINE:-}" ] && limit=(--deadline "$DEADLINE")
     : > "$SWEEPS/$name.jsonl"
     : > "$SWEEPS/$name.err"
+    : > "$SWEEPS/$name.carried"
+    # how large a request may get before `drive.py` cuts the turn, and how many cuts before it
+    # wraps the sweep up; `configure.py` sets both by kind
+    local cut=0 cuts=3
+    if [ -f "$SWEEPS/$kind.cut" ]; then
+        read -r cut cuts < "$SWEEPS/$kind.cut"
+    fi
     # shellcheck disable=SC2086 # FLAGS is words
-    DRIVE_OUT=$SWEEPS DRIVE_RESUMES=0 python3 "$(dirname "$0")/drive.py" "$name" "$SWEEPS/$name.in" \
+    DRIVE_OUT=$SWEEPS DRIVE_RESUMES=0 DRIVE_CUT=$cut DRIVE_CUTS=$cuts python3 "$(dirname "$0")/drive.py" "$name" "$SWEEPS/$name.in" \
         "$bin" ${FLAGS:-} --headless --config-file "$config" "${limit[@]}" "${resume[@]}"
     local code=$?
     echo "exit $code" >> "$SWEEPS/$name.err"

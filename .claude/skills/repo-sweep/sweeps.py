@@ -48,6 +48,21 @@ RETRYING = re.compile(r"; trying again in \d+s")
 ANSWERED = {"end_turn", "refusal"}
 
 
+# how a cut's message is known in a snapshot, which holds what each message said (`drive.py`'s
+# `CARRY` and `OVERRUN` start so); the records do not, and NAME.carried counts them there instead
+CARRIED = "The context passed its ceiling"
+
+
+def carried(name):
+    """How many messages `drive.py` sent of its own in this part, and how many messages it sent
+    early: `(cuts, wrap-ups)`."""
+    try:
+        lines = open(path(name, ".carried")).read().split()
+    except FileNotFoundError:
+        return 0, 0
+    return lines.count("carry"), lines.count("wrap")
+
+
 def path(name, suffix):
     return os.path.join(SWEEPS, name + suffix)
 
@@ -223,6 +238,10 @@ def state(name, now=None):
         except FileNotFoundError:
             pass  # not written yet, or moved aside while this read
     changed = max(times, default=now)
+    # note: a cut is a message the session was sent and INFILE does not have, and it and a wrap-up
+    # are each sent after a turn that did not end, on purpose
+    cuts, wraps = carried(name)
+    sent = max(0, records.sent - cuts)
     ended = records.ended
     # note: a resume with nothing to continue and no message in its log yet carries on from an
     # answer that ended, which is in its snapshot and not in its log. Read off the log alone, a
@@ -234,7 +253,8 @@ def state(name, now=None):
             pass
     s.update(
         expected=expected(name),
-        sent=records.sent,
+        sent=sent,
+        cuts=cuts,
         requests=records.requests,
         mean=sum(records.inputs) // max(len(records.inputs), 1),
         largest=max(records.inputs, default=0),
@@ -246,7 +266,7 @@ def state(name, now=None):
         quiet=int(now - changed),
         stop=records.stop,
         ended=ended,
-        skipped=records.skipped,
+        skipped=max(0, records.skipped - cuts - wraps),
         parts=len(glob.glob(os.path.join(SWEEPS, "old", "parts", f"{name}.*.in"))),
     )
     try:
@@ -270,8 +290,8 @@ def state(name, now=None):
         code = s.get("exit")
         whys.append({124: "its deadline ended it", 143: "it was terminated",
                      130: "it was interrupted"}.get(code, f"it ended without finishing (exit {code})"))
-    if s["expected"] is not None and records.sent < s["expected"]:
-        whys.append(f"{records.sent} of {s['expected']} messages sent")
+    if s["expected"] is not None and sent < s["expected"]:
+        whys.append(f"{sent} of {s['expected']} messages sent")
     if not ended:
         whys.append(f"the last message has no answer that ended (last stop: {records.stop})"
                     + (f"; last failure: {records.failed[-1]}" if records.failed else ""))
