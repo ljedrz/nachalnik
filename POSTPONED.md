@@ -9,6 +9,28 @@ an entry removes it; one that closes part of it leaves only the part that is lef
 
 ---
 
+- **A tool that panics outside `invoke` takes the step with it.** The kernel catches a panic where
+  it polls a tool, as INVARIANTS.md says, but calls `Tool::needs` and `Tool::limit` with the
+  model's arguments, and `Tool::spec` wherever it labels a result, outside that catch. A tool that
+  panics in one of them unwinds `step` to the client with the model's calls answered by nothing;
+  `Restore` puts the machine back to `Idle`. Catching there too widens the invariant to every
+  kernel-to-tool call and settles what a panicking `needs` is answered with; leaving it makes
+  "these do not panic" part of the `Tool` contract, which its docs do not say yet. Unblocked by
+  choosing which.
+
+- **`nachalnik/src/kernel/mod.rs` is best changed with the state machine moved out.** The loop -
+  `state`, `decide`, `cancel_pending_calls`, `step`, `step_once`, `turn`, with `Machine`, `Claim`,
+  `Restore`, `PreparedCall`, `state_for` and `transition` - is one banner-marked region sharing the
+  file with construction and observation, and a private `kernel/machine.rs` could take it with
+  `pub(super)` on what the other files use. Done with it, or alone: the interrupt flag and the
+  turn's request count are atomics beside the `Machine` mutex though every write already holds it,
+  and as plain fields under it would need none of the notes about orderings; `turn` and
+  `step_once` pass a bare `(State, bool)` whose second half is a named outcome only in a note;
+  "announce, then transition, under one hold of the lock" is written out in `decide`,
+  `cancel_pending_calls` and `prepare_calls`; and the serial half of `execute` repeats `invoke`'s
+  refuse-or-start sequence. Each is a refactor with no change in behaviour, and waits for the next
+  change that touches the loop, which would review it.
+
 - **`Intervention::elided` brings back an item that was already excluded.** It sets the named items
   to `Elided` whatever state they were in, so an item the session had excluded comes back into the
   treated copy as a marker the control never had, and the record lists it as touched - an
