@@ -228,9 +228,16 @@ impl Server {
                     path.display(),
                     path.display()
                 ),
-                Err(_) => format!(
+                Err(e) if e.kind() == std::io::ErrorKind::ConnectionRefused => format!(
                     "there is a socket file at {} that nothing is listening on, left behind by a \
                      session that was killed; remove it and try again",
+                    path.display()
+                ),
+                // a socket another account owns refuses the connect whether or not a session is
+                // behind it, so this one is no grounds for telling anybody to remove it
+                Err(e) => format!(
+                    "there is a socket file at {}, and connecting to it to see whether a session \
+                     is listening failed: {e}",
                     path.display()
                 ),
             });

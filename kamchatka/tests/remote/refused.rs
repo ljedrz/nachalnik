@@ -440,6 +440,8 @@ async fn a_served_socket_is_nobody_elses() {
 /// session is behind it, since the two want opposite things done.
 #[tokio::test]
 async fn a_socket_in_the_way_is_named_rather_than_taken() {
+    use std::os::unix::fs::PermissionsExt as _;
+
     let dir = crate::common::scratch("in-the-way");
     let path = dir.join("s.sock");
     let at = format!("unix:{}", path.display());
@@ -465,6 +467,20 @@ async fn a_socket_in_the_way_is_named_rather_than_taken() {
         "{refused}"
     );
     assert!(path.exists(), "the refusal took the file away itself");
+    std::fs::remove_file(&path).expect("the stale socket");
+
+    // and one that refuses the connect, as another account's does, is not called stale: whether a
+    // session is behind it is what the refusal could not find out
+    let live = Server::bind(&at).await.expect("the bind failed");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("closed");
+    let Err(refused) = Server::bind(&at).await else {
+        panic!("a second session took a live one's socket");
+    };
+    assert!(
+        !refused.contains("remove it") && refused.contains("Permission denied"),
+        "{refused}"
+    );
+    drop(live);
 }
 
 /// A path holding something that is not a socket is named as what it is, so a mistyped `--serve`

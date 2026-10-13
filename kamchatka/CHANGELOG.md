@@ -31,6 +31,10 @@ minor bump may break you.
 
 ### fixed
 
+- **`--serve` calls a socket stale only when nothing listens on it.** A socket whose connect
+  failed for any reason was called one a killed session left, with "remove it", so one another
+  account owns, which refuses the connect whether or not a session is behind it, was offered up for
+  removal. Only a refused connection is called stale now; any other failure is named as it is.
 - **`--check` names a call finished after its turn left it unfinished.** A log that finishes a
   call after a `turn.unfinished` named it was reported as finishing a call that "had already
   finished", which it never had. The finding now names the record that said the turn left it
