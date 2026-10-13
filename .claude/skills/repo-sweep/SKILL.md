@@ -143,7 +143,9 @@ python3 $SKILL/status.py --watch 15                    # in the background; wake
   binary in `$SWEEPS/kamchatka`, and every sweep reads and runs those, so fixes committed and files
   reverted for mutation checks meanwhile are nothing a sweep half-way through sees. The findings
   are about that commit: verify each against HEAD. Remove both once the run is read
-  (`git worktree remove $SWEEPS/tree`); the next run makes them again.
+  (`git worktree remove $SWEEPS/tree`); the next run makes them again. The skill's scripts are
+  that worktree's too, `$SWEEPS/tree/.claude/skills/repo-sweep`: run `read.py` and `dedupe.py`
+  from there while the fixes branch is checked out, since its own copy of the skill may be older.
 - Run again, it skips what is complete and adopts what is still running. It leaves a sweep's
   earlier tries in `$SWEEPS/old/`.
 - **Don't kill sweeps by hand to change course.** A stopped sweep is resumed from its last rest,
