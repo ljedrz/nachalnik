@@ -183,9 +183,9 @@ def report(kind: str) -> str:
     """
     return (
         " REPORTING: the moment you have verified a finding, state it in your reply text (not "
-        f"only in your reasoning) on one line: `FINDING: {FORMAT[kind]}`. Terse: a few words a "
-        "field, no elaboration, no headings, nothing restated from what you read. Then carry on "
-        "exploring. Severity is high, medium or low. A defect you have not verified in the "
+        f"only in your reasoning) on one line: `FINDING: {FORMAT[kind]}`. Terse: at most 50 "
+        "words a line, no elaboration, no headings, nothing restated from what you read. Then "
+        "carry on exploring. Severity is high, medium or low. A defect you have not verified in the "
         "source is not a finding. Tool results are elided when the next message arrives, and "
         "your replies are not, so your FINDING lines are your record. If the program tells you "
         "the context is full, `elide` the tool results you are done with, using the `context` "
