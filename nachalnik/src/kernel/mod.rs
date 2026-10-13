@@ -211,34 +211,35 @@ enum Claim {
     Execute(Vec<PreparedCall>),
 }
 
-/// Puts the state machine back if the future driving a transition never finishes.
+/// Puts the state machine back to [`State::Idle`] if the future driving a transition never
+/// finishes.
 struct Restore<'a> {
     kernel: &'a Kernel,
-    to: Option<State>,
+    armed: bool,
 }
 
 impl<'a> Restore<'a> {
-    fn new(kernel: &'a Kernel, to: State) -> Self {
+    fn new(kernel: &'a Kernel) -> Self {
         Self {
             kernel,
-            to: Some(to),
+            armed: true,
         }
     }
 
     fn disarm(&mut self) {
-        self.to = None;
+        self.armed = false;
     }
 }
 
 impl Drop for Restore<'_> {
     fn drop(&mut self) {
-        if let Some(to) = self.to.take() {
+        if self.armed {
             let mut machine = self.kernel.0.machine.lock();
             // the transition this was guarding failed or was abandoned, so whatever it was asked
             // to stop has stopped. Left set, the interrupt would be spent on the next turn instead
             // - which transitions nothing, and the message somebody typed goes unanswered
             self.kernel.0.interrupted.store(false, SeqCst);
-            self.kernel.transition(&mut machine, to);
+            self.kernel.transition(&mut machine, State::Idle);
         }
     }
 }
@@ -853,7 +854,7 @@ impl Kernel {
 
             prepared
         };
-        let mut restore = Restore::new(self, State::Idle);
+        let mut restore = Restore::new(self);
 
         let mut batch = Batch::default();
         for call in &prepared {

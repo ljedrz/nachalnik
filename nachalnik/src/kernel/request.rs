@@ -29,7 +29,7 @@ impl Kernel {
     pub(super) async fn request(&self) -> Result<State> {
         // whatever happens - an error, or this future being dropped - the kernel does not stay
         // in `Requesting`
-        let mut restore = Restore::new(self, State::Idle);
+        let mut restore = Restore::new(self);
 
         self.maybe_compact().await;
 
