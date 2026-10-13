@@ -40,12 +40,13 @@ cargo build --release -p kamchatka        # run.py copies it, once, for the whol
 ```
 
 - `configure.py` reads the model's context length from the endpoint's listing (or take
-  `--limit N`) and scales the context budget the prompts set: the next request stays under half
-  the window or 50k, whichever is smaller. A request costs about what the context holds, so the
-  budget is most of what a sweep costs. The model is not told to check `budget` as it goes, since
-  each check is a whole request; kamchatka tells it inside the turn once the context reaches the
-  budget (the settings' `compact`). The window goes to `$SWEEPS/limit` and from there to
-  kamchatka, so both measure against it.
+  `--limit N`), and sets where kamchatka tells the model the context is full: half the window or
+  100k, whichever is smaller. That is a backstop, not a budget. The model is not asked to keep
+  notes or a budget with the `context` tool, which most models handle badly and which costs a
+  whole request each time; it states each finding as it verifies it, on one terse `FINDING:`
+  line in its reply text (`FORMAT` in `configure.py`), and the replies are its record, since
+  kamchatka elides tool results between messages and not replies. The window goes to
+  `$SWEEPS/limit` and from there to kamchatka, so both measure against it.
 - **A listing can claim more than the endpoint serves**, and then `configure.py --limit` under
   it fixes it. But a lone 400 is not proof: once, a sweep's largest request so far came back
   `400 Bad Request`, which looked like the window's edge, and another sweep's next request was
@@ -157,8 +158,8 @@ columns say what the endpoint costs.
 
 ## 3. read what a sweep found
 
-`python3 $SKILL/read.py NAME` - its replies, then the model's `context` notes, which is where a
-hygiene run keeps its findings; `-r` adds its reasoning. It reads the snapshot, so a sweep still
+`python3 $SKILL/read.py NAME` - its replies, which hold its `FINDING:` lines, then any `context`
+notes it kept; `-r` adds its reasoning. It reads the snapshot, so a sweep still
 running is read as of the end of its last turn, and a resumed one with everything before the
 resume. A sweep with no snapshot in any part is read from its records, and gives its notes alone.
 

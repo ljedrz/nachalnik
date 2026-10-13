@@ -4,11 +4,10 @@
 usage: configure.py MODEL [--limit TOKENS] [--out DIR]   (DIR defaults to $SWEEPS)
 
 Without --limit, the model's context length is read from the endpoint's `/models` listing
-(KAMCHATKA_BASE_URL, OpenRouter's shape). The budget the prompts hold the model to, and the
-point at which kamchatka tells the model the context is full, scale with it: a sweep keeps its
-next request under half the window, or 50k, whichever is smaller. The window itself goes to
+(KAMCHATKA_BASE_URL, OpenRouter's shape). Where kamchatka tells the model the context is full
+scales with it: half the window, or 100k, whichever is smaller. The window itself goes to
 DIR/limit, which `sweep.sh` hands kamchatka as KAMCHATKA_CONTEXT_LIMIT, so that what it compacts
-against is the figure the budget came from.
+against is the figure the settings came from.
 
 A listing can say more than an endpoint serves. Before taking a 400 for the window's edge, look
 for a larger request that went through: one 400 after a sweep's largest request so far once looked
@@ -29,12 +28,9 @@ AUDIT = (
     f"You are a senior Rust reviewer auditing the workspace in the current directory ({ROLE}). "
     "You have read-only tools: fs read, grep and glob. Read the relevant code thoroughly before "
     "claiming anything; open the actual lines. Read AGENTS.md and INVARIANTS.md first for the "
-    "project's rules. Report only findings you have verified in the source, each with: a severity "
-    "(high/medium/low), file:line, a one-sentence statement of the defect, a concrete failure "
-    "scenario (inputs/state -> wrong outcome), and a suggested minimal fix. No style nits, no "
+    "project's rules. Report only findings you have verified in the source. No style nits, no "
     "speculation, no findings about missing features the docs say are deliberately absent "
-    "(POSTPONED.md). When you are done exploring, end with a section titled FINDINGS listing "
-    "everything, most severe first."
+    "(POSTPONED.md)."
 )
 
 QUALITY = (
@@ -51,10 +47,7 @@ QUALITY = (
     "await or blocking work inside async code, a background task never cancelled or a loop that "
     "polls, needless clones of shared content, state kept in two places that can disagree, and "
     "code that breaks an architectural rule AGENTS.md states. No formatting or naming-taste "
-    "nits, no speculation, nothing POSTPONED.md says is deliberately absent. Each finding: kind "
-    "(perf/quality), severity (high/medium/low), file:line, the problem in one sentence, why it "
-    "matters concretely, and a minimal suggested change. When you are done exploring, end with "
-    "a section titled FINDINGS listing everything, most important first."
+    "nits, no speculation, nothing POSTPONED.md says is deliberately absent."
 )
 
 
@@ -67,10 +60,7 @@ TESTS = (
     "than its name or doc comment says, one that would still pass with the behaviour it is "
     "named after removed (name the production line you would delete), or an enforced claim no "
     "test pins; the scope message lists the classes to look for. Open the actual lines before "
-    "claiming anything. Each finding: severity (high/medium/low), the test's file:line, what it "
-    "claims, why it does not hold, and the minimal change that would make it hold. When you are "
-    "done exploring, end with a section titled FINDINGS listing everything, most important "
-    "first."
+    "claiming anything."
 )
 
 
@@ -87,11 +77,7 @@ DOCS = (
     "that decides it and quote the line. Style findings count only where they break a rule "
     "AGENTS.md states (counting the repository, captures of the program's output, prose that "
     "talks about itself, a synonym for a mechanism's one word); no taste nits, no rewording "
-    "for its own sake, no requests for more documentation. Each finding: severity "
-    "(high/medium/low: high is a claim that would make a reader do the wrong thing), the "
-    "document's file:line, the code's file:line, what the prose says, what the code does, and "
-    "the minimal correction. When you are done exploring, end with a section titled FINDINGS "
-    "listing everything, most important first."
+    "for its own sake, no requests for more documentation."
 )
 
 
@@ -115,10 +101,7 @@ COMPACT = (
     "anything whose removal changes behaviour, a public item of a published crate (that is an "
     "API break: report it as DECISION instead), a `note:` that says why or what it costs, a "
     "test's doc comment saying what it checks, changelog entries, and rewording for its own "
-    "sake that saves nothing. Each finding: kind (docs/code/tests), file:line range, what "
-    "goes, what replaces it if anything, where the value still lives, and roughly how many "
-    "lines it saves. When you are done exploring, end with a section titled FINDINGS listing "
-    "everything, largest saving first."
+    "sake that saves nothing."
 )
 
 
@@ -137,12 +120,8 @@ MAINTAIN = (
     "do; a name that says something other than what the code does; a document too large to "
     "read at once that has a natural seam to split along. Not findings: formatting, naming "
     "taste, anything whose fix changes behaviour a person should choose, speculation. Open the "
-    "actual lines before claiming anything, and for a split or a redesign say concretely what "
-    "moves where and what gets simpler. Each "
-    "finding: kind (size/redesign/duplication/smell/docs), severity (high/medium/low), "
-    "file:line range, the problem in one sentence, why it matters concretely, and the minimal "
-    "change. When you are done exploring, end with a section titled FINDINGS listing "
-    "everything, most important first."
+    "actual lines before claiming anything, and for a split or a redesign name what moves "
+    "where."
 )
 
 
@@ -180,28 +159,37 @@ def others(kind: str) -> str:
     )
 
 
-def hygiene(budget: int) -> str:
-    n = f"{budget:,}"
+# the one line a finding is, by kind: what a verifier needs to find it again and nothing more
+FORMAT = {
+    "audit": "SEVERITY file:line - the defect - the input or state that shows it - the fix",
+    "tests": "SEVERITY file:line of the test - what it claims - why that does not hold",
+    "quality": "perf|quality SEVERITY file:line - the problem - the fix",
+    "docs": "SEVERITY doc file:line - code file:line - what the prose says against what the code "
+    "does",
+    "compact": "file:line range - what goes - where its value still lives - lines saved",
+    "maintain": "size|redesign|duplication|smell SEVERITY file:line range - the problem - the "
+    "change",
+}
+
+
+def report(kind: str) -> str:
+    """How findings are written down: tersely, as they are found, in the reply text.
+
+    note: terse and not elaborated, because a sweep's prose is what it pays for twice - once to
+    write and again on every request after - and the verifier reads the code, not the argument.
+    The reply text is the record because the program elides tool results and not replies, so a
+    model needs nothing else to keep. It is not asked to keep notes or a context budget with the
+    `context` tool: most models handle that badly, and every check is a whole request.
+    """
     return (
-        " CONTEXT HYGIENE, which is part of the job: you have the `context` tool, and you keep "
-        f"your own context healthy with it. Keep the next request under about {n} tokens. "
-        "`note` each verified finding the moment you have it, with file:line and the exact words "
-        "it rests on, and any fact you will still need: a note is never elided, and your notes "
-        "are what the final report is written from. Once you have finished with a file or a "
-        "search result and noted what you need from it, put it away with action `elide` (or "
-        "`exclude` for pure noise), giving a reason; never put away something whose finding you "
-        "have not noted. `search` reads a line of an elided item back without restoring it, and "
-        "`restore` returns one if you must. There is no need to check `budget` as you go: when "
-        f"the context reaches about {n} tokens the program tells you so inside the turn, and then "
-        "cleaning up comes before anything else. "
-        "WHAT THE PROGRAM DOES ON ITS OWN: when the next message arrives, every tool result "
-        "from before it - each file you read, each search you ran - is elided and left as a "
-        "marker saying it was compacted after you had read it. So: compare two places in the "
-        "turn you read them, and `note` anything still unnoted before a reply with no tool call, "
-        "which ends the turn. When a marker stands for something you still need, `restore` "
-        "that item by id with a reason, or `search` it for the line you need, rather than "
-        "reading the file again: a restored item is not elided again. `look` lists every item "
-        "with its id, elided ones included."
+        " REPORTING: the moment you have verified a finding, state it in your reply text (not "
+        f"only in your reasoning) on one line: `FINDING: {FORMAT[kind]}`. Terse: a few words a "
+        "field, no elaboration, no headings, nothing restated from what you read. Then carry on "
+        "exploring. Severity is high, medium or low. A defect you have not verified in the "
+        "source is not a finding. Tool results are elided when the next message arrives, and "
+        "your replies are not, so your FINDING lines are your record. If the program tells you "
+        "the context is full, `elide` the tool results you are done with, using the `context` "
+        "tool."
     )
 
 
@@ -242,7 +230,9 @@ def main() -> None:
     )
     os.makedirs(out, exist_ok=True)
 
-    budget = min(50_000, limit // 2)
+    # a backstop and not a budget: the model is not asked to keep to one, and kamchatka tells it
+    # the context is full only past this
+    ceiling = min(100_000, limit // 2)
     common = {
         "model": model,
         "requests": 0,
@@ -250,9 +240,7 @@ def main() -> None:
         "allow": ["fs:read", "fs:grep", "fs:glob", "context"],
         "deny": ["fs:write", "fs:edit", "exec"],
         "on-ask": "deny",
-        # where kamchatka tells the model the context is full, which is how it learns it is over
-        # the budget: the prompts no longer have it check, since every check was a whole request
-        "compact": round(min(0.9, budget / limit), 3),
+        "compact": round(min(0.9, ceiling / limit), 3),
     }
     for kind, system in (
         ("audit", AUDIT),
@@ -264,11 +252,12 @@ def main() -> None:
     ):
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:
-            json.dump({**common, "system": system + others(kind) + hygiene(budget)}, f, indent=1)
+            json.dump({**common, "system": system + others(kind) + report(kind)}, f, indent=1)
         print(path)
     with open(os.path.join(out, "limit"), "w") as f:
         f.write(f"{limit}\n")
-    print(f"context {limit:,}, budget {budget:,}, compact at {common['compact']}", file=sys.stderr)
+    print(f"context {limit:,}, full past {ceiling:,} (compact {common['compact']})",
+          file=sys.stderr)
 
 
 if __name__ == "__main__":

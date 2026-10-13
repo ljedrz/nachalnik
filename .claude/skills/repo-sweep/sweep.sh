@@ -48,8 +48,8 @@ main() {
     messages() {
         # the scope is one message, however many lines its file has
         printf '%s' "$(tr '\n' ' ' < "$scope")"
-        echo ' Cover every file and every failure class the scope names in this one turn before you reply: a reply with no tool call ends your exploration, and nothing after it sends you back. As soon as you have verified a finding, `note` it and state it in your reply text (not only in your reasoning) on a line starting with FINDING:, then carry on exploring.'
-        echo 'Now write the final FINDINGS section in prose, in your reply text, listing every verified defect from this session with severity, file:line, the defect, the failure scenario and the fix.'
+        echo ' Cover every file and every failure class the scope names in this one turn before you reply: a reply with no tool call ends your exploration, and nothing after it sends you back.'
+        echo 'Now list every FINDING line from this session again, one a line, in the same terse form, leaving out any you no longer stand by. Nothing else.'
     }
     local resume=()
     {

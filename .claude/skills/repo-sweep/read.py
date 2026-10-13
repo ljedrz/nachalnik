@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""What a sweep found: its replies and its `context` notes, which is where a hygiene run keeps its
-findings. With -r, its reasoning as well.
+"""What a sweep found: its replies, which hold its `FINDING:` lines, and any `context` notes it
+kept. With -r, its reasoning as well.
 
 usage: read.py NAME [-r]
 
