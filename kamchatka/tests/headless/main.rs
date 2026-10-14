@@ -2067,6 +2067,9 @@ async fn a_batch_of_answers_is_not_forgotten_before_its_calls_run() {
         ],
         Grant::Allow,
         move |app| {
+            // more calls than a session runs of one answer, which is the point here: the grants
+            // are what is under test, and the ceiling would stop the calls they are about
+            app.kernel.set_call_ceiling(None);
             app.kernel.add_tool(Arc::new(Watchful {
                 policy: app.policy.clone(),
                 seen: watching,
