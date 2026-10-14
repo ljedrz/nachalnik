@@ -261,15 +261,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   wording: a client that fails to connect is a note at the terminal and an error when served.
   Sharing them is a refactor of both loops, worth doing together with the next change to either.
 
-- **A sweep resumed eight times is run again from nothing.** `run.py` resumes an incomplete sweep
-  from its snapshot up to eight parts, and a resume the endpoint never answered is a part like any
-  other. Once there are eight, `resumable` gives up and the sweep is set aside and run again from
-  its first message, which throws away every part - the one thing the skill otherwise never does.
-  A long outage gets there: `drive.py` closes a part after ten failed turns, an hour or so of
-  waits, so about nine hours of an endpoint refusing everything is enough. Giving the sweep up
-  with its parts kept for a person, or not counting a part the endpoint never answered, would
-  settle it; which one is the choice.
-
 - **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
   `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
   dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
