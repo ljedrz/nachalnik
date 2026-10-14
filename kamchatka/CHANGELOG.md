@@ -31,6 +31,11 @@ minor bump may break you.
 
 ### changed
 
+- **`--allow-server` for a server this run does not start is said rather than refused.** Which
+  servers run is up to the command line, so a settings file allowing the usual ones was refused
+  whenever `--mcp` left one out. It is taken now, and said at startup and in each session; the
+  allow grants nothing. `--deny-server` for one is still refused, since it is most likely a
+  misspelling that leaves the server it meant to the question.
 - **An allow for a file name a broader rule still asks about or refuses stops the session.**
   Every path rule that matches a call is consulted and the strictest wins, so `--allow .env` beside
   the default `.env*: ask` changed nothing and was taken without a word. It is refused now, naming

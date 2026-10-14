@@ -596,15 +596,7 @@ impl Args {
         // one function for the refusals that are about the arguments, so that a value out of a
         // file is answered with the file beside it and a value off the command line is answered
         // as it always was
-        //
-        // note: the file only where the file said it - carried the key, and was not overruled by a
-        // flag. Asked the other way round, "not typed" named the file for every default
-        let at = |field: &str| match filed {
-            Some(filed) if !filed.typed(field) && filed.carried.iter().any(|key| key == field) => {
-                Some(format!("{}: ", filed.at.display()))
-            }
-            _ => None,
-        };
+        let at = |field: &str| filed_at(filed, field);
         // note: here rather than where the limit is read, because that is a round trip away and a
         // session measuring itself against nothing is not a session anybody finds out about. Every
         // other figure this program settles at startup is refused here, and this one used to be
@@ -634,35 +626,16 @@ impl Args {
             );
         }
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
-        // server rule naming a server this run does not start matches nothing, so a misspelled
+        // deny naming a server this run does not start matches nothing, so a misspelled
         // `--deny-server` read as given and left the server it meant to the question - which a
-        // headless run with `--on-ask allow` answers yes
-        #[cfg(feature = "mcp")]
-        let servers: Vec<String> = self
-            .mcp
-            .iter()
-            .map(|spec| crate::mcp::named(spec).0)
-            .collect();
-        #[cfg(not(feature = "mcp"))]
-        let servers: Vec<String> = Vec::new();
-        // with the list it is in, so that the file is named only where the file gave it: the
-        // shipped one carries both lists, and asked of either, it was named for a name typed
-        let listed = [
-            ("allow_server", &self.allow_server),
-            ("deny_server", &self.deny_server),
-        ];
-        if let Some((field, unknown)) = listed
-            .into_iter()
-            .flat_map(|(field, names)| names.iter().map(move |name| (field, name)))
-            .find(|(_, name)| !servers.contains(name))
-        {
+        // headless run with `--on-ask allow` answers yes. An allow of one grants nothing, and is
+        // only said; see `Args::unstarted`
+        let servers = self.servers();
+        if let Some(unknown) = self.deny_server.iter().find(|name| !servers.contains(name)) {
             anyhow::bail!(
                 "{}`{unknown}` is not a server this run starts; {}",
-                at(field).unwrap_or_default(),
-                match servers.is_empty() {
-                    true => "it starts none".to_owned(),
-                    false => format!("they are {}", servers.join(", ")),
-                }
+                at("deny_server").unwrap_or_default(),
+                these(&servers)
             );
         }
         // note: an `allow` of `mcp:call` or `mcp` matches no call, and is refused for the same
@@ -773,6 +746,48 @@ impl Args {
         })?;
 
         Ok(setup)
+    }
+
+    /// What to say about the servers `--allow-server` names that this run does not start; `None`
+    /// where it names none.
+    ///
+    /// note: said rather than refused, unlike a deny. Which servers run is up to the command line,
+    /// so a settings file that allows the person's usual servers is right in general and was
+    /// refused whenever `--mcp` left one out - and an allow of a server that is not there grants
+    /// nothing, which is the safe way for it to be wrong.
+    pub fn unstarted(&self, filed: Option<&Filed>) -> Option<String> {
+        let servers = self.servers();
+        let absent: Vec<&str> = self
+            .allow_server
+            .iter()
+            .filter(|name| !servers.contains(name))
+            .map(String::as_str)
+            .collect();
+        (!absent.is_empty()).then(|| {
+            format!(
+                "{}`--allow-server` names {}, which this run does not start, so it grants nothing \
+                 there; {}",
+                filed_at(filed, "allow_server").unwrap_or_default(),
+                absent
+                    .iter()
+                    .map(|name| format!("`{name}`"))
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                these(&servers)
+            )
+        })
+    }
+
+    /// The names of the servers this run starts, as `attach` names them.
+    fn servers(&self) -> Vec<String> {
+        #[cfg(feature = "mcp")]
+        return self
+            .mcp
+            .iter()
+            .map(|spec| crate::mcp::named(spec).0)
+            .collect();
+        #[cfg(not(feature = "mcp"))]
+        Vec::new()
     }
 
     /// The same, with the advisor attached where `--advise` asked for one.
@@ -920,6 +935,26 @@ fn last_model(path: &std::path::Path) -> Option<String> {
     last_talked_to(path)
         .map(|info| info.model)
         .filter(|model| !model.is_empty())
+}
+
+/// Where a refusal about `field` names the settings file: only where the file said it - carried the
+/// key, and was not overruled by a flag. Asked the other way round, "not typed" named the file for
+/// every default.
+fn filed_at(filed: Option<&Filed>, field: &str) -> Option<String> {
+    match filed {
+        Some(filed) if !filed.typed(field) && filed.carried.iter().any(|key| key == field) => {
+            Some(format!("{}: ", filed.at.display()))
+        }
+        _ => None,
+    }
+}
+
+/// The servers a run starts, as a clause for a sentence about one it does not.
+fn these(servers: &[String]) -> String {
+    match servers.is_empty() {
+        true => "it starts none".to_owned(),
+        false => format!("they are {}", servers.join(", ")),
+    }
 }
 
 /// Where the record beside a snapshot says the session was last sending its requests, where it

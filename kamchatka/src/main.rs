@@ -502,6 +502,11 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     // because that is where a value out of a settings file can still be named; `wire` asks again
     // for whoever is not `main`
     let setup = args.setup_from(filed.as_ref())?;
+    // said the way the kernel's gaps are below: once on standard error, and into each session
+    let unstarted = args.unstarted(filed.as_ref());
+    if let Some(unstarted) = &unstarted {
+        let _ = writeln!(std::io::stderr(), "· {unstarted}");
+    }
 
     #[cfg(feature = "shell-advisor")]
     let setup = starting(ends, "reaching the advisor", args.advised(setup)).await?;
@@ -651,6 +656,9 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         if let Some(weaker) = &weaker {
             app.say(Speaker::Note, weaker.clone());
+        }
+        if let Some(unstarted) = &unstarted {
+            app.say(Speaker::Note, unstarted.clone());
         }
         // a resumed session has a conversation in it already, and it would be strange to have to
         // read it out of the context pane one item at a time

@@ -170,12 +170,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   mechanism. Its doc says what it is. Renaming it is a breaking change to `nachalnik`, so it waits
   for the next release that breaks anything; a type alias for the old name would ease it.
 
-- **`--allow-server` for a server this run doesn't start.** A server rule naming a server that isn't
-  running is refused, for both allow and deny, just as rules for a domain no tool uses are. A
-  settings file that allows a server is refused along with it when `--mcp` on the command line
-  replaces the file's server list and leaves that server out. An unused allow grants nothing, so
-  the alternative is to refuse only unused denies, at the cost of treating the two differently.
-
 - **The model's `undo` in the person's undo history.** When the `context` tool undoes a change that
   moved items into several states, it creates one kernel checkpoint per state and note, because
   `set_state` moves items into one state at a time and the kernel has no operation that moves them
