@@ -184,6 +184,10 @@ impl Intervention {
     ) {
         for id in ids {
             match snapshot.items.iter_mut().find(|item| item.id == *id) {
+                // out of what is sent already, and a state that is sent would bring it back
+                Some(item) if !item.state.is_projected() && state.is_projected() => {
+                    applied.unsent.push(*id);
+                }
                 Some(item) => {
                     if item.state == ContextState::Pinned {
                         applied.unpinned.push(*id);
@@ -237,6 +241,14 @@ pub struct Applied {
     pub missing: Vec<ContextId>,
     /// The items that were pinned, and were moved regardless.
     pub unpinned: Vec<ContextId>,
+    /// The items that were named and were already left out of what is sent, which the
+    /// intervention left as they were rather than bring back.
+    ///
+    /// note: eliding an excluded item puts it back into the copy as a marker the control never
+    /// had - an intervention adding something while claiming to take it away. Skipped, and listed
+    /// apart from `touched`, so the record says what the copy differs by and nothing more.
+    #[serde(default)]
+    pub unsent: Vec<ContextId>,
 }
 
 impl Applied {

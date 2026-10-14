@@ -23,14 +23,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   repeats `invoke`'s refuse-or-start sequence. Each is a refactor with no change in behaviour, and
   waits for the next change that touches the loop, which would review it.
 
-- **`Intervention::elided` brings back an item that was already excluded.** It sets the named items
-  to `Elided` whatever state they were in, so an item the session had excluded comes back into the
-  treated copy as a marker the control never had, and the record lists it as touched - an
-  intervention that added something while claiming to take it away. Nothing in the suite does
-  this, since every experiment elides an item it has just put in. Skipping such an item, or
-  reporting it apart from the ones moved, changes what `Applied` says; unblocked by choosing
-  which.
-
 - **An MCP tool's picture never reaches the model in `kamchatka`.** The bridge carries a picture a
   tool returns as a `Content::Blob`, up to 5 MB of base64, and declares no output limit, so
   `kamchatka`'s floor for tools without one - 32,000 bytes, there so that somebody else's server
