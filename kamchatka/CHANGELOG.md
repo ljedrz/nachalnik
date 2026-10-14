@@ -56,6 +56,10 @@ minor bump may break you.
 
 ### fixed
 
+- **A run stopped by a deadline or a signal after its last turn failed leaves with the stop's
+  status.** It left with `1`, since only the failure was read, so a script telling a timeout from a
+  failure by the status was told the failure. It leaves with `124`, `129`, `130` or `143` now, and
+  the failure is still said on standard error.
 - **A command that stops itself is ended and says so.** `kill -STOP $$`, or a `SIGTSTP` to the
   command's group, left the call waiting for output that never came, until the turn was
   interrupted or a headless run's `--deadline` ended it. The status line now says the command

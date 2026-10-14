@@ -2121,6 +2121,46 @@ async fn the_deadline_ends_the_program_itself() {
     assert!(said.contains("out of time"), "{said}");
 }
 
+/// A run whose last turn failed and which the deadline then ended leaves with the deadline's
+/// status, and still says the turn failed.
+///
+/// note: it left with `1`, because the failure was all `main` read; a script telling a timeout
+/// from a failure by the status was told the second. The stop is what ended the run, and the
+/// failure is on standard error and in the record either way.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_run_stopped_after_a_failed_turn_leaves_with_the_stop() {
+    use std::io::Write as _;
+
+    let mut child = common::command()
+        .args([
+            "--headless",
+            "--no-record",
+            "-m",
+            "nothing",
+            "--deadline",
+            "3",
+        ])
+        .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
+        .env("KAMCHATKA_API_KEY", "not-a-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("the binary under test is built");
+    // one line, whose turn fails on an endpoint nobody listens at, and a pipe held open after it,
+    // so nothing but the deadline ends the run
+    let mut stdin = child.stdin.take().expect("stdin is a pipe");
+    writeln!(stdin, "hello").expect("the line goes in");
+
+    let said = watch(child.stderr.take().expect("stderr is a pipe"));
+    let status = waited_out(&mut child, std::time::Duration::from_secs(20), &said);
+    let said = heard(&said, "the last turn failed");
+    drop(stdin);
+
+    assert_eq!(status.code(), Some(124), "{said}");
+    assert!(said.contains("the last turn failed"), "{said}");
+}
+
 /// `--deadline` ends a run still starting: a server that never answers its handshake, and an
 /// endpoint that never answers at all.
 ///
