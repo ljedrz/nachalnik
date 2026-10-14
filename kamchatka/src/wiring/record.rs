@@ -89,6 +89,8 @@ pub struct Recorder {
     log: PathBuf,
     state: PathBuf,
     kept: parking_lot::Mutex<Kept>,
+    /// The `context` tool's undo history, written into the snapshot beside the session.
+    history: Option<crate::introspect::History>,
 }
 
 /// What the recorder holds between two writes.
@@ -121,6 +123,7 @@ impl Recorder {
         let recorder = Self {
             log,
             state,
+            history: app.introspect.as_ref().map(|it| it.history()),
             kept: parking_lot::Mutex::new(Kept {
                 file,
                 written: 0,
@@ -171,8 +174,7 @@ impl Recorder {
         if kept.snapshotted == Some(reflects) {
             return Ok(());
         }
-        let snapshot = serde_json::to_vec_pretty(&snapshot)
-            .map_err(|e| format!("could not render the session: {e}"))?;
+        let snapshot = crate::introspect::snapshot_with(&snapshot, self.history.as_ref())?;
         let beside = crate::app::beside(&self.state, &snapshot)
             .map_err(|e| format!("could not write {}: {e}", self.state.display()))?;
         std::fs::rename(&beside, &self.state).map_err(|e| {

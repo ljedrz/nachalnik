@@ -10,6 +10,7 @@ use nachalnik::{
     ToolCallId, ToolOutput,
 };
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
@@ -49,7 +50,7 @@ pub(super) struct Changes {
     pinned: Pinned,
     /// What its answers may send the model to; see `introspect::if_reachable`.
     policy: Arc<Careful>,
-    journal: Mutex<Journal>,
+    journal: Arc<Mutex<Journal>>,
     /// Held for the whole of one operation; see [`Changes::make`].
     one_at_a_time: Mutex<()>,
 }
@@ -57,28 +58,32 @@ pub(super) struct Changes {
 impl Changes {
     /// Builds one; [`Context`](super::Context) is the only caller.
     ///
-    /// note: the journal starts empty and is made here rather than handed in - what `undo` walks
-    /// is what this session's model did, and a journal from anywhere else would be somebody
-    /// else's work to walk back.
+    /// note: the journal is handed in, shared with whoever writes the session down, so that a
+    /// snapshot carries it and a resumed session's model can walk back what it did before - see
+    /// [`crate::introspect::History`]. What `undo` walks is still only what this session's model
+    /// did: the journal starts empty, and only a snapshot of this session fills it.
     ///
-    /// note: the pinned set *is* handed in, because it is shared with the half that reports it:
+    /// note: the pinned set is handed in too, because it is shared with the half that reports it:
     /// what was pinned here is what `budget` says the model may unpin, and a second set would
     /// have the two disagreeing about a promise.
-    pub(super) fn new(pinned: Pinned, policy: Arc<Careful>) -> Self {
+    pub(super) fn new(pinned: Pinned, policy: Arc<Careful>, journal: Arc<Mutex<Journal>>) -> Self {
         Self {
             pinned,
             policy,
-            journal: Mutex::new(Journal::default()),
+            journal,
             one_at_a_time: Mutex::new(()),
         }
     }
 }
 
 /// What [`Changes`] has made, and what it has walked back.
-#[derive(Default)]
-struct Journal {
+#[derive(Default, Serialize, Deserialize)]
+pub(crate) struct Journal {
     done: Vec<Entry>,
     undone: Vec<Entry>,
+    /// Whether this was read back out of a snapshot, rather than started empty.
+    #[serde(skip)]
+    pub(crate) carried: bool,
 }
 
 impl Journal {
@@ -108,6 +113,7 @@ impl Journal {
 /// later exclusion, or their edit of what the model had revised, walked back by a move of the
 /// model's that knew nothing about it. An item that no longer looks the way this change left it is
 /// left alone, and the answer says so.
+#[derive(Serialize, Deserialize)]
 struct Entry {
     undoing: Undoing,
     left: Vec<(ContextId, Left)>,
@@ -117,7 +123,7 @@ struct Entry {
 ///
 /// note: not its metadata, which this tool writes beside a pin - so a pin's own bookkeeping is not
 /// read as somebody else's change.
-#[derive(PartialEq)]
+#[derive(PartialEq, Serialize, Deserialize)]
 struct Left {
     state: ContextState,
     note: Option<String>,
@@ -162,6 +168,7 @@ fn moved_since(left: &[(ContextId, Left)], item: &ContextItem) -> Option<String>
 /// note: the way back rather than the change itself, because applying one returns the way back
 /// from *that* - so undo and redo are the same operation run against two stacks, and there is no
 /// second representation to keep in step with the first.
+#[derive(Serialize, Deserialize)]
 enum Undoing {
     /// Put these items into these states, with these notes.
     States(Vec<(ContextId, ContextState, Option<String>)>),
@@ -863,9 +870,9 @@ impl Changes {
             }
         }
 
-        let (done, undone) = {
+        let (done, undone, carried) = {
             let journal = self.journal.lock();
-            (journal.done.len(), journal.undone.len())
+            (journal.done.len(), journal.undone.len(), journal.carried)
         };
         let direction = match back {
             true => "back",
@@ -889,10 +896,10 @@ impl Changes {
                      the changes this tool made; the person you work with has an undo of their \
                      own, and it is not this one.\n"
                 );
-                // note: the journal is this process's and a snapshot does not carry it, so after
-                // a resume the model's own earlier changes are not in it either - and without
-                // this the answer reads as though they had been the person's
-                if super::reads::resumed(kernel) {
+                // note: a snapshot written before the journal went into it carries none, so after
+                // a resume from one the model's own earlier changes are not in it either - and
+                // without this the answer reads as though they had been the person's
+                if super::reads::resumed(kernel) && !carried {
                     said.push_str(
                         "This session was resumed from a snapshot, and the changes this tool made \
                          before that were not carried over; `restore` puts an item back by name.\n",

@@ -35,6 +35,7 @@ use super::{Reach, action, ids, named, unknown};
 mod changes;
 mod reads;
 
+pub(crate) use changes::Journal;
 use changes::{Changes, asking_turn, own_turn};
 use reads::{budget, look, matched, request, search, taken};
 
@@ -248,11 +249,16 @@ impl Context {
     /// note: the pinned set is made here and shared with the changing half rather than handed in.
     /// It is one tool's memory of which pins are its own, so a second holder of it could only ever
     /// be something that would disagree about a promise.
-    pub(super) fn new(reach: Reach, limits: Limits, layout: Layout) -> Self {
+    pub(super) fn new(
+        reach: Reach,
+        limits: Limits,
+        layout: Layout,
+        journal: Arc<Mutex<Journal>>,
+    ) -> Self {
         let ops = ops();
         let pinned = Pinned::default();
         Self {
-            changes: Changes::new(pinned.clone(), reach.1.clone()),
+            changes: Changes::new(pinned.clone(), reach.1.clone(), journal),
             reach,
             pinned,
             limits,
@@ -466,6 +472,7 @@ mod tests {
                 Arc::new(crate::tools::Careful::new()),
             ),
             Limits::default(),
+            Default::default(),
             Default::default(),
         )
     }

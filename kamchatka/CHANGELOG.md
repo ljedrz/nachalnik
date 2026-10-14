@@ -72,6 +72,11 @@ minor bump may break you.
 
 ### fixed
 
+- **The model can undo after a resume what it changed before one.** The history the `context`
+  tool's `undo` walks was kept in memory alone, so a resumed session had nothing for the model to
+  undo, and an exclusion it had made came back only by `restore`. A snapshot now carries it,
+  written into the snapshot's file under `kamchatka-context-history` beside the session, and `-r`
+  reads it back; an entry read back leaves alone an item changed since, as a live one does.
 - **A client that falls behind the session's own lines is told where the session stands.** `Busy`,
   `Model` and `Reaching` are said only when they change, and a client more than 256 lines behind was
   told only how many it missed, so a piped `--connect` could wait for a `busy: false` that went

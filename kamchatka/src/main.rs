@@ -701,6 +701,15 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         if first && let Some(path) = &args.resume {
             app.recall(Path::new(path));
             app.replay();
+            // the `context` tool's own undo history, where the snapshot carries one, so that the
+            // model can still walk back what it changed before; see `introspect::History`
+            if let (Some(installed), Some(saved)) = (
+                &app.introspect,
+                kamchatka::introspect::saved_history(Path::new(path)),
+            ) && let Err(e) = installed.history().carry(&saved)
+            {
+                app.say(Speaker::Note, e);
+            }
             // and where it was talking, where that is not where this run is pointed. Said rather
             // than followed; see `args::last_endpoint`
             if let Some(was) = kamchatka::args::last_endpoint(Path::new(path))

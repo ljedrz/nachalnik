@@ -93,12 +93,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   into several at once. So undoing one change by the model can take the person several undos.
   Unblocked by a core operation that moves items into several states at once.
 
-- **The model's undo history after a resume.** The history `context`'s `undo` uses is kept in memory,
-  not in the snapshot, so a resumed session has nothing for the model to undo, and a change made
-  before the restart can only be reverted with `restore`; the refusal says so. The fix is writing
-  the history into the snapshot. Entries read back from it would follow the same rule as live ones:
-  an item that has changed since the entry was recorded is left alone.
-
 - **`log` stops at the resume.** A resumed session's log starts at `session.resumed`, so `log read`
   can't show anything before the restart, even though the record saved next to the snapshot has all
   of it. `App::recall` reads that file for `context.replaced`, and `-r` for the session's model, but
