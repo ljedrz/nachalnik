@@ -177,6 +177,27 @@ fn moving_a_pinned_item_is_allowed_and_recorded() {
     assert_eq!(applied.unpinned, vec![brief]);
 }
 
+/// Eliding an item the session had already excluded leaves it excluded, and says so apart from
+/// what was moved.
+///
+/// note: set to `Elided` whatever state it was in, it came back into the copy as a marker the
+/// control never had, and the record listed it as touched - an intervention that added something
+/// while claiming to take it away.
+#[test]
+fn eliding_an_item_already_left_out_does_not_bring_it_back() {
+    let (kernel, ids) = planted();
+    kernel.set_state([ids[0]], ContextState::Excluded, None);
+    let mut snapshot = kernel.snapshot();
+
+    let applied = Intervention::elided([ids[0], ids[1]]).apply(&mut snapshot);
+
+    assert_eq!(applied.unsent, vec![ids[0]]);
+    assert_eq!(applied.touched, vec![ids[1]]);
+    let state = |id| snapshot.items.iter().find(|i| i.id == id).unwrap().state;
+    assert_eq!(state(ids[0]), ContextState::Excluded);
+    assert_eq!(state(ids[1]), ContextState::Elided);
+}
+
 #[test]
 fn naming_an_item_that_is_not_there_is_reported() {
     let (kernel, _) = planted();

@@ -9,6 +9,11 @@ minor bump may break you.
 
 ### fixed
 
+- **Eliding an item the session had already excluded leaves it excluded.** `Intervention::elided`
+  set the named items to `Elided` whatever state they were in, so an excluded one came back into
+  the copy as a marker the control never had, and `Applied` listed it as touched. Such an item is
+  left as it was now and listed in `Applied::unsent`, a new field, which a record written before it
+  reads as empty.
 - **What a subject does on `repair`'s last rung is recorded.** The ladder recorded the acts of every
   rung with handles but the last, the task asked again once the subject had been told to put its
   context right. An edit made while answering it was dropped, so the check on what the subject
