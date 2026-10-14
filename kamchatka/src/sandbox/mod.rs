@@ -855,7 +855,12 @@ impl fmt::Display for Sandbox {
         for path in &self.readable {
             write!(f, ", {} read-only", path.display())?;
         }
-        write!(f, ", the system directories read-only, {}", self.network)?;
+        // its own temporary directory, writable even where the working directory is not
+        write!(
+            f,
+            ", its own `$TMPDIR` read-write, the system directories read-only, {}",
+            self.network
+        )?;
         // note: said wherever TCP is not refused outright, since that is where a closed port is the
         // one connection refused - and a command refused it was told only that the network was
         // reachable, with nothing to say why this one address was not

@@ -495,6 +495,9 @@ impl Tool for Shell {
             _ => "",
         };
 
+        // note: `$TMPDIR` said, because it is writable even where the working directory is not,
+        // and a model in a read-only session that is not told so has nowhere it knows it may write
+        //
         // note: the directory named, and said to be where every call starts. A model that cannot
         // see where it is, or has been trained where a shell's directory drifts between calls,
         // opens each command with `cd` to a path it guessed - a stage the advisor asks about, and
@@ -511,7 +514,9 @@ impl Tool for Shell {
                     true => format!(
                         " It runs confined: outside the working directory it can read this \
                          machine's system paths{} and no more{network} - so a permission error \
-                         there is the confinement rather than the command.{}",
+                         there is the confinement rather than the command. `$TMPDIR` is a \
+                         directory of the command's own that it may write in, removed when it \
+                         ends.{}",
                         match opened.is_empty() {
                             true => String::new(),
                             false => format!(", and {},", opened.join(" and ")),
