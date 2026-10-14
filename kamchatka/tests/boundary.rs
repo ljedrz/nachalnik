@@ -1189,11 +1189,24 @@ fn a_root_named_under_dev_is_reached() {
             closed: Vec::new(),
         };
 
-        assert_eq!(
-            confined.note_for("cat: /dev/pts/4096: Permission denied\n"),
-            None,
-            "a terminal under a root that was named is one the command reached"
-        );
+        // note: held for reading where the person may write `/dev/pts` - a container that gives
+        // them their own - a refused write there is the confinement's, and the note says that much.
+        // Either way it is not called outside what the session reaches
+        let read_only = !confined.readable.is_empty()
+            && rustix::fs::access("/dev/pts", rustix::fs::Access::WRITE_OK).is_ok();
+        let note = confined.note_for("cat: /dev/pts/4096: Permission denied\n");
+        match read_only {
+            false => assert_eq!(
+                note, None,
+                "a terminal under a root that was named is one the command reached"
+            ),
+            true => assert!(
+                note.as_deref().is_some_and(
+                    |note| note.contains("may read and not write") && !note.contains("outside")
+                ),
+                "a terminal under a root that was named is one the command reached: {note:?}"
+            ),
+        }
         let other = confined
             .note_for("cat: /dev/made-up-by-a-test: Permission denied\n")
             .expect("the rest of /dev is still the boundary");
