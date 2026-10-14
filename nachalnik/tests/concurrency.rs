@@ -572,6 +572,93 @@ async fn a_panicking_tool_is_a_failing_tool_run_in_turn_or_together() {
     }
 }
 
+/// A tool that panics saying what a call needs, or how much of it to keep, has failed that call
+/// and no other, however the calls run.
+///
+/// note: the kernel calls `needs` and `limit` with the model's arguments, outside the catch around
+/// `invoke`, and a panic in either unwound `step` with the model's calls answered by nothing. One in
+/// `needs` is a call that does not run; one in `limit` is a call that ran, held to the session's own
+/// limit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_tool_that_panics_saying_what_a_call_needs_fails_that_call() {
+    for (parallel, asked) in [
+        (false, "needs"),
+        (true, "needs"),
+        (false, "limit"),
+        (true, "limit"),
+    ] {
+        let kernel = three_calls(parallel, Arc::new(PanicsAsked(asked)));
+
+        let end = kernel.turn().await.expect("the turn survives the tool");
+        assert!(matches!(end, State::Finished { .. }), "{asked}: {end:?}");
+
+        // in any order: a call that fails before anything is asked is answered as it is prepared,
+        // as one to a tool that is not there is
+        let results = tool_results_text(&kernel);
+        assert_eq!(
+            results.len(),
+            3,
+            "{asked}: every call is answered: {results:?}"
+        );
+        assert!(
+            ["c1 ran", "c3 ran"]
+                .iter()
+                .all(|ran| results.iter().any(|said| said.contains(ran))),
+            "{asked}: the calls beside it go on: {results:?}"
+        );
+        match asked {
+            "needs" => assert!(
+                results
+                    .iter()
+                    .any(|said| said.contains("did not run") && said.contains("c2 panicked")),
+                "the model is told, with what the panic said: {results:?}"
+            ),
+            _ => assert!(
+                results.iter().any(|said| said.contains("c2 ran")),
+                "it ran: {results:?}"
+            ),
+        }
+        let panicked = kernel
+            .history()
+            .iter()
+            .filter(|record| matches!(&record.event, Event::ToolPanicked { call, .. } if call.0 == "c2"))
+            .count();
+        assert_eq!(panicked, 1, "{asked}, parallel: {parallel}");
+    }
+}
+
+/// A tool that panics on the second call in `needs` or `limit`, as named, and runs every call.
+struct PanicsAsked(&'static str);
+
+#[nachalnik::async_trait]
+impl nachalnik::Tool for PanicsAsked {
+    fn spec(&self) -> nachalnik::ToolSpec {
+        nachalnik::ToolSpec::new("slow", "panics asked about c2")
+    }
+
+    fn needs(&self, call: &nachalnik::ToolCall) -> Vec<nachalnik::Capability> {
+        if self.0 == "needs" && call.id.0 == "c2" {
+            panic!("c2 panicked");
+        }
+        self.spec().capabilities
+    }
+
+    fn limit(&self, call: &nachalnik::ToolCall) -> Option<usize> {
+        if self.0 == "limit" && call.id.0 == "c2" {
+            panic!("c2 panicked");
+        }
+        None
+    }
+
+    async fn invoke(
+        &self,
+        call: &nachalnik::ToolCall,
+        _output: nachalnik::OutputSink,
+    ) -> Result<nachalnik::ToolOutput, nachalnik::BoxError> {
+        Ok(nachalnik::ToolOutput::new(format!("{} ran", call.id.0)))
+    }
+}
+
 /// A tool that panics on the second call and answers the others.
 struct Panics;
 

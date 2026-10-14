@@ -65,9 +65,32 @@ impl Kernel {
                 continue;
             };
 
-            let id = PermissionId(self.0.next_permission.fetch_add(1, SeqCst));
             // what the call needs rather than what the tool might: see `Tool::needs`
-            let request = PermissionRequest::new(id, call, tool.needs(call));
+            //
+            // note: asked under the same catch as `invoke`, since it reads the model's arguments
+            // just as `invoke` does. A tool that panics saying what a call needs has failed that
+            // call: nothing is asked and nothing runs, and the call is answered as one to a tool
+            // that is not there is, joining the turn's checkpoint
+            let needs = match guarded(|| tool.needs(call)) {
+                Ok(needs) => needs,
+                Err(panic) => {
+                    self.emit(Event::ToolPanicked {
+                        call: call.id.clone(),
+                        tool: call.tool.clone(),
+                    });
+                    self.record_tool_result(
+                        call,
+                        None,
+                        ToolOutput::error(panicked_needing(&*panic)),
+                        None,
+                        None,
+                        &mut turn,
+                    );
+                    continue;
+                }
+            };
+            let id = PermissionId(self.0.next_permission.fetch_add(1, SeqCst));
+            let request = PermissionRequest::new(id, call, needs);
 
             let policy = self.policy();
             let grant = match policy.evaluate(&request).await {
@@ -294,9 +317,18 @@ impl Kernel {
         // an output limit decides what the *model* is shown. It is not permission to throw the
         // rest away, so unless the user has said otherwise the whole of it goes into the context
         // too - excluded, listed, inspectable, and restorable like anything else
-        let limit = prepared
-            .tool
-            .limit(&prepared.call)
+        //
+        // note: a tool that panics saying what a call may return has its result held to the
+        // session's own limit, which is what a tool that says nothing gets: the call has run, and
+        // what it returned is still its answer
+        let limit = guarded(|| prepared.tool.limit(&prepared.call))
+            .unwrap_or_else(|_| {
+                self.emit(Event::ToolPanicked {
+                    call: prepared.call.id.clone(),
+                    tool: prepared.call.tool.clone(),
+                });
+                None
+            })
             .or(self.0.config.default_tool_output_limit);
         let over = limit.is_some_and(|limit| output.content.byte_len() > limit);
 
@@ -369,7 +401,9 @@ impl Kernel {
         if tool.spec().capabilities.len() < 2 {
             return None;
         }
-        match &tool.needs(call)[..] {
+        // a tool that panics saying what a call needs was answered for it already, and is
+        // labelled by its name here
+        match &guarded(|| tool.needs(call)).ok()?[..] {
             [needed] => Some(format!("{}:{}", call.tool, needed.op)),
             _ => None,
         }
@@ -488,6 +522,28 @@ fn described(error: &(dyn std::error::Error + 'static)) -> String {
 /// note: "crashed" rather than "panicked", for the reason [`refusal`] is written in no codebase's
 /// idiom. A payload that is not a string - `panic_any` with anything else - has nothing to show,
 /// and is said to have said nothing rather than rendered as a type name.
+/// Runs one of a tool's own methods, catching a panic in it as `invoke`'s are caught.
+fn guarded<T>(asked: impl FnOnce() -> T) -> std::thread::Result<T> {
+    std::panic::catch_unwind(AssertUnwindSafe(asked))
+}
+
+/// What a call is answered with when its tool panicked saying what the call needs.
+fn panicked_needing(payload: &(dyn std::any::Any + Send)) -> String {
+    let said = payload
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+
+    match said {
+        Some(said) => {
+            format!("the tool crashed reading this call's arguments, so it did not run: {said}")
+        }
+        None => "the tool crashed reading this call's arguments, so it did not run, and said \
+                 nothing about why"
+            .to_owned(),
+    }
+}
+
 fn panicked(payload: &(dyn std::any::Any + Send)) -> String {
     let said = payload
         .downcast_ref::<&str>()
