@@ -524,10 +524,28 @@ impl Careful {
         // the strictest answer among the subjects wins, so a call that needs both an allowed one
         // and an unmentioned one is still a question. `Verdict::strictest` is the runtime's own
         // fold for exactly this. A call that needs nothing is allowed: the empty fold
-        self.judges(request)
+        let verdict = self
+            .judges(request)
             .iter()
             .map(|subject| self.stance(subject))
-            .fold(Verdict::Allow, Verdict::strictest)
+            .fold(Verdict::Allow, Verdict::strictest);
+
+        // note: a question about a call this program's own tool cannot read is one whose `yes`
+        // runs nothing: the tool reads its arguments before anything else and answers with what
+        // is wrong with them. So it is let through to say that, rather than put to a person who
+        // is shown a wrapper they cannot judge. A refusal stays a refusal, and somebody else's
+        // tool is still asked about - a server's tool may take a `call` that means something else
+        match verdict == Verdict::Ask && self.unreadable(request) {
+            true => Verdict::Allow,
+            false => verdict,
+        }
+    }
+
+    /// Whether a call is to one of this program's own tools and its arguments cannot be read.
+    fn unreadable(&self, request: &PermissionRequest) -> bool {
+        self.offered.lock().contains_key(&request.tool)
+            && !self.servers.lock().contains_key(&request.tool)
+            && super::ops::inner(&request.args).is_err()
     }
 
     /// What it answers about one subject; asking is what it does about anything unmentioned.

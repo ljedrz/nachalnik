@@ -531,6 +531,52 @@ fn always_answers_at_the_grain_the_rules_are_written_at() {
     );
 }
 
+/// A call to one of this program's own tools whose arguments cannot be read is not asked about:
+/// it goes to the tool, which says what is wrong and runs nothing.
+///
+/// note: the question showed the raw wrapper, which nobody can judge, and a yes only led to the
+/// tool's refusal. A refusal by rule stays one, and a tool from a server is still asked about,
+/// since its `call` may mean something else.
+#[test]
+fn a_call_that_cannot_be_read_is_not_asked_about() {
+    use nachalnik::ToolSpec;
+
+    let ask = |tool: &str, args: serde_json::Value| PermissionRequest {
+        id: PermissionId(1),
+        call: ToolCallId("c1".to_owned()),
+        tool: tool.to_owned(),
+        capabilities: vec![Capability::exec("run")],
+        args: std::sync::Arc::new(args),
+    };
+    let policy = Careful::new();
+    policy.offers(ToolSpec::new("shell", "runs").with_capabilities([Capability::exec("run")]));
+    policy.offers(ToolSpec::new("remote", "runs").with_capabilities([Capability::exec("run")]));
+    policy.came_from("remote", "box");
+
+    // a wrapper holding text that is not JSON is no call anybody can read
+    let unreadable = json!({ "call": "{\"action\": \"run\", \"cmd\": " });
+    assert_eq!(
+        policy.verdict(&ask("shell", unreadable.clone())),
+        Verdict::Allow
+    );
+    // one that can be read is a question as ever
+    assert_eq!(
+        policy.verdict(&ask(
+            "shell",
+            json!({ "call": { "action": "run", "cmd": "ls" } })
+        )),
+        Verdict::Ask
+    );
+    // somebody else's tool is asked about whatever its arguments look like
+    assert_eq!(
+        policy.verdict(&ask("remote", unreadable.clone())),
+        Verdict::Ask
+    );
+    // and a refusal is not lifted
+    policy.set(&Subject::parse("exec:run"), Verdict::Deny);
+    assert_eq!(policy.verdict(&ask("shell", unreadable)), Verdict::Deny);
+}
+
 /// The two arguments the policy reads are found inside the wrapper the schema puts them in.
 ///
 /// note: the regression this is here for, and it is the worse half of the one that had `context`

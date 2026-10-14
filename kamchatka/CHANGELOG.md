@@ -31,6 +31,10 @@ minor bump may break you.
 
 ### changed
 
+- **A call to one of this program's own tools whose arguments cannot be read is not asked
+  about.** The question showed the raw wrapper, which nobody can judge, and a yes only led to the
+  tool refusing the call. It goes to the tool now, which says what is wrong and runs nothing. A
+  refusal by rule still refuses it, and a tool from an MCP server is still asked about.
 - **`--allow-server` for a server this run does not start is said rather than refused.** Which
   servers run is up to the command line, so a settings file allowing the usual ones was refused
   whenever `--mcp` left one out. It is taken now, and said at startup and in each session; the
