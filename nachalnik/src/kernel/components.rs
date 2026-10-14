@@ -1,5 +1,5 @@
 //! What a kernel is assembled from, and swapping any of it while it runs: the provider, the tools,
-//! the policy, the projector, the counter, the compactor, the full notice and the parameters.
+//! the policy, the projector, the counter, the compactor and the parameters.
 
 use std::sync::Arc;
 
@@ -7,7 +7,6 @@ use std::sync::Arc;
 use crate::session::Snapshot;
 use crate::{
     compaction::Compactor,
-    context::ContextItem,
     event::Event,
     model::{ModelInfo, Params, Provider},
     permissions::{PermissionId, PermissionPolicy, Verdict},
@@ -271,30 +270,6 @@ impl Kernel {
         self.0.compactor.read().clone()
     }
 
-    /// Sets (or, with `None`, removes) what is put into the context as it becomes full, returning
-    /// the previous one.
-    ///
-    /// note: how the model is told, and the words are the caller's, since the kernel ships no text
-    /// the model reads - what the model can do about a full context depends on the tools it has,
-    /// which only the caller knows. The kernel owns *when* and *where*: the notice is pushed as
-    /// [`Event::ContextFull`] says the context is full, which is before a request, between a
-    /// turn's tool results and the next request - so a tool loop that fills the context hears it
-    /// in the same turn, while there is still room under the limit for the request that carries
-    /// it - and only where there is: a notice that would take that request over the limit is left
-    /// out, since the kernel would refuse the request and nobody would read it. It is pushed at
-    /// most once per fill, and excluded again as the context has room.
-    ///
-    /// note: the notice in the context is recognised by what it is - its kind, source, label and
-    /// content - rather than by an identifier remembered here, so that a session resumed while
-    /// full does not stack a second copy on the first. A notice the person or the model excluded
-    /// stays excluded for the rest of that fill, and one they pinned is left where it is.
-    ///
-    /// note: each placing and each retiring is an ordinary change to the context, so each is an
-    /// undo step, and neither is taken more than once per fill.
-    pub fn set_full_notice(&self, notice: Option<ContextItem>) -> Option<ContextItem> {
-        std::mem::replace(&mut *self.0.full_notice.write(), notice)
-    }
-
     /// Sets how many of one answer's tool calls are run, returning what it was; `None`, the
     /// default, runs every one.
     ///
@@ -359,11 +334,6 @@ impl Kernel {
     /// may.
     pub fn picture_limit(&self) -> Option<usize> {
         *self.0.picture_limit.read()
-    }
-
-    /// Returns what is put into the context as it becomes full, if anything is.
-    pub fn full_notice(&self) -> Option<ContextItem> {
-        self.0.full_notice.read().clone()
     }
 
     /// Returns the parameters that will be sent with the next request.

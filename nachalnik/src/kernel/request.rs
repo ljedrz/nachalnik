@@ -1,9 +1,10 @@
 //! Building a request, sending it, and making sense of what came back.
 //!
 //! note: the private half of [`super::Kernel`]'s request path, in a file of its own because the
-//! public surface next door is long enough without it. Nothing in here is reachable from outside
-//! the crate: what a caller gets is [`super::Kernel::preview_request`] and
-//! [`super::Kernel::step`], and this is what those two are made of.
+//! public surface next door is long enough without it. What a caller gets is
+//! [`super::Kernel::preview_request`] and [`super::Kernel::step`], and this is what those two are
+//! made of. The one public operation here is the full notice's setter and getter, beside what
+//! places and retires the notice.
 
 use std::{
     collections::HashSet,
@@ -274,6 +275,35 @@ impl Kernel {
         }
 
         self.mark_full(compactor.wants_room(&self.budget()));
+    }
+
+    /// Sets (or, with `None`, removes) what is put into the context as it becomes full, returning
+    /// the previous one.
+    ///
+    /// note: how the model is told, and the words are the caller's, since the kernel ships no text
+    /// the model reads - what the model can do about a full context depends on the tools it has,
+    /// which only the caller knows. The kernel owns *when* and *where*: the notice is pushed as
+    /// [`Event::ContextFull`] says the context is full, which is before a request, between a
+    /// turn's tool results and the next request - so a tool loop that fills the context hears it
+    /// in the same turn, while there is still room under the limit for the request that carries
+    /// it - and only where there is: a notice that would take that request over the limit is left
+    /// out, since the kernel would refuse the request and nobody would read it. It is pushed at
+    /// most once per fill, and excluded again as the context has room.
+    ///
+    /// note: the notice in the context is recognised by what it is - its kind, source, label and
+    /// content - rather than by an identifier remembered here, so that a session resumed while
+    /// full does not stack a second copy on the first. A notice the person or the model excluded
+    /// stays excluded for the rest of that fill, and one they pinned is left where it is.
+    ///
+    /// note: each placing and each retiring is an ordinary change to the context, so each is an
+    /// undo step, and neither is taken more than once per fill.
+    pub fn set_full_notice(&self, notice: Option<ContextItem>) -> Option<ContextItem> {
+        std::mem::replace(&mut *self.0.full_notice.write(), notice)
+    }
+
+    /// Returns what is put into the context as it becomes full, if anything is.
+    pub fn full_notice(&self) -> Option<ContextItem> {
+        self.0.full_notice.read().clone()
     }
 
     /// Records whether the context is full, says so where that changed, and places or retires the
