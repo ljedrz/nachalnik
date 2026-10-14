@@ -517,7 +517,7 @@ mod tests {
     /// Two rows to a line, the quiet zone light all round, and every line one the overlay knows.
     #[test]
     fn the_lines_are_half_as_many_as_the_rows() {
-        let code = Code::new("http://192.168.1.5:8080/0123abcd/").expect("it fits");
+        let code = Code::new("http://192.168.1.5:8080/0123abcd").expect("it fits");
         let lines = code.lines();
         let side = code.size() + 4;
         assert_eq!(lines.len(), side.div_ceil(2));

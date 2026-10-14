@@ -1051,7 +1051,7 @@ async fn a_panel_with_one_face_is_closed_by_the_keys_that_turn_the_others() {
 #[tokio::test]
 async fn the_page_panel_is_as_wide_as_its_code() {
     let mut harness = Harness::new([]);
-    let address = "http://192.168.1.5:8080/0123abcd/";
+    let address = "http://192.168.1.5:8080/0123abcd";
     harness.app.web = Some(address.to_owned());
     harness.send("/web").await;
 
