@@ -7,6 +7,14 @@ minor bump may break you.
 
 ## [unreleased]
 
+### added
+
+- **`Kernel::set_call_ceiling`** sets how many of one answer's tool calls are run. The calls past
+  it are answered with an error saying how many ran and to ask for the rest in the next answer, so
+  every call still has its result, and none of them is asked about or run. `None`, the default,
+  runs every one. A model caught in a repetition loop answered with thousands of calls, and every
+  one was run and recorded.
+
 ### fixed
 
 - **A tool that panics saying what a call needs, or how much of it to keep, fails that call.**
