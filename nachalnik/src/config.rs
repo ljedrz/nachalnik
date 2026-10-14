@@ -69,6 +69,11 @@ pub struct Config {
     ///
     /// note: Truncation is recorded on the context item and reported in
     /// [`Event::ToolFinished`], so it can never happen silently.
+    ///
+    /// note: where the kernel starts; [`Kernel::set_default_tool_output_limit`] changes it while
+    /// the session runs.
+    ///
+    /// [`Kernel::set_default_tool_output_limit`]: crate::Kernel::set_default_tool_output_limit
     pub default_tool_output_limit: Option<usize>,
     /// Whether the whole of a truncated tool output is kept in the context, excluded, beside the
     /// shortened copy the model is shown.

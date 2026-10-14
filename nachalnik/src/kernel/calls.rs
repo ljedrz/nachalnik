@@ -319,7 +319,7 @@ impl Kernel {
                 });
                 None
             })
-            .or(self.0.config.default_tool_output_limit);
+            .or(self.default_tool_output_limit());
         // note: cut on a copy first, because whether it is over is whether anything is cut - which
         // a picture kept whole makes a different question from whether it is longer than the limit
         let pictures = self.picture_limit();

@@ -567,6 +567,60 @@ impl nachalnik::Tool for Narrowing {
     }
 }
 
+/// What a tool that sets no limit of its own is cut at moves while the session runs, from the next
+/// call, and `None` cuts nothing.
+#[tokio::test]
+async fn the_default_output_limit_moves_while_the_session_runs() {
+    let kernel = Kernel::new(Config {
+        default_tool_output_limit: Some(100),
+        ..Config::default()
+    });
+    kernel.set_policy(Arc::new(AllowAll));
+    kernel.set_provider(Arc::new(ScriptedProvider::new([
+        ModelResponse::tool_calls(vec![call("c1", "big", json!({}))]),
+        ModelResponse::text("one"),
+        ModelResponse::tool_calls(vec![call("c2", "big", json!({}))]),
+        ModelResponse::text("two"),
+        ModelResponse::tool_calls(vec![call("c3", "big", json!({}))]),
+        ModelResponse::text("three"),
+    ])));
+    kernel.add_tool(Arc::new(ConstTool::new("big", "y".repeat(1_000))));
+    assert_eq!(
+        kernel.default_tool_output_limit(),
+        Some(100),
+        "it starts where the configuration put it"
+    );
+
+    kernel.push(ContextItem::user("go"));
+    kernel.turn().await.unwrap();
+    assert_eq!(kernel.set_default_tool_output_limit(Some(500)), Some(100));
+    kernel.push(ContextItem::user("again"));
+    kernel.turn().await.unwrap();
+    assert_eq!(kernel.set_default_tool_output_limit(None), Some(500));
+    kernel.push(ContextItem::user("and again"));
+    kernel.turn().await.unwrap();
+
+    let cut: Vec<Option<usize>> = kernel
+        .history()
+        .iter()
+        .filter_map(|record| match &record.event {
+            Event::ToolFinished { truncated, .. } => Some(*truncated),
+            _ => None,
+        })
+        .collect();
+    // the cut makes room for the line saying so, the same at either limit, so the two differ by
+    // exactly what the limit moved
+    let [Some(first), Some(second), None] = cut[..] else {
+        panic!("cut at both limits and not at all once there was none: {cut:?}");
+    };
+    assert_eq!(first - second, 400, "{cut:?}");
+    assert_eq!(
+        kernel.config().default_tool_output_limit,
+        Some(100),
+        "the configuration says where it started"
+    );
+}
+
 /// What a truncated result *is* outlives every state it passes through.
 ///
 /// note: the bug this closes. `note` is documented as why an item is in its current state, and it

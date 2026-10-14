@@ -336,6 +336,27 @@ impl Kernel {
         *self.0.picture_limit.read()
     }
 
+    /// Sets what the output of a tool that says nothing about its own limit is cut at, in bytes,
+    /// returning what it was; `None` cuts nothing. It starts at
+    /// [`Config::default_tool_output_limit`](crate::Config::default_tool_output_limit).
+    ///
+    /// note: a setter as well as the field, because what is worth showing the model of one
+    /// answer depends on how large its context window is, and that moves with the model while the
+    /// session runs. A tool somebody else wrote - one from an MCP server - says nothing about its
+    /// limit, and was held to the number the kernel was built with whatever model came after.
+    ///
+    /// note: read as each call's output is recorded, so a change holds from the next one. A
+    /// setting and not part of the session's state, as [`Kernel::set_call_ceiling`] is, so a
+    /// snapshot does not carry it.
+    pub fn set_default_tool_output_limit(&self, bytes: Option<usize>) -> Option<usize> {
+        std::mem::replace(&mut *self.0.output_limit.write(), bytes)
+    }
+
+    /// Returns what the output of a tool that sets no limit of its own is cut at, where it is cut.
+    pub fn default_tool_output_limit(&self) -> Option<usize> {
+        *self.0.output_limit.read()
+    }
+
     /// Returns the parameters that will be sent with the next request.
     pub fn params(&self) -> Params {
         self.0.params.read().clone()
