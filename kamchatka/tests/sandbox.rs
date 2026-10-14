@@ -23,7 +23,7 @@ use std::{
 };
 
 use kamchatka::{
-    sandbox::{Confinement, Network, Sandbox, available},
+    sandbox::{Confinement, Network, Sandbox, available, confine_saying, make_scratch},
     tools::{Careful, Limits, Shell, Subject},
 };
 use nachalnik::{
@@ -93,6 +93,74 @@ fn sandbox(workdir: PathBuf, writable: bool, network: Network) -> Sandbox {
         devices: kamchatka::sandbox::DEVICES.iter().map(Into::into).collect(),
         closed: Vec::new(),
     }
+}
+
+/// The scratch directory is granted as it was made, and a link put at its name afterwards opens up
+/// nothing.
+///
+/// note: the rule was built from the path, opened again when the ruleset was built and following
+/// whatever was there by then - and the scratch is made where a job an earlier command left
+/// running may write, so swapping the new directory for a link granted writing wherever the link
+/// led. Confining is for good, so it is done in a child: this test's own binary run again, which
+/// makes the directory, moves it aside, puts a link where it was, confines itself and tries both.
+#[test]
+fn a_link_swapped_in_for_the_scratch_directory_grants_nothing() {
+    const CHILD: &str = "KAMCHATKA_TEST_SCRATCH_SWAP";
+    if let Some(root) = std::env::var_os(CHILD) {
+        let root = PathBuf::from(root);
+        let (path, moved) = (root.join("kamchatka-swap"), root.join("moved"));
+        let scratch = make_scratch(&path).expect("the scratch is made");
+        std::fs::rename(&path, &moved).expect("moved aside");
+        std::os::unix::fs::symlink(root.join("elsewhere"), &path).expect("a link in its place");
+
+        let sandbox = Sandbox {
+            workdir: root.join("work"),
+            extra: Vec::new(),
+            readable: Vec::new(),
+            writable: false,
+            network: Network::Open,
+            devices: Vec::new(),
+            closed: Vec::new(),
+        };
+        if confine_saying(&sandbox, Some(&scratch)).0 != Confinement::Full {
+            std::process::exit(77);
+        }
+        let through_link = std::fs::write(path.join("planted.txt"), "x").is_ok();
+        let in_held = std::fs::write(moved.join("kept.txt"), "x").is_ok();
+        std::process::exit(match (through_link, in_held) {
+            (false, true) => 0,
+            (true, _) => 1,
+            (false, false) => 2,
+        });
+    }
+    if !enforced() {
+        return;
+    }
+
+    let root = common::scratch("scratch-swap");
+    for dir in ["elsewhere", "work"] {
+        std::fs::create_dir_all(root.join(dir)).expect("a directory");
+    }
+    let status = Command::new(std::env::current_exe().expect("this test's binary"))
+        .args([
+            "--exact",
+            "a_link_swapped_in_for_the_scratch_directory_grants_nothing",
+            "--test-threads=1",
+        ])
+        .env(CHILD, &root)
+        .output()
+        .expect("the child ran");
+    match status.status.code() {
+        Some(0) => {}
+        Some(1) => panic!("a link put at the scratch's name was granted what it pointed at"),
+        Some(2) => panic!("the directory made for the command was not granted"),
+        Some(77) => eprintln!("skipped: the child could not be confined"),
+        other => panic!(
+            "the child ended with {other:?}: {}",
+            String::from_utf8_lossy(&status.stderr)
+        ),
+    }
+    assert!(!root.join("elsewhere/planted.txt").exists());
 }
 
 /// Whether this kernel has the one right in the ruleset that is newer than the rest; the socket

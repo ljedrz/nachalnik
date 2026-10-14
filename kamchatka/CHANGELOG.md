@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### breaking
 
+- **`sandbox::make_scratch` returns a `Scratch`**, the directory held open beside its path, and
+  `confine` and `confine_saying` take one rather than a path, so that the rule is built from the
+  directory that was made; see the fix below.
 - **Settings say what they do.** Several flags, and the settings-file keys named after them, were
   one word that left out what was limited, in what unit, or what an allow was for. They are
   renamed, with no aliases, so a settings file or a script using an old name is refused until it is
@@ -103,6 +106,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A confined command's temporary directory is granted as it was made.** Its rule was built from
+  its path, opened again when the ruleset was built, so where the session's own `$TMPDIR` is inside
+  what its commands may write, a job an earlier command left running could swap the new directory
+  for a link in between, and the command would be granted writing wherever the link led. The
+  directory is opened, refusing a link, as soon as it is made, and granted by that.
 - **`--connect` to something that closes the connection without a word is refused at once.** A
   first connection closed before the session said anything was taken for a session that dropped,
   so a port held by something that is not a session was attached to again for a minute, and the

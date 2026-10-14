@@ -247,15 +247,18 @@ pub fn scope_signals() -> bool {
 /// `write` stance mean nothing at all.
 ///
 /// note: and it is an [`Option`], because [`make_scratch`] is allowed to fail and this must not
-/// paper over it by handing the command a `TMPDIR` that is not there. The rule for it is dropped
-/// either way: `path_beneath_rules` leaves out a path it cannot open rather than failing, so a
-/// directory that has gone away costs its own rule and nothing else - which is a fact about
-/// `landlock` rather than about this program, and `tests/sandbox.rs` holds the version to it.
+/// paper over it by handing the command a `TMPDIR` that is not there.
+///
+/// note: its rule is built from the directory [`Scratch`] holds open rather than from its path,
+/// which is what every other root here is granted by. A path is opened again when the rules are
+/// built, following whatever is at it by then, and the scratch is made where a job an earlier
+/// command left running may be able to write - so swapping the new directory for a link would
+/// have granted writing wherever the link led.
 ///
 /// note: under `/dev`, reading and writing [`Sandbox::devices`] and nothing else - [`DEVICES`]
 /// unless somebody said otherwise - because `/dev/null` is not optional and the rest of `/dev`
 /// reaches past the command: another terminal of the person's, their shared memory, a camera.
-pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
+pub fn confine(sandbox: &Sandbox, scratch: Option<&Scratch>) -> Confinement {
     confine_saying(sandbox, scratch).0
 }
 
@@ -266,10 +269,15 @@ pub fn confine(sandbox: &Sandbox, scratch: Option<&Path>) -> Confinement {
 /// person with a kernel that has Landlock was left to guess what refused it. The reason travels
 /// beside the value rather than in it, because `Confinement` is a `Copy` answer matched all over
 /// this program, and the reason is for saying rather than for deciding.
-pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement, Option<String>) {
+pub fn confine_saying(
+    sandbox: &Sandbox,
+    scratch: Option<&Scratch>,
+) -> (Confinement, Option<String>) {
+    use std::os::fd::AsFd as _;
+
     use landlock::{
-        ABI, Access, AccessFs, AccessNet, NetPort, Ruleset, RulesetAttr, RulesetCreatedAttr,
-        RulesetError, RulesetStatus, path_beneath_rules,
+        ABI, Access, AccessFs, AccessNet, NetPort, PathBeneath, Ruleset, RulesetAttr,
+        RulesetCreatedAttr, RulesetError, RulesetStatus, path_beneath_rules,
     };
 
     // note: V3 rather than V1, for `Truncate`. An access right the ruleset does not *handle* is
@@ -347,9 +355,9 @@ pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement
 
     let writable: Vec<PathBuf> = std::iter::once(sandbox.workdir.clone())
         .filter(|_| sandbox.writable)
-        .chain(scratch.map(Path::to_path_buf))
         .chain(sandbox.extra.iter().cloned())
         .collect();
+    let scratch = scratch.map(|scratch| Ok(PathBeneath::new(scratch.held.as_fd(), rights)));
     let readable: Vec<PathBuf> = SYSTEM
         .iter()
         .map(PathBuf::from)
@@ -374,6 +382,7 @@ pub fn confine_saying(sandbox: &Sandbox, scratch: Option<&Path>) -> (Confinement
             ))
         })
         .and_then(|created| created.add_rules(path_beneath_rules(&writable, rights)))
+        .and_then(|created| created.add_rules(scratch))
         .and_then(|created| created.add_rules(open))
         .and_then(|created| created.restrict_self());
 
@@ -469,8 +478,15 @@ pub fn scratch_for(pid: u32) -> PathBuf {
 /// command's standard error goes to the model, and this program's own bookkeeping does not belong
 /// in it. What the model gets instead is the truth at the point it matters: no `TMPDIR`, a `/tmp`
 /// that is not writable, and [`Sandbox::note_for`] on the permission error that follows.
-pub fn make_scratch(path: &Path) -> Option<PathBuf> {
+///
+/// note: opened as soon as it is made, refusing a link at its name, and held: [`confine`] grants
+/// the directory held rather than whatever the path names by then. A directory that could take
+/// its place in between is one the job doing it could already write, since Landlock lets it move
+/// nothing else in; a link is the one way to point the name further, and that is what is refused.
+pub fn make_scratch(path: &Path) -> Option<Scratch> {
     use std::os::unix::fs::DirBuilderExt as _;
+
+    use rustix::fs::{Mode, OFlags};
 
     let private = || std::fs::DirBuilder::new().mode(0o700).create(path);
     if private().is_err() {
@@ -479,8 +495,32 @@ pub fn make_scratch(path: &Path) -> Option<PathBuf> {
         let _ = std::fs::remove_dir_all(path).or_else(|_| std::fs::remove_file(path));
         private().ok()?;
     }
+    let held = rustix::fs::open(
+        path,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .ok()?;
 
-    Some(path.to_path_buf())
+    Some(Scratch {
+        path: path.to_path_buf(),
+        held,
+    })
+}
+
+/// A temporary directory of a confined command's own: where it is, for `TMPDIR`, and the
+/// directory itself, held open from the moment it was made; see [`make_scratch`].
+#[derive(Debug)]
+pub struct Scratch {
+    path: PathBuf,
+    held: std::os::fd::OwnedFd,
+}
+
+impl Scratch {
+    /// Where it is.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
 }
 
 /// What a probe found here: how much of a ruleset the kernel takes, and whether the network gate
@@ -604,7 +644,7 @@ pub fn run_if_asked() -> Option<i32> {
     // removes it again, being the only one of the two processes that can
     let scratch = make_scratch(&scratch_for(std::process::id()));
 
-    let (confinement, why) = confine_saying(&sandbox, scratch.as_deref());
+    let (confinement, why) = confine_saying(&sandbox, scratch.as_ref());
     // note: a layer of its own, and only where no session's is above; see `SESSION_FLAG`. Taken
     // where the kernel has it and gone without where it does not, as the session's is in `main`
     if argv.get(1).is_none_or(|word| word != SESSION_FLAG) {
@@ -676,7 +716,7 @@ pub fn run_if_asked() -> Option<i32> {
     // handed is the directory the scratch could not be made in, and passing it on would tell the
     // command it has somewhere to write where it most likely has not
     match &scratch {
-        Some(scratch) => command.env("TMPDIR", scratch),
+        Some(scratch) => command.env("TMPDIR", scratch.path()),
         None => command.env_remove("TMPDIR"),
     };
     // note: a ruleset is in force here - an unconfined run has already returned - and that is the
