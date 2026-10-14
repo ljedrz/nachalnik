@@ -220,13 +220,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   refusing a link, and building the rule from that descriptor rather than from a path, which
   `path_beneath_rules` does not take.
 
-- **A question about a call whose arguments can't be read shows the raw wrapper.** The policy
-  (`Careful::judges`), the question panel and the shell advisor read a call's arguments through
-  `ops::inner`, and where that fails they fall back to the arguments as sent. A malformed `call`
-  wrapper is then judged, rated and shown as the wrapper itself, and only the tool, once allowed,
-  says it can't read it. Whether the question should say up front that the call will be refused is
-  a choice about what a question is for.
-
 - **The `/dev/shm` test has not been seen to run.** `a_confined_command_cannot_write_shared_memory`
   skips wherever `/dev/shm` can't be written outside the sandbox, which includes a session run
   under `kamchatka`'s own confinement, so its assertions, and whether it fails once `/dev/shm` is
