@@ -56,6 +56,11 @@ minor bump may break you.
 
 ### fixed
 
+- **A headless run refused for length by an endpoint that publishes no limit stops sending.** The
+  refusal stood only while the context was over the published limit, and with none published it
+  never was, so every message after it was sent and refused in turn. It is measured against the
+  size of the request that was refused now, and the messages after it are passed over until the
+  context is smaller, saying so.
 - **A run stopped by a deadline or a signal after its last turn failed leaves with the stop's
   status.** It left with `1`, since only the failure was read, so a script telling a timeout from a
   failure by the status was told the failure. It leaves with `124`, `129`, `130` or `143` now, and

@@ -297,7 +297,7 @@ impl App {
         let Some(overrun) = overrun else {
             return;
         };
-        self.oversized = true;
+        self.oversized = Some(self.kernel.budget().used());
 
         let tokens = thousands(overrun.tokens as usize);
         let over = overrun
