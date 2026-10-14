@@ -283,7 +283,11 @@ impl Tool for McpTool {
 /// note: Anthropic's limit for one image, the strictest of the APIs that take one in a tool
 /// result; past it the request is refused - this one and every later one, while the image stays
 /// in the context - so a larger one is named instead, as every image was before.
-const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
+///
+/// note: public so that a host can hand it to `Kernel::set_picture_limit`. A tool's output limit
+/// measures a picture with its text otherwise, and one this size is over any limit text is held
+/// to, so the model is shown its name instead of the picture.
+pub const LARGEST_IMAGE: usize = 5 * 1024 * 1024;
 
 /// Turns what a server returned into what the kernel records.
 ///
