@@ -73,13 +73,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   order the snapshot order; what is missing is a test that can order the two forks, since the kernel
   runs parallel calls on a `JoinSet`.
 
-- **A refused attach still displaces the client that was attached.** `Serving::answer` seats a
-  client before the attach is answered, and `watermark` refuses a projection too long for one frame
-  only after that, so the client there before is let go and the newcomer is refused - nobody is
-  attached. A projection that long is rare, since the conversation is cut down to fit; seating
-  after the size check means a second exchange in the attach, or the check inside the server.
-  Unblocked by choosing which.
-
 - **A client that falls behind on the program's own lines can be left with the wrong state.** The
   session says `Busy`, `Model` and `Reaching` only when they change, and a client more than 256 of
   these lines behind is told only how many it missed. If one of the lost lines was one of those

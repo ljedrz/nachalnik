@@ -875,11 +875,17 @@ impl Serving {
                     Command::Attach { since: Some(_), .. } => standing(app),
                     _ => Vec::new(),
                 };
-                if matches!(command, Command::Attach { .. }) {
+                let attaching = matches!(command, Command::Attach { .. });
+                let message = apply(app, command).await;
+                // note: seated only with a projection it can be sent. One too long for a frame is
+                // refused by the connection, by name - see `connection::watermark` - and seated
+                // first, the client there before was let go for a newcomer that was then refused,
+                // and nobody had the session
+                if attaching && fits(message.as_ref()) {
                     self.seated(app, client);
                 }
                 let _ = answer.send(Answered {
-                    message: apply(app, command).await,
+                    message,
                     voice,
                     standing,
                 });
@@ -1362,6 +1368,17 @@ pub fn opening(app: &mut App, address: &str) {
              give"
         ),
     );
+}
+
+/// Whether an answer to an attach can be sent in one frame: a projection no longer than a client
+/// reads in one line, or anything that is not a projection.
+fn fits(message: Option<&Message>) -> bool {
+    match message {
+        Some(projection @ Message::Attached(_)) => protocol::framed(projection)
+            .ok()
+            .is_some_and(|line| protocol::overlong(&line).is_none()),
+        _ => true,
+    }
 }
 
 #[cfg(test)]
