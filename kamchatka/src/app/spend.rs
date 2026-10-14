@@ -23,8 +23,8 @@ impl App {
     ///
     /// note: except for a response whose stream never finished. It never reaches the chunk the
     /// figures ride on, so its silence is about the stream rather than the endpoint - and saying
-    /// otherwise after a ctrl+c, a `--deadline` or a dropped connection tells whoever set the
-    /// ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off` are
+    /// otherwise after a ctrl+c, a `--max-run-seconds` or a dropped connection tells whoever set
+    /// the ceiling it has stopped meaning anything when it has not. `interrupted` and `cut off` are
     /// the stop reasons both of `nachalnik-providers`' dialects give a stream they were told to
     /// stop and one that ended mid-answer.
     ///
@@ -181,8 +181,8 @@ impl App {
         self.overspent
     }
 
-    /// Whether the last turn stopped at `--requests` with the model not done, waiting for
-    /// `/continue`.
+    /// Whether the last turn stopped at `--max-requests-per-turn` with the model not done, waiting
+    /// for `/continue`.
     ///
     /// note: the last turn's, and cleared by the next one: a pause somebody carried on from is not
     /// where the session stopped. What a headless run reads for its exit status - the records of a

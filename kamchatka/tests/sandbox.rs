@@ -188,7 +188,7 @@ fn a_shell_that_may_not_write_says_so_before_it_is_asked_to() {
 ///
 /// note: the premise the code above `confine` rests on, and it belongs to `landlock` rather than
 /// to this program: `path_beneath_rules` drops a path it cannot open rather than failing, so a
-/// `--sandbox-allow` directory that has gone away costs its own rule and nothing else. The note
+/// `--sandbox-write` directory that has gone away costs its own rule and nothing else. The note
 /// there used to say such a path made `add_rules` fail and the command run unconfined - which
 /// would make this test the one that catches a version where it becomes true.
 #[test]
@@ -520,7 +520,7 @@ fn a_refused_write_stance_makes_the_working_directory_read_only() {
     assert!(ok && said.contains("hello"), "{said}");
 }
 
-/// A refusal of `fs:write` reaches the paths `--sandbox-allow` opened as well as the working
+/// A refusal of `fs:write` reaches the paths `--sandbox-write` opened as well as the working
 /// directory: the command can read them and not write them, and the confinement says so.
 ///
 /// note: through `Sandbox::of`, which is where the policy becomes a confinement, rather than a
@@ -1025,11 +1025,11 @@ fn reading_a_path_is_not_connecting_to_a_socket_in_it() {
 /// Two paths can be opened up in one flag, and both of them arrive.
 ///
 /// note: through the program rather than through `Reach`, because what was in doubt is the
-/// argument: `--sandbox-allow` took one value per use, so two paths meant saying it twice and
-/// `--sandbox-allow a b` quietly read `b` as the message to send. It takes a comma-separated list
-/// now, the way `--allow` and `--deny` do, and this asks the program what it ended up with -
-/// `shell` names the paths that were opened up in its own description, so `/tools` is the answer
-/// without a model anywhere.
+/// argument: `--sandbox-write` took one value per use, so two paths meant saying it twice and
+/// `--sandbox-write a b` quietly read `b` as the message to send. It takes a comma-separated list
+/// now, the way `--auto-allow` and `--auto-deny` do, and this asks the program what it ended up
+/// with - `shell` names the paths that were opened up in its own description, so `/tools` is the
+/// answer without a model anywhere.
 #[test]
 fn two_paths_go_in_as_one_flag() {
     if !enforced() {
@@ -1041,7 +1041,7 @@ fn two_paths_go_in_as_one_flag() {
             "-m",
             "nothing-serves-this",
             "--no-record",
-            "--sandbox-allow",
+            "--sandbox-write",
             "/usr/share,/usr/include",
             "--sandbox-read",
             "/usr/lib,/usr/bin",

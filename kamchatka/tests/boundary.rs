@@ -336,7 +336,7 @@ fn a_directory_turned_into_a_link_out_is_not_made_through() {
 /// A refusal names everywhere the session reaches, not only the directory it started in.
 ///
 /// note: it used to say "outside {workdir}, which is as far as this session reaches", which was
-/// true until somebody passed `--sandbox-allow` and false afterwards - and false in the direction
+/// true until somebody passed `--sandbox-write` and false afterwards - and false in the direction
 /// that costs something. A model reads a refusal as the whole boundary, so a path opened up for it
 /// on purpose is one it then never goes near, and nothing in front of it says otherwise. The
 /// `shell` tool has named them in its own description since the same thing happened to a confined
@@ -913,7 +913,7 @@ fn a_permission_error_says_when_the_confinement_caused_it() {
 
     // but a write there that the person could have made is the confinement: reached for reading
     // and not for writing, as `--sandbox-read` is and as the working directory is under
-    // `--deny fs:write`
+    // `--auto-deny fs:write`
     let note = opened
         .note_for(&format!(
             "sh: line 1: {}/out.txt: Permission denied\n",
@@ -1210,7 +1210,7 @@ fn a_refusal_in_dev_is_accounted_for_as_dev_is_granted() {
 /// A root the person named under `/dev` is reached like one anywhere else, so a refusal beneath it
 /// is the file's own permissions and nothing is said.
 ///
-/// note: `--sandbox-allow` and `--sandbox-read` are granted under `/dev` as anywhere, and only
+/// note: `--sandbox-write` and `--sandbox-read` are granted under `/dev` as anywhere, and only
 /// `--sandbox-device` is limited to it. Judging `/dev` by the devices alone told a command that a
 /// terminal beneath an allowed `/dev/pts` was out of reach, when it was the terminal's owner who
 /// refused it.

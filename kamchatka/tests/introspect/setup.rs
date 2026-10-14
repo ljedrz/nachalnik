@@ -159,7 +159,7 @@ async fn setup_tools_says_whether_what_is_cut_is_kept() {
             ),
             false => assert!(
                 said.contains("not kept: this session was told to forget it"),
-                "`--forget-truncated` was set and this says it can be restored: {said}"
+                "`--discard-cut-off-output` was set and this says it can be restored: {said}"
             ),
         }
     }
@@ -757,13 +757,13 @@ async fn setup_tools_reports_the_kernel_ceiling_only_where_it_is_what_cuts() {
 /// `mcp:call` names no tool that came from a server this program spawned, because it does not
 /// decide for one.
 ///
-/// note: live, on a session run `--allow mcp --mcp big=...`. The answer read `mcp:call  allow
-/// big__add, big__spew` and the very next call to `big__spew` was refused: `Careful::judges` takes
-/// `mcp:call` back out for a tool whose server it knows and puts the server's own name in its
-/// place, so that `--allow-server` is one flag rather than two. The table was filled from what the
-/// tools *declare*, which is the list before that swap - so it named a rule as being in force over
-/// two tools it is never consulted about, in the one answer a model has for checking what it may
-/// do.
+/// note: live, on a session run `--auto-allow mcp --mcp big=...`. The answer read
+/// `mcp:call allow big__add, big__spew` and the very next call to `big__spew` was refused:
+/// `Careful::judges` takes `mcp:call` back out for a tool whose server it knows and puts the
+/// server's own name in its place, so that `--auto-allow-server` is one flag rather than two. The
+/// table was filled from what the tools *declare*, which is the list before that swap - so it named
+/// a rule as being in force over two tools it is never consulted about, in the one answer a model
+/// has for checking what it may do.
 #[tokio::test]
 async fn setup_permissions_does_not_credit_mcp_with_a_server_s_tools() {
     let kernel = Kernel::new(Config::default());

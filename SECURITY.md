@@ -135,7 +135,7 @@ What changes to this workspace must keep true about what is and isn't enforced.
   when the refusal wasn't the sandbox's. Where the error names no path, there is nothing to judge,
   so the note says only that the sandbox may be the cause. See `Sandbox::note_for`.
 - **And name everything the session *can* reach.** A refusal that names the working directory as
-  the whole of what's allowed becomes false as soon as someone passes `--sandbox-allow` or
+  the whole of what's allowed becomes false as soon as someone passes `--sandbox-write` or
   `--sandbox-read`. Under-reporting is worse than over-reporting here: a model takes a refusal as
   the complete rule, and won't try a path someone opened for exactly this purpose, and it can't
   find that out by itself. See `Reach::range`, which is worded the same way as `Sandbox`'s
@@ -226,16 +226,16 @@ cause harm, what stops them, and what doesn't.
   answers can do: its tools are judged under the server's name, and what it returns goes into the
   context like any other tool result, where the model reads it, which brings us back to the first
   point.
-- **Whoever wrote the directory `kamchatka` is run in.** Without `--config-file`, `kamchatka`
-  reads `./kamchatka.json`, and that file can set every setting the command line can: `mcp`, which
-  starts unconfined programs before the first message, `no-sandbox`, `allow`, `allow-server`,
+- **Whoever wrote the directory `kamchatka` is run in.** Without `--config-file`, `kamchatka` reads
+  `./kamchatka.json`, and that file can set every setting the command line can: `mcp`, which starts
+  unconfined programs before the first message, `no-sandbox`, `auto-allow`, `auto-allow-server`,
   `on-ask` and the sandbox paths. So running `kamchatka` in someone else's repository would run it
   with their settings: their MCP servers would start as you, and a file that turns off the sandbox
-  and allows `exec` would leave nothing between that repository's instructions and your machine.
-  So the file isn't read until someone at a terminal approves it: the question lists which of
-  those settings it changes, and anything but yes runs without it. A run without a terminal to ask
-  at is refused, with a message saying to pass the file with `--config-file`. The file in your own
-  config directory is read without asking, since nobody else writes there.
+  and allows `exec` would leave nothing between that repository's instructions and your machine. So
+  the file isn't read until someone at a terminal approves it: the question lists which of those
+  settings it changes, and anything but yes runs without it. A run without a terminal to ask at is
+  refused, with a message saying to pass the file with `--config-file`. The file in your own config
+  directory is read without asking, since nobody else writes there.
 - **The provider.** Everything in a request is sent to it, and a request is the context: the
   conversation, tool results, and any file the model was allowed to read. Nothing here prevents
   that, and nothing can; that's what using a model means.

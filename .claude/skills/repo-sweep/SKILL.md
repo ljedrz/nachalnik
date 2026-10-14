@@ -277,10 +277,10 @@ a line, each written to need particular operations without naming them:
 ```sh
 python3 - <<'EOF'       # $SWEEPS/fr.json: every tool, every domain allowed, a question answered no
 import json, os
-json.dump({"model": "<model>", "requests": 0,
+json.dump({"model": "<model>", "max-requests-per-turn": 0,
   "tools": ["fs", "shell", "context", "log", "setup", "fork"],
-  "allow": ["fs", "exec", "context", "log", "setup", "fork"], "on-ask": "deny",
-  "system": "You are a software engineer working in the Rust workspace in the current directory, "
+  "auto-allow": ["fs", "exec", "context", "log", "setup", "fork"], "on-ask": "deny",
+  "system-prompt": "You are a software engineer working in the Rust workspace in the current directory, "
     "for a person who is not watching and cannot answer questions. Do what each message asks "
     "with the tools you have, and say plainly when something cannot be done. Do not run cargo: "
     "there is no toolchain here."}, open(os.environ["SWEEPS"] + "/fr.json", "w"))

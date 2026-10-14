@@ -15,13 +15,13 @@ MODEL=$model CARGO_HOME=${CARGO_HOME:-$HOME/.cargo} RUSTUP=${RUSTUP_HOME:-$HOME/
 import json, os
 json.dump({
     "model": os.environ["MODEL"],
-    "requests": 0,
+    "max-requests-per-turn": 0,
     "tools": ["fs", "shell", "context", "log", "setup", "fork"],
-    "allow": ["fs", "exec", "context", "log", "setup", "fork"],
+    "auto-allow": ["fs", "exec", "context", "log", "setup", "fork"],
     "on-ask": "deny",
-    "compact": 0.6,
+    "compact-context-at": 0.6,
     "sandbox-read": [os.environ["CARGO_HOME"], os.environ["RUSTUP"], os.environ["GITDIR"]],
-    "system": "You are a software engineer working in the Rust workspace in the current "
+    "system-prompt": "You are a software engineer working in the Rust workspace in the current "
         "directory, for a person who is not watching and cannot answer questions. Do what each "
         "message asks with the tools you have, and say plainly when something cannot be done. "
         "The network is closed; cargo works with --offline, and CARGO_TARGET_DIR is already set, "

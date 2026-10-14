@@ -34,10 +34,10 @@ default = ["mcp", "tui", "webui"]
 # own. On its own it changes nothing in the program; `shell-advisor` uses it, and so does the
 # `system1_assisted_compaction` example.
 advise = ["nachalnik-providers/system1"]
-# `--advise`: the advisor rates each `shell` command you're asked about on a three-level scale,
-# shown as green, yellow or red in the permission question. A command chained with `|`, `&&` or
-# `;` is rated stage by stage, in one request, and gets the worst stage's rating, with that stage
-# underlined.
+# `--rate-shell-commands`: the advisor rates each `shell` command you're asked about on a
+# three-level scale, shown as green, yellow or red in the permission question. A command chained
+# with `|`, `&&` or `;` is rated stage by stage, in one request, and gets the worst stage's rating,
+# with that stage underlined.
 #
 # note: the rating is only displayed. It never affects what is allowed or refused, and commands
 # you've allowed run without being rated.
@@ -68,8 +68,7 @@ tui = [
 [dependencies]
 nachalnik = { workspace = true, features = ["selectors"] }
 nachalnik-mcp = { workspace = true, optional = true }
-# every API: `--gemini`, `--anthropic` and `--responses` choose one at startup, and the rest of
-# the program doesn't need to know which
+# every API: `--api` chooses one at startup, and the rest of the program doesn't need to know which
 nachalnik-providers = { workspace = true, features = ["anthropic", "gemini"] }
 
 parking_lot.workspace = true

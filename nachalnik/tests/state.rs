@@ -477,8 +477,8 @@ async fn a_session_finished_with_calls_waiting_names_them() {
 /// An answered question does not give a turn a fresh request budget.
 ///
 /// note: `turn` counted the requests it sent itself, so the `turn` called once a question was
-/// answered started from nothing - and a turn whose every call was asked about ran as many
-/// requests as it liked under any limit. Headless `--requests 1 --on-ask deny` made three and
+/// answered started from nothing - and a turn whose every call was asked about ran as many requests
+/// as it liked under any limit. Headless `--max-requests-per-turn 1 --on-ask deny` made three and
 /// exited as though it had finished. The budget is the turn's now, and a turn carried on past a
 /// budget that ran out is somebody's decision, so that one does start again.
 #[tokio::test]

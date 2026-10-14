@@ -376,9 +376,9 @@ async fn a_cut_inside_a_multi_byte_character_moves_on_to_the_next_boundary() {
 
 /// Two calls streaming at once are two lines, and the first to finish takes only its own away.
 ///
-/// note: `--parallel` runs calls abreast, and their output was appended to whichever line was
-/// open - so it interleaved fragment by fragment on one line, and the first call to finish dropped
-/// the other's output with its own while that one was still running.
+/// note: `--parallel-tool-calls` runs calls abreast, and their output was appended to whichever
+/// line was open - so it interleaved fragment by fragment on one line, and the first call to finish
+/// dropped the other's output with its own while that one was still running.
 #[tokio::test]
 async fn two_calls_streaming_at_once_are_two_lines() {
     let mut harness = Harness::new([]);

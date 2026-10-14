@@ -17,7 +17,7 @@ use nachalnik_providers::Dialect;
 
 use crate::{
     app::App,
-    config::{self, Compact, Settings},
+    config::{self, Api, Compact, Settings},
     endpoint,
     tools::Subject,
     wiring::Setup,
@@ -32,15 +32,15 @@ use crate::{
 /// where a person looks for the list.
 ///
 /// note: a function rather than a literal, so that the advisor's three are listed by a build that
-/// has an `--advise` to use them and by no other. A variable named in the help of a program that
-/// reads it nowhere is the same failure as a settings key nothing consults.
+/// has an `--rate-shell-commands` to use them and by no other. A variable named in the help of a
+/// program that reads it nowhere is the same failure as a settings key nothing consults.
 pub fn environment() -> String {
-    /// The advisor's three, listed by a build that has an `--advise` and empty in one that does
-    /// not.
+    /// The advisor's three, listed by a build that has an `--rate-shell-commands` and empty in one
+    /// that does not.
     #[cfg(feature = "shell-advisor")]
     const ADVISOR: &str = "
 
-The advisor, which is only ever asked when --advise is given:
+The advisor, which is only ever asked when --rate-shell-commands is given:
   KAMCHATKA_SYSTEM1_MODEL     which System One model answers; required, and any of
                               openrouter.ai/api/v1/models?output_modalities=decisions
   KAMCHATKA_SYSTEM1_API_KEY   its key. Without one it borrows an OpenRouter key -
@@ -59,17 +59,17 @@ Environment:
                            OpenAI, Google and Anthropic; a model served locally takes none
   OPENROUTER_API_KEY       the key for OpenRouter, and only there
   OPENAI_API_KEY           the key for OpenAI's own API, and only there
-  ANTHROPIC_API_KEY        the key for Anthropic's own API, with --anthropic, and only there
+  ANTHROPIC_API_KEY        the key for Anthropic's own API, with --api anthropic, and only there
   KAMCHATKA_BASE_URL       where the requests go, e.g. http://localhost:11434/v1 for ollama;
-                           OpenRouter by default, Google's own v1beta with --gemini, or
-                           Anthropic's own with --anthropic; with --responses, OpenRouter or
-                           https://api.openai.com/v1 for OpenAI's own
+                           OpenRouter by default, Google's own v1beta with --api gemini, or
+                           Anthropic's own with --api anthropic; with --api responses,
+                           OpenRouter or https://api.openai.com/v1 for OpenAI's own
   KAMCHATKA_CONTEXT_LIMIT  the model's context size, for a provider that will not say
   KAMCHATKA_NO_ATTRIBUTION set to stop naming this program to OpenRouter{ADVISOR}
 
-Exit status of a headless run: 0 done, 1 failed, 3 --spend reached, 4 paused at --requests,
-5 done but the record could not be written, 124 --deadline passed, 129/130/143 SIGHUP, ctrl+c or
-SIGTERM - the last three for a served one too"
+Exit status of a headless run: 0 done, 1 failed, 3 --max-spend-tokens reached, 4 paused at
+--max-requests-per-turn, 5 done but the record could not be written, 124 --max-run-seconds
+passed, 129/130/143 SIGHUP, ctrl+c or SIGTERM - the last three for a served one too"
     )
 }
 
@@ -97,23 +97,16 @@ pub struct Args {
     #[arg(short, long, env = "KAMCHATKA_MODEL")]
     pub model: Option<String>,
 
-    /// Talk to Google's own API rather than an OpenAI-compatible one, so that a turn keeps the
-    /// order it was produced in: thinking, a sentence, a tool call, more thinking.
-    #[arg(long, conflicts_with_all = ["anthropic", "responses"])]
-    pub gemini: bool,
-
-    /// Talk to Anthropic's own Messages API rather than an OpenAI-compatible one, so that a
-    /// turn keeps its order and its signed thinking goes back as it came. OpenRouter speaks it
-    /// too: point `KAMCHATKA_BASE_URL` at `https://openrouter.ai/api/v1`.
-    #[arg(long, conflicts_with = "responses")]
-    pub anthropic: bool,
-
-    /// Ask OpenAI's Responses API rather than chat completions, so that a turn keeps its order
-    /// and a reasoning model's thinking goes back sealed rather than being redone every turn.
-    /// OpenRouter answers it as well as OpenAI: `KAMCHATKA_BASE_URL=https://api.openai.com/v1`
-    /// for OpenAI's own.
-    #[arg(long)]
-    pub responses: bool,
+    /// Which API the requests speak. `chat-completions` is OpenAI's, which OpenRouter and most
+    /// local servers speak too. `responses` is OpenAI's Responses API, so that a turn keeps its
+    /// order and a reasoning model's thinking goes back sealed rather than being redone every turn;
+    /// OpenRouter answers it as well as OpenAI, at `KAMCHATKA_BASE_URL=https://api.openai.com/v1`
+    /// for OpenAI's own. `anthropic` is Anthropic's Messages API, so that a turn keeps its order
+    /// and its signed thinking goes back as it came; OpenRouter speaks it too, at
+    /// `https://openrouter.ai/api/v1`. `gemini` is Google's own, so that a turn keeps the order it
+    /// was produced in: thinking, a sentence, a tool call, more thinking.
+    #[arg(long, value_enum, value_name = "API", default_value_t = Api::ChatCompletions)]
+    pub api: Api,
 
     /// Ask a second model where each shell command a question is about lands on a three-level
     /// rubric, and colour the question by the answer - a command joined at its `|`, `&&` or `;`
@@ -124,16 +117,16 @@ pub struct Args {
     /// machine, where nothing leaves it.
     #[cfg(feature = "shell-advisor")]
     #[arg(long)]
-    pub advise: bool,
+    pub rate_shell_commands: bool,
 
     /// A file to put in the context, pinned; a PDF or an image goes in as itself. May be
     /// repeated, and `/attach` is the same thing at the prompt.
     #[arg(short, long, value_name = "PATH")]
     pub file: Vec<String>,
 
-    /// A system instruction. The runtime ships none of its own.
+    /// A system prompt, pinned. The runtime ships none of its own.
     #[arg(short, long, value_name = "TEXT")]
-    pub system: Option<String>,
+    pub system_prompt: Option<String>,
 
     /// Carry on from a session written by `/save`.
     #[arg(short, long, value_name = "PATH")]
@@ -148,25 +141,25 @@ pub struct Args {
     /// How many requests one turn may make before it stops and asks; `0` is no limit at all.
     /// `/requests N` changes it while the session runs.
     #[arg(long, value_name = "N", default_value_t = 8)]
-    pub requests: usize,
+    pub max_requests_per_turn: usize,
 
     /// How full the context may get before its oldest exchanges are excluded, which they can be
     /// restored from; `1` never compacts at all. A second fraction after a comma is how far down a
     /// full context is taken once they start going, at most the first; left out, twenty points
     /// under it or half of it, whichever is more.
     #[arg(long, value_name = "FRACTION[,TARGET]", default_value = "0.8")]
-    pub compact: Compact,
+    pub compact_context_at: Compact,
 
     /// Let the model's tool calls run at the same time, instead of in the order it asked.
     #[arg(long)]
-    pub parallel: bool,
+    pub parallel_tool_calls: bool,
 
     /// Offer this program's own tools with every argument at the top level of a call, rather than
     /// inside one `call` object. For a model whose own call format is flat, which can slip back
     /// into it partway through a nested object and send a call that cannot be read. Tools from an
     /// MCP server are offered as the server wrote them.
     #[arg(long)]
-    pub flat_calls: bool,
+    pub flat_tool_arguments: bool,
 
     /// Run with no confinement at all: the shell reaches whatever the user running this can, and
     /// `fs`, which is not a process, stops holding itself to the working directory.
@@ -181,7 +174,7 @@ pub struct Args {
     /// A path outside the working directory the tools may also read and write. May be repeated,
     /// and takes a comma-separated list.
     #[arg(long, value_name = "PATH", value_delimiter = ',')]
-    pub sandbox_allow: Vec<std::path::PathBuf>,
+    pub sandbox_write: Vec<std::path::PathBuf>,
 
     /// A path outside the working directory the tools may read but not change. The same, and a
     /// toolchain is the usual one: `cargo` cannot start without `~/.rustup`.
@@ -197,13 +190,13 @@ pub struct Args {
     /// Drop the whole of a tool's output once it has been shortened, rather than keeping it as an
     /// excluded item that can still be read.
     #[arg(long)]
-    pub forget_truncated: bool,
+    pub discard_cut_off_output: bool,
 
     /// Send a request the counter puts over the model's context anyway, and let the endpoint be
     /// the one that says no. For a limit that is advertised wrongly, or a counter that has
     /// drifted, the endpoint's own count is worth more than any guess made here.
     #[arg(long)]
-    pub send_oversized: bool,
+    pub send_oversized_requests: bool,
 
     /// Drive the session from lines on stdin instead of from a screen: the session log goes to
     /// stdout, one JSON record per line, and what the model says goes to stderr. Implied when
@@ -239,21 +232,21 @@ pub struct Args {
     /// `.env*`. May be repeated, and takes a comma-separated list. Answering at the prompt writes
     /// the same table.
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
-    pub allow: Vec<String>,
+    pub auto_allow: Vec<String>,
 
     /// Refuse one, the same way. The strictest of everything consulted wins, so this beats
-    /// `--allow`.
+    /// `--auto-allow`.
     #[arg(long, value_name = "SUBJECT", value_delimiter = ',')]
-    pub deny: Vec<String>,
+    pub auto_deny: Vec<String>,
 
     /// Allow every tool an MCP server offers, by the name it was given. Its own argument because
     /// a server name and a domain are both bare words and nothing in either says which it is.
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    pub allow_server: Vec<String>,
+    pub auto_allow_server: Vec<String>,
 
     /// Refuse one, the same way.
     #[arg(long, value_name = "NAME", value_delimiter = ',')]
-    pub deny_server: Vec<String>,
+    pub auto_deny_server: Vec<String>,
 
     /// What to do with a question nobody is there to answer: in a headless run, and in a
     /// `--connect` one once its input has closed. `--connect` leaves it for somebody else unless
@@ -264,24 +257,24 @@ pub struct Args {
     /// Stop a headless run after this many seconds, however far it has got; `0` is no deadline.
     /// What has arrived is kept and the session is written out as usual.
     #[arg(long, value_name = "SECONDS")]
-    pub deadline: Option<u64>,
+    pub max_run_seconds: Option<u64>,
 
     /// How many seconds the model's answer may say nothing - before its first word, or between
     /// two - before the request is given up on; 150 unless given. A free endpoint under load can
     /// hold a request in its queue for longer than that and then answer it normally.
     #[arg(long, value_name = "SECONDS")]
-    pub patience: Option<u64>,
+    pub max_silence_seconds: Option<u64>,
 
     /// How many seconds a call to an MCP server's tool may wait for its answer before it is given
     /// up on; 600 unless given, and `0` waits as long as the server takes.
     #[arg(long, value_name = "SECONDS")]
-    pub mcp_timeout: Option<u64>,
+    pub mcp_timeout_seconds: Option<u64>,
 
     /// Stop the session once the provider has charged this many tokens for it, in and out; `0` is
     /// no ceiling. Time is not the only thing a run nobody is watching can spend; `/spend` changes
     /// it while it runs.
     #[arg(long, value_name = "TOKENS")]
-    pub spend: Option<u64>,
+    pub max_spend_tokens: Option<u64>,
 
     /// Leave what a `shell` command started in the background running when the session ends,
     /// rather than stopping it. Either way, the end of the session names each one.
@@ -331,9 +324,9 @@ pub struct Args {
 impl Args {
     /// Fills in everything the command line did not say from a settings file.
     ///
-    /// note: it asks clap which arguments were *typed*, rather than comparing against the
-    /// defaults, because those are not the same question: `--requests 8` is the default value and
-    /// somebody meant it, and a merge that could not tell them apart would let a file quietly
+    /// note: it asks clap which arguments were *typed*, rather than comparing against the defaults,
+    /// because those are not the same question: `--max-requests-per-turn 8` is the default value
+    /// and somebody meant it, and a merge that could not tell them apart would let a file quietly
     /// override what was asked for. `ValueSource::CommandLine` is the only answer that counts, and
     /// it is why [`Args::given`] hands back the matches as well as the struct.
     ///
@@ -355,27 +348,25 @@ impl Args {
         }
 
         fill!(
-            gemini,
-            anthropic,
-            responses,
-            requests,
-            compact,
-            parallel,
-            flat_calls,
+            api,
+            max_requests_per_turn,
+            compact_context_at,
+            parallel_tool_calls,
+            flat_tool_arguments,
             no_sandbox,
-            sandbox_allow,
+            sandbox_write,
             sandbox_read,
             sandbox_device,
-            allow,
-            deny,
-            allow_server,
-            deny_server,
-            deadline,
-            patience,
-            mcp_timeout,
-            spend,
-            forget_truncated,
-            send_oversized,
+            auto_allow,
+            auto_deny,
+            auto_allow_server,
+            auto_deny_server,
+            max_run_seconds,
+            max_silence_seconds,
+            mcp_timeout_seconds,
+            max_spend_tokens,
+            discard_cut_off_output,
+            send_oversized_requests,
             no_record,
         );
         // the four that are not a plain assignment: two are already `Option`, one is a list this
@@ -393,8 +384,8 @@ impl Args {
         // snapshot's first run was given, pinned. Pushed again on every `-r`, it would stack a copy
         // per resume, each beyond compaction's reach; a typed `-s` beside `-r` is somebody asking
         // for one, and is still honoured
-        if self.system.is_none() && self.resume.is_none() {
-            self.system = settings.system;
+        if self.system_prompt.is_none() && self.resume.is_none() {
+            self.system_prompt = settings.system_prompt;
         }
         // read here rather than where it is drawn, so that a colour nobody can parse is a startup
         // error naming the file rather than a frame that is quietly the default. There is no
@@ -449,13 +440,13 @@ impl Args {
 
         // the same rule for the same reason: a settings file that asked for its commands rated, in
         // a build with no advisor in it, would run every question uncoloured and say nothing
-        match settings.advise {
+        match settings.rate_shell_commands {
             #[cfg(feature = "shell-advisor")]
-            Some(advise) if !typed("advise") => self.advise = advise,
+            Some(rate) if !typed("rate_shell_commands") => self.rate_shell_commands = rate,
             #[cfg(not(feature = "shell-advisor"))]
             Some(true) => anyhow::bail!(
-                "this build has no advisor in it, so `advise` in the settings file cannot be \
-                 honoured"
+                "this build has no advisor in it, so `rate-shell-commands` in the settings file \
+                 cannot be honoured"
             ),
             _ => {}
         }
@@ -519,7 +510,7 @@ impl Args {
             // as the value is parsed, without regard to case, or `Deny` would be read as the
             // default and refused as something else
             let unserved = [
-                ("deadline", settings.deadline.is_some()),
+                ("max-run-seconds", settings.max_run_seconds.is_some()),
                 (
                     "on-ask",
                     settings
@@ -601,7 +592,7 @@ impl Args {
     /// do and say nothing about where a value came from - and a file found underfoot is announced
     /// on standard error, where a terminal's screen covers it and a failure has already ended the
     /// run. So the two run together, and anything out of `self` rather than out of the file is
-    /// left as it would have been said: somebody who typed `--deny` is looking at it.
+    /// left as it would have been said: somebody who typed `--auto-deny` is looking at it.
     ///
     /// note: a parameter rather than a field on [`Args`] because the file is not a setting: it is
     /// two facts - which path, and which arguments were *typed* - and the second is what tells a
@@ -616,47 +607,51 @@ impl Args {
         // other figure this program settles at startup is refused here, and this one used to be
         // read out of the environment and dropped when it did not parse
         endpoint::checked_limit().map_err(|e| anyhow::anyhow!("{e}"))?;
-        // note: refused rather than read as no limit, as `0` is for `--deadline`: a stream given
-        // no patience at all is given up on at its first silence, which is no session anybody meant
+        // note: refused rather than read as no limit, as `0` is for `--max-run-seconds`: a stream
+        // given no silence at all is given up on at its first, which is no session anybody meant
         anyhow::ensure!(
-            self.patience != Some(0),
-            "{}`patience` is how many seconds an answer may say nothing, and `0` would give every \
-             request up at once; leave it out for the default of 150",
-            at("patience").unwrap_or_default()
+            self.max_silence_seconds != Some(0),
+            "{}`max-silence-seconds` is how many seconds an answer may say nothing, and `0` would \
+             give every request up at once; leave it out for the default of 150",
+            at("max_silence_seconds").unwrap_or_default()
         );
-        // note: here rather than in the parser, so that a settings file's `compact` is held to it
-        // too. A fraction, and said so: `80`, meant as a percentage, would be no compactor at all,
-        // and anything at or below zero one that took every tool result
+        // note: here rather than in the parser, so that a settings file's `compact-context-at` is
+        // held to it too. A fraction, and said so: `80`, meant as a percentage, would be no
+        // compactor at all, and anything at or below zero one that took every tool result
         anyhow::ensure!(
-            self.compact.threshold > 0.0 && self.compact.threshold <= 1.0,
-            "{}`compact` is how full the context may get, as a fraction above 0 and at most 1 - \
-             `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
-            at("compact").unwrap_or_default(),
-            self.compact.threshold
+            self.compact_context_at.threshold > 0.0 && self.compact_context_at.threshold <= 1.0,
+            "{}`compact-context-at` is how full the context may get, as a fraction above 0 and at \
+             most 1 - `0.8` rather than `80`, and `1` never compacts - and this was `{}`",
+            at("compact_context_at").unwrap_or_default(),
+            self.compact_context_at.threshold
         );
         // note: at most the threshold, because a target above it is a context that is over the
         // threshold and already under the target, which a pass answers by dropping nothing - before
         // every request, for as long as the context stays between the two. Equal is allowed: it is
         // the pass that drops just enough each time, which is a choice and not a mistake
-        if let Some(target) = self.compact.target {
+        if let Some(target) = self.compact_context_at.target {
             anyhow::ensure!(
-                target > 0.0 && target <= self.compact.threshold,
-                "{}`compact`'s second fraction is how far down a full context is taken, above 0 \
-                 and at most its first, which is `{}` - and this was `{target}`",
-                at("compact").unwrap_or_default(),
-                self.compact.threshold
+                target > 0.0 && target <= self.compact_context_at.threshold,
+                "{}`compact-context-at`'s second fraction is how far down a full context is taken, \
+                 above 0 and at most its first, which is `{}` - and this was `{target}`",
+                at("compact_context_at").unwrap_or_default(),
+                self.compact_context_at.threshold
             );
         }
         // note: refused for the reason `wiring::unreached` refuses a domain no tool declares. A
         // deny naming a server this run does not start matches nothing, so a misspelled
-        // `--deny-server` read as given and left the server it meant to the question - which a
-        // headless run with `--on-ask allow` answers yes. An allow of one grants nothing, and is
-        // only said; see `Args::unstarted`
+        // `--auto-deny-server` read as given and left the server it meant to the question - which a
+        // headless run with `--on-ask allow` answers yes. An auto-allow of one grants nothing, and
+        // is only said; see `Args::unstarted`
         let servers = self.servers();
-        if let Some(unknown) = self.deny_server.iter().find(|name| !servers.contains(name)) {
+        if let Some(unknown) = self
+            .auto_deny_server
+            .iter()
+            .find(|name| !servers.contains(name))
+        {
             anyhow::bail!(
                 "{}`{unknown}` is not a server this run starts; {}",
-                at("deny_server").unwrap_or_default(),
+                at("auto_deny_server").unwrap_or_default(),
                 these(&servers)
             );
         }
@@ -664,16 +659,16 @@ impl Args {
         // reason. A server's tools are judged under its name in place of `mcp:call` - see
         // `Careful::judges` - and every server here is one this program started, so the rule read
         // as given and every call still went to the question. A `deny` of either is consulted
-        if let Some(granted) = self.allow.iter().find(|rule| {
+        if let Some(granted) = self.auto_allow.iter().find(|rule| {
             matches!(
                 Subject::parse(rule).to_string().as_str(),
                 "mcp" | "mcp:call"
             )
         }) {
-            let at = at("allow").unwrap_or_default();
+            let at = at("auto_allow").unwrap_or_default();
             anyhow::bail!(
-                "{at}`--allow {granted}` grants nothing: a tool from an MCP server is judged \
-                 under the server's name, so `--allow-server NAME` is what lets one through"
+                "{at}`--auto-allow {granted}` grants nothing: a tool from an MCP server is judged \
+                 under the server's name, so `--auto-allow-server NAME` is what lets one through"
             );
         }
         let resume = match &self.resume {
@@ -712,43 +707,43 @@ impl Args {
 
                 App::session_stamp(started)
             }),
-            requests: (self.requests > 0).then_some(self.requests),
-            parallel: self.parallel,
+            requests: (self.max_requests_per_turn > 0).then_some(self.max_requests_per_turn),
+            parallel: self.parallel_tool_calls,
             // what the runtime keeps is a decision about retention, and retention here is a file
             // somebody has to store: `/save` writes the snapshot, and an excluded output goes into
             // it whole. One `grep` that wanders into `./target/` can be megabytes of build noise
             // nobody will read, and it is in every save of that session from then on
-            keep_truncated: !self.forget_truncated,
-            refuse_oversized: !self.send_oversized,
+            keep_truncated: !self.discard_cut_off_output,
+            refuse_oversized: !self.send_oversized_requests,
             record: !self.no_record,
-            compact: Some(self.compact.threshold),
-            compact_target: self.compact.target,
-            // note: `0` is no ceiling, as `/spend 0` and `--requests 0` say it: a ceiling of nothing
-            // would be a session that refuses its first turn without saying why
-            spend: self.spend.filter(|it| *it > 0),
+            compact: Some(self.compact_context_at.threshold),
+            compact_target: self.compact_context_at.target,
+            // note: `0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` say it: a
+            // ceiling of nothing would be a session that refuses its first turn without saying why
+            spend: self.max_spend_tokens.filter(|it| *it > 0),
             leave_running: self.leave_running,
             confine: !self.no_sandbox,
-            reachable: self.sandbox_allow.clone(),
+            reachable: self.sandbox_write.clone(),
             readable: self.sandbox_read.clone(),
             devices: self.sandbox_device.clone(),
-            layout: match self.flat_calls {
+            layout: match self.flat_tool_arguments {
                 true => crate::tools::Layout::Flat,
                 false => crate::tools::Layout::Wrapped,
             },
             allow: self
-                .allow
+                .auto_allow
                 .iter()
                 .map(|it| Subject::parse(it))
-                .chain(self.allow_server.iter().cloned().map(Subject::Server))
+                .chain(self.auto_allow_server.iter().cloned().map(Subject::Server))
                 .collect(),
             deny: self
-                .deny
+                .auto_deny
                 .iter()
                 .map(|it| Subject::parse(it))
-                .chain(self.deny_server.iter().cloned().map(Subject::Server))
+                .chain(self.auto_deny_server.iter().cloned().map(Subject::Server))
                 .collect(),
             tools: self.tools.clone(),
-            system: self.system.clone(),
+            system: self.system_prompt.clone(),
             files: self.file.clone(),
             #[cfg(feature = "shell-advisor")]
             advisor: None,
@@ -770,8 +765,8 @@ impl Args {
         Ok(setup)
     }
 
-    /// What to say about the servers `--allow-server` names that this run does not start; `None`
-    /// where it names none.
+    /// What to say about the servers `--auto-allow-server` names that this run does not start;
+    /// `None` where it names none.
     ///
     /// note: said rather than refused, unlike a deny. Which servers run is up to the command line,
     /// so a settings file that allows the person's usual servers is right in general and was
@@ -780,16 +775,16 @@ impl Args {
     pub fn unstarted(&self, filed: Option<&Filed>) -> Option<String> {
         let servers = self.servers();
         let absent: Vec<&str> = self
-            .allow_server
+            .auto_allow_server
             .iter()
             .filter(|name| !servers.contains(name))
             .map(String::as_str)
             .collect();
         (!absent.is_empty()).then(|| {
             format!(
-                "{}`--allow-server` names {}, which this run does not start, so it grants nothing \
-                 there; {}",
-                filed_at(filed, "allow_server").unwrap_or_default(),
+                "{}`--auto-allow-server` names {}, which this run does not start, so it grants \
+                 nothing there; {}",
+                filed_at(filed, "auto_allow_server").unwrap_or_default(),
                 absent
                     .iter()
                     .map(|name| format!("`{name}`"))
@@ -800,13 +795,13 @@ impl Args {
         })
     }
 
-    /// How long a call to an MCP server's tool may wait: `--mcp-timeout`, ten minutes unless given,
-    /// and no limit for `0`.
+    /// How long a call to an MCP server's tool may wait: `--mcp-timeout-seconds`, ten minutes
+    /// unless given, and no limit for `0`.
     ///
     /// note: ten minutes because a tool may be a build or a search that takes a while, and what
     /// this is for is the one that never answers at all; a turn can still be interrupted sooner.
     pub fn mcp_within(&self) -> Option<std::time::Duration> {
-        match self.mcp_timeout.unwrap_or(MCP_TIMEOUT) {
+        match self.mcp_timeout_seconds.unwrap_or(MCP_TIMEOUT) {
             0 => None,
             seconds => Some(std::time::Duration::from_secs(seconds)),
         }
@@ -824,13 +819,13 @@ impl Args {
         Vec::new()
     }
 
-    /// The same, with the advisor attached where `--advise` asked for one.
+    /// The same, with the advisor attached where `--rate-shell-commands` asked for one.
     ///
     /// note: after [`Setup::check`] and before the provider. A missing advisor key is a fact about
     /// the arguments and should not cost a round trip to the *other* endpoint to find out about;
-    /// and a session that was asked for with `--advise` and could not reach an advisor is refused
-    /// rather than quietly run with every question uncoloured. Somebody who turned this on is
-    /// entitled to have it on or be told it is not.
+    /// and a session that was asked for with `--rate-shell-commands` and could not reach an advisor
+    /// is refused rather than quietly run with every question uncoloured. Somebody who turned this
+    /// on is entitled to have it on or be told it is not.
     ///
     /// note: nothing the advisor has to say is drained here. The session reports all of it,
     /// through `App::on_event` and the drawn loop's tick, and a queue somebody else popped is a
@@ -838,11 +833,11 @@ impl Args {
     /// to stderr here would not help either: the screen arrives immediately and clears it.
     #[cfg(feature = "shell-advisor")]
     pub async fn advised(&self, setup: Setup) -> Result<Setup> {
-        if !self.advise {
+        if !self.rate_shell_commands {
             return Ok(setup);
         }
 
-        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.wire()?))
+        let engine = endpoint::advise::connect(&endpoint::session_endpoint(self.wire()))
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))
             .context("could not reach the advisor")?;
@@ -852,42 +847,19 @@ impl Args {
         })
     }
 
-    /// The wire format this session speaks.
-    ///
-    /// note: clap refuses the two flags together, and this is for the settings file, which can
-    /// name one dialect while the command line names the other - two dialects asked for are a
-    /// mistake to say, not one to settle by picking either.
-    pub fn wire(&self) -> Result<endpoint::Wire> {
-        let asked: Vec<&str> = [
-            (self.gemini, "--gemini"),
-            (self.anthropic, "--anthropic"),
-            (self.responses, "--responses"),
-        ]
-        .into_iter()
-        .filter_map(|(on, flag)| on.then_some(flag))
-        .collect();
-
-        match asked[..] {
-            [] => Ok(endpoint::Wire::OpenAi),
-            ["--gemini"] => Ok(endpoint::Wire::Gemini),
-            ["--anthropic"] => Ok(endpoint::Wire::Anthropic),
-            ["--responses"] => Ok(endpoint::Wire::Responses),
-            _ => Err(anyhow::anyhow!(
-                "{} are {} dialects, and a session speaks one: at least one of them is on in the \
-                 settings file",
-                asked.join(" and "),
-                match asked.len() {
-                    2 => "two",
-                    _ => "three",
-                }
-            )),
+    /// The wire format this session speaks, as `--api` names it.
+    pub fn wire(&self) -> endpoint::Wire {
+        match self.api {
+            Api::ChatCompletions => endpoint::Wire::OpenAi,
+            Api::Responses => endpoint::Wire::Responses,
+            Api::Anthropic => endpoint::Wire::Anthropic,
+            Api::Gemini => endpoint::Wire::Gemini,
         }
     }
 
     /// Where this session's requests go, in whichever dialect was asked for.
     ///
-    /// note: four wire formats, one trait. `--gemini`, `--anthropic` or `--responses` is what a
-    /// person picks, and everything
+    /// note: four wire formats, one trait. `--api` is what a person picks, and everything
     /// downstream - the kernel, the screen, `/model`, `/endpoint` - holds a `Dialect` and never
     /// finds out which one it got.
     ///
@@ -898,7 +870,7 @@ impl Args {
     /// is picked the kernel holds no provider, so nothing can be sent. See `Setup::wire`.
     pub async fn provider(&self) -> Result<Arc<dyn Dialect>> {
         let model = self.model.as_deref();
-        let provider = match self.wire()? {
+        let provider = match self.wire() {
             endpoint::Wire::Gemini => endpoint::gemini::connect(model)
                 .await
                 .map(|it| it as Arc<dyn Dialect>),
@@ -914,7 +886,7 @@ impl Args {
         }
         .map_err(|e| anyhow::anyhow!("{e}"))
         .context("could not reach the model")?;
-        if let Some(seconds) = self.patience {
+        if let Some(seconds) = self.max_silence_seconds {
             provider.set_patience(std::time::Duration::from_secs(seconds));
         }
 
@@ -976,7 +948,8 @@ fn last_model(path: &std::path::Path) -> Option<String> {
         .filter(|model| !model.is_empty())
 }
 
-/// How many seconds a call to an MCP server's tool waits unless `--mcp-timeout` says otherwise.
+/// How many seconds a call to an MCP server's tool waits unless `--mcp-timeout-seconds` says
+/// otherwise.
 const MCP_TIMEOUT: u64 = 600;
 
 /// Where a refusal about `field` names the settings file: only where the file said it - carried the
@@ -1041,9 +1014,9 @@ pub(crate) fn talked_to(records: &[nachalnik::Record]) -> Option<nachalnik::Mode
 /// Whether the settings file found underfoot may be read, asked of the terminal, and a refusal
 /// where there is nobody at one.
 ///
-/// note: a refusal rather than a run without the file, because a file carrying `deadline` or
-/// `spend` is a script's bounds, and a script that quietly lost them would run unbounded. Naming
-/// the file with `--config-file` is how a run nobody can ask says it is meant.
+/// note: a refusal rather than a run without the file, because a file carrying `max-run-seconds` or
+/// `max-spend-tokens` is a script's bounds, and a script that quietly lost them would run
+/// unbounded. Naming the file with `--config-file` is how a run nobody can ask says it is meant.
 fn asked(path: &std::path::Path, granting: &[&str]) -> Result<bool> {
     use std::io::IsTerminal as _;
 
@@ -1100,11 +1073,11 @@ pub struct Filed {
     pub matches: clap::ArgMatches,
     /// The keys this file carried that a served session does not read, as the argument's own name.
     ///
-    /// note: asked here rather than read back off the struct, because the struct cannot say where
-    /// a value came from: `--on-ask` has a default, so a merged `Args` looks the same whether the
+    /// note: asked here rather than read back off the struct, because the struct cannot say where a
+    /// value came from: `--on-ask` has a default, so a merged `Args` looks the same whether the
     /// file set it or nobody did. What the file carried is the fact, and it is the fact the refusal
-    /// needs - a settings file is a person writing `deadline` down once rather than typing it every
-    /// day, which is exactly the case that gets dropped without a word. See
+    /// needs - a settings file is a person writing `max-run-seconds` down once rather than typing
+    /// it every day, which is exactly the case that gets dropped without a word. See
     /// [`Given::unserved`].
     pub unserved: Vec<&'static str>,
     /// Every key this file gave a value, as the argument's own name.
@@ -1132,16 +1105,17 @@ impl Given {
     /// What this command line carries that a served session does not read, and where each came
     /// from.
     ///
-    /// note: the two a served session has no loop to read - `--deadline`, which ends a headless
-    /// run, and `--on-ask`, which answers a question nobody is there to answer. Read off the
-    /// arguments rather than off clap's matches alone, because a value out of a settings file is
-    /// written into [`Args`] by [`Args::under`] and leaves nothing behind saying it was not typed -
-    /// so a check on the matches sees a file's `deadline` as absent, and a run that serves for
-    /// ever beside a file saying when it should have ended says nothing at all.
+    /// note: the two a served session has no loop to read - `--max-run-seconds`, which ends a
+    /// headless run, and `--on-ask`, which answers a question nobody is there to answer. Read off
+    /// the arguments rather than off clap's matches alone, because a value out of a settings file
+    /// is written into [`Args`] by [`Args::under`] and leaves nothing behind saying it was not
+    /// typed - so a check on the matches sees a file's `max-run-seconds` as absent, and a run that
+    /// serves for ever beside a file saying when it should have ended says nothing at all.
     ///
     /// note: a file's value names the file, the way every other value out of one does. A person
-    /// writing `deadline` into a project's `kamchatka.json` is not looking at this run's command
-    /// line at all, so a refusal naming only `--deadline` would be a flag they never typed.
+    /// writing `max-run-seconds` into a project's `kamchatka.json` is not looking at this run's
+    /// command line at all, so a refusal naming only `--max-run-seconds` would be a flag they never
+    /// typed.
     ///
     /// note: a file's `on-ask: deny` is not among them, because that is the default and a served
     /// run would have had it anyway - `--print-config` writes it, and refusing every `--serve`
@@ -1157,7 +1131,7 @@ impl Given {
         // is `on-ask`, and a refusal that mixed them up would name a setting nobody wrote
         let mut said = Vec::new();
         let mut filed = None;
-        for (id, key) in [("deadline", "deadline"), ("on_ask", "on-ask")] {
+        for (id, key) in [("max_run_seconds", "max-run-seconds"), ("on_ask", "on-ask")] {
             // typed first, because a value on the command line is somebody looking at this run,
             // and a file's would only say where it was written down
             if typed(id) {
@@ -1209,7 +1183,7 @@ pub enum Command {
 /// note: `deny` is the default, and that is the difference between this and `examples/recorded.rs`,
 /// which grants every question it is asked. That is right for a recording somebody is watching and
 /// wrong for a program: a run nobody is watching should not be able to do a thing nobody has
-/// allowed, and `--allow exec` is one flag away for anyone who means it.
+/// allowed, and `--auto-allow exec` is one flag away for anyone who means it.
 ///
 /// note: `#[non_exhaustive]`, which is what every public enum in this workspace carries - it was
 /// missing, and `Leave` is what found out.

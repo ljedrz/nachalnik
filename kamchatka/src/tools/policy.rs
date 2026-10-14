@@ -69,12 +69,12 @@ impl Subject {
     /// guess because all three are spelled as bare text, and this one is readable in a sentence:
     /// a colon means an operation, and the characters a path has and a name does not mean a path.
     ///
-    /// note: a server is not in here, and cannot be: `files` is a server name and `fs` is a
-    /// domain, and nothing in either string says which. It is named on its own argument instead -
-    /// see `--allow-server` - which is the honest answer to a spelling that cannot be told apart.
+    /// note: a server is not in here, and cannot be: `files` is a server name and `fs` is a domain,
+    /// and nothing in either string says which. It is named on its own argument instead - see
+    /// `--auto-allow-server` - which is the honest answer to a spelling that cannot be told apart.
     ///
     /// note: it is the inverse of [`fmt::Display`] above for the three it can produce, which is
-    /// what makes `--deny "$(read a row off the permissions tab)"` mean what it says.
+    /// what makes `--auto-deny "$(read a row off the permissions tab)"` mean what it says.
     pub fn parse(text: &str) -> Self {
         if text.contains('/') || text.contains('*') || text.starts_with('.') {
             return Self::Path(text.to_owned());
@@ -169,10 +169,10 @@ const GRAMMAR: &str = "a path rule is a file name in which `*` stands for any ru
 /// What is wrong with a path rule, where something is.
 ///
 /// note: the grammar [`path_matches`] reads is small, and a pattern outside it would be taken all
-/// the same: `--allow 'src/**'` would go onto the permissions tab and be consulted about every
+/// the same: `--auto-allow 'src/**'` would go onto the permissions tab and be consulted about every
 /// call, and no path can match it. A rule that cannot match is the worst way for one to be wrong,
-/// because a `--deny` that refuses nothing reads as given - so it is refused where it is entered,
-/// and the refusal says what there is.
+/// because a `--auto-deny` that refuses nothing reads as given - so it is refused where it is
+/// entered, and the refusal says what there is.
 ///
 /// note: refused rather than taught to the matcher. Whole-path patterns bring anchoring, absolute
 /// against relative, and `**` - and a pattern language on a permissions screen is worth more small
@@ -367,10 +367,10 @@ impl Careful {
             // mean something once they have given it.
             //
             // note: and no operation rules either. Seeding some of `context`'s at `ask`, so that
-            // allowing the tool still left an `exclude` a question, would make `--allow context`
-            // mean something other than `context`, with no way to guess from the words which ones.
-            // A domain is the whole of what is done in it; somebody who wants less than that
-            // writes the operation they want.
+            // allowing the tool still left an `exclude` a question, would make
+            // `--auto-allow context` mean something other than `context`, with no way to guess from
+            // the words which ones. A domain is the whole of what is done in it; somebody who wants
+            // less than that writes the operation they want.
             stances: Mutex::new(BTreeMap::new()),
             servers: Mutex::new(BTreeMap::new()),
             paths: Mutex::new(
@@ -470,13 +470,13 @@ impl Careful {
         // note: and it answers for `mcp:call`, which is the subject every tool from a server
         // declares and means "somebody else's tool, and nobody has vouched for what it does".
         // Naming the server is the same statement made precisely, so consulting both would make
-        // `--allow-server files` grant nothing until `mcp:call` had been answered too - two flags
-        // for one decision. Whatever the server's *annotations* claimed is untouched: a tool that
-        // says it writes is still judged against `fs:write`.
+        // `--auto-allow-server files` grant nothing until `mcp:call` had been answered too - two
+        // flags for one decision. Whatever the server's *annotations* claimed is untouched: a tool
+        // that says it writes is still judged against `fs:write`.
         //
         // note: except where somebody refused it. The server stands in for `mcp:call`'s question,
-        // not for a `--deny mcp:call` or a `--deny mcp`, and dropping one of those would let
-        // `--allow-server` talk its way past a refusal - which no rule here may do
+        // not for a `--auto-deny mcp:call` or a `--auto-deny mcp`, and dropping one of those would
+        // let `--auto-allow-server` talk its way past a refusal - which no rule here may do
         let unvouched = Subject::Capability(unvouched());
         let refused = self.stance(&unvouched) == Verdict::Deny;
         if let Some(server) = self.servers.lock().get(&request.tool) {
@@ -551,12 +551,12 @@ impl Careful {
     /// What it answers about one subject; asking is what it does about anything unmentioned.
     ///
     /// note: **the most specific rule that has an answer decides, and a `deny` above it
-    /// overrules.** `--allow fs` covers `fs:read` because nothing finer was said;
-    /// `--allow fs --deny fs:edit` refuses the edit and allows the rest; `--allow fs:read` allows
-    /// reading while `fs` is still a question, which is what naming one operation plainly means.
-    /// What it cannot do is talk its way past a refusal - a domain somebody denied stays denied
-    /// however finely an operation of it is named - so `--deny` is still the last word and the
-    /// strictest of everything consulted still wins.
+    /// overrules.** `--auto-allow fs` covers `fs:read` because nothing finer was said;
+    /// `--auto-allow fs --auto-deny fs:edit` refuses the edit and allows the rest;
+    /// `--auto-allow fs:read` allows reading while `fs` is still a question, which is what naming
+    /// one operation plainly means. What it cannot do is talk its way past a refusal - a domain
+    /// somebody denied stays denied however finely an operation of it is named - so `--auto-deny`
+    /// is still the last word and the strictest of everything consulted still wins.
     pub fn stance(&self, subject: &Subject) -> Verdict {
         match subject {
             Subject::Capability(capability) => {

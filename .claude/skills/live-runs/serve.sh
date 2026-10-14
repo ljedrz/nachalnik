@@ -16,7 +16,7 @@ at=$1 feed=$(realpath "$2"); shift 2
 O=$LIVE/out/serve-$(echo "$at" | tr -c 'a-zA-Z0-9\n' '-'); rm -rf "$O"; mkdir -p "$O/rec/kamchatka"
 WS=$LIVE/ws/$(basename "$O"); rm -rf "$WS"; cp -a "$LIVE/fix/${FIX:-proj}" "$WS"; cd "$WS"
 export TMPDIR=$O/rec
-# no --headless and no --deadline: a served session with no terminal is headless already, and
+# no --headless and no --max-run-seconds: a served session with no terminal is headless already, and
 # refuses both
 "$K" --serve "$at" "$@" < <(sleep 900) > "$O/server.jsonl" 2> "$O/server.err" &
 spid=$!

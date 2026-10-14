@@ -217,12 +217,13 @@ them. Each row is a capability or a path, the answer for it, and what that answe
 The line at the top shows the policy in force and its answer for everything not listed.
 
 A fresh session has no rows: everything starts at `ask`, and rows are **decisions**, added as you
-answer. What isn't listed is counted at the bottom, as how many more it will ask about, and
-setting a row back to `ask` removes it. A rule for a whole domain is one row, listing the operations
-it covers; an operation answered separately (`--allow fs --deny fs:write`) gets its own row. **What
-it covers** is never wider than the rule, and a rule that matches nothing says so. To decide in
-advance, answer the first question with <kbd>a</kbd>, which allows it from then on, or use a flag;
-<kbd>n</kbd> refuses that one call, and a standing refusal is a row here or `--deny`.
+answer. What isn't listed is counted at the bottom, as how many more it will ask about, and setting
+a row back to `ask` removes it. A rule for a whole domain is one row, listing the operations it
+covers; an operation answered separately (`--auto-allow fs --auto-deny fs:write`) gets its own row.
+**What it covers** is never wider than the rule, and a rule that matches nothing says so. To decide
+in advance, answer the first question with <kbd>a</kbd>, which allows it from then on, or use a
+flag;
+<kbd>n</kbd> refuses that one call, and a standing refusal is a row here or `--auto-deny`.
 
 The line at the bottom starts with the shell, because it's the one thing on this tab you can't
 negotiate with. A registered `shell` that isn't refused can read, write and use the network whatever
@@ -244,13 +245,13 @@ came from rather than what it does, which is the one thing about an MCP tool you
 take the server's word for.
 
 The most specific rule with an answer decides, but a refusal at a broader level always wins.
-`--allow context` allows everything in `context`; `--allow context:note` allows notes and says
-nothing about the rest; `--allow context --deny context:revise` allows everything except that one.
-A more specific rule can't overrule a refusal: a domain you've *denied* stays denied, however
-specifically you allow an operation in it, because the strictest matching rule wins and `--deny`
-always takes precedence. `net:reach` is the one no tool declares: where the network is gated, a
-command is asked about the moment it opens an internet socket; where it isn't, it's a guess based on
-the command's name.
+`--auto-allow context` allows everything in `context`; `--auto-allow context:note` allows notes and
+says nothing about the rest; `--auto-allow context --auto-deny context:revise` allows everything
+except that one. A more specific rule can't overrule a refusal: a domain you've *denied* stays
+denied, however specifically you allow an operation in it, because the strictest matching rule wins
+and `--auto-deny` always takes precedence. `net:reach` is the one no tool declares: where the
+network is gated, a command is asked about the moment it opens an internet socket; where it isn't,
+it's a guess based on the command's name.
 
 <kbd>space</kbd> cycles a row through **ask → allow → deny**, or use <kbd>a</kbd>/<kbd>n</kbd>/<kbd>r</kbd>
 directly, and it takes effect from the next call. Answering "always" at a permission prompt writes
@@ -294,9 +295,9 @@ stages coloured, unless it can't be parsed to the end (an unclosed quote, for ex
 case nothing is highlighted. <kbd>i</kbd> shows it byte for byte. An `edit` is shown as a diff,
 `old` in red and `new` in green.
 
-With `--advise` (in a `shell-advisor` build), an extra line in the header shows the advisor's
-rating of the command (green, yellow or red) and how confident it was. It doesn't decide anything.
-[RUNNING.md](RUNNING.md#what-the-colour-says) explains the ratings and what is sent.
+With `--rate-shell-commands` (in a `shell-advisor` build), an extra line in the header shows the
+advisor's rating of the command (green, yellow or red) and how confident it was. It doesn't decide
+anything. [RUNNING.md](RUNNING.md#what-the-colour-says) explains the ratings and what is sent.
 
 ### a command that reaches for the network
 
@@ -430,7 +431,7 @@ yours. Every change takes a `reason`, which is what you see in the context tab.
 Three things are always refused: changing a **pinned** item (the agent can only unpin items it
 pinned itself), changing a **system instruction**, and changing the turn the agent is currently in.
 Each operation is a separate permission, so `context:look` and `context:revise` are separate rows on
-the permissions tab, and `--allow context` covers all of them.
+the permissions tab, and `--auto-allow context` covers all of them.
 
 **`fork`** is its own tool, because each use costs a request: `fork:draft` and `fork:ask` take a
 snapshot, resume it as a second kernel with **no tools**, ask it once, and return only its answer.

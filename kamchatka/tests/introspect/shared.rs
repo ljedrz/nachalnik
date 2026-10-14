@@ -229,7 +229,7 @@ async fn the_file_selectors_advice_names_no_tool_that_has_been_taken_away() {
 /// and `Tool::needs` on `context` was reading the outside of it - so it found no `action`, took
 /// the branch meant for a call nobody can place, and declared all twelve subjects. A `look` at
 /// three items asked the person to allow `context:revise` and `context:elide` along with it, and a
-/// session holding `--allow context:look` and nothing else could not look at all.
+/// session holding `--auto-allow context:look` and nothing else could not look at all.
 ///
 /// note: over every tool this program installs rather than over `context`, because the bug was not
 /// `context`'s. It was that `needs` and `invoke` read the arguments two different ways, which is

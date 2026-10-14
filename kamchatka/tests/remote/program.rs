@@ -454,7 +454,7 @@ async fn the_web_page_is_refused_where_a_served_session_would_be() {
             "not a loopback or private-network address",
         ),
         (
-            &["--web", "127.0.0.1:0", "--deadline", "60"][..],
+            &["--web", "127.0.0.1:0", "--max-run-seconds", "60"][..],
             "`--web` does not read",
         ),
     ] {
@@ -543,23 +543,23 @@ fn the_web_page_relays_to_a_session_on_a_socket_file() {
 /// `--serve` refuses the two flags a served session never reads, rather than serving for ever
 /// beside them.
 ///
-/// note: `--deadline 60` beside `--serve` reads as a run that ends by itself, and what it got is a
-/// session serving until it is killed; `--on-ask` is a question answered by whoever is attached,
-/// and a served session has none of its own. `--connect` refuses what does not apply to it the
-/// same way, and this is the other half of that. The refusal is before the bind, so nothing is
-/// left listening: a path that is refused is not a session anybody can attach to.
+/// note: `--max-run-seconds 60` beside `--serve` reads as a run that ends by itself, and what it
+/// got is a session serving until it is killed; `--on-ask` is a question answered by whoever is
+/// attached, and a served session has none of its own. `--connect` refuses what does not apply to
+/// it the same way, and this is the other half of that. The refusal is before the bind, so nothing
+/// is left listening: a path that is refused is not a session anybody can attach to.
 ///
 /// note: and the same two out of a **settings file**, which is the case that was dropped. The check
 /// was `ValueSource::CommandLine`, and a value read out of a file is written into the arguments by
 /// the merge and leaves nothing behind saying where it came from - so a project whose
-/// `kamchatka.json` says `deadline` served for ever, beside a file saying when the run should end,
-/// and said nothing. A person writing a setting down once rather than typing it every day is
-/// exactly the case the refusal exists for, and least likely to be looking at this run's command
-/// line - so the file is named, the way every other value out of one is.
+/// `kamchatka.json` says `max-run-seconds` served for ever, beside a file saying when the run
+/// should end, and said nothing. A person writing a setting down once rather than typing it every
+/// day is exactly the case the refusal exists for, and least likely to be looking at this run's
+/// command line - so the file is named, the way every other value out of one is.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_served_run_refuses_the_flags_it_does_not_read() {
     let dir = crate::common::scratch("served-refused");
-    for (flag, value) in [("--deadline", "60"), ("--on-ask", "allow")] {
+    for (flag, value) in [("--max-run-seconds", "60"), ("--on-ask", "allow")] {
         let socket = dir.join(format!("{}.sock", flag.trim_start_matches("--")));
         let said = tokio::process::Command::from(crate::common::command())
             .args(["--no-record", "-m", "nothing", "--serve"])
@@ -629,7 +629,7 @@ async fn a_served_run_refuses_the_flags_it_does_not_read() {
     let settings = dir.join("defaults.json");
     std::fs::write(
         &settings,
-        r#"{ "on-ask": "Deny", "deadline": null, "spend": 100000 }"#,
+        r#"{ "on-ask": "Deny", "max-run-seconds": null, "max-spend-tokens": 100000 }"#,
     )
     .expect("a settings file");
     let socket = dir.join("defaults.sock");

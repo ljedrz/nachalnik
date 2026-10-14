@@ -34,14 +34,14 @@ $ kamchatka -m qwen/qwen3-coder "what does this repository do?"
 
 **Any model, hosted or local.** OpenRouter is only the default address: anything that speaks
 OpenAI's chat completions is one `KAMCHATKA_BASE_URL` away, and that includes a model running on
-your own machine under ollama, vLLM or LM Studio, which needs no key at all. `--gemini` speaks
-Google's own API, `--anthropic` Anthropic's own Messages API and `--responses` OpenAI's Responses
-API, all of which keep a turn's thinking, text and calls in the order they came and send the
-signed or sealed thinking back.
+your own machine under ollama, vLLM or LM Studio, which needs no key at all. `--api gemini` speaks
+Google's own API, `--api anthropic` Anthropic's own Messages API and `--api responses` OpenAI's
+Responses API, all of which keep a turn's thinking, text and calls in the order they came and send
+the signed or sealed thinking back.
 
 ```console
 $ KAMCHATKA_BASE_URL=http://localhost:11434/v1 kamchatka -m qwen3-coder "what does this repository do?"
-$ ANTHROPIC_API_KEY=sk-ant-... kamchatka --anthropic -m claude-haiku-4-5 "what does this repository do?"
+$ ANTHROPIC_API_KEY=sk-ant-... kamchatka --api anthropic -m claude-haiku-4-5 "what does this repository do?"
 ```
 
 **A shell sandboxed by the kernel, not by a list of forbidden commands.** Landlock confines what a
@@ -61,11 +61,11 @@ tools for its own session too, so it can read what it is carrying, drop what it 
 and correct what turned out to be wrong — the five transcripts below are what that looks like.
 [Its readme](kamchatka/README.md) has the sandbox, the keys and the rest.
 
-**The screen is optional.** `--headless` drives a session from lines on stdin instead of keys —
-the session log to stdout, one JSON record a line, what the model says to stderr — and it is
-implied when stdout is not a terminal. Everything a run nobody is watching needs is a flag:
-answers given in advance with `--allow`/`--deny`, a `--deadline`, and a `--spend` ceiling in
-tokens.
+**The screen is optional.** `--headless` drives a session from lines on stdin instead of keys — the
+session log to stdout, one JSON record a line, what the model says to stderr — and it is implied
+when stdout is not a terminal. Everything a run nobody is watching needs is a flag: answers given in
+advance with `--auto-allow`/`--auto-deny`, a `--max-run-seconds`, and a `--max-spend-tokens` ceiling
+in tokens.
 
 ---
 

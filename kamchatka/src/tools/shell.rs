@@ -467,7 +467,7 @@ impl Tool for Shell {
         // "the working directory and the system paths" has no reason to try `~/.rustup` even
         // when somebody opened it for exactly that. Read off the confinement the command will run
         // under rather than off the flags, because a refusal of `fs:write` makes the paths
-        // `--sandbox-allow` opened read-only there, and this is the sentence that says so
+        // `--sandbox-write` opened read-only there, and this is the sentence that says so
         let (extra, readable) = match &confined {
             Some(sandbox) => (&sandbox.extra, &sandbox.readable),
             None => (&self.extra, &self.readable),

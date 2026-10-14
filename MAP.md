@@ -78,13 +78,12 @@ in `record.rs`, saving a finished session. New setup goes in a field on `Setup`,
 `main.rs`.
 
 **The loops.** `main.rs` picks one and draws the screen; `headless.rs` reads stdin and writes the
-log;
-`remote/` serves a session over a socket (`protocol/` the wire, `server/` the session's side,
+log; `remote/` serves a session over a socket (`protocol/` the wire, `server/` the session's side,
 `client.rs` `--connect`), and `server::Serving` is the part the drawn loop shares. `web/` (feature
 `webui`) is `--web`: the embedded page, `browser.html`, and the HTTP that relays browsers to a
-served session as protocol clients. Limits on a
-session, like the spending limit, live on `App`, which every loop goes through; `--deadline` lives
-on `Headless`, because a time limit applies to a run, not a session.
+served session as protocol clients. Limits on a session, like the spending limit, live on `App`,
+which every loop goes through; `--max-run-seconds` lives on `Headless`, because a time limit applies
+to a run, not a session.
 
 The rest: `args.rs` the command line and `config.rs` the settings file it merges with,
 `endpoint.rs` the environment variables and the `connect` functions, `check.rs` `--check`,

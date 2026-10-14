@@ -986,7 +986,7 @@ async fn the_program_reconciles_forks_it_made_and_carries_on_from_them() {
     .await;
     let run = |args: &[&str]| {
         let out = common::command()
-            .args(["--headless", "--deadline", "20", "--on-ask", "allow"])
+            .args(["--headless", "--max-run-seconds", "20", "--on-ask", "allow"])
             .args(args)
             .current_dir(&dir)
             .env("TMPDIR", &dir)

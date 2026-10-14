@@ -3,7 +3,7 @@
 //! note: `--mcp` and `--headless` are each covered elsewhere and had never been run together,
 //! which is a gap rather than an omission: the two meet at a question. An MCP tool declares
 //! `mcp:<server>` and nothing else, `Careful` asks about whatever nobody has answered for, and a
-//! headless run has nobody to ask - so a server's tools are refused by default and `--allow
+//! headless run has nobody to ask - so a server's tools are refused by default and `--auto-allow
 //! mcp:py` is the whole of how an unattended run is given them. That answer is recorded while the
 //! session is being wired, *before* the server has been spawned or said what it offers, which is
 //! the ordering worth a test.
@@ -72,7 +72,7 @@ struct Run {
 }
 
 /// Wires a session the way the program does and attaches the server to it, answering these
-/// subjects in advance as `--allow` does.
+/// subjects in advance as `--auto-allow` does.
 ///
 /// note: the servers come back rather than being held here, because whoever holds them decides how
 /// long the tools work for - which is the one thing about this crate's MCP that a caller can get
@@ -109,11 +109,11 @@ async fn session(
     (wired, servers)
 }
 
-/// A call to a server's tool that never answers is given up on at `--mcp-timeout`, naming the
-/// server.
+/// A call to a server's tool that never answers is given up on at `--mcp-timeout-seconds`, naming
+/// the server.
 ///
 /// note: `hang` sleeps for ten minutes, and the call held the turn until somebody interrupted it -
-/// a headless run until its `--deadline`, if it had one.
+/// a headless run until its `--max-run-seconds`, if it had one.
 #[tokio::test]
 async fn a_call_a_server_never_answers_is_given_up_on_at_its_limit() {
     let spec = spec!();
@@ -410,8 +410,8 @@ fn the_program_offers_a_spawned_servers_tools() {
 /// refusal leaves the kernel as it found it.
 ///
 /// note: two `npx` lines with no `name=` are the commonest way to get there: both are named for
-/// their program. The name is what `--allow-server` grants, so letting both in would grant them
-/// together.
+/// their program. The name is what `--auto-allow-server` grants, so letting both in would grant
+/// them together.
 #[tokio::test]
 async fn two_servers_under_one_name_are_refused() {
     let spec = spec!();
@@ -577,7 +577,7 @@ async fn a_server_is_refused_for_what_actually_went_wrong() {
 /// note: `env FOO=bar cmd` is the case the guard is written for - `env` and its argument are a
 /// command that sets a variable, and read as a name there is nothing to run at all. A `/` in front
 /// of the `=` is the same shape with the same consequence. The name is otherwise only visible in
-/// the prefix the server's tools carry and in what `--allow-server` has to be given.
+/// the prefix the server's tools carry and in what `--auto-allow-server` has to be given.
 #[tokio::test]
 async fn a_spec_is_read_as_a_command_wherever_a_name_could_not_be() {
     let server = spec!();

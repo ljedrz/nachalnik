@@ -262,10 +262,10 @@ def main() -> None:
     common = {
         "model": model,
         # how often a turn pauses, which is how often `drive.py` gets to look at its size
-        "requests": PAUSE_EVERY,
+        "max-requests-per-turn": PAUSE_EVERY,
         "tools": ["fs", "context"],
-        "allow": ["fs:read", "fs:grep", "fs:glob", "context"],
-        "deny": ["fs:write", "fs:edit", "exec"],
+        "auto-allow": ["fs:read", "fs:grep", "fs:glob", "context"],
+        "auto-deny": ["fs:write", "fs:edit", "exec"],
         "on-ask": "deny",
     }
     for kind, system in (
@@ -281,8 +281,8 @@ def main() -> None:
             **common,
             # kamchatka's notice that the context is full, at twice the cut: past it only where
             # the cuts did not hold, and told sooner it costs the model a call to look
-            "compact": round(min(0.9, 2 * ceiling / limit), 3),
-            "system": system + others(kind) + report(kind),
+            "compact-context-at": round(min(0.9, 2 * ceiling / limit), 3),
+            "system-prompt": system + others(kind) + report(kind),
         }
         path = os.path.join(out, f"{kind}.json")
         with open(path, "w") as f:

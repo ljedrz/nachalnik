@@ -263,8 +263,8 @@ impl App {
             kernel.counter().name(),
             match kernel.compactor() {
                 Some(compactor) => compactor.name().to_owned(),
-                // `--compact 1` leaves none installed, and "nothing will be dropped" is a fact
-                // worth being able to check rather than infer from a flag
+                // `--compact-context-at 1` leaves none installed, and "nothing will be dropped" is
+                // a fact worth being able to check rather than infer from a flag
                 None => "none: nothing is ever dropped to make room".to_owned(),
             },
         );

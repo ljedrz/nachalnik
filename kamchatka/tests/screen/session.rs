@@ -533,8 +533,8 @@ async fn a_saved_session_comes_back_into_a_running_one_without_losing_what_was_t
         assert!(!item.content.to_text().is_empty());
     }
 
-    // a pin is the person saying this stays, and `--system` is pinned: a load that excluded it
-    // would answer a question about a saved conversation by revoking the session's instructions
+    // a pin is the person saying this stays, and `--system-prompt` is pinned: a load that excluded
+    // it would answer a question about a saved conversation by revoking the session's instructions
     let kept = second.app.kernel.item(pinned).expect("still there");
     assert_eq!(kept.state, ContextState::Pinned, "the pin was overruled");
 

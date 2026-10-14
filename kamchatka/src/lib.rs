@@ -45,13 +45,13 @@
 //! any other tool, and offers it again; the `tools` key in a settings file says which of them a
 //! session starts with.
 //!
-//! `--gemini` swaps the wire format for Google's own, in which an assistant turn is an ordered
+//! `--api gemini` swaps the wire format for Google's own, in which an assistant turn is an ordered
 //! list of parts rather than a content slot beside a list of calls. What that buys is the order
 //! itself: thinking, a sentence, a tool call, more thinking - recorded as it happened, counted,
-//! elided and excluded like any other turn, and sent back the same way. `--anthropic` does the
+//! elided and excluded like any other turn, and sent back the same way. `--api anthropic` does the
 //! same with Anthropic's Messages API, whose thinking is signed and has to go back as it came, and
-//! `--responses` with OpenAI's Responses API, whose thinking is sealed and goes back the same way.
-//! Every dialect answers one trait ([`nachalnik_providers::Endpoint`]), so nothing above them
+//! `--api responses` with OpenAI's Responses API, whose thinking is sealed and goes back the same
+//! way. Every dialect answers one trait ([`nachalnik_providers::Endpoint`]), so nothing above them
 //! knows which one it got.
 //!
 //! Everything in here is code above the runtime: the tools, the policy, the compactor, the

@@ -548,15 +548,16 @@ fn verdict_word(verdict: Verdict) -> (&'static str, Style) {
 
 /// The line a build that can rate commands draws when nothing is rating them.
 ///
-/// note: the feature puts the advisor in the binary and `--advise` is what starts one, so a build
-/// with the first and not the second draws a question with no rating, and without this nothing
-/// anywhere would account for the absence. That is the failure this program is least for, and the
-/// tab that answers "what is deciding" is where somebody wondering will already be.
+/// note: the feature puts the advisor in the binary and `--rate-shell-commands` is what starts one,
+/// so a build with the first and not the second draws a question with no rating, and without this
+/// nothing anywhere would account for the absence. That is the failure this program is least for,
+/// and the tab that answers "what is deciding" is where somebody wondering will already be.
 #[cfg(feature = "shell-advisor")]
 fn unrated(app: &App) -> Vec<Line<'static>> {
     match app.advisor.is_none() {
         true => vec![Line::styled(
-            "this build can rate the commands it asks about; --advise is what turns that on",
+            "this build can rate the commands it asks about; --rate-shell-commands is what turns \
+             that on",
             quiet(),
         )],
         false => Vec::new(),
@@ -650,7 +651,7 @@ pub(super) fn draw_permissions(frame: &mut Frame, app: &mut App, area: Rect) -> 
                 match covers >= 8 {
                     // note: not "the tools it covers". A capability, a server and a path are
                     // each about a set of tools; a whole domain is about a set of capabilities,
-                    // and naming its tools instead would tell somebody who wrote `--allow log`
+                    // and naming its tools instead would tell somebody who wrote `--auto-allow log`
                     // that it covered `log`
                     true => "what it covers",
                     false => "",

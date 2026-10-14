@@ -18,7 +18,7 @@ use crate::tools::Careful;
 /// Starts the servers that were asked for, and puts their tools in the same list as the rest.
 ///
 /// note: the name matters more than it looks. It prefixes every tool the server offers and it is
-/// what `--allow-server <name>` grants permission to - so `files=npx -y ...` is one server and
+/// what `--auto-allow-server <name>` grants permission to - so `files=npx -y ...` is one server and
 /// not the next one. Taken from the program instead it would be `npx` or `python3` for most of
 /// the servers people actually run, which is why `name=command` is accepted and worth giving.
 ///
@@ -59,7 +59,7 @@ pub async fn attach_within(
     let mut taken: HashSet<String> = kernel.tool_ids().into_iter().collect();
 
     // note: refused before anything is spawned, whatever the servers offer. The name is what
-    // `--allow-server` grants and what answering "always" at the prompt answers for, so two
+    // `--auto-allow-server` grants and what answering "always" at the prompt answers for, so two
     // servers under one - two `npx` lines with no `name=` - would be granted together whichever
     // of them was meant
     let mut names = HashMap::new();
@@ -213,8 +213,8 @@ fn claim(taken: &mut HashSet<String>, tools: &[Arc<dyn Tool>]) -> Vec<String> {
 
 /// The name a server is given by one `--mcp` spec, and the command line that starts it.
 ///
-/// note: its own function so that `--allow-server` and `--deny-server` can be held to the names
-/// before anything is spawned, by the same reading `attach` gives them.
+/// note: its own function so that `--auto-allow-server` and `--auto-deny-server` can be held to the
+/// names before anything is spawned, by the same reading `attach` gives them.
 pub(crate) fn named(spec: &str) -> (String, &str) {
     // `env FOO=bar cmd` is a command rather than a name, which is what the guard is for
     let (name, line) = match spec.split_once('=') {

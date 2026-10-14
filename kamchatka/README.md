@@ -23,8 +23,8 @@ $ kamchatka -m qwen/qwen3-coder -f src/kernel.rs "what does the kernel do?"
 
 OpenRouter is the default, but `KAMCHATKA_BASE_URL` can point it at anything that supports OpenAI's
 chat completions API, including a local model served by ollama, vLLM or LM Studio (no key needed);
-`--gemini` and `--anthropic` use Google's and Anthropic's own APIs, and `--responses` OpenAI's
-Responses API. [Running it][running] has the details.
+`--api gemini` and `--api anthropic` use Google's and Anthropic's own APIs, and `--api responses`
+OpenAI's Responses API. [Running it][running] has the details.
 
 ## ❓ who this is for
 
@@ -60,11 +60,12 @@ open, showing why it is there and what it says.][shot-context]
 ## 🔍 nothing behind your back
 
 **No hidden instructions.** `kamchatka` sends no system prompt of its own. The only system text in a
-session is what you give it with `--system` or a settings file, and it appears as a pinned row on
-the context tab like any other item. Two things that make a session of their own write an
-instruction into it: a `fork` is told it is a copy with no tools, and a session `kamchatka
-reconcile` makes says which notes came from which fork, pinned where you can read it. Apart from the context, the model only receives the tool
-definitions, and `/budget` shows what they cost.
+session is what you give it with `--system-prompt` or a settings file, and it appears as a pinned
+row on the context tab like any other item. Two things that make a session of their own write an
+instruction into it: a `fork` is told it is a copy with no tools, and a session
+`kamchatka reconcile` makes says which notes came from which fork, pinned where you can read it.
+Apart from the context, the model only receives the tool definitions, and `/budget` shows what they
+cost.
 
 **See the request before it's sent.** <kbd>ctrl+p</kbd> prints the next request as the runtime
 builds it, listing every item left out and why; `/payload` prints exactly what the provider will
@@ -130,7 +131,7 @@ $ kamchatka --mcp 'files=npx -y @modelcontextprotocol/server-filesystem /srv'
 ```
 
 Those tools arrive through [`nachalnik-mcp`][nachalnik-mcp] and only declare `mcp:call`, whatever
-their annotations claim. Which server they came from is a separate permission: `--allow-server
+their annotations claim. Which server they came from is a separate permission: `--auto-allow-server
 files` covers that one server and no other, which is why it's worth giving each server a `name=`.
 The command is split on whitespace and nothing is unquoted, so an argument can't hold a space: a
 path with one in it is two arguments, and a script that starts the server is the way round that.
@@ -181,9 +182,10 @@ resume the turn automatically, since you chose to step through it.
 - `advise`: a client for System One models, which answer typed questions with probabilities
   instead of writing text. It only adds `kamchatka::endpoint::advise` to the library; the program
   itself uses it through `shell-advisor`.
-- `shell-advisor`: adds `--advise`, which colours each shell command you are asked about green,
-  yellow or red by the advisor's reading of it. The rating decides nothing. It is off by default
-  because it sends command lines off the machine; [running it][advise] says exactly what leaves.
+- `shell-advisor`: adds `--rate-shell-commands`, which colours each shell command you are asked
+  about green, yellow or red by the advisor's reading of it. The rating decides nothing. It is off
+  by default because it sends command lines off the machine; [running it][advise] says exactly what
+  leaves.
 
 ## 📚 the rest of it
 

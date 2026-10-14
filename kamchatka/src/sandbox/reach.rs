@@ -57,7 +57,7 @@ impl Reach {
     /// Everywhere it reaches and what may be done there, in the order the rules are consulted.
     ///
     /// note: a refusal that names only the working directory and calls it as far as this session
-    /// reaches stops being true the moment anybody passes `--sandbox-allow` or `--sandbox-read`.
+    /// reaches stops being true the moment anybody passes `--sandbox-write` or `--sandbox-read`.
     /// A refusal that under-reports the reach is worse than a vague one: a model reads it as the
     /// whole boundary and never goes near the path somebody opened up for exactly this, and there
     /// is nothing in front of it to say otherwise. [`Shell`](crate::tools::Shell) names them in
@@ -331,7 +331,7 @@ impl Reach {
     /// as it always did rather than a rename stepping round the refusal; when the directory will
     /// not take a new file, or its name is too long to carry the temporary's suffix; when what
     /// is there is not a regular file; and when the file was allowed on its own -
-    /// `--sandbox-allow notes.txt` - since the directory it is in was never given, and a new file
+    /// `--sandbox-write notes.txt` - since the directory it is in was never given, and a new file
     /// made there would be one a kill in the middle leaves outside the reach. The permission bits
     /// are copied across. Extended attributes are not.
     pub fn replace(&self, path: &Path, content: &[u8]) -> std::io::Result<()> {

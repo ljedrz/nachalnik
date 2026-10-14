@@ -800,7 +800,7 @@ async fn a_file_past_what_is_counted_is_read_a_part_at_a_time() {
 ///
 /// note: counting was bounded by what a tool keeps, so a 9 MB log said which lines it showed and
 /// not how many it had. A live model asked for its last line paged forward 32 KB a request until
-/// `--requests` stopped the turn; told the total, it reads the end in one.
+/// `--max-requests-per-turn` stopped the turn; told the total, it reads the end in one.
 #[tokio::test]
 async fn a_file_past_what_is_kept_says_how_many_lines_it_has() {
     let dir = scratch("files-counted");

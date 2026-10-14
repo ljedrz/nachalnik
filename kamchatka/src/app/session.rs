@@ -178,8 +178,8 @@ impl App {
         // can pair a loaded result with. Excluded items are not projected, so an old copy of the
         // same conversation cannot answer the new one's calls
         //
-        // note: except what is pinned. A pin is the person saying this stays, and `--system` is
-        // pinned - a load that quietly excluded the system instruction would be answering a
+        // note: except what is pinned. A pin is the person saying this stays, and `--system-prompt`
+        // is pinned - a load that quietly excluded the system instruction would be answering a
         // question about a saved conversation by revoking the one thing the session was told to
         // hold on to. And with it what it is paired with: a pinned result whose call was excluded
         // goes out of the request as an orphan, and so does a pinned call's result, so the turn

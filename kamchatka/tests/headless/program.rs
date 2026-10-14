@@ -424,7 +424,7 @@ async fn what_a_command_left_running_ends_with_the_run() {
                 "--no-record",
                 "-m",
                 "nothing",
-                "--allow",
+                "--auto-allow",
                 "exec:run,fs:write",
             ])
             .arg("go")
@@ -597,7 +597,7 @@ fn a_resumed_run_says_the_spend_is_this_runs() {
 }
 
 /// The program finds the gate for itself and puts the shell behind it: a command that opens a
-/// socket under `--allow exec:run` is asked about when it tries, and a run with nobody at it
+/// socket under `--auto-allow exec:run` is asked about when it tries, and a run with nobody at it
 /// answers `deny`.
 ///
 /// note: through the binary, because the half this is about is `Setup::wire` - the probe finding
@@ -628,7 +628,7 @@ async fn the_program_puts_its_shell_behind_the_gate_where_there_is_one() {
             "--no-record",
             "-m",
             "nothing",
-            "--allow",
+            "--auto-allow",
             "exec:run",
             "go",
         ])
@@ -713,9 +713,9 @@ async fn the_programs_commands_signal_each_other_and_nothing_outside() {
             "--no-record",
             "-m",
             "nothing",
-            "--allow",
+            "--auto-allow",
             "exec:run",
-            "--deadline",
+            "--max-run-seconds",
             "60",
             "go",
         ])
@@ -838,7 +838,7 @@ async fn the_devices_the_program_is_given_are_the_shells() {
                 "--no-record",
                 "-m",
                 "nothing",
-                "--allow",
+                "--auto-allow",
                 "exec:run",
             ])
             .args(devices)
@@ -901,7 +901,7 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
             "--no-record",
             "-m",
             "nothing",
-            "--allow",
+            "--auto-allow",
             "exec:run",
             "go",
         ])
@@ -927,7 +927,8 @@ async fn ctrl_c_stops_a_command_that_is_running_and_keeps_what_arrived() {
     );
     let said = heard(&said, "what has arrived is kept");
     // and it was running: a call refused for want of anybody to ask leaves nothing to stop, and
-    // passes everything above. `--allow shell` did exactly that, being a domain no tool declares
+    // passes everything above. `--auto-allow shell` did exactly that, being a domain no tool
+    // declares
     assert!(
         !said.contains("because nobody is here to be asked"),
         "the command was refused rather than run: {said}"
@@ -984,7 +985,7 @@ async fn a_command_the_model_runs_is_not_handed_the_program_s_keys() {
             "--no-record",
             "-m",
             "nothing",
-            "--allow",
+            "--auto-allow",
             "exec:run,fs:write",
         ]);
         if !confined {
@@ -1051,7 +1052,7 @@ async fn a_command_carries_the_mark_of_the_command_it_runs_inside() {
 
         let ran = common::command()
             .args(["--headless", "--no-record", "--no-sandbox", "-m", "nothing"])
-            .args(["--allow", "exec:run,fs:write", "go"])
+            .args(["--auto-allow", "exec:run,fs:write", "go"])
             .current_dir(&dir)
             .env("KAMCHATKA_BASE_URL", &base)
             .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1108,7 +1109,7 @@ async fn a_confined_command_can_move_a_file_between_directories() {
 
     let ran = common::command()
         .args(["--headless", "--no-record", "-m", "nothing"])
-        .args(["--allow", "exec:run,fs:write", "go"])
+        .args(["--auto-allow", "exec:run,fs:write", "go"])
         .current_dir(&dir)
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -1244,7 +1245,7 @@ async fn a_first_press_stops_a_call_the_server_never_answers() {
     );
     let mut child = common::command()
         .args(["--headless", "--no-record", "-m", "nothing"])
-        .args(["--mcp", &server, "--allow-server", "py", "go"])
+        .args(["--mcp", &server, "--auto-allow-server", "py", "go"])
         .env("KAMCHATKA_BASE_URL", &base)
         .env("KAMCHATKA_API_KEY", "not-a-key")
         .stdin(std::process::Stdio::piped())
@@ -1316,7 +1317,7 @@ async fn a_request_to_end_is_a_quit_and_leaves_a_record() {
                 "--headless",
                 "-m",
                 "nothing",
-                "--allow",
+                "--auto-allow",
                 "exec:run,fs:write",
             ])
             .arg("go")
@@ -1427,7 +1428,7 @@ async fn a_run_killed_outright_leaves_what_it_had_written() {
     .await;
 
     let mut child = common::command()
-        .args(["--headless", "-m", "nothing", "--allow", "exec:run"])
+        .args(["--headless", "-m", "nothing", "--auto-allow", "exec:run"])
         .arg("go")
         .current_dir(&dir)
         .env("KAMCHATKA_BASE_URL", &base)
@@ -1626,9 +1627,9 @@ async fn a_restart_that_cannot_start_again_still_says_where_the_session_went() {
 
 /// What one answer costs, through the flag, against something that reports a cost.
 ///
-/// note: the ceiling has tests through the library and a live run behind it; what it had not had
-/// is the path a person takes - `--spend` on a command line, into `Setup`, into the `App` that
-/// enforces it. The stub reports 1,200 tokens for one answer, which is over any ceiling worth
+/// note: the ceiling has tests through the library and a live run behind it; what it had not had is
+/// the path a person takes - `--max-spend-tokens` on a command line, into `Setup`, into the `App`
+/// that enforces it. The stub reports 1,200 tokens for one answer, which is over any ceiling worth
 /// typing here.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_spend_ceiling_stops_the_program_itself() {
@@ -1640,7 +1641,7 @@ async fn the_spend_ceiling_stops_the_program_itself() {
             "--no-record",
             "-m",
             "nothing",
-            "--spend",
+            "--max-spend-tokens",
             "100",
         ])
         .arg("go")
@@ -1662,7 +1663,8 @@ async fn the_spend_ceiling_stops_the_program_itself() {
     );
 }
 
-/// `--deadline 0` is no deadline, as `0` is no ceiling to `--spend` and `--requests`.
+/// `--max-run-seconds 0` is no deadline, as `0` is no ceiling to `--max-spend-tokens` and
+/// `--max-requests-per-turn`.
 ///
 /// note: it was a deadline that had already passed, which raced the first line: a request sent
 /// and interrupted at once, or the line never read.
@@ -1676,7 +1678,7 @@ async fn a_deadline_of_nothing_is_none() {
             "--no-record",
             "-m",
             "nothing",
-            "--deadline",
+            "--max-run-seconds",
             "0",
         ])
         .arg("go")
@@ -1719,8 +1721,8 @@ async fn a_run_whose_record_was_not_written_says_so_in_its_status() {
     assert_eq!(out.status.code(), Some(5), "{said}");
 }
 
-/// `--requests` is how many requests one turn makes before it pauses and says so, and `0` is no
-/// ceiling at all.
+/// `--max-requests-per-turn` is how many requests one turn makes before it pauses and says so, and
+/// `0` is no ceiling at all.
 ///
 /// note: through the flag, as the spend ceiling above is: the runtime tests its own limit, and
 /// what is under test here is the number getting from a command line to it. `0` read as a
@@ -1732,7 +1734,13 @@ async fn the_request_ceiling_stops_the_program_itself() {
 
         let base = common::endpoint(answers).await;
         let mut child = common::command()
-            .args(["--headless", "--no-record", "-m", "nothing", "--requests"])
+            .args([
+                "--headless",
+                "--no-record",
+                "-m",
+                "nothing",
+                "--max-requests-per-turn",
+            ])
             .args([requests, "go"])
             .current_dir(common::scratch(&format!("requests-{requests}")))
             .env("KAMCHATKA_BASE_URL", &base)
@@ -1775,7 +1783,7 @@ async fn the_request_ceiling_stops_the_program_itself() {
 
     // a call somebody is asked about is no way round it: answered by `--on-ask`, the turn carried
     // on with a budget of its own, made its second request and exited `0` - which is what a live
-    // model reading two files one call at a time did under `--requests 1`
+    // model reading two files one call at a time did under `--max-requests-per-turn 1`
     let asking = format!(
         "data: {}",
         json!({"id": "1", "choices": [{"index": 0, "delta": {"role": "assistant",
@@ -1808,8 +1816,8 @@ async fn the_request_ceiling_stops_the_program_itself() {
     assert_eq!(code, Some(0), "{said}");
 }
 
-/// `--forget-truncated` reaches the session: what `setup` tells the model about the rest of a cut
-/// result follows the flag.
+/// `--discard-cut-off-output` reaches the session: what `setup` tells the model about the rest of
+/// a cut result follows the flag.
 ///
 /// note: `setup` reads it off the kernel's own configuration, and nothing else shows it before
 /// something is cut. A model told the whole is excluded, in a session that forgets it, goes
@@ -1837,7 +1845,7 @@ async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
                 "--no-record",
                 "-m",
                 "nothing",
-                "--allow",
+                "--auto-allow",
                 "setup",
             ])
             .args(flags)
@@ -1864,7 +1872,7 @@ async fn a_session_told_to_forget_what_was_cut_tells_the_model_so() {
     let saved = run("kept-what-was-cut", &[]).await;
     assert!(saved.contains("excluded beside"), "{saved}");
 
-    let saved = run("forgot-what-was-cut", &["--forget-truncated"]).await;
+    let saved = run("forgot-what-was-cut", &["--discard-cut-off-output"]).await;
     assert!(saved.contains("not kept"), "{saved}");
     assert!(!saved.contains("excluded beside"), "{saved}");
 }
@@ -2080,7 +2088,7 @@ fn a_screenless_build_at_a_terminal_is_a_headless_run() {
     assert!(said.contains("error sending request"), "{said}");
 }
 
-/// `--deadline` ends a run that is waiting for somebody, through the flag.
+/// `--max-run-seconds` ends a run that is waiting for somebody, through the flag.
 ///
 /// note: the third of the guards, and the last to get a test at this level - the ceiling and
 /// `ctrl+c` have theirs above. The mechanism is tested through the library, with a pipe nobody
@@ -2095,7 +2103,7 @@ async fn the_deadline_ends_the_program_itself() {
             "--no-record",
             "-m",
             "nothing",
-            "--deadline",
+            "--max-run-seconds",
             "1",
         ])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -2121,7 +2129,8 @@ async fn the_deadline_ends_the_program_itself() {
     assert!(said.contains("out of time"), "{said}");
 }
 
-/// `--patience` is how long the program waits on an answer that says nothing, and `0` is refused.
+/// `--max-silence-seconds` is how long the program waits on an answer that says nothing, and `0` is
+/// refused.
 ///
 /// note: it was a fixed two and a half minutes, and a free endpoint under load can queue a request
 /// for longer than that before answering it, so every request was given up on. The listener takes
@@ -2156,9 +2165,9 @@ async fn the_patience_given_is_how_long_a_silent_answer_is_waited_on() {
             "--no-record",
             "-m",
             "nothing",
-            "--patience",
+            "--max-silence-seconds",
             "2",
-            "--deadline",
+            "--max-run-seconds",
             "60",
         ])
         .env("KAMCHATKA_BASE_URL", format!("http://{address}/v1"))
@@ -2179,7 +2188,7 @@ async fn the_patience_given_is_how_long_a_silent_answer_is_waited_on() {
 
     let (ok, said) = {
         let output = common::command()
-            .args(["--headless", "--no-record", "--patience", "0"])
+            .args(["--headless", "--no-record", "--max-silence-seconds", "0"])
             .stdin(std::process::Stdio::null())
             .output()
             .expect("the binary under test is built");
@@ -2210,7 +2219,7 @@ async fn a_run_stopped_after_a_failed_turn_leaves_with_the_stop() {
             "--no-record",
             "-m",
             "nothing",
-            "--deadline",
+            "--max-run-seconds",
             "3",
         ])
         .env("KAMCHATKA_BASE_URL", "http://127.0.0.1:1/v1")
@@ -2234,7 +2243,7 @@ async fn a_run_stopped_after_a_failed_turn_leaves_with_the_stop() {
     assert!(said.contains("the last turn failed"), "{said}");
 }
 
-/// `--deadline` ends a run still starting: a server that never answers its handshake, and an
+/// `--max-run-seconds` ends a run still starting: a server that never answers its handshake, and an
 /// endpoint that never answers at all.
 ///
 /// note: both are waits on somebody else's program with no bound of their own, before the driver
@@ -2254,7 +2263,7 @@ async fn the_deadline_ends_a_run_that_is_still_starting() {
         (vec!["-m", "nothing"], silent.as_str(), "reaching the model"),
     ] {
         let mut child = common::command()
-            .args(["--headless", "--no-record", "--deadline", "1"])
+            .args(["--headless", "--no-record", "--max-run-seconds", "1"])
             .args(&args)
             .env("KAMCHATKA_BASE_URL", base)
             .env("KAMCHATKA_API_KEY", "not-a-key")
@@ -2650,7 +2659,7 @@ async fn a_resume_carries_on_with_the_model_its_record_names() {
     let base = common::endpoint(vec![common::answer("hello"), common::answer("hello again")]).await;
     let run = |args: &[&str]| {
         common::command()
-            .args(["--headless", "--deadline", "20"])
+            .args(["--headless", "--max-run-seconds", "20"])
             .args(args)
             .current_dir(&dir)
             .env("TMPDIR", &dir)
@@ -2702,7 +2711,7 @@ async fn an_endpoint_switch_that_keeps_the_name_is_in_the_record() {
         .args([
             "--headless",
             "--no-record",
-            "--deadline",
+            "--max-run-seconds",
             "20",
             "-m",
             "nothing",
@@ -2757,7 +2766,7 @@ async fn an_address_is_said_without_the_credential_in_it() {
         .args([
             "--headless",
             "--no-record",
-            "--deadline",
+            "--max-run-seconds",
             "20",
             "-m",
             "nothing",
@@ -2798,7 +2807,7 @@ async fn a_resume_pointed_elsewhere_says_where_the_record_was_talking() {
     let second = common::endpoint(vec![common::answer("from the second")]).await;
     let run = |base: &str, args: &[&str]| {
         common::command()
-            .args(["--headless", "--deadline", "20"])
+            .args(["--headless", "--max-run-seconds", "20"])
             .args(args)
             .current_dir(&dir)
             .env("TMPDIR", &dir)

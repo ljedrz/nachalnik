@@ -244,7 +244,7 @@ pub(crate) const REPORT: usize = 8_000;
 ///
 /// note: **one row per subject**, the same `<domain>:<operation>` string the permissions table is
 /// keyed on. A call's limit is looked up by the very subject its permission was decided by, so
-/// there is one vocabulary in this program and not two: `--allow fs:grep` and `/limit fs:grep`
+/// there is one vocabulary in this program and not two: `--auto-allow fs:grep` and `/limit fs:grep`
 /// name the same thing, and a person who has read either table can read the other.
 ///
 /// note: not keyed by tool id, because a tool can do several things. `fs` is one tool over five

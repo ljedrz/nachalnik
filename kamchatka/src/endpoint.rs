@@ -357,11 +357,12 @@ fn address_in(variable: &str) -> Option<String> {
 pub enum Wire {
     /// OpenAI chat-completions, which OpenRouter and most local servers speak.
     OpenAi,
-    /// Google's own `generateContent`, with `--gemini`.
+    /// Google's own `generateContent`, with `--api gemini`.
     Gemini,
-    /// Anthropic's Messages API, with `--anthropic`.
+    /// Anthropic's Messages API, with `--api anthropic`.
     Anthropic,
-    /// OpenAI's Responses API, with `--responses`: the same address and key as chat completions.
+    /// OpenAI's Responses API, with `--api responses`: the same address and key as chat
+    /// completions.
     Responses,
 }
 
@@ -369,7 +370,7 @@ pub enum Wire {
 ///
 /// note: the dialect is half the answer and cannot be read out of the environment, which is why
 /// this takes the flag rather than working it out. `KAMCHATKA_BASE_URL` is read by both, and the
-/// defaults behind it are different services - so a `--gemini` session that never set the
+/// defaults behind it are different services - so an `--api gemini` session that never set the
 /// variable would otherwise report OpenRouter's address and Google's key.
 ///
 /// note: the advisor is what asks, and the question is whose key [`api_key`] just handed it. A key
@@ -439,15 +440,15 @@ async fn connected(
 /// has - its own where the session talks to OpenRouter, or `OPENROUTER_API_KEY` - and only where
 /// the advice goes to OpenRouter. That condition is the whole of what makes the fallback safe,
 /// because a key is an OpenRouter key by virtue of being sent to OpenRouter and not by virtue of
-/// the variable it was read from. A session pointed at ollama, at Google with `--gemini`, or at
+/// the variable it was read from. A session pointed at ollama, at Google with `--api gemini`, or at
 /// any gateway of somebody's own holds a key that service issued, and borrowing it here would hand
 /// a third party a credential that has no business with them.
 ///
 /// note: what the fallback widens is who is told, which is the question `tools::advice` is about.
-/// `--advise` sends a command's arguments off the machine, to OpenRouter as well as to the model
-/// behind it, unless `KAMCHATKA_SYSTEM1_BASE_URL` points at an engine of one's own. Nothing in here
-/// is read unless `--advise` was asked for - the flag is what decides whether they leave at all, and a key sitting in the
-/// environment is not a decision to send them.
+/// `--rate-shell-commands` sends a command's arguments off the machine, to OpenRouter as well as to
+/// the model behind it, unless `KAMCHATKA_SYSTEM1_BASE_URL` points at an engine of one's own.
+/// Nothing in here is read unless `--rate-shell-commands` was asked for - the flag is what decides
+/// whether they leave at all, and a key sitting in the environment is not a decision to send them.
 #[cfg(feature = "advise")]
 pub mod advise {
     use std::fmt;
@@ -528,13 +529,13 @@ pub mod advise {
     /// Which model answers: `KAMCHATKA_SYSTEM1_MODEL`, and nothing if it is not set.
     ///
     /// note: no default, because a default would be one vendor's model chosen for everybody who
-    /// asked for advice. A session asked for with `--advise` and no model is refused at startup,
-    /// with the listing to pick one from.
+    /// asked for advice. A session asked for with `--rate-shell-commands` and no model is refused
+    /// at startup, with the listing to pick one from.
     pub fn model() -> Result<String, BoxError> {
         env::var("KAMCHATKA_SYSTEM1_MODEL").map_err(|_| {
             format!(
-                "--advise needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the System One \
-                 models at {LISTING}"
+                "--rate-shell-commands needs a model: set KAMCHATKA_SYSTEM1_MODEL to one of the \
+                 System One models at {LISTING}"
             )
             .into()
         })
@@ -588,7 +589,7 @@ pub mod advise {
         // advisor. Said now, while nothing is running
         if system1::is_workers_ai(advisor_endpoint) {
             return Err(format!(
-                "--advise needs a Cloudflare API token for {advisor_endpoint}: set \
+                "--rate-shell-commands needs a Cloudflare API token for {advisor_endpoint}: set \
                  KAMCHATKA_SYSTEM1_API_KEY to one that may use Workers AI"
             )
             .into());
@@ -605,7 +606,7 @@ pub mod advise {
             .map(Account::Borrowed)
             .ok_or_else(|| {
                 format!(
-                    "--advise needs an OpenRouter key: set OPENROUTER_API_KEY, or \
+                    "--rate-shell-commands needs an OpenRouter key: set OPENROUTER_API_KEY, or \
                      KAMCHATKA_SYSTEM1_API_KEY. This session talks to {session_endpoint}, so its \
                      own key is not OpenRouter's to borrow"
                 )

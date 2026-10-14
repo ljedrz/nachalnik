@@ -423,10 +423,11 @@ impl Advised {
     /// The tokens the engine has reported its answers cost, over the life of this policy.
     ///
     /// note: kept here because nothing else sees them. The advisor is asked from inside the
-    /// permission policy, which writes no event, so a `--spend` that added up `model.finished`
-    /// alone was a ceiling on the model and none on the advisor - and one borrowing the session's
-    /// key spends out of the same account. `App` charges what this has grown by since it last
-    /// looked. A local engine that reports nothing adds nothing, which is what it costs.
+    /// permission policy, which writes no event, so a `--max-spend-tokens` that added up
+    /// `model.finished` alone was a ceiling on the model and none on the advisor - and one
+    /// borrowing the session's key spends out of the same account. `App` charges what this has
+    /// grown by since it last looked. A local engine that reports nothing adds nothing, which is
+    /// what it costs.
     pub fn spent(&self) -> u64 {
         self.spent.load(Ordering::Relaxed)
     }
@@ -754,7 +755,7 @@ impl PermissionPolicy for Advised {
         // note: and `exec:run` only, which is the capability rather than the tool's name. The
         // rubric is written about a command, and `shell` is the tool that takes one; a tool that
         // declares the capability is asking for the same thing whatever it calls itself, and one
-        // that does not is not what `--advise` was turned on for
+        // that does not is not what `--rate-shell-commands` was turned on for
         if standing == Verdict::Ask && request.capabilities.contains(&Capability::exec("run")) {
             self.rate(request).await;
         }

@@ -3,7 +3,7 @@
 #
 #   FIX=proj      the fixture its workspace is copied from (WS= names a workspace to use as it is)
 #   LIMIT=N       KAMCHATKA_CONTEXT_LIMIT, to reach compaction and the wall within minutes
-#   DEADLINE=N    --deadline, 1200 by default; a hard kill follows five minutes after it
+#   DEADLINE=N    --max-run-seconds, 1200 by default; a hard kill follows five minutes after it
 #   SIG="TERM N"  send a signal once N tool calls have started
 #   BASE=URL      KAMCHATKA_BASE_URL, for the fake endpoint or the logging proxy
 #
@@ -35,7 +35,7 @@ for line in open(sys.argv[1]):
 PY
 }
 # process substitution rather than a pipe, so that $! is kamchatka and a signal reaches it
-"$BIN" --headless --deadline "${DEADLINE:-1200}" "$@" < <(fed) > "$out.jsonl" 2> "$out.err" &
+"$BIN" --headless --max-run-seconds "${DEADLINE:-1200}" "$@" < <(fed) > "$out.jsonl" 2> "$out.err" &
 pid=$!
 echo $pid > "$out.pid"
 sig=${SIG:-} start=$(date +%s)

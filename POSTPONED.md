@@ -42,12 +42,12 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   loop as well as that write, and a test needs a peer that closes at a chosen moment. Unblocked by
   writing that peer.
 
-- **Two `fork`s in one turn under `--parallel` can both call their copies the same context.** The
-  copy before is found by whichever fork takes the `last_read` lock first, and the comparison is one
-  way, so where a call writing to the context lands between the two snapshots and the later fork
-  locks first, neither says the two differ. Taking the lock before the snapshot would make the lock
-  order the snapshot order; what is missing is a test that can order the two forks, since the kernel
-  runs parallel calls on a `JoinSet`.
+- **Two `fork`s in one turn under `--parallel-tool-calls` can both call their copies the same
+  context.** The copy before is found by whichever fork takes the `last_read` lock first, and the
+  comparison is one way, so where a call writing to the context lands between the two snapshots and
+  the later fork locks first, neither says the two differ. Taking the lock before the snapshot would
+  make the lock order the snapshot order; what is missing is a test that can order the two forks,
+  since the kernel runs parallel calls on a `JoinSet`.
 
 - **No test makes a connection fall behind the session's own lines.** What a connection more than
   256 of them behind does - say how many it missed, ask the session where it stands and say that -
@@ -140,9 +140,9 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   after though nothing they were asked changed; it waits for the next change that bumps
   `script::VERSION` anyway.
 
-- **The first undo in a fresh session removes its setup.** `--system` and `-f` add items to the
-  context like anything else, so each is an undo step: `/undo` in a session nobody has typed in yet
-  removes the system instruction, and a second removes the attached file, each only reported as
+- **The first undo in a fresh session removes its setup.** `--system-prompt` and `-f` add items to
+  the context like anything else, so each is an undo step: `/undo` in a session nobody has typed in
+  yet removes the system instruction, and a second removes the attached file, each only reported as
   `undone`. A resumed session says there's nothing to undo, because `Kernel::resume` restores its
   items without a checkpoint. A host can't do the same for its own setup (the undo history can't be
   read from outside, and an undo followed by a redo leaves two pointless records), so this needs a

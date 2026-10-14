@@ -300,7 +300,7 @@ pub(super) fn nothing_to_send(kernel: &Kernel, why: &str, keys: bool) -> String 
     match kernel.items().len() {
         0 => "nothing yet: there is nothing in the context to send. Whatever you type next goes \
               in as an item, and this is where you will see what it turns into - as will \
-              --system, --file, -r and /load, which put things in before you type anything."
+              --system-prompt, --file, -r and /load, which put things in before you type anything."
             .to_owned(),
         items => format!(
             "{why}: not one of the {items} item(s) it holds is going. The list above says which \

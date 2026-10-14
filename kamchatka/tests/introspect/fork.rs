@@ -634,7 +634,7 @@ async fn a_fork_told_to_leave_out_an_item_that_is_not_there_is_refused() {
 /// `context` is advice for a call the session would be refused for - the cost of it being that
 /// the model spends a request on being told what it had just been told it does not have. The
 /// policy the tools are handed is the one the kernel is consulting, and a session run
-/// `--deny context` is refused every `look`, so the sentence has to go with the capability.
+/// `--auto-deny context` is refused every `look`, so the sentence has to go with the capability.
 #[tokio::test]
 async fn a_refusal_names_where_the_numbers_come_from_only_while_context_is_reachable() {
     // the policy `agent` hands out does not stop the model reading its own context

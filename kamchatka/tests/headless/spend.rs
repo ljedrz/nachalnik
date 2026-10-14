@@ -414,10 +414,11 @@ async fn the_total_is_counted_with_no_ceiling_to_count_it_against() {
 
 /// An endpoint that reports no figures says so, rather than holding a ceiling nothing can reach.
 ///
-/// note: the failure this is about is silence. A run given `--spend 50000` against a provider that
-/// reports no usage would go on for ever having spent nothing as far as anybody here can tell, and
-/// whoever set the number would read that run as bounded. It is said once, at the first response
-/// that came with nothing on it, and `--deadline` is the guard that needs nobody's cooperation.
+/// note: the failure this is about is silence. A run given `--max-spend-tokens 50000` against a
+/// provider that reports no usage would go on for ever having spent nothing as far as anybody here
+/// can tell, and whoever set the number would read that run as bounded. It is said once, at the
+/// first response that came with nothing on it, and `--max-run-seconds` is the guard that needs
+/// nobody's cooperation.
 #[tokio::test]
 async fn a_ceiling_over_an_endpoint_that_reports_nothing_says_so() {
     let script = vec![ModelResponse::text("no usage on this one")];
@@ -450,10 +451,10 @@ async fn a_ceiling_over_the_next_endpoint_that_reports_nothing_says_so_again() {
 /// silence.
 ///
 /// note: a stream cut short never reaches the chunk its usage rides on, so after a ctrl+c, a
-/// `--deadline` or a connection dropped mid-answer an endpoint that reports usage on every other
-/// response was being called one that reports none - telling whoever set the ceiling that it had
-/// stopped holding when it had not, and saying it once, so the next endpoint that really is silent
-/// went unmentioned.
+/// `--max-run-seconds` or a connection dropped mid-answer an endpoint that reports usage on every
+/// other response was being called one that reports none - telling whoever set the ceiling that it
+/// had stopped holding when it had not, and saying it once, so the next endpoint that really is
+/// silent went unmentioned.
 #[tokio::test]
 async fn an_unfinished_response_does_not_say_the_endpoint_reports_nothing() {
     for why in ["interrupted", "cut off"] {

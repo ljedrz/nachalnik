@@ -133,8 +133,9 @@ return of any of them is a regression, and the checker says so:
   snapshot holding one. The kernel's whole copy is now told apart by its `WHOLE_OUTPUT` reason.
 - **A resume from a snapshot behind its log reissued numbers**: records, items and permissions
   the killed run had already used. `-r` now numbers past the log beside the snapshot.
-- **Headless kept messages refused for being over the limit**, each making the overflow larger
-  and all going out together once there was room. They are passed over now, as past `--spend`.
+- **Headless kept messages refused for being over the limit**, each making the overflow larger and
+  all going out together once there was room. They are passed over now, as past
+  `--max-spend-tokens`.
 
 ## gotchas
 

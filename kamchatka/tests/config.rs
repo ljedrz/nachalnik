@@ -167,9 +167,9 @@ fn a_settings_file_stands_in_for_the_command_line() {
         "settings",
         r#"{
             "model": "a-model-from-a-file",
-            "sandbox-allow": ["/usr/share", "/usr/include"],
+            "sandbox-write": ["/usr/share", "/usr/include"],
             "sandbox-read": ["~"],
-            "spend": 12345
+            "max-spend-tokens": 12345
         }"#,
     );
 
@@ -202,14 +202,14 @@ fn a_settings_file_stands_in_for_the_command_line() {
 
 /// And anything typed beats it, including a value that happens to be the default.
 ///
-/// note: the second half is the reason this does not compare against the defaults. `--requests 8`
-/// is the default number and somebody who wrote it meant it; a merge that could only see the value
-/// would let the file win over an argument that was actually given.
+/// note: the second half is the reason this does not compare against the defaults.
+/// `--max-requests-per-turn 8` is the default number and somebody who wrote it meant it; a merge
+/// that could only see the value would let the file win over an argument that was actually given.
 #[test]
 fn the_command_line_wins() {
     let path = settings(
         "overridden",
-        r#"{ "model": "the-file-model", "requests": 3, "spend": 999 }"#,
+        r#"{ "model": "the-file-model", "max-requests-per-turn": 3, "max-spend-tokens": 999 }"#,
     );
 
     let (ok, said) = run(
@@ -218,7 +218,7 @@ fn the_command_line_wins() {
             &path,
             "-m",
             "the-typed-model",
-            "--spend",
+            "--max-spend-tokens",
             "4000",
         ],
         "/model\n/spend\n",
@@ -445,16 +445,20 @@ fn a_tool_the_file_names_that_does_not_exist_is_refused() {
 /// says which key, and then `setup` and the wiring hold it to what this program can do - a
 /// fraction, a tool, a server, a path rule - with nothing said about where it came from. A file
 /// found underfoot is announced on standard error, where a screen covers it and a failure has
-/// already ended the run, so a `compact` of `2` or a `deny` of `b.txt` stopped the program without
-/// saying which file said so.
+/// already ended the run, so a `compact-context-at` of `2` or an `auto-deny` of `b.txt` stopped the
+/// program without saying which file said so.
 #[test]
 fn a_value_out_of_a_file_is_refused_with_the_file_named() {
     // the two halves, and the kinds of value each of them refuses
     for (name, json, said) in [
-        ("compact", r#"{ "compact": 2 }"#, "was `2`"),
+        (
+            "compact-context-at",
+            r#"{ "compact-context-at": 2 }"#,
+            "was `2`",
+        ),
         (
             "target",
-            r#"{ "compact": [0.5, 0.6] }"#,
+            r#"{ "compact-context-at": [0.5, 0.6] }"#,
             "at most its first, which is `0.5`",
         ),
         (
@@ -464,12 +468,12 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
         ),
         (
             "rule",
-            r#"{ "deny": ["b.txt"] }"#,
+            r#"{ "auto-deny": ["b.txt"] }"#,
             "is read as a whole domain",
         ),
         (
             "servers",
-            r#"{ "deny-server": ["nope"] }"#,
+            r#"{ "auto-deny-server": ["nope"] }"#,
             "is not a server this run starts",
         ),
         (
@@ -506,9 +510,9 @@ fn a_value_out_of_a_file_is_refused_with_the_file_named() {
 
 /// And a value somebody *typed* is refused on its own, because the file is not what is wrong.
 ///
-/// note: the file is read either way and it stands for everything the command line did not say,
-/// so an error naming it is true but beside the point - somebody looking at `--compact 2` is
-/// looking at what they wrote.
+/// note: the file is read either way and it stands for everything the command line did not say, so
+/// an error naming it is true but beside the point - somebody looking at `--compact-context-at 2`
+/// is looking at what they wrote.
 #[test]
 fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
     let dir = common::scratch("typed-not-the-file");
@@ -516,7 +520,12 @@ fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
 
     let (ok, out) = run_from(
         &dir,
-        &["--config-file", "kamchatka.json", "--compact", "2"],
+        &[
+            "--config-file",
+            "kamchatka.json",
+            "--compact-context-at",
+            "2",
+        ],
         "",
     );
 
@@ -528,12 +537,21 @@ fn a_value_typed_on_the_command_line_is_not_answered_with_the_file() {
     );
 
     // and a file that carries the key too, which is the case that takes both halves to tell: the
-    // file did say something about `compact`, and what is wrong is not it
-    std::fs::write(dir.join("kamchatka.json"), r#"{ "compact": 0.9 }"#).expect("written");
+    // file did say something about `compact-context-at`, and what is wrong is not it
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{ "compact-context-at": 0.9 }"#,
+    )
+    .expect("written");
 
     let (ok, out) = run_from(
         &dir,
-        &["--config-file", "kamchatka.json", "--compact", "2"],
+        &[
+            "--config-file",
+            "kamchatka.json",
+            "--compact-context-at",
+            "2",
+        ],
         "",
     );
 
@@ -644,7 +662,7 @@ fn a_file_name_read_as_a_domain_says_how_to_write_the_rule() {
 /// An allow for a file name that a broader rule still asks about or refuses is refused, naming
 /// that rule.
 ///
-/// note: every path rule that matches a call is consulted and the strictest wins, so `--allow
+/// note: every path rule that matches a call is consulted and the strictest wins, so `--auto-allow
 /// .env` beside the default `.env*: ask` changed nothing and was taken without a word. Allowing
 /// the broader rule itself is what changes it, and is still taken.
 #[test]
@@ -686,10 +704,10 @@ fn an_allow_a_broader_rule_overrules_is_refused_naming_it() {
 ///
 /// note: `src/**` reads like the glob `fs` takes and is not one: a path rule is a file name or one
 /// directory, so that pattern was compared with file names and never matched. It was still drawn
-/// on the permissions tab, and a `--deny` that refuses nothing is worse than no rule at all.
+/// on the permissions tab, and a `--auto-deny` that refuses nothing is worse than no rule at all.
 #[test]
 fn a_path_rule_that_cannot_match_is_refused_at_the_door() {
-    let (ok, said) = run(&["--deny", "src/**"], "");
+    let (ok, said) = run(&["--auto-deny", "src/**"], "");
     assert!(!ok, "a rule that refuses nothing is not a success: {said}");
     assert!(said.contains("`src/**`"), "it names the rule: {said}");
     assert!(
@@ -697,14 +715,17 @@ fn a_path_rule_that_cannot_match_is_refused_at_the_door() {
         "and says what there is: {said}"
     );
 
-    let path = settings("rule-bad", r#"{ "allow": ["fs:read", "vendor/*.go"] }"#);
+    let path = settings(
+        "rule-bad",
+        r#"{ "auto-allow": ["fs:read", "vendor/*.go"] }"#,
+    );
     let (ok, said) = run(&["--config-file", &path], "");
     assert!(!ok, "the file's rule is the program's rule: {said}");
     assert!(said.contains("`vendor/*.go`"), "{said}");
 
     // and the ones it can match are taken from either door
-    let path = settings("rule-good", r#"{ "allow": ["vendor/", "*.lock"] }"#);
-    let (ok, said) = run(&["--config-file", &path, "--deny", ".env*"], "/quit\n");
+    let path = settings("rule-good", r#"{ "auto-allow": ["vendor/", "*.lock"] }"#);
+    let (ok, said) = run(&["--config-file", &path, "--auto-deny", ".env*"], "/quit\n");
     assert!(ok, "a rule it can match was refused: {said}");
 }
 
@@ -716,8 +737,8 @@ fn a_path_rule_that_cannot_match_is_refused_at_the_door() {
 /// the file carried a spend ceiling of 200,000 tokens, on the reasoning that a tightening is the
 /// one thing a file adopted sight-unseen can safely offer. What that buys is a session that stops
 /// for a reason nobody chose, and the file says on its face that it is the defaults. A ceiling is
-/// worth having and worth deciding on; `--spend` and `/spend` are how, and the key is here at
-/// `null` so that it is one edit away.
+/// worth having and worth deciding on; `--max-spend-tokens` and `/spend` are how, and the key is
+/// here at `null` so that it is one edit away.
 ///
 /// note: the completeness check is a key-set comparison against `Settings` written out, rather
 /// than a list of names here that would go stale the day a field is added. A file missing the
@@ -752,7 +773,7 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     );
 
     // nothing is granted, opened up or turned off by adopting it
-    for key in ["allow", "deny", "sandbox-allow", "sandbox-read"] {
+    for key in ["auto-allow", "auto-deny", "sandbox-write", "sandbox-read"] {
         assert_eq!(
             shipped[key],
             json!([]),
@@ -762,19 +783,22 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert_eq!(shipped["on-ask"], json!("deny"));
     assert_eq!(shipped["no-sandbox"], json!(false));
 
-    // and nothing is narrowed either. `requests` and `compact` carry the program's own defaults,
-    // 8, and 0.8 with the 0.6 the target is derived as from it, which is what the file is for; the
-    // two that bound a session have no default at all, so a number here would be the file
-    // deciding something nobody asked it to
-    for key in ["deadline", "spend"] {
+    // and nothing is narrowed either. `max-requests-per-turn` and `compact-context-at` carry the
+    // program's own defaults, 8, and 0.8 with the 0.6 the target is derived as from it, which is
+    // what the file is for; the two that bound a session have no default at all, so a number here
+    // would be the file deciding something nobody asked it to
+    for key in ["max-run-seconds", "max-spend-tokens"] {
         assert_eq!(
             shipped[key],
             serde_json::Value::Null,
             "`{key}` has no default and the shipped file sets one"
         );
     }
-    assert_eq!(shipped["requests"], json!(8));
-    assert_eq!(shipped["compact"], json!([0.8, 0.6]));
+    assert_eq!(shipped["max-requests-per-turn"], json!(8));
+    // and the session is written out and speaks the API it speaks unless told, as without the file
+    assert_eq!(shipped["no-record"], json!(false));
+    assert_eq!(shipped["api"], json!("chat-completions"));
+    assert_eq!(shipped["compact-context-at"], json!([0.8, 0.6]));
     // to a rounding: what is derived is `0.8 - 0.2`, which is not quite `0.6` as a float
     assert!(
         (kamchatka::tools::Shedder::under(0.8).target - 0.6).abs() < 1e-9,
@@ -788,13 +812,16 @@ fn the_shipped_file_is_complete_and_grants_nothing() {
     assert!(ok, "{said}");
     assert!(said.contains("no ceiling"), "{said}");
 
-    // and a `--compact` typed beside it is taken as it is without the file: the pair is replaced
-    // whole, and the file's target does not hold the new threshold to itself
-    let (ok, said) = run(&["--config-file", path, "--compact", "0.5"], "/spend\n");
+    // and a `--compact-context-at` typed beside it is taken as it is without the file: the pair is
+    // replaced whole, and the file's target does not hold the new threshold to itself
+    let (ok, said) = run(
+        &["--config-file", path, "--compact-context-at", "0.5"],
+        "/spend\n",
+    );
     assert!(ok, "{said}");
 }
 
-/// `--send-oversized` reaches the kernel, from the command line and from a file.
+/// `--send-oversized-requests` reaches the kernel, from the command line and from a file.
 ///
 /// note: the whole of what the flag is, since the behaviour either side of it belongs to the
 /// runtime and is tested there. What is only true here is the wiring - a setting that reads
@@ -819,13 +846,13 @@ fn a_request_that_looks_too_long_is_sent_when_it_is_asked_to_be() {
         vec![
             "-m".to_owned(),
             "a-model".to_owned(),
-            "--send-oversized".to_owned(),
+            "--send-oversized-requests".to_owned(),
         ],
         vec![
             "-m".to_owned(),
             "a-model".to_owned(),
             "--config-file".to_owned(),
-            settings("sending", r#"{"send-oversized": true}"#),
+            settings("sending", r#"{"send-oversized-requests": true}"#),
         ],
     ] {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -863,13 +890,14 @@ fn a_server_this_build_cannot_run_is_refused() {
 
 /// A build with no advisor refuses a file that turns it on.
 ///
-/// note: only compiled where it is true. Accepted, the file's `advise` would be read by nothing,
-/// and every question would go uncoloured with nothing saying why. `false` is the shipped file's
-/// value, which `print_config_hands_over_a_file_this_program_would_accept` starts a session under.
+/// note: only compiled where it is true. Accepted, the file's `rate-shell-commands` would be read
+/// by nothing, and every question would go uncoloured with nothing saying why. `false` is the
+/// shipped file's value, which `print_config_hands_over_a_file_this_program_would_accept` starts a
+/// session under.
 #[cfg(not(feature = "shell-advisor"))]
 #[test]
 fn an_advisor_this_build_does_not_have_is_refused() {
-    let path = settings("no-advisor", r#"{ "advise": true }"#);
+    let path = settings("no-advisor", r#"{ "rate-shell-commands": true }"#);
     let (ok, said) = run(&["--config-file", &path], "");
     assert!(!ok, "a setting nobody can honour is not a success");
     assert!(said.contains("no advisor in it"), "{said}");
@@ -878,7 +906,7 @@ fn an_advisor_this_build_does_not_have_is_refused() {
 /// A device named outside `/dev`, on the command line or in a file, is refused where it is given -
 /// by where it leads, not how it is spelled.
 ///
-/// note: a device is granted reading and writing whatever is beneath it, which is `--sandbox-allow`
+/// note: a device is granted reading and writing whatever is beneath it, which is `--sandbox-write`
 /// anywhere else, and a writable path the screens never mention.
 #[test]
 fn a_device_outside_dev_is_refused() {
@@ -929,13 +957,13 @@ fn a_missing_file_says_which() {
 ///
 /// note: the file may start programs, turn the sandbox off and grant permissions, and whoever wrote
 /// the directory wrote it. A run nobody can be asked in is refused rather than run without it,
-/// because a script's `deadline` and `spend` are in that file too.
+/// because a script's `max-run-seconds` and `max-spend-tokens` are in that file too.
 #[test]
 fn a_file_underfoot_is_not_read_with_nobody_to_ask() {
     let dir = common::scratch("underfoot");
     std::fs::write(
         dir.join("kamchatka.json"),
-        r#"{ "model": "a-model-from-underfoot", "spend": 4321 }"#,
+        r#"{ "model": "a-model-from-underfoot", "max-spend-tokens": 4321 }"#,
     )
     .expect("a settings file where the program will stand");
 
@@ -1065,7 +1093,7 @@ fn a_file_in_this_persons_config_directory_is_read_without_asking() {
     let file = home.join("kamchatka.json");
     std::fs::write(
         &file,
-        r#"{ "model": "a-model-from-ones-own-config", "spend": 4321 }"#,
+        r#"{ "model": "a-model-from-ones-own-config", "max-spend-tokens": 4321 }"#,
     )
     .expect("written");
 
@@ -1292,7 +1320,7 @@ fn print_config_into_a_stdout_nobody_is_reading_ends_the_run() {
 }
 
 /// `--help` names the variables the program reads, and the advisor's only in a build with an
-/// `--advise` to use them.
+/// `--rate-shell-commands` to use them.
 ///
 /// note: they are read rather than declared as arguments, so clap lists none of them on its own,
 /// and a variable nothing on the screen mentions is one nobody finds.
@@ -1313,7 +1341,7 @@ fn help_names_the_variables_the_program_reads() {
     ] {
         assert!(help.contains(variable), "no {variable}: {help}");
     }
-    // the advisor's three, which a build with no `--advise` reads nowhere
+    // the advisor's three, which a build with no `--rate-shell-commands` reads nowhere
     for variable in [
         "KAMCHATKA_SYSTEM1_API_KEY",
         "KAMCHATKA_SYSTEM1_BASE_URL",
@@ -1329,11 +1357,11 @@ fn help_names_the_variables_the_program_reads() {
 
 /// Every argument's help is a whole sentence, in the long help and the short one alike.
 ///
-/// note: two of them were not, and neither in a way anybody could have typed by accident: a
-/// comment wrapped at the column and lost its tail, so `--send-oversized` ended "or a counter
-/// that is" and `--connect` ended "a question still open is not". Nothing renders a doc comment,
-/// so a truncated one is only ever read as a sentence that does not parse, and the second of the
-/// two also said the other flags were *ignored* where the program refuses them and exits 1.
+/// note: two of them were not, and neither in a way anybody could have typed by accident: a comment
+/// wrapped at the column and lost its tail, so `--send-oversized-requests` ended "or a counter that
+/// is" and `--connect` ended "a question still open is not". Nothing renders a doc comment, so a
+/// truncated one is only ever read as a sentence that does not parse, and the second of the two
+/// also said the other flags were *ignored* where the program refuses them and exits 1.
 #[test]
 fn every_help_line_is_a_whole_sentence() {
     for flag in ["--help", "-h"] {
@@ -1347,7 +1375,7 @@ fn every_help_line_is_a_whole_sentence() {
         // the two whose tails went off, each naming what the program actually does
         assert!(
             help.contains("the endpoint's own count is worth more than any guess made here"),
-            "{flag} lost the rest of `--send-oversized`:\n{help}"
+            "{flag} lost the rest of `--send-oversized-requests`:\n{help}"
         );
         assert!(
             help.contains("is the one thing that is the client's"),
@@ -1376,9 +1404,9 @@ fn every_help_line_is_a_whole_sentence() {
 fn a_base_url_that_is_not_an_address_is_refused_at_startup() {
     for args in [
         &["--headless"][..],
-        &["--headless", "--gemini"],
-        &["--headless", "--anthropic"],
-        &["--headless", "--responses"],
+        &["--headless", "--api", "gemini"],
+        &["--headless", "--api", "anthropic"],
+        &["--headless", "--api", "responses"],
     ] {
         let (ok, said) = run_with(args, "hi\n", &[("KAMCHATKA_BASE_URL", "not-a-url")]);
         assert!(!ok, "{args:?}: {said}");
@@ -1419,77 +1447,87 @@ fn a_variable_that_is_not_text_is_refused_by_name() {
     }
 }
 
-/// A session speaks one dialect, and two asked for are refused rather than one of them picked.
-///
-/// note: clap refuses the two flags together; the settings file is the other way to ask for both,
-/// one there and one on the command line, and it is refused by name too.
+/// `api` is one setting: the command line's wins over a file's, as every setting does, and a word
+/// that is not one of the four is refused with the four named.
 #[test]
-fn two_dialects_asked_for_are_refused_rather_than_one_of_them_picked() {
-    let (ok, said) = run(&["--gemini", "--anthropic"], "");
-    assert!(!ok, "{said}");
-    assert!(said.contains("--anthropic"), "{said}");
-
-    let path = settings("two-dialects", r#"{ "gemini": true }"#);
-    let (ok, said) = run(&["--config-file", &path, "--anthropic"], "");
-    assert!(!ok, "{said}");
-    assert!(said.contains("two dialects"), "{said}");
-
-    // and `--responses`, which is a dialect too, though it goes to the same address
-    let (ok, said) = run(&["--responses", "--anthropic"], "");
-    assert!(!ok, "{said}");
-    assert!(said.contains("--responses"), "{said}");
-
-    let path = settings(
-        "three-dialects",
-        r#"{ "gemini": true, "anthropic": true, "responses": true }"#,
+fn the_api_is_one_setting_and_names_what_it_takes() {
+    // the file asks for Google's, the command line for Anthropic's, and the key asked for is
+    // Anthropic's
+    let path = settings("api-overruled", r#"{ "api": "gemini" }"#);
+    let (ok, said) = spawn(
+        elsewhere(),
+        &["--config-file", &path, "--api", "anthropic"],
+        "",
+        &[],
+        false,
+        false,
     );
+    assert!(!ok, "{said}");
+    assert!(said.contains("ANTHROPIC_API_KEY"), "{said}");
+
+    let (ok, said) = run(&["--api", "openai"], "");
+    assert!(!ok, "{said}");
+    assert!(
+        said.contains("chat-completions") && said.contains("gemini"),
+        "{said}"
+    );
+
+    let path = settings("api-unknown", r#"{ "api": "openai" }"#);
     let (ok, said) = run(&["--config-file", &path], "");
     assert!(!ok, "{said}");
-    assert!(said.contains("three dialects"), "{said}");
+    assert!(
+        said.contains("chat-completions") && said.contains("gemini"),
+        "{said}"
+    );
 }
 
-/// `--responses` goes where chat completions does - OpenRouter, unless told otherwise - and is
+/// `--api responses` goes where chat completions does - OpenRouter, unless told otherwise - and is
 /// refused there without a key, as chat completions is.
 #[test]
 fn a_responses_session_with_no_key_goes_where_chat_completions_does() {
-    let (ok, said) = spawn(elsewhere(), &["--responses"], "", &[], false, false);
+    let (ok, said) = spawn(elsewhere(), &["--api", "responses"], "", &[], false, false);
     assert!(!ok, "{said}");
     assert!(said.contains("KAMCHATKA_API_KEY"), "{said}");
     assert!(said.contains("openrouter.ai"), "{said}");
 }
 
-/// `--anthropic` with no address goes to Anthropic, and is refused there without a key - which
+/// `--api anthropic` with no address goes to Anthropic, and is refused there without a key - which
 /// names the variable Anthropic's key is read from.
 #[test]
 fn an_anthropic_session_with_no_key_is_told_which_one_to_set() {
-    let (ok, said) = spawn(elsewhere(), &["--anthropic"], "", &[], false, false);
+    let (ok, said) = spawn(elsewhere(), &["--api", "anthropic"], "", &[], false, false);
     assert!(!ok, "{said}");
     assert!(said.contains("ANTHROPIC_API_KEY"), "{said}");
     assert!(said.contains("api.anthropic.com"), "{said}");
 }
 
-/// `compact` is a fraction, from the command line or from a file, and a percentage is refused.
+/// `compact-context-at` is a fraction, from the command line or from a file, and a percentage is
+/// refused.
 #[test]
 fn a_compaction_threshold_that_is_not_a_fraction_is_refused() {
-    let (ok, said) = run_with(&["--compact", "80"], "", &[]);
+    let (ok, said) = run_with(&["--compact-context-at", "80"], "", &[]);
     assert!(!ok, "{said}");
     assert!(said.contains("rather than `80`"), "{said}");
 
     let dir = common::scratch("compact-percent");
-    std::fs::write(dir.join("kamchatka.json"), r#"{"compact": 0}"#).expect("written");
+    std::fs::write(dir.join("kamchatka.json"), r#"{"compact-context-at": 0}"#).expect("written");
     let (ok, said) = run_from(&dir, &["--config-file", "kamchatka.json"], "");
     assert!(!ok, "{said}");
     assert!(said.contains("was `0`"), "{said}");
 }
 
-/// A settings file's `system` is for a session starting, not for one carrying on.
+/// A settings file's `system-prompt` is for a session starting, not for one carrying on.
 ///
 /// note: the resumed context already holds it, pinned, from the run that wrote the snapshot - so
 /// pushing it again on every `-r` stacked a copy per resume, each beyond compaction's reach.
 #[test]
 fn a_settings_files_system_instruction_is_not_pushed_again_on_resume() {
     let dir = common::scratch("resumed-system");
-    std::fs::write(dir.join("kamchatka.json"), r#"{"system": "BE BRIEF"}"#).expect("written");
+    std::fs::write(
+        dir.join("kamchatka.json"),
+        r#"{"system-prompt": "BE BRIEF"}"#,
+    )
+    .expect("written");
 
     let (ok, said) = run_from(
         &dir,
@@ -1672,9 +1710,9 @@ fn a_session_the_runtime_would_have_to_repair_is_not_carried_on_from() {
 /// A rule about something no call here is judged under is refused where it is given, and says
 /// what there is.
 ///
-/// note: `--deny shell` parsed as a domain called `shell`, and the shell is judged as `exec:run`, so
-/// it refused nothing - a headless run given `--on-ask allow` then ran every command unasked, under
-/// a rule that read as given. A typo in an operation was the same silence.
+/// note: `--auto-deny shell` parsed as a domain called `shell`, and the shell is judged as
+/// `exec:run`, so it refused nothing - a headless run given `--on-ask allow` then ran every command
+/// unasked, under a rule that read as given. A typo in an operation was the same silence.
 #[test]
 fn a_rule_nothing_is_judged_under_is_refused() {
     use kamchatka::{tools::Subject, wiring::Setup};
@@ -1713,28 +1751,31 @@ fn a_rule_nothing_is_judged_under_is_refused() {
 /// A deny naming no server this run starts is refused where it is given, and says which servers
 /// there are; an allow naming one is said and taken.
 ///
-/// note: `--deny-server filess` beside `--mcp files=...` refused nothing, and a headless run given
-/// `--on-ask allow` ran every call to `files` unasked, under a rule that read as given. An allow of
-/// a server that is not there grants nothing, and a settings file allowing somebody's usual
-/// servers was refused whenever `--mcp` left one of them out.
+/// note: `--auto-deny-server filess` beside `--mcp files=...` refused nothing, and a headless run
+/// given `--on-ask allow` ran every call to `files` unasked, under a rule that read as given. An
+/// allow of a server that is not there grants nothing, and a settings file allowing somebody's
+/// usual servers was refused whenever `--mcp` left one of them out.
 #[cfg(feature = "mcp")]
 #[test]
 fn a_server_rule_naming_no_server_is_refused() {
     let refused = "is not a server this run starts";
 
-    let (ok, said) = run(&["--mcp", "files=/nowhere", "--deny-server", "filess"], "");
+    let (ok, said) = run(
+        &["--mcp", "files=/nowhere", "--auto-deny-server", "filess"],
+        "",
+    );
     assert!(!ok, "{said}");
     assert!(
         said.contains(&format!("`filess` {refused}; they are files")),
         "{said}"
     );
-    let (ok, said) = run(&["--allow-server", "files"], "");
+    let (ok, said) = run(&["--auto-allow-server", "files"], "");
     assert!(
         ok,
         "an allow of a server not started grants nothing, and is taken: {said}"
     );
     assert!(
-        said.contains("`--allow-server` names `files`, which this run does not start")
+        said.contains("`--auto-allow-server` names `files`, which this run does not start")
             && said.contains("it starts none"),
         "and said: {said}"
     );
@@ -1742,7 +1783,7 @@ fn a_server_rule_naming_no_server_is_refused() {
     // and one typed is not blamed on a file that carried the other list, as the shipped one does
     let path = settings(
         "servers-carried",
-        r#"{ "allow-server": [], "deny-server": [] }"#,
+        r#"{ "auto-allow-server": [], "auto-deny-server": [] }"#,
     );
     let (ok, said) = run(
         &[
@@ -1750,7 +1791,7 @@ fn a_server_rule_naming_no_server_is_refused() {
             &path,
             "--mcp",
             "files=/nowhere",
-            "--deny-server",
+            "--auto-deny-server",
             "filess",
         ],
         "",
@@ -1767,7 +1808,7 @@ fn a_server_rule_naming_no_server_is_refused() {
         &[
             "--mcp",
             "/nowhere/files --root /srv",
-            "--deny-server",
+            "--auto-deny-server",
             "files",
         ],
         "",
@@ -1775,19 +1816,20 @@ fn a_server_rule_naming_no_server_is_refused() {
     assert!(!said.contains(refused), "{said}");
 }
 
-/// An `allow` for `mcp:call` or `mcp` is refused with a pointer to `--allow-server`, and a `deny`
-/// of either is kept.
+/// An `allow` for `mcp:call` or `mcp` is refused with a pointer to `--auto-allow-server`, and a
+/// `deny` of either is kept.
 ///
-/// note: a server's tools are judged under its name in place of `mcp:call`, so `--allow mcp:call`
-/// beside `--mcp foreign=...` read as given and every call to `foreign` still went to the question.
+/// note: a server's tools are judged under its name in place of `mcp:call`, so
+/// `--auto-allow mcp:call` beside `--mcp foreign=...` read as given and every call to `foreign`
+/// still went to the question.
 #[test]
 fn an_allow_for_mcp_is_refused_and_a_deny_is_not() {
     for rule in ["mcp", "mcp:call"] {
-        let (ok, said) = run(&["--allow", rule], "");
+        let (ok, said) = run(&["--auto-allow", rule], "");
         assert!(!ok, "{said}");
-        assert!(said.contains("`--allow-server NAME`"), "{said}");
+        assert!(said.contains("`--auto-allow-server NAME`"), "{said}");
 
-        let (ok, said) = run(&["--deny", rule], "");
+        let (ok, said) = run(&["--auto-deny", rule], "");
         assert!(ok, "a `deny` of {rule} was refused: {said}");
         assert!(!said.contains("grants nothing"), "{said}");
     }
@@ -1802,7 +1844,10 @@ fn an_allow_for_mcp_is_refused_and_a_deny_is_not() {
 fn a_settings_file_names_the_servers_a_run_starts() {
     let path = settings("servers", r#"{ "mcp": ["files=/nowhere"] }"#);
 
-    let (ok, said) = run(&["--config-file", &path, "--deny-server", "filess"], "");
+    let (ok, said) = run(
+        &["--config-file", &path, "--auto-deny-server", "filess"],
+        "",
+    );
 
     assert!(!ok, "{said}");
     assert!(said.contains("they are files"), "{said}");
@@ -1824,7 +1869,7 @@ fn a_typed_mcp_beats_the_file() {
             &path,
             "--mcp",
             "typed=/nowhere",
-            "--deny-server",
+            "--auto-deny-server",
             "neither",
         ],
         "",
@@ -1835,7 +1880,7 @@ fn a_typed_mcp_beats_the_file() {
     assert!(!said.contains("from-the-file"), "{said}");
 }
 
-/// A file saying `advise: true` asks for the advisor, as a typed `--advise` does.
+/// A file saying `advise: true` asks for the advisor, as a typed `--rate-shell-commands` does.
 ///
 /// note: read off the policy the record names at startup, as the run beside it does: a rating is
 /// only ever drawn beside a question, so which policy a session starts under is the only thing
@@ -1849,30 +1894,33 @@ fn a_file_asks_for_the_advisor_as_a_flag_does() {
         ("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model"),
     ];
 
-    let path = settings("advise-on", r#"{ "advise": true }"#);
+    let path = settings("advise-on", r#"{ "rate-shell-commands": true }"#);
 
     let (ok, said) = run_with(&["--config-file", &path], "", &local);
     assert!(ok, "{said}");
     assert!(said.contains("tools::advice::Advised"), "{said}");
 }
 
-/// A typed `--advise` is not turned off by a file saying `false`.
+/// A typed `--rate-shell-commands` is not turned off by a file saying `false`.
 ///
 /// note: read off the refusal a session asked to advise gives when it has no advisor to reach,
 /// which comes before anything is sent.
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn a_typed_advise_beats_the_file() {
-    let path = settings("advise-off", r#"{ "advise": false }"#);
+    let path = settings("advise-off", r#"{ "rate-shell-commands": false }"#);
 
-    let (ok, said) = run(&["--config-file", &path, "--advise"], "");
+    let (ok, said) = run(&["--config-file", &path, "--rate-shell-commands"], "");
 
     assert!(!ok, "{said}");
-    assert!(said.contains("--advise needs a model"), "{said}");
+    assert!(
+        said.contains("--rate-shell-commands needs a model"),
+        "{said}"
+    );
 }
 
-/// `--advise` puts the advisor in front of the standing rules, and a session that did not ask for
-/// it has the rules alone.
+/// `--rate-shell-commands` puts the advisor in front of the standing rules, and a session that did
+/// not ask for it has the rules alone.
 ///
 /// note: an advisor at a closed port on this machine, so that nothing leaves it: a session that
 /// asks nothing never finds out that nobody answers there. What is read is the policy the record
@@ -1886,7 +1934,7 @@ fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
         ("KAMCHATKA_SYSTEM1_MODEL", "vendor/decider"),
     ];
 
-    let (ok, said) = run_with(&["--advise"], "", &local);
+    let (ok, said) = run_with(&["--rate-shell-commands"], "", &local);
     assert!(ok, "{said}");
     assert!(said.contains("tools::advice::Advised"), "{said}");
 
@@ -1895,7 +1943,7 @@ fn an_advisor_asked_for_is_the_policy_the_session_runs_under() {
     assert!(!said.contains("tools::advice::Advised"), "{said}");
 }
 
-/// `--advise` with no model named is refused, and says where to pick one.
+/// `--rate-shell-commands` with no model named is refused, and says where to pick one.
 ///
 /// note: no default, because a default would be one vendor's model chosen for everybody who asked
 /// for advice. Refused at startup rather than at the first question, which is the moment a person
@@ -1908,7 +1956,7 @@ fn an_advisor_with_no_model_is_refused_with_where_to_find_one() {
         ("KAMCHATKA_SYSTEM1_BASE_URL", "http://127.0.0.1:1/v1"),
     ];
 
-    let (ok, said) = run_with(&["--advise"], "", &unnamed);
+    let (ok, said) = run_with(&["--rate-shell-commands"], "", &unnamed);
     assert!(!ok, "{said}");
     assert!(said.contains("KAMCHATKA_SYSTEM1_MODEL"), "{said}");
     assert!(said.contains("output_modalities=decisions"), "{said}");
@@ -1929,7 +1977,7 @@ fn an_advisor_address_that_is_not_one_is_refused_at_startup() {
         ("KAMCHATKA_SYSTEM1_MODEL", "vendor/decider"),
     ];
 
-    let (ok, said) = run_with(&["--advise"], "", &unaddressed);
+    let (ok, said) = run_with(&["--rate-shell-commands"], "", &unaddressed);
     assert!(!ok, "{said}");
     assert!(
         said.contains("KAMCHATKA_SYSTEM1_BASE_URL is `localhost:11434`"),
@@ -1941,51 +1989,52 @@ fn an_advisor_address_that_is_not_one_is_refused_at_startup() {
 /// and the dialect is half of which address that is.
 ///
 /// note: read off the refusal rather than off the code: a session pointed at OpenRouter may spend
-/// its key at OpenRouter and runs, and a `--gemini` session is refused by name because its key is
-/// Google's. Both runs hold the same key and set neither variable, so the only thing between them
-/// is the address - and a `--gemini` session reporting OpenRouter's would borrow a Google-issued
-/// credential for a third party.
+/// its key at OpenRouter and runs, and an `--api gemini` session is refused by name because its key
+/// is Google's. Both runs hold the same key and set neither variable, so the only thing between
+/// them is the address - and an `--api gemini` session reporting OpenRouter's would borrow a
+/// Google-issued credential for a third party.
 #[cfg(feature = "shell-advisor")]
 #[test]
 fn a_dialect_is_half_of_which_service_a_session_talks_to() {
-    // a model named, since `--advise` names none of its own and this is about the key
+    // a model named, since `--rate-shell-commands` names none of its own and this is about the key
     let model = [("KAMCHATKA_SYSTEM1_MODEL", "a/system-one-model")];
-    let (ok, said) = run_where_defaulted(&["--advise"], "", &model);
+    let (ok, said) = run_where_defaulted(&["--rate-shell-commands"], "", &model);
     assert!(
         ok,
         "a session at OpenRouter may spend its own key there: {said}"
     );
 
-    let (ok, said) = run_where_defaulted(&["--advise", "--gemini"], "", &model);
+    let (ok, said) = run_where_defaulted(&["--rate-shell-commands", "--api", "gemini"], "", &model);
     assert!(
         !ok,
-        "a `--gemini` session's own key is not OpenRouter's: {said}"
+        "an `--api gemini` session's own key is not OpenRouter's: {said}"
     );
     assert!(
         said.contains("https://generativelanguage.googleapis.com/v1beta"),
         "and the refusal does not say which service it refused over: {said}"
     );
 
-    // and an `--anthropic` session's key is Anthropic's
-    let (ok, said) = run_where_defaulted(&["--advise", "--anthropic"], "", &model);
+    // and an `--api anthropic` session's key is Anthropic's
+    let (ok, said) =
+        run_where_defaulted(&["--rate-shell-commands", "--api", "anthropic"], "", &model);
     assert!(
         !ok,
-        "an `--anthropic` session's own key is not OpenRouter's: {said}"
+        "an `--api anthropic` session's own key is not OpenRouter's: {said}"
     );
     assert!(said.contains("https://api.anthropic.com/v1"), "{said}");
 }
 
-/// `--spend 0` is no ceiling, as `/spend 0` and `--requests 0` are.
+/// `--max-spend-tokens 0` is no ceiling, as `/spend 0` and `--max-requests-per-turn 0` are.
 ///
 /// note: it was a ceiling of nothing, reached before the first request: a headless run read no
 /// lines and ended without saying why.
 #[test]
 fn a_spend_of_nothing_is_no_ceiling() {
-    let (ok, said) = run(&["--spend", "0"], "/spend\n");
+    let (ok, said) = run(&["--max-spend-tokens", "0"], "/spend\n");
     assert!(ok, "{said}");
     assert!(said.contains("no ceiling"), "{said}");
 
-    let path = settings("spend-zero", r#"{ "spend": 0 }"#);
+    let path = settings("spend-zero", r#"{ "max-spend-tokens": 0 }"#);
     let (ok, said) = run(&["--config-file", &path], "/spend\n");
     assert!(ok, "{said}");
     assert!(said.contains("no ceiling"), "{said}");
@@ -2044,7 +2093,7 @@ fn a_read_only_path_inside_the_working_directory_is_refused() {
 #[test]
 fn a_context_limit_that_is_not_a_number_of_tokens_is_refused() {
     for wrong in ["abc", "-5", "1.5", ""] {
-        for args in [&["--headless"][..], &["--headless", "--gemini"]] {
+        for args in [&["--headless"][..], &["--headless", "--api", "gemini"]] {
             let (ok, said) = run_with(args, "", &[("KAMCHATKA_CONTEXT_LIMIT", wrong)]);
             assert!(!ok, "`{wrong}` was taken as a limit: {args:?}: {said}");
             assert!(
@@ -2187,11 +2236,11 @@ fn a_typed_value_refused_after_the_merge_is_not_blamed_on_the_file() {
 /// A session wired with a compactor gives the kernel a notice for the model, naming the `context`
 /// tool where the session offers it and asking the model to tell the person where it does not.
 ///
-/// note: the words are this program's, because what the model can do about a full context is a
-/// fact about the tools it was given - and a notice sending it to a tool it does not have is a
-/// notice nobody can act on. With no compactor there is nobody to find the context full, and
-/// `--compact 1` is the same session said as a threshold no context can be over: a compactor
-/// standing in for one that never runs is a notice about a fullness that never comes.
+/// note: the words are this program's, because what the model can do about a full context is a fact
+/// about the tools it was given - and a notice sending it to a tool it does not have is a notice
+/// nobody can act on. With no compactor there is nobody to find the context full, and
+/// `--compact-context-at 1` is the same session said as a threshold no context can be over: a
+/// compactor standing in for one that never runs is a notice about a fullness that never comes.
 #[tokio::test]
 async fn a_full_context_is_told_to_the_model_in_terms_of_its_tools() {
     use std::sync::Arc;
@@ -2442,8 +2491,8 @@ async fn only_the_copy_of_the_notice_is_reworded_and_nothing_that_merely_matches
     }
 }
 
-/// `--compact`'s second fraction reaches the session as the target, at most the first and derived
-/// from it when left out.
+/// `--compact-context-at`'s second fraction reaches the session as the target, at most the first
+/// and derived from it when left out.
 ///
 /// note: through `Args` and then through `Setup::wire` rather than through the program, because
 /// what the target does is only on a screen once a pass runs, and a pass needs a model - but the
@@ -2461,15 +2510,15 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
             .setup()
     };
 
-    let given = setup(&["--compact", "0.8,0.4"]).expect("a setup");
+    let given = setup(&["--compact-context-at", "0.8,0.4"]).expect("a setup");
     assert_eq!(
         (given.compact, given.compact_target),
         (Some(0.8), Some(0.4))
     );
-    let equal = setup(&["--compact", "0.8,0.8"]).expect("equal is a choice");
+    let equal = setup(&["--compact-context-at", "0.8,0.8"]).expect("equal is a choice");
     assert_eq!(equal.compact_target, Some(0.8));
     assert_eq!(
-        setup(&["--compact", "0.8"])
+        setup(&["--compact-context-at", "0.8"])
             .expect("a setup")
             .compact_target,
         None,
@@ -2478,26 +2527,27 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
 
     for (args, said) in [
         (
-            &["--compact", "0.5,0.6"][..],
+            &["--compact-context-at", "0.5,0.6"][..],
             "at most its first, which is `0.5`",
         ),
-        (&["--compact", "0.8,0"][..], "above 0"),
-        (&["--compact=0.8,-0.1"][..], "above 0"),
+        (&["--compact-context-at", "0.8,0"][..], "above 0"),
+        (&["--compact-context-at=0.8,-0.1"][..], "above 0"),
     ] {
         let refused = setup(args).err().map(|e| e.to_string()).unwrap_or_default();
         assert!(refused.contains(said), "{args:?}: {refused}");
     }
 
     // and what is not one fraction or two is refused as it is typed, saying both forms
-    let typed = Args::try_parse_from(["kamchatka", "--compact", "0.8;0.6"])
+    let typed = Args::try_parse_from(["kamchatka", "--compact-context-at", "0.8;0.6"])
         .err()
         .map(|e| e.to_string())
         .unwrap_or_default();
     assert!(typed.contains("`0.8,0.6`"), "{typed}");
-    let filed = serde_json::from_str::<kamchatka::config::Settings>(r#"{ "compact": [0.8] }"#)
-        .err()
-        .map(|e| e.to_string())
-        .unwrap_or_default();
+    let filed =
+        serde_json::from_str::<kamchatka::config::Settings>(r#"{ "compact-context-at": [0.8] }"#)
+            .err()
+            .map(|e| e.to_string())
+            .unwrap_or_default();
     assert!(filed.contains("`[0.8, 0.6]`"), "{filed}");
 
     // and it arrives: a target that parses, is held to the threshold and then is nowhere is a
@@ -2511,7 +2561,7 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
             .expect("the wiring failed")
             .app
     };
-    let chosen = wired(setup(&["--compact", "0.8,0.4"]).expect("a setup"));
+    let chosen = wired(setup(&["--compact-context-at", "0.8,0.4"]).expect("a setup"));
     assert_eq!(
         (chosen.compact_target, chosen.compact_threshold),
         (Some(0.4), Some(0.8)),
@@ -2519,7 +2569,7 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
     );
 
     // and one left out is derived from the threshold rather than being nothing
-    let derived = wired(setup(&["--compact", "0.8"]).expect("a setup"));
+    let derived = wired(setup(&["--compact-context-at", "0.8"]).expect("a setup"));
     assert_eq!(derived.compact_threshold, Some(0.8));
     assert!(
         derived
@@ -2530,14 +2580,14 @@ fn a_compaction_target_is_held_to_the_threshold_and_carried() {
     );
 }
 
-/// `--parallel` reaches the session, and a session that was not asked for it runs its calls one at
-/// a time.
+/// `--parallel-tool-calls` reaches the session, and a session that was not asked for it runs its
+/// calls one at a time.
 ///
 /// note: read off the runtime's own configuration, which is what the kernel acts on and what
 /// `setup policy` tells the model about, rather than off the timing of two calls - a test that
-/// waited for two tools to overlap would be a test about the machine it ran on. `--parallel` is
-/// the only flag in this crate that changes the runtime's own behaviour rather than what this
-/// program draws, so the two answers are worth holding to both ends of.
+/// waited for two tools to overlap would be a test about the machine it ran on.
+/// `--parallel-tool-calls` is the only flag in this crate that changes the runtime's own behaviour
+/// rather than what this program draws, so the two answers are worth holding to both ends of.
 #[test]
 fn the_parallel_flag_reaches_the_sessions_configuration() {
     use clap::Parser;
@@ -2559,9 +2609,9 @@ fn the_parallel_flag_reaches_the_sessions_configuration() {
     };
 
     assert!(
-        wired(&["--parallel"]),
-        "a session started with `--parallel` runs its calls abreast, and the runtime is what does \
-         the running"
+        wired(&["--parallel-tool-calls"]),
+        "a session started with `--parallel-tool-calls` runs its calls abreast, and the runtime is \
+         what does the running"
     );
 
     // and the default is the other one, which is what the flag is for
@@ -2571,8 +2621,8 @@ fn the_parallel_flag_reaches_the_sessions_configuration() {
     );
 }
 
-/// `--flat-calls` reaches every tool of this program's own, and a session not asked for it offers
-/// them wrapped in `call`.
+/// `--flat-tool-arguments` reaches every tool of this program's own, and a session not asked for it
+/// offers them wrapped in `call`.
 ///
 /// note: every tool rather than one, because a model offered two layouts in one request writes one
 /// of them wrong; the introspection tools are installed apart from `fs` and `shell`.
@@ -2603,7 +2653,7 @@ fn the_flat_calls_flag_reaches_every_tool() {
             .collect()
     };
 
-    let flat = wrapped(&["--flat-calls"]);
+    let flat = wrapped(&["--flat-tool-arguments"]);
     assert!(flat.iter().any(|(id, _)| id == "context"), "{flat:?}");
     assert!(
         flat.iter().all(|(_, wrapped)| !wrapped),

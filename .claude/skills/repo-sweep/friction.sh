@@ -32,7 +32,7 @@ cd "$wt"
 } > "$out/$name.in"
 TMPDIR=$out/tmp DRIVE_OUT=$out DRIVE_RESUMES=6 \
     python3 "$here/drive.py" "$name" "$out/$name.in" "$BIN" \
-    --headless --config-file "$SWEEPS/fr.json" --deadline "$DEADLINE" --sandbox-read "$REPO/.git"
+    --headless --config-file "$SWEEPS/fr.json" --max-run-seconds "$DEADLINE" --sandbox-read "$REPO/.git"
 echo "exit $?" >> "$out/$name.err"
 git -C "$wt" diff > "$out/$name.diff" 2> /dev/null
 git -C "$REPO" worktree remove --force "$wt"

@@ -11,7 +11,7 @@ REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 SKILL=$REPO/.claude/skills/live-runs
 LIVE=${LIVE:-$REPO/target/agents/live}
 K=${BIN:-$REPO/target/release/kamchatka}
-S="$(cat "$SKILL/system.txt")" F=$SKILL/feeds A="--allow fs,context,exec:run"
+S="$(cat "$SKILL/system.txt")" F=$SKILL/feeds A="--auto-allow fs,context,exec:run"
 export WS=$LIVE/ws/chain; rm -rf "$WS"; cp -a "$LIVE/fix/proj" "$WS"
 o() { cat "$LIVE/out/$1.stem"; }
 "$SKILL/run.sh" ca "$F/chain-a.txt" -s "$S" $A
