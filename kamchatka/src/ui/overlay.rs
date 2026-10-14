@@ -581,6 +581,21 @@ fn panel(
     //
     // note: measured at the width the box will have, which is less than `columns` on a narrow
     // terminal - the borders and the padding take four of it, as `inner` below does
+    // note: a page with a QR code in it is as wide as the code, or as a line beside it that cannot
+    // be folded - the address it is a code of - where that is wider. The prose under it folds to
+    // fit, and a box twice the code's width is mostly empty space around a thing to photograph
+    let columns = match showing.body.lines().any(crate::qr::Code::is_line) {
+        true => showing
+            .body
+            .lines()
+            .filter(|line| crate::qr::Code::is_line(line) || !line.contains(' '))
+            .map(|line| line.chars().count())
+            .max()
+            .map_or(columns, |widest| {
+                columns.min(u16::try_from(widest).unwrap_or(u16::MAX).saturating_add(4))
+            }),
+        false => columns,
+    };
     let width = centred(frame.area(), columns, 0).width;
     let measured = width.saturating_sub(4);
     let mut lines = wrapped(&showing.body, measured as usize, "");

@@ -1045,3 +1045,29 @@ async fn a_panel_with_one_face_is_closed_by_the_keys_that_turn_the_others() {
         );
     }
 }
+
+/// `/web` draws the code white on black whatever the terminal's colours, in a panel no wider than
+/// the code.
+#[tokio::test]
+async fn the_page_panel_is_as_wide_as_its_code() {
+    let mut harness = Harness::new([]);
+    let address = "http://192.168.1.5:8080/0123abcd/";
+    harness.app.web = Some(address.to_owned());
+    harness.send("/web").await;
+
+    let screen = harness.screen();
+    let top = screen
+        .lines()
+        .find(|line| line.contains("┌ the page"))
+        .expect("`/web` opened a panel");
+    let left = top.chars().position(|c| c == '┌').expect("a corner");
+    let right = top.chars().position(|c| c == '┐').expect("a corner");
+    let code = kamchatka::qr::Code::new(address).expect("it fits");
+    // the code and its quiet zone, and the borders and the padding either side
+    assert_eq!(
+        right - left + 1,
+        code.lines()[0].chars().count() + 4,
+        "{screen}"
+    );
+    assert_eq!(harness.style_of("▀▀▀").0, Color::White);
+}
