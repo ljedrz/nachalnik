@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use nachalnik::{
-    Config, ContextItem, ContextState, Event, Kernel, ModelInfo, ModelResponse, Verdict,
+    Config, ContextItem, ContextState, Event, Kernel, LinearProjector, ModelInfo, ModelResponse,
+    Verdict,
     test::{AllowAll, DenyAll, LargestFirstCompactor, ScriptedProvider, call},
 };
 use serde_json::json;
@@ -196,6 +197,25 @@ async fn every_seam_can_say_what_is_plugged_into_it() {
     assert!(
         kernel.projector().name().ends_with("LinearProjector"),
         "the default projector should name itself: {}",
+        kernel.projector().name()
+    );
+    // and one with other switches says so, or swapping it in reads as no change at all
+    let previous = kernel.set_projector(Arc::new(LinearProjector {
+        send_blocks: true,
+        send_reasoning: false,
+        ..Default::default()
+    }));
+    assert!(
+        previous.name().ends_with("::LinearProjector"),
+        "{}",
+        previous.name()
+    );
+    assert!(
+        kernel
+            .projector()
+            .name()
+            .ends_with("::LinearProjector (blocks, no reasoning)"),
+        "{}",
         kernel.projector().name()
     );
     // the default counter is `Calibrating<BytesPerToken>`, and the name says both halves: which
