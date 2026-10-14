@@ -317,12 +317,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   says it can't read it. Whether the question should say up front that the call will be refused is
   a choice about what a question is for.
 
-- **No test that a confined command can't write `/dev/shm`, or open IPv6 or RDS through the gate.**
-  A confined command may use the devices in `sandbox::DEVICES` and nothing else under `/dev`, and
-  the gate holds `AF_INET6`, `AF_SMC` and `AF_RDS` as it does `AF_INET`. The devices aren't
-  enumerated by any test, and the other families are tested at the filter, not through a command.
-  A `/dev/shm` test needs a machine where `/dev/shm` is writable outside the sandbox, or it passes
-  for the wrong reason; that is what unblocks it.
+- **The `/dev/shm` test has not been seen to run.** `a_confined_command_cannot_write_shared_memory`
+  skips wherever `/dev/shm` can't be written outside the sandbox, which includes a session run
+  under `kamchatka`'s own confinement, so its assertions, and whether it fails once `/dev/shm` is
+  added to `sandbox::DEVICES`, are unchecked. Unblocked by a run on a machine where `/dev/shm` is
+  writable.
 
 - **The terminal's loop and a served session's loop handle the kernel's events in two copies.**
   `main.rs` and `remote/server/mod.rs` each take in the broadcast, drain the outcomes, answer held
