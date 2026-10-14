@@ -318,6 +318,26 @@ impl Kernel {
         *self.0.call_ceiling.read()
     }
 
+    /// Sets how many requests a turn may send before it hands control back, returning what it was;
+    /// `None` keeps going until the model stops asking for tools. It starts at
+    /// [`Config::max_requests_per_turn`](crate::Config::max_requests_per_turn).
+    ///
+    /// note: read before each request, so a change made while a turn runs holds from its next
+    /// request: raised, the turn goes on further; lowered to what it has already sent or less, it
+    /// pauses there. A turn that already paused stays paused until [`Kernel::turn`] is called
+    /// again, which carries on counting from where it stopped.
+    ///
+    /// note: a setting and not part of the session's state, as [`Kernel::set_call_ceiling`] is, so
+    /// a snapshot does not carry it and a resumed kernel starts from its own `Config`.
+    pub fn set_max_requests_per_turn(&self, max: Option<usize>) -> Option<usize> {
+        std::mem::replace(&mut *self.0.max_requests.write(), max)
+    }
+
+    /// Returns how many requests a turn may send, where there is a limit.
+    pub fn max_requests_per_turn(&self) -> Option<usize> {
+        *self.0.max_requests.read()
+    }
+
     /// Returns what is put into the context as it becomes full, if anything is.
     pub fn full_notice(&self) -> Option<ContextItem> {
         self.0.full_notice.read().clone()

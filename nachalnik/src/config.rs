@@ -39,6 +39,9 @@ pub struct Config {
     ///
     /// note: This is a stop, not a policy: reaching it just ends the turn, and calling
     /// [`Kernel::turn`] again resumes exactly where it left off.
+    ///
+    /// note: where the kernel starts; [`Kernel::set_max_requests_per_turn`] changes it while the
+    /// session runs.
     pub max_requests_per_turn: Option<usize>,
     /// Whether a request the kernel can already see is longer than the model will read is
     /// refused here instead of being sent.

@@ -285,6 +285,8 @@ struct InnerKernel {
     full_notice: RwLock<Option<ContextItem>>,
     /// How many of one answer's tool calls are run; see [`Kernel::set_call_ceiling`].
     call_ceiling: RwLock<Option<usize>>,
+    /// How many requests a turn may send; see [`Kernel::set_max_requests_per_turn`].
+    max_requests: RwLock<Option<usize>>,
 }
 
 /// The agent runtime: a state machine, a context, and nothing else.
@@ -578,6 +580,7 @@ impl Kernel {
             turn_requests: AtomicUsize::new(0),
             full_notice: RwLock::new(None),
             call_ceiling: RwLock::new(None),
+            max_requests: RwLock::new(config.max_requests_per_turn),
             config,
         };
 
@@ -586,7 +589,10 @@ impl Kernel {
 
     // ---------------------------------------------------------------- session and observation
 
-    /// Returns the kernel's configuration.
+    /// Returns the kernel's configuration, as it was built with.
+    ///
+    /// note: [`Config::max_requests_per_turn`] here is where the kernel started;
+    /// [`Kernel::max_requests_per_turn`] is what it holds to now.
     pub fn config(&self) -> &Config {
         &self.0.config
     }
@@ -957,7 +963,7 @@ impl Kernel {
     }
 
     /// Repeats [`Kernel::step`] until the model ends its turn, a decision is needed, or
-    /// [`Config::max_requests_per_turn`] is reached; returns the state it stopped in.
+    /// [`Kernel::max_requests_per_turn`] is reached; returns the state it stopped in.
     ///
     /// note: [`State::Finished`] means the model answered, [`State::Deciding`] means it is your
     /// move, and [`State::Idle`] means the request budget ran out mid-loop - calling `turn`
@@ -988,9 +994,7 @@ impl Kernel {
             let mut counted = None;
             if matches!(self.state(), State::Idle | State::Finished { .. }) {
                 if self
-                    .0
-                    .config
-                    .max_requests_per_turn
+                    .max_requests_per_turn()
                     .is_some_and(|max| requests >= max)
                 {
                     // a turn that made no request has nothing to pause

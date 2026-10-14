@@ -15,6 +15,11 @@ minor bump may break you.
   runs every one. A model caught in a repetition loop answered with thousands of calls, and every
   one was run and recorded.
 
+- **`Kernel::set_max_requests_per_turn`** changes how many requests a turn may send while the
+  session runs, and `Kernel::max_requests_per_turn` says what it is now. It starts at
+  `Config::max_requests_per_turn`, which was the only place it could be set, so changing it meant
+  building the kernel again. A change holds from the next request, the running turn's included.
+
 ### fixed
 
 - **A tool that panics saying what a call needs, or how much of it to keep, fails that call.**
