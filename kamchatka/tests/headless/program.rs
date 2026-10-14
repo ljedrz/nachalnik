@@ -585,7 +585,7 @@ fn a_resumed_run_says_the_spend_is_this_runs() {
 
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(
-        said.contains("this run has spent 0 tokens"),
+        said.contains("this session has spent 0 tokens"),
         "the figure did not say which run it is: {said}"
     );
     // and the other half: the counter's learning came back with the snapshot, on the other basis

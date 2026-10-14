@@ -97,7 +97,7 @@ async fn a_script_can_raise_the_ceiling_it_ran_into() {
 
     assert!(
         run.prose
-            .contains("this run has spent 1,200 tokens of 1,000"),
+            .contains("this session has spent 1,200 tokens of 1,000"),
         "{}",
         run.prose
     );
@@ -332,7 +332,7 @@ async fn the_ceiling_can_be_raised_and_taken_away() {
     assert!(
         reply.said[0]
             .text
-            .contains("this run has spent 1,200 tokens of 1,000"),
+            .contains("this session has spent 1,200 tokens of 1,000"),
         "{:?}",
         reply.said
     );
@@ -404,7 +404,9 @@ async fn the_total_is_counted_with_no_ceiling_to_count_it_against() {
     assert_eq!(app.spent(), 600);
     let reply = app.submit("/spend").await;
     assert!(
-        reply.said[0].text.contains("this run has spent 600 tokens"),
+        reply.said[0]
+            .text
+            .contains("this session has spent 600 tokens"),
         "{:?}",
         reply.said
     );

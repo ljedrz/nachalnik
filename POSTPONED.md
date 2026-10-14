@@ -124,13 +124,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   Raising the client's timeout with the patience, or saying how the two combine, is part of the
   change. Unblocked by choosing the names and that rule.
 
-- **`/restart` starts the `--spend` count again.** `--spend` stops "the session" once that much
-  has been charged for it, and `/restart` starts a fresh session in the same process, so the total
-  goes back to nothing and a run already at its ceiling can spend it again; `/spend` meanwhile says
-  what "this run has spent". A script that pipes `/restart` is bounded per session, not per run.
-  Unblocked by deciding which the ceiling is for: carrying the total and the stop across a relaunch,
-  or saying "this session" where `/spend` says "this run".
-
 - **A headless or served run stopped short after its last turn failed exits 1.** `Headless::run`
   and `Server::run` answer `Err` whenever the last turn failed, and the stop - a deadline,
   `ctrl+c`, a signal - is read only on the `Ok` path, so a run whose last turn failed and which was
