@@ -1054,7 +1054,15 @@ async fn a_file_whose_group_is_not_the_writers_is_written_where_it_is() {
     let dir = scratch("files-grouped");
     let file = dir.join("shared.txt");
     std::fs::write(&file, "old\n").expect("a file");
-    rustix::fs::chown(&file, None, Some(other)).expect("a group this process belongs to");
+    // a group a user namespace lists and does not map - the overflow group - is one no file can
+    // be given, which is the machine this skips on above
+    match rustix::fs::chown(&file, None, Some(other)) {
+        Err(rustix::io::Errno::INVAL) => {
+            eprintln!("skipped: no group this process may give a file");
+            return;
+        }
+        given => given.expect("a group this process belongs to"),
+    }
     let before = std::fs::metadata(&file).expect("it is there");
     assert_eq!(before.gid(), other.as_raw(), "it was given that group");
 
@@ -1139,7 +1147,14 @@ async fn a_write_that_cannot_rename_over_the_file_leaves_nothing_beside_it() {
         eprintln!("skipped: no second group for a setgid directory to hand a new file");
         return;
     };
-    rustix::fs::chown(&dir, None, Some(other)).expect("the directory is the group's");
+    // a group a user namespace lists and does not map is one no directory can be given
+    match rustix::fs::chown(&dir, None, Some(other)) {
+        Err(rustix::io::Errno::INVAL) => {
+            eprintln!("skipped: no second group for a setgid directory to hand a new file");
+            return;
+        }
+        given => given.expect("the directory is the group's"),
+    }
     rustix::fs::chmod(&dir, rustix::fs::Mode::from_raw_mode(0o2775)).expect("and setgid");
     let file = dir.join("run.sh");
     std::fs::write(&file, "echo one\n").expect("a file");
