@@ -273,11 +273,11 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   every browser would need a token in the page's URL that `/events` checks, which changes how the
   page is opened.
 
-- **A command that stops itself is waited on until the turn is interrupted.** `kill -STOP $$` or
-  `SIGTSTP` leaves the call waiting for output that never comes, and a headless run waits until its
-  `--deadline`, which then ends it and the stopped process cleanly. Waiting with `WUNTRACED` would
-  detect the stop; what to do then (continue or kill the command, and whether a background job
-  stopping counts too) is the open question.
+- **A program a command runs that stops only itself is waited on until the turn is interrupted.**
+  The shell is then asleep waiting on it rather than stopped, so nothing says the call is stuck.
+  Seeing it means looking through the command's process group for a stopped process the shell is
+  waiting on, and telling that from a background job the command stopped on purpose, which is left
+  alone. Unblocked by deciding that scan is worth its code.
 
 - **A malformed MCP response leaves the call waiting.** A response with the call's id but neither a
   `result` nor an `error`, or a result with a different id, is dropped by `rmcp`, and the call waits
