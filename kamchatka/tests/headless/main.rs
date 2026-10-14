@@ -1203,6 +1203,16 @@ async fn a_message_that_cannot_fit_is_passed_over_until_there_is_room() {
     assert!(run.prose.contains("there is room now"), "{}", run.prose);
 }
 
+/// A session runs at most `wiring::CALLS` of one answer's tool calls.
+#[tokio::test]
+async fn a_session_runs_only_so_many_calls_of_one_answer() {
+    let run = run("", vec![], |_| {}).await;
+    assert_eq!(
+        run.app.kernel.call_ceiling(),
+        Some(kamchatka::wiring::CALLS)
+    );
+}
+
 /// The window a model is changed to is the one `fs:read` is held to.
 ///
 /// note: the table is told at startup and then by `ModelChanged`, so a `/model` to a model with a
