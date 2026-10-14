@@ -129,9 +129,10 @@ pub trait Tool: Send + Sync {
     /// note: called with the kernel's tool registry locked, so it must not call back into the
     /// [`Kernel`] it is registered with. [`Tool::invoke`] runs with no lock held and may.
     ///
-    /// note: and it must not panic. A panic in [`Tool::invoke`], [`Tool::needs`] or [`Tool::limit`]
-    /// - the three that read a model's arguments - is caught and answers the call; this one reads
-    /// nothing the model wrote, and is asked wherever a tool is described, outside any catch.
+    /// note: and it must not panic. A panic in [`Tool::invoke`], [`Tool::needs`], [`Tool::limit`]
+    /// or [`Tool::unparsed`] - the ones that read what a model wrote - is caught and answers the
+    /// call; this one reads nothing the model wrote, and is asked wherever a tool is described,
+    /// outside any catch.
     fn spec(&self) -> ToolSpec;
 
     /// What *this* call needs, which is at most what the spec declares.
@@ -165,6 +166,21 @@ pub trait Tool: Send + Sync {
     fn limit(&self, call: &ToolCall) -> Option<usize> {
         let _ = call;
         self.spec().output_limit
+    }
+
+    /// What to add to the kernel's answer to a call of this tool whose arguments were not a JSON
+    /// object, given what the model wrote; see [`ToolCall::unparsed`].
+    ///
+    /// note: the kernel answers such a call itself - the policy is not asked about it and the tool
+    /// is not handed it, since there are no arguments to read - and says which tool, that the
+    /// arguments did not parse, where, and what was written there. What it cannot say is what the
+    /// model should have written instead, which depends on the tool's arguments: a tool whose
+    /// arguments are laid out its own way knows the faults a model makes writing them. The default
+    /// adds nothing, and nothing is often the better answer: advice about escaping, measured, sent
+    /// models to escape what was already right.
+    fn unparsed(&self, written: &str) -> Option<String> {
+        let _ = written;
+        None
     }
 
     /// Executes the call.

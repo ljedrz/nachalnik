@@ -81,6 +81,35 @@ impl Kernel {
                 continue;
             };
 
+            // arguments that are not an object are none to ask about or run with, so the call is
+            // answered here and joins the turn's checkpoint, as one nobody can run does; see
+            // `ToolCall::unparsed`
+            if let Some(written) = &call.unparsed {
+                let error = misparsed(written);
+                self.emit(Event::ToolUnparsed {
+                    call: call.id.clone(),
+                    tool: call.tool.clone(),
+                    written: written.clone(),
+                    error: error.said.clone(),
+                });
+                let advice = guarded(|| tool.unparsed(written)).unwrap_or_else(|_| {
+                    self.emit(Event::ToolPanicked {
+                        call: call.id.clone(),
+                        tool: call.tool.clone(),
+                    });
+                    None
+                });
+                self.record_tool_result(
+                    call,
+                    Some(&*tool),
+                    ToolOutput::error(unparsed_answer(call, written, &error, advice)),
+                    None,
+                    None,
+                    &mut turn,
+                );
+                continue;
+            }
+
             // what the call needs rather than what the tool might: see `Tool::needs`
             //
             // note: asked under the same catch as `invoke`, since it reads the model's arguments
@@ -513,6 +542,90 @@ fn described(error: &(dyn std::error::Error + 'static)) -> String {
         cause = error.source();
     }
     said
+}
+
+/// What the parser made of arguments that are not a JSON object.
+struct Misparsed {
+    /// What it said was wrong, with where.
+    said: String,
+    /// The byte the fault is at, or `0` where the text parsed as something other than an object.
+    at: usize,
+}
+
+/// Parses what a model wrote again, for what is wrong with it and where; the provider that
+/// found it unreadable kept the text and not the error.
+fn misparsed(written: &str) -> Misparsed {
+    match serde_json::from_str::<serde_json::Value>(written) {
+        Err(error) => {
+            // the parser counts lines and columns from one, and a column is a byte in its line
+            let line = written
+                .split_inclusive('\n')
+                .take(error.line().saturating_sub(1))
+                .map(str::len)
+                .sum::<usize>();
+            Misparsed {
+                said: error.to_string(),
+                at: (line + error.column().saturating_sub(1)).min(written.len()),
+            }
+        }
+        Ok(parsed) => Misparsed {
+            said: format!(
+                "it is JSON, but {} rather than an object",
+                match parsed {
+                    serde_json::Value::Array(_) => "a list",
+                    serde_json::Value::String(_) => "a string",
+                    serde_json::Value::Number(_) => "a number",
+                    serde_json::Value::Bool(_) => "true or false",
+                    _ => "null",
+                }
+            ),
+            at: 0,
+        },
+    }
+}
+
+/// How much of what a model wrote is quoted back, in bytes: enough to see the fault in its
+/// sentence, and not so much that a long call is copied into the context a second time.
+const QUOTED: usize = 200;
+
+/// What a call whose arguments are not a JSON object is answered with: which call, that the
+/// arguments did not parse, what the parser said and where, the text around that, and whatever
+/// the tool adds; see [`Tool::unparsed`].
+///
+/// note: the text around the fault rather than the start of it, since a fault past a cut is
+/// common, and quoting the start of the text quotes the part that is fine.
+fn unparsed_answer(
+    call: &ToolCall,
+    written: &str,
+    error: &Misparsed,
+    advice: Option<String>,
+) -> String {
+    let mut from = error.at.saturating_sub(QUOTED / 2);
+    while !written.is_char_boundary(from) {
+        from -= 1;
+    }
+    let mut to = (from + QUOTED).min(written.len());
+    while !written.is_char_boundary(to) {
+        to += 1;
+    }
+    let quoted = format!(
+        "{}{}{}",
+        if from > 0 { "..." } else { "" },
+        &written[from..to],
+        if to < written.len() { "..." } else { "" },
+    );
+
+    format!(
+        "the arguments of this call to `{}` (`{}`) are not a JSON object, so it was not run and \
+         nothing was asked about it: {}. What arrived there was `{quoted}`. Send the call again \
+         with its arguments as one JSON object.{}",
+        call.tool,
+        call.id,
+        error.said,
+        advice
+            .map(|advice| format!(" {advice}"))
+            .unwrap_or_default(),
+    )
 }
 
 /// What a call past the ceiling is answered with.

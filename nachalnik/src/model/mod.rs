@@ -241,6 +241,7 @@ fn is_null(value: &Arc<Value>) -> bool {
 
 /// A tool invocation requested by the model.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(from = "StoredCall")]
 pub struct ToolCall {
     /// The provider-assigned identifier of the call.
     pub id: ToolCallId,
@@ -263,6 +264,61 @@ pub struct ToolCall {
     /// from its call, and a provider that ignores it loses nothing.
     #[serde(default = "null", skip_serializing_if = "is_null")]
     pub extra: Arc<Value>,
+    /// What the model wrote for the arguments, where it was not a JSON object; `args` is then
+    /// empty.
+    ///
+    /// note: the kernel answers such a call itself, saying it did not parse and where, and asks
+    /// neither the policy nor the tool about it; see [`Tool::unparsed`](crate::Tool::unparsed).
+    /// The arguments stay empty so that the call goes back to the model as one it made with
+    /// nothing in it, rather than as the text in a wrapper of the runtime's - which a model reads
+    /// as a shape to copy, and writes every later call in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unparsed: Option<String>,
+}
+
+/// A [`ToolCall`] as it is read back from a snapshot or a request.
+///
+/// note: kept apart so that a call recorded before [`ToolCall::unparsed`] existed reads as one
+/// with it. Providers then kept what would not parse under `_unparsed`, as the call's only
+/// argument, and text there that does not parse can only have been put there by one.
+#[derive(Deserialize)]
+struct StoredCall {
+    id: ToolCallId,
+    tool: String,
+    args: Arc<Value>,
+    #[serde(default = "null")]
+    extra: Arc<Value>,
+    #[serde(default)]
+    unparsed: Option<String>,
+}
+
+impl From<StoredCall> for ToolCall {
+    fn from(stored: StoredCall) -> Self {
+        let StoredCall {
+            id,
+            tool,
+            mut args,
+            extra,
+            mut unparsed,
+        } = stored;
+        if unparsed.is_none()
+            && let Some(entries) = args.as_object()
+            && entries.len() == 1
+            && let Some(Value::String(written)) = entries.get("_unparsed")
+            && serde_json::from_str::<Value>(written).is_err()
+        {
+            unparsed = Some(written.clone());
+            args = Arc::new(Value::Object(Map::new()));
+        }
+
+        Self {
+            id,
+            tool,
+            args,
+            extra,
+            unparsed,
+        }
+    }
 }
 
 impl ToolCall {
@@ -277,6 +333,20 @@ impl ToolCall {
             tool: tool.into(),
             args: args.into(),
             extra: Arc::new(Value::Null),
+            unparsed: None,
+        }
+    }
+
+    /// Creates a call whose arguments were not a JSON object, keeping what the model wrote; see
+    /// [`ToolCall::unparsed`].
+    pub fn unparsed(
+        id: impl Into<ToolCallId>,
+        tool: impl Into<String>,
+        written: impl Into<String>,
+    ) -> Self {
+        Self {
+            unparsed: Some(written.into()),
+            ..Self::new(id, tool, Value::Object(Map::new()))
         }
     }
 
@@ -299,6 +369,7 @@ impl ToolCall {
             false => json_len(&self.extra),
         };
 
+        // not what did not parse, which is answered rather than sent again
         self.tool.len() + json_len(&self.args) + extra
     }
 }
@@ -773,6 +844,32 @@ pub trait Provider: Send + Sync {
 
 #[cfg(test)]
 mod tests {
+
+    /// A call recorded before `ToolCall::unparsed` existed, with what did not parse kept under
+    /// `_unparsed`, reads back as one with it - and a wrapper round text that does parse, which
+    /// only a model can have written, is left as it was.
+    #[test]
+    fn a_call_recorded_the_old_way_reads_as_unparsed() {
+        let old: ToolCall = serde_json::from_value(serde_json::json!({
+            "id": "c1", "tool": "fs", "args": { "_unparsed": "{oops" }
+        }))
+        .unwrap();
+        assert_eq!(old.unparsed.as_deref(), Some("{oops"));
+        assert_eq!(*old.args, serde_json::json!({}));
+
+        let copied = serde_json::json!({ "_unparsed": "{\"path\": \"x\"}" });
+        let model: ToolCall = serde_json::from_value(serde_json::json!({
+            "id": "c1", "tool": "fs", "args": copied
+        }))
+        .unwrap();
+        assert_eq!(model.unparsed, None);
+        assert_eq!(*model.args, copied);
+
+        // and one written now goes and comes back the same
+        let now = ToolCall::unparsed("c1", "fs", "{oops");
+        let again: ToolCall = serde_json::from_str(&serde_json::to_string(&now).unwrap()).unwrap();
+        assert_eq!(again, now);
+    }
     use super::{content::sized, *};
 
     /// A record written before `endpoint` existed still reads, and one with no address says
