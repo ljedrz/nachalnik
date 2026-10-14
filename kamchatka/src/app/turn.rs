@@ -421,8 +421,7 @@ impl App {
                 self.paused = true;
                 let budget = self
                     .kernel
-                    .config()
-                    .max_requests_per_turn
+                    .max_requests_per_turn()
                     .map(|max| plural(max, "request"))
                     .unwrap_or_else(|| "the requests".into());
                 self.say(

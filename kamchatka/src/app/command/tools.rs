@@ -215,6 +215,54 @@ impl App {
         self.say_advice_spent();
     }
 
+    /// Shows or changes how many requests one turn sends before it pauses; `0` takes the limit
+    /// away, as `--requests 0` does.
+    ///
+    /// note: the kernel's own setting, changed in place, so it holds from the next request - the
+    /// running turn's included - and a restart to change `--requests` is not needed. Not carried
+    /// into a snapshot: a resumed session, and a `/restart`, starts from `--requests` again.
+    pub(super) fn requests_command(&mut self, rest: &str) {
+        let rest = rest.trim();
+        if rest.is_empty() {
+            let said = match self.kernel.max_requests_per_turn() {
+                Some(max) => format!(
+                    "a turn sends at most {} before it pauses. `/requests N` changes it and \
+                     `/requests 0` takes the limit away",
+                    plural(max, "request")
+                ),
+                None => "a turn sends as many requests as the model asks for; `/requests N` sets \
+                         how many it sends before it pauses"
+                    .to_owned(),
+            };
+            self.say(Speaker::Note, said);
+            return;
+        }
+
+        let Ok(max) = rest.parse::<usize>() else {
+            self.say(
+                Speaker::Error,
+                format!("`{rest}` is not a number of requests; `/requests 0` takes the limit away"),
+            );
+            return;
+        };
+        self.kernel
+            .set_max_requests_per_turn((max > 0).then_some(max));
+        let limit = match max {
+            0 => "a turn now sends as many requests as the model asks for".to_owned(),
+            max => format!(
+                "a turn now sends at most {} before it pauses",
+                plural(max, "request")
+            ),
+        };
+        // the running turn is held to it from its next request, and a paused one is still paused
+        let after = match (self.busy, self.paused) {
+            (true, _) => ", the running one included",
+            (false, true) => "; `/continue` carries on the paused one",
+            (false, false) => "",
+        };
+        self.say(Speaker::Note, format!("{limit}{after}"));
+    }
+
     /// Says how much of what `/spend` just reported was the advisor's, where any was.
     ///
     /// note: a line of its own rather than a clause in each of the sentences above, and only when

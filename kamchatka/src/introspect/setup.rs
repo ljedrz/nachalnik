@@ -693,7 +693,7 @@ fn rules(kernel: &Kernel, policy: &Careful) -> String {
     out.push_str(&format!(
         "one turn makes at most {} request(s) before it stops, whatever you are in the middle \
          of.\n",
-        match config.max_requests_per_turn {
+        match kernel.max_requests_per_turn() {
             Some(n) => thousands(n),
             None => "unlimited".to_owned(),
         },

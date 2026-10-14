@@ -78,6 +78,12 @@ session since it began, and `/restart` starts a session with a fresh total.
 An endpoint that reports no usage at all is mentioned once, instead of silently keeping a limit that
 can never be reached, since someone who set a limit expects the run to be limited.
 
+`--requests 8`, the default, is how many requests one turn sends before it pauses for `/continue`.
+`/requests` shows it, and `/requests N` changes it while the session runs, so raising it needs no
+restart. The new limit holds from the next request, including in a turn that is already running.
+`/requests 0` removes it, as `--requests 0` does. A `/restart` or a resumed session starts from
+`--requests` again.
+
 `--deadline` counts from program start, so it also covers an endpoint that never answers and an MCP
 server that never finishes starting, and `/restart` doesn't reset it. It can't interrupt a `/model`
 or `/endpoint` switch, which always finishes first. A call to an MCP server's tool is given up on
