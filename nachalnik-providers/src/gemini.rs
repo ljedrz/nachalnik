@@ -593,7 +593,16 @@ impl Provider for Gemini {
             Sent::Interrupted => Ok(interrupted()),
             // never asked for here, and read as what it would be if it came
             Sent::Whole(payload) => unstreamed(payload.to_string(), streamed, &deltas),
-            Sent::Streamed(Read::Events(events, stopped)) => Ok(answer(streamed, events, stopped)),
+            // note: a stream that carried neither a candidate nor a refusal of the prompt has not
+            // answered, as Chat Completions holds a stream with no choice in it. Read as a turn
+            // it finished with nothing said and `EndTurn`, which hides an endpoint's fault as a
+            // model with nothing to say. A body that came whole is read as before
+            Sent::Streamed(Read::Events(events, stopped)) => {
+                match !streamed.answered && !events.is_empty() {
+                    true => Err(no_answer(&events[0])),
+                    false => Ok(answer(streamed, events, stopped)),
+                }
+            }
             Sent::Streamed(Read::Interrupted) => Ok(interrupted()),
             Sent::Streamed(Read::Unstreamed(body)) => unstreamed(body, streamed, &deltas),
             Sent::Streamed(Read::Refused { said, .. }) => Err(refused(said, limit)),
@@ -613,10 +622,16 @@ struct Streamed {
     finish: Option<String>,
     /// What the request cost, where the server reported it.
     usage: Option<Usage>,
+    /// Whether anything carried a candidate, or a refusal of the prompt, which is an answer too.
+    answered: bool,
 }
 
 impl Events for Streamed {
     fn event(&mut self, chunk: &Value, deltas: &DeltaSink) {
+        self.answered |= chunk["candidates"]
+            .as_array()
+            .is_some_and(|candidates| !candidates.is_empty())
+            || chunk["promptFeedback"]["blockReason"].is_string();
         if let Some(reported) = chunk.get("usageMetadata").filter(|u| !u.is_null()) {
             // note: the thoughts are added in, because `Usage::output_tokens` is everything
             // generated and this dialect reports the two apart. Google's own `totalTokenCount` is
@@ -662,6 +677,12 @@ impl Events for Streamed {
     fn finished(&self) -> bool {
         self.finish.is_some()
     }
+}
+
+/// What a stream that never answered is refused with, quoting the first thing it carried.
+fn no_answer(event: &Value) -> BoxError {
+    let short = crate::markup::quoted(&event.to_string());
+    format!("the stream carried no answer: {short}").into()
 }
 
 /// A body that was not a stream, read as the events it would have been streamed as - or, where
