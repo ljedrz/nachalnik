@@ -498,73 +498,35 @@ impl Write {
         }
 
         let _changing = self.2.hold(&path).await;
+        // the directories it goes in, where they are not there; see `Reach::make_parents`
+        let (reach, made) = (self.0.clone(), path.clone());
+        let parents = tokio::task::spawn_blocking(move || reach.make_parents(&made))
+            .await
+            .map_err(std::io::Error::other)
+            .and_then(|made| made);
+        if let Err(e) = parents {
+            return Ok(ToolOutput::error(format!(
+                "{}: the directory it goes in could not be made, so nothing was written: {e}",
+                path.display()
+            )));
+        }
         match write(&self.0, &path, content.to_owned()).await {
             Ok(()) => Ok(ToolOutput::new(format!(
                 "wrote {} bytes to {}",
                 content.len(),
                 path.display()
             ))),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Ok(ToolOutput::error(match unmade(&path, &self.1) {
-                    Some(refusal) => refusal,
-                    None => format!("{}: {e}", path.display()),
-                }))
-            }
             Err(e) => Ok(ToolOutput::error(format!("{}: {e}", path.display()))),
         }
     }
-}
-
-/// Why a write found nowhere to put its file, naming the first directory on the way that is not
-/// there, or `None` where they all are.
-///
-/// note: the system says `No such file or directory` about the file, which is the one part of the
-/// path a write was never going to find, and nothing in it says `fs` makes no directories. What to
-/// do next depends on whether `shell` may run, since that is what makes one.
-fn unmade(path: &Path, policy: &Careful) -> Option<String> {
-    Some(format!(
-        "{}: {}, so nothing was written. {}",
-        path.display(),
-        no_directory(path)?,
-        make_directory(path, policy, "write again")?,
-    ))
-}
-
-/// That the first directory on the way to `path` that is not there is not, and that `fs` makes
-/// none; `None` where they all are.
-fn no_directory(path: &Path) -> Option<String> {
-    let missing = path
-        .parent()?
-        .ancestors()
-        .take_while(|it| !it.exists())
-        .last()?;
-    Some(format!(
-        "the directory {} is not there, and `fs` makes no directories",
-        missing.display()
-    ))
-}
-
-/// What makes the directory `path` goes in, and then to `then`.
-fn make_directory(path: &Path, policy: &Careful, then: &str) -> Option<String> {
-    let dir = path.parent()?;
-    Some(match makes_directories(policy) {
-        false => {
-            "`shell`, which makes directories, is not available in this session, so write it in a \
-             directory that is there, or say which one you need made."
-                .to_owned()
-        }
-        true => format!(
-            "Make it with `shell` - `mkdir -p {}` - and {then}.",
-            dir.display()
-        ),
-    })
 }
 
 /// Why a `write` or an `edit` was handed a path that ends in a separator, which is a directory and
 /// no file; `None` where it does not.
 ///
 /// note: refused rather than resolved to the name without it, which is what a path goes through
-/// here: a model writing `trail/` means the directory, and `fs` makes no directories - so
+/// here: a model writing `trail/` means the directory, and `fs` makes a directory only to hold a
+/// file it writes - so
 /// resolving it would make a file called `trail`, which nothing asked for and which stands there
 /// answering as a directory's worth of what was meant to go in one. Checked on the text and
 /// before the reach, so a path outside it is still refused as the path it is.
@@ -573,7 +535,7 @@ fn make_directory(path: &Path, policy: &Careful, then: &str) -> Option<String> {
 /// so `/tmp/build/` where there is no `/tmp/build` was a file made there; only `/` itself, which
 /// is nothing once the separator is gone, is left to the open.
 ///
-/// note: the directory is offered to `shell` only where `shell` may run, as [`unmade`] offers it.
+/// note: the directory is offered to `shell` only where `shell` may run.
 fn dir(named: &str, doing: &str, policy: &Careful) -> Option<String> {
     let without = named.trim_end_matches('/');
     if without.is_empty() || !named.ends_with('/') {
@@ -644,21 +606,10 @@ impl Edit {
             // says neither that nothing was changed nor that an edit is the wrong operation for a
             // file that is not there yet - which is what an edit of a missing file almost always
             // is. Whether `write` may run is the policy's answer, not this one's
-            //
-            // note: and where the file's directory is not there either, that is said too, since
-            // the `write` it is sent to would only be refused for it next
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let write = match self.1.reachable(&Capability::fs("write")) {
-                    true => {
-                        let directory = no_directory(&path)
-                            .zip(make_directory(&path, &self.1, "then write the file"))
-                            .map(|(missing, next)| {
-                                format!(" - once it has a directory: {missing}. {next}")
-                            })
-                            .unwrap_or_default();
-                        format!(", and `write` makes a new one{directory}")
-                    }
-                    false => String::new(),
+                    true => ", and `write` makes a new one, and the directories it goes in",
+                    false => "",
                 };
                 return Ok(ToolOutput::error(format!(
                     "{} is not there, so nothing was changed; `edit` changes a file that is \

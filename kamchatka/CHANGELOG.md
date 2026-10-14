@@ -31,6 +31,11 @@ minor bump may break you.
 
 ### changed
 
+- **`fs write` makes the directories a new file goes in.** Writing into a directory that was not
+  there was refused, and a session with `exec` denied could not make one at all. The directories
+  are made inside the reach and nowhere else, one at a time beneath where the path was allowed and
+  refusing a link, as the file itself is opened; a path outside the reach is refused before
+  anything is made.
 - **A call to one of this program's own tools whose arguments cannot be read is not asked
   about.** The question showed the raw wrapper, which nobody can judge, and a yes only led to the
   tool refusing the call. It goes to the tool now, which says what is wrong and runs nothing. A

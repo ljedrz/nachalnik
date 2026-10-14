@@ -397,6 +397,41 @@ impl Reach {
         std::io::Write::flush(&mut file)
     }
 
+    /// Makes the directories a file [`Reach::allows`] answered for is to go in, where they are not
+    /// there.
+    ///
+    /// note: inside the reach and nowhere else, which is what makes it `fs:write`'s and not a wider
+    /// right: a directory made to hold a file the session may write is no more than the file. The
+    /// part of the path that is there was resolved when it was allowed, so what is left is names
+    /// that are not there yet; each is made from the directory before it, held open beneath where
+    /// the path was allowed, and opened again refusing any link - so one swapped in between is
+    /// refused rather than followed, as [`Reach::open`] refuses it. On a kernel that will not open
+    /// beneath a directory it is `create_dir_all`, with the window SECURITY.md describes.
+    ///
+    /// note: only where the directory is *not there*. One that is there and cannot be searched is
+    /// left for the write to be refused by, with the kernel's own reason.
+    pub fn make_parents(&self, path: &Path) -> std::io::Result<()> {
+        let Some(dir) = path.parent() else {
+            return Ok(());
+        };
+        match std::fs::metadata(dir) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            _ => return Ok(()),
+        }
+        if !self.confined {
+            return std::fs::create_dir_all(dir);
+        }
+
+        let root = self.root(path, Access::Writing)?;
+        let Ok(missing) = dir.strip_prefix(&root) else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "outside what this session reaches",
+            ));
+        };
+        made_beneath(&root, missing).unwrap_or_else(|| std::fs::create_dir_all(dir))
+    }
+
     /// The directory `path` is replaced in, opened beneath where it was allowed when that can be
     /// done.
     fn beside(&self, dir: &Path, path: &Path) -> std::io::Result<Beside> {
@@ -453,7 +488,9 @@ fn irregular(doing: Access, policy: Option<&Careful>) -> std::io::Error {
             })
             .map(|ways| format!("; {ways}"))
             .unwrap_or_default(),
-        Access::Writing => ", so nothing was written; `fs` makes no directories".to_owned(),
+        Access::Writing => {
+            ", so nothing was written; `fs` writes files, not directories".to_owned()
+        }
     };
     std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
@@ -560,6 +597,54 @@ fn beneath(root: &Path, path: &Path, doing: Access) -> Option<std::io::Result<st
         ),
     };
     opened_beneath(root, path, flags, mode).map(|opened| opened.map(std::fs::File::from))
+}
+
+/// Makes each directory of `missing` under `root` that is not there, one name at a time from the
+/// one before, refusing a link anywhere on the way; `None` where the kernel will not open beneath a
+/// directory, as for [`beneath`].
+fn made_beneath(root: &Path, missing: &Path) -> Option<std::io::Result<()>> {
+    use rustix::{
+        fs::{Mode, OFlags, ResolveFlags},
+        io::Errno,
+    };
+
+    let directory = OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut held = match rustix::fs::open(root, directory, Mode::empty()) {
+        Ok(held) => held,
+        Err(e) => return Some(Err(e.into())),
+    };
+    for name in missing.components() {
+        let std::path::Component::Normal(name) = name else {
+            return Some(Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "a directory to make is named by a part that is not a name",
+            )));
+        };
+        match rustix::fs::mkdirat(&held, name, Mode::from_raw_mode(0o777)) {
+            Ok(()) | Err(Errno::EXIST) => {}
+            Err(e) => return Some(Err(e.into())),
+        }
+        held = match rustix::fs::openat2(
+            &held,
+            name,
+            directory,
+            Mode::empty(),
+            ResolveFlags::BENEATH | ResolveFlags::NO_SYMLINKS,
+        ) {
+            Ok(next) => next,
+            Err(Errno::NOSYS | Errno::PERM) => return None,
+            Err(Errno::LOOP | Errno::XDEV) => {
+                return Some(Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "a part of this path has become a link since it was checked, so no \
+                     directory was made through it",
+                )));
+            }
+            Err(e) => return Some(Err(e.into())),
+        };
+    }
+
+    Some(Ok(()))
 }
 
 /// Opens the directory `dir` without leaving `root`, to make files in; `None` as for [`beneath`].
