@@ -752,8 +752,6 @@ fn refused(line: &str) -> bool {
         || line.contains("EACCES")
 }
 
-/// The verb for the paths a note names: a command that writes one file and reads another is
-/// refused twice, and the note names both.
 /// How many of the paths a command's refusals name are judged, at most.
 const LOOKED: usize = 1000;
 
@@ -768,6 +766,8 @@ enum Why {
     ReadOnly,
 }
 
+/// The verb for the paths a note names: a command that writes one file and reads another is
+/// refused twice, and the note names both.
 fn are(named: &[String]) -> &'static str {
     match named.len() {
         1 => "is",
