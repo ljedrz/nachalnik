@@ -9,6 +9,9 @@ minor bump may break you.
 
 ### changed
 
+- Requires `nachalnik` 0.10. Nothing in this crate had to change for it, but `Subject::model`
+  hands out a `ModelInfo` and `Origin::snapshot` a `Snapshot`, so a 0.8 eval would resolve against
+  a runtime it was never built against.
 - **Every experiment's digest covers the sentence its questions end with, and the instrument is
   `v6`.** The line telling a subject what shape to answer in was left out of the digest, so
   rewording it would have changed what every subject is asked while every fingerprint stayed the
