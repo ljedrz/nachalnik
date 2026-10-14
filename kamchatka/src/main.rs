@@ -615,12 +615,28 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
     #[cfg(not(feature = "webui"))]
     let exposure: Option<String> = None;
     #[cfg(feature = "webui")]
+    let page = web.as_ref().map(kamchatka::web::Web::address);
+    #[cfg(not(feature = "webui"))]
+    let page: Option<String> = None;
+    #[cfg(feature = "webui")]
     if let Some(web) = web {
         let _ = writeln!(
             stdout(),
             "· a browser reaches the session at {}",
             web.address()
         );
+        // note: the code only where a person is looking at it. A stdout that is a pipe is a
+        // program reading the address off the line above, and half a screen of blocks after it is
+        // nothing that program can use
+        if std::io::stdout().is_terminal()
+            && let Some(code) = kamchatka::qr::Code::new(&web.address())
+        {
+            // white on black, whatever the terminal's colours, for the reason the overlay gives
+            let lines = code.lines();
+            for line in &lines {
+                let _ = writeln!(stdout(), "\x1b[97;40m{line}\x1b[0m");
+            }
+        }
         if let Some(exposure) = &exposure {
             let _ = writeln!(std::io::stderr(), "· {exposure}");
         }
@@ -682,6 +698,14 @@ async fn session(given: Given) -> Result<Option<headless::Stop>> {
         }
         if let Some(exposure) = &exposure {
             app.say(Speaker::Note, exposure.clone());
+        }
+        app.web = page.clone();
+        // note: shown as the screen opens where the page is for a phone, since the screen covers
+        // the code printed above it; on loopback the browser is on this machine, and the address
+        // can be copied rather than photographed. The first session only: a `/restart` is
+        // somebody already using it
+        if first && !headless && exposure.is_some() {
+            app.web_page();
         }
         if let Some(weaker) = &weaker {
             app.say(Speaker::Note, weaker.clone());

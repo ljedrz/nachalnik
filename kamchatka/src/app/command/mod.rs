@@ -396,6 +396,7 @@ impl App {
             "copy" => self.copy_command(rest),
             "compact" => self.compact().await,
             "seams" => self.seams(),
+            "web" => self.web_page(),
             // the tab rather than a line naming the allowed capabilities: it has the ones that are
             // refused as well, the ones nobody has decided about yet, and what each of them covers
             // - and every row can be changed where it is read
@@ -542,5 +543,35 @@ fn no_such_command(name: &str) -> String {
             "there is no `/{}`; `/help` lists what there is",
             one_line(other)
         ),
+    }
+}
+
+impl App {
+    /// The page's address and a QR code of it, for a phone to open; see [`crate::qr`].
+    ///
+    /// note: a command as well as a line at startup, because the screen is drawn over whatever was
+    /// printed before it, and the address is what somebody wants at the moment they pick up the
+    /// phone rather than the moment they started the program.
+    pub fn web_page(&mut self) {
+        let Some(address) = self.web.clone() else {
+            self.say(
+                Speaker::Note,
+                "no page is being served; `--web ADDRESS:PORT` serves one",
+            );
+            return;
+        };
+        let body = match crate::qr::Code::new(&address) {
+            Some(code) => format!(
+                "{address}\n\n{}\n\nPoint a phone's camera at the code, or type the address. The \
+                 eight characters after the port are the page's key, and it refuses an address \
+                 without them.",
+                code.lines().join("\n")
+            ),
+            None => format!(
+                "{address}\n\nThe eight characters after the port are the page's key, and it \
+                 refuses an address without them."
+            ),
+        };
+        self.preview("the page", body);
     }
 }

@@ -414,6 +414,11 @@ pub struct App {
     /// Why the sandbox did not take, where it was asked for and did not and something said why;
     /// see [`crate::sandbox::Probed::why`].
     pub unconfined_because: Option<String>,
+    /// The address of the page `--web` serves, its key included, for `/web` to show again.
+    ///
+    /// note: the run's rather than the session's, and set by whoever started the page, because the
+    /// page outlives every `/restart` and nothing in a session made it.
+    pub web: Option<String>,
     /// What the shell's commands left running, for whoever ends the session to stop or name; see
     /// [`crate::tools::Stragglers`].
     pub stragglers: crate::tools::Stragglers,
@@ -773,6 +778,7 @@ impl App {
             // program overwrites it with what a child process actually reported
             confinement: Confinement::Off,
             unconfined_because: None,
+            web: None,
             stragglers: crate::tools::Stragglers::default(),
             anchor: None,
             pending: Anchor::default(),
