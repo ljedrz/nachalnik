@@ -92,15 +92,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   which rule applied means letting a policy name it in `PermissionPolicy::why`, a change to
   `nachalnik`.
 
-- **A command's scratch directory is granted by name.** `make_scratch` makes it, and the ruleset
-  opens it again by its path when the rules are built, following whatever is there by then. Where
-  the session's own `TMPDIR` is inside what its commands may write, a job an earlier command left
-  running could swap the new directory for a link between the two, and the command would be
-  granted writing wherever the link led. The window is a few system calls wide and needs that
-  `TMPDIR`, so it waits; closing it means holding the directory open from the moment it is made,
-  refusing a link, and building the rule from that descriptor rather than from a path, which
-  `path_beneath_rules` does not take.
-
 - **The `/dev/shm` test has not been seen to run.** `a_confined_command_cannot_write_shared_memory`
   skips wherever `/dev/shm` can't be written outside the sandbox, which includes a session run
   under `kamchatka`'s own confinement, so its assertions, and whether it fails once `/dev/shm` is

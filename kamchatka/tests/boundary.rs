@@ -655,7 +655,7 @@ fn the_scratch_directory_is_never_somebody_elses() {
     std::os::unix::fs::symlink(&elsewhere, &path).expect("a link where the scratch goes");
 
     let made = make_scratch(&path).expect("it is this test's own, so it gives way");
-    assert_eq!(made, path);
+    assert_eq!(made.path(), path);
     assert!(
         !std::fs::symlink_metadata(&path)
             .expect("it is there")
@@ -685,7 +685,10 @@ fn the_scratch_directory_is_never_somebody_elses() {
     // a directory left by a run whose process identifier has come round again is the common case,
     // and the command must not inherit its leavings
     std::fs::write(path.join("stale.txt"), "from the last run").expect("a leftover");
-    assert_eq!(make_scratch(&path).as_ref(), Some(&path));
+    assert_eq!(
+        make_scratch(&path).as_ref().map(|it| it.path()),
+        Some(path.as_path())
+    );
     assert_eq!(
         std::fs::read_dir(&path).expect("a directory").count(),
         0,

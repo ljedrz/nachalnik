@@ -72,7 +72,7 @@ mod confinement;
 mod reach;
 
 pub use confinement::{
-    Confinement, Probed, available, confine, confine_saying, confines_abstract_sockets,
+    Confinement, Probed, Scratch, available, confine, confine_saying, confines_abstract_sockets,
     confines_signals, confines_unix_sockets, make_scratch, run_if_asked, scope_signals,
     scratch_for, weaker_here,
 };
