@@ -570,11 +570,9 @@ async fn a_rule_that_refused_a_call_naming_no_operation_says_the_call_named_none
     );
 }
 
-/// A call whose arguments did not parse is answered by the kernel with this program's advice for
-/// the fault, and asked about by nobody, in a run that refuses whatever it would ask.
-///
-/// note: a regex's `\(` written into a string as it stands, which is the fault a model makes most
-/// often and sees least: told only that the JSON was invalid, it sends the same call again.
+/// A call whose arguments did not parse is answered by the kernel, and asked about by nobody, in a
+/// run that refuses whatever it would ask - and a regex's `\(` written into a string as it stands
+/// gets no advice about backslashes, which measured live made models escape the value as well.
 #[tokio::test]
 async fn a_call_that_did_not_parse_is_told_how_to_write_it() {
     let wired = Setup {
@@ -619,8 +617,8 @@ async fn a_call_that_did_not_parse_is_told_how_to_write_it() {
     assert!(told[0].contains("call to `fs` (`c1`)"), "{}", told[0]);
     assert!(told[0].contains("invalid escape"), "{}", told[0]);
     assert!(
-        told[0].contains("every backslash inside a string written twice"),
-        "and this program's advice for the fault: {}",
+        !told[0].contains("backslash"),
+        "no advice about backslashes, which sends models to escape the value too: {}",
         told[0]
     );
     assert!(

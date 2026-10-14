@@ -507,11 +507,20 @@ fn remedy(written: &str, why: &serde_json::Error, layout: Layout) -> String {
 /// [`nachalnik::Tool::unparsed`].
 ///
 /// note: the kernel says what the parser said, where, and what arrived there. What it cannot know
-/// is that `invalid escape` in a call of `shell` is a regex's `\(` put into a string as it
-/// stands, or that a word right after `{"call":` is the action written bare where the object
-/// goes - the faults that, told only that the JSON was invalid, a model sends again unchanged.
+/// is that a word right after `{"call":` is the action written bare where the object goes, or that
+/// a line break typed into a string is written `\n` - which a model told only that the JSON was
+/// invalid can send again unchanged.
+///
+/// note: and nothing for an `invalid escape`, which is a regex's `\(` put into a string as it
+/// stands. Measured on three models given the kernel's answer with each of two sentences about
+/// writing the backslash twice, and with neither, the sentences made it worse: 4 and 6 retries of
+/// 15 sent the pattern meant, against 12 of 15 without, because a model told to double a backslash
+/// doubled it in the value as well as in the JSON.
 pub(crate) fn advice(written: &str, layout: Layout) -> Option<String> {
     let why = serde_json::from_str::<Value>(written).err()?;
+    if why.to_string().starts_with("invalid escape") {
+        return None;
+    }
     let said = remedy(written, &why, layout);
     let how = said.strip_prefix(", ")?;
 
@@ -1441,12 +1450,36 @@ mod tests {
         );
     }
 
+    /// What a tool adds to the kernel's answer: how to write a line break and where the action goes,
+    /// and nothing about backslashes.
+    #[test]
+    fn advice_is_given_where_it_was_measured_to_help() {
+        assert_eq!(
+            advice(
+                "{\"call\": {\"action\": \"grep\", \"pattern\": \"a\nb\"}}",
+                Layout::Wrapped
+            )
+            .as_deref(),
+            Some("Write it with a line break inside a string written as `\\n`."),
+        );
+        assert!(
+            advice("{\"call\": read, \"path\": \"x\"}", Layout::Wrapped)
+                .is_some_and(|said| said.contains("names the action")),
+        );
+        assert_eq!(
+            advice("{\"call\": {\"pattern\": \"f\\(x\"}}", Layout::Wrapped),
+            None,
+            "advice about backslashes sent models to escape the value as well"
+        );
+        assert_eq!(advice("{\"call\": {}}", Layout::Wrapped), None, "it parses");
+    }
+
     /// Arguments a model wrote under `_unparsed` itself are read as the call inside them.
     ///
     /// note: `inclusionai/ling-3.1-flash` copied the shape its one broken call was sent back in onto
     /// every call after it, each one valid inside the wrapper, and was told each time that its
     /// arguments were not JSON. Text there that does not parse, or that sits beside something else,
-    /// is still the provider's, and still answered as not JSON.
+    /// is not a call, and is still answered as not JSON.
     #[test]
     fn a_call_the_model_wrapped_as_unparsed_is_still_a_call() {
         let copied = json!({ UNPARSED: "{\"call\": {\"action\": \"read\", \"path\": \"x\"}}" });
