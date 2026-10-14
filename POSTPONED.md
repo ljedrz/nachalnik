@@ -58,16 +58,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   for pictures, or a truncation that keeps blobs whole and cuts only the text around them, changes
   what a tool's limit means. Unblocked by choosing which.
 
-- **A headless run goes on sending after a length refusal from an endpoint that publishes no
-  limit.** `App::oversized` is the refusal and the measurement together: the refusal is any
-  `Overrun`, and the measurement compares the budget with the limit the endpoint published. A
-  provider that refused for length and published no limit gives an `Overrun` with no limit, and a
-  budget with none, so the conjunction is false in the one state it was written for - every
-  remaining line is sent and refused, the lines are never passed over unsent, and the person is
-  told no figure to act on. Remembering the overrun and comparing the budget with its own token
-  count where there is no limit would close it; it changes when a headless run stops sending, so it
-  waits for a decision on that.
-
 - **`--connect` to a listener that accepts and then closes retries for a minute.** A first attempt
   that cannot connect fails at once, and one that connects and cannot send `attach`, or reads the
   connection closing before anything came back, is taken for a dropped session: the client retries

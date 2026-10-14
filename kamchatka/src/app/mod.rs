@@ -688,9 +688,13 @@ pub struct App {
     advised: u64,
     /// Whether the ceiling has been reached, so that nothing else is sent until somebody says so.
     overspent: bool,
-    /// Whether the last turn was refused for a request longer than the model takes, until another
-    /// one starts.
-    oversized: bool,
+    /// How large the context was when the last turn was refused for a request longer than the
+    /// model takes, until another one starts; `None` where it was not.
+    ///
+    /// note: the size rather than a flag, for an endpoint that publishes no limit. There the
+    /// refusal is the only measure there is, and a context no smaller than the one refused is a
+    /// request that will be refused again.
+    oversized: Option<usize>,
     /// Whether it has already said that the endpoint reports no figures to add up.
     ///
     /// note: a property of the endpoint rather than news about a turn, like `thought_unseen` above
@@ -841,7 +845,7 @@ impl App {
             #[cfg(feature = "shell-advisor")]
             advised: 0,
             overspent: false,
-            oversized: false,
+            oversized: None,
             unreported: false,
             saved_into: BTreeMap::new(),
         }

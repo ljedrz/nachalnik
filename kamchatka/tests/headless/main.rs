@@ -1203,6 +1203,85 @@ async fn a_message_that_cannot_fit_is_passed_over_until_there_is_room() {
     assert!(run.prose.contains("there is room now"), "{}", run.prose);
 }
 
+/// A session refused for length by an endpoint that publishes no limit passes the next messages
+/// over until the context is smaller than the one refused, and then sends again.
+///
+/// note: the refusal stood only while the budget was over a limit, and with none published it
+/// never was - so every line after the refusal was sent and refused in turn, and the person was
+/// given no figure to act on. What the endpoint refused is the one measure there is.
+#[tokio::test]
+async fn a_refusal_with_no_limit_published_stands_until_the_context_is_smaller() {
+    /// Refuses any request carrying more than a few thousand bytes, and publishes no limit.
+    struct Unsaid;
+
+    #[async_trait]
+    impl Provider for Unsaid {
+        fn info(&self) -> ModelInfo {
+            ModelInfo::new("unsaid", "unsaid")
+        }
+
+        async fn respond(
+            &self,
+            request: ModelRequest,
+            _deltas: DeltaSink,
+        ) -> Result<ModelResponse, BoxError> {
+            let bytes = serde_json::to_string(&request.messages)
+                .expect("messages serialize")
+                .len();
+            match bytes > 3_000 {
+                true => Err(nachalnik::TooLong {
+                    overrun: nachalnik::Overrun {
+                        tokens: 9_000,
+                        limit: None,
+                    },
+                    said: "the request is too long".to_owned(),
+                }
+                .into()),
+                false => Ok(ModelResponse::text("there is room now")),
+            }
+        }
+    }
+
+    let run = tolerate(
+        "first\nsecond\nthird\n/exclude file:big.rs\nfourth\n",
+        vec![],
+        |app| {
+            app.kernel.set_provider(Arc::new(Unsaid));
+            app.kernel
+                .push(ContextItem::file("big.rs", "x".repeat(4_000)).pinned());
+        },
+    )
+    .await;
+
+    let asked: Vec<String> = run
+        .app
+        .kernel
+        .items()
+        .iter()
+        .filter(|item| matches!(item.kind, ContextKind::UserMessage))
+        .map(|item| item.content.to_text().into_owned())
+        .collect();
+    assert_eq!(
+        asked,
+        ["first", "fourth"],
+        "only the refused one and the one after the room was made: {}",
+        run.prose
+    );
+    assert_eq!(
+        run.prose.matches("passed over unsent").count(),
+        1,
+        "{}",
+        run.prose
+    );
+    assert!(run.prose.contains("there is room now"), "{}", run.prose);
+    // and the note names no figure there is none of
+    assert!(
+        run.prose.contains("publishes no limit") && !run.prose.contains("`/budget` says"),
+        "{}",
+        run.prose
+    );
+}
+
 /// Prose that fails part-way through a turn still ends the session after the turn, not in it.
 ///
 /// note: `… | head` is this: the reader goes, the next line written fails, and the loop left with

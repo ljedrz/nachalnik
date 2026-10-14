@@ -198,11 +198,18 @@ impl App {
     /// and the size alone is true before the compactor has had its go - which runs before every
     /// request and may bring it under. A refusal that still stands is the one a message cannot get
     /// past.
+    ///
+    /// note: the size is measured against the limit the endpoint published, and where it published
+    /// none, against the context the refusal was for: no smaller than that, the next request is
+    /// refused as well. Without it every line after the refusal was sent and refused in turn.
     pub fn oversized(&self) -> bool {
-        self.oversized && {
+        self.oversized.is_some_and(|refused| {
             let budget = self.kernel.budget();
-            budget.limit.is_some_and(|limit| budget.used() > limit)
-        }
+            match budget.limit {
+                Some(limit) => budget.used() > limit,
+                None => budget.used() >= refused,
+            }
+        })
     }
 
     /// Whether a turn is being asked for after the session has spent what it was given, and says

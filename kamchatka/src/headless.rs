@@ -348,14 +348,23 @@ impl<'a> Headless<'a> {
                             if !std::mem::replace(&mut passing, true) {
                                 app.say(
                                     Speaker::Note,
-                                    match app.overspent() {
-                                        true => "the ceiling is reached, so the messages after \
+                                    match (app.overspent(), app.kernel.budget().limit) {
+                                        (true, _) => "the ceiling is reached, so the messages after \
                                                  this point are passed over unsent; commands are \
                                                  still read, and `/spend N` raises it",
-                                        false => "the next request is still longer than the model \
-                                                  takes, so the messages after this point are \
-                                                  passed over unsent; commands are still read, \
-                                                  and `/budget` says how much has to go",
+                                        (false, Some(_)) => "the next request is still longer than \
+                                                  the model takes, so the messages after this \
+                                                  point are passed over unsent; commands are \
+                                                  still read, and `/budget` says how much has to \
+                                                  go",
+                                        // with no limit published there is no figure to name,
+                                        // only the request that was refused
+                                        (false, None) => "the endpoint refused the last request \
+                                                  for its length and publishes no limit, so the \
+                                                  messages after this point are passed over \
+                                                  unsent until the context is smaller than that \
+                                                  request; commands are still read, and \
+                                                  `/exclude` makes room",
                                     },
                                 );
                             }

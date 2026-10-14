@@ -79,7 +79,7 @@ impl App {
         // session before the question, and a resume from one would lose the question
         self.keep_record();
         self.busy = true;
-        self.oversized = false;
+        self.oversized = None;
         self.since = Instant::now();
         self.stepping = stepping;
         self.interrupting = false;
