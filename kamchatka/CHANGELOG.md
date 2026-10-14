@@ -84,8 +84,9 @@ minor bump may break you.
 
 - **A call whose arguments did not parse is answered before anything is asked about it.** The
   kernel answers it, naming the tool and the call and saying where the JSON broke, and each tool
-  here adds how to write it where the fault is a common one: a backslash in a pattern, a line break
-  in a string, the action written bare. The call goes back to the model with no arguments, so the
+  here adds how to write it where that was measured to help: a line break in a string, the action
+  written bare. Nothing is said about backslashes, since models told to double one doubled it in
+  the value too. The call goes back to the model with no arguments, so the
   `_unparsed` wrapper it used to see, and copy, is gone; `log` shows the text under `tool.unparsed`.
 - **A resumed session's record is the whole session, and the `log` tool reads it as one log.** `-r`
   reads the record beside the snapshot once, up to where the snapshot was taken, and the record
