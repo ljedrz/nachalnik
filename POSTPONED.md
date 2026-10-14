@@ -104,14 +104,6 @@ an entry removes it; one that closes part of it leaves only the part that is lef
   wording: a client that fails to connect is a note at the terminal and an error when served.
   Sharing them is a refactor of both loops, worth doing together with the next change to either.
 
-- **`nachalnik-eval`'s digest leaves out the answer-format sentence.** Every question is sent with
-  `Reading::instructions()` after it (`Dossier::asked`), and `suite::instrument` hashes the
-  dossiers, the templates and the fork's preamble but not that sentence. Changing it would change
-  what every subject is asked while every digest, and the test pinning them, stayed the same.
-  Hashing it moves every digest at once, so runs made before could no longer be compared with runs
-  after though nothing they were asked changed; it waits for the next change that bumps
-  `script::VERSION` anyway.
-
 - **The first undo in a fresh session removes its setup.** `--system-prompt` and `-f` add items to
   the context like anything else, so each is an undo step: `/undo` in a session nobody has typed in
   yet removes the system instruction, and a second removes the attached file, each only reported as
