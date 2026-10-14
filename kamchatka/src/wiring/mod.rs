@@ -499,6 +499,38 @@ impl Setup {
             }
         }
 
+        // note: an allow for a file name a broader rule still asks about or refuses is refused,
+        // naming that rule. The two are each consulted and the strictest wins, so the allow could
+        // never decide anything, and a rule that changes nothing must not read as given. What the
+        // policy holds once every rule is in is what is asked, defaults and denies together
+        let ruled = tools::Careful::new();
+        for (subjects, verdict) in [
+            (&self.allow, nachalnik::Verdict::Allow),
+            (&self.deny, nachalnik::Verdict::Deny),
+        ] {
+            for subject in subjects {
+                ruled.set(subject, verdict);
+            }
+        }
+        for subject in &self.allow {
+            if let tools::Subject::Path(name) = subject
+                && let Some((rule, verdict)) = ruled.overruled(name)
+            {
+                let does = match verdict {
+                    nachalnik::Verdict::Deny => "refuses",
+                    _ => "asks about",
+                };
+                return Err(refused(
+                    "allow",
+                    format!(
+                        "`{name}` is also matched by the rule `{rule}`, which {does} it, and the \
+                         strictest rule that matches decides - so this allow would change \
+                         nothing. Allow `{rule}` to change what that rule says"
+                    ),
+                ));
+            }
+        }
+
         for (list, subjects) in [("allow", &self.allow), ("deny", &self.deny)] {
             for subject in subjects {
                 if let Some(objection) = unreached(subject) {
